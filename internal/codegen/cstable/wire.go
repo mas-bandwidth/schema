@@ -568,12 +568,12 @@ public static partial class TableWire
         {
             switch (n)
             {
-                case 1: Byte((byte)v); return;
-                case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)v); break;
-                case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), (uint)v); break;
+                case 1: Byte(unchecked((byte)v)); return;
+                case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), unchecked((ushort)v)); break;
+                case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), unchecked((uint)v)); break;
                 case 8: System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(Buffer.Slice(Offset), v); break;
                 default:
-                    for (int i = 0; i < n; i++) { Byte((byte)v); v >>= 8; }
+                    for (int i = 0; i < n; i++) { Byte(unchecked((byte)v)); v >>= 8; }
                     return;
             }
             Offset += n;
@@ -597,9 +597,9 @@ public static partial class TableWire
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Var(ulong v)
         {
-            if (v < 128) { Byte((byte)v); return; }
-            while (v >= 128) { Byte((byte)(v | 128)); v >>= 7; }
-            Byte((byte)v);
+            if (v < 128) { Byte(unchecked((byte)v)); return; }
+            while (v >= 128) { Byte(unchecked((byte)(v | 128))); v >>= 7; }
+            Byte(unchecked((byte)v));
         }
     }
 
@@ -911,7 +911,7 @@ public static partial class TableWire
         else if (f.GetWide != null)
         {
             UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
-            w.Fixed((ulong)raw, Math.Min(width, 8)); if (width == 16) { w.Fixed((ulong)(raw >> 64), 8); }
+            w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         }
         else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i), Width(f.Kind)); }
     }

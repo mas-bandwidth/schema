@@ -198,7 +198,7 @@ static unsafe class Program
 
     static long AlignmentOf(byte[] source)
     {
-        long a = (long)Header.Read64(source, Header.WordAlignment);
+        long a = unchecked((long)Header.Read64(source, Header.WordAlignment));
         if (a < 1 || a > 64 || (a & (a - 1)) != 0)
         {
             a = 8; // a forged word: place the buffer at the format's own floor

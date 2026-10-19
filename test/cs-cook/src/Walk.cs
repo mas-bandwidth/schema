@@ -294,7 +294,7 @@ static unsafe class Header
         foreach (char c in s)
         {
             h ^= (byte)c;
-            h *= 0x100000001b3UL;
+            h = unchecked(h * 0x100000001b3UL);
         }
         return h;
     }

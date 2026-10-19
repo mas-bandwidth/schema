@@ -742,7 +742,7 @@ func csRawGet(expr string, t ir.FieldType) string {
 		return "unchecked((ulong)BitConverter.DoubleToInt64Bits(" + expr + "))"
 	case ir.TInt:
 		if t.Signed {
-			return "(ulong)(long)" + expr
+			return "unchecked((ulong)(long)" + expr + ")"
 		}
 		return "(ulong)" + expr
 	case ir.TBits:

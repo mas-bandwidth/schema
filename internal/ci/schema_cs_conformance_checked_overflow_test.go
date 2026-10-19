@@ -80,3 +80,44 @@ func TestCsConformanceRunsUnderCheckedArithmetic(t *testing.T) {
 		t.Error("checked-overflow dotnet gate is heavy and must remain nightly/manual")
 	}
 }
+
+func TestCsCheckedOverflowGeneratorCasts(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	// /checked+ turns every implicit narrowing and sign-to-unsigned
+	// conversion into an OverflowException. The C# emitter therefore has to
+	// spell the cases that are INTENTIONAL truncation or wrap as unchecked.
+	cases := []struct {
+		file string
+		want string
+		why  string
+	}{
+		{"internal/codegen/cstable/codecs.go", `"unchecked((ulong)(long)" + expr`, "signed GetRaw/ClampRaw sign-extends a negative value to ulong"},
+		{"internal/codegen/cstable/native.go", "unchecked((byte)(raw >> (i * 8)))", "NativeWriter.Put truncates a declared-width scalar"},
+		{"internal/codegen/cstable/regioncook.go", "unchecked((byte)(raw >> (i * 8)))", "the cook writer truncates a declared-width scalar"},
+		{"internal/codegen/cstable/region.go", "unchecked((byte)(value >> (i * 8)))", "NativePut truncates a declared-width scalar"},
+		{"internal/codegen/cstable/wire.go", "Byte(unchecked((byte)v))", "Writer.Var truncates a varint byte"},
+		{"internal/codegen/cstable/wire.go", "w.Fixed(unchecked((ulong)raw)", "a 128-bit wide scalar writes its low and high 64-bit words"},
+		{"internal/codegen/cstable/regionwrite.go", "w.Fixed(unchecked((ulong)raw)", "the region writer writes the low 64-bit word of a wide scalar"},
+		{"internal/codegen/cstable/json.go", "unchecked(0ul - (ulong)value)", "JSON writes the magnitude of a negative signed value"},
+		{"internal/codegen/cstable/json.go", "unchecked((long)f.GetRaw(owner, index))", "JSON reads a sign-extended raw scalar back as signed"},
+		{"internal/codegen/cstable/variablejson.go", "unchecked((byte)(accumulator >> held))", "base64 decoding truncates the accumulator to one byte"},
+		{"internal/codegen/cstable/retain.go", "RetainPut32(p, unchecked((uint)v))", "RetainPut64 narrows a ulong to its two 32-bit words"},
+		{"internal/codegen/cstable/retain.go", "unchecked((byte)(value >> (8 * i)))", "the retention output writes a byte of a wide value"},
+		{"internal/codegen/cstable/builderload.go", "unchecked((long)NativeWord(", "a builder directory offset is read back as a signed displacement"},
+		{"internal/codegen/cstable/regionmessageload.go", "unchecked((long)NativeWord(", "a message directory offset is read back as a signed displacement"},
+		{"internal/codegen/cstable/retain.go", "unchecked((long)NativeWord(", "a retained directory offset is read back as a signed displacement"},
+		{"internal/codegen/cstable/regiongraph.go", "(byte*)unchecked((long)Value.Base + Value.At)", "a blob node's base plus signed displacement may wrap"},
+		{"internal/codegen/cstable/regiongraph.go", "unchecked((ulong)NativeWord(child.Base + at, 4))", "a blob length is a uint32 whose high bit means too large"},
+	}
+	for _, c := range cases {
+		path := filepath.Join(root, c.file)
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if !strings.Contains(string(src), c.want) {
+			t.Errorf("%s does not spell %q: %s", c.file, c.want, c.why)
+		}
+	}
+}
