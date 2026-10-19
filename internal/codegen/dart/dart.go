@@ -82,9 +82,20 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 }
 
 // unitNeeds128 reports whether any field of the unit stores as the emulated
-// 128-bit pair (int128/uint128, or fixed point of storage width 128).
+// 128-bit pair (int128/uint128, or fixed point of storage width 128). It
+// scans the unit's TABLES as well as its structs: a table-only unit's fixed
+// form (internal/codegen/darttable) spells int128/uint128 with the same
+// Int128/UInt128 pair, so the support library must be emitted beside it even
+// when no plain struct carries a 128-bit field.
 func unitNeeds128(u *ir.Unit) bool {
 	for _, st := range u.Structs {
+		for _, f := range st.Fields {
+			if is128(f.Type) {
+				return true
+			}
+		}
+	}
+	for _, st := range u.Tables {
 		for _, f := range st.Fields {
 			if is128(f.Type) {
 				return true

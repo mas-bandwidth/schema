@@ -201,7 +201,7 @@ final class UnitViewInfo {
 					json, id = "-", 0
 				}
 				member := fieldMember(f)
-				pf("      ViewField(%s,%s,%s,%s,%t,%d,%d,%s,(dynamic v) => v.%s,(dynamic v, dynamic x) { v.%s = x; },%s,%s),\n", viewDartString(f.Name), viewDartString(json), viewDartString(ir.TableTypeSpelling(f)), dartU64Literal(id), f.Type.Optional, viewDartFieldKind(f), viewDartArmBound(f), viewDartElementSize(f), member, member, viewDartString(f.Doc), viewDartTags(f.Tags))
+				pf("      ViewField(%s,%s,%s,%s,%t,%d,%d,%s,(dynamic v) => v.%s,(dynamic v, dynamic x) { v.%s = x; },%s,%s), // ignore: avoid_dynamic_calls -- the unit view registry is type-agnostic by design\n", viewDartString(f.Name), viewDartString(json), viewDartString(ir.TableTypeSpelling(f)), dartU64Literal(id), f.Type.Optional, viewDartFieldKind(f), viewDartArmBound(f), viewDartElementSize(f), member, member, viewDartString(f.Doc), viewDartTags(f.Tags))
 			}
 			pf("    ]),\n")
 		}
