@@ -7,4 +7,4 @@
 
 .PHONY: schema-shared-resource-bounds
 schema-shared-resource-bounds:
-	go test ./internal/ci -run 'TestEngine' -count=1 -timeout 600s
+	SCHEMA_SLOW=1 go test ./internal/ci ./internal/codegen/gotable -run 'TestEngine|TestGeneratedReaderResourceBounds' -count=1 -timeout 600s

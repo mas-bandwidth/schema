@@ -16601,7 +16601,8 @@ are the SHARED bounds; each port card applies them in its language.
   F = 4, as objects (not bytes; a byte budget is per-B and not promised here).
   "Input size" is the number of bytes of the serialized input the read starts
   from. This bounds the byte-amplification a hostile record can force. The Go
-  engine holds this now; the per-port cards hold their generated readers to it.
+  engine and the Go generated readers hold this now; the per-port cards hold
+  their generated readers to it.
 - **Nesting depth cap.** No reader or the engine parses records or schemas nested
   deeper than 100 bodies (a body is a `{ ... }` block on the schema side, a
   nested value on the wire side). Deeper input is REFUSED by name,
