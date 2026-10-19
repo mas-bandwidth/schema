@@ -213,7 +213,7 @@ func (s *retainScanner) readBody(begin, end int) {
 		if !s.known[id] {
 			start := at
 			s.skipPayload(kind, &at)
-			s.retained[hex.EncodeToString(s.wire[start:at])] = true
+			s.retained[string(s.wire[start:at])] = true
 			continue
 		}
 		switch kind {
