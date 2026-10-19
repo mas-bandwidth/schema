@@ -149,9 +149,18 @@ local function narrow_f32(v: number): number
 	return buffer.readu32(scratch, 0)
 end
 
-local function fround(v: number): number
-	buffer.writef32(scratch, 0, v)
-	return buffer.readf32(scratch, 0)
+-- whether two floats are the SAME BIT PATTERN, which is what a plain float's
+-- elision compares (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL
+-- VALUES"): -0 and +0 differ, and a NaN is equal only to its own pattern.
+local function same_float(a: any, b: any, f32: boolean): boolean
+	if typeof(a) == "integer" then a = integer.tonumber(a) end
+	if typeof(b) == "integer" then b = integer.tonumber(b) end
+	if f32 then return narrow_f32(a) == narrow_f32(b) end
+	buffer.writef64(scratch, 0, a)
+	local alo, ahi = buffer.readu32(scratch, 0), buffer.readu32(scratch, 4)
+	buffer.writef64(scratch, 0, b)
+	local blo, bhi = buffer.readu32(scratch, 0), buffer.readu32(scratch, 4)
+	return alo == blo and ahi == bhi
 end
 
 -- ---- VALUES (docs/PORT-LUAU.md, THE TYPE MAPPING) -------------------------
@@ -366,6 +375,11 @@ local function number(d: any, root: any): any
 			top.i = top.i + 1
 			local e = top.edges[top.i]
 			if open[e.val] then return nil end
+			-- ONE BLOB RECORD FROM TWO SLOTS IS REFUSED (docs/SPEC-TABLES.md
+			-- §2.5): a pointer node may be shared, but a blob is owned by its
+			-- record, so the writer declines the value rather than copying or
+			-- naming one record twice.
+			if e.blob ~= nil and nodes.index[e.val] ~= nil then return nil end
 			if nodes.index[e.val] == nil then
 				if e.blob ~= nil then
 					-- a BYTE BUFFER is numbered as every node is and reaches nothing (§2.5)
@@ -405,9 +419,10 @@ local function enum_ref(c: any, e: any, val: any): number
 	return ref(c.ids, pair[2])
 end
 
--- one integer-shaped value at its kind's width (§3): a 128-bit value is its
--- two halves low first, a 64-bit one the integer's bits, a narrower one its
--- low bytes
+-- one integer-shaped value at its kind's width (§2.11, §3): a 128-bit value is
+-- its two halves low first, a 64-bit one (int64, uint64, bits(33..64), fixed
+-- with I+F > 32, or timestamp kind 36) the integer's 8 little-endian bytes, a
+-- narrower one its low bytes
 local function write_int(w: any, e: any, val: any)
 	local kw = e.kw
 	if kw == 16 then
@@ -502,10 +517,7 @@ local function elem_is_default(e: any, val: any, len: number?): boolean
 	local s = e.s
 	if s == "bool" then return val == false or val == nil end
 	if s == "int" then return same_int(val, 0) end
-	if s == "float" then
-		if e.f32 then return fround(val) == 0 end
-		return val == 0
-	end
+	if s == "float" then return same_float(val, 0, e.f32) end
 	if s == "enum" then return as_number(val) == 0 end
 	if s == "ptr" or s == "sblob" or s == "bblob" then return not val end
 	if s == "union" then return val == nil or val.Type == 0 end
@@ -579,15 +591,17 @@ end
 
 -- A MAP (§2.8): kind 14 over element kind 13, its entries in ASCENDING KEY
 -- ORDER, each entry's body always riding (identity is the key). An empty map
--- elides.
-local function write_map(c: any, fd: any, w: any, val: any): boolean
-	if val == nil or #val == 0 then return true end
+-- elides, EXCEPT when `required` or a PRESENT optional (both passed as true)
+-- forces it: then the header and the two-byte empty array body `0d 00` ride
+-- under L = 2 (§2.3, §2.8).
+local function write_map(c: any, fd: any, w: any, val: any, required: boolean?): boolean
+	if (val == nil or #val == 0) and not required then return true end
 	header(c, w, fd.id, 14)
 	local entry = St.lookup(fd.t)
 	local b = new_writer(c.count)
 	w_u8(b, 13)
-	w_leb(b, #val)
-	for _, ev in map_order(fd, val) do
+	w_leb(b, val == nil and 0 or #val)
+	for _, ev in map_order(fd, val or {}) do
 		local eb = body_of(c, entry, ev)
 		if eb == nil then return false end
 		w_leb(b, eb.n)
@@ -666,10 +680,7 @@ end
 local function at_default(fd: any, val: any): boolean
 	local s = fd.s
 	if s == "bool" then return (val == true) == (fd.def == true) end
-	if s == "float" then
-		if fd.f32 then return fround(val) == fround(fd.def) end
-		return val == fd.def
-	end
+	if s == "float" then return same_float(val, fd.def, fd.f32) end
 	if s == "int" then return same_int(val, fd.def) end
 	return as_number(val) == as_number(fd.def)
 end
@@ -687,16 +698,38 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 	if not guard_holds(fd, v) then return true end
 	local s = fd.s
 	local val = v[fd.slot]
+	-- `| required` (docs/SPEC-TABLES.md §2.3): the writer ALWAYS writes the
+	-- field when its guard holds — no default elision — so it rides on every
+	-- record. A required integer whose declared range excludes its stored
+	-- value has no wire value, and the save refuses (nil), as Go's writer does.
+	local required = fd.required == true
+	if required and s == "int" and fd.lo ~= nil and typeof(fd.lo) ~= "table" and typeof(fd.hi) ~= "table" then
+		local x = as_number(val)
+		local lo, hi = fd.lo, fd.hi
+		if fd.fbits ~= nil and fd.fbits > 0 then lo, hi = lo * (2 ^ fd.fbits), hi * (2 ^ fd.fbits) end
+		if x ~= nil and (x < lo or x > hi) then return false end
+	end
 
 	if s == "ptr" or s == "sblob" or s == "bblob" then
 		-- NULL IS INDEX 0 AND NULL IS ELIDED; a non-null pointer always rides (§3.1)
-		if val == nil then return true end
+		if val == nil then
+			if not required then return true end
+			header(c, w, fd.id, 17)
+			w_leb(w, 0)
+			return true
+		end
 		header(c, w, fd.id, 17)
 		w_leb(w, c.nodes.index[val])
 		return true
 	end
 	if s == "map" then
-		return write_map(c, fd, w, val)
+		-- `?map[K]V`: absent writes nothing; present ALWAYS rides, even empty
+		-- (docs/SPEC-TABLES.md §2.3, §2.8)
+		if fd.present ~= nil then
+			if not v[fd.present] then return true end
+			return write_map(c, fd, w, val, true)
+		end
+		return write_map(c, fd, w, val, required)
 	end
 	if fd.present ~= nil then
 		if not v[fd.present] then return true end
@@ -727,10 +760,12 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 	end
 	if s == "str" then
 		local b, n = used(v, fd.slot, fd.wide)
-		if fd.wide then
-			if n == 0 then return true end -- wide text takes no specified default
-		elseif equals_string(b, n, fd.def) then
-			return true
+		if not required then
+			if fd.wide then
+				if n == 0 then return true end -- wide text takes no specified default
+			elseif equals_string(b, n, fd.def) then
+				return true
+			end
 		end
 		header(c, w, fd.id, fd.k)
 		w_leb(w, n)
@@ -738,15 +773,19 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		return true
 	end
 	if s == "text" then
-		if typeof(val) ~= "buffer" or buffer.len(val) == 0 then return true end
+		if not required and (typeof(val) ~= "buffer" or buffer.len(val) == 0) then return true end
 		header(c, w, fd.id, 12)
-		w_leb(w, buffer.len(val))
-		w_raw(w, val, 0, buffer.len(val))
+		if typeof(val) == "buffer" then
+			w_leb(w, buffer.len(val))
+			w_raw(w, val, 0, buffer.len(val))
+		else
+			w_leb(w, 0)
+		end
 		return true
 	end
 	if s == "bytes" then
 		local b, n = used(v, fd.slot, false)
-		if equals_string(b, n, fd.def) then return true end
+		if not required and equals_string(b, n, fd.def) then return true end
 		-- L IS THE ARRAY BODY'S LENGTH (§3): the element kind, the count's own
 		-- LEB128 bytes, then the bytes
 		header(c, w, fd.id, 14)
@@ -759,7 +798,7 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 	if s == "arr" then
 		if fd.array == "list" or fd.array == "counted" then
 			local n = live_count(fd, v, val)
-			if n == 0 then return true end
+			if n == 0 and not required then return true end
 			return write_array(c, fd, w, v, val, n)
 		end
 		if fd.e.s == "tab" then
@@ -773,11 +812,17 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 			if typeof(lens) == "table" then len = lens[i] end
 			if not elem_is_default(fd.e, elem_at(val, i), len) then all = false; break end
 		end
-		if all then return true end
+		if all and not required then return true end
 		return write_array(c, fd, w, v, val, fd.bound)
 	end
 	if s == "union" then
-		if val == nil or val.Type == 0 then return true end -- None elides
+		if val == nil or val.Type == 0 then
+			if not required then return true end -- None elides
+			w_leb(w, ref(c.ids, fd.id))
+			w_u8(w, 15)
+			w_leb(w, 0)
+			return true
+		end
 		local un = St.lookup(fd.t)
 		if un.arms[val.Type] == nil then return false end
 		w_leb(w, ref(c.ids, fd.id))
@@ -791,7 +836,7 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		local fref = ref(c.ids, fd.id)
 		local b = body_of(c, St.lookup(fd.t), val)
 		if b == nil then return false end
-		if b.n <= 1 then
+		if b.n <= 1 and not required then
 			rollback(c.ids, m)
 			return true
 		end
@@ -803,7 +848,7 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 	end
 	-- a scalar or an enum, elided at its declared default
 	if s ~= "bool" and s ~= "float" and s ~= "int" and s ~= "enum" then return false end
-	if at_default(fd, val) then return true end
+	if not required and at_default(fd, val) then return true end
 	header(c, w, fd.id, fd.k)
 	return write_value(c, fd, w, val, nil)
 end

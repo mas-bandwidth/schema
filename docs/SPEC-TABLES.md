@@ -9901,7 +9901,11 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
   build-version-mismatched, missing a required field (§2.3), holding a
   non-finite plain float (`non_finite`, §3.3, a plain float's special values) or
-  naming one blob from two slots (`blob_shared`, §2.5). It does NOT refuse `unknown`, `widened` or
+  naming one blob from two slots (`blob_shared`, §2.5). The clamped refusal
+  NAMES the clamped field, `<Table>.<field>`, as the other refusals name
+  theirs: a strict read of a past-bound wire answers the clamped refusal with
+  the field's name (`clamped: <Table>.<field>`, `TableClampedField`), so a
+  strict caller can say which field was clamped. It does NOT refuse `unknown`, `widened` or
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
   `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
@@ -15618,7 +15622,7 @@ Per kind:
 | `*bytes` | string, base64, or `null` | the blob in place, as `bytes(N)` spells its bytes, with NO bound to clamp against; `""` is a present blob of length zero and `null` is a null reference (§2.5). A body that is not base64 is `kind_mismatch`, the reference left null |
 | `*string` | string, or `null` | the blob's bytes as a string, with no bound; the same two values at the empty end |
 | `*wstring` | string, or `null` | the blob's code units as a string, transcoded as `wstring(N)`'s row is, with no bound to clamp against, and the same two values at the empty end |
-| `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` drops its entry and counts `clamped`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` makes the key malformed and one with a fractional value or out of the key kind's range drops its entry as `kind_mismatch`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7); a `?T` VALUE (`map[K]?T`) is written `null` when ABSENT and as its value when PRESENT, defaults included, and read the same way: the object's key is the ENTRY and never the value's presence, so `null` is the one spelling of an absent value and any other value is present (§2.3); an OPTIONAL MAP (`?map[K]V`) is a `?T` at its field: ABSENT writes no key, PRESENT writes the object, `{}` when empty, and a `null` reads as ABSENT (§2.8) |
+| `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` drops its entry and counts `clamped`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` makes the key malformed and one with a fractional value or out of the key kind's range drops its entry as `kind_mismatch`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7); a `*T`, `*bytes` or `*string` VALUE is read and written by its own row above, so a `null` value is the null reference: the key stays an entry, the reference is absent, nothing is counted, and the writer spells it `null` at that key; a `?T` VALUE (`map[K]?T`) is written `null` when ABSENT and as its value when PRESENT, defaults included, and read the same way: the object's key is the ENTRY and never the value's presence, so `null` is the one spelling of an absent value and any other value is present (§2.3); an OPTIONAL MAP (`?map[K]V`) is a `?T` at its field: ABSENT writes no key, PRESENT writes the object, `{}` when empty, and a `null` reads as ABSENT (§2.8) |
 | text list `[..N]string(M)`, `[]string(M)` | array of strings | `["a","b"]`, `[]` for an empty list, written in INDEX order (§2.13). An element that is not a string, `null` included, is `kind_mismatch`; an element longer than `M` clamps as `string(N)`'s row does, and an element past a `[..N]` bound is dropped, counted, as the bounded array's row says |
 | unbounded text list `[]string`, `[..N]string` | array of strings | `["a","b"]` as above, with NO element bound: no element is clamped and `clamped` never fires for a length; a `[..N]` count past `N` is dropped, counted (§2.13.1) |
 | unbounded text list `[]?string`, `[..N]?string` | array of strings and `null` | as the `?string(M)` row, with no element bound |
@@ -15666,7 +15670,13 @@ value the field's width cannot represent is `kind_mismatch`, so an
 infinity is never stored. **A token that is not a JSON number at all** —
 `1-2`, `5+`, `1.2.3`, `--3` — is `malformed`: the token grammar is RFC
 8259's, and a typo in an authoring file is a diagnostic, never a clamped
-value.
+value. **A token's LENGTH is never the reason it is refused**: a valid
+number is read by its value however many bytes it spans, within the
+document's own size bound. There is no separate number-length limit, so a
+`1.` followed by six hundred zeros is the float `1.0` and a `1` followed by
+six hundred zeros is an out-of-range integer clamped by the rules above,
+not a `malformed` token. Both engines land the same bytes and counters for
+one, as they do for every other token.
 
 **The wide kinds convert EXACTLY, and nothing on their path is a double.**
 A fixed field's token is the value in whole units; the reader scales it by
