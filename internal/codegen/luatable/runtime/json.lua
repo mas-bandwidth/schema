@@ -186,11 +186,11 @@ local function scan_unit(inp)
 end
 
 -- ONE JSON string into bytes, clamped at cap bytes (cap < 0 unbounded). A
--- fourth truth is returned when a BOUNDED body carried a U+0000 unit — the
--- \u0000 escape into text storage §16.3 refuses as text_holds_zero — so the
--- caller that places the value can name the field; callers that only scan
--- (keys, skipped values) ignore it, because a zero that never lands in a
--- bounded text field is not the event.
+-- fourth truth is returned when the body carried a U+0000 unit — the \u0000
+-- escape into text storage §16.3 refuses as text_holds_zero — so the caller
+-- that places the value can name the field; callers that only scan (an object
+-- key that names no field, a skipped value) ignore it, because a zero that
+-- never lands in text storage is not the event.
 local function scan_string(inp, cap)
   if peek(inp) ~= '"' then inp.bad = true; return nil, false, false end
   inp.p = inp.p + 1
@@ -199,7 +199,7 @@ local function scan_string(inp, cap)
     local unit, done, ok = scan_unit(inp)
     if not ok then return nil, false, false, false end
     if done then break end
-    if cap >= 0 and unit == "\0" then nul = true end
+    if unit == "\0" then nul = true end
     if clamped or (cap >= 0 and n + #unit > cap) then
       clamped = true
     else
@@ -210,14 +210,15 @@ local function scan_string(inp, cap)
   return table.concat(out), clamped, true, nul
 end
 
--- ONE JSON string into UTF-16 code units, clamped at cap units (§16.2)
+-- ONE JSON string into UTF-16 code units, clamped at cap units (§16.2). The
+-- fourth truth is §16.3's zero: a U+0000 unit bound for wide text storage.
 local function scan_wstring(inp, cap)
   if peek(inp) ~= '"' then inp.bad = true; return nil, false, false end
   inp.p = inp.p + 1
-  local out, n, clamped = {}, 0, false
+  local out, n, clamped, nul = {}, 0, false, false
   while true do
     local unit, done, ok = scan_unit(inp)
-    if not ok then return nil, false, false end
+    if not ok then return nil, false, false, false end
     if done then break end
     local code = utf8_decode(unit)
     local units
@@ -227,6 +228,7 @@ local function scan_wstring(inp, cap)
       local rest = code - 0x10000
       units = { 0xd800 + (rest >> 10), 0xdc00 + (rest & 0x3ff) }
     end
+    if code == 0 then nul = true end
     if clamped or (cap >= 0 and n + #units > cap) then
       clamped = true
     else
@@ -234,7 +236,7 @@ local function scan_wstring(inp, cap)
       n = n + #units
     end
   end
-  return out, clamped, true
+  return out, clamped, true, nul
 end
 
 -- ONE RFC 8259 number; the token kept for conversion
@@ -1129,12 +1131,18 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
     local c = peek(inp)
     if c == '}' then inp.p = inp.p + 1; break end
     if c == nil then inp.bad = true; return false end
-    local start = inp.p
-    local _, clamped, ok = scan_string(inp, MAX_KEY)
+    local kraw, clamped, ok, nul = scan_string(inp, MAX_KEY)
     if not ok then return false end
-    local kraw = inp.t:sub(start + 1, inp.p - 2)
     if peek(inp) ~= ':' then inp.bad = true; return false end
     inp.p = inp.p + 1
+    if nul then
+      -- §16.3: a map key is text storage, so a zero in it is the event even
+      -- when the key would be dropped for its length; one malformed, never
+      -- also a clamp or a kind mismatch.
+      report.Reason = "text_holds_zero: " .. table_name .. "." .. field_name
+      inp.bad = true
+      return false
+    end
     local kval, skip = nil, false
     if clamped then
       if string_key then report.clamped = report.clamped + 1
@@ -1320,8 +1328,15 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     holder[key] = out
     return true
   elseif s == "wstring" then
-    local out, clamped, ok = scan_wstring(inp, d.bound)
+    local out, clamped, ok, nul = scan_wstring(inp, d.bound)
     if not ok then return false end
+    if nul then
+      -- §16.3: a U+0000 unit bound for wide text storage refuses the read
+      -- with the same name a narrow field takes.
+      report.Reason = "text_holds_zero: " .. table_name .. "." .. field_name
+      inp.bad = true
+      return false
+    end
     if clamped then report.clamped = report.clamped + 1 end
     holder[key] = out
     return true
@@ -1334,8 +1349,15 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     -- A BLOB IS A NODE (docs/SPEC-TABLES.md §16.2 `*string`, §3.1): the read
     -- boxes it as { value = <bytes> }, as load.lua does, so it keeps an
     -- identity the save numbers by (docs/PORT-LUA.md, storage table).
-    local out, _, ok = scan_string(inp, -1)
+    local out, _, ok, nul = scan_string(inp, -1)
     if not ok then return false end
+    if nul then
+      -- §16.3: `*string` is text storage too, and the innermost field is the
+      -- blob's own.
+      report.Reason = "text_holds_zero: " .. table_name .. "." .. field_name
+      inp.bad = true
+      return false
+    end
     holder[key] = { value = out }
     return true
   elseif s == "bytes_blob" then
