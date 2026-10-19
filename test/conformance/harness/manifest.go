@@ -35,6 +35,9 @@ type Instance struct {
 	// on the instance's own line, rather than the harness quietly tolerating a
 	// missing file.
 	NoText bool
+	// GoWireRefusal names a Go wire writer refusal the corpus requires this
+	// instance's Go leg to report instead of emitting bytes.
+	GoWireRefusal string
 }
 
 // Counts is a read report (docs/SPEC-TABLES.md §4), which is the whole
@@ -402,18 +405,28 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			}
 			m.Units = append(m.Units, Unit{Key: f[1], Paths: f[2:]})
 		case "instance":
-			if len(f) != 5 && len(f) != 6 {
-				return nil, fmt.Errorf("%s: instance takes name, unit, root, wire, and optionally no-text", where)
+			if len(f) < 5 {
+				return nil, fmt.Errorf("%s: instance takes name, unit, root, wire, and optional markers", where)
 			}
 			inst := Instance{
 				Name: f[1], Unit: f[2], Root: f[3], Wire: f[4],
 				JSON: jsonDir + "/" + f[1] + ".json",
 			}
-			if len(f) == 6 {
-				if f[5] != "no-text" {
-					return nil, fmt.Errorf("%s: %q is not an instance marker; the only one is no-text", where, f[5])
+			for _, marker := range f[5:] {
+				switch {
+				case marker == "no-text":
+					if inst.NoText {
+						return nil, fmt.Errorf("%s: duplicate no-text marker", where)
+					}
+					inst.NoText = true
+				case strings.HasPrefix(marker, "go-refusal=") && strings.TrimPrefix(marker, "go-refusal=") != "":
+					if inst.GoWireRefusal != "" {
+						return nil, fmt.Errorf("%s: duplicate Go wire refusal marker", where)
+					}
+					inst.GoWireRefusal = strings.TrimPrefix(marker, "go-refusal=")
+				default:
+					return nil, fmt.Errorf("%s: %q is not a valid instance marker", where, marker)
 				}
-				inst.NoText = true
 			}
 			m.Instances = append(m.Instances, inst)
 		case "connection":
