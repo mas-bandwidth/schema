@@ -2276,20 +2276,13 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 	return true
 }
 
-// readMapValue reads one entry's VALUE. A `map[K]?T` value is a `?T` field of
-// the generated entry (docs/SPEC-TABLES.md §2.8: a value is anything a table
-// field can hold, `?T` included), so the presence rule of §2.3 and §16.2 reads
-// through it unchanged: the entry's key being in the object is the entry, the
-// value `null` is the ABSENT optional, and any other value makes the optional
-// PRESENT. Before this the value read here was placed but never marked
-// present, so the wire encoder elided it (§2.3: an absent optional is not
-// written) and `{"2":{"n":1}}` came back as `{"2":{"n":0}}`, while `null` was
-// refused as malformed.
+// readMapValue reads one entry's VALUE (docs/SPEC-TABLES.md §16.2). A
+// `map[K]?T` reads null as an absent optional; a map pointer value reads it as
+// the null reference, exactly as the object-field path does. Other values
+// still use their declared shape, and a non-null optional is present because
+// the map entry's key supplies the value slot (§2.3, §2.8).
 func (in *reader) readMapValue(fv *Field, depth int) bool {
-	if !fv.Def.Type.Optional {
-		return in.readField(fv, depth)
-	}
-	if in.valueShape() == 'z' {
+	if in.valueShape() == 'z' && TakesNull(fv.Def) {
 		if !in.literal("null") {
 			return false
 		}
@@ -2299,7 +2292,9 @@ func (in *reader) readMapValue(fv *Field, depth int) bool {
 	if !in.readField(fv, depth) {
 		return false
 	}
-	fv.Present = true
+	if fv.Def.Type.Optional {
+		fv.Present = true
+	}
 	return true
 }
 
