@@ -1518,7 +1518,8 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     {
         // A TEXT LIST IS THE PLAIN ARRAY OF STRINGS (docs/SPEC-TABLES.md §2.13,
         // §16.2): each element is its string, and an absent ?string(M) element
-        // is null. Its count is the bounded array's own live count.
+        // is null. Its count is the bounded array's own live count. The Go
+        // oracle is internal/codegen/gotable/textlist.go's text element walk.
         const int32_t count = TableJsonCount( base, f );
         const TableFieldInfo * value = &f->table->fields[0];
         if ( count == 0 ) { out.raw( "[]", 2 ); return true; }
@@ -2810,7 +2811,8 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     {
         // THE PLAIN ARRAY OF STRINGS read back (docs/SPEC-TABLES.md §2.13,
         // §16.2): a count past N clamps, an element past M scans to its bound,
-        // and a non-string element is the array row's kind mismatch.
+        // and a non-string element is the array row's kind mismatch that still
+        // takes its slot, as internal/codegen/gotable/textlist.go reads it.
         if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
         in.pos++;
         const TableFieldInfo * value = &f->table->fields[0];
