@@ -97,7 +97,8 @@ enum {
     SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
     SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
     SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
-    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13
+    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13,
+    SCHEMA_TABLE_REFUSE_BLOB_SHARED=14
 };
 static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,TableRefuseReason reason)
 { if(out!=NULL) { *out=reason; } return NULL; }

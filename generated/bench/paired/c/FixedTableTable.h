@@ -123,6 +123,9 @@ typedef struct TableReport
     int32_t duplicate;
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
+    /* a blob record another slot already named (docs/SPEC-TABLES.md §2.5):
+       the tolerant read keeps the one node and counts each extra naming. */
+    int32_t blob_shared;
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
@@ -2437,7 +2440,8 @@ enum {
     SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
     SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
     SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
-    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13
+    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13,
+    SCHEMA_TABLE_REFUSE_BLOB_SHARED=14
 };
 static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,TableRefuseReason reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
