@@ -69,8 +69,8 @@ func TestSchemaJavaSpotbugsGateNegativeControl(t *testing.T) {
 	findings := filepath.Join(dir, "findings.xml")
 	run := exec.Command(filepath.Join(home, "bin", "spotbugs"),
 		"-textui", "-effort:max", "-medium", "-exitcode", "-xml:withMessages",
-		"-include", filepath.Join(root, "make", "schema-java-generated-spotbugs-include.xml"),
-		"-exclude", filepath.Join(root, "make", "schema-java-generated-spotbugs-exclude.xml"),
+		"-include", filepath.Join(root, "build", "schema-java-spotbugs", "include.xml"),
+		"-exclude", filepath.Join(root, "build", "schema-java-spotbugs", "exclude.xml"),
 		"-pluginList", plugin, "-output", findings, classes)
 	if out, err := run.CombinedOutput(); err != nil {
 		t.Fatalf("the clean class did not stay green: %v\n%s", err, out)

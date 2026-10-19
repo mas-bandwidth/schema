@@ -29,6 +29,12 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// The SpotBugs lens's make fragment is not a compiler backend; the wide-
+	// scalar probe walks every make/*.mk as a port, so leave it out of the
+	// fixture.
+	if err := os.Remove(filepath.Join(fixture, "make", "schema-java-generated-spotbugs-gate.mk")); err != nil {
+		t.Fatal(err)
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)
