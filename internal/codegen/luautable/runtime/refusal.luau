@@ -103,7 +103,7 @@ end
 R.ReadStrictNames = table.freeze({
 	message_form_as_file = true, newer_form = true, previous_form = true, unknown_form = true,
 	integrity_mismatch = true, wire_damaged = true,
-	missing_required = true, malformed = true, clamped = true, kind_mismatch = true, non_finite = true,
+	missing_required = true, malformed = true, clamped = true, kind_mismatch = true, non_finite = true, blob_shared = true,
 	-- the fixed reader's own, answered through fixed.luau for a form-3 file
 	-- (§3.4, §6.5): Go's names, every framing-damage return included
 	layout_malformed = true, layout_record_too_large = true, layout_unknown = true,
