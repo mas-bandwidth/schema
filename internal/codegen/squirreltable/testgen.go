@@ -74,6 +74,8 @@ func Testgen(u *ir.Unit) (map[string][]byte, error) {
 			b.WriteString("  local z = TX.LoadText(T, root, b64, fresh());\n")
 			b.WriteString("  if (z == null) fail(root + \": LoadText refused the base64 text\");\n")
 			b.WriteString("  if (TX.SaveText(T, root, z) != b64) fail(root + \": the base64 text did not read back equal\");\n")
+			b.WriteString("  local bw = TX.LoadText(T, root, b64 + \"?\", fresh());\n")
+			b.WriteString("  if (bw != null) fail(root + \": a damaged base64 text was not refused by name\");\n")
 			b.WriteString("  local cut = blob(wire.len());\n")
 			b.WriteString("  for (local i = 0; i < wire.len(); i++) cut[i] = wire[i];\n")
 			b.WriteString("  cut.resize(wire.len() - 1);\n")
