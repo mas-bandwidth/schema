@@ -4118,8 +4118,8 @@ In Go, `HandoverRulesAppend(&h, "a")` appends, and is false past either bound,
 for a zero byte, or for ill-formed UTF-8; `HandoverRulesTextAt(&h, i)` reads an
 element without allocating, and `HandoverFirstAppendAbsent(&h)` appends an
 absent element. On the wire a `string(M)` list is kind 14 over element kind 12; in JSON it is a plain array of
-strings. Only Go generates either construct today; every other `--lang`
-refuses it by name.
+strings. Go carries every spelling and C++ the bounded ones; every other
+`--lang` refuses it by name. The message form is inapplicable to a table carrying a text list and is refused by name at generation (docs/SPEC-TABLES.md §2.13).
 
 A text list can also bound the SUM of its elements' bytes, so one record never
 holds the count times `M`:

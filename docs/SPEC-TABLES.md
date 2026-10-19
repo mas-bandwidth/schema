@@ -4071,10 +4071,12 @@ list IS an array of that record — the bounded list is `[N]` records and a live
 `<Field>Count`, the unbounded list a `TableList` of records (§2.9) — which is
 why the cooked form (§7), the view (§8) and retain-unknown (§6.6) carry a text
 list with no rule of their own: each walks it as the array of records it is
-stored as. The fixed, block (§19) and message forms apply only to fixed tables,
-so for a text list, which lives only in a variable table, they are inapplicable
-and emit nothing for its table (not a refusal), as for an equal variable table
-holding an array of records. The element record's `?string(M)` value is the one
+stored as. The fixed and block (§19) forms apply only to fixed tables and emit
+nothing for a text list's table, as for an equal variable table holding an
+array of records. The message form is inapplicable to a table carrying a text
+list and is refused by name at generation, naming the form, the table and the
+field: the Go emitter writes no message batch, no vocabulary entry and no
+announcement entry for that table. The element record's `?string(M)` value is the one
 place a `?` on a string is legal, and only the generator writes it: in a
 declaration `?string(N)` stays the follow-on §15 names.
 
@@ -4195,9 +4197,7 @@ emits, beside the storage above:
 `Text`, `TextAt`, `Append` or `AppendAbsent`; an unbounded one claims §2.9's
 four as well. A declaration under any of them is refused naming the field.
 
-**Go carries the construct first, and every other target refuses it by name,
-centrally, at generation** (§2.12's rule), naming the construct, the field and
-the target, so no other emitter is edited.
+**Go carries every spelling; C++ carries the bounded [..N] spellings; every other target refuses by name.**
 
 #### 2.13.1 Unbounded text: `[]string` and `map[string]V`
 
@@ -4311,12 +4311,14 @@ through the slot. The read path allocates nothing the bounded one does not: a
 region load carves the bytes from the extent `LoadMeasure` already counted, and
 a builder load takes them from the arena as it takes a list's elements.
 
-**THE MESSAGE FORM DOES NOT APPLY.** §2.13 states the rule: the fixed, block
-(§19) and message forms apply only to fixed tables, and a text list lives only
-in a variable table, so they are inapplicable and emit nothing for its table,
-unbounded text included. The message form is fixed-only (§3.3), and a fixed
-table cannot hold unbounded text (§2.2, the refusals above), so a table whose
-closure holds it never meets the form.
+**THE MESSAGE FORM DOES NOT APPLY.** §2.13 states the rule: the fixed and block
+(§19) forms apply only to fixed tables, and a text list lives only in a variable
+table, so they emit nothing for its table, unbounded text included. The message
+form is inapplicable to a table carrying a text list and is refused by name at
+generation (§2.13): it emits no message batch, vocabulary entry or announcement
+entry for that table. The message form is fixed-only (§3.3), and a fixed table
+cannot hold unbounded text (§2.2, the refusals above), so a table whose closure
+holds it never meets the form.
 
 **MAP KEYS compare by BYTES, unsigned, a shorter prefix first, at any length**
 (§2.8): `Find`, `Insert` (replace included), `Erase`, `Each` and the index hash
