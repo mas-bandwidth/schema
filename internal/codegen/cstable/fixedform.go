@@ -1814,16 +1814,18 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("public const long %sFixedRecordBytes = 8 + %sFixedBodyBytes;\n", name, name)
 	g.pf("public const ulong %sFixedHash = 0x%016xul;\n\n", name, hash)
 
-	g.pf("public static readonly byte[] %sFixedLayout = new byte[] {\n", name)
+	g.pf("private static readonly byte[] _%sFixedLayout = new byte[] {\n", name)
 	g.emitCsByteArray(block)
 	g.pf("};\n")
+	g.pf("public static ReadOnlySpan<byte> %sFixedLayout => _%sFixedLayout;\n", name, name)
 	g.pf("public const long %sFixedLayoutBytes = %d;\n\n", name, len(block))
 
-	g.pf("public static readonly TableFixedDst[] %sFixedDst = new TableFixedDst[] {\n", name)
+	g.pf("private static readonly TableFixedDst[] _%sFixedDst = new TableFixedDst[] {\n", name)
 	for i, row := range b.dstRows {
 		g.pf("    %s, // %s\n", row, b.entries[i].note)
 	}
-	g.pf("};\n\n")
+	g.pf("};\n")
+	g.pf("public static System.Collections.Generic.IReadOnlyList<TableFixedDst> %sFixedDst => System.Array.AsReadOnly(_%sFixedDst);\n\n", name, name)
 
 	g.pf("public static readonly TableFixedSlot<%s>[] %sFixedSlots = new TableFixedSlot<%s>[] {\n", name, name, name)
 	for _, s := range b.slots {
@@ -1858,11 +1860,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and\n")
 	g.pf("// merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the\n")
 	g.pf("// identity plan it is empty and the identity read writes no slot twice.\n")
-	g.pf("public static readonly TableFixedFill[] %sFixedCover = new TableFixedFill[] {\n", name)
+	g.pf("private static readonly TableFixedFill[] _%sFixedCover = new TableFixedFill[] {\n", name)
 	for _, r := range cover {
 		g.pf("    new TableFixedFill(%du, %du),\n", r.off, r.size)
 	}
-	g.pf("};\n\n")
+	g.pf("};\n")
+	g.pf("public static System.Collections.Generic.IReadOnlyList<TableFixedFill> %sFixedCover => System.Array.AsReadOnly(_%sFixedCover);\n\n", name, name)
 
 	// THE SPLIT (§5.9 #42): the number of unguarded entries, the index the
 	// guarded half starts at. It is metadata beside the plan, exactly the shape
@@ -1874,14 +1877,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// every chain past the two lanes, OUTERMOST FIRST, thirteen bytes a link. An
 	// entry carries offset+count into it; the identity read hands it to the run
 	// loop as the plan's bytes.
-	g.pf("public static readonly byte[] %sFixedGuardPool = new byte[] {", name)
+	g.pf("private static readonly byte[] _%sFixedGuardPool = new byte[] {", name)
 	for i, by := range guardPool {
 		if i%16 == 0 {
 			g.pf("\n   ")
 		}
 		g.pf(" 0x%02x,", by)
 	}
-	g.pf("\n};\n\n")
+	g.pf("\n};\n")
+	g.pf("public static ReadOnlySpan<byte> %sFixedGuardPool => _%sFixedGuardPool;\n\n", name, name)
 	g.pf("public static readonly TableFixedPlan %sFixedPlan = new TableFixedPlan(new TableFixedEntry[] {\n", name)
 	for _, p := range b.plan {
 		guardStr := "TableFixedWire.NoGuard"
@@ -1939,11 +1943,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.emitCsByteArray(e.Layout)
 		g.pf("};\n")
 	}
-	g.pf("public static readonly TableFixedKnownLayout[] %sFixedKnown = new TableFixedKnownLayout[] {\n", name)
+	g.pf("private static readonly TableFixedKnownLayout[] _%sFixedKnown = new TableFixedKnownLayout[] {\n", name)
 	for i, e := range entries {
 		g.pf("    new TableFixedKnownLayout(0x%016xul, %sFixedLayout%d, %d),\n", e.Wire, name, i, e.Record)
 	}
-	g.pf("};\n\n")
+	g.pf("};\n")
+	g.pf("public static System.Collections.Generic.IReadOnlyList<TableFixedKnownLayout> %sFixedKnown => System.Array.AsReadOnly(_%sFixedKnown);\n\n", name, name)
 	g.pf("// THE FLOOR: below it a layout this build once served is RETIRED, and the\n")
 	g.pf("// answer is layout_unsupported — upgrade the client — rather than\n")
 	g.pf("// layout_newer, which is ship the reader (§5.2).\n")
@@ -1960,9 +1965,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// included. TableFixedWire.LineagePlans therefore does not throw: EVERY\n")
 	g.pf("// ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on\n")
 	g.pf("// it, and a lock bug costs the one version it broke rather than the table.\n")
-	g.pf("public static readonly TableFixedLineagePlan[] %sFixedLineagePlans =\n", name)
-	g.pf("    TableFixedWire.LineagePlans(%sFixedKnown, %sFixedLayout, %sFixedDst, %sFixedHash);\n\n",
+	g.pf("private static readonly TableFixedLineagePlan[] _%sFixedLineagePlans =\n", name)
+	g.pf("    TableFixedWire.LineagePlans(%sFixedKnown, %sFixedLayout, %sFixedDst, %sFixedHash);\n",
 		name, name, name, name)
+	g.pf("public static System.Collections.Generic.IReadOnlyList<TableFixedLineagePlan> %sFixedLineagePlans => System.Array.AsReadOnly(_%sFixedLineagePlans);\n\n", name, name)
 
 	// THE WRITER'S OWN BOUNDED LEAVES, per entry (ALGORITHM §4.6, bill §12.5):
 	// the compiled lane's bounds pass holds the PEER's declaration and never

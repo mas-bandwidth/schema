@@ -143,10 +143,10 @@ func t02R1(t *testing.T) {
 
 	t02Has(t, src, "TableFixedWire.LineagePlans(TFixedKnown, TFixedLayout, TFixedDst, TFixedHash)",
 		"R1 one plan per lineage entry, laid down in the static initializer")
-	t02Has(t, t02Norm(src), "public static readonly TableFixedLineagePlan[] TFixedLineagePlans = TableFixedWire.LineagePlans(TFixedKnown, TFixedLayout, TFixedDst, TFixedHash);",
+	t02Has(t, t02Norm(src), "private static readonly TableFixedLineagePlan[] _TFixedLineagePlans = TableFixedWire.LineagePlans(TFixedKnown, TFixedLayout, TFixedDst, TFixedHash);",
 		"R1 the plans are static data built from the lock's bytes")
 
-	block := t02Block(t, src, "TFixedKnown = new TableFixedKnownLayout[] {", "};")
+	block := t02Block(t, src, "_TFixedKnown = new TableFixedKnownLayout[] {", "};")
 	olderAt := strings.Index(block, fmt.Sprintf("0x%016xul", older.Wire))
 	ownAt := strings.Index(block, fmt.Sprintf("0x%016xul", own.Wire))
 	if olderAt < 0 || ownAt < 0 {
@@ -202,7 +202,7 @@ func t02R23(t *testing.T) {
 	at := -1
 	for _, member := range []string{
 		"public readonly ulong Hash;",
-		"public readonly byte[] Layout;",
+		"public byte[] Layout =>",
 		"public readonly int LayoutBytes;",
 		"public readonly long RecordBytes;",
 	} {

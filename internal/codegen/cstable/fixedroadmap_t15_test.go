@@ -243,7 +243,7 @@ func t15CSW16(t *testing.T) {
 // three tags. The emitted header publishes the pool.
 func t15CSR28(t *testing.T) {
 	_, _, src := t08Emit(t, t15GuardChainSchema)
-	if !strings.Contains(src, "public static readonly byte[] RootFixedGuardPool = new byte[] {") {
+	if !strings.Contains(src, "public static ReadOnlySpan<byte> RootFixedGuardPool => _RootFixedGuardPool;") {
 		t.Fatal("R28: the emitted C# publishes no guard pool")
 	}
 	if !strings.Contains(src, fmt.Sprintf(", %du, %du),", 0, 3)) {

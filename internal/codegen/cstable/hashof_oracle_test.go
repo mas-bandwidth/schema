@@ -161,7 +161,7 @@ var (
 	// runtime's TableWire) holds no root's constants.
 	csClassRe   = regexp.MustCompile(`(?m)^    public static partial class (\w+)`)
 	csHashRe    = regexp.MustCompile(`public const ulong (\w+)FixedHash = 0x([0-9a-f]{16})ul;`)
-	csLayoutRe  = regexp.MustCompile(`(?s)public static readonly byte\[\] (\w+)FixedLayout = new byte\[\] \{(.*?)\};`)
+	csLayoutRe  = regexp.MustCompile(`(?s)private static readonly byte\[\] _(\w+)FixedLayout = new byte\[\] \{(.*?)\};`)
 	csHexByteRe = regexp.MustCompile(`0x([0-9a-f]{2})`)
 )
 
