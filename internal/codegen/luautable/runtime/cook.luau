@@ -442,9 +442,9 @@ end
 local record_has_extent: (d: any) -> boolean = function(_d: any): boolean return false end
 local union_has_extent: (u: any) -> boolean = function(_u: any): boolean return false end
 local field_has_extent: (fd: any) -> boolean = function(_fd: any): boolean return false end
-local carve_record: (d: any, v: any, recordBase: number, extentBase: number, cursor: any, w: any, index: any) -> boolean = function(_d: any, _v: any, _recordBase: number, _extentBase: number, _cursor: any, _w: any, _index: any): boolean return false end
-local carve_element: (e: any, x: any, at: number, extentBase: number, cursor: any, w: any, index: any) -> boolean = function(_e: any, _x: any, _at: number, _extentBase: number, _cursor: any, _w: any, _index: any): boolean return false end
-local carve_field: (fd: any, v: any, x: any, fieldAt: number, extentBase: number, cursor: any, w: any, index: any) -> boolean = function(_fd: any, _v: any, _x: any, _fieldAt: number, _extentBase: number, _cursor: any, _w: any, _index: any): boolean return false end
+local carve_record: any
+local carve_element: any
+local carve_field: any
 
 field_has_extent = function(fd: any): boolean
 	if fd.s == "map" or (fd.s == "arr" and fd.array == "list") then return true end
@@ -471,11 +471,11 @@ union_has_extent = function(u: any): boolean
 	return false
 end
 
-local write_record: (d: any, v: any, base: number, w: any, index: any) -> boolean = function(_d: any, _v: any, _base: number, _w: any, _index: any): boolean return false end
-local write_value: (e: any, x: any, at: number, w: any, index: any, holder: any) -> boolean = function(_e: any, _x: any, _at: number, _w: any, _index: any, _holder: any): boolean return false end
-local write_array: (fd: any, holder: any, x: any, at: number, fl: any, w: any, index: any) -> boolean = function(_fd: any, _holder: any, _x: any, _at: number, _fl: any, _w: any, _index: any): boolean return false end
-local write_ref: (fd: any, x: any, at: number, w: any, index: any) -> boolean = function(_fd: any, _x: any, _at: number, _w: any, _index: any): boolean return false end
-local write_union: (fd: any, x: any, at: number, w: any, index: any) -> boolean = function(_fd: any, _x: any, _at: number, _w: any, _index: any): boolean return false end
+local write_record: any
+local write_value: any
+local write_array: any
+local write_ref: any
+local write_union: any
 
 carve_field = function(fd: any, v: any, x: any, fieldAt: number, extentBase: number, cursor: any, w: any, index: any): boolean
 	if fd.s == "map" then return false end
