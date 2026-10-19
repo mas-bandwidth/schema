@@ -64,7 +64,11 @@ namespace bench {
 // caller meeting one of these has been refused a MESSAGE on a connection,
 // which is a different recovery with a different owner than a file a header
 // match turned down.
-enum TableMessageReason
+// THE UNDERLYING TYPE HOLDS THE FIXED FORM'S PRIVATE HIGH RANGE (§3.4):
+// TableFixedReason's names sit at 0x40000000.. and a constexpr cast into an
+// unscoped enum with no fixed underlying type must land inside the enum's own
+// range, which clang 21 enforces.
+enum TableMessageReason : int32_t
 {
     newer_form,           // a FORM BYTE this reader does not carry (§3)
     // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
@@ -2244,7 +2248,10 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 // "truncated" and "reserved_not_zero"; these three typed constants of the
 // same enum keep the two registries apart and the wire names equal. Their
 // values are a private high range, so a name another card appends to the
-// shared enum later can never collide with them.
+// shared enum later can never collide with them, and TableMessageReason's
+// int32_t underlying type is what keeps that range inside the enum's own:
+// a constexpr cast into an unscoped enum with no fixed underlying type must
+// land in the enum's range, and clang 21 refuses one that does not.
 #define SCHEMA_HAS_FIXED_REASON_NAMES 1
 struct TableFixedReason
 {
