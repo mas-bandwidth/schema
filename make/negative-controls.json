@@ -588,7 +588,7 @@
     {
       "name": "analyzer-ci-gate-corpus",
       "when": "nightly",
-      "why": "the aggregate analyzer gate's planted-stray-gate control. The gate itself is the schema-per-language-lenses aggregate over the generated output of the full test-schema corpus, and it is heavy (each landed per-port analyzer runs over the whole corpus), so it is nightly in the card's own workflow. Its control is one make invocation with the plant and one without, measured under a second here; it rides the nightly tier where the gate runs.",
+      "why": "the aggregate analyzer gate's planted-analyzer control. The gate discovers the per-port analyzer targets that exist on the shared base (today tables-rust-clippy) from the make include tree and runs them over the generated corpus; it fails when a discovered analyzer target fails or belongs to a port the corpus run would leave out. The control builds a scratch include tree from the real make files and stubs the checker, so it proves discovery of the real rust target, a failing wired analyzer taking the aggregate down by name, and an uncovered-port analyzer failing the coverage check by name, then green again with the plants removed. It needs no corpus generation and no checker, and rides the nightly tier where the aggregate runs.",
       "targets": [
         "schema-shared-analyzer-ci-gate-corpus-negative-control"
       ]

@@ -1,20 +1,21 @@
 name: Schema shared analyzer CI gate over the full corpus
 
 # THE AGGREGATE ANALYZER GATE (schema-per-language-lenses, this card). Every
-# per-port analyzer gate that a sibling card of the group has landed is wired
-# into ONE target, schema-shared-analyzer-ci-gate-corpus, over the generated
-# output of the full test-schema corpus (the schemas the Makefile's generate
-# targets read — the corpus dirs in the Makefile and make/*.mk, not a second
-# corpus). The target calls each per-port gate present on the shared base and
-# skips, loudly and by name, those not yet landed.
+# per-port analyzer target that exists on the shared base is discovered from
+# the make include tree and wired into ONE target,
+# schema-shared-analyzer-ci-gate-corpus, over the generated output of the full
+# test-schema corpus (the schemas the Makefile's generate targets read -- the
+# corpus variables in the Makefile and make/*.mk, not a second corpus). The
+# target calls each target it discovers and skips, loudly and by name, the
+# ports with no analyzer yet.
 #
 # SPLIT BY WHEN. The aggregate is heavy: a landed per-port analyzer runs over
 # the whole corpus, and the checkers themselves (Frama-C EVA, Kani, CBMC,
 # Miri, MSan, Dialyzer, differentials, fuzzing) are nightly tools by the
 # owner's one-to-two-minute rule. So the aggregate runs on a schedule and on
 # demand, never per push. The fast part is the Go test that proves the gate's
-# mechanism (the planted-stray-gate control) and it runs on every push and pull
-# request inside the one-minute budget.
+# mechanism (discovery, a failing wired gate, and a left-out port) and it runs
+# on every push and pull request inside the one-minute budget.
 
 on:
   schedule:
@@ -22,12 +23,18 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'make/schema-shared-analyzer-ci-gate-corpus.mk'
+      - 'make/checks/schema-shared-analyzer-ci-gate-corpus.mk'
+      - 'make/rust.mk'
+      - 'make/negative-controls.json'
       - 'internal/ci/schema_shared_analyzer_ci_gate_corpus_test.go'
+      - '.github/workflows/schema-shared-analyzer-ci-gate-corpus.yml'
   pull_request:
     paths:
-      - 'make/schema-shared-analyzer-ci-gate-corpus.mk'
+      - 'make/checks/schema-shared-analyzer-ci-gate-corpus.mk'
+      - 'make/rust.mk'
+      - 'make/negative-controls.json'
       - 'internal/ci/schema_shared_analyzer_ci_gate_corpus_test.go'
+      - '.github/workflows/schema-shared-analyzer-ci-gate-corpus.yml'
 
 concurrency:
   group: schema-shared-analyzer-ci-gate-corpus-${{ github.event_name }}-${{ github.ref }}
@@ -51,13 +58,15 @@ jobs:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
       - name: analyzer gate over the full corpus
         run: make --no-print-directory schema-shared-analyzer-ci-gate-corpus
-      - name: the gate's planted-stray-gate negative control
+      - name: the gate's planted-analyzer negative control
         run: make --no-print-directory schema-shared-analyzer-ci-gate-corpus-negative-control
 
-  # THE FAST PROOF, per push. The Go test plants a stray analyzer gate and
-  # requires the aggregate to take it down by name, then removes the plant and
-  # requires the aggregate to pass. It is pure Go and make; it fits the
-  # one-minute budget.
+  # THE FAST PROOF, per push. The Go test discovers the real
+  # tables-rust-clippy target, plants a failing analyzer target and requires the
+  # aggregate to take it down by name, plants an analyzer for an uncovered port
+  # and requires the coverage check to take it down by name, then removes the
+  # plants and requires the aggregate to pass. It is pure Go and make; it fits
+  # the one-minute budget.
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 5

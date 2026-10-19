@@ -685,3 +685,11 @@ cards-rust-conformance-hash-negative-control: build/conformance-harness cards-ru
 test-rust: cards-rust-test cards-rust-conformance cards-rust-conformance-negative-control
 test-rust: cards-rust-conformance-upgrade-negative-control cards-rust-conformance-hash-negative-control
 test-rust: cards-rust-wire-fuzz cards-rust-retain-fuzz
+
+# THE AGGREGATE ANALYZER GATE (schema-per-language-lenses, this card). The
+# Makefile includes make/*.mk by wildcard but names the make/checks fragments
+# explicitly, and that include list is lander-owned; include this card's checks
+# fragment from a file the wildcard already reaches so the card lands without a
+# Makefile edit. The aggregate discovers tables-rust-clippy below, so the rust
+# lens is wired by the same convention as the sibling ports' analyzer gates.
+include make/checks/schema-shared-analyzer-ci-gate-corpus.mk
