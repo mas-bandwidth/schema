@@ -14,12 +14,12 @@
 # parts). Refusals are allowed; a crash, a hang, a sanitizer report or an
 # assert is not.
 #
-# Toolchain pin: clang 21.1.8, whose libFuzzer is installed fleet-wide from the
-# distribution's clang package. The target refuses by name when it is absent;
-# it never fakes a pass.
+# Toolchain pin: clang 18.1.3, whose libFuzzer and ASan/UBSan/MSan runtimes are
+# installed fleet-wide from the distribution's clang package. The target refuses
+# by name when it is absent; it never fakes a pass.
 
 CPP_FUZZ_CXX ?= clang++
-CPP_FUZZ_CLANG_VERSION ?= 21.1.8
+CPP_FUZZ_CLANG_VERSION ?= 18.1.3
 CPP_FUZZ_SCHEMA_LIST := test/cpp-fuzz/schemas.txt
 CPP_FUZZ_BUILD := build/cpp-fuzz
 # the Makefile's default 10 minutes per port; the nightly parts divide it
@@ -27,10 +27,21 @@ CPP_FUZZ_SECONDS ?= 600
 CPP_FUZZ_SCHEMAS := $(shell grep -v '^[[:space:]]*\#' $(CPP_FUZZ_SCHEMA_LIST) | grep -v '^[[:space:]]*$$')
 CPP_FUZZ_ASAN_FLAGS := -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all
 CPP_FUZZ_MSAN_FLAGS := -fsanitize=fuzzer,memory -fsanitize-memory-track-origins=2 -fno-sanitize-recover=all
-CPP_FUZZ_BASE_FLAGS := -std=c++17 -Wall -Wextra -Werror -g -fno-omit-frame-pointer -I$(SERIALIZE)
-CPP_FUZZ_SEEDS := $(if $(wildcard internal/fuzz/testdata),internal/fuzz/testdata,)
+# SERIALIZE_RUNTIME is defined after make/*.mk is read, so resolve the C++
+# serialize runtime here: the sibling when it exists, else the Makefile's
+# pinned fetch (build/serialize), which schema-cpp-fuzz-runtime stages.
+CPP_FUZZ_SERIALIZE := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),build/serialize)
+CPP_FUZZ_BASE_FLAGS := -std=c++17 -Wall -Wextra -Werror -g -fno-omit-frame-pointer -I$(CPP_FUZZ_SERIALIZE) -Itest/tables
+# Seeds: the Go fuzz corpus the card names, plus the conformance vectors' rows.
+# Saved regression inputs live in test/cpp-fuzz/corpus (committed); the mutable
+# working corpus stays under build/ so a nightly run leaves the tree clean.
+CPP_FUZZ_SEEDS := $(wildcard internal/fuzz/testdata) $(wildcard test/conformance/cpp/rows)
 
-$(CPP_FUZZ_BUILD)/generated/.stamp: bin/schema $(CPP_FUZZ_SCHEMA_LIST) test/cpp-fuzz/gen_roots.sh
+.PHONY: schema-cpp-fuzz-runtime
+schema-cpp-fuzz-runtime:
+	@test -f $(CPP_FUZZ_SERIALIZE)/serialize.h || $(MAKE) $(CPP_FUZZ_SERIALIZE)/serialize.h
+
+$(CPP_FUZZ_BUILD)/generated/.stamp: bin/schema $(CPP_FUZZ_SCHEMA_LIST) test/cpp-fuzz/gen_roots.sh | schema-cpp-fuzz-runtime
 	@mkdir -p $(CPP_FUZZ_BUILD)/generated
 	@rm -rf $(CPP_FUZZ_BUILD)/generated/*
 	@while read -r schema; do \
@@ -60,13 +71,13 @@ define build_cpp_fuzz
 		slug=$$(printf '%s' "$$schema" | tr '/.' '--'); \
 		dir=$(CPP_FUZZ_BUILD)/generated/$$slug; \
 		bin=$(CPP_FUZZ_BUILD)/$(1)/$$slug; \
-		mkdir -p $(CPP_FUZZ_BUILD)/$(1) test/cpp-fuzz/corpus/$$slug; \
+		mkdir -p $(CPP_FUZZ_BUILD)/$(1) $(CPP_FUZZ_BUILD)/work/$$slug test/cpp-fuzz/corpus/$$slug; \
 		$(CPP_FUZZ_CXX) $(CPP_FUZZ_BASE_FLAGS) $(2) -I$$dir \
 			-DFUZZ_ROOTS_INC='"roots.inc"' \
 			test/cpp-fuzz/nightly_fuzz_main.cpp $$dir/*Table.cpp -o $$bin || exit 1; \
 		$$bin -max_total_time=$$per -timeout=25 -rss_limit_mb=2048 \
 			-artifact_prefix=test/cpp-fuzz/corpus/$$slug/ \
-			test/cpp-fuzz/corpus/$$slug $(CPP_FUZZ_SEEDS) || exit 1; \
+			$(CPP_FUZZ_BUILD)/work/$$slug test/cpp-fuzz/corpus/$$slug $(CPP_FUZZ_SEEDS) || exit 1; \
 	done
 endef
 
@@ -84,15 +95,14 @@ schema-cpp-nightly-fuzz-msan: schema-cpp-fuzz-toolchain $(CPP_FUZZ_BUILD)/genera
 schema-cpp-fast-fuzz-replay: schema-cpp-fuzz-toolchain $(CPP_FUZZ_BUILD)/generated/.stamp
 	@for schema in $(CPP_FUZZ_SCHEMAS); do \
 		slug=$$(printf '%s' "$$schema" | tr '/.' '--'); \
+		[ -n "$$(ls test/cpp-fuzz/corpus/$$slug 2>/dev/null)" ] || continue; \
 		dir=$(CPP_FUZZ_BUILD)/generated/$$slug; \
 		bin=$(CPP_FUZZ_BUILD)/replay/$$slug; \
 		mkdir -p $(CPP_FUZZ_BUILD)/replay; \
 		$(CPP_FUZZ_CXX) $(CPP_FUZZ_BASE_FLAGS) $(CPP_FUZZ_ASAN_FLAGS) -I$$dir \
 			-DFUZZ_ROOTS_INC='"roots.inc"' \
 			test/cpp-fuzz/nightly_fuzz_main.cpp $$dir/*Table.cpp -o $$bin || exit 1; \
-		if [ -n "$$(ls test/cpp-fuzz/corpus/$$slug 2>/dev/null)" ]; then \
-			$$bin -runs=0 -timeout=25 test/cpp-fuzz/corpus/$$slug || exit 1; \
-		fi; \
+		$$bin -runs=0 -timeout=25 test/cpp-fuzz/corpus/$$slug || exit 1; \
 	done
 	@echo "cpp fuzz replay: every saved input replayed"
 
@@ -125,4 +135,23 @@ schema-cpp-nightly-fuzz-negative-control: schema-cpp-fuzz-toolchain $(CPP_FUZZ_B
 		echo 'NEGATIVE CONTROL FAILED: it went red, but not on a sanitizer finding'; \
 		cat $(CPP_FUZZ_BUILD)/sabotage/log; exit 1; }
 	@grep -m1 -E 'AddressSanitizer:|runtime error:' $(CPP_FUZZ_BUILD)/sabotage/log
+	@# The saved input must then fail the replay too: build the sabotage reader
+	@# once more and run just that artifact with no mutation and no clock.
+	@artifact=$$(ls $(CPP_FUZZ_BUILD)/sabotage/crash-* 2>/dev/null | head -n1); \
+	if [ -z "$$artifact" ]; then \
+		echo 'NEGATIVE CONTROL FAILED: the fuzzer reported a crash but saved no artifact'; exit 1; \
+	fi; \
+	$(CPP_FUZZ_CXX) $(CPP_FUZZ_BASE_FLAGS) $(CPP_FUZZ_ASAN_FLAGS) \
+		-I$(CPP_FUZZ_BUILD)/sabotage/unit -DFUZZ_ROOTS_INC='"roots.inc"' \
+		test/cpp-fuzz/nightly_fuzz_main.cpp $(CPP_FUZZ_BUILD)/sabotage/unit/*Table.cpp \
+		-o $(CPP_FUZZ_BUILD)/sabotage/replay || exit 1; \
+	if $(CPP_FUZZ_BUILD)/sabotage/replay -runs=0 "$$artifact" \
+		> $(CPP_FUZZ_BUILD)/sabotage/replay.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the saved input replayed green against the sabotaged reader'; \
+		cat $(CPP_FUZZ_BUILD)/sabotage/replay.log; exit 1; \
+	fi; \
+	grep -qE 'AddressSanitizer:|runtime error:' $(CPP_FUZZ_BUILD)/sabotage/replay.log || { \
+		echo 'NEGATIVE CONTROL FAILED: the saved input replayed red, but not on a sanitizer finding'; \
+		cat $(CPP_FUZZ_BUILD)/sabotage/replay.log; exit 1; }; \
+	echo "negative control: the saved input $$artifact fails replay under ASan"
 	@echo 'negative control: removing the generated reader bound turns the C++ fuzzer red under ASan'

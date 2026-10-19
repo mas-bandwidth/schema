@@ -621,6 +621,14 @@
       "targets": [
         "tables-go-view-negative-controls"
       ]
+    },
+    {
+      "name": "cpp-fuzz",
+      "when": "nightly",
+      "why": "the C++ port's planted reader bound, driven by libFuzzer under ASan+UBSan: the control removes the generated GuardedTable bounds helper's has() and room() checks and requires the fuzzer to report a sanitizer finding inside its 60 s budget. It shares the card's own make file and needs clang's libFuzzer, so it is its own nightly row rather than a companion to a host-compiler control. Measured 8 s of compile plus the first sanitizer report well inside the budget on the Linux bench (hetzner2); the card's scheduled workflow also runs it.",
+      "targets": [
+        "schema-cpp-nightly-fuzz-negative-control"
+      ]
     }
   ],
   "excluded": [
