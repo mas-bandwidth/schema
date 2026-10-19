@@ -17,7 +17,7 @@
 # passes that path to the compiler.
 .PHONY: schema-c-runs-hostile-corpus schema-c-runs-hostile-corpus-negative-control
 schema-c-runs-hostile-corpus:
-	go test ./internal/ci -run '^TestCRunsHostileCorpus$$' -count=1 -timeout 600s
+	go test -v ./internal/ci -run '^TestCRunsHostileCorpus$$' -count=1 -timeout 600s
 
 schema-c-runs-hostile-corpus-negative-control:
 	go test ./internal/ci -run '^TestCRunsHostileCorpusPlantedPattern$$' -count=1 -timeout 600s
