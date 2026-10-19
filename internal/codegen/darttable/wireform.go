@@ -949,7 +949,7 @@ final class TableWireReader {
     if (data[0] != 1) return 1;
     if (data.length < 9) return 2;
     final count = readU64(data, data.length - 8);
-    if (count > (data.length - 9) ~/ 8) return 2;
+    if (count < 0 || count > (data.length - 9) ~/ 8) return 2;
     final start = data.length - 8 - count * 8;
     if (start < 1) return 2;
     final seen = <int>{};

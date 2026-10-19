@@ -551,7 +551,7 @@ String _jsonPrepare(String text, TableTextReport r) {
     final c = clean[i];
     if (c == 0x7b) { stack.add(<String>{}); continue; }
     if (c == 0x5b) { stack.add(null); continue; }
-    if (c == 0x7d || c == 0x5d) { stack.removeLast(); continue; }
+    if (c == 0x7d || c == 0x5d) { if (stack.isNotEmpty) stack.removeLast(); continue; }
     if (c != 0x22) continue;
     final begin = i;
     i++;

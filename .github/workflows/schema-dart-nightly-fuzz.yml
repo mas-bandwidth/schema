@@ -1,0 +1,62 @@
+name: schema dart nightly fuzz
+
+# THE DART READERS' FUZZ GATE (card schema-dart-nightly-fuzz).
+#
+# Fast, on every push and pull request: replay the committed wire vectors and
+# every saved nightly regression through the generated readers, with no clock
+# and no mutation. That is the gate a diff must keep green.
+#
+# Nightly, and on workflow_dispatch: the seeded mutation fuzz over every table
+# root in the Dart corpus (tolerant load, save-then-load, JSON parse), for the
+# target's own DART_NIGHTLY_FUZZ_SECONDS budget (10 minutes by default), then
+# the planted-pattern control that proves the fuzzer still finds a dropped
+# readLeb bound and that the saved input fails replay.
+#
+# HEAVY WORK NEVER RIDES A PUSH. The nightly job is the only one that mutates.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    name: replay saved wire vectors
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: 3.13.2
+      - name: replay
+        run: make schema-dart-nightly-fuzz-replay DART=dart
+      - name: wiring
+        run: go test ./internal/ci -count=1 -timeout 600s -run TestSchemaDartNightlyFuzzWiring
+
+  nightly:
+    name: nightly fuzz
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: 3.13.2
+      - name: fuzz
+        run: make schema-dart-nightly-fuzz DART=dart DART_NIGHTLY_FUZZ_SECONDS=600
+      - name: planted pattern
+        run: make schema-dart-nightly-fuzz-negative-control DART=dart
