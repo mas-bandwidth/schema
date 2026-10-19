@@ -14,19 +14,21 @@
 # tracked is edited. Every unit is vetted as its own package/module, exactly as
 # Go resolves it.
 #
-# THE TOOLS are pinned, and installed from their official module paths
-# (honnef.co/go/tools, go.uber.org/nilaway) through the fleet play on the bench;
-# a host without them still runs the same pinned versions through `go run`.
+# THE TOOLS are pinned to the official module versions below (honnef.co/go/tools,
+# go.uber.org/nilaway) and ALWAYS run through `go run <module>@<version>`, so the
+# pinned checker is what runs even when the host has another version on PATH.
 # The target PROBES by name and says `tool missing: <name>` rather than
 # pretending the lens ran (the gate-with-a-blade rule, issue #599).
 STATICCHECK_VERSION ?= v0.8.1
 NILAWAY_VERSION     ?= v0.0.0-20260918162853-acb8859b9031
 SCHEMA_GO_LENS_DIR  ?= build/schema-go-staticcheck-nilaway
 
-# staticcheck_run / nilaway_run resolve to the installed binary when the fleet
-# play has put one on PATH, else to the pinned official module through go run.
-staticcheck_run = $(if $(shell command -v staticcheck 2>/dev/null),staticcheck,go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION))
-nilaway_run     = $(if $(shell command -v nilaway 2>/dev/null),nilaway,go run go.uber.org/nilaway/cmd/nilaway@$(NILAWAY_VERSION))
+# staticcheck_run / nilaway_run always run the pinned module version through go
+# run; a PATH binary never shadows the pin (a host with a different staticcheck
+# on PATH would otherwise run the wrong version under a success line claiming
+# the pin).
+staticcheck_run = go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
+nilaway_run     = go run go.uber.org/nilaway/cmd/nilaway@$(NILAWAY_VERSION)
 
 .PHONY: schema-go-generated-staticcheck-nilaway-gate
 schema-go-generated-staticcheck-nilaway-gate: build/tables-generated-go/.stamp $(SERIALIZE_GO_RUNTIME)/go.mod

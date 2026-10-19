@@ -27,6 +27,8 @@ func TestSchemaGoGeneratedStaticcheckNilawayGate(t *testing.T) {
 	for _, want := range []string{
 		"STATICCHECK_VERSION ?= v0.8.1",
 		"NILAWAY_VERSION     ?= v0.0.0-20260918162853-acb8859b9031",
+		"staticcheck_run = go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)",
+		"nilaway_run     = go run go.uber.org/nilaway/cmd/nilaway@$(NILAWAY_VERSION)",
 		"schema-go-generated-staticcheck-nilaway-gate:",
 		"schema-go-generated-staticcheck-nilaway-gate-negative-control:",
 		"tool missing: staticcheck",
@@ -40,6 +42,15 @@ func TestSchemaGoGeneratedStaticcheckNilawayGate(t *testing.T) {
 			t.Errorf("make fragment does not carry %q", want)
 		}
 	}
+	for _, bad := range []string{
+		"staticcheck_run = $(if",
+		"nilaway_run     = $(if",
+		"command -v staticcheck 2>/dev/null),staticcheck",
+	} {
+		if strings.Contains(text, bad) {
+			t.Errorf("make fragment still prefers a PATH binary over the pin: %q", bad)
+		}
+	}
 
 	wfPath := filepath.Join(root, ".github", "workflows", "schema-go-generated-staticcheck-nilaway-gate.yml")
 	wf, err := os.ReadFile(wfPath)
@@ -47,10 +58,13 @@ func TestSchemaGoGeneratedStaticcheckNilawayGate(t *testing.T) {
 		t.Fatalf("the card's workflow is absent: %v", err)
 	}
 	wfText := string(wf)
-	for _, want := range []string{"schedule:", "workflow_dispatch:", "make --no-print-directory schema-go-generated-staticcheck-nilaway-gate", "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"} {
+	for _, want := range []string{"schedule:", "workflow_dispatch:", "make --no-print-directory schema-go-generated-staticcheck-nilaway-gate", "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", "runs-on: [self-hosted, Linux, X64, fleet, schema]"} {
 		if !strings.Contains(wfText, want) {
 			t.Errorf("workflow does not carry %q", want)
 		}
+	}
+	if strings.Contains(wfText, "runs-on: ubuntu-latest") {
+		t.Error("workflow still runs jobs on a non-fleet runner")
 	}
 
 	reg, err := os.ReadFile(filepath.Join(root, "make", "negative-controls.json"))
