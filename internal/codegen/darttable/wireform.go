@@ -1063,11 +1063,6 @@ final class TableWireReader {
     decoded[rec] = obj;
     final sub = TableWireReader.over(nodes[rec], this);
     _loadNodeBody(sub, wantType, obj);
-    if (sub.pos != sub.limit) {
-      report.malformed = true;
-      decoded[rec] = null;
-      return null;
-    }
     return obj;
   }
 
