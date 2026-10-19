@@ -220,6 +220,88 @@ refusals of `compiler.Generate` hold back every construct of
 itself describes every manifest unit: `TestLobsterTableDescriptorsLoad` runs
 `lobster.Generate` and `lobstertable.Generate` directly over all 33.
 
+## THE LOAD
+
+`runtime/load.lobster` (schema-lobster-table-wire-load) is the variable
+wire's read half: a port of the Go reference engine (`internal/tablewire`
+decode.go, decodenodes.go, nodetable.go, text.go, leb.go) onto the
+descriptors, under `namespace schema_rt`. `schema_rt.load(root, data,
+report)` reads a form-1 wire at the table named `root` and returns a
+`Record`, or nil when the form byte is refused (docs/SPEC-TABLES.md §3, §4).
+Every construct card reads and extends this section; none edits
+`load.lobster`.
+
+**The storage.** Lobster has no reflection, so a load never writes a
+generated class: it fills the table AS DATA, mirroring Go's
+`tabletext.Instance` cell for cell, and a form card's per-table accessor moves
+a `Record` into the class.
+
+| class | what it is | Go's |
+|---|---|---|
+| `Record { d, fields }` | one table or packet type: its descriptor and one `Slot` per field, descriptor order | `Instance` |
+| `Slot { fd, present, count, cell, elems, entries }` | one field: its descriptor, the `?T` presence companion, the used extent (a counted array's count, a string's or bytes' used length), the value, the array slots (`len` is the bound; a list's is its length), the map entries (each a `Value` whose `tab` is a `{ key, value }` record, ascending) | `Field` |
+| `Value { b, i, w, f, s, units, tab, arm, node, blob }` | one cell; only the member the shape names is read: `i` every integer of 64 bits or fewer as its bit pattern, an enum value, a union tag; `w` the raw `Int128` of a wide kind (18–29, fixed point as units × 2^F); `f` a float (a float32 as its exact double); `s` string or bytes at the used extent; `units` wstring code units; `tab` a by-value body, a body arm, an element record, a map entry; `arm` a non-body arm's `Slot`; `node` a pointee; `blob` a blob's bytes | `Cell` |
+
+**Absent, present-empty and present.** A pointer that is null holds `node =
+nil`, and a null `*bytes` or `*string` holds `blob = nil`; an EMPTY blob is
+the non-nil `""`, because null and empty are two values (§2.5). A `?T` field
+is absent while its `Slot.present` is false, whatever its cell holds, and
+present from the moment it rides with its own kind (§2.3; an optional array
+whose element kind is foreign stays absent). A union is None while `i` is 0,
+and then `tab` and `arm` are nil. A field the wire never names keeps the
+value `new_record` built: the generated constructor's default (§4).
+
+**The flat node table.** `LoadState.nodes` is the numbering (§3.1): wire
+index 0 is null, 1 the root (`LoadState.root`), and index `k + 2` names
+`nodes[k]`, a `Node { kind, rec, blob }` — kind 1 a table record, 2 a
+`*string` blob, 3 a `*bytes` blob, and 0 a record this root cannot place,
+which keeps its index while every pointer naming it reads null. Pass one
+fills it from the framing, pass two decodes each record's body, then the root
+body; a pointer slot stores the resolved `Record` or blob, never the index.
+`good` is false when the node table could not be read whole, and then every
+pointer reads null. A second slot naming one blob counts `blob_shared`.
+
+**The dispatch table.** A field, an array element and a union arm are read
+by the `Shape` registered under their shape key — `scalar`, `enum`, `ptr`
+(with `sblob` and `bblob`), `str` (with `text`), `wstr`, `tab`, `textlist`
+(a plain text list's element), `arr`, `bytes`, `keyed`, `union`, `map`.
+`Shape` has three methods: `field(r, slot)`, `element(r, slot, i, ek)` and
+`arm(r, slot, n)`; the base reads a fixed-width scalar, the reference's own
+fall-through. A construct card adds a shape, or replaces one, with ONE line
+in its own runtime file:
+
+```
+class MyShape : schema_rt.Shape
+    def field(r:schema_rt.Reader, sl:schema_rt.Slot) -> bool: ...
+let _my = schema_rt.register_shape(MyShape { key: "my" })
+```
+
+The last registration of a key wins, and a shape reads its report through
+`r.st.report`.
+
+**The report.** `LoadReport` holds the six counters reports.txt names
+(`unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate`, `malformed`),
+`blob_shared`, the `reason` a named rule gives and the verdict `refused` (a
+form byte this reader does not carry; a collection count past the int32 cap
+on a variable root, which Go returns as `CountRefusal`).
+
+**Not carried yet, by name.** The descriptor does not name an enum-keyed
+array's KEY enum, so `schema_rt.keyed_keys(table, field, variants)` registers
+it; until an emitter emits that call (a `lobstertable.Register` part, or a
+`keyvs` member on the descriptor), a program registers it itself, as the
+load test does. A DEPRECATED enum variant (§2.15) is not on `EnumVariant`, so
+the load reads it as its value rather than the default; no manifest unit has
+one. Retention (§6.6) and the region read are later cards' (retain-unknown).
+
+**The test.** `TestLobsterTableLoadMatchesTheReports` loads every report and
+instance row of the tables manifest, one program per unit, and holds each
+row's report to reports.txt and to the Go engine's `tablewire.Decode` on the
+same wire, and each loaded value to Go's through THE VALUE DUMP — every slot,
+count, presence bit, element, entry, arm and node, floats by their bits and
+a graph by first-visit labels. `TestLobsterTableLoadNegativeControl` patches
+the unknown-field count out of the emitted runtime and holds the comparison
+red.
+
 ## THE HARNESS
 
 A Lobster program reads files (`read_file`) and arguments
