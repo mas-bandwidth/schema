@@ -772,6 +772,31 @@ public final class Driver {
         return 0;
     }
 
+    // surfaceJsonHostile is the text form's hostile battery (§16.2, §16.3,
+    // §17.5): one tree per rule the page states, and the verdict is `refused`
+    // or the §4 report the read produces. The tree is what `schema pack` reads,
+    // so the text is <tree>/<root>.json (§17).
+    private static int surfaceJsonHostile(String out) throws IOException {
+        for (String[] f : kind("json-hostile")) {
+            try {
+                VariableCodec codec = variableCodec(f[2], f[3]);
+                if (codec == null) { spillAbsent(out, f[1]); continue; }
+                byte[] text = Files.readAllBytes(Paths.get(f[4], f[3] + ".json"));
+                Object report = codec.report();
+                Object value = codec.fromJson(text, report);
+                String verdict = "refused\n";
+                if (value != null && !codec.flag(report, "malformed") && !codec.flag(report, "refused")) {
+                    verdict = String.format("%d,%d,%d,%d,%d,false,read\n",
+                            codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
+                            codec.count(report, "widened"), codec.count(report, "clamped"),
+                            codec.count(report, "duplicate"));
+                }
+                spill(out, f[1], verdict);
+            } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": JSON hostile reader failed: " + failure); }
+        }
+        return 0;
+    }
+
     private static final class CookCodec {
         final VariableCodec variable;
         final Class<?> cook;
@@ -1005,7 +1030,7 @@ public final class Driver {
             // §3, §3.1, §16.7) for the roots this leg's variable wire carries —
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one.
-            System.out.print("wire\nreport\njson-read\njson-write\nmessage\n"
+            System.out.print("wire\nreport\njson-read\njson-write\njson-hostile\nmessage\n"
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
             return 0;
@@ -1020,6 +1045,7 @@ public final class Driver {
             case "report": return surfaceReport(out);
             case "json-read": return surfaceJsonRead(out);
             case "json-write": return surfaceJsonWrite(out);
+            case "json-hostile": return surfaceJsonHostile(out);
             case "message": return surfaceMessage(out);
             case "block": return surfaceBlock(out);
             case "block-foreign": return surfaceBlockForeign(out);
