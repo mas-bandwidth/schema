@@ -73,19 +73,18 @@ func funcDecl(t *testing.T, path, recv, name string) *ast.FuncDecl {
 func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 	t.Parallel()
 	refusers := map[string]func(*ir.Unit, string) error{
-		"ir.RefuseWideTableKinds": ir.RefuseWideTableKinds,
-		"refuseWideText":          refuseWideText,
-		"refuseUnported":          refuseUnported,
-		"refuseOptionalArrays":    refuseOptionalArrays,
-		"refuseMaps":              refuseMaps,
-		"refuseLists":             refuseLists,
-		"refuseValueDefaults":     refuseValueDefaults,
-		"refuseWasRows":           refuseWasRows,
-		"refuseTableArms":         refuseTableArms,
-		"refuseVoidArms":          refuseVoidArms,
-		"refuseUnionArrays":       refuseUnionArrays,
-		"refuseBytes":             refuseBytes,
-		"refuseStrings":           refuseStrings,
+		"refuseWideText":       refuseWideText,
+		"refuseUnported":       refuseUnported,
+		"refuseOptionalArrays": refuseOptionalArrays,
+		"refuseMaps":           refuseMaps,
+		"refuseLists":          refuseLists,
+		"refuseValueDefaults":  refuseValueDefaults,
+		"refuseWasRows":        refuseWasRows,
+		"refuseTableArms":      refuseTableArms,
+		"refuseVoidArms":       refuseVoidArms,
+		"refuseUnionArrays":    refuseUnionArrays,
+		"refuseBytes":          refuseBytes,
+		"refuseStrings":        refuseStrings,
 	}
 	// the target's chain, from its source, with refuseUnported opened up
 	top := refusersCalled(t, funcDecl(t, "target_squirrel.go", "squirrelTarget", "Generate"))
@@ -119,7 +118,6 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		refuser, name, src, field string
 		carried                   bool
 	}{
-		{"ir.RefuseWideTableKinds", "wide kind", "package probe\n\ntable L\n{\n    big uint128\n}\n", "L.big", false},
 		{"refuseWideText", "wide text", "package probe\n\ntable L\n{\n    w wstring(8)\n}\n", "L.w", false},
 		{"refuseBytes", "byte buffer", "package probe\n\ntable L\n{\n    b *bytes\n}\n", "L.b", false},
 		{"refuseStrings", "string buffer", "package probe\n\ntable L\n{\n    s *string\n}\n", "L.s", false},
@@ -204,6 +202,23 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		if !covered[name] {
 			t.Errorf("compiler/target_squirrel.go refuses through %s, and no construct here is refused by it", name)
 		}
+	}
+	// THE WIDE TABLE KINDS (docs/SPEC-TABLES.md §3, §15, §16.2;
+	// ir.WideTableKindScope): squirrel carries fixed-point and 128-bit
+	// table-wire kinds, so the squirrel chain and Generate("squirrel")
+	// accept a uint128 table field, while ir.RefuseWideTableKinds still
+	// refuses an unported backend by name.
+	wideUnit := unitFromSource(t, "package probe\n\ntable L\n{\n    big uint128\n}\n")
+	if err := chain(wideUnit); err != nil {
+		t.Errorf("wide kind (the squirrel chain): squirrel refused a construct it now carries: %v", err)
+	}
+	if c != nil {
+		if _, err := c.Generate(wideUnit, "squirrel", nil); err != nil {
+			t.Errorf("wide kind (Generate squirrel): squirrel refused a construct it now carries: %v", err)
+		}
+	}
+	if err := ir.RefuseWideTableKinds(wideUnit, "unregistered"); err == nil || !strings.Contains(err.Error(), "L.big") || !strings.Contains(err.Error(), "unregistered") {
+		t.Errorf("wide kind: ir.RefuseWideTableKinds did not refuse an unregistered backend by name: %v", err)
 	}
 	// THE LIFTED CONSTRUCTS (docs/SPEC-TABLES.md §2.13, §16.10): squirrel
 	// carries the bounded text list and the array root now, so refuseTextForms
