@@ -40,6 +40,10 @@ func TestSchemaCppGeneratedClangTidyWeverythingGateIsWired(t *testing.T) {
 		"bugprone-*,cert-*,cppcoreguidelines-*",
 		"-Weverything -Werror",
 		"tool missing: clang-tidy",
+		// The generated readers and writers are headers: without the filter
+		// clang-tidy drops every header finding as non-user code and the gate
+		// is green over a corpus it never read.
+		`--header-filter="$(SCHEMA_CPP_CTW_HEADER_FILTER)"`,
 	} {
 		if !strings.Contains(string(makeFile), want) {
 			t.Errorf("%s does not carry %q: the lens is not the checker the card names", cppClangGateMakeFile, want)
@@ -64,8 +68,11 @@ func TestSchemaCppGeneratedClangTidyWeverythingGateIsWired(t *testing.T) {
 
 // fakeTool writes one executable shell script and returns its path. The script
 // answers --version with the Makefile's pin and, when it is the checker, scans
-// every file argument for the plant. It is a stand-in for the real binary in
-// the PLUMBING test only; the workflow runs the real pin.
+// every file argument for the plant. Like the real clang-tidy, it reports from
+// an included header (an -I directory) only when --header-filter is given and
+// is not the match-nothing `^$`, so a recipe that drops the filter goes green
+// over a planted header and this test goes red. It is a stand-in for the real
+// binary in the PLUMBING test only; the workflow runs the real pin.
 func fakeTool(t *testing.T, dir, name, version, plant string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -73,12 +80,14 @@ func fakeTool(t *testing.T, dir, name, version, plant string) string {
 	body.WriteString("#!/bin/sh\n")
 	body.WriteString("if [ \"$1\" = --version ]; then echo \"" + version + "\"; exit 0; fi\n")
 	if plant != "" {
+		body.WriteString("hf=\"\"\n")
+		body.WriteString("for a in \"$@\"; do case \"$a\" in --header-filter=^\\$) ;; --header-filter=?*) hf=1 ;; esac; done\n")
 		body.WriteString("for a in \"$@\"; do\n")
 		body.WriteString("  case \"$a\" in -I*) inc=\"${a#-I}\" ;; *) inc=\"\" ;; esac\n")
 		body.WriteString("  if [ -f \"$a\" ] && grep -q '" + plant + "' \"$a\"; then\n")
 		body.WriteString("    echo \"$a: error: " + plant + " is the planted pattern\"; exit 1\n")
 		body.WriteString("  fi\n")
-		body.WriteString("  if [ -n \"$inc\" ] && [ -d \"$inc\" ] && grep -Rqs '" + plant + "' \"$inc\"; then\n")
+		body.WriteString("  if [ -n \"$hf\" ] && [ -n \"$inc\" ] && [ -d \"$inc\" ] && grep -Rqs '" + plant + "' \"$inc\"; then\n")
 		body.WriteString("    echo \"$inc: error: " + plant + " is the planted pattern\"; exit 1\n")
 		body.WriteString("  fi\n")
 		body.WriteString("done\n")
@@ -133,6 +142,22 @@ func TestSchemaCppGeneratedClangTidyWeverythingGatePlantedPattern(t *testing.T) 
 	}
 	if !strings.Contains(out, "schema_ctw_plant") {
 		t.Fatalf("negative control: the gate went red, but not on the named plant:\n%s", out)
+	}
+
+	// RED, the second way: the same planted header with the header filter set
+	// to match nothing must go green, which proves the plant is seen only
+	// through the filter. If this stays red the fake is not modelling the
+	// real checker and the RED above proves nothing about headers.
+	cmd := exec.Command("make", "--no-print-directory", "-C", root, cppClangGateCheck,
+		"SCHEMA_CPP_CTW_CORPUS="+bad,
+		"SCHEMA_CPP_CTW_WORK="+filepath.Join(dir, "bad-nofilter-work"),
+		"SCHEMA_CPP_CTW_CLANG_TIDY="+tidy,
+		"SCHEMA_CPP_CTW_CLANG="+clang,
+		"SCHEMA_CPP_CTW_HEADER_FILTER=^$$",
+	)
+	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly", "NOVA_TEST_NO_HOST=1")
+	if nf, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("with the header filter matching nothing the planted header was still reported, so the fake does not model clang-tidy's header rule:\n%s", nf)
 	}
 
 	// GREEN: the clean twin passes through the same recipe.

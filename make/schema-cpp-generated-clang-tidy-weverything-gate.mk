@@ -156,6 +156,62 @@ SCHEMA_CPP_CTW_WARNINGS := \
 # bugprone-casting-through-void
 #   The wide-text arm reads the wire's uint8_t storage as char16_t by design;
 #   the arena guarantees alignment, and the cast is the code unit view.
+#
+# THE HEADER FINDINGS. The generated readers and writers are headers, and
+# clang-tidy reports nothing from a header without --header-filter: before the
+# filter was added every one of these was "Suppressed ... in non-user code" and
+# the gate was green over a corpus it had not read. Triaged one check at a time
+# (the counts are unique file:line hits over the whole corpus, clang-tidy 18.1.8):
+#
+# cert-dcl16-c (8986)
+#   The literal suffix is `ll`, emitted for every 64-bit constant; a lowercase
+#   suffix is a readability rule, and the generator never emits a bare `l`.
+# cppcoreguidelines-pro-type-union-access (8026)
+#   The wire unions (the packet arms and the wide-text arm) are read through the
+#   discriminator the decoder just checked; the union IS the wire layout.
+# cppcoreguidelines-avoid-const-or-ref-data-members (3885)
+#   The reference members belong to generated local helper structs (field
+#   cursors, quantizer views, the depth guard) that never outlive the call.
+# cppcoreguidelines-missing-std-forward (3750)
+#   Every hit is an unnamed `auto &&` parameter of a generated visitor lambda
+#   that ignores the argument; there is nothing to forward.
+# bugprone-implicit-widening-of-multiplication-result (2736)
+#   The products are loop index times a constant stride, with the loop bounded
+#   by the schema's declared count, so the int product is far below INT_MAX.
+# cppcoreguidelines-macro-usage (1782)
+#   The macros are the generated wire helpers (TABLE_FLOAT_FORCE_ROUND and kin)
+#   shared with the C port's text; they are the port's one portable spelling.
+# cppcoreguidelines-owning-memory, cppcoreguidelines-no-malloc (1570, 572)
+#   The arena and block allocators are the raw-memory layer on purpose: calloc
+#   and free behind table_block_default_alloc, placement new into arena slabs.
+# cppcoreguidelines-use-default-member-init (869)
+#   The constructors initialise every member in one list beside the wire order;
+#   splitting the defaults into the class body is a style rewrite.
+# cert-err58-cpp (480)
+#   The flagged statics are constant TableFieldInfo/TableInfo arrays built from
+#   literals and addresses; nothing in their initialisers can throw.
+# cppcoreguidelines-special-member-functions (443)
+#   The builders define copy and rely on it for move; TableFixedDepth is a
+#   one-instance local scope guard that is never copied or moved.
+# bugprone-incorrect-roundings (293)
+#   `(uint32_t)( scaled + 0.5f )` after TABLE_FLOAT_FORCE_ROUND and a clamp to
+#   [0, count] is the cross-port quantization rule; every port must produce the
+#   same index bit for bit, and lround would change ties against the other ports.
+# bugprone-multi-level-implicit-pointer-conversion (142)
+#   The `T **` to `void *` conversions are memcpy/memset of pointer arrays in the
+#   node-entry tables, where the bytes are copied, not dereferenced.
+# bugprone-reserved-identifier, cert-dcl37-c, cert-dcl51-cpp (70)
+#   `cursor__new` and kin join a prefix and a schema field name; they are
+#   function-local, never ABI-visible (the same verdict as -Wreserved-identifier).
+# bugprone-sizeof-expression (46)
+#   `sizeof( segment->dead ) / sizeof( segment->dead[0] )` is the array element
+#   count idiom over a fixed C array member, not sizeof of a pointer.
+# cppcoreguidelines-pro-type-reinterpret-cast (42)
+#   char to uint8_t views for the UTF-8 and interior-NUL validators; the two
+#   types alias the same bytes by the standard's char rule.
+# bugprone-misplaced-widening-cast (20)
+#   `(size_t)( 2 * value.text_length )` follows a schema_assert that bounds the
+#   length by the declared size (single digits), so the int product cannot wrap.
 SCHEMA_CPP_CTW_TIDY_CHECKS := -*,bugprone-*,cert-*,cppcoreguidelines-*,\
 	-cppcoreguidelines-avoid-magic-numbers,\
 	-cppcoreguidelines-avoid-c-arrays,\
@@ -175,7 +231,37 @@ SCHEMA_CPP_CTW_TIDY_CHECKS := -*,bugprone-*,cert-*,cppcoreguidelines-*,\
 	-cppcoreguidelines-interfaces-global-init,\
 	-bugprone-switch-missing-default-case,\
 	-bugprone-branch-clone,\
-	-bugprone-casting-through-void
+	-bugprone-casting-through-void,\
+	-cert-dcl16-c,\
+	-cppcoreguidelines-pro-type-union-access,\
+	-cppcoreguidelines-avoid-const-or-ref-data-members,\
+	-cppcoreguidelines-missing-std-forward,\
+	-bugprone-implicit-widening-of-multiplication-result,\
+	-cppcoreguidelines-macro-usage,\
+	-cppcoreguidelines-owning-memory,\
+	-cppcoreguidelines-no-malloc,\
+	-cppcoreguidelines-use-default-member-init,\
+	-cert-err58-cpp,\
+	-cppcoreguidelines-special-member-functions,\
+	-bugprone-incorrect-roundings,\
+	-bugprone-multi-level-implicit-pointer-conversion,\
+	-bugprone-reserved-identifier,\
+	-cert-dcl37-c,\
+	-cert-dcl51-cpp,\
+	-bugprone-sizeof-expression,\
+	-cppcoreguidelines-pro-type-reinterpret-cast,\
+	-bugprone-misplaced-widening-cast
+
+# The generated readers and writers are HEADERS. clang-tidy only reports from
+# the main file unless --header-filter names the headers, so without this every
+# finding in the corpus is dropped as "non-user code" and the gate is green over
+# nothing. Every non-system header is checked; serialize.h stays -isystem.
+SCHEMA_CPP_CTW_HEADER_FILTER ?= .*
+
+# The translation units are independent, so the check fans out: the whole
+# corpus is ~570 units and takes about an hour one at a time. The default is
+# every core; a shared bench passes a smaller number.
+SCHEMA_CPP_CTW_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
 
 .PHONY: schema-cpp-generated-clang-tidy-weverything-gate-corpus
 schema-cpp-generated-clang-tidy-weverything-gate-corpus: bin/schema
@@ -230,27 +316,24 @@ schema-cpp-generated-clang-tidy-weverything-gate-check:
 		  for h in "$$unit"*.h; do [ -e "$$h" ] && echo "#include \"$$(basename "$$h")\""; done; \
 		} > "$(SCHEMA_CPP_CTW_WORK)/tu/$$name.h.cpp"; \
 	done
-	@set -e; fail=0; \
+	@printf '%s\n' '#!/bin/sh' \
+		'# one translation unit: clang -Weverything, then clang-tidy, both always run' \
+		'src="$$1"; unit="$$2"; fail=0' \
+		'"$(SCHEMA_CPP_CTW_CLANG)" -std=c++17 -Weverything -Werror $(SCHEMA_CPP_CTW_WARNINGS) -Wno-system-headers -fsyntax-only -I"$$unit" -Itest -Itest/tables -isystem "$(SERIALIZE_RUNTIME)" "$$src" || fail=1' \
+		'"$(SCHEMA_CPP_CTW_CLANG_TIDY)" --checks="$(SCHEMA_CPP_CTW_TIDY_CHECKS)" --warnings-as-errors="*" --header-filter="$(SCHEMA_CPP_CTW_HEADER_FILTER)" --system-headers=false "$$src" -- -std=c++17 -I"$$unit" -Itest -Itest/tables -isystem "$(SERIALIZE_RUNTIME)" $(SCHEMA_CPP_CTW_WARNINGS) || fail=1' \
+		'exit $$fail' > "$(SCHEMA_CPP_CTW_WORK)/check-one.sh"
+	@: > "$(SCHEMA_CPP_CTW_WORK)/jobs"; \
 	for tu in "$(SCHEMA_CPP_CTW_WORK)"/tu/*.h.cpp; do \
-		name=$$(basename "$$tu" .h.cpp); unit="$(SCHEMA_CPP_CTW_CORPUS)/$$name"; \
-		"$(SCHEMA_CPP_CTW_CLANG)" -std=c++17 -Weverything -Werror $(SCHEMA_CPP_CTW_WARNINGS) \
-			-Wno-system-headers -fsyntax-only -I"$$unit" -Itest -Itest/tables -isystem "$(SERIALIZE_RUNTIME)" "$$tu" || fail=1; \
-		"$(SCHEMA_CPP_CTW_CLANG_TIDY)" --checks="$(SCHEMA_CPP_CTW_TIDY_CHECKS)" \
-			--warnings-as-errors='*' --system-headers=false "$$tu" -- \
-			-std=c++17 -I"$$unit" -Itest -Itest/tables -isystem "$(SERIALIZE_RUNTIME)" $(SCHEMA_CPP_CTW_WARNINGS) || fail=1; \
+		echo "$$tu $(SCHEMA_CPP_CTW_CORPUS)/$$(basename "$$tu" .h.cpp)" >> "$(SCHEMA_CPP_CTW_WORK)/jobs"; \
 	done; \
 	for unit in "$(SCHEMA_CPP_CTW_CORPUS)"/*/; do \
-		name=$$(basename "$$unit"); \
 		for cpp in "$$unit"*.cpp; do \
-			[ -e "$$cpp" ] || continue; \
-			"$(SCHEMA_CPP_CTW_CLANG)" -std=c++17 -Weverything -Werror $(SCHEMA_CPP_CTW_WARNINGS) \
-				-Wno-system-headers -fsyntax-only -I"$$unit" -Itest -Itest/tables -isystem "$(SERIALIZE_RUNTIME)" "$$cpp" || fail=1; \
-			"$(SCHEMA_CPP_CTW_CLANG_TIDY)" --checks="$(SCHEMA_CPP_CTW_TIDY_CHECKS)" \
-				--warnings-as-errors='*' --system-headers=false "$$cpp" -- \
-				-std=c++17 -I"$$unit" -Itest -Itest/tables -isystem "$(SERIALIZE_RUNTIME)" $(SCHEMA_CPP_CTW_WARNINGS) || fail=1; \
+			if [ -e "$$cpp" ]; then echo "$$cpp $$unit" >> "$(SCHEMA_CPP_CTW_WORK)/jobs"; fi; \
 		done; \
-	done; \
-	exit $$fail
+	done
+	@echo "cpp clang gate: $$(wc -l < "$(SCHEMA_CPP_CTW_WORK)/jobs") translation units, $(SCHEMA_CPP_CTW_JOBS) at a time"
+	@xargs -P "$(SCHEMA_CPP_CTW_JOBS)" -L 1 sh "$(SCHEMA_CPP_CTW_WORK)/check-one.sh" < "$(SCHEMA_CPP_CTW_WORK)/jobs" || { \
+		echo "cpp clang gate FAILED: a translation unit above has a finding"; exit 1; }
 
 .PHONY: schema-cpp-generated-clang-tidy-weverything-gate
 schema-cpp-generated-clang-tidy-weverything-gate: schema-cpp-generated-clang-tidy-weverything-gate-corpus
@@ -273,41 +356,48 @@ schema-cpp-generated-clang-tidy-weverything-gate-fast:
 		SCHEMA_CPP_CTW_CLANG="$(SCHEMA_CPP_CTW_CLANG)" \
 		SCHEMA_CPP_CTW_CLANG_TIDY="$(SCHEMA_CPP_CTW_CLANG_TIDY)"
 
-# THE PLANTED CONTROL. A scratch corpus (the generated tree is never touched)
-# carries one use-after-move, a bugprone lifetime pattern the pinned checker
-# reports on the line that names schema_ctw_plant. The same check target must
-# exit non-zero and name the plant; the clean twin must exit zero. The Go test
-# in internal/ci drives this recipe with fake tools on every `go test`, so the
-# plumbing is red/green without a checker on the host; the nightly workflow
-# drives it with the real pinned checker.
+# THE PLANTED CONTROL, IN THE REAL GENERATED OUTPUT. The plant unit is the
+# `examples` corpus generated fresh by bin/schema into scratch (the build tree
+# is never touched). The clean twin is that generated unit as it is, and must
+# pass the same check recipe. The bad twin is a copy with one use-after-move
+# appended to a real generated HEADER ($(SCHEMA_CPP_CTW_PLANT_HEADER)), so the
+# control proves the checker reads the generated headers through the same
+# all-header translation unit the corpus uses; a plant in a hand-written .cpp
+# would pass even when every header finding is dropped. The bad twin must go
+# red on bugprone-use-after-move in that header, naming schema_ctw_plant.
+# The Go test in internal/ci drives the check recipe with fake tools on every
+# `go test`; the workflow drives this target with the real pinned checker.
+SCHEMA_CPP_CTW_PLANT_SOURCE ?= examples
+SCHEMA_CPP_CTW_PLANT_HEADER ?= Wire.h
+
 .PHONY: schema-cpp-generated-clang-tidy-weverything-gate-plant
-schema-cpp-generated-clang-tidy-weverything-gate-plant:
+schema-cpp-generated-clang-tidy-weverything-gate-plant: bin/schema
+	@$(MAKE) --no-print-directory "$(SERIALIZE_RUNTIME)/serialize.h"
 	@rm -rf "$(SCHEMA_CPP_CTW_WORK)/plant-bad" "$(SCHEMA_CPP_CTW_WORK)/plant-clean"
-	@mkdir -p "$(SCHEMA_CPP_CTW_WORK)/plant-bad/plant" "$(SCHEMA_CPP_CTW_WORK)/plant-clean/plant"
-	@printf '%s\n' '#include <utility>' \
+	@mkdir -p "$(SCHEMA_CPP_CTW_WORK)/plant-clean/plant"
+	@./bin/schema generate --lang cpp --out "$(SCHEMA_CPP_CTW_WORK)/plant-clean/plant" $(SCHEMA_CPP_CTW_PLANT_SOURCE)
+	@test -f "$(SCHEMA_CPP_CTW_WORK)/plant-clean/plant/$(SCHEMA_CPP_CTW_PLANT_HEADER)" || { \
+		echo "NEGATIVE CONTROL FAILED: $(SCHEMA_CPP_CTW_PLANT_SOURCE) generated no $(SCHEMA_CPP_CTW_PLANT_HEADER) to plant in"; exit 1; }
+	@cp -R "$(SCHEMA_CPP_CTW_WORK)/plant-clean" "$(SCHEMA_CPP_CTW_WORK)/plant-bad"
+	@printf '%s\n' '' '#include <utility>' \
 		'struct schema_ctw_plant_record { int x; };' \
-		'inline int schema_ctw_plant_use( schema_ctw_plant_record & record )' \
+		'inline int schema_ctw_plant_use( schema_ctw_plant_record & schema_ctw_plant )' \
 		'{' \
-		'    schema_ctw_plant_record moved = std::move( record );' \
+		'    schema_ctw_plant_record moved = std::move( schema_ctw_plant );' \
 		'    (void) moved;' \
-		'    return record.x;' \
+		'    return schema_ctw_plant.x;' \
 		'}' \
-		> "$(SCHEMA_CPP_CTW_WORK)/plant-bad/plant/plant.cpp"
-	@printf '%s\n' '// the plant unit has a header so the all-header TU is built' > "$(SCHEMA_CPP_CTW_WORK)/plant-bad/plant/plant.h"
-	@printf '%s\n' 'struct schema_ctw_clean_record { int x; };' \
-		'inline int schema_ctw_clean_use( schema_ctw_clean_record & record ) { return record.x; }' \
-		> "$(SCHEMA_CPP_CTW_WORK)/plant-clean/plant/plant.cpp"
-	@printf '%s\n' '// the clean unit has a header so the all-header TU is built' > "$(SCHEMA_CPP_CTW_WORK)/plant-clean/plant/plant.h"
+		>> "$(SCHEMA_CPP_CTW_WORK)/plant-bad/plant/$(SCHEMA_CPP_CTW_PLANT_HEADER)"
 	@if $(MAKE) --no-print-directory schema-cpp-generated-clang-tidy-weverything-gate-check \
 		SCHEMA_CPP_CTW_CORPUS="$(SCHEMA_CPP_CTW_WORK)/plant-bad" \
 		SCHEMA_CPP_CTW_WORK="$(SCHEMA_CPP_CTW_WORK)/plant-bad-work" \
 		SCHEMA_CPP_CTW_CLANG="$(SCHEMA_CPP_CTW_CLANG)" \
 		SCHEMA_CPP_CTW_CLANG_TIDY="$(SCHEMA_CPP_CTW_CLANG_TIDY)" \
 		> "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log" 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the cpp clang gate stayed green with the plant in"; \
+		echo "NEGATIVE CONTROL FAILED: the cpp clang gate stayed green with the plant in a generated header"; \
 		cat "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log"; exit 1; fi
-	@grep -q 'schema_ctw_plant' "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log" || { \
-		echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the named plant"; \
+	@grep -E '$(SCHEMA_CPP_CTW_PLANT_HEADER):[0-9]+:[0-9]+: (warning|error): .schema_ctw_plant. used after it was moved' "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log" >/dev/null || { \
+		echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the plant in the generated header"; \
 		cat "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log"; exit 1; }
 	@$(MAKE) --no-print-directory schema-cpp-generated-clang-tidy-weverything-gate-check \
 		SCHEMA_CPP_CTW_CORPUS="$(SCHEMA_CPP_CTW_WORK)/plant-clean" \
@@ -315,10 +405,10 @@ schema-cpp-generated-clang-tidy-weverything-gate-plant:
 		SCHEMA_CPP_CTW_CLANG="$(SCHEMA_CPP_CTW_CLANG)" \
 		SCHEMA_CPP_CTW_CLANG_TIDY="$(SCHEMA_CPP_CTW_CLANG_TIDY)" \
 		> "$(SCHEMA_CPP_CTW_WORK)/plant-clean.log" 2>&1 || { \
-		echo "NEGATIVE CONTROL FAILED: the clean twin did not pass"; \
+		echo "NEGATIVE CONTROL FAILED: the clean generated unit did not pass"; \
 		cat "$(SCHEMA_CPP_CTW_WORK)/plant-clean.log"; exit 1; }
-	@grep -m1 'schema_ctw_plant' "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log"
-	@echo "cpp clang gate negative control: the named plant turns the gate red, the clean twin stays green"
+	@grep -m1 -E '$(SCHEMA_CPP_CTW_PLANT_HEADER):[0-9]+:[0-9]+: (warning|error): .schema_ctw_plant. used after it was moved' "$(SCHEMA_CPP_CTW_WORK)/plant-bad.log"
+	@echo "cpp clang gate negative control: the plant in generated $(SCHEMA_CPP_CTW_PLANT_SOURCE)/$(SCHEMA_CPP_CTW_PLANT_HEADER) turns the gate red, the generated unit as emitted stays green"
 
 # The negative-controls tool names a target by the marker in its name; this
 # alias is what make/negative-controls.json excludes, because the control needs
