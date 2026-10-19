@@ -22,16 +22,18 @@ func TestEngineStringRefusesLoneSurrogate(t *testing.T) {
 	t.Parallel()
 	m, root := loneSurrogateModel(t)
 	cases := []struct {
-		label, text string
+		label, text, want string
 	}{
-		{"high alone", `{"s":"\ud800"}`},
-		{"low alone", `{"s":"\udfaa"}`},
-		{"high followed by plain", `{"s":"\ud800abc"}`},
-		{"high followed by raw utf8", `{"s":"\ud888ሴ"}`},
-		{"low then high", `{"s":"\udd1e\ud834"}`},
-		{"two highs", `{"s":"\ud800\ud800\n"}`},
-		{"key low alone", `{"\udfaa":0}`},
-		{"wstring high alone", `{"w":"\ud800"}`},
+		{"high alone", `{"s":"\ud800"}`, ""},
+		{"low alone", `{"s":"\udfaa"}`, ""},
+		{"high followed by plain", `{"s":"\ud800abc"}`, ""},
+		{"high followed by raw utf8", `{"s":"\ud888ሴ"}`, ""},
+		{"low then high", `{"s":"\udd1e\ud834"}`, ""},
+		{"two highs", `{"s":"\ud800\ud800\n"}`, ""},
+		{"key low alone", `{"\udfaa":0}`, "string_lone_surrogate: <root>"},
+		{"wstring high alone", `{"w":"\ud800"}`, ""},
+		{"unknown value high alone", `{"unknown":"\ud800"}`, "string_lone_surrogate: unknown"},
+		{"nested unknown key", `{"unknown":{"a":1,"\udfaa":2}}`, "string_lone_surrogate: unknown"},
 	}
 	for _, tc := range cases {
 		inst := m.New(root)
@@ -42,6 +44,9 @@ func TestEngineStringRefusesLoneSurrogate(t *testing.T) {
 		}
 		if !r.Malformed || !strings.HasPrefix(r.Reason, "string_lone_surrogate") {
 			t.Errorf("%s: report %+v, want Malformed with Reason starting string_lone_surrogate", tc.label, r)
+		}
+		if tc.want != "" && r.Reason != tc.want {
+			t.Errorf("%s: Reason %q, want %q", tc.label, r.Reason, tc.want)
 		}
 	}
 	// the astral character reads clean, as bytes and as code units

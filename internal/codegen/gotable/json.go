@@ -1243,6 +1243,19 @@ type tableJsonIn struct {
 	// well-formed UTF-8 (16.3): the read refuses it by name rather than
 	// replacing it silently with U+FFFD
 	utf8 bool
+	// key is the key whose name or value the walk is inside (16.3), as a
+	// fixed buffer so naming a refusal allocates nothing on the clean path:
+	// the top-level object's key is '<root>'.
+	keyBuf [tableJsonMaxKey]byte
+	keyLen int32
+}
+
+func (in *tableJsonIn) setKey(key []byte) {
+	in.keyLen = int32(copy(in.keyBuf[:], key))
+}
+
+func (in *tableJsonIn) keyString() string {
+	return string(in.keyBuf[:in.keyLen])
 }
 
 func (in *tableJsonIn) space() {
@@ -1650,8 +1663,13 @@ func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
 		in.bad = true
 		return false
 	}
+	// the key this container was skipped under names a refusal inside it
+	// (16.3); a sibling's key must not: restore it before each key scan
+	var container [tableJsonMaxKey]byte
+	containerLen := copy(container[:], in.keyBuf[:in.keyLen])
 	in.pos++ // the opening bracket
 	for {
+		in.keyLen = int32(copy(in.keyBuf[:], container[:containerLen]))
 		c := in.peek()
 		if c == closing {
 			in.pos++
@@ -1662,9 +1680,15 @@ func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
 			return false
 		}
 		if closing == '}' {
-			if _, ok := in.scanString(nil); !ok {
+			var key [tableJsonMaxKey]byte
+			keyLength, ok := in.scanKey(key[:tableJsonMaxKey-1])
+			if !ok {
+				if in.report.Reason == "" && in.loneSurrogate {
+					in.report.Reason = "string_lone_surrogate: " + in.keyString()
+				}
 				return false
 			}
+			in.setKey(key[:keyLength])
 			if in.peek() != ':' {
 				in.bad = true
 				return false
@@ -1697,6 +1721,10 @@ func (in *tableJsonIn) skipValue(depth int32) bool {
 		return in.skipContainer(']', depth)
 	case '"':
 		_, ok := in.scanString(nil)
+		if !ok && in.report.Reason == "" && in.loneSurrogate {
+			// the key whose value held it names the refusal (16.3)
+			in.report.Reason = "string_lone_surrogate: " + in.keyString()
+		}
 		return ok
 	case 't':
 		return in.literal("true")
@@ -2350,7 +2378,12 @@ func tableJsonReadTableFields(in *tableJsonIn,base unsafe.Pointer,info *TableTyp
 	// duplicate tracking, bounded and allocation-free: a table with more fields
 	// than this still reads, its repeats simply stop being counted
 	var seen [8]uint64
+	// the key this object was read under names a refusal at a key of it
+	// (16.3); a sibling's key must not: restore it before each key scan
+	var container [tableJsonMaxKey]byte
+	containerLen := copy(container[:], in.keyBuf[:in.keyLen])
 	for {
+		in.keyLen = int32(copy(in.keyBuf[:], container[:containerLen]))
 		c := in.peek()
 		if c == '}' {
 			in.pos++
@@ -2363,8 +2396,12 @@ func tableJsonReadTableFields(in *tableJsonIn,base unsafe.Pointer,info *TableTyp
 		var key [tableJsonMaxKey]byte
 		keyLength, ok := in.scanKey(key[:tableJsonMaxKey-1])
 		if !ok {
+			if in.report.Reason == "" && in.loneSurrogate {
+				in.report.Reason = "string_lone_surrogate: " + in.keyString()
+			}
 			return false
 		}
+		in.setKey(key[:keyLength])
 		if in.peek() != ':' {
 			in.bad = true
 			return false
@@ -2494,6 +2531,7 @@ func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 		report = &ignored
 	}
 	in := tableJsonIn{text: text, report: report, nullEmpty: options.NullAsEmpty}
+	in.keyLen = int32(copy(in.keyBuf[:], "<root>"))
 	info.Reset(value)
 	in.byteOrderMark()
 	ok := tableJsonReadTable(&in, value, info, 0)
@@ -2509,7 +2547,11 @@ func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 	if in.bad || !ok {
 		report.Malformed = true
 		if report.Reason == "" && in.loneSurrogate {
-			report.Reason = "string_lone_surrogate: " + info.Name
+			if in.keyLen > 0 {
+				report.Reason = "string_lone_surrogate: " + in.keyString()
+			} else {
+				report.Reason = "string_lone_surrogate: " + info.Name
+			}
 		}
 		return false
 	}
