@@ -61,7 +61,9 @@ json-hostile goonly        tabledemo RootConfig /tree refused carried-by=go unca
 json-hostile cpnonly       tabledemo RootConfig /tree refused carried-by=cpp uncarried=0,0,0,0,0,false,read
 json-hostile mixed         tabledemo RootConfig /tree refused carried-by=go,cpp uncarried=0,0,0,1,0,false,read
 json-hostile uncarried-cpp tabledemo RootConfig /tree refused carried-by=go uncarried=cpp
+json-hostile both-named   tabledemo RootConfig /tree refused carried-by=cpp uncarried=cpp
 json-hostile lookalike     tabledemo RootConfig /tree refused carried-by=cpp2
+json-hostile uncarried-refused tabledemo RootConfig /tree refused carried-by=go uncarried=refused
 `
 	out, err := runHostileRowReader(t, binary, manifest)
 	if err != nil {
@@ -73,7 +75,9 @@ json-hostile lookalike     tabledemo RootConfig /tree refused carried-by=cpp2
 		"CHECK cpnonly\n",
 		"CHECK mixed\n", // the plant: cpp is named in a list of more than one port
 		"SKIP uncarried-cpp (not carried by cpp)\n",
+		"SKIP both-named (not carried by cpp)\n", // uncarried names cpp even though carried-by does too
 		"SKIP lookalike (not carried by cpp)\n",
+		"SKIP uncarried-refused (not carried by cpp)\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("manifest row decision missing %q:\n%s", want, out)
@@ -99,6 +103,35 @@ func TestHostileRunnerRejectsAnUnknownManifestKey(t *testing.T) {
 	}
 }
 
+func TestHostileRunnerRejectsMalformedMarks(t *testing.T) {
+	t.Parallel()
+	binary := buildHostileRowReader(t)
+
+	// The oracle (ReadManifest) takes six fields or eight: the marks are the
+	// PAIR carried-by=<ports> uncarried=<verdict>. A lone half, an empty port
+	// or a value that is not a verdict is a runner error, never a silent skip.
+	for _, tc := range []struct {
+		name     string
+		row      string
+		wantText string
+	}{
+		{"empty-port", "json-hostile ports tabledemo RootConfig /tree refused carried-by=go,,cpp uncarried=refused\n", "carried-by names an empty port"},
+		{"unknown-first", "json-hostile first tabledemo RootConfig /tree refused bogus=1 uncarried=refused\n", "unknown manifest key bogus=1"},
+		{"unknown-lone", "json-hostile lone tabledemo RootConfig /tree refused bogus=1\n", "unknown manifest key bogus=1"},
+		{"unknown-second", "json-hostile second tabledemo RootConfig /tree refused carried-by=go bogus=1\n", "unknown manifest key bogus=1"},
+		{"too-many", "json-hostile many tabledemo RootConfig /tree refused carried-by=go uncarried=refused extra=1\n", "unknown manifest key extra=1"},
+	} {
+		out, err := runHostileRowReader(t, binary, tc.row)
+		if err == nil {
+			t.Errorf("%s: malformed mark passed the runner:\n%s", tc.name, out)
+			continue
+		}
+		if !strings.Contains(out, tc.wantText) {
+			t.Errorf("%s: runner error does not say %q:\n%s", tc.name, tc.wantText, out)
+		}
+	}
+}
+
 func TestHostileRunnerRejectsADuplicateOrEmptyMark(t *testing.T) {
 	t.Parallel()
 	binary := buildHostileRowReader(t)
@@ -109,7 +142,7 @@ func TestHostileRunnerRejectsADuplicateOrEmptyMark(t *testing.T) {
 		wantText string
 	}{
 		{"duplicate", "json-hostile dup tabledemo RootConfig /tree refused carried-by=go carried-by=cpp\n", "duplicate manifest key carried-by=cpp"},
-		{"empty", "json-hostile empty tabledemo RootConfig /tree refused carried-by=\n", "manifest key carried-by= names no value"},
+		{"empty", "json-hostile empty tabledemo RootConfig /tree refused carried-by= uncarried=refused\n", "manifest key carried-by= names no value"},
 	} {
 		out, err := runHostileRowReader(t, binary, tc.row)
 		if err == nil {

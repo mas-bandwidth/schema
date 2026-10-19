@@ -116,56 +116,6 @@ enum RowParse
     ROW_ERROR        // a json-hostile row whose marks are malformed
 };
 
-// read one manifest line. AN UNKNOWN KEY IS AN ERROR, never a token to ignore:
-// a runner that silently drops a spelling it does not know can pass a row the
-// manifest meant to exempt, or check one it meant to skip.
-static RowParse parse_manifest_row( char * line, ManifestRow & row, char * error, size_t error_size )
-{
-    int consumed = 0;
-    if ( sscanf( line, "%31s %127s %63s %63s %511s %63s %n", row.kind, row.name, row.unit, row.root,
-                 row.tree, row.verdict, &consumed ) != 6 )
-    {
-        return ROW_NOT_HOSTILE;
-    }
-    if ( strcmp( row.kind, "json-hostile" ) != 0 ) { return ROW_NOT_HOSTILE; }
-
-    const char * carried = NULL;
-    const char * uncarried = NULL;
-    char * save = NULL;
-    for ( char * token = strtok_r( line + consumed, " \t\r\n", &save ); token != NULL;
-          token = strtok_r( NULL, " \t\r\n", &save ) )
-    {
-        const char * value = NULL;
-        const char ** slot = NULL;
-        if ( strncmp( token, "carried-by=", 11 ) == 0 ) { value = token + 11; slot = &carried; }
-        else if ( strncmp( token, "uncarried=", 10 ) == 0 ) { value = token + 10; slot = &uncarried; }
-        if ( slot != NULL )
-        {
-            if ( *slot != NULL )
-            {
-                snprintf( error, error_size, "duplicate manifest key %s", token );
-                return ROW_ERROR;
-            }
-            if ( *value == '\0' )
-            {
-                snprintf( error, error_size, "manifest key %s names no value", token );
-                return ROW_ERROR;
-            }
-            *slot = value;
-            continue;
-        }
-        snprintf( error, error_size, "unknown manifest key %s", token );
-        return ROW_ERROR;
-    }
-
-    // A row with no carried-by mark is carried by every port. A row whose list
-    // does not name cpp, or whose uncarried value names cpp, is not this
-    // port's to check (the Go harness calls the first a port exemption).
-    row.skip = ( carried != NULL && !port_list_names( carried, "cpp" ) ) ||
-               ( uncarried != NULL && port_list_names( uncarried, "cpp" ) );
-    return ROW_READ;
-}
-
 // the manifest's expected report for one case, "u,k,w,c,d,m,verdict"
 struct Expected
 {
@@ -184,8 +134,96 @@ struct Expected
     {
         return false;
     }
+    if ( ( strcmp( flag, "true" ) != 0 && strcmp( flag, "false" ) != 0 ) ||
+         ( strcmp( verdict, "read" ) != 0 && strcmp( verdict, "refused" ) != 0 ) )
+    {
+        return false;
+    }
     out.malformed = strcmp( flag, "true" ) == 0;
     return true;
+}
+
+// read one manifest line. The Go harness's ReadManifest is the oracle for the
+// form: the optional marks after the verdict are `carried-by=<ports>` and
+// `uncarried=<verdict>`. AN UNKNOWN KEY OR A MALFORMED MARK IS AN ERROR, never
+// a token to ignore: a runner that silently drops a spelling it does not know
+// can pass a row the manifest meant to exempt, or check one it meant to skip.
+static RowParse parse_manifest_row( char * line, ManifestRow & row, char * error, size_t error_size )
+{
+    const char * field[64] = {};
+    int count = 0;
+    char * save = NULL;
+    for ( char * token = strtok_r( line, " \t\r\n", &save ); token != NULL;
+          token = strtok_r( NULL, " \t\r\n", &save ) )
+    {
+        if ( count == (int) ( sizeof( field ) / sizeof( field[0] ) ) )
+        {
+            snprintf( error, error_size, "the manifest row has too many fields" );
+            return ROW_ERROR;
+        }
+        field[count++] = token;
+    }
+    if ( count < 6 || strcmp( field[0], "json-hostile" ) != 0 ) { return ROW_NOT_HOSTILE; }
+    snprintf( row.kind, sizeof( row.kind ), "%s", field[0] );
+    snprintf( row.name, sizeof( row.name ), "%s", field[1] );
+    snprintf( row.unit, sizeof( row.unit ), "%s", field[2] );
+    snprintf( row.root, sizeof( row.root ), "%s", field[3] );
+    snprintf( row.tree, sizeof( row.tree ), "%s", field[4] );
+    snprintf( row.verdict, sizeof( row.verdict ), "%s", field[5] );
+
+    if ( count > 8 )
+    {
+        // beyond the pair, every field is a key this runner does not know
+        snprintf( error, error_size, "unknown manifest key %s", field[8] );
+        return ROW_ERROR;
+    }
+    const char * carried = NULL;
+    const char * uncarried = NULL;
+    for ( int i = 6; i < count; i++ )
+    {
+        const char * value = NULL;
+        const char ** slot = NULL;
+        if ( strncmp( field[i], "carried-by=", 11 ) == 0 ) { value = field[i] + 11; slot = &carried; }
+        else if ( strncmp( field[i], "uncarried=", 10 ) == 0 ) { value = field[i] + 10; slot = &uncarried; }
+        if ( slot == NULL )
+        {
+            snprintf( error, error_size, "unknown manifest key %s", field[i] );
+            return ROW_ERROR;
+        }
+        if ( *slot != NULL )
+        {
+            snprintf( error, error_size, "duplicate manifest key %s", field[i] );
+            return ROW_ERROR;
+        }
+        if ( *value == '\0' )
+        {
+            snprintf( error, error_size, "manifest key %s names no value", field[i] );
+            return ROW_ERROR;
+        }
+        *slot = value;
+    }
+    if ( carried != NULL )
+    {
+        for ( const char * at = carried; ; )
+        {
+            const char * comma = strchr( at, ',' );
+            const char * end = ( comma != NULL ) ? comma : at + strlen( at );
+            if ( end == at )
+            {
+                snprintf( error, error_size, "carried-by names an empty port" );
+                return ROW_ERROR;
+            }
+            if ( comma == NULL ) { break; }
+            at = comma + 1;
+        }
+    }
+
+    // A row with no carried-by mark is carried by every port. A row whose list
+    // does not name cpp, or whose uncarried value names cpp, is not this
+    // port's to check (the Go harness calls the first a port exemption).
+    row.skip = ( carried != NULL && !port_list_names( carried, "cpp" ) ) ||
+               ( uncarried != NULL && port_list_names( uncarried, "cpp" ) );
+    return ROW_READ;
 }
 
 #ifndef HOSTILE_PARSE_ONLY
