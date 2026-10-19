@@ -147,9 +147,6 @@ func TestNoFixedReasonNamesRemain(t *testing.T) {
 		if strings.HasSuffix(path, "_test.go") {
 			return false
 		}
-		if strings.Contains(filepath.ToSlash(path), "/internal/codegen/gotable/fuzzunit/") {
-			return false
-		}
 		slashed := filepath.ToSlash(path)
 		return strings.Contains(slashed, "/internal/codegen/gotable/") ||
 			strings.Contains(slashed, "/tables/goruntime/") ||
