@@ -1059,7 +1059,9 @@ local function resolve(report: any)
 				report.malformed = true
 			else
 				local n = _nodes[p.index - 1]
-				if n ~= nil then
+				-- §3.1: a placeholder is a refused record; every pointer
+				-- naming it reads null, counted once at the node, not here
+				if n ~= nil and n.kind ~= "x" then
 					if p.d.s == "sblob" then
 						if n.kind == "s" then
 							if landed[n] then report.blobShared = (report.blobShared or 0) + 1 end
@@ -1181,8 +1183,10 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 			local tid = rec.tid
 			if tid == StringBlobId and desc.place.str then
 				if not utf8_ok(rec.body, 0, buffer.len(rec.body)) then
+					-- §3.1: a refused record KEEPS ITS INDEX, so it takes a
+					-- placeholder slot; a pointer naming it resolves to nothing
 					report.malformed = true
-					_nodes[#_nodes + 1] = nil
+					_nodes[#_nodes + 1] = { kind = "x" }
 				else
 					_nodes[#_nodes + 1] = { kind = "s", blob = rec.body }
 				end
@@ -1191,8 +1195,10 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 			else
 				local nc = place[tid]
 				if nc == nil then
+					-- §3.1: a type id this reader cannot name is counted once
+					-- here and KEEPS ITS INDEX; the placeholder grows the array
 					report.unknown = report.unknown + 1
-					_nodes[#_nodes + 1] = nil
+					_nodes[#_nodes + 1] = { kind = "x" }
 				else
 					local inst = nc.new()
 					_nodes[#_nodes + 1] = { kind = "t", desc = nc, v = inst, body = rec.body }
