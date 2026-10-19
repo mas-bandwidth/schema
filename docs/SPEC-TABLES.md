@@ -4040,8 +4040,7 @@ spelling as the route where one exists:
   for each is a field of a plain `table`;
 - `[N]string(M)`, `[E]string(M)` and `[Min..N]string(M)`: a list of text is
   COUNTED, so a fixed extent, an enum key or a lower bound names a count that
-  cannot vary; `[..N]string(M)` is the route. When the enum key has a
-  deprecated variant, §2.15's key-bound refusal speaks first;
+  cannot vary; `[..N]string(M)` is the route;
 - `?[..N]string(M)` and `?[]string(M)`: a presence bit on a list of text is two
   answers to one question, because an empty list is elided and its count's zero
   IS its absence (§2.9); drop the `?`, or move it after the bound;
@@ -4582,7 +4581,8 @@ reads as the field's declared default — but the WRITE rule still refuses the
 entry, `invalid_value` as for a value. Deprecated-slot defaulting therefore
 covers the SCALAR enum field, and the ARRAY and MAP forms whose elements — or,
 for a map, whose keys — are enum values. It does NOT cover a keyed `[Enum]T`:
-the COMPILE TIME rule below refuses one whose enum has any deprecated variant.
+a deprecated variant's slot does not apply there. A text-list spelling
+(`[Enum]string(M)`) follows §2.13's existing text-list refusal instead.
 
 **WRITE.** A strict write refuses a value holding a deprecated variant with
 `invalid_value`, the Reason naming `<Table>.<field>` and the variant. A
@@ -4591,8 +4591,8 @@ default, while a variant value is the caller's, so the two features differ here
 on purpose.
 
 **COMPILE TIME.** A field default or a `const` that names a deprecated variant
-is refused by name. A keyed `[Enum]T` whose enum has ANY deprecated variant is
-refused at check time, for every target, by the shared checker
+is refused by name. An enum-keyed array such as `[Enum]int32` whose enum has
+ANY deprecated variant is refused at check time, for every target, by the shared checker
 (`internal/check`, `resolveKeyBound`), whose message opens `` field <field>:
 the key bound [<Enum>] names variant <variant>, which is marked `| deprecated` ``
 — a keyed array numbers a slot by every variant, so a deprecated variant is no
