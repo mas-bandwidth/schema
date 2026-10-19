@@ -3642,8 +3642,14 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
 	// bytes(N) rides the scalar-u8 array shape (§3.2), with a bounded copy.
+	// The array's L bounds its ELEMENTS, not its header: the element kind and
+	// the count are read from the enclosing body, so a count that runs past
+	// this field's L is still counted and clamped before the elements are
+	// bounded by L (docs/SPEC-TABLES.md §3, §4; internal/tablewire/decode.go
+	// arrayBody). A clamp is not damage (§3), and a count the body cannot
+	// cover keeps the prefix the body covers and counts malformed.
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null){if(!ar.has(1)){report.malformed=true;}else if(ar.get8()!=6){report.kindMismatch++;}else {long n=ar.leb();if(ar.fail||n<0||n>ar.limit-ar.off){report.malformed=true;}else {int keep=(int)Math.min(n,%d);v.%s=java.util.Arrays.copyOfRange(ar.buf,ar.off,ar.off+keep);if(n>%d)report.clamped++;ar.off+=(int)n;if(ar.off!=ar.limit)report.malformed=true;}}}}else {r.skip(kind);report.kindMismatch++;}\n", f.Type.Size, m, f.Type.Size)
+		fmt.Fprintf(b, "                if(kind==14){long L=r.leb();if(r.fail||L<0||L>r.limit-r.off){report.malformed=true;}else if(L<2){r.off+=(int)L;}else {int end=r.off+(int)L;int ek=r.get8();if(ek!=6){report.kindMismatch++;}else {long n=r.leb();if(r.fail){report.malformed=true;}else {int keep=n<%d?(int)n:%d;if(n>%d)report.clamped++;int avail=end-r.off;if(avail<0)avail=0;int take=keep<avail?keep:avail;v.%s=java.util.Arrays.copyOfRange(r.buf,r.off,r.off+take);if(take<keep)report.malformed=true;}}r.off=end;}}else {r.skip(kind);report.kindMismatch++;}\n", f.Type.Size, f.Type.Size, f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = %s; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, variableDefault(f), f.Type.Size, f.Type.Size, m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")

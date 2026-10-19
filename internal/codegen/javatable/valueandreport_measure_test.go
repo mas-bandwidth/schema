@@ -17,11 +17,11 @@ import (
 // TestJavaFixValueAndReportWithMeasureRight pins the wire-fuzzer cause J3: the
 // Java variable-leg's saved bytes or report differ where its measure agrees
 // with the oracle. The representative is streamdemo.Feed (corpus seed
-// stream_chain, pass length #3 and the pinned stream_count_past_body vector):
-// the Java leg reads on past the damage and saves 46 bytes where the oracle
-// clamps and saves 24, reporting clamped=1. The generated Java reader must
-// clamp and count clamped exactly as the Go oracle does (docs/SPEC-TABLES.md
-// §3, §16.2).
+// stream_chain). Both mutants below put an ARRAY COUNT past the array's own L
+// but inside the enclosing body: the oracle reads the header from the
+// enclosing body, clamps the count against N and counts `clamped`, then bounds
+// its elements by L (internal/tablewire/decode.go arrayBody; SPEC-TABLES §3,
+// §4). The generated Java reader must answer exactly as the Go oracle does.
 func TestJavaFixValueAndReportWithMeasureRight(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -30,14 +30,13 @@ func TestJavaFixValueAndReportWithMeasureRight(t *testing.T) {
 	model := tabletext.NewModel(u)
 	root := "Feed"
 
-	length3Hex := "01010803000000020f030d0b040e0306010105110200060c1602070a040e03060102051103000707040e030601030000c03a5cb5072eb7082652b3285633d4d8228e3c877681830f054aa33067555b8528f025a0ba6c31e5ffffffffffffffff82e051f9dc6843cf0700000000000000"
-	length3, err := hex.DecodeString(length3Hex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pinned, err := os.ReadFile(filepath.Join(repo, "testdata", "wire", "tables", "fuzz-vectors", "stream_count_past_body.bin"))
-	if err != nil {
-		t.Fatal(err)
+	cases := []struct{ name, wireHex string }{
+		// pass length #3 (the fuzzer's minimal mutant of this cause)
+		{"length3", "01010803000000020f030d0b040e0306010105110200060c1602070a040e03060102051103000707040e030601030000c03a5cb5072eb7082652b3285633d4d8228e3c877681830f054aa33067555b8528f025a0ba6c31e5ffffffffffffffff82e051f9dc6843cf0700000000000000"},
+		// the pinned stream_count_past_body vector: Chunk.data's count runs
+		// past its array L; the oracle clamps it to bytes(8), counts one
+		// clamped, keeps the prefix the body covers and reports malformed.
+		{"pinned", "01010803000000020f030d0a040e03068fa99e02de62cf010105110200060c1602070a040e03060102051103000707040e030601030000c03a5cb5072eb7082652b3285633d4d8228e3c877681830f054aa33067555b8528f025a0ba6c31e5ffffffffffffffff82e051f9dc6843cf0700000000000000"},
 	}
 
 	files, err := Generate(u)
@@ -78,7 +77,7 @@ func TestJavaFixValueAndReportWithMeasureRight(t *testing.T) {
         %s.%sVariable.Value v=%s.%sVariable.load(data,report);
         if(v==null){System.out.println("null "+report.unknown+","+report.kindMismatch+","+report.widened+","+report.clamped+","+report.duplicate+","+report.malformed+","+report.refused);return;}
         byte[] saved=%s.%sVariable.save(v);
-        System.out.println(report.unknown+","+report.kindMismatch+","+report.widened+","+report.clamped+","+report.duplicate+","+report.malformed+","+report.refused+","+hexstr(saved));
+        System.out.println(report.unknown+","+report.kindMismatch+","+report.widened+","+report.clamped+","+report.duplicate+","+report.malformed+","+report.refused+"|"+hexstr(saved));
     }
 }`, pkg, pkg, pkg, root, pkg, root, pkg, root)
 	if err := os.WriteFile(driver, []byte(dsrc), 0o644); err != nil {
@@ -91,10 +90,14 @@ func TestJavaFixValueAndReportWithMeasureRight(t *testing.T) {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
-	for name, wire := range map[string][]byte{"length3": length3, "pinned": pinned} {
-		out, err := exec.Command(java, "-ea", "-cp", classes, "Driver", hex.EncodeToString(wire)).CombinedOutput()
+	for _, tc := range cases {
+		wire, err := hex.DecodeString(tc.wireHex)
 		if err != nil {
-			t.Fatalf("%s: java: %v\n%s", name, err, out)
+			t.Fatal(err)
+		}
+		out, err := exec.Command(java, "-ea", "-cp", classes, "Driver", tc.wireHex).CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s: java: %v\n%s", tc.name, err, out)
 		}
 		line := ""
 		for _, ln := range strings.Split(string(out), "\n") {
@@ -105,34 +108,33 @@ func TestJavaFixValueAndReportWithMeasureRight(t *testing.T) {
 			line = ln
 			break
 		}
-		if strings.HasPrefix(line, "null ") {
-			t.Fatalf("%s: driver returned null: %q", name, line)
-		}
-		fields := strings.SplitN(line, ",", 8)
-		if len(fields) != 8 {
-			t.Fatalf("%s: driver output %q", name, line)
+		fields := strings.SplitN(line, "|", 2)
+		if len(fields) != 2 {
+			t.Fatalf("%s: driver output %q", tc.name, line)
 		}
 
 		oracle := model.New(u.Tables[root])
 		oreport := new(tabletext.Report)
-		if ok, err := tablewire.Decode(model, oracle, wire, oreport); !ok || err != nil {
-			t.Fatalf("%s: oracle decode: %v %+v", name, err, oreport)
+		// The oracle may report framing damage and still keep the decoded
+		// prefix; only a refusal stops the comparison.
+		if _, err := tablewire.Decode(model, oracle, wire, oreport); err != nil {
+			t.Fatalf("%s: oracle decode: %v %+v", tc.name, err, oreport)
 		}
 		owire, err := tablewire.Encode(model, oracle)
 		if err != nil {
 			t.Fatal(err)
 		}
-		javaSaved, err := hex.DecodeString(fields[7])
+		javaSaved, err := hex.DecodeString(fields[1])
 		if err != nil {
-			t.Fatalf("%s: saved hex: %v", name, err)
+			t.Fatalf("%s: saved hex: %v", tc.name, err)
 		}
-		got := strings.Join(fields[:7], ",")
+		got := fields[0]
 		want := fmt.Sprintf("%d,%d,%d,%d,%d,%v,%v", oreport.Unknown, oreport.KindMismatch, oreport.Widened, oreport.Clamped, oreport.Duplicate, oreport.Malformed, oreport.Refused)
 		if got != want {
-			t.Errorf("%s: report java=%s oracle=%s (saved %d vs oracle %d)", name, got, want, len(javaSaved), len(owire))
+			t.Errorf("%s: report java=%s oracle=%s (saved %d vs oracle %d)", tc.name, got, want, len(javaSaved), len(owire))
 		}
 		if string(javaSaved) != string(owire) {
-			t.Errorf("%s: saved bytes differ: java %d bytes, oracle %d bytes", name, len(javaSaved), len(owire))
+			t.Errorf("%s: saved bytes differ: java %d bytes, oracle %d bytes", tc.name, len(javaSaved), len(owire))
 		}
 	}
 }
