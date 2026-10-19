@@ -1,5 +1,10 @@
 name: Schema squirrel nightly fuzz
 
+# FORKS: this repository is PUBLIC, so a pull request from a fork must never run
+# on fleet hardware. The harness job carries the fork guard; a fork's pull
+# request gets no CI run, and a maintainer reruns it by workflow_dispatch after
+# reading the diff.
+#
 # THE SQUIRREL PORT'S NIGHTLY FUZZ (docs/PORT-SQUIRREL.md, THE CARD MAP;
 # docs/SPEC-TABLES.md §4.2). The campaign itself is
 # `make schema-squirrel-nightly-fuzz` (make/schema-squirrel-nightly-fuzz.mk):
@@ -35,14 +40,19 @@ jobs:
   # THE FAST HALF: the target, the corpus file and the control exist and the
   # planted patterns are refused. Pure Go, no sq, no corpus build.
   harness:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
+      - name: Tool presence check: go
+        run: |
+          want="$(sed -nE 's/^go ([0-9]+\.[0-9]+)$/\1/p' go.mod)"
+          got="$(go version | sed -nE 's/.*go([0-9]+\.[0-9]+).*/\1/p')"
+          if [ -z "$got" ] || [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got ($RUNNER_NAME)"
+            exit 1
+          fi
       - run: go test -count=1 -timeout 600s ./internal/ci -run '^TestSquirrelNightlyFuzz'
 
   # THE NIGHTLY CAMPAIGN on the fleet's schema runners, where the pinned sq is
@@ -54,9 +64,14 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
+      - name: Tool presence check: go
+        run: |
+          want="$(sed -nE 's/^go ([0-9]+\.[0-9]+)$/\1/p' go.mod)"
+          got="$(go version | sed -nE 's/.*go([0-9]+\.[0-9]+).*/\1/p')"
+          if [ -z "$got" ] || [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got ($RUNNER_NAME)"
+            exit 1
+          fi
       - run: make dist-squirrel
       - run: make schema-squirrel-nightly-fuzz
       - run: make schema-squirrel-nightly-fuzz-negative-control
