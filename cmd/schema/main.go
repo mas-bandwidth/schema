@@ -332,14 +332,20 @@ func main() {
 		// The unit is loaded as generate loads it, so the tests are of the
 		// same tables.
 		fs := flag.NewFlagSet("testgen", flag.ExitOnError)
-		lang := fs.String("lang", "go", "target language (go only: every other target refuses testgen by name)")
+		lang := fs.String("lang", "go", "target language (go or luau: every other target refuses testgen by name)")
 		out := fs.String("out", "generated", "output directory: the directory generate wrote")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		c.TablesBaseline = true
 		c.SchemaLock = true
 		unit := loadUnit(c, fs.Args())
-		files, err := c.Testgen(unit, *lang)
+		var files map[string][]byte
+		var err error
+		if *lang == "luau" {
+			files, err = compiler.TestgenLuau(unit)
+		} else {
+			files, err = c.Testgen(unit, *lang)
+		}
 		if err != nil {
 			fail(err)
 		}
@@ -763,7 +769,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
   schema check      [--verbose] [--fixed-record-limit N] [saved-file] [dir|files...]
   schema generate   [--lang <target>] [--out generated] [--verbose] [--fixed-record-limit N] [dir|files...]
-  schema testgen    [--lang go] [--out generated] [--verbose] [dir|files...]
+  schema testgen    [--lang go|luau] [--out generated] [--verbose] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
   schema build-version [--facts] [dir|files...]
