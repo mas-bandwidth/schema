@@ -255,13 +255,12 @@ widening; removing or renumbering a variant is still refused, and taking the
 marker off again — undeprecating — is refused by the lock. A reader that meets
 the variant yields the field's declared default, never `None` for an unknown
 name; a strict writer refuses a value that holds it with `invalid_value`; and
-a field default, a key enum's bound or a `const` naming it is refused by name.
-An enum-keyed array such as `[Enum]int32` is refused at check time for EVERY
-target as soon as the enum has any deprecated variant, whether or not the key
-names it, because the array numbers a slot by every variant (docs/SPEC-TABLES.md
-§2.15). A text-list
-spelling `[Enum]string(M)` keeps §2.13's existing text-list refusal.
-The generated constant stays, with the language's deprecation marker on it (Go:
+a field default or a `const` naming it is refused by name. An enum-keyed array
+such as `[Enum]int32` is refused at check time for EVERY target as soon as the
+enum has any deprecated variant, whether or not the key names it, because the
+array numbers a slot by every variant (docs/SPEC-TABLES.md §2.15); a text-list
+spelling `[Enum]string(M)` keeps §2.13's existing text-list refusal. The
+generated constant stays, with the language's deprecation marker on it (Go:
 a `// Deprecated:` comment). The rule in full is docs/SPEC-TABLES.md §2.15.
 
 ### flags

@@ -4592,8 +4592,9 @@ on purpose.
 
 **COMPILE TIME.** A field default or a `const` that names a deprecated variant
 is refused by name. An enum-keyed array such as `[Enum]int32` whose enum has
-ANY deprecated variant is refused at check time, for every target, by the shared checker
-(`internal/check`, `resolveKeyBound`), whose message opens `` field <field>:
+ANY deprecated variant is refused at check time, for every target, by the
+shared checker (`internal/check`, `resolveKeyBound`), whose message opens
+`` field <field>:
 the key bound [<Enum>] names variant <variant>, which is marked `| deprecated` ``
 — a keyed array numbers a slot by every variant, so a deprecated variant is no
 longer a key a new use may take.
