@@ -408,7 +408,11 @@ local function scalar_at(r: any, fd: any, kind: number, report: any): any
 	if width == 0 then report.malformed = true; return nil end
 	if r.at + width > r.e then report.malformed = true; return nil end
 	local x: any
-	if kind == 1 then x = r_u8(r) ~= 0
+	if kind == 1 then
+		-- a bool byte past 1 is malformed, and non-zero is still true (docs/SPEC-TABLES.md §3)
+		local b = r_u8(r)
+		if b > 1 then report.malformed = true end
+		x = b ~= 0
 	elseif kind == 10 then x = r_f32bits(r)
 	elseif kind == 11 then x = r_f64(r)
 	elseif kind == 2 then x = r_i8(r)
@@ -1114,8 +1118,13 @@ read_union = function(fd: any, r: any, report: any): (any, boolean)
 			u.Type = arm.tag
 		end
 	elseif arm.s == "void" then
-		-- a payload-free arm carries L = 0
-		u.Type = arm.tag
+		-- a payload-free arm carries L = 0; an L that is not zero is that
+		-- arm's own framing damage (docs/SPEC-TABLES.md §3)
+		if n ~= 0 then
+			report.malformed = true
+		else
+			u.Type = arm.tag
+		end
 	else
 		if read_arm(arm, sub, u) then u.Type = arm.tag end
 	end
