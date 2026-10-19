@@ -111,7 +111,7 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblw1:test/tables/W1.schema tblw2:test/tables/W2.schema \
-	tblr1:test/tables/R1.schema \
+	tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema \
 	tblp1:test/tables/P1.schema \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
 	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema \
@@ -119,7 +119,7 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	widedemo:examples-wide \
 	vocabdemo:tables/vocab vocab9demo:tables/vocab9 backenddemo:tables/backend
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND)
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND)
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -723,12 +723,14 @@ test-elixir: tables-elixir-variable-class
 # It is a FUNCTIONAL test, so SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain
 # into a failure, never a skip. The conformance run answers wire and report for
 # the tblv1/tblv2, tblw1/tblw2 and tblr1 instances, whose report rows
-# w1_fleet_as_w2 and w1_fleet_default_as_w2 equal the Go leg's. tblr2 and the
-# variant, arm and type-field renames are the sibling card
-# elixir-renames-variants-arms-and-type-fields.
+# w1_fleet_as_w2 and w1_fleet_default_as_w2 equal the Go leg's, and tblr2's
+# r1_cfg_as_r2 / r2_cfg_as_r1 equal the Go leg's. TestDefaultsAndTableRename-
+# Elixir pins the string, bytes and flags defaults on the wire and in the text
+# (§4.2) and every table, variant, arm and type-field rename reading an older
+# writer's bytes as the engine reads them (§5).
 .PHONY: tables-elixir-variable-fixed-class
 tables-elixir-variable-fixed-class: build/conformance/manifest.txt
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestFixedClassOnTableWireElixir
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedClassOnTableWireElixir|TestDefaultsAndTableRenameElixir'
 	./build/conformance-harness run --only elixir
 
 test-elixir: tables-elixir-variable-fixed-class
