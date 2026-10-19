@@ -71,12 +71,21 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		var keyRead strings.Builder
 		writeFieldRead(&keyRead, u, f.MapEntry, &rawKey, false, 0, false)
 		kr := keyRead.String()
+		// A mis-read key marks report.kindMismatch; the LAST occurrence of the
+		// key decides the map reset (§2.8). An exact-kind key clears the mark, a
+		// wrong kind sets it, and a WIDENED key leaves it as it was — exactly as
+		// the oracle's mapKey leaves kindBad untouched on the widened branch
+		// (internal/tablewire/decode.go mapKey). The clearing is placed inside
+		// the exact-kind read only, never in a widened branch.
 		kr = strings.Replace(kr,
 			"                } else { r.skip(kind); report.kindMismatch++; }",
-			"                    report.kindMismatch = 0;\n                } else { r.skip(kind); report.kindMismatch = 1; }", 1)
+			"                } else { r.skip(kind); report.kindMismatch = 1; }", 1)
 		kr = strings.Replace(kr,
 			"                else { r.skip(kind); report.kindMismatch++; }",
 			"                else { r.skip(kind); report.kindMismatch = 1; }", 1)
+		kr = strings.Replace(kr,
+			fmt.Sprintf("if (kind == %d) {", variableWireKind(&rawKey)),
+			fmt.Sprintf("if (kind == %d) { report.kindMismatch = 0;", variableWireKind(&rawKey)), 1)
 		b.WriteString(kr)
 		b.WriteString("        }else{r.skip(kind);}if(r.fail)return;}\n    }\n")
 	}
@@ -153,7 +162,7 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	if retain {
 		discard = fmt.Sprintf("retain.discardField(path,depth,%d);", ordinal)
 	}
-	fmt.Fprintf(b, "                    if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();%s break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}\n", m, discard)
+	fmt.Fprintf(b, "                    if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();%s break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}\n", m, discard)
 	key := ir.MapKeyField(f)
 	if key.Type.Kind == ir.TString {
 		fmt.Fprintf(b, "                    if(keyValue.key.getBytes(StandardCharsets.UTF_8).length>%d){report.clamped++;continue;}\n", key.Type.Size)

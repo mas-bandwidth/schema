@@ -16,11 +16,13 @@ import (
 )
 
 // A kind pass rewrites a map key's wire kind (Slots: int32 4 -> 5, Runs:
-// uint16 7 -> 15). The oracle's key scan (§2.8) SKIPS the mis-kind key,
-// reads a later correct key, and the desynced body tail counts malformed; it
-// never reports a kind mismatch for the skipped occurrence. The Java leg used
-// to count kind_mismatch for that occurrence: this pins the Java answer to
-// the oracle's (saved bytes and every report counter).
+// uint16 7 -> 15; plus a bad-kind key followed by a widened key, and a
+// bad-kind string key followed by a good string key). The oracle's key scan
+// (§2.8) SKIPS the mis-kind key, reads a later correct key, and the desynced
+// body tail counts malformed; it never reports a kind mismatch for the skipped
+// occurrence, a WIDENED key leaves the mis-kind mark as it was, and a correct
+// key clears it. The Java leg used to diverge on each: this pins the Java
+// answer to the oracle's (saved bytes and every report counter).
 func TestJavaFixMapKeyKind5Malformed(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -48,13 +50,24 @@ func TestJavaFixMapKeyKind5Malformed(t *testing.T) {
 		}
 		sources = append(sources, path)
 	}
-	mutants := map[string]string{
-		"Slots": "01010e340d02180205feffffff03100e0402040402000000050465000000001802040600000003100e0402040401000000050464000000000604050000000061b072303048657fec105b36194ac93dea0ce83094fde47c8be145c2cb04da4f8794b696a762b5a0e9ea716f0f0182bf0600000000000000",
-		"Runs":  "01010e300d021a020f0400030e120d0207040428000000000704042900000000001202070900030e0a0d010704045a000000000005040300000000166856b28afc7d43ec105b36194ac93dea0ce83094fde47c74a279448ee2e5b1e9ea716f0f0182bf0500000000000000",
+	type mutant struct{ root, hex string }
+	mutants := []mutant{
+		{"Slots", "01010e340d02180205feffffff03100e0402040402000000050465000000001802040600000003100e0402040401000000050464000000000604050000000061b072303048657fec105b36194ac93dea0ce83094fde47c8be145c2cb04da4f8794b696a762b5a0e9ea716f0f0182bf0600000000000000"},
+		{"Runs", "01010e300d021a020f0400030e120d0207040428000000000704042900000000001202070900030e0a0d010704045a000000000005040300000000166856b28afc7d43ec105b36194ac93dea0ce83094fde47c74a279448ee2e5b1e9ea716f0f0182bf0500000000000000"},
+		// Slots: a bad-kind key (8) then a WIDENED key (2) as the last
+		// occurrence. The widened key must leave the mis-kind mark set, so the
+		// oracle resets the map (kind_mismatch 1, widened 1, saved 24); the leg
+		// used to clear the mark on the widened key and keep the map.
+		{"Slots", "01010e310d02150208010000000202010310080401010400000000001802040600000003100e0402040401000000050464000000000604050000000061b072303048657fec105b36194ac93dea0ce83094fde47c8be145c2cb04da4f8794b696a762b5a0e9ea716f0f0182bf0600000000000000"},
+		// Docs: a bad-kind key (int32) then a good string key inside one entry.
+		// The good key must clear the mark, so the map decodes whole and the
+		// entry's own body counts one kind_mismatch for the bad occurrence; the
+		// leg used not to clear the string-key mark and reset the map.
+		{"Docs", "01010e210d0212020400000000020c05616c706861031102000b020c046265746103110300040400000000050c1a02060a66697273742070616765060b7365636f6e642070616765009f76486aa7da01abec105b36194ac93dea0ce83094fde47ce9ea716f0f0182bfffffffffffffffff58fcaffad8e04b700600000000000000"},
 	}
-	for root, hexs := range mutants {
-		root, hexs := root, hexs
-		t.Run(root, func(t *testing.T) {
+	for i, m := range mutants {
+		root, hexs, name := m.root, m.hex, fmt.Sprintf("m%d_%s", i, m.root)
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			classes := filepath.Join(t.TempDir(), "classes")
 			if err := os.MkdirAll(classes, 0o755); err != nil {
@@ -134,15 +147,9 @@ public final class Driver {
 					t.Errorf("report field %d: java=%s oracle=%s (java report %q, oracle %+v)", i, gotFields[i], wantFields[i], javaReport, want)
 				}
 			}
-			if !want.Malformed || want.KindMismatch != 0 {
-				t.Fatalf("test setup: oracle report %+v, want malformed and no kind mismatch", want)
-			}
 			encoded, err := tablewire.Encode(model, value)
 			if err != nil {
 				t.Fatal(err)
-			}
-			if len(encoded) != 24 {
-				t.Fatalf("test setup: oracle saves %d bytes, want 24", len(encoded))
 			}
 			if javaSaved != hex.EncodeToString(encoded) {
 				t.Errorf("saved bytes: java=%s oracle=%s", javaSaved, hex.EncodeToString(encoded))
