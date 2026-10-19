@@ -1182,6 +1182,21 @@ local scanKey = function(r) {
   return bytesToString(s[0]);
 };
 
+// docs/SPEC-TABLES.md 16.3: a JSON string the read would place in text
+// storage that decodes to U+0000 refuses the read, its reason naming the
+// innermost field. A string the read only SKIPS stores nothing and is not
+// this event, so the check lives at the storage call sites and never in
+// scanBytes or scanKey.
+local hasZero = function(b) {
+  for (local i = 0; i < b.len(); i++) if (b[i] == 0) return true;
+  return false;
+};
+local textZero = function(r, name) {
+  if (!("reason" in r.report) || r.report.reason == null) r.report.reason <- "text_holds_zero: " + name;
+  r.bad = true;
+  return false;
+};
+
 // ONE RFC 8259 number (read.go walkNumber, scanNumber): [token, integral] or
 // null. "1-2", "+1", "01", ".5" and "3." are not JSON.
 local scanNumber = function(r, ...) {
@@ -1416,6 +1431,7 @@ readField = function(T, c, fd, r, v, depth) {
       v[fd.member] = null;
       local s = scanBytes(r, -1);
       if (s == null) return false;
+      if (hasZero(s[0])) return textZero(r, c.name + "." + fd.name);
       v[fd.member] = bytesToString(s[0]);
       return true;
     }
@@ -1430,6 +1446,7 @@ readField = function(T, c, fd, r, v, depth) {
     case "str": {
       local s = scanBytes(r, fd.bound > 0 ? fd.bound : -1);
       if (s == null) return false;
+      if (hasZero(s[0])) return textZero(r, c.name + "." + fd.name);
       if (s[1]) r.report.clamped++;
       v[fd.member] = bytesToString(s[0]);
       return true;
@@ -1443,19 +1460,19 @@ readField = function(T, c, fd, r, v, depth) {
       return true;
     }
     case "arr":
-      if (isKeyed(fd)) return readKeyed(T, fd, r, v, depth);
-      return readArray(T, fd, r, v, depth);
+      if (isKeyed(fd)) return readKeyed(T, c, fd, r, v, depth);
+      return readArray(T, c, fd, r, v, depth);
   }
   // a SCALAR is not re-established: it is written only when a value is
   // placed, so a refused repeat leaves the first occurrence standing
-  return readScalar(T, fd, r, v, fd.member, depth);
+  return readScalar(T, fd, r, v, fd.member, depth, c.name + "." + fd.name);
 };
 
 // an array re-established before placing (read.go readArray, readTextList):
 // a fixed array keeps its bound and its tail's zeros, a bounded one counts
 // the excess clamped, a listed one reads every element; a null element of
 // an array of pointers is a null slot
-readArray = function(T, fd, r, v, depth) {
+readArray = function(T, c, fd, r, v, depth) {
   if (peek(r) != '[') { r.bad = true; return false; }
   r.p++;
   local e = fd.elem;
@@ -1495,12 +1512,13 @@ readArray = function(T, fd, r, v, depth) {
       } else {
         local s = scanBytes(r, e.shape == "str" && e.bound > 0 ? e.bound : -1);
         if (s == null) return false;
+        if (hasZero(s[0])) return textZero(r, c.name + "." + fd.name);
         if (s[1]) r.report.clamped++;
         out[placed] = bytesToString(s[0]);
       }
       placed++;
     } else {
-      if (!readScalar(T, e, r, out, placed, depth + 1)) return false;
+      if (!readScalar(T, e, r, out, placed, depth + 1, c.name + "." + fd.name)) return false;
       placed++;
     }
     ch = peek(r);
@@ -1517,7 +1535,7 @@ readArray = function(T, fd, r, v, depth) {
 // Every slot back to its zero once; an absent key keeps it; a key that names
 // no slot, "None" included, is unknown each time and never a duplicate; a
 // repeated slot is a duplicate, counted before the shape check.
-readKeyed = function(T, fd, r, v, depth) {
+readKeyed = function(T, c, fd, r, v, depth) {
   if (peek(r) != '{') { r.bad = true; return false; }
   r.p++;
   local e = fd.elem;
@@ -1550,7 +1568,7 @@ readKeyed = function(T, fd, r, v, depth) {
     } else if (valueShape(r) != shape) {
       r.report.kindMismatch++;
       if (!skipValue(r, depth + 1)) return false;
-    } else if (!readScalar(T, e, r, out, slot, depth + 1)) {
+    } else if (!readScalar(T, e, r, out, slot, depth + 1, c.name + "." + fd.name)) {
       return false;
     }
     ch = peek(r);
@@ -1767,7 +1785,7 @@ local readFlags = function(d, r, depth) {
 };
 
 // one value at one cell, holder[key] (read.go readScalar)
-readScalar = function(T, d, r, holder, key, depth) {
+readScalar = function(T, d, r, holder, key, depth, where) {
   switch (d.shape) {
     case "union": return readUnion(T, unionDesc(T, d.table), r, holder, key, depth);
     case "ptr": return readPointerCell(T, tableDesc(T, d.table), r, holder, key, depth);
@@ -1796,6 +1814,7 @@ readScalar = function(T, d, r, holder, key, depth) {
     case "str": {
       local s = scanBytes(r, d.bound > 0 ? d.bound : -1);
       if (s == null) return false;
+      if (hasZero(s[0])) return textZero(r, where);
       if (s[1]) r.report.clamped++;
       holder[key] = bytesToString(s[0]);
       return true;
