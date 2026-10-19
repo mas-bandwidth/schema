@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Shared C/C++ driver; all assertions and independent expectations live in Go.
 #include "BytesTable.h"
 #include <stdio.h>

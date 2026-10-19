@@ -8,8 +8,10 @@ independent expectations from Go's standard Base64 and JSON libraries.
 Coverage includes every alphabet symbol in each of the four positions, all
 other byte values, lengths 0–257, larger boundary lengths through 16400,
 truncation to the declared bound, missing/interspersed padding, and incomplete
-groups. Invalid Base64 retains the existing kind-mismatch/default behavior;
-JSON framing damage remains a separate report. The tests pass against the
+groups. A body that is base64 but not canonical is `base64_not_canonical` on
+the strict read and is accepted and reported by the tolerant read the drivers
+use; a body that is not base64 keeps the kind-mismatch/default behavior. JSON
+framing damage remains a separate report. The tests pass against the
 pre-optimization emitters too. The C++ table suite additionally exercises the
 variable-size `*bytes` reader, including NUL rejection.
 
