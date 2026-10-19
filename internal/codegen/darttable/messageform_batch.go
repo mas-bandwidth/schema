@@ -443,53 +443,63 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		count := fmt.Sprintf("%d", f.ArrayBound)
+		aind := ind
 		if f.Array == ir.ArrayCounted {
+			// A COUNTED ARRAY'S CLAMP IS A BLOCK: its `kept` is a local, so a
+			// second counted array in the same body does not redeclare it.
+			g.pf("%s{\n", ind)
+			aind = ind + "  "
 			count = expr + "Count"
 			if ir.TableMessageCountBits(shape) > 0 {
-				g.pf("%s%s = r.bits.get(%d) + %d;\n", ind, count, ir.TableMessageCountBits(shape), shape.Min)
-				g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
+				g.pf("%s%s = r.bits.get(%d) + %d;\n", aind, count, ir.TableMessageCountBits(shape), shape.Min)
+				g.pf("%sif (r.bits.failed) { %s; }\n", aind, bad)
 			}
 			// A COUNT ABOVE THIS READER'S OWN BOUND KEEPS THE BOUND and counts
 			// one `clamped`, exactly as the oracle's array read does
 			// (internal/tablewire/messagedecode.go, `array`; docs/SPEC-TABLES.md
 			// §3.3, §4). The elements past the bound are still read and dropped,
 			// as Go's array does.
-			g.pf("%s  final kept = %s < %d ? %s : %d;\n", ind, count, f.ArrayBound, count, f.ArrayBound)
-			g.pf("%s  if (kept != %s) { r.report.clamped++; }\n", ind, count)
+			g.pf("%s  final kept = %s < %d ? %s : %d;\n", aind, count, f.ArrayBound, count, f.ArrayBound)
+			g.pf("%s  if (kept != %s) { r.report.clamped++; }\n", aind, count)
 		} else if ir.TableMessageCountBits(shape) > 0 {
-			g.pf("%sr.bits.get(%d);\n", ind, ir.TableMessageCountBits(shape))
-			g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
+			g.pf("%sr.bits.get(%d);\n", aind, ir.TableMessageCountBits(shape))
+			g.pf("%sif (r.bits.failed) { %s; }\n", aind, bad)
 		}
 		if ir.TableMessageAligns(kind, shape) {
-			g.pf("%sif (!r.bits.align()) { %s; }\n", ind, bad)
+			g.pf("%sif (!r.bits.align()) { %s; }\n", aind, bad)
 		}
 		elem := messageElementField(f)
 		if f.Array == ir.ArrayCounted {
 			if run := messageElementRunBits(kind, shape); run >= 0 {
 				// a FIXED-WIDTH element: keep the bound and skip the surplus in
 				// one arithmetic step, as the oracle's skipRun does (§3.3)
-				g.pf("%s  for (var i = 0; i < kept; i++) {\n", ind)
-				g.emitMessageReadElement(elem, entry, expr+"[i]", ind+"  ")
-				g.pf("%s  }\n", ind)
-				g.pf("%s  if (kept != %s) {\n", ind, count)
-				g.pf("%s    if (!r.bits.skip((%s - kept) * %d)) { %s; }\n", ind, count, run, bad)
-				g.pf("%s  }\n", ind)
+				g.pf("%s  for (var i = 0; i < kept; i++) {\n", aind)
+				g.emitMessageReadElement(elem, entry, expr+"[i]", aind+"  ")
+				g.pf("%s  }\n", aind)
+				g.pf("%s  if (kept != %s) {\n", aind, count)
+				g.pf("%s    if (!r.bits.skip((%s - kept) * %d)) { %s; }\n", aind, count, run, bad)
+				g.pf("%s  }\n", aind)
 			} else {
 				// a COMPLEX element has no fixed width: walk them all and read
 				// the surplus into a dropped sink, exactly as the oracle's array
 				// walk does (§3.3)
-				g.pf("%s  for (var i = 0; i < %s; i++) {\n", ind, count)
-				g.pf("%s    if (i < kept) {\n", ind)
-				g.emitMessageReadElement(elem, entry, expr+"[i]", ind+"      ")
-				g.pf("%s    } else {\n", ind)
-				g.emitMessageDropElement(elem, entry, ind+"      ")
-				g.pf("%s    }\n", ind)
-				g.pf("%s  }\n", ind)
+				g.pf("%s  for (var i = 0; i < %s; i++) {\n", aind, count)
+				g.pf("%s    if (i < kept) {\n", aind)
+				g.emitMessageReadElement(elem, entry, expr+"[i]", aind+"      ")
+				g.pf("%s    } else {\n", aind)
+				g.emitMessageDropElement(elem, entry, aind+"      ")
+				g.pf("%s    }\n", aind)
+				g.pf("%s  }\n", aind)
 			}
-		} else {
-			g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
-			g.emitMessageReadElement(elem, entry, expr+"[i]", ind+"  ")
+			// THE READER'S OWN COUNT BECOMES THE KEPT COUNT, as Go's array does
+			// (`fv.Count = int(kept)`), so a save writes the bound and the
+			// elements it holds, not the wire's larger count.
+			g.pf("%s  %s = kept;\n", aind, count)
 			g.pf("%s}\n", ind)
+		} else {
+			g.pf("%sfor (var i = 0; i < %s; i++) {\n", aind, count)
+			g.emitMessageReadElement(elem, entry, expr+"[i]", aind+"  ")
+			g.pf("%s}\n", aind)
 		}
 	case f.Type.Kind == ir.TNamed:
 		switch r := f.Type.Ref.(type) {

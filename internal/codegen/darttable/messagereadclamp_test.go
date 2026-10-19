@@ -10,7 +10,7 @@ import (
 )
 
 // TestMessageReadClampsDeclaredRangeDart pins that the Dart message read clamps
-// a decoded scalar to the reader's own declaration and counts it, exactly as
+// a decoded value to the reader's own declaration and counts it, exactly as
 // the Go oracle does (internal/tablewire/messagedecode.go, `scalar`; docs/SPEC-
 // TABLES.md §3.3, §4). A ranged field rides at bits_required(0, max - min), so
 // an offset above max - min decodes to a value above max; the generated Dart
@@ -20,37 +20,116 @@ import (
 // the same bytes the finder traced: loaded through the generated Dart batch
 // message load and through tablewire.DecodeMessages, the six counters and body
 // one's saved bytes must agree.
+//
+// The same test carries the constructed StorePurchase vector and a synthetic
+// counted-array vector, so the card's TEST line runs every clamp the message
+// read owes. No message root declares a signed ranged field with a minimum below
+// zero: backenddemo's score, placement and quantity, messagedemo's pid and tally,
+// and graphdemo's build, quality, depth, version, seq and hits all declare
+// min = 0, and the wide roots carry no range at all. There is therefore no
+// below-min signed vector to construct; the below-min branch is the same clamp
+// the above-max vectors reach, read on the other side.
 func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
 	t.Parallel()
 
-	row := findMessageRow(t, "match_full")
-	u := batchUnit(t, row.path)
-	st := findTable(t, u, row.root)
-	if !st.IsTable || !st.FixedDeclared {
-		t.Skipf("§3.3 is a fixed table's; %s is a plain table", row.root)
-	}
-	checkMessageReadClamp(t, row, u, matchReadClampMutant)
+	t.Run("MatchResult", func(t *testing.T) {
+		t.Parallel()
+		row := findMessageRow(t, "match_full")
+		u := batchUnit(t, row.path)
+		st := findTable(t, u, row.root)
+		if !st.IsTable || !st.FixedDeclared {
+			t.Skipf("§3.3 is a fixed table's; %s is a plain table", row.root)
+		}
+		checkMessageReadClamp(t, row.root, u, matchReadClampMutant)
+	})
+
+	// The constructed second vector: a store block whose quantity field's offset
+	// rides above its declared max (99). The mutant is built by the test from the
+	// Go encoder — a StorePurchase with quantity 120 is written, whose offset 119
+	// the oracle then clamps back to 99 and counts — so the vector is never a
+	// literal and pins both the clamp and the count on a second root with a
+	// ranged field (StorePurchase's `quantity uint8 = 1 | min = 1, max = 99`).
+	t.Run("StorePurchase", func(t *testing.T) {
+		t.Parallel()
+		row := findMessageRow(t, "store_full")
+		u := batchUnit(t, row.path)
+		st := findTable(t, u, row.root)
+		if !st.IsTable || !st.FixedDeclared {
+			t.Skipf("§3.3 is a fixed table's; %s is a plain table", row.root)
+		}
+		m := tabletext.NewModel(u)
+		checkMessageReadClamp(t, row.root, u, storePurchaseClampMutant(t, m))
+	})
+
+	// The counted-array vector: a count above the reader's own bound keeps the
+	// bound, counts one `clamped`, reads and drops the surplus elements, and
+	// lands the KEPT count in the reader's storage so a save writes what the Go
+	// oracle's array does (`fv.Count = int(kept)`).
+	t.Run("CountedArray", func(t *testing.T) {
+		t.Parallel()
+		u, mutant := countedArrayClampMutant(t)
+		checkMessageReadClamp(t, "ClampBox", u, mutant)
+	})
 }
 
-// TestMessageReadClampsDeclaredRangeStorePurchaseDart is the constructed second
-// vector: a store block whose quantity field's offset rides above its declared
-// max (99). The mutant is built by the test from the Go encoder — a StorePurchase
-// with quantity 120 is written, whose offset 119 the oracle then clamps back to
-// 99 and counts — so the vector is never a literal and pins both the clamp and
-// the count on a second root with a ranged field (StorePurchase's `quantity
-// uint8 = 1 | min = 1, max = 99`).
-func TestMessageReadClampsDeclaredRangeStorePurchaseDart(t *testing.T) {
-	t.Parallel()
+// countedArrayClampSchema is a synthetic fixed unit with one counted array of
+// table elements whose wire count can exceed the declared bound of two, and a
+// field after it so a surplus element that is not consumed moves the read.
+const countedArrayClampSchema = `package probe
 
-	row := findMessageRow(t, "store_full")
-	u := batchUnit(t, row.path)
-	st := findTable(t, u, row.root)
-	if !st.IsTable || !st.FixedDeclared {
-		t.Skipf("§3.3 is a fixed table's; %s is a plain table", row.root)
-	}
+fixed table ClampItem
+{
+    n uint8 = 0 | min = 0, max = 10
+}
+
+fixed table ClampBox
+{
+    items [..2]ClampItem
+    after uint8 = 0
+}
+`
+
+// countedArrayClampMutant builds a batch whose items count is three, one above
+// the bound, from the Go encoder. The encoder writes what the instance holds;
+// the reader's own bound is what clamps, exactly as the oracle's array does.
+func countedArrayClampMutant(t *testing.T) (*ir.Unit, []byte) {
+	t.Helper()
+	u := unitFrom(t, countedArrayClampSchema)
 	m := tabletext.NewModel(u)
-	mutant := storePurchaseClampMutant(t, m)
-	checkMessageReadClamp(t, row, u, mutant)
+	inst := m.New(m.Lookup("ClampBox"))
+	var items *tabletext.Field
+	for i := range inst.Fields {
+		if inst.Fields[i].Def.Name == "items" {
+			items = &inst.Fields[i]
+		}
+	}
+	if items == nil {
+		t.Fatal("the synthetic box declares no items field")
+	}
+	items.Count = 3
+	for len(items.Elems) < items.Count {
+		items.Elems = append(items.Elems, tabletext.Cell{})
+	}
+	for i := 0; i < items.Count; i++ {
+		items.Elems[i].Tab = m.New(m.Lookup("ClampItem"))
+		for j := range items.Elems[i].Tab.Fields {
+			if items.Elems[i].Tab.Fields[j].Def.Name == "n" {
+				items.Elems[i].Tab.Fields[j].Cell.I = int64(i + 1)
+				items.Elems[i].Tab.Fields[j].Cell.U = uint64(i + 1)
+			}
+		}
+	}
+	for i := range inst.Fields {
+		if inst.Fields[i].Def.Name == "after" {
+			inst.Fields[i].Cell.I = 9
+			inst.Fields[i].Cell.U = 9
+		}
+	}
+	out, err := tablewire.EncodeMessage(m, inst)
+	if err != nil {
+		t.Fatalf("the Go encoder refused the counted-array mutant: %v", err)
+	}
+	return u, out
 }
 
 // findMessageRow returns the manifest row named `name`.
@@ -102,7 +181,7 @@ func storePurchaseClampMutant(t *testing.T, m *tabletext.Model) []byte {
 // checkMessageReadClamp answers one mutant with the Go oracle and with the
 // generated Dart batch message load, and holds the six counters and body one's
 // saved bytes equal.
-func checkMessageReadClamp(t *testing.T, row *batchRow, u *ir.Unit, mutant []byte) {
+func checkMessageReadClamp(t *testing.T, root string, u *ir.Unit, mutant []byte) {
 	t.Helper()
 	m := tabletext.NewModel(u)
 	vocabulary := &tablewire.Vocabulary{}
@@ -111,7 +190,7 @@ func checkMessageReadClamp(t *testing.T, row *batchRow, u *ir.Unit, mutant []byt
 	if err := vocabulary.AnnounceRead(announce, &oracle); err != nil {
 		t.Fatalf("the Go oracle refused the announcement: %v", err)
 	}
-	value := m.New(m.Lookup(row.root))
+	value := m.New(m.Lookup(root))
 	_, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{value}, mutant, vocabulary, &oracle)
 	if err != nil {
 		t.Fatalf("the Go oracle erred on the mutant: %v", err)
@@ -126,7 +205,7 @@ func checkMessageReadClamp(t *testing.T, row *batchRow, u *ir.Unit, mutant []byt
 	if err != nil {
 		t.Fatalf("the oracle could not re-encode body one: %v", err)
 	}
-	out, err := runBatchProbe(t, u, row.root, messageReadClampBody(row.root, announce, oracle, saved, mutant))
+	out, err := runBatchProbe(t, u, root, messageReadClampBody(root, announce, oracle, saved, mutant))
 	if err != nil {
 		t.Fatalf("the clamped message read did not run green: %v\n%s", err, out)
 	}
