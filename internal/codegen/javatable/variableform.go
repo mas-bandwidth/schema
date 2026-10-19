@@ -2673,7 +2673,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		}
 		first = false
 		fmt.Fprintf(&b, "if (id == F_%s) {\n", varMember(f))
-		writeFieldRead(&b, u, st, f, false, i)
+		writeFieldRead(&b, u, st, f, false, i, false)
 	}
 	b.WriteString("            } else if (id == TableVariable.NODE_ID) {\n")
 	if st.FixedDeclared {
@@ -3502,7 +3502,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	}
 }
 
-func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
+func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int, overlongNone bool) {
 	if variableWide(f) && f.Array == ir.ArrayNone && !f.Type.Optional {
 		writeVariableWideRead(b, f)
 		return
@@ -3533,7 +3533,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		if f.Array != ir.ArrayNone {
 			fmt.Fprintf(b, "                if(selected){TableVariable.Reader probe=new TableVariable.Reader(r.buf,r.ids,new TableVariable.Report());probe.off=r.off;probe.limit=r.limit;TableVariable.Reader ar=probe.body();selected=ar!=null&&ar.has(2)&&ar.get8()==%d;}\n", variableElemWireKind(f))
 		}
-		writeFieldRead(b, u, st, &one, retain, ordinal)
+		writeFieldRead(b, u, st, &one, retain, ordinal, overlongNone)
 		fmt.Fprintf(b, "                if(selected&&!r.fail)v.%sPresent=true;\n", m)
 		return
 	}
@@ -3631,7 +3631,14 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		} else {
 			fmt.Fprintf(b, "                        %sVariable.readFields(br, v.%s, nt, report);\n", target.Name, m)
 		}
-		fmt.Fprintf(b, "                        if (br.off != br.limit) { report.malformed = true; v.%s = new %sVariable.Value(); } // §4: reset a nested body that did not fill its length.\n", m, target.Name)
+		if overlongNone {
+			// AN ARM WHOSE TABLE BODY'S L RUNS PAST ITS TERMINATOR reads None
+			// exactly as the oracle's union read does (docs/SPEC-TABLES.md §3):
+			// the payload stops at the terminator and the arm is not selected.
+			fmt.Fprintf(b, "                        if (br.off != br.limit) { report.malformed = true; return new Value(); }\n")
+		} else {
+			fmt.Fprintf(b, "                        if (br.off != br.limit) { report.malformed = true; v.%s = new %sVariable.Value(); } // §4: reset a nested body that did not fill its length.\n", m, target.Name)
+		}
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
 	// bytes(N) rides the scalar-u8 array shape (§3.2), with a bounded copy.
