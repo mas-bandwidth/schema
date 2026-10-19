@@ -24,10 +24,11 @@ jobs:
         with:
           otp-version: "29.0.5"
           elixir-version: "1.20.4"
+      # Measured 38 s warm on the author's host (the 19 generated units
+      # compile in parallel); the planted pass is nightly because its second
+      # compile plus the long pass do not fit the one-minute fast budget.
       - name: StreamData property tests over the generated Elixir
-        run: make schema-elixir-streamdata-property-tests ELIXIR_STREAMDATA_RUNS=25
-      - name: Planted corruption makes the gate red
-        run: make schema-elixir-streamdata-property-tests-negative-control
+        run: make schema-elixir-streamdata-property-tests ELIXIR_STREAMDATA_RUNS=10
 
   nightly:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -41,3 +42,5 @@ jobs:
           elixir-version: "1.20.4"
       - name: StreamData property tests, long pass
         run: make schema-elixir-streamdata-property-tests ELIXIR_STREAMDATA_RUNS=500
+      - name: Planted corruption makes the gate red
+        run: make schema-elixir-streamdata-property-tests-negative-control

@@ -27,11 +27,6 @@ defmodule SchemaElixirStreamData do
     modules = load_modules(root)
     if modules == [], do: fail("no generated Table modules under #{root}")
 
-    tables_index =
-      Enum.reduce(modules, %{}, fn mod, acc -> Map.merge(acc, mod.descriptors()) end)
-
-    :persistent_term.put({__MODULE__, :tables}, tables_index)
-
     tables =
       Enum.flat_map(modules, fn mod ->
         mod.descriptors()
@@ -52,29 +47,38 @@ defmodule SchemaElixirStreamData do
     |> Path.join("*")
     |> Path.wildcard()
     |> Enum.filter(&File.dir?/1)
-    |> Enum.map(fn dir ->
-      table = Path.join(dir, "Table.ex")
-
-      if File.exists?(table) do
-        Code.require_file(table)
-
-        table
-        |> File.read!()
-        |> then(&Regex.run(~r/defmodule ([A-Za-z0-9_.]+)\.Table do/, &1))
-        |> case do
-          [_, mod] -> Module.concat([mod, Table])
-          _ -> nil
-        end
-      end
-    end)
+    |> Task.async_stream(&load_unit/1,
+      max_concurrency: System.schedulers_online(),
+      timeout: :infinity,
+      ordered: true
+    )
+    |> Enum.map(fn {:ok, mod} -> mod end)
     |> Enum.reject(&is_nil/1)
+  end
+
+  # Every unit is a separate module, so units compile in parallel: the corpus
+  # is large enough that a serial require_file is most of the gate's time.
+  defp load_unit(dir) do
+    table = Path.join(dir, "Table.ex")
+
+    if File.exists?(table) do
+      Code.require_file(table)
+
+      table
+      |> File.read!()
+      |> then(&Regex.run(~r/defmodule ([A-Za-z0-9_.]+)\.Table do/, &1))
+      |> case do
+        [_, mod] -> Module.concat([mod, Table])
+        _ -> nil
+      end
+    end
   end
 
   # ---- the two properties -------------------------------------------------
 
   defp roundtrip(tables, runs, seed, plant) do
     Enum.each(tables, fn {mod, name, desc} ->
-      gen = gen_desc(desc, 3)
+      gen = gen_desc(desc, 3, mod)
 
       result =
         StreamData.check_all(gen, [initial_seed: seed_tuple(seed), max_runs: runs], fn value ->
@@ -129,7 +133,7 @@ defmodule SchemaElixirStreamData do
   defp mutations(tables, runs, seed) do
     Enum.each(tables, fn {mod, name, desc} ->
       gen =
-        StreamData.bind(gen_desc(desc, 3), fn value ->
+        StreamData.bind(gen_desc(desc, 3, mod), fn value ->
           case safe_save(mod, name, value) do
             {:ok, <<>>} -> StreamData.constant({value, <<>>})
             {:ok, bytes} -> StreamData.constant({value, bytes})
@@ -220,12 +224,12 @@ defmodule SchemaElixirStreamData do
 
   # ---- value generators ---------------------------------------------------
 
-  defp gen_desc(desc, depth) do
+  defp gen_desc(desc, depth, mod) do
     if depth <= 0 do
       StreamData.constant(defaults(desc))
     else
       desc.fields
-      |> Map.new(fn f -> {f.name, gen_field(f, depth - 1)} end)
+      |> Map.new(fn f -> {f.name, gen_field(f, depth - 1, mod)} end)
       |> StreamData.fixed_map()
     end
   end
@@ -234,21 +238,19 @@ defmodule SchemaElixirStreamData do
     Map.new(desc.fields, fn f -> {f.name, Map.get(f, :default)} end)
   end
 
-  defp gen_field(%{t: :int} = f, _depth) do
-    lo = Map.get(f, :min)
-    hi = Map.get(f, :max)
+  defp gen_field(%{t: :int} = f, _depth, _mod) do
+    # width and signedness bound the value as tightly as min/max do: a value
+    # outside the declared storage cannot round-trip, it is only truncated.
+    {wlo, whi} = int_width_bounds(f)
+    lo = f |> Map.get(:min) |> then(&if(is_integer(&1), do: max(&1, wlo), else: wlo))
+    hi = f |> Map.get(:max) |> then(&if(is_integer(&1), do: min(&1, whi), else: whi))
 
-    cond do
-      is_integer(lo) and is_integer(hi) -> StreamData.integer(lo..hi)
-      is_integer(lo) -> StreamData.integer(lo..(lo + 1000))
-      is_integer(hi) -> StreamData.integer((hi - 1000)..hi)
-      true -> StreamData.integer(-1000..1000)
-    end
+    if lo <= hi, do: StreamData.integer(lo..hi), else: StreamData.constant(lo)
   end
 
-  defp gen_field(%{t: :bool}, _depth), do: StreamData.boolean()
+  defp gen_field(%{t: :bool}, _depth, _mod), do: StreamData.boolean()
 
-  defp gen_field(%{t: :float} = f, _depth) do
+  defp gen_field(%{t: :float} = f, _depth, _mod) do
     # values that are exact in the fixed-point and float32 encodings the
     # corpus uses: n / 1024 needs at most 21 bits, inside float32's mantissa
     lo = -4096
@@ -257,17 +259,17 @@ defmodule SchemaElixirStreamData do
     StreamData.map(StreamData.integer(lo..hi), fn n -> n / 1024 end)
   end
 
-  defp gen_field(%{t: :string} = f, _depth) do
+  defp gen_field(%{t: :string} = f, _depth, _mod) do
     max = min(Map.get(f, :size) || 16, 16)
     StreamData.string(:ascii, max_length: max)
   end
 
-  defp gen_field(%{t: :wstring} = f, _depth) do
+  defp gen_field(%{t: :wstring} = f, _depth, _mod) do
     max = min(Map.get(f, :size) || 16, 16)
     StreamData.string(:ascii, max_length: max)
   end
 
-  defp gen_field(%{t: :bytes} = f, _depth) do
+  defp gen_field(%{t: :bytes} = f, _depth, _mod) do
     case Map.get(f, :size) do
       n when is_integer(n) ->
         StreamData.map(StreamData.list_of(StreamData.integer(0..255), length: n), &:erlang.list_to_binary/1)
@@ -277,21 +279,21 @@ defmodule SchemaElixirStreamData do
     end
   end
 
-  defp gen_field(%{t: :enum} = f, _depth) do
+  defp gen_field(%{t: :enum} = f, _depth, _mod) do
     f.by_name |> Map.keys() |> StreamData.member_of()
   end
 
-  defp gen_field(%{t: kind} = f, depth) when kind in [:table, :record] do
+  defp gen_field(%{t: kind} = f, depth, mod) when kind in [:table, :record] do
     name = Map.get(f, :elem)
 
-    case name && table_desc(name) do
+    case name && table_desc(mod, name) do
       nil -> StreamData.constant(Map.get(f, :default) || %{})
-      desc -> gen_desc(desc, depth)
+      desc -> gen_desc(desc, depth, mod)
     end
   end
 
-  defp gen_field(%{t: :list} = f, depth) do
-    element = gen_element(f, depth)
+  defp gen_field(%{t: :list} = f, depth, mod) do
+    element = gen_element(f, depth, mod)
 
     case Map.get(f, :fixed_array) do
       n when is_integer(n) ->
@@ -303,36 +305,48 @@ defmodule SchemaElixirStreamData do
     end
   end
 
-  defp gen_field(%{t: :keyed} = f, depth) do
-    item = gen_field(f.item, depth)
+  defp gen_field(%{t: :keyed} = f, depth, mod) do
+    item = gen_field(f.item, depth, mod)
 
     f.key_names
     |> Map.new(fn key -> {key, item} end)
     |> StreamData.fixed_map()
   end
 
-  defp gen_field(%{t: kind}, _depth) when kind in [:union, :pointer, :blob, :void] do
+  defp gen_field(%{t: kind}, _depth, _mod) when kind in [:union, :pointer, :blob, :void] do
     StreamData.constant(nil)
   end
 
-  defp gen_field(%{t: :map}, _depth), do: StreamData.constant(%{})
+  defp gen_field(%{t: :map}, _depth, _mod), do: StreamData.constant(%{})
 
-  defp gen_field(f, _depth), do: StreamData.constant(Map.get(f, :default))
+  defp gen_field(f, _depth, _mod), do: StreamData.constant(Map.get(f, :default))
 
-  defp gen_element(f, depth) do
+  # A union element (kind 15) with the None arm selected is absent, and a
+  # pointer element (kind 17) with nil is a null node: both are values the
+  # schema allows and the codec must round-trip.
+  defp gen_element(%{elem_kind: 15}, _depth, _mod), do: StreamData.constant(nil)
+  defp gen_element(%{elem_kind: 17}, _depth, _mod), do: StreamData.constant(nil)
+
+  defp gen_element(f, depth, mod) do
     case Map.get(f, :elem_t) do
       :record ->
-        desc = f |> Map.get(:elem) |> table_desc()
+        desc = f |> Map.get(:elem) |> then(&table_desc(mod, &1))
 
-        if desc, do: gen_desc(desc, depth), else: StreamData.constant(%{})
+        if desc, do: gen_desc(desc, depth, mod), else: StreamData.constant(%{})
 
       :enum ->
         f.by_name |> Map.keys() |> StreamData.member_of()
 
+      kind when kind in [:union, :pointer, :blob, :void] ->
+        StreamData.constant(nil)
+
       :int ->
-        lo = f |> Map.get(:bound) |> bound(0, -1000)
-        hi = f |> Map.get(:bound) |> bound(1, 1000)
-        StreamData.integer(lo..hi)
+        {wlo, whi} = elem_int_width_bounds(f)
+        lo = f |> Map.get(:bound) |> bound(0, wlo)
+        hi = f |> Map.get(:bound) |> bound(1, whi)
+        lo = max(lo, wlo)
+        hi = min(hi, whi)
+        if lo <= hi, do: StreamData.integer(lo..hi), else: StreamData.constant(lo)
 
       :float ->
         StreamData.map(StreamData.integer(-4096..4096), fn n -> n / 1024 end)
@@ -348,13 +362,48 @@ defmodule SchemaElixirStreamData do
     end
   end
 
+  defp elem_int_width_bounds(f) do
+    size = Map.get(f, :elem_size)
+
+    if is_integer(size) and size > 0 do
+      bits = size * 8
+
+      if Map.get(f, :elem_signed, true) do
+        {-(1 <<< (bits - 1)), (1 <<< (bits - 1)) - 1}
+      else
+        {0, (1 <<< bits) - 1}
+      end
+    else
+      {-1000, 1000}
+    end
+  end
+
+  defp int_width_bounds(f) do
+    case Map.get(f, :width) do
+      width when is_integer(width) and width > 0 ->
+        bits = width * 8
+
+        if Map.get(f, :signed, true) do
+          {-(1 <<< (bits - 1)), (1 <<< (bits - 1)) - 1}
+        else
+          {0, (1 <<< bits) - 1}
+        end
+
+      _ ->
+        {-1000, 1000}
+    end
+  end
+
   defp bound({lo, hi}, 0, _), do: lo
   defp bound({_lo, hi}, 1, _), do: hi
   defp bound(_, 0, d), do: d
   defp bound(_, 1, d), do: d
 
-  defp table_desc(name) do
-    :persistent_term.get({__MODULE__, :tables}, %{}) |> Map.get(name)
+  # Tables are resolved inside the unit that declares them: the corpus has
+  # many same-named tables (Stamp, Album, Inner, ...) in different units, and
+  # a global name index would generate a value against a stranger's schema.
+  defp table_desc(mod, name) do
+    Map.get(mod.descriptors(), name)
   end
 
   defp first_diff(a, b) do

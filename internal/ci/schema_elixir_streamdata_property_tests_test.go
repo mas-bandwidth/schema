@@ -28,6 +28,7 @@ func TestElixirStreamDataPropertyGateIsWired(t *testing.T) {
 		"build/tables-generated-elixir/.stamp",
 		"SCHEMA_ELIXIR_STREAMDATA_PLANT=roundtrip",
 		"stream_data $(ELIXIR_STREAMDATA_PIN)",
+		"MIX_OS_CONCURRENCY_LOCK=0",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("make file does not carry %q", want)
@@ -76,5 +77,37 @@ func TestElixirStreamDataPropertyGateIsWired(t *testing.T) {
 	}
 	if !found {
 		t.Error("schema-elixir-streamdata-property-tests-negative-control is not registered")
+	}
+}
+
+// TestElixirStreamDataHarnessStaysInDeclaredRange pins the two harness fixes
+// that made the round-trip property honest: a generated value is drawn inside
+// the field's declared width and signedness, and a nested table is resolved in
+// the unit that declares it. Both were red at the attempt's base head: the
+// first let a uint8 be -543, the second let Graphdemo's Stamp resolve to a
+// same-named table in another unit, and either way Album re-saved to different
+// bytes. This test is the BASE-red guard for those lines.
+func TestElixirStreamDataHarnessStaysInDeclaredRange(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+
+	script, err := os.ReadFile(filepath.Join(root, "test", "elixir-streamdata", "property_main.exs"))
+	if err != nil {
+		t.Fatalf("read property script: %v", err)
+	}
+	text := string(script)
+	for _, want := range []string{
+		"defp int_width_bounds(f) do",
+		"defp elem_int_width_bounds(f) do",
+		"defp table_desc(mod, name) do",
+		"Map.get(mod.descriptors(), name)",
+		"Task.async_stream",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("property script does not carry %q", want)
+		}
+	}
+	if strings.Contains(text, ":persistent_term.get({__MODULE__, :tables}") {
+		t.Error("property script still resolves tables through a global name index")
 	}
 }

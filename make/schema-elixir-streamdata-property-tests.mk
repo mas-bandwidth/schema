@@ -20,11 +20,17 @@ ELIXIR_STREAMDATA_GEN    ?= $(CURDIR)/build/tables-generated-elixir
 ELIXIR_STREAMDATA_RUNS   ?= 100
 ELIXIR_STREAMDATA_PIN    := 1.4.0
 
+# MIX_OS_CONCURRENCY_LOCK=0 keeps Mix off its TCP lock. On a host where the
+# loopback listen is denied (a sandbox without distribution) deps.get dies with
+# "failed to acquire filesystem lock using TCP, reason: :eperm" before it ever
+# looks at the pinned package; the lock only serializes concurrent Mix runs and
+# this target is one process against its own build directory.
 ELIXIR_STREAMDATA_ENV := \
 	MIX_HOME=$(ELIXIR_STREAMDATA_BUILD)/mix \
 	HEX_HOME=$(ELIXIR_STREAMDATA_BUILD)/hex \
 	MIX_DEPS_PATH=$(ELIXIR_STREAMDATA_BUILD)/deps \
-	MIX_BUILD_PATH=$(ELIXIR_STREAMDATA_BUILD)/_build
+	MIX_BUILD_PATH=$(ELIXIR_STREAMDATA_BUILD)/_build \
+	MIX_OS_CONCURRENCY_LOCK=0
 
 .PHONY: elixir-streamdata-deps
 elixir-streamdata-deps:
