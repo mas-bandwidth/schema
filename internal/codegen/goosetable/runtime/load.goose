@@ -8,8 +8,11 @@
 // duplicate, framing damage stops the damaged nesting level and the parent
 // reads on, and a form byte this reader does not carry is refused.
 //
-// The walk is ONE function per shape behind one dispatch (load_shape), and it
-// reads nothing but the descriptors (schema_tables.goose) and the unit the
+// The walk is driven by THE LOAD DISPATCH TABLE (schema_tables.goose,
+// load_registry): each value's descriptor names its Loader, and the field,
+// element and arm positions each call one overload set on it (load_field,
+// load_item, load_payload; goose_spec.md §8.2 tag dispatch), one case function
+// per registered kind. It reads nothing but the descriptors and the unit the
 // caller hands it (LoadUnit). What it builds is the FLAT VALUE TABLE: every
 // value it decodes is a LoadVal in the caller's pool, linked by index, and
 // every node record of §3.1 is a LoadNode in the caller's node table. A form
@@ -66,13 +69,20 @@ struct LoadReport {
 // the owner table, the field's ordinal and the key variants in declared order.
 struct KeyDesc { owner: const u8[:], ordinal: i32, variants: const VariantDesc[:] }
 
+// DeprecatedVariant is one enum variant retired in place (docs/SPEC-TABLES.md
+// §2.15): the enum's name, as a field descriptor's ref names it, and the
+// variant's table-wire id. A VariantDesc does not carry `| deprecated`, so the
+// unit does (docs/PORT-GOOSE.md, THE LOADED VALUE).
+struct DeprecatedVariant { enum_name: const u8[:], id: u64 }
+
 // LoadUnit is what a load resolves names against: every table descriptor
-// (tables, map entries, packet types a table reaches), every union, and the
-// key enums of the enum-keyed arrays.
+// (tables, map entries, packet types a table reaches), every union, the key
+// enums of the enum-keyed arrays and the deprecated enum variants.
 struct LoadUnit {
     tables: const TableDesc[:],
     unions: const UnionDesc[:],
     keys: const KeyDesc[:],
+    deprecated: const DeprecatedVariant[:],
 }
 
 // LoadVal is one loaded value (docs/PORT-GOOSE.md, THE LOADED VALUE). Every
@@ -692,24 +702,60 @@ recursive fn body_at(c: LoadCtx&, r: Rd&, tab: i64, rec: i64, nested: bool, entr
     }
 }
 
-// load_shape is THE DISPATCH: one entry per shape of schema_tables.goose,
-// each a function of its own (docs/PORT-GOOSE.md, THE LOADED VALUE).
+// ---- THE DISPATCH (schema_tables.goose, load_registry; docs/PORT-GOOSE.md,
+// THE LOADED VALUE: the dispatch) ----
+
+// loader_of looks a descriptor up in the registry: the first row whose shape,
+// array kind (0: any) and wstring flag match. A shape no row registers reads
+// as a fixed-width scalar, as a header kind it does not know is skipped by
+// its width (docs/SPEC-TABLES.md §3).
+fn loader_of(d: FieldDesc) -> Loader {
+    for g in load_registry {
+        if g.shape == d.shape && g.wide == d.wide && (g.array == 0 || g.array == d.array) { return g.loader; }
+    }
+    return Loader.Scalar;
+}
+
+// load_shape is THE FIELD POSITION's dispatch: the field's Loader, then its
+// load_field case (docs/SPEC-TABLES.md §3: a field carries its own payload).
 fn load_shape(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
-    let s = d.shape;
-    if s == ShapeMap { return load_map(c, r, slot, d, owner); }
-    if s == ShapePtr || s == ShapeSBlob || s == ShapeBBlob { return load_pointer(c, r, slot, d); }
-    if s == ShapeArr && d.array == ArrayKeyed { return load_keyed(c, r, slot, d, owner); }
-    if s == ShapeArr || s == ShapeBytes {
-        let ok, selected = load_array(c, r, slot, d, -1);
-        return ok;
-    }
-    if s == ShapeStr || s == ShapeText {
-        if d.wide { return load_wide(c, r, slot, d); }
-        return load_text(c, r, slot, d);
-    }
-    if s == ShapeUnion { return load_union(c, r, slot, d.ref); }
-    if s == ShapeEnum { return load_enum(c, r, slot, d); }
-    if s == ShapeTab { return load_body(c, r, slot, d.ref); }
+    return load_field(loader_of(d), c, r, slot, d, owner);
+}
+
+// load_field: one case per registered kind, a FIELD's payload (§3).
+fn load_field(k: Loader.Scalar, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
+    return scalar_at(c, c.report, r, c.vals[slot], d, field_kind(d), field_kind(d));
+}
+fn load_field(k: Loader.Pointer, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
+    return load_pointer(c, r, slot, d);
+}
+fn load_field(k: Loader.Text, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
+    return load_text(c, r, slot, d);
+}
+fn load_field(k: Loader.Wide, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
+    return load_wide(c, r, slot, d);
+}
+fn load_field(k: Loader.Enum, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
+    return load_enum(c, r, slot, d, false);
+}
+fn load_field(k: Loader.Body, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
+    return load_body(c, r, slot, d.ref);
+}
+fn load_field(k: Loader.Array, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
+    let ok, selected = load_array(c, r, slot, d, -1);
+    return ok;
+}
+fn load_field(k: Loader.Keyed, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
+    return load_keyed(c, r, slot, d, owner);
+}
+fn load_field(k: Loader.Map, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
+    return load_map(c, r, slot, d, owner);
+}
+fn load_field(k: Loader.Union, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
+    return load_union(c, r, slot, d.ref);
+}
+fn load_field(k: Loader.Void, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
+    // no field is payload-free: the header's own kind decides, as a scalar
     return scalar_at(c, c.report, r, c.vals[slot], d, field_kind(d), field_kind(d));
 }
 
@@ -769,8 +815,11 @@ fn load_wide(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc) -> bool {
 }
 
 // load_enum: kind 30's payload is the reference to the VARIANT NAME's id; a
-// variant this reader cannot name reads None and counts unknown (§4, §5).
-fn load_enum(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc) -> bool {
+// variant this reader cannot name reads None and counts unknown (§4, §5). A
+// DEPRECATED variant (§2.15, READ) is never unknown: a field reads its
+// declared default (None when it declares none), an element (`element`) the
+// ELEMENT's default, None — the Go reference's enumCell.
+fn load_enum(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, element: bool) -> bool {
     let ref, ok = leb(c, r);
     if !ok { c.report.malformed = true; return false; }
     c.vals[slot].bits = Int128 { lo: 0, hi: 0 };
@@ -786,9 +835,27 @@ fn load_enum(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc) -> bool {
         c.report.unknown += 1;
         return true;
     }
+    if variant_deprecated(c, d.ref, id) {
+        if !element && d.has_def {
+            c.vals[slot].state = ValPresent;
+            c.vals[slot].bits = d.def_i;
+        } else {
+            c.vals[slot].state = ValEmpty;
+        }
+        return true;
+    }
     c.vals[slot].state = ValPresent;
     c.vals[slot].bits = Int128 { lo: v, hi: 0 };
     return true;
+}
+
+// variant_deprecated: the unit marks this enum's variant `| deprecated`
+// (docs/SPEC-TABLES.md §2.15).
+fn variant_deprecated(c: LoadCtx&, name: const u8[:], id: u64) -> bool {
+    for dv in c.unit.deprecated {
+        if dv.id == id && dv.enum_name == name { return true; }
+    }
+    return false;
 }
 
 // load_body: a table or packet type by value, kind 13 (§3): a body whose
@@ -906,43 +973,71 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
     return true, true;
 }
 
-// load_element decodes element i of an array (§3): a union element carries
-// its own arm header, a pointer element a node index, a scalar element
-// decodes at the element kind the header carried.
+// load_element decodes element i of an array (§3): THE ELEMENT POSITION's
+// dispatch, the element descriptor's Loader, then its load_item case.
 fn load_element(c: LoadCtx&, r: Rd&, arr: i64, e: const FieldDesc&, declared: u8, i: i64, ek: u8) -> bool {
     let es = c.vals[arr].first + i;
-    let s = e.shape;
-    if s == ShapeUnion {
-        if !has(r, 1) { c.report.malformed = true; return false; }
-        c.vals[es] = LoadVal { shape: ShapeUnion, .. };
-        return load_union(c, r, es, e.ref);
-    }
-    if s == ShapePtr || s == ShapeSBlob || s == ShapeBBlob {
-        let index, ok = leb(c, r);
-        if !ok { c.report.malformed = true; return false; }
-        resolve(c, es, e, index);
-        return true;
-    }
-    if s == ShapeEnum { return load_enum(c, r, es, e); }
-    if s == ShapeTab { return load_body(c, r, es, e.ref); }
-    if s == ShapeStr || s == ShapeText {
-        // a plain text list's element: its own L, then the text (§2.13)
-        let n, ok = leb(c, r);
-        if !ok || !fits(r, n) { c.report.malformed = true; return false; }
-        let len = n as! i64;
-        if !text_valid(c.data, r.off, len) { c.report.malformed = true; return false; }
-        var keep = len;
-        if s == ShapeStr && keep > e.bound {
-            keep = text_boundary(c.data, r.off, len, e.bound);
-            c.report.clamped += 1;
-        }
-        c.vals[es].state = ValPresent;
-        c.vals[es].off = r.off;
-        c.vals[es].len = keep;
-        r.off += len;
-        return true;
-    }
+    return load_item(loader_of(e), c, r, es, e, declared, ek);
+}
+
+// load_item: one case per registered kind, an ELEMENT's payload (§3): a union
+// element carries its own arm header, a pointer element a node index, a
+// scalar element decodes at the element kind the header carried.
+fn load_item(k: Loader.Scalar, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
     return scalar_at(c, c.report, r, c.vals[es], e, declared, ek);
+}
+fn load_item(k: Loader.Pointer, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
+    let index, ok = leb(c, r);
+    if !ok { c.report.malformed = true; return false; }
+    resolve(c, es, e, index);
+    return true;
+}
+fn load_item(k: Loader.Text, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
+    return item_text(c, r, es, e);
+}
+fn load_item(k: Loader.Wide, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
+    return item_text(c, r, es, e);
+}
+fn load_item(k: Loader.Enum, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
+    return load_enum(c, r, es, e, true);
+}
+fn load_item(k: Loader.Body, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
+    return load_body(c, r, es, e.ref);
+}
+fn load_item(k: Loader.Array, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
+    return scalar_at(c, c.report, r, c.vals[es], e, declared, ek); // no element is an array
+}
+fn load_item(k: Loader.Keyed, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
+    return scalar_at(c, c.report, r, c.vals[es], e, declared, ek); // no element is an array
+}
+fn load_item(k: Loader.Map, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
+    return scalar_at(c, c.report, r, c.vals[es], e, declared, ek); // no element is a map
+}
+fn load_item(k: Loader.Union, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
+    if !has(r, 1) { c.report.malformed = true; return false; }
+    c.vals[es] = LoadVal { shape: ShapeUnion, .. };
+    return load_union(c, r, es, e.ref);
+}
+fn load_item(k: Loader.Void, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
+    return scalar_at(c, c.report, r, c.vals[es], e, declared, ek); // no element is payload-free
+}
+
+// item_text: a plain text list's element: its own L, then the text (§2.13).
+fn item_text(c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&) -> bool {
+    let n, ok = leb(c, r);
+    if !ok || !fits(r, n) { c.report.malformed = true; return false; }
+    let len = n as! i64;
+    if !text_valid(c.data, r.off, len) { c.report.malformed = true; return false; }
+    var keep = len;
+    if e.shape == ShapeStr && keep > e.bound {
+        keep = text_boundary(c.data, r.off, len, e.bound);
+        c.report.clamped += 1;
+    }
+    c.vals[es].state = ValPresent;
+    c.vals[es].off = r.off;
+    c.vals[es].len = keep;
+    r.off += len;
+    return true;
 }
 
 // key_variants is the key enum of an enum-keyed array (§3.2).
@@ -999,7 +1094,7 @@ fn load_keyed(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool 
         var elem = Rd { off: sub.off, end: sub.off + elen };
         let es = c.vals[slot].first + at;
         if e.shape == ShapeEnum {
-            load_enum(c, elem, es, e);
+            load_enum(c, elem, es, e, true);
         } else if e.shape == ShapeTab {
             let t = table_index(c, e.ref);
             make_record(c, es, t);
@@ -1221,19 +1316,9 @@ recursive fn load_union(c: LoadCtx&, r: Rd&, slot: i64, name: const u8[:]) -> bo
             } else {
                 c.report.kind_mismatch += 1;
             }
-        } else if arm.shape == ShapeTab {
-            let t = table_index(c, arm.ref);
-            let p = fresh_record(c, t);
-            c.vals[p].state = ValPresent;
-            body_at(c, sub, t, p, true, false);
-            if c.report.count_refused { return false; }
-            if sub.off != sub.end {
-                c.report.malformed = true; // the union reads None (§3)
-            } else {
-                set_union(c, slot, tag, p);
-            }
         } else {
             load_arm(c, sub, slot, arm, tag, len);
+            if c.report.count_refused { return false; }
         }
     }
     r.off += len;
@@ -1256,61 +1341,109 @@ fn arm_fixed_width(a: FieldDesc) -> i64 {
 }
 
 // load_arm decodes ONE ARM's payload out of a reader bounded to its L (§3):
-// a fixed-width arm whose L is not its width, a reference arm whose L is not
-// its reference, and a length arm damaged inside L are the arm's own framing
-// damage — the union reads None and the parent reads on past L.
+// THE ARM POSITION's dispatch. A fixed-width arm whose L is not its width, a
+// reference arm whose L is not its reference, and a length arm damaged inside
+// L are the arm's own framing damage — the union reads None and the parent
+// reads on past L.
 fn load_arm(c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
-    if a.shape == ShapeVoid {
-        if n != 0 { c.report.malformed = true; return false; }
-        set_union(c, slot, tag, -1);
-        return true;
-    }
     let w = arm_fixed_width(a);
     if w > 0 && n != w { c.report.malformed = true; return false; }
+    return load_payload(loader_of(a), c, r, slot, a, tag, n);
+}
+
+// arm_value is the arm's one payload slot.
+fn arm_value(c: LoadCtx&, a: FieldDesc) -> i64 {
     let p = reserve(c, 1);
     c.vals[p].shape = a.shape;
-    let s = a.shape;
-    var ok = true;
-    if s == ShapePtr || s == ShapeSBlob || s == ShapeBBlob {
-        let index, good = leb(c, r);
-        if !good || r.off != r.end { c.report.malformed = true; return false; }
-        resolve(c, p, a, index);
-    } else if (s == ShapeStr || s == ShapeText) && !a.wide {
-        if !text_valid(c.data, r.off, n) { c.report.malformed = true; return false; }
-        var keep = n;
-        if s == ShapeStr && keep > a.bound {
-            keep = text_boundary(c.data, r.off, n, a.bound);
-            c.report.clamped += 1;
-        }
-        c.vals[p].state = ValPresent;
-        c.vals[p].off = r.off;
-        c.vals[p].len = keep;
-        r.off += n;
-    } else if s == ShapeStr || s == ShapeText {
-        if (n & 1) != 0 || !wide_valid(c.data, r.off, n / 2) { c.report.malformed = true; return false; }
-        var keep = n / 2;
-        if keep > a.bound {
-            keep = wide_boundary(c.data, r.off, n / 2, a.bound);
-            c.report.clamped += 1;
-        }
-        c.vals[p].state = ValPresent;
-        c.vals[p].off = r.off;
-        c.vals[p].len = keep * 2;
-        r.off += n;
-    } else if s == ShapeBytes || s == ShapeArr {
-        let aok, selected = load_array(c, r, p, a, n);
-        if aok && !selected { return false; }
-        ok = aok;
-    } else if s == ShapeUnion {
-        ok = load_union(c, r, p, a.ref);
-    } else if s == ShapeEnum {
-        ok = load_enum(c, r, p, a);
-        if ok && r.off != r.end { c.report.malformed = true; return false; }
-    } else {
-        ok = scalar_at(c, c.report, r, c.vals[p], a, a.kind, a.kind);
-    }
+    return p;
+}
+
+// arm_placed selects the arm when its payload read (§2.6).
+fn arm_placed(c: LoadCtx&, slot: i64, tag: i64, p: i64, ok: bool) -> bool {
     if !ok { return false; }
     set_union(c, slot, tag, p);
+    return true;
+}
+
+// load_payload: one case per registered kind, an ARM's payload of L bytes (§3).
+fn load_payload(k: Loader.Scalar, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
+    let p = arm_value(c, a);
+    return arm_placed(c, slot, tag, p, scalar_at(c, c.report, r, c.vals[p], a, a.kind, a.kind));
+}
+fn load_payload(k: Loader.Pointer, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
+    let p = arm_value(c, a);
+    let index, good = leb(c, r);
+    if !good || r.off != r.end { c.report.malformed = true; return false; }
+    resolve(c, p, a, index);
+    return arm_placed(c, slot, tag, p, true);
+}
+fn load_payload(k: Loader.Text, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
+    let p = arm_value(c, a);
+    if !text_valid(c.data, r.off, n) { c.report.malformed = true; return false; }
+    var keep = n;
+    if a.shape == ShapeStr && keep > a.bound {
+        keep = text_boundary(c.data, r.off, n, a.bound);
+        c.report.clamped += 1;
+    }
+    c.vals[p].state = ValPresent;
+    c.vals[p].off = r.off;
+    c.vals[p].len = keep;
+    r.off += n;
+    return arm_placed(c, slot, tag, p, true);
+}
+fn load_payload(k: Loader.Wide, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
+    let p = arm_value(c, a);
+    if (n & 1) != 0 || !wide_valid(c.data, r.off, n / 2) { c.report.malformed = true; return false; }
+    var keep = n / 2;
+    if keep > a.bound {
+        keep = wide_boundary(c.data, r.off, n / 2, a.bound);
+        c.report.clamped += 1;
+    }
+    c.vals[p].state = ValPresent;
+    c.vals[p].off = r.off;
+    c.vals[p].len = keep * 2;
+    r.off += n;
+    return arm_placed(c, slot, tag, p, true);
+}
+fn load_payload(k: Loader.Enum, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
+    let p = arm_value(c, a);
+    let ok = load_enum(c, r, p, a, false);
+    if ok && r.off != r.end { c.report.malformed = true; return false; }
+    return arm_placed(c, slot, tag, p, ok);
+}
+fn load_payload(k: Loader.Body, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
+    // a table arm's L frames the body itself (§2.6, §3)
+    let t = table_index(c, a.ref);
+    let p = fresh_record(c, t);
+    c.vals[p].state = ValPresent;
+    body_at(c, r, t, p, true, false);
+    if c.report.count_refused { return false; }
+    if r.off != r.end { c.report.malformed = true; return false; } // the union reads None (§3)
+    return arm_placed(c, slot, tag, p, true);
+}
+fn load_payload(k: Loader.Array, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
+    let p = arm_value(c, a);
+    let ok, selected = load_array(c, r, p, a, n);
+    if ok && !selected { return false; }
+    return arm_placed(c, slot, tag, p, ok);
+}
+fn load_payload(k: Loader.Keyed, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
+    let p = arm_value(c, a);
+    let ok, selected = load_array(c, r, p, a, n);
+    if ok && !selected { return false; }
+    return arm_placed(c, slot, tag, p, ok);
+}
+fn load_payload(k: Loader.Map, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
+    let p = arm_value(c, a); // no arm is a map: the header's own kind decides
+    return arm_placed(c, slot, tag, p, scalar_at(c, c.report, r, c.vals[p], a, a.kind, a.kind));
+}
+fn load_payload(k: Loader.Union, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
+    let p = arm_value(c, a);
+    return arm_placed(c, slot, tag, p, load_union(c, r, p, a.ref));
+}
+fn load_payload(k: Loader.Void, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
+    if n != 0 { c.report.malformed = true; return false; }
+    set_union(c, slot, tag, -1);
     return true;
 }
 

@@ -101,3 +101,56 @@ struct UnionDesc {
     name: const u8[:],
     arms: const FieldDesc[:],
 }
+
+// THE LOAD DISPATCH TABLE (docs/PORT-GOOSE.md, THE LOADED VALUE: the
+// dispatch; docs/SPEC-TABLES.md §3: the walk is driven by the descriptor).
+// Every walk of the variable wire — load.goose's field, element and arm
+// positions — asks `load_registry` which Loader a descriptor names, then
+// calls an overload set on that Loader: Goose's tag dispatch (goose_spec.md
+// §8.2, "case functions"), a jump table the compiler builds. A Loader is ONE
+// REGISTRATION PER KIND: a variant here, the row below that selects it, and
+// its case functions (`load_field`, `load_item`, `load_payload`, one per
+// position) in whatever runtime file carries that kind. load.goose carries
+// the case functions of the kinds the report rows exercise; a card that adds
+// a kind adds its variant and its row here and its case functions in its own
+// runtime file, and never edits load.goose. The compiler checks the set is
+// exhaustive, so a registered kind without its case functions does not build.
+enum Loader {
+    Scalar,  // a fixed-width kind: bool, the integers, the floats
+    Pointer, // kind 17: *T, *string, *bytes (§3.1)
+    Text,    // kind 12: string(N), an unbounded string
+    Wide,    // kind 33: wstring(N)
+    Enum,    // kind 30: the variant name's id (§5, §2.15)
+    Body,    // kind 13: a table or packet type by value
+    Array,   // kind 14 (or bytes, kind 6): fixed, counted and list arrays
+    Keyed,   // kind 14 over an enum key: [E]T (§3.2)
+    Map,     // map[K]V (§2.8)
+    Union,   // kind 15 (§2.6)
+    Void,    // a payload-free union arm
+}
+
+// LoadReg is one registration: the descriptor facts it matches — the shape,
+// the array kind (0: any) and wstring — and the Loader it selects. The first
+// row that matches wins, so a narrower row comes before a wider one.
+struct LoadReg { shape: u8, array: u8, wide: bool, loader: Loader }
+
+let load_registry: const LoadReg[18] = [
+    LoadReg { shape: ShapeBool, array: 0, wide: false, loader: Loader.Scalar },
+    LoadReg { shape: ShapeInt, array: 0, wide: false, loader: Loader.Scalar },
+    LoadReg { shape: ShapeFloat, array: 0, wide: false, loader: Loader.Scalar },
+    LoadReg { shape: ShapeStr, array: 0, wide: false, loader: Loader.Text },
+    LoadReg { shape: ShapeStr, array: 0, wide: true, loader: Loader.Wide },
+    LoadReg { shape: ShapeText, array: 0, wide: false, loader: Loader.Text },
+    LoadReg { shape: ShapeText, array: 0, wide: true, loader: Loader.Wide },
+    LoadReg { shape: ShapeBytes, array: 0, wide: false, loader: Loader.Array },
+    LoadReg { shape: ShapeEnum, array: 0, wide: false, loader: Loader.Enum },
+    LoadReg { shape: ShapePtr, array: 0, wide: false, loader: Loader.Pointer },
+    LoadReg { shape: ShapeSBlob, array: 0, wide: false, loader: Loader.Pointer },
+    LoadReg { shape: ShapeBBlob, array: 0, wide: false, loader: Loader.Pointer },
+    LoadReg { shape: ShapeTab, array: 0, wide: false, loader: Loader.Body },
+    LoadReg { shape: ShapeUnion, array: 0, wide: false, loader: Loader.Union },
+    LoadReg { shape: ShapeArr, array: ArrayKeyed, wide: false, loader: Loader.Keyed },
+    LoadReg { shape: ShapeArr, array: 0, wide: false, loader: Loader.Array },
+    LoadReg { shape: ShapeMap, array: 0, wide: false, loader: Loader.Map },
+    LoadReg { shape: ShapeVoid, array: 0, wide: false, loader: Loader.Void },
+];

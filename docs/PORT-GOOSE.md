@@ -383,7 +383,8 @@ bytes. `LoadReport` is §4's report: the five counters, `malformed`,
 **What it resolves names against.** `schema_rt::LoadUnit` is every table
 descriptor (tables, map entries, packet types a table reaches), every union
 descriptor, and `keys`: one `KeyDesc` per enum-keyed array (owner table,
-field ordinal, the key enum's variants). The load looks a descriptor up by
+field ordinal, the key enum's variants), and `deprecated`: one
+`DeprecatedVariant` per variant retired in place (§2.15). The load looks a descriptor up by
 the name a field's `ref` holds. Today the caller builds the unit — the probe
 builds it from the `<Name>Descriptor` globals and the IR — and
 schema-goose-vt-descriptors (the unit registry, J1) emits it.
@@ -394,7 +395,7 @@ of:
 | state | meaning | the value |
 |---|---|---|
 | `ValAbsent` | the field never rode, or rode damaged text (§3: it reads its declared default) | the descriptor's default (`has_def`, `def_*`), else the type's zero; an optional is ABSENT |
-| `ValEmpty` | the field rode and placed nothing: union None (arm 0, an unknown arm, a retyped arm), a null or unresolved pointer, enum None or an unknown variant, an optional collection whose element kind did not match | the zero of its shape; an optional is PRESENT |
+| `ValEmpty` | the field rode and placed nothing: union None (arm 0, an unknown arm, a retyped arm), a null or unresolved pointer, enum None, an unknown variant or a deprecated one with no default to read (§2.15), an optional collection whose element kind did not match | the zero of its shape; an optional is PRESENT |
 | `ValPresent` | the field rode and placed its value | in `bits`, the view, or the children |
 
 So an optional's `<Name>Present` is `state != ValAbsent`, and a construct
@@ -418,22 +419,33 @@ load follows no pointer: every record is decoded once, in index order, and a
 pointer slot holds the index it named — a later card resolves `bits` through
 `nodes[bits - 2]` (or the root at 1) into a typed reference.
 
-**The dispatch.** The walk reads only descriptors. `body_at` matches each
-header to its field by id (unknown: skip and count; another kind: widen or
-count `kind_mismatch`), then `load_shape` dispatches on the field's SHAPE to
-one function per shape: `load_pointer`, `load_text`, `load_wide`,
-`load_enum`, `load_body`, `load_array` (with `load_element` per element),
-`load_keyed`, `load_map` (with the key scan), `load_union` (with
-`load_arm`), and `scalar_at` for every fixed-width kind. Goose has no
-function values in data and no runtime-extensible overload set (function
-values are compile-time generic parameters, goose_spec.md §7.6), so the
-dispatch cannot be a table a later file appends to: every shape the
-descriptors name is carried here, because the report rows exercise all of
-them. What a construct card adds — in its own runtime file, never by editing
-load.goose — is PLACEMENT: its per-table accessor (THE TYPE MAPPING, "How a
-walk reaches a field") copies from the flat value table into the typed
-record, one `match` on the field ordinal, and joins through
-`goosetable.Register`.
+**The dispatch.** The walk reads only descriptors, and it is driven by THE
+LOAD DISPATCH TABLE in `schema_tables.goose`: `enum Loader` names one loader
+per kind (Scalar, Pointer, Text, Wide, Enum, Body, Array, Keyed, Map, Union,
+Void), and `load_registry` holds one `LoadReg` row per registration — the
+descriptor facts it matches (shape, array kind or 0 for any, wstring) and the
+Loader it selects, first match wins. `body_at` matches each header to its
+field by id (unknown: skip and count; another kind: widen or count
+`kind_mismatch`); then each of the three positions a value rides in asks
+`loader_of(desc)` and calls one overload set on the answer — `load_field`
+(a field), `load_item` (an array element) and `load_payload` (a union arm's
+L bytes). Goose has no function values in data (goose_spec.md §7.6), but a
+call on an ADT value with one case function per variant is tag dispatch, a
+compiler-built jump table (§8.2), and a namespace's overloads may sit in any
+file. So ONE REGISTRATION PER KIND is: a `Loader` variant and its
+`load_registry` row in `schema_tables.goose`, and its three case functions in
+the runtime file that carries the kind. A construct-group card that adds a
+kind adds those and never edits load.goose; the compiler refuses a variant
+whose cases are missing, since the set must be exhaustive.
+`TestGooseTableLoadDispatchTakesARegistration` holds the contract: it
+registers a probe kind over `ShapeInt` from a file of its own, with load.goose
+unchanged, and watches only that kind's rows move. The keyed slot's element
+read (`load_keyed`: an enum, a body framed by the triple's L, or a scalar)
+stays inside the Keyed loader, since its framing is not an element's. What a
+construct card adds besides — in its own runtime file — is PLACEMENT: its
+per-table accessor (THE TYPE MAPPING, "How a walk reaches a field") copies
+from the flat value table into the typed record, one `match` on the field
+ordinal, and joins through `goosetable.Register`.
 
 **What the descriptors do not say, and how the load gets it.** Three facts
 the walk needs are absent from `FieldDesc` (goosetable.go is outside this
@@ -443,9 +455,13 @@ card); each is named here so the card that owns the descriptor can add it:
   the generated entry's name;
 - an ENUM-KEYED array names no key enum: the load reads it from
   `LoadUnit.keys`;
-- a `VariantDesc` carries no `| deprecated` (§2.15): a deprecated variant
-  loads as itself rather than as the field's default. No counter moves
-  either way, so the reports match; the value differs from Go's.
+- a `VariantDesc` carries no `| deprecated` (§2.15): the load reads it from
+  `LoadUnit.deprecated` (one `DeprecatedVariant` per retired variant: the
+  enum's name and the variant's wire id). A deprecated variant is never
+  unknown: a field reads its declared default (`ValPresent`, `bits` the
+  default's ordinal) or, declaring none, None (`ValEmpty`); an element reads
+  None. `TestGooseTableLoadDeprecatedVariantReadsTheDefault` holds each value
+  to the Go reference's decode of the same bytes.
 
 **Not carried by the load yet.** Retain-unknown (§6.6,
 schema-goose-vt-retain-unknown); the region load and `DecodeRegion`'s count
