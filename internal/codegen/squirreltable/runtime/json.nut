@@ -862,6 +862,16 @@ local checkRequired = function(T, c, r, v, seen) {
   return false;
 };
 
+local countBlob = function(kind, val, g) {
+  if (val == null) return true;
+  if (val in g.blobs[kind]) {
+    g.reason = "blob_shared";
+    return false;
+  }
+  g.blobs[kind][val] <- true;
+  return true;
+};
+
 countInstance = function(T, c, v, g) {
   foreach (fd in c.fields) {
     if (!guardHolds(fd, v)) continue;
@@ -872,7 +882,9 @@ countInstance = function(T, c, v, g) {
 };
 countField = function(T, d, val, g) {
   switch (d.shape) {
-    case "sblob": case "bblob": case "str": case "bytes": return true;
+    case "sblob": return countBlob("s", val, g);
+    case "bblob": return countBlob("b", val, g);
+    case "str": case "bytes": return true;
     case "ptr": return countNode(T, tableDesc(T, d.table), val, g);
     case "arr": {
       local n = isKeyed(d) ? d.bound : writeCount(d, val);
@@ -896,6 +908,8 @@ countField = function(T, d, val, g) {
   return countCell(T, d, val, g);
 };
 countCell = function(T, d, val, g) {
+  if (d.shape == "sblob") return countBlob("s", val, g);
+  if (d.shape == "bblob") return countBlob("b", val, g);
   if (d.shape == "ptr") return countNode(T, tableDesc(T, d.table), val, g);
   if (d.shape == "union") {
     if (val == null || val.Type == null || val.Type == 0) return true;
@@ -1136,10 +1150,14 @@ writeScalar = function(T, d, val, depth, g, out) {
 };
 
 local writeText = function(T, rootName, value) {
+  _M.ToJsonReason <- null;
   local c = tableDesc(T, rootName);
-  local g = { count = {}, open = {}, labels = {}, next = 0 };
+  local g = { count = {}, open = {}, labels = {}, next = 0, blobs = { s = {}, b = {} }, reason = null };
   g.open[value] <- true;
-  if (!countInstance(T, c, value, g)) return null;
+  if (!countInstance(T, c, value, g)) {
+    _M.ToJsonReason <- g.reason;
+    return null;
+  }
   local out = [];
   if (!writeValue(T, c, value, 0, g, out)) return null;
   // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1)
