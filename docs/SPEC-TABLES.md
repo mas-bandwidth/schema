@@ -3774,7 +3774,6 @@ aligned and nothing is padded.
 ---
 
 #### THE FIRST BYTE
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **EVERY SCHEMA FILE BEGINS WITH THE FORM BYTE, AND THE REGISTRY (§3.4) IS THE
 ONLY PLACE A VALUE IS ASSIGNED.** This is the rule, stated once, that every
@@ -3788,13 +3787,13 @@ business.
   AND NEVER RENAMED.** A form that has shipped keeps its number for good, a
   number a shipped form gave up is never reused, and the registry is append-only
   because a wire nobody can date is a wire nobody can read.
-- **BYTE `0` AND ANY UNASSIGNED VALUE ARE REFUSED BY NAME.** `0` is never
+- **BYTE `0` AND ANY UNASSIGNED VALUE ARE REFUSED BY NAME.**<!-- row T3-1 feature=fixed-tables/file-envelope,variable-tables/id-table-wire --> `0` is never
   assigned, so a zero-filled buffer handed to a reader refuses rather than
   decoding; every value the registry does not carry refuses the same way, saying
-  the form is one this build does not carry. **A refusal is not damage and moves
+  the form is one this build does not carry.<!-- row T3-2 feature=fixed-tables/file-envelope,variable-tables/id-table-wire --> **A refusal is not damage and moves
   none of §4's six counters**, because nothing was decoded and there is nothing
-  to count. **THE FORM BYTE IS READ FIRST**, before any body and before any
-  trailer, so a file that is both an unknown form and damaged is a refusal.
+  to count.<!-- row T3-3 feature=fixed-tables/file-envelope,variable-tables/id-table-wire --> **THE FORM BYTE IS READ FIRST**, before any body and before any
+  trailer, so a file that is both an unknown form and damaged is a refusal.<!-- row T3-4 feature=fixed-tables/file-envelope,variable-tables/id-table-wire -->
 - **A FORM'S HEADER IS THE FORM BYTE, THEN ITS EIGHT-BYTE HASH, PADDED TO THE
   BODY'S ALIGNMENT.** The bytes are fixed for every form that has a hash:
 
@@ -3812,10 +3811,10 @@ business.
   does not need the alignment and pads anyway**, so that the bytes do not move a
   second time the day the cook and the block form join the registry under this
   same header. **THE SEVEN RESERVED BYTES ARE WRITTEN ZERO, AND A READER REFUSES
-  A NONZERO ONE, `malformed`.** They are REFUSED and not ignored because that is
+  A NONZERO ONE, `malformed`.**<!-- row T3-5 feature=fixed-tables/file-envelope --> They are REFUSED and not ignored because that is
   what keeps them SPENDABLE: a byte every reader ignores is a byte already spent,
   since the day a form wants to say something there is the day the old readers
-  have been accepting the other meaning all along. They exist to put the hash at
+  have been accepting the other meaning all along.<!-- row T3-6 feature=fixed-tables/file-envelope --> They exist to put the hash at
   `8` and the body at `16`; a later form that wants to say more takes a NEW FORM
   BYTE and never one of these, which is the same rule that keeps a version byte
   out of the layout (§3.4).
@@ -3861,16 +3860,16 @@ adding to it.
   (THE FIRST BYTE, above). It versions
   the FRAMING this section describes. A reader that meets a byte it does not know
   refuses the wire by name, saying the form is newer than the one it carries,
-  and it never reports damage. That refusal is not one of §4's events and
+  and it never reports damage.<!-- row T3-7 feature=variable-tables/id-table-wire --> That refusal is not one of §4's events and
   moves none of the report's six counters, because nothing was decoded and
-  there is nothing to count. **The form byte is read FIRST**, before the
+  there is nothing to count.<!-- row T3-8 feature=variable-tables/id-table-wire --> **The form byte is read FIRST**, before the
   trailer and before any body, so a file that is both a newer form and damaged
-  is a refusal and never damage. On a form the reader knows, a trailer it
+  is a refusal and never damage.<!-- row T3-9 feature=variable-tables/id-table-wire --> On a form the reader knows, a trailer it
   cannot read is `malformed` (below). The ESCAPE KIND (below) covers a new
   KIND inside this form, and the form byte covers a new FRAMING. **Nothing else rides in
   front**: no magic, no identity, no content hash, no build version. A file
   that must say what it is puts a field on its root table, `format uint32 = 3`,
-  which an older reader reads like any other field.
+  which an older reader reads like any other field.<!-- row T3-10 feature=variable-tables/id-table-wire -->
 - **The ROOT BODY follows the form byte and ENDS AT ITS OWN ZERO
   REFERENCE**, wherever that falls.
 - **The ID TABLE is the trailer**, and a reader locates it from the END of
@@ -4018,13 +4017,13 @@ one document rather than two.
   **The rule is the SAME rule SPEC.md §4.7 and §4.12 state, in this wire's
   idiom, and stating it once here is what makes every generated reader one
   reader.** A packet reader refuses TERMINALLY, because a bit stream that met
-  ill-formed text has no defined position to continue from. A table reader
+  ill-formed text has no defined position to continue from.<!-- row T3-20 feature=packet-wire/string-utf8-refusal,variable-tables/id-table-wire --> A table reader
   defaults-and-counts, because a length-framed field has one: `L` says where
   the next field begins whatever the payload turned out to be. **Neither
   reader ACCEPTS it**, and that is the property the two wires share. What the
   nine targets owe each other is an identical verdict on identical bytes, and
   a wire that let one target store a lone surrogate while another refused it
-  would owe them nothing.
+  would owe them nothing.<!-- row T3-21 feature=packet-wire/string-utf8-refusal,variable-tables/id-table-wire -->
 
   **So ill-formed text never reaches storage from a wire**, which is what
   keeps the write side unrescoped: an instance a tolerant load produced is
@@ -4263,16 +4262,16 @@ alone, so a reader that proved distinctness by a pairwise scan would spend
 distinct ids is about `8.6 × 10⁹`. So the id table has a MAXIMUM: a reader
 refuses as MALFORMED, on the first rule's terms, any table whose entry count
 exceeds **4096** (`kTableProbeBound` in the generated C++), whatever the buffer
-would hold. At or below it the reader proves the entries distinct with an
+would hold.<!-- row T3-11 feature=variable-tables/id-table-wire --> At or below it the reader proves the entries distinct with an
 open-addressing probe over a fixed stack table of **8192** slots — twice the
 bound, so it is never more than half full — and the walk is allocation-free
 (every read path allocates nothing), makes at most `n(n-1)/2` slot-id
 comparisons (a fixed `8,386,560` at the bound), and never falls back to a
 pairwise scan. Duplicate ids stay refused, and ids this reader cannot name stay
 legal: they are counted `unknown` exactly where a body names them, never at
-resolve time. Every table this schema's own writer emits is far under the
+resolve time.<!-- row T3-12 feature=variable-tables/id-table-wire --> Every table this schema's own writer emits is far under the
 bound, so the refusal is a reader's defense against a hostile file and no
-writer this schema can drive ever meets it.
+writer this schema can drive ever meets it.<!-- row T3-13 feature=variable-tables/id-table-wire -->
 
 **THIS FORM IS THE TOLERANT WIRE'S AND NOTHING ELSE'S.** No id, no kind
 byte, no reference and no length of this section appears in the other four
@@ -4319,7 +4318,7 @@ twenty unnameable entries counts nothing at all if no body references them.
   implementation writes fields in declaration order, and a reader must not
   rely on it: every field is found by its id, so any order decodes the same
   value, and a body carrying an id more than once is legal input, the last
-  occurrence winning. An encoder written from this section is therefore free
+  occurrence winning.<!-- row T3-14 feature=variable-tables/id-table-wire --> An encoder written from this section is therefore free
   to order fields as it likes, and byte-identical output against this
   implementation requires matching its declaration order as well as its
   framing. **First-use order in the id table follows from the write order**,
@@ -4414,14 +4413,14 @@ framing that are most of it and then sheds the kind bytes too.
 **HELD BY TEST.** Each rule above names what pins it and the one reason
 that instrument goes red.
 
-- **The form byte, and the refusal above it.** Three `report` rows, one each
+- **The form byte, and the refusal above it.**<!-- row T3-15 feature=variable-tables/id-table-wire --> Three `report` rows, one each
   for form `0`, form `3` and form `0xFF`, which are the forms no reader knows.
   Form `2` is the MESSAGE FORM and has rows of its own (§3.3).
   **The report format carries a
   REFUSAL VERDICT distinct from a clean read**, because five zero counters and
   a false flag are what a clean read prints too, and the implementation that
   lands this form adds that verdict to
-  `testdata/conformance/tables/FORMAT.md`. Red if a row prints a clean read,
+  `testdata/conformance/tables/FORMAT.md`.<!-- row T3-16 feature=variable-tables/id-table-wire --> Red if a row prints a clean read,
   or reports `malformed`, or moves a counter.
 - **The reference encoding.** The wire fuzzer's canonical-LEB pass (§4.2)
   writes every reference, length, count and index in its non-minimal
@@ -4429,10 +4428,10 @@ that instrument goes red.
 - **The reference bound, in both directions.** The fuzzer's reference pass
   sets every reference to the entry count plus one and to the extremes the
   encoding can spell, which are malformed, and to the entry count itself,
-  **which is the last legal slot and must RESOLVE**. It also sets a `0` at an
+  **which is the last legal slot and must RESOLVE**.<!-- row T3-17 feature=variable-tables/id-table-wire --> It also sets a `0` at an
   enum-keyed array's slot key and at a node record's type id, which are
   malformed. Red if a leg resolves past the table, refuses the last slot, or
-  takes a `0` at either of those two positions for an unknown name.
+  takes a `0` at either of those two positions for an unknown name.<!-- row T3-18 feature=variable-tables/id-table-wire -->
 - **The table trailer.** The fuzzer's table pass moves the entry count off by
   one each way and to its extremes, truncates the file inside the entries,
   writes one id into two entries, and leaves a byte between the root's
@@ -4468,7 +4467,7 @@ that instrument goes red.
   conformance manifest, whose pinned wire is compared byte for byte after a
   save. Red if a writer emits an id no field references, appends an id twice,
   or writes the table in any order but first use.
-- **The three reserved-id refusals** (§5, §11). No declarable name hashes to
+- **The three reserved-id refusals** (§5, §11).<!-- row T3-19 feature=compiler --> No declarable name hashes to
   the reserved node-table id `0xFFFFFFFFFFFFFFFF` (§3.1), to the reserved
   build-version id `0xFFFFFFFFFFFFFFFE` or the reserved vocabulary id
   `0xFFFFFFFFFFFFFFFD` (§3.3), or to another table's id at
@@ -4480,7 +4479,6 @@ that instrument goes red.
   the sum of the rows above it, and a row that drifts moves a pinned wire.
 
 ### 3.1 Pointers on the wire: a flat node table
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 A pointered save writes every reachable node ONCE, into a **node table**,
 and a pointer field rides as an **index** into it under kind `17`, the same
@@ -4492,7 +4490,7 @@ pointer, therefore no node table, therefore exactly the bytes §3 already
 describes.
 
 **Backend status for this section: the TOOL, C++ REFERENCE and C write it;
-the other backends refuse a pointered unit's wire by name (§11).**
+the other backends refuse a pointered unit's wire by name (§11).**<!-- row T3.1-1 feature=variable-tables/variable-class -->
 `schema pack`'s engine — the compiler-side encoder and decoder this repo runs
 as tooling (§17.1) — and the generated C++ codecs are two implementations of
 this section, written from it rather than from each other, and each reads what
@@ -4512,7 +4510,7 @@ the first three ride the TEXT surfaces too (§16.7); the chain is marked
 that is past the form's depth cap. Every backend that refuses a pointered
 unit's wire answers ABSENT for them, per case, so its FIXED-class pass is
 untouched and the gap is a number in the matrix rather than a paragraph
-somewhere. That is the row schema#349 fills, one language at a time.
+somewhere.<!-- row T3.1-2 feature=variable-tables/variable-class --> That is the row schema#349 fills, one language at a time.
 
 The C port uses the same flat node table and preserves shared identity through
 save, load, builder load and lock. Every fixed-class reader also carries kind
@@ -4682,12 +4680,12 @@ the payload opens with the count and then carries the records:
   closure whose ids collide are a compile error naming both (§11), and at 64
   bits, in a closure of a thousand tables, the chance is about
   `3 × 10⁻¹⁴`. **A type id reference of `0` is malformed**, because `0`
-  names no id and a record must say what it is (§3).
+  names no id and a record must say what it is (§3).<!-- row T3.1-3 feature=variable-tables/variable-class -->
 - The type id is what makes the node table decodable by a linear SCAN
   instead of a traversal, and that is why it is on the wire at all.
 - The **length** is canonical LEB128 like every other length on this wire
   (§3), 64 bits in capability, so a node body has no ceiling and no
-  save-time refusal stands behind one. A small body spends one byte on it.
+  save-time refusal stands behind one.<!-- row T3.1-4 feature=variable-tables/variable-class --> A small body spends one byte on it.
 - The **body** is an ordinary table body: fields, then the zero
   reference, exactly as §3 describes. Everything inside is ordinary:
   by-value nesting still nests, arrays are arrays, guards still guard, and
@@ -4708,14 +4706,14 @@ the payload opens with the count and then carries the records:
   puts no ceiling on it**, for the reason a node body has none, and the STORAGE does:
   a blob whose length is past §11's derived-size cap is refused at load and
   counted `malformed`, with every slot naming it reading null, exactly as a
-  record the numbering cannot hold is. **A TEXT blob's CONTENT is refused on
+  record the numbering cannot hold is.<!-- row T3.1-5 feature=variable-tables/blobs --> **A TEXT blob's CONTENT is refused on
   the same terms**, which is kinds `12` and `33`'s content rule met at a node
   (§3): a `*string` blob whose bytes are not well-formed UTF-8 or which
   carries a zero byte, and a `*wstring` blob with an odd length, an unpaired
   surrogate or a zero unit, is `malformed` with every slot naming it reading
-  null. A `*bytes` blob has no such rule, because it is bytes and never text.
+  null.<!-- row T3.1-6 feature=variable-tables/blobs --> A `*bytes` blob has no such rule, because it is bytes and never text.
   A record and a blob are one rule here,
-  and it is the only place a length the framing accepts is still refused.
+  and it is the only place a length the framing accepts is still refused.<!-- row T3.1-7 feature=variable-tables/blobs -->
 - **A blob is numbered as every node is**: first visit, depth-first, in the
   slot's declaration order, and it has no descent — a blob reaches nothing.
   Two slots that name one blob name one index, and the record is written once.
@@ -4729,7 +4727,7 @@ the payload opens with the count and then carries the records:
   because §3.3's tail announces every reserved id whether or not the root
   names it. A reader that names the id and meets a length past the field it
   rides in refuses the whole table as **malformed**, as it refuses any record
-  that does; nothing reads a blob's bytes from outside its record. A blob record under a `*T` slot, or a table record under a `*bytes`
+  that does; nothing reads a blob's bytes from outside its record.<!-- row T3.1-8 feature=variable-tables/blobs --> A blob record under a `*T` slot, or a table record under a `*bytes`
   slot, is the type-id check below: **kind mismatch**, pointer null. A
   `*bytes` slot, a `*string` slot and a `*wstring` slot are three ids for the
   same reason `string(N)`, `bytes(N)` and `wstring(N)` are three kinds on this
@@ -4838,7 +4836,7 @@ bounds-checked and stored, never followed. There is no traversal on the
 load path, and therefore no traversal bound — no depth cap, no visited
 set, no ordering rule on the indices. The nesting that remains is
 by-value nesting, whose depth is fixed by the SCHEMA and cannot be driven
-by data, because §2 refuses by-value cycles. §14 records the two
+by data, because §2 refuses by-value cycles.<!-- row T3.1-9 feature=variable-tables/variable-class --> §14 records the two
 traversal bounds that were weighed and rejected, and why a type id
 removes the walk instead of bounding it.
 
@@ -4849,11 +4847,11 @@ slots. §2.1's own example — a large `*Palette` several parents share — is
 one node on the wire, in a builder and in a region alike (§6.3).
 
 **A data cycle is refused at SAVE FROM A BUILDER, and the refusal is
-free.** The numbering walk carries one entry per reachable node — that
+free.**<!-- row T3.1-10 feature=variable-tables/variable-class --> The numbering walk carries one entry per reachable node — that
 map IS identity; a node must know its index to be named twice — so
 colouring each entry while its descent is open costs one bit: a reference
 to an entry still open is a cycle, named, and measure, save, `Cook` and
-`Lock` all return failure. Nothing recurses away. The map is proportional
+`Lock` all return failure.<!-- row T3.1-11 feature=variable-tables/variable-class --> Nothing recurses away. The map is proportional
 to NODES, never to bytes, and it lives on the AUTHORING side, where §6.5
 licenses allocation.
 
@@ -4862,11 +4860,11 @@ LOCKED region needs no map — the region's node directory (§6.3) already
 is the numbering — so it reproduces the structure it was handed, cycle
 and all. A region `Lock` produced is acyclic because `Lock` refused
 otherwise; a region LOADED from a wire is exactly as acyclic as its
-writer made it. Load itself is safe on any input: it scans, it
+writer made it.<!-- row T3.1-12 feature=variable-tables/variable-class --> Load itself is safe on any input: it scans, it
 terminates, it fabricates nothing. What a cyclic structure costs is paid
 by whatever WALKS it, and a consumer walking untrusted table data — a
 reflection dump, a text export (§16) — carries its own visit bound, the
-way any graph walker must. §14 prices the reader-side check this version
+way any graph walker must.<!-- row T3.1-13 feature=variable-tables/variable-class --> §14 prices the reader-side check this version
 does not spend.
 
 **Framing, worked.** Given
@@ -4962,10 +4960,9 @@ null, so it is not written at all. **`B.palette = 4` names an index ABOVE
 the node that carries it and `A.palette = 4` names one BELOW**: indices run
 in the walk's order, and no reference has to respect that order. What no
 reference in a save can do is name index `1`, because reaching the root
-again is reaching an entry still open — the cycle refusal, above.
+again is reaching an entry still open — the cycle refusal, above.<!-- row T3.1-14 feature=variable-tables/variable-class -->
 
 ### 3.2 Enum-keyed arrays on the wire: slots by name
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 An enum-keyed array (§2.4) rides as **kind `16`, its own kind**, and its
 body opens as an array's does, `element kind (u8)` and then the count.
@@ -4986,10 +4983,10 @@ element carries:
   element per named variant and not one more. **A stored key reference of
   `0` is MALFORMED** rather than an unknown variant, because `0` names no id
   at all (§3) and a slot must say which variant it keys, so a body carrying one
-  is damaged rather than merely foreign. The reader stops that body, keeps
+  is damaged rather than merely foreign.<!-- row T3.2-1 feature=variable-tables/enum-keyed-arrays --> The reader stops that body, keeps
   what it decoded, and flags malformed (§4).
 - **Slots are written in ascending variant ordinal**, and a reader must
-  not rely on it — the field-order rule (§3) one level down. Every slot is
+  not rely on it — the field-order rule (§3) one level down.<!-- row T3.2-2 feature=variable-tables/enum-keyed-arrays --> Every slot is
   found by its key, so any order decodes the same value; byte-identical
   output against this implementation requires matching the ascending order
   as well as the framing.
@@ -5007,7 +5004,7 @@ element carries:
   field-level rule (§3) applied inside the body.
 - **A key with no name on the WRITING side is a save error**, not a silent
   `None`: measure and save return failure, exactly as they refuse an
-  unnameable enum value or an out-of-range union tag (§5).
+  unnameable enum value or an out-of-range union tag (§5).<!-- row T3.2-3 feature=variable-tables/enum-keyed-arrays -->
 
 The contrast is the point. A plain `[E.Max]T` array is POSITIONAL:
 insert a variant in the middle and every later slot lands one place off,
@@ -5017,7 +5014,7 @@ present slot, two bytes where both are small, and it closes that class. The corp
 generation step, and the negative control — encoding the slots
 positionally — turns the middle-insert test red. **The positional array is
 refused in a table body and a union arm, on the bound's provenance and not
-on its spelling** (§2.4). A `type` the table closure holds rides keyed there
+on its spelling** (§2.4).<!-- row T3.2-4 feature=variable-tables/enum-keyed-arrays --> A `type` the table closure holds rides keyed there
 as every enum-extent array does, on schema#606's ruling (§2.4): its kind `13`
 body carries the array under kind `16`, not the positional kind `14`.
 
@@ -5037,7 +5034,6 @@ variable-length class allocates by nature, and a union arm may allocate in
 a backend whose language has no native union.
 
 ### 3.3 The message form: a batch of bitpacked bodies under one announced vocabulary
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **THE DESIGN STATEMENT, in the owner's words.** *"Let's optimize it for
 bandwidth. It can't and won't be exactly as efficient as types, but we can make
@@ -5064,14 +5060,13 @@ unchanged. Nothing in this subsection touches a file.
 (§2.2). A message is a bitpacked body under a vocabulary announced once, so the
 shape a reader steps through has to be one the declaration fixes: `fixed table
 T` may ride here, a plain `table T` may not, and a message-form request naming
-one is REFUSED naming the table (§11) rather than quietly writing another form.
+one is REFUSED naming the table (§11) rather than quietly writing another form.<!-- row T3.3-1 feature=variable-tables/message-form -->
 The FILE form is every table's, fixed and variable alike, and is where a
 variable root goes.
 
 ---
 
 #### The scope is the ANNOUNCEMENT, not the transport
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **The requirement is on the ANNOUNCEMENT and nothing else. It is delivered
 ONCE, RELIABLY, BEFORE THE FIRST BODY, and never again for the life of the
@@ -5090,37 +5085,37 @@ UDP either.
 - **On an UNRELIABLE channel, ONE BATCH PER DATAGRAM.** A datagram carries a
   whole batch and never part of one, because a bit stream has no resynchronizing
   point and a batch cut in half is a batch that cannot be read.
-- **A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME.** Nothing is
+- **A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME.**<!-- row T3.3-2 feature=variable-tables/message-form --> Nothing is
   decoded, no counter moves and `malformed` does not fire. The reader says it
   holds no vocabulary for the peer and names the build version if one was ever
   read.
 - **NO RE-ANNOUNCEMENT, EVER.** The first announcement sets the vocabulary and
   it is the only one that can. A second is refused by name and does not replace
-  or amend anything. **The library RETURNS A REFUSAL and nothing more, and
+  or amend anything.<!-- row T3.3-3 feature=variable-tables/message-form --> **The library RETURNS A REFUSAL and nothing more, and
   CLOSING THE CONNECTION IS THE APPLICATION'S ACT**, because this library owns
   no socket and a caller may well want to log the peer, count it, or answer it
-  on a channel of its own before the connection goes. A refused announcement
+  on a channel of its own before the connection goes.<!-- row T3.3-4 feature=variable-tables/message-form --> A refused announcement
   sets NO vocabulary, so every body after it is refused for want of one, which
-  is what makes the refusal safe to hold rather than urgent to act on.
+  is what makes the refusal safe to hold rather than urgent to act on.<!-- row T3.3-5 feature=variable-tables/message-form -->
 - **REFUSAL IS TERMINAL, and a refused FIRST announcement is the one the
-  connection gets.** A connection whose first announcement was refused, for
+  connection gets.**<!-- row T3.3-6 feature=variable-tables/message-form --> A connection whose first announcement was refused, for
   any reason, carries no vocabulary for its life: the refusal is a state the
   connection enters and not a call that failed, and every announcement after
   it is refused as `second_announcement`, whether or not the first set
-  anything. That is what makes "once, for the life of the connection" true as
+  anything.<!-- row T3.3-7 feature=variable-tables/message-form --> That is what makes "once, for the life of the connection" true as
   stated and the one-announcement work budget (SECURITY, below) a bound rather
   than a hope: a peer whose announcement was refused holds no retry on that
   connection, and a peer that wants another try wants a new connection, which
-  starts with an empty vocabulary like any other.
+  starts with an empty vocabulary like any other.<!-- row T3.3-8 feature=variable-tables/message-form -->
 - **STRICT MODE IS OPT-IN, and the default is unchanged.** A caller sets
   `TableVocabulary.Strict` before `AnnounceRead`. With it set, an announcement
   whose build version is not the unit's own is refused by the name
   `build_version_mismatch`, sets no vocabulary, keeps the peer's build version,
   moves no counter and is never `malformed`, and is terminal like every refused
-  first announcement. The refusal carries a typed error,
+  first announcement.<!-- row T3.3-9 feature=variable-tables/message-form --> The refusal carries a typed error,
   `TableBuildVersionMismatch`, whose `Peer` and `Own` are the peer's version and
   the unit's own, reached with `errors.As` through `TableReport.Err`, which
-  returns it for this reason and nil on a clean read. With `Strict` unset the
+  returns it for this reason and nil on a clean read.<!-- row T3.3-10 feature=variable-tables/message-form --> With `Strict` unset the
   reader stays tolerant exactly as before, and closing the connection remains
   the application's act.
 - **A STATELESS REQUEST-RESPONSE TRANSPORT IS OUT OF SCOPE, by name.** A request
@@ -5143,7 +5138,6 @@ constant byte array with a length (below).
 ---
 
 #### The primitive is a BATCH
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **A BATCH OF BODIES IS THE UNIT THIS FORM READS AND WRITES, and a single message
 is the batch of one.** The owner's ruling: *"Make sure that the primitive is that
@@ -5159,34 +5153,34 @@ with one message passes one and pays a count of eight bits for it.
 
 **THE BATCH SURFACE'S FIVE ANSWERS, each stated rather than left to a codec.**
 
-- **`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME.** `MeasureMessages`
+- **`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME.**<!-- row T3.3-11 feature=variable-tables/message-form --> `MeasureMessages`
   and `SaveMessages` both refuse and return `-1`, and neither writes consecutive
-  batches into one buffer. **The `-1` carries its reason on the carrier
+  batches into one buffer.<!-- row T3.3-12 feature=variable-tables/message-form --> **The `-1` carries its reason on the carrier
   `LoadMessages` already uses**: the `TableReport` each of the three verbs
   takes as its last parameter, with its refusal verdict set and the reason
-  `batch_too_large` on it, never an exception. The variable form's `LoadMeasure`
+  `batch_too_large` on it, never an exception.<!-- row T3.3-13 feature=variable-tables/message-form --> The variable form's `LoadMeasure`
   carries its own `-1` on the file's vocabulary (§7), and this form does not
   borrow it: a message-form reason rides the message path in both directions
   (§7's note on the two vocabularies), so the write side and the read side
-  answer a refusal one way and neither is a special case. The refusal is
+  answer a refusal one way and neither is a special case.<!-- row T3.3-14 feature=variable-tables/message-form --> The refusal is
   learned at MEASURE time, before a buffer is allocated, which is the point of
-  measuring first. Concatenating
+  measuring first.<!-- row T3.3-15 feature=variable-tables/message-form --> Concatenating
   batches was declined because it invents a second framing level the wire does
   not describe, and because it would break the one-batch-per-datagram rule
   silently for a caller who passed three hundred bodies to an unreliable
   channel. **A caller with more bodies calls again**, which is one loop in the
   application and no rule at all on the wire.
-- **`M` ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME.** The
+- **`M` ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME.**<!-- row T3.3-16 feature=variable-tables/message-form --> The
   count is eight bits and is read before any body, so `LoadMessages` compares it
-  to the storage it was handed and refuses before it decodes anything. Nothing
+  to the storage it was handed and refuses before it decodes anything.<!-- row T3.3-17 feature=variable-tables/message-form --> Nothing
   is decoded, no counter moves and `malformed` does not fire, on the form byte's
   own precedent. **The refusal reason is `batch_too_large` on both sides**,
   covering the wire's 256 and the caller's capacity for the reason
   `vocabulary_too_large` covers two bounds: a caller reads a reason and then
-  reads the two numbers itself. **The reader sets the returned count to the
+  reads the two numbers itself.<!-- row T3.3-18 feature=variable-tables/message-form --> **The reader sets the returned count to the
   wire's `M` before it returns the refusal**, so the caller holds the number it
   was short by without parsing a byte of the wire itself, and its recovery is
-  one call again with a capacity at or above that count.
+  one call again with a capacity at or above that count.<!-- row T3.3-19 feature=variable-tables/message-form -->
 - **DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`.** The returned count
   states `k - 1`, ONE `malformed` counts, and nothing at or after body `k` is
   read. The caller's storage for body `k` holds whatever the decode had put in
@@ -5229,7 +5223,6 @@ what §2.6 is for.
 ---
 
 #### The wire, exactly
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **A form-`2` wire is THREE PARTS: the FORM BYTE, the BODY COUNT, and the BODIES
 AS ONE CONTINUOUS BIT STREAM.**
@@ -5246,7 +5239,7 @@ zero pad to the next byte boundary                 (verified zero)
 
 - **The FORM BYTE is a whole byte and is read FIRST**, before the count and
   before any body, so a form a reader does not know is a REFUSAL by name and
-  never damage. That is §3's rule unchanged and it is the reason this form could
+  never damage.<!-- row T3.3-20 feature=variable-tables/message-form --> That is §3's rule unchanged and it is the reason this form could
   replace its own body without a new number (below).
 - **THE COUNT IS A RANGED INTEGER OVER `[1, 256]`**, which is
   `bits_required(1, 256)` = 8 bits carrying `M - 1`. **256 IS A WIRE CONSTANT OF
@@ -5254,7 +5247,7 @@ zero pad to the next byte boundary                 (verified zero)
   and two peers that disagreed on the width would not be reading the same wire.
   A caller with more bodies writes more than one batch, and `SaveMessages`
   refuses an `M` above 256 by name rather than concatenating batches on its
-  behalf (above). **A BATCH OF ZERO IS NOT SPELLABLE**, and a caller with
+  behalf (above).<!-- row T3.3-21 feature=variable-tables/message-form --> **A BATCH OF ZERO IS NOT SPELLABLE**, and a caller with
   nothing to send writes nothing at all.
 - **A BODY ENDS AT ITS OWN ZERO REFERENCE**, which is what a body has always
   been, and the NEXT BODY BEGINS AT THE NEXT BIT. There is no per-message
@@ -5300,10 +5293,10 @@ buys something this wire needs and none of them is derivable:
 | an UNBOUNDED ARRAY `[]T` and a MAP | the count at **THIRTY-TWO RAW BITS**, then the elements, and a map's elements are its `{ key, value }` bodies in ascending key order as §2.8 states |
 
 **THE ENUM AND THE UNION ARE THE TWO PLACES THIS FORM REFUSES THE PACKET WIRE'S
-ANSWER, and the reason is the whole reason the table wire exists.** A packet
+ANSWER, and the reason is the whole reason the table wire exists.**<!-- row T3.3-87 feature=variable-tables/message-form --> A packet
 enum is its declaration ORDINAL and a packet union is its POSITIONAL TAG, which
 are correct for a wire whose two peers hold one protocol id and refuse each
-other otherwise. Here they are not: a variant inserted in the middle of an enum
+other otherwise.<!-- row T3.3-88 feature=variable-tables/message-form --> Here they are not: a variant inserted in the middle of an enum
 would leave every stored ordinal meaning a different variant on the two builds,
 read in silence, which is the one class this wire exists to make impossible. So
 a variant and an arm ride by NAME, at a reference's width, and a name this
@@ -5328,7 +5321,7 @@ damage, terminal for the batch like all damage here. **The reserved-id rule
 outranks this one**: a reserved id anywhere but its own transport is malformed
 (below, §3.1), so an ENUM's reference naming the node-table id refuses on that
 rule and never reaches the kind-`0` test, even though the node-table id is
-announced at kind `0`.
+announced at kind `0`.<!-- row T3.3-89 feature=variable-tables/message-form -->
 
 **THREE THINGS COUNT AT THIRTY-TWO RAW BITS, and none of them is a special
 case**: an UNBOUNDED ARRAY's count, a MAP's count, and a BLOB NODE's byte length
@@ -5339,7 +5332,7 @@ is thirty-two. A blob node's length is fixed by the node table's own framing
 (below), because a blob type id is announced at kind `0` and carries no shape.
 **They are NOT refused on this form**, because a message form that could not
 carry the constructs the language carries would be a second language, and the
-mission is one type system rather than a wire's subset of one. What it costs is
+mission is one type system rather than a wire's subset of one.<!-- row T3.3-90 feature=variable-tables/message-form --> What it costs is
 four bytes where a bounded array costs a handful of bits, and that is what a
 declared bound buys on this wire: `[..1000]T` spends ten bits on its count and
 `[]T` spends thirty-two.
@@ -5428,7 +5421,6 @@ arithmetic and lands the same bits.
 ---
 
 #### The announcement
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **THE ANNOUNCEMENT IS AN ORDINARY FORM-`1` FILE, and it carries the VOCABULARY
 IN ITS BODY.** It needs no second form byte, no envelope and no rule of its own
@@ -5468,9 +5460,9 @@ the trailer:
   checks are the two facts an announcement's body must carry, so a body without
   them says the bytes are not an announcement rather than that this peer
   declined to announce, and `no_vocabulary` is left to what it names, a BODY
-  from a peer that never announced. **The build version is kept the moment it
+  from a peer that never announced.<!-- row T3.3-22 feature=variable-tables/message-form --> **The build version is kept the moment it
   is read**, refusal or not, so a refusal on that connection names it (above);
-  it is not the vocabulary, and a refused announcement still sets none.
+  it is not the vocabulary, and a refused announcement still sets none.<!-- row T3.3-23 feature=variable-tables/message-form -->
 - **THE WHOLE ANNOUNCEMENT IS A COMPILE-TIME CONSTANT OF THE UNIT**, every byte
   of it settled by the compiler, so a backend emits `Announce` and
   `AnnounceMeasure` as a constant byte array and its length rather than as a
@@ -5548,10 +5540,10 @@ index above `count` on the wire is REJECTED, as the packet wire rejects it, and
 is never reconstructed and clamped.** The width can spell such an index
 whenever `count` is not one less than a power of two, ten bits spelling `1023`
 over a `count` of `1000`, and SPEC.md §4.3's read and `serialize.h`'s
-`serialize_compressed_float` refuse it. The message form refuses it the same
+`serialize_compressed_float` refuse it.<!-- row T3.3-91 feature=variable-tables/message-form --> The message form refuses it the same
 way, at that field and terminally for the batch (DAMAGE, below), because the
 message form quantizes and reads floats by the packet wire's rule bit for bit
-and there is one rule for both wires. The ranged-offset paragraph below, which
+and there is one rule for both wires.<!-- row T3.3-92 feature=variable-tables/message-form --> The ranged-offset paragraph below, which
 reconstructs and clamps, is a rule for the ranged integer kinds and does not
 reach the quantized float. Two roundings on each side, never one, and never a
 float64 anywhere: that is the
@@ -5562,7 +5554,7 @@ and a float decoded from either is the same float. A triple whose `delta` or
 `delta / res` is not finite in float32, whose `min` is not below `max`, or
 whose `res` is not above zero is a declaration SPEC.md calls non-conforming,
 and on the announcement it is a hostile width like any other (SECURITY, below):
-the announcement is refused and no vocabulary is set. What the rule costs is
+the announcement is refused and no vocabulary is set.<!-- row T3.3-93 feature=variable-tables/message-form --> What the rule costs is
 stated once: file to message to file reproduces a compressed float only when
 the float already lies on the announced grid, because the file carries the raw
 float and the message carries its nearest grid point, and an off-grid value, a
@@ -5579,16 +5571,16 @@ sender's `max` has a width and a base, so the value reconstructs as `base` plus
 the offset, the reader's own bound applies, and `clamped` counts if it fires.
 The position after the field is known either way, which is the whole test, and a
 reader that refused here would be refusing a body over a value rather than over
-a framing. This is the ranged integer kinds' rule and it does not reach the
+a framing.<!-- row T3.3-94 feature=variable-tables/message-form --> This is the ranged integer kinds' rule and it does not reach the
 quantized float, whose index above `count` refuses as the packet wire refuses
 it (the quantization paragraph, above): the float's rule is the packet wire's
-rule bit for bit, and the packet wire rejects there.
+rule bit for bit, and the packet wire rejects there.<!-- row T3.3-95 feature=variable-tables/message-form -->
 
 **THE ESCAPE KIND `31` IS THE ONLY PATH A LATER-MAJOR WRITER HAS ON THIS FORM**,
 because an announcement carrying a kind outside the closed set is malformed and
 refused WHOLE (below), so a later major cannot introduce a kind and be read at
 all, and what it can do is ride a payload this reader steps over by an explicit
-length.
+length.<!-- row T3.3-96 feature=variable-tables/message-form -->
 
 **THE TWO RESERVED IDS OF THE ANNOUNCEMENT ITSELF ARE NOT IN THE VOCABULARY.**
 The build version and the vocabulary are the announcement's own transport, they
@@ -5626,7 +5618,7 @@ behavior. **An element kind of `12` or `33` in an announced array or keyed
 shape is malformed there too**, because no declaration this language accepts is
 an array of `string(N)` or of `wstring(N)`, so such a shape is refused once at
 the announcement rather than accepted there and refused again by the skip that
-would meet it.
+would meet it.<!-- row T3.3-24 feature=variable-tables/message-form -->
 
 **THREE PROPERTIES FOLLOW from announcing the unit rather than the message.**
 
@@ -5658,14 +5650,14 @@ well as about work, and this is where that memory lives.
   and `LoadMeasure` after it. A resolved vocabulary declared inside a read
   call would be a table rebuilt per batch, which is the property's opposite.
 - **THE ENTRY BOUND IS THAT CAPACITY, and an announcement above it is refused
-  by name as `vocabulary_too_large` before an entry is touched.** The bound is
+  by name as `vocabulary_too_large` before an entry is touched.**<!-- row T3.3-25 feature=variable-tables/message-form --> The bound is
   a number the CALLER states rather than a number the wire could name: sizing
   for the largest vocabulary the wire can spell would be sizing for a peer
   that does not exist. **A GENERATED CONSTANT GIVES THE UNIT'S OWN ENTRY
   COUNT**, which is the exact capacity a receiver that talks only to peers of
   its own schema declares, because the vocabulary is a pure function of the
   build version (above); a receiver that means to meet other builds declares
-  more, and either way the refusal is what answers a peer it did not size for.
+  more, and either way the refusal is what answers a peer it did not size for.<!-- row T3.3-26 feature=variable-tables/message-form -->
   **4096 REMAINS THE CONFORMING DEFAULT** where a receiver's storage is grown
   rather than declared, which is what a language with a growable array does,
   and the byte bound's 64 KiB does not move (SECURITY, below).
@@ -5698,19 +5690,19 @@ the other's, and two peers at different build versions is the ordinary case.
 **THE BUILD VERSION KEYS THE VOCABULARY AND NEVER GATES THE CONNECTION.** §20.5
 stands: peers connect on the protocol id and may differ in build version, and a
 receiver NEVER refuses a body because the announced build version is not its
-own. Reading a message from another build is the ordinary case this whole wire
+own.<!-- row T3.3-27 feature=variable-tables/message-form --> Reading a message from another build is the ordinary case this whole wire
 exists for. What the key buys is that the vocabulary a build announces is
 derivable from that build alone, that a refusal can name the build version it
 could not resolve, and that a vocabulary and the bodies under it are traceable
-to one compilation of one unit in a log.
+to one compilation of one unit in a log.<!-- row T3.3-28 feature=variable-tables/message-form -->
 
 **The shape declined, and why.** The obvious alternative is to key the
 vocabulary off a field the application already declares, the way a login request
 already carries a `client_build`. It was declined for three reasons. The compiler
 cannot know which of a unit's tables is a connection's first message, so the
-nomination would be new grammar and a new refusal for a schema that got it wrong.
+nomination would be new grammar and a new refusal for a schema that got it wrong.<!-- row T3.3-29 feature=variable-tables/message-form -->
 A nominated field is a field, which means it elides at its declared default, so
-the one message that must carry the key is the one message that may not. And a
+the one message that must carry the key is the one message that may not.<!-- row T3.3-30 feature=variable-tables/message-form --> And a
 receiver that meets a body it cannot resolve has to name what it lacks before it
 has decoded anything, which a field inside the body it cannot decode cannot give
 it. The reserved id costs eight bytes once a connection and has none of those
@@ -5719,7 +5711,6 @@ problems.
 ---
 
 #### Elision, defaults, and what a reader reports
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **ELISION, DEFAULTS AND THE READ REPORT ARE UNCHANGED.** A field at its declared
 default is not written, an empty string, array, union or all-default nested
@@ -5728,7 +5719,7 @@ rather than content decides `?T` and `*T`. The declared default is part of the
 wire contract exactly as §3 and §4 state it. The counters keep their meanings and
 their sources, `retained` and `retain_lost` keep theirs (§6.6), and this form
 adds no counter and moves none. **The only report-side addition is a REASON on
-the refusal verdict**, which the form byte already introduced.
+the refusal verdict**, which the form byte already introduced.<!-- row T3.3-31 feature=variable-tables/message-form -->
 
 **AN ENTRY THIS READER CANNOT NAME IS §4's ORDINARY `unknown`**, counted when a
 field, a variant, an arm or a key names it, and never at resolve time. The
@@ -5746,7 +5737,6 @@ variable form and is why the shapes carry ranges at all.
 ---
 
 #### Damage is terminal for the batch, and that is the price of bits
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **A BYTE-FRAMED BODY HAS A PLACE TO RESUME AND A BIT STREAM DOES NOT.** §3's
 recovery rule, that a damaged nested body costs only that body because its `L`
@@ -5807,7 +5797,7 @@ string, a nested table, an array, a union or anything holding one, has to be
 WALKED, element by element by its announced shape, and discarded as it goes. The
 walk is bounded by the batch's own bits and stores nothing, so it is linear in
 the surplus and allocates not at all, which is what keeps it a clamp and not a
-refusal. **The reader counts ONE `clamped` for the array**, as §4 says, however
+refusal.<!-- row T3.3-32 feature=variable-tables/message-form --> **The reader counts ONE `clamped` for the array**, as §4 says, however
 many elements it walked past. **A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A
 LIVE DESTINATION**: a fixed-width surplus is stepped over by the arithmetic and
 never decoded at all, and a walked one decodes into a sink the reader throws
@@ -5816,7 +5806,6 @@ away, so element zero is element zero either way.
 ---
 
 #### Form byte `2` keeps its number, and the byte body is replaced
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **THE BITPACKED BODY TAKES FORM BYTE `2`. It does not take `3`.** The byte-framed
 message body landed in this repository (#549) and was never released: no tagged
@@ -5829,21 +5818,20 @@ carry.
 The alternative was to take `3` and leave `2` as a form no writer writes. It was
 declined because it costs forever what it saves once: every reader in nine
 languages would carry a byte-framed message path for a wire no peer sends, or
-refuse `2` by name and explain why in every page that names the kind space. The
+refuse `2` by name and explain why in every page that names the kind space.<!-- row T3.3-33 feature=variable-tables/message-form --> The
 corpus's form-`2` goldens are the bitpacked bodies' own, re-pinned by the codec
 change this section landed, which is what a golden is for.
 
 **The form byte is exactly what made this safe**, and stating that is the point:
 a reader meets a byte it does not know, refuses by name, and never reports
-damage (§3). A wire that had shipped would have taken `3` on that same rule.
+damage (§3).<!-- row T3.3-34 feature=variable-tables/message-form --> A wire that had shipped would have taken `3` on that same rule.
 
 ---
 
 #### Retention, and what does not move
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **RETENTION (§6.6) ON A MESSAGE BODY: the load side is unchanged and the save
-side REFUSES.** The C++ reference and the compiler's own engine carry both
+side REFUSES.**<!-- row T3.3-35 feature=variable-tables/message-form --> The C++ reference and the compiler's own engine carry both
 halves of this paragraph.
 
 `LoadRetain` reads a form-`2` body as it reads a file's, the resolving walk
@@ -5858,16 +5846,16 @@ TAKES ONE REGION AND ONE RETENTION BUFFER A BODY**, because each body carries
 its own node directory inside that one region (above), so a record's first step
 stays an index into the directory of the body it came from and `SaveRetain`'s
 accounting is the variable form's unchanged. **`SaveRetain` writing form `2` REFUSES BY NAME
-and returns `-1`.** A form-`2` writer names entries through slots of a
+and returns `-1`.**<!-- row T3.3-36 feature=variable-tables/message-form --> A form-`2` writer names entries through slots of a
 vocabulary the compiler settled, and a retained id is by definition one this
 build's closure does not contain, so it has no slot AND no announced shape, which
 is two reasons rather than one. **The caller's own retained-id list does not
 answer it either** (§6.6): that list names ids into a FILE's trailer, which a
 file reader reads, and a form-`2` receiver reads slots and shapes from an
 announcement it never got. It is a MISUSE refusal on §6.6's own precedent
-and **never a silent drop**. The two answers are named. A caller that must carry
+and **never a silent drop**.<!-- row T3.3-37 feature=variable-tables/message-form --> The two answers are named. A caller that must carry
 unknowns across a rewrite writes the VARIABLE form, which carries its own table and
-takes §6.6 unchanged. **A RELAY needs neither**: a service forwarding another
+takes §6.6 unchanged.<!-- row T3.3-38 feature=variable-tables/message-form --> **A RELAY needs neither**: a service forwarding another
 peer's messages forwards that peer's announcement and its batch bytes verbatim,
 which is exact, allocates nothing and loses nothing.
 
@@ -5897,7 +5885,7 @@ for byte, which is what every vector below is.
 **FORM `2` IS A STREAM FORM AND NEVER A FILE'S OWN FORM.** `schema pack` writes form
 `1`, `schema unpack` reads form `1`, and a reader handed a form-`2` wire where a
 file was expected refuses by name: a batch stored on its own is not readable,
-because its vocabulary is somewhere else. That cost is the form's one real one
+because its vocabulary is somewhere else.<!-- row T3.3-39 feature=variable-tables/message-form --> That cost is the form's one real one
 and it is stated rather than hidden. proto3 makes the same trade, since a
 `.proto` is required out of band, and the build version is what makes this one
 nameable: a receiver says which build's vocabulary it lacks.
@@ -5952,11 +5940,10 @@ it.
 ---
 
 #### THE SURFACE, OWED TO §11's CLAIMED SET
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 Every name here is a name a user may still take until the checker refuses it,
 so the claim is deliberately not made in this page's own change, on §6.6's
-precedent.
+precedent.<!-- row T3.3-40 feature=variable-tables/message-form -->
 
 - **`TableVocabulary`** in the unit-scope registry beside `TableReport` and
   `TableRetain`, holding one direction's RESOLVED entries. It indexes the
@@ -5964,11 +5951,11 @@ precedent.
   shape, above), so the announcement is free the moment `AnnounceRead`
   returns. Its **`Strict`** field is the message form's opt-in (above): set
   before `AnnounceRead`, a peer announcement whose build version is not the
-  unit's own is refused as `build_version_mismatch`. The refusal is reported
+  unit's own is refused as `build_version_mismatch`.<!-- row T3.3-41 feature=variable-tables/message-form --> The refusal is reported
   as the typed error **`TableBuildVersionMismatch`** — `Peer` and `Own` are
   the two 64-bit versions — reached with `errors.As` through
   **`TableReport.Err`**, which returns it for this reason and nil on a clean
-  read.
+  read.<!-- row T3.3-42 feature=variable-tables/message-form -->
 - **`Announce`, `AnnounceMeasure` and `AnnounceRead`** in the unit scope beside
   `UnitView`. The announcement is a COMPILE-TIME CONSTANT of the unit, so a
   backend emits the first two as a constant byte array and its length rather
@@ -5982,12 +5969,12 @@ precedent.
   (§6.6), PLURAL for the same reason and claimed on §11's own rule because it
   is emitted. It takes one retention buffer a BODY, parallel to the caller's
   array of roots, and there is no measure and no save beside it: retention
-  writing form `2` is `SaveRetainMessages`, which refuses by name (above).
+  writing form `2` is `SaveRetainMessages`, which refuses by name (above).<!-- row T3.3-43 feature=variable-tables/message-form -->
 - **The refusal reason values `no_vocabulary`, `second_announcement`,
   `build_version_mismatch`, `vocabulary_too_large`, `batch_too_large` and
   `message_form_as_file`** beside
-  the form byte's own `newer_form`. `build_version_mismatch` is the strict
-  opt-in's refusal (above). `vocabulary_too_large` covers both bounds,
+  the form byte's own `newer_form`.<!-- row T3.3-44 feature=variable-tables/message-form --> `build_version_mismatch` is the strict
+  opt-in's refusal (above).<!-- row T3.3-45 feature=variable-tables/message-form --> `vocabulary_too_large` covers both bounds,
   the entry count and the vocabulary's bytes, and `batch_too_large` covers both
   of its own, `M` above 256 on the write side and `M` above the caller's
   capacity on the read side, because a caller reads a reason and then reads the
@@ -6008,7 +5995,6 @@ caller's storage and reports how many bodies it read, and neither allocates.
 ---
 
 #### SECURITY
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 - **A RECEIVER NEITHER CHECKS NOR NEEDS TO CHECK THAT A VOCABULARY MATCHES THE
   BUILD VERSION IT CAME WITH.** It cannot: it does not hold the sender's schema,
@@ -6027,7 +6013,7 @@ caller's storage and reports how many bodies it read, and neither allocates.
   `0xFFFFFFFFFFFFFFFF` as an entry's id are each MALFORMED on the
   announcement, which is a form-`1` file and takes §3's rule that a wire it
   cannot read whole is malformed whole. The announcement is refused, no
-  vocabulary is set, and the check runs once at `AnnounceRead` and never again.
+  vocabulary is set, and the check runs once at `AnnounceRead` and never again.<!-- row T3.3-46 feature=variable-tables/message-form -->
   A width a reader accepted is a width bounded by the kind it came under, so no
   field on any body can ask a reader to move more bits than a `u128` holds.
   **"What the kind can hold" is TWO CEILINGS and both are named**: a `string`
@@ -6053,12 +6039,12 @@ caller's storage and reports how many bodies it read, and neither allocates.
   iterations with them. An element that RESOLVES something is walked, because a
   resolve that contradicts its position is damage the reader must still find,
   and every such element costs at least a reference, so the batch's own bits
-  bound the walk. An unbounded array's count is bounded the same way the node
+  bound the walk.<!-- row T3.3-47 feature=variable-tables/message-form --> An unbounded array's count is bounded the same way the node
   count is, by the bits that back it at one bit an element.
-- **A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS ALLOCATED.** A
+- **A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS ALLOCATED.**<!-- row T3.3-48 feature=variable-tables/message-form --> A
   file's table is bounded by the file's own length and a connection's vocabulary
   is bounded by nothing the wire carries, so **a receiver declares a maximum and
-  refuses an announcement above it by name**. The bound is TWO numbers, because
+  refuses an announcement above it by name**.<!-- row T3.3-49 feature=variable-tables/message-form --> The bound is TWO numbers, because
   an entry is no longer a fixed width: **the ENTRY bound is the capacity of the
   resolved vocabulary the receiver declared** (the storage shape, above), with
   **4096 the conforming default where storage is grown rather than declared**,
@@ -6069,12 +6055,12 @@ caller's storage and reports how many bodies it read, and neither allocates.
 - **THERE IS NO ANNOUNCEMENT STORM, because there is no second announcement.**
   One announcement a direction is the whole of the resolve work a connection can
   ask for, and a peer that sends a second is refused by name, the application
-  closing the connection or not as it chooses. A REFUSED first announcement is
+  closing the connection or not as it chooses.<!-- row T3.3-50 feature=variable-tables/message-form --> A REFUSED first announcement is
   that one (the scope, above): the refusal is terminal, every announcement after
   it is `second_announcement`, and a peer cannot buy a second resolve by having
-  its first refused. That is
+  its first refused.<!-- row T3.3-51 feature=variable-tables/message-form --> That is
   the security half of ruling out re-announcement, and it is why the rule is a
-  refusal rather than a rate limit.
+  refusal rather than a rate limit.<!-- row T3.3-52 feature=variable-tables/message-form -->
 - **A REFERENCE STORM IS LINEAR AND ALLOCATES NOTHING.** A reference is
   `bits_required(0, E)` bits and resolves through one array index against a
   vocabulary bounded above, so a batch that is nothing but references costs one
@@ -6085,12 +6071,12 @@ caller's storage and reports how many bodies it read, and neither allocates.
 - **THE BATCH COUNT ALLOCATES NOTHING BY ITSELF.** It is bounded at 256 by the
   wire and it is READ BEFORE ANY BODY, so a count above the caller's storage is
   a refusal by name with nothing decoded, and a count of 256 over storage for
-  two never reaches a second body. The count sizes nothing a reader owns.
+  two never reaches a second body.<!-- row T3.3-53 feature=variable-tables/message-form --> The count sizes nothing a reader owns.
 - **Every §3 malformed rule already covers the announcement**, because it is a
   file: a trailer that cannot be read whole, a count whose `8 x count + 8` runs
   past the front, bytes left between the body's terminator and the first entry,
   and a table carrying one id twice are each the whole wire malformed, and a
-  refused announcement leaves the connection with no vocabulary at all.
+  refused announcement leaves the connection with no vocabulary at all.<!-- row T3.3-54 feature=variable-tables/message-form -->
 
 ---
 
@@ -6372,15 +6358,14 @@ entries announces about 5 KB once.
 ---
 
 #### HELD BY TEST
-<!-- spec-pins owed schema-spec-pin-s3a -->
 
 - **The form byte's rows.** A form-`2` wire read as a FILE, which must REFUSE and
-  not decode. A form-`2` batch with no announcement, which must refuse naming the
-  missing vocabulary. Red if either prints a clean read, reports `malformed`, or
+  not decode.<!-- row T3.3-55 feature=variable-tables/message-form --> A form-`2` batch with no announcement, which must refuse naming the
+  missing vocabulary.<!-- row T3.3-56 feature=variable-tables/message-form --> Red if either prints a clean read, reports `malformed`, or
   moves a counter.
 - **The round trip across the forms.** For each of the twelve vectors, loading
   the variable form and saving the message form must reproduce the message form's
-  pinned bytes, and the reverse must reproduce the variable form's. Red if one byte
+  pinned bytes, and the reverse must reproduce the variable form's.<!-- row T3.3-57 feature=variable-tables/message-form --> Red if one byte
   differs in either direction, which is the negative control on every rule here
   that says the VALUE does not move. The two exceptions the round-trip
   paragraph states, a mask's bits above W and a compressed float off the grid,
@@ -6415,23 +6400,23 @@ entries announces about 5 KB once.
   `0xC2055C2A` and no neighbor of it. And a batch carrying the index `1023`
   under the first declaration, whose `count` is `1000` and whose ten bits spell
   it: the read refuses as malformed at that field, exactly as
-  `serialize_compressed_float` refuses it, and nothing after it is read. Red if
+  `serialize_compressed_float` refuses it, and nothing after it is read.<!-- row T3.3-58 feature=variable-tables/message-form --> Red if
   a leg computes in float64, rounds once where the rule rounds twice, differs
   from the packet wire's index or float by one, clamps the index above the
   count to `count` or to any float instead of refusing, or reproduces `0.005`,
   `0.123` or `11.0` out of the file it
-  wrote.
-- **A refused first announcement.** A connection whose first announcement is
+  wrote.<!-- row T3.3-59 feature=variable-tables/message-form -->
+- **A refused first announcement.**<!-- row T3.3-60 feature=variable-tables/message-form --> A connection whose first announcement is
   refused as `vocabulary_too_large`, then a well-formed announcement, then a
   body: the second announcement refuses as `second_announcement` and sets
   nothing, and the body refuses as `no_vocabulary` with nothing decoded and no
-  counter moved. Red if a leg accepts the second announcement, sets a
+  counter moved.<!-- row T3.3-61 feature=variable-tables/message-form --> Red if a leg accepts the second announcement, sets a
   vocabulary from it, or decodes the body.
 - **A reference at and above the entry count.** The fuzzer's reference pass
   (§4.2) with the vocabulary announced: every reference set to `E`, which is the
   last legal slot and must RESOLVE, and to `E + 1` and to the largest the width
-  can spell, which are damage. Red if a leg resolves past `E`, refuses `E`,
-  discards the fields decoded BEFORE the bad reference, or reads a body after it.
+  can spell, which are damage.<!-- row T3.3-62 feature=variable-tables/message-form --> Red if a leg resolves past `E`, refuses `E`,
+  discards the fields decoded BEFORE the bad reference, or reads a body after it.<!-- row T3.3-63 feature=variable-tables/message-form -->
 - **Damage is terminal.** A batch of three bodies with damage planted inside the
   SECOND, and the same damage planted inside a NESTED body of the second. Red if
   a leg reads the third body, counts more than one `malformed`, or discards the
@@ -6445,7 +6430,7 @@ entries announces about 5 KB once.
   whole bound; and one at the bound ending in a multi-byte code point, which
   lands whole and counts nothing. Red if a leg stores text the variable form
   refuses, cuts a clamp inside a code point, keeps fewer bytes than the bound
-  admits, or counts `clamped` on a payload that fits.
+  admits, or counts `clamped` on a payload that fits.<!-- row T3.3-64 feature=variable-tables/message-form -->
 - **The same content rule met at a NODE.** A `*string` blob record on a
   form-`2` body carrying a truncated sequence, one carrying a zero byte, one
   carrying an overlong encoding and one carrying a lead byte UTF-8 never
@@ -6454,22 +6439,22 @@ entries announces about 5 KB once.
   ill-formed bytes under the reserved `bytes` id, which loads with a silent
   report too, because a `*bytes` blob is bytes and never text. Red if a leg
   places a record the variable form refuses, refuses a record the variable form places,
-  or reads a `*bytes` blob as text.
+  or reads a `*bytes` blob as text.<!-- row T3.3-65 feature=variable-tables/message-form -->
 - **The pad, and what follows it.** A batch whose trailing bits to the byte
   boundary are not zero, and a buffer carrying a whole batch and then a byte
   more. Red if a leg reads either clean.
 - **The batch's five answers.** A `SaveMessages` and a `MeasureMessages` of 257
-  bodies, each refusing by name and writing nothing. A `LoadMessages` of a
+  bodies, each refusing by name and writing nothing.<!-- row T3.3-66 feature=variable-tables/message-form --> A `LoadMessages` of a
   256-body batch into storage for eight, refusing by name with no counter moved
-  and nothing decoded, its returned count reading 256. A three-body batch damaged inside the second, whose
-  returned count must be one. And a pointered batch measured once and loaded
+  and nothing decoded, its returned count reading 256.<!-- row T3.3-67 feature=variable-tables/message-form --> A three-body batch damaged inside the second, whose
+  returned count must be one.<!-- row T3.3-68 feature=variable-tables/message-form --> And a pointered batch measured once and loaded
   into ONE region. Red if a leg writes consecutive batches, decodes a body before
   refusing on capacity, leaves the returned count at the caller's capacity,
-  returns two or three for the damaged batch, or asks for a region a body.
+  returns two or three for the damaged batch, or asks for a region a body.<!-- row T3.3-69 feature=variable-tables/message-form -->
 - **The mask's width.** A `flags` field of three variants in a message and in a
   file, whose message payload is three bits and whose file payload is eight
   bytes, and a file load carrying a bit above the reader's W saved into a
-  message, which must drop it. Red if a leg writes sixty-four bits on a message,
+  message, which must drop it.<!-- row T3.3-70 feature=variable-tables/message-form --> Red if a leg writes sixty-four bits on a message,
   or keeps the appended bit through the message round trip and so contradicts the
   row §4 states as moved.
 - **The wide string's width.** A `wstring(8)` of eight code units, 128 bits on
@@ -6478,7 +6463,7 @@ entries announces about 5 KB once.
 - **The counts the data decides.** An unbounded array, a map and a `*bytes`
   blob node in one message, each carrying a thirty-two bit count or length. Red
   if a leg sizes any of the three from a declaration, or refuses the construct on
-  this form.
+  this form.<!-- row T3.3-71 feature=variable-tables/message-form -->
 - **A reference of the wrong sort.** An enum reference naming a field-name entry,
   and a union arm reference naming a kind-`0` entry. Each malformed, terminal for
   the batch. Red if a leg counts `unknown`, or reads a field after either.
@@ -6491,7 +6476,7 @@ entries announces about 5 KB once.
   reconstructing it and clamping to its own bound with one `clamped`.
 - **An over-long array of a NON-FIXED-WIDTH element.** A writer's `[..16]` of
   `string(32)` read by a `[..4]`, whose four kept elements must be followed by
-  the field that comes after the array. Red if a leg lands on the wrong bit,
+  the field that comes after the array.<!-- row T3.3-72 feature=variable-tables/message-form --> Red if a leg lands on the wrong bit,
   which the following field's value catches, or counts more than one `clamped`.
 - **A wide vocabulary.** The `vocabdemo` unit below, whose vocabulary passes 128
   entries so a reference is 8 bits, and a second generated unit sized so a
@@ -6500,7 +6485,7 @@ entries announces about 5 KB once.
   a byte.
 - **The shapes, one row a kind.** An announcement carrying every kind of the
   closed set with its shape, and a body carrying an UNKNOWN entry of each kind
-  that must be SKIPPED exactly and counted once. Red if any kind's skip lands on
+  that must be SKIPPED exactly and counted once.<!-- row T3.3-73 feature=variable-tables/message-form --> Red if any kind's skip lands on
   the wrong bit, which the following field's value catches.
 - **A range that moved.** A body written by a peer whose `score` runs to 100000
   read by one whose `score` runs to 200000, and the reverse. Red if a leg drops
@@ -6514,8 +6499,8 @@ entries announces about 5 KB once.
   announces, two entries that agree on all three parts, an array over element
   kind `12` and a keyed entry over element kind `33`, and a shape
   running past the vocabulary field's `L`. Each a refusal by name, and red if a
-  leg allocates or reads a body after one. Beside them each ceiling's own
-  value, which must be ACCEPTED: an unbounded array announces the array one.
+  leg allocates or reads a body after one.<!-- row T3.3-74 feature=variable-tables/message-form --> Beside them each ceiling's own
+  value, which must be ACCEPTED: an unbounded array announces the array one.<!-- row T3.3-75 feature=variable-tables/message-form -->
 - **A zero-width element under a wide count.** An array announced over
   `[2, 2^32 - 1]` whose element is a ranged `uint32` with `min` equal to `max`,
   so an element rides no bits at all, under a count of `2^31 + 1`, which is six
@@ -6531,42 +6516,42 @@ entries announces about 5 KB once.
   table records carry NO length and end at their own zero reference, whose blob
   records carry a thirty-two bit length and align, and whose indices are
   `bits_required(0, node count)` wide. Beside it a root reaching no node, which
-  must carry no node-table reference at all. Red if the node table is not first,
+  must carry no node-table reference at all.<!-- row T3.3-76 feature=variable-tables/message-form --> Red if the node table is not first,
   if a record carries a length, if an index is a fixed width, if an empty
   numbering is written, or if the node-table id or a type id is missing from the
   vocabulary.
-- **A refused second announcement.** A connection carrying two. Red if the second
+- **A refused second announcement.**<!-- row T3.3-77 feature=variable-tables/message-form --> A connection carrying two. Red if the second
   sets, replaces or amends a vocabulary, or if it is anything but a refusal by
-  name.
+  name.<!-- row T3.3-78 feature=variable-tables/message-form -->
 - **The announcement's two strict checks, and its tolerance.** Rows for the build
   version absent, present twice, under a kind other than `9` and at a width that
   is not eight, and rows for the vocabulary absent, present twice and under a
   wrong element kind, each MALFORMED, because a failed strict check says the
   bytes are not an announcement rather than that this peer declined to
   announce. A row carrying an UNKNOWN field beside both,
-  which must set the vocabulary and count one `unknown`. Red if a failed check
+  which must set the vocabulary and count one `unknown`.<!-- row T3.3-79 feature=variable-tables/message-form --> Red if a failed check
   sets a vocabulary, reports a refusal rather than damage, or if the tolerant
-  row refuses. Beside them a refused announcement whose build version WAS read,
-  which must name it.
+  row refuses.<!-- row T3.3-80 feature=variable-tables/message-form --> Beside them a refused announcement whose build version WAS read,
+  which must name it.<!-- row T3.3-81 feature=variable-tables/message-form -->
 - **The two bounds.** An announcement one entry above the entry bound, and one a
   byte above the byte bound with a legal entry count. Red if a leg touches an
-  entry before refusing either.
+  entry before refusing either.<!-- row T3.3-82 feature=variable-tables/message-form -->
 - **The three reserved ids where they do not belong.** A row planting each of
   `0xFFFFFFFFFFFFFFFF`, `0xFFFFFFFFFFFFFFFE` and `0xFFFFFFFFFFFFFFFD` as a
   field's id in a FILE body and in a nested file body, which must count
-  `malformed` and nothing else. A row planting `0xFFFFFFFFFFFFFFFE`,
+  `malformed` and nothing else.<!-- row T3.3-83 feature=variable-tables/message-form --> A row planting `0xFFFFFFFFFFFFFFFE`,
   `0xFFFFFFFFFFFFFFFD` and a second `0xFFFFFFFFFFFFFFFF` as an entry's id in an
   ANNOUNCEMENT's vocabulary, which must refuse the announcement as malformed and
-  set no vocabulary. A message body carries references and never an id, so it
+  set no vocabulary.<!-- row T3.3-84 feature=variable-tables/message-form --> A message body carries references and never an id, so it
   has no row here. Red if any counts or sets anything else.
   The compiler's collision hook is pointed at all three (§5, §11). Red if the
   checker accepts a planted name, or accepts it as a `was`.
 - **Retention across the forms.** A body loaded with retention and saved in form
   `2`, which must return `-1` and write nothing, and the same load saved in form
-  `1`, which must write every retained record under §6.6's rules. The C++ reference holds
+  `1`, which must write every retained record under §6.6's rules.<!-- row T3.3-85 feature=variable-tables/message-form --> The C++ reference holds
   the form 2 half as a COMPILE-TIME refusal that names itself (§6.6), and the
   form 1 half rides in the reference's own retain gate; the suite gains the
-  row when a second port carries retention.
+  row when a second port carries retention.<!-- row T3.3-86 feature=variable-tables/message-form -->
 - **The cost rows.** The twelve pinned wires, the batch vector and the
   announcement. A byte figure in the table above that drifts moves a pinned wire.
 
