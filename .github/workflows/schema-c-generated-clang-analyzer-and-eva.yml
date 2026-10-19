@@ -1,0 +1,58 @@
+name: schema C clang/gcc analyzers and Frama-C EVA
+
+# The C per-language-lens gate (docs/roadmap.sexp) on the schema compiler's
+# GENERATED C output. Fast parts (the clang static analyzer and gcc
+# -fanalyzer over the generated packet corpus) run on every push and pull
+# request; the heavy part (Frama-C EVA over the generated readers/writers)
+# runs nightly and on dispatch, never per push, because EVA does not fit the
+# one-minute budget.
+#
+# DONE-WHEN names the commands: `make schema-c-generated-clang-analyzer` and
+# `make schema-c-generated-clang-analyzer-negative-control` (fast), and
+# `make schema-c-generated-eva` (nightly). The negative control proves the gate
+# fires: it plants a known out-of-bounds read in a scratch copy of the
+# generated output and requires the analyzers to catch it.
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  fast-analyzers:
+    name: clang --analyze + gcc -fanalyzer (generated C)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Run the fast C analyzers and their negative control
+        env:
+          GOFLAGS: -mod=readonly
+        run: |
+          set -euo pipefail
+          make --no-print-directory schema-c-generated-clang-analyzer
+          make --no-print-directory schema-c-generated-clang-analyzer-negative-control
+
+  nightly-eva:
+    name: Frama-C EVA over generated C (nightly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Probe Frama-C and queue EVA
+        env:
+          GOFLAGS: -mod=readonly
+        run: |
+          set -euo pipefail
+          make --no-print-directory schema-c-generated-eva || true

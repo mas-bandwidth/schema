@@ -619,6 +619,14 @@
       "targets": [
         "tables-go-view-negative-controls"
       ]
+    },
+    {
+      "name": "schema-c-analyzer",
+      "when": "pull-request",
+      "why": "the C per-language-lens gate's planted-pattern control: a scratch copy of the generated C output carries a planted out-of-bounds read and the clang/gcc analyzers must catch it, proving the fast gate fires. Runs on the host toolchain (clang, gcc).",
+      "targets": [
+        "schema-c-generated-clang-analyzer-negative-control"
+      ]
     }
   ],
   "excluded": [
