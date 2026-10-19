@@ -136,7 +136,11 @@ type Loose
 						t.Errorf("refusal does not name %q: %v", want, err)
 					}
 				}
-				if strings.Contains(err.Error(), "Loose.label") || !strings.Contains(err.Error(), "generate with --lang c, --lang cpp, --lang cs, --lang elixir, --lang go, --lang java, --lang js and --lang rust, or drop the default") {
+				// The carrier list names squirrel only under the schema_leg_squirrel
+				// tag (compiler/target_squirrel_defaults.go); accept either build.
+				const untagged = "generate with --lang c, --lang cpp, --lang cs, --lang elixir, --lang go, --lang java, --lang js and --lang rust, or drop the default"
+				const tagged = "generate with --lang c, --lang cpp, --lang cs, --lang elixir, --lang go, --lang java, --lang js, --lang rust and --lang squirrel, or drop the default"
+				if strings.Contains(err.Error(), "Loose.label") || (!strings.Contains(err.Error(), untagged) && !strings.Contains(err.Error(), tagged)) {
 					t.Errorf("table refusal includes a supported packet field or names %s as a table carrier: %v", target, err)
 				}
 			}
