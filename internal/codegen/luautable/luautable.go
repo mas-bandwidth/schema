@@ -574,6 +574,13 @@ func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string, wire bool) s
 // elemDesc is an array's element descriptor: the same facts a field of the
 // element's type carries, at its zero (§2.9).
 func elemDesc(g *luau.Gen, f *ir.Field, wire bool) string {
+	// A PLAIN TEXT LIST's element is kind 12: its own L and bytes, not the
+	// element record's body its storage is (docs/SPEC-TABLES.md §2.13, §3).
+	// The optional spelling keeps the record, whose present companion frames
+	// the element under kind 13, so only the plain one is rewritten here.
+	if ir.TextListPlain(f) {
+		return fmt.Sprintf("{ s = \"str\", bound = %d }", ir.TextListValue(f).Type.Size)
+	}
 	e := *f
 	e.Array = ir.ArrayNone
 	e.KeyEnum = ""
