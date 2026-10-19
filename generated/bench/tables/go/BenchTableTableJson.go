@@ -1316,6 +1316,10 @@ func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
 		}
 		if closing == '}' {
 			var key [tableJsonMaxKey]byte
+			// the enclosing key names a surrogate in a skipped object's key
+			// (16.3), so restore it before scanning the inner key
+			in.keyText = savedText
+			in.keyLength = savedLength
 			keyLength, ok := in.scanKey(key[:tableJsonMaxKey-1])
 			if !ok {
 				in.nameLone()
@@ -2053,6 +2057,10 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 			return false
 		}
 		var key [tableJsonMaxKey]byte
+		// a key that itself holds a lone surrogate is refused as <root>
+		// (16.3): the previous member's key is stale here and must not name
+		// the refusal
+		in.keyLength = 0
 		keyLength, ok := in.scanKey(key[:tableJsonMaxKey-1])
 		if !ok {
 			in.nameLone()

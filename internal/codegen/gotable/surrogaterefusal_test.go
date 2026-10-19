@@ -40,6 +40,9 @@ func TestLoneSurrogate(t *testing.T) {
 		{"key low alone", "{\"\\udfaa\":0}", "string_lone_surrogate: <root>"},
 		{"skipped unknown value", "{\"unknown\":\"\\ud800\"}", "string_lone_surrogate: unknown"},
 		{"skipped known wrong shape", "{\"s\":[\"\\ud800\"]}", "string_lone_surrogate: s"},
+		{"bad key after good field", "{\"s\":\"a\",\"\\udfaa\":0}", "string_lone_surrogate: <root>"},
+		{"bad key after skipped field", "{\"unknown\":1,\"\\udfaa\":0}", "string_lone_surrogate: <root>"},
+		{"bad key in skipped object", "{\"unknown\":{\"a\":1,\"\\udfaa\":2}}", "string_lone_surrogate: unknown"},
 		{"wstring high alone", "{\"w\":\"\\ud800\"}", "string_lone_surrogate: Root.w"},
 	}
 	for _, tc := range cases {

@@ -624,6 +624,9 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 			// not hold, and the numbering has to survive the drop (§16.7).
 			// Anywhere but first, the prefix is the reserved key out of place
 			// — in a pointered root; a fixed root skips the value whole.
+			// The enclosing key names a surrogate in a skipped object's key
+			// (16.3), so restore it before scanning the inner key.
+			in.key = savedKey
 			key, _, ok := in.scanString(maxJsonKey)
 			if !ok {
 				in.nameLone()
@@ -725,6 +728,10 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 		if firstKey != nil {
 			key, firstKey = firstKey, nil
 		} else {
+			// a key that itself holds a lone surrogate is refused as <root>
+			// (16.3): the previous member's key is stale here and must not name
+			// the refusal
+			in.key = nil
 			c = in.peek()
 			if c == '}' {
 				in.pos++
