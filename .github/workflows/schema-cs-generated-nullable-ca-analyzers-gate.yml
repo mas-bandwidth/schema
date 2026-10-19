@@ -1,0 +1,78 @@
+name: C# generated nullable and CA analyzers
+
+# THE C# LENS on the generated output (make/schema-cs-generated-nullable-ca-analyzers-gate.mk):
+# Nullable enable, TreatWarningsAsErrors and the .NET CA analyzers at
+# AnalysisMode All over the generated packet cs corpus. The fast half runs on
+# every pull request and push and costs seconds; the nightly row re-runs the
+# same lens in a clean output directory with the planted control and a time
+# budget, so a slow analyzer never becomes the pull-request queue.
+on:
+  pull_request:
+    branches: [ sprint/schema-cs ]
+  push:
+    branches: [ sprint/schema-cs ]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * *'
+
+concurrency:
+  group: schema-cs-generated-nullable-ca-analyzers-gate-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SERIALIZE_CS_TAG: v1.9.1
+
+jobs:
+  fast:
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - name: check out the pinned serialize.cs runtime
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+      - name: generated C# nullable and CA lens
+        run: make schema-cs-generated-nullable-ca-analyzers-gate
+      - name: planted nullable control
+        run: make schema-cs-generated-nullable-ca-analyzers-gate-negative-control
+
+  nightly:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - name: check out the pinned serialize.cs runtime
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+      - name: generated C# nullable and CA lens (clean output root)
+        run: make schema-cs-generated-nullable-ca-analyzers-gate CSG_OUT=build/csg-nullable-nightly
+      - name: planted nullable control (clean output root)
+        run: make schema-cs-generated-nullable-ca-analyzers-gate-negative-control CSG_OUT=build/csg-nullable-nightly
+      - name: the wiring test
+        run: go test ./internal/ci -run TestCsGeneratedNullableCaAnalyzersGateWiring -count=1 -timeout 600s

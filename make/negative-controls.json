@@ -435,7 +435,8 @@
         "packet-utf8-cs-negative-control",
         "packet-wide-cs-negative-control",
         "packet-clean-cs-negative-control",
-        "tables-cs-clean-negative-control"
+        "tables-cs-clean-negative-control",
+        "schema-cs-generated-nullable-ca-analyzers-gate-negative-control"
       ],
       "dotnet": "pin"
     },
