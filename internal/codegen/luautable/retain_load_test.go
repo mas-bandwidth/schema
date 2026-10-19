@@ -130,6 +130,181 @@ func retainUnknownPayloads(t *testing.T, wire []byte, old *ir.Unit) map[uint64][
 	return out
 }
 
+// retainScanner walks a newer wire through the OLD unit's shapes and collects
+// the unknown FIELDS (kept whole, with every reference resolved — here every
+// kept payload is a string, so it is exactly the wire's own bytes) and counts
+// the unknown UNION ARMS (an excluded class that counts one `retain_lost`,
+// docs/SPEC-TABLES.md §6.6). It is the oracle's own answer: the wire is the
+// schema-go engine's write, so the expected bytes are its answer and not this
+// test's arithmetic.
+type retainScanner struct {
+	ids      []uint64
+	known    map[uint64]bool
+	wire     []byte
+	retained map[string]bool
+	lost     int
+}
+
+func newRetainScanner(wire []byte, old *ir.Unit) *retainScanner {
+	s := &retainScanner{known: map[uint64]bool{}, retained: map[string]bool{}}
+	for _, id := range ir.TableWireIds(old) {
+		s.known[id] = true
+	}
+	n := len(wire)
+	count := int(binary.LittleEndian.Uint64(wire[n-8:]))
+	end := n - 8 - count*8
+	s.ids = make([]uint64, count)
+	for i := range s.ids {
+		s.ids[i] = binary.LittleEndian.Uint64(wire[end+i*8:])
+	}
+	s.wire = wire
+	return s
+}
+
+func (s *retainScanner) leb(at *int) uint64 {
+	var v uint64
+	var sh uint
+	for {
+		x := s.wire[*at]
+		*at++
+		v |= uint64(x&0x7f) << sh
+		if x < 0x80 {
+			return v
+		}
+		sh += 7
+	}
+}
+
+func (s *retainScanner) skipPayload(kind uint8, at *int) {
+	switch kind {
+	case 12, 13, 14, 16, 31, 32, 33:
+		n := int(s.leb(at))
+		*at += n
+	case 4:
+		*at += 4
+	case 15:
+		s.leb(at)
+		if *at < len(s.wire) {
+			*at++
+		}
+		n := int(s.leb(at))
+		*at += n
+	default:
+		*at = len(s.wire)
+	}
+}
+
+func (s *retainScanner) readBody(begin, end int) {
+	at := begin
+	for {
+		if at >= end {
+			return
+		}
+		ref := s.leb(&at)
+		if ref == 0 || ref > uint64(len(s.ids)) {
+			return
+		}
+		id := s.ids[ref-1]
+		if at >= end {
+			return
+		}
+		kind := s.wire[at]
+		at++
+		if !s.known[id] {
+			start := at
+			s.skipPayload(kind, &at)
+			s.retained[hex.EncodeToString(s.wire[start:at])] = true
+			continue
+		}
+		switch kind {
+		case 13:
+			n := int(s.leb(&at))
+			s.readBody(at, at+n)
+			at += n
+		case 15:
+			aref := s.leb(&at)
+			if aref == 0 || aref > uint64(len(s.ids)) {
+				return
+			}
+			armID := s.ids[aref-1]
+			if at >= end {
+				return
+			}
+			ak := s.wire[at]
+			at++
+			n := int(s.leb(&at))
+			sub := at
+			if !s.known[armID] {
+				s.lost++
+			} else if ak == 13 {
+				s.readBody(sub, sub+n)
+			}
+			at = sub + n
+		default:
+			s.skipPayload(kind, &at)
+		}
+	}
+}
+
+type retainResult struct {
+	retained, lost, unknown int
+	malformed               bool
+	payloads                map[string]bool
+}
+
+// retainRunLuau runs a generated retain probe under the pinned interpreter and
+// returns the parsed report and retained payloads.
+func retainRunLuau(t *testing.T, g *generatedUnit, wire []byte, capacity int) *retainResult {
+	t.Helper()
+	var mods []string
+	for name := range g.files {
+		if strings.HasSuffix(name, "Table.luau") {
+			mods = append(mods, strings.TrimSuffix(name, ".luau"))
+		}
+	}
+	sort.Strings(mods)
+	var b strings.Builder
+	b.WriteString("local inputs = require(\"./inputs\")\nlocal retain = require(\"./retain\")\nlocal load = require(\"./load\")\n")
+	for _, m := range mods {
+		fmt.Fprintf(&b, "require(\"./%s\")\n", m)
+	}
+	b.WriteString("local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, retained = 0, retainLost = 0 }\n")
+	b.WriteString("local v, store = retain.LoadRetain(\"Root\", inputs.wire, report, " + strconv.Itoa(capacity) + ")\n")
+	b.WriteString("print(string.format(\"report %d %d %d %s %d %d\", report.retained, report.retainLost, report.unknown, tostring(report.malformed), store.used, buffer.len(store.bytes)))\n")
+	b.WriteString("local at = 0\nwhile at < store.used do\n")
+	b.WriteString("\tlocal total = buffer.readu32(store.bytes, at)\n")
+	b.WriteString("\tlocal depth = buffer.readu32(store.bytes, at + 8)\n")
+	b.WriteString("\tlocal plen = buffer.readu32(store.bytes, at + 12)\n")
+	b.WriteString("\tlocal parts = {}\n")
+	b.WriteString("\tfor i = 0, plen - 1 do parts[i + 1] = string.format(\"%02x\", buffer.readu8(store.bytes, at + 26 + depth * 8 + i)) end\n")
+	b.WriteString("\tprint(string.format(\"rec %s\", table.concat(parts)))\n")
+	b.WriteString("\tat = at + total\nend\n")
+	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": wire}))
+	r := &retainResult{payloads: map[string]bool{}}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 {
+			continue
+		}
+		if f[0] == "report" {
+			r.retained, _ = strconv.Atoi(f[1])
+			r.lost, _ = strconv.Atoi(f[2])
+			r.unknown, _ = strconv.Atoi(f[3])
+			r.malformed = f[4] == "true"
+		} else if f[0] == "rec" {
+			payload, err := hex.DecodeString(f[1])
+			if err != nil {
+				t.Fatalf("record payload is not hex: %v", err)
+			}
+			r.payloads[string(payload)] = true
+		}
+	}
+	return r
+}
+
 func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 	t.Parallel()
 	oldUnit, _ := retainCompile(t, retainOldSchema)
@@ -144,89 +319,66 @@ func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 	if !ok || err != nil || oracleReport.Malformed {
 		t.Fatalf("the oracle read failed: %v %v %+v", ok, err, oracleReport)
 	}
-	want := retainUnknownPayloads(t, wire, oldUnit)
+
+	// The newer wire, by the OLD unit's shapes: the unknown root field `future`
+	// and the unknown nested field `child.extra` are kept whole; the unknown
+	// union arm `choice.note` is an excluded class and counts `retain_lost`.
+	scan := newRetainScanner(wire, oldUnit)
+	scan.readBody(1, len(wire)-8-int(binary.LittleEndian.Uint64(wire[len(wire)-8:]))*8)
+	if scan.lost != 1 {
+		t.Fatalf("the scanner expected one lost union arm, got %d", scan.lost)
+	}
+	if len(scan.retained) != 2 {
+		t.Fatalf("the scanner expected two retained fields, got %d", len(scan.retained))
+	}
 
 	g := generateFiles(t, map[string]string{"Probe.schema": retainOldSchema})
-	var mods []string
-	for name := range g.files {
-		if strings.HasSuffix(name, "Table.luau") {
-			mods = append(mods, strings.TrimSuffix(name, ".luau"))
-		}
-	}
-	sort.Strings(mods)
-	var b strings.Builder
-	b.WriteString("local inputs = require(\"./inputs\")\nlocal retain = require(\"./retain\")\nlocal load = require(\"./load\")\n")
-	for _, m := range mods {
-		fmt.Fprintf(&b, "require(\"./%s\")\n", m)
-	}
-	b.WriteString(`local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, retained = 0, retainLost = 0 }
-local v, store = retain.LoadRetain("Root", inputs.wire, report)
-print(string.format("report %d %d %d %s", report.retained, report.retainLost, report.unknown, tostring(report.malformed)))
-local at = 0
-while at < store.used do
-	local total = buffer.readu32(store.bytes, at)
-	local node = buffer.readu32(store.bytes, at + 4)
-	local depth = buffer.readu32(store.bytes, at + 8)
-	local plen = buffer.readu32(store.bytes, at + 12)
-	local idparts = {}
-	for i = 0, 7 do idparts[i + 1] = string.format("%02x", buffer.readu8(store.bytes, at + 23 - i)) end
-	local id = table.concat(idparts)
-	local kind = buffer.readu8(store.bytes, at + 24)
-	local parts = {}
-	for i = 0, plen - 1 do parts[i + 1] = string.format("%02x", buffer.readu8(store.bytes, at + 26 + depth * 8 + i)) end
-	print(string.format("rec %s %d %d %d %s", id, kind, node, depth, table.concat(parts)))
-	at = at + total
-end
-`)
-	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(b.String()), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out := string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": wire}))
-	var retained, lost, unknown int
-	var malformed string
-	got := map[uint64][]byte{}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		f := strings.Fields(line)
-		if len(f) == 0 {
-			continue
-		}
-		if f[0] == "report" {
-			retained, _ = strconv.Atoi(f[1])
-			lost, _ = strconv.Atoi(f[2])
-			unknown, _ = strconv.Atoi(f[3])
-			malformed = f[4]
-		} else if f[0] == "rec" {
-			id, _ := strconv.ParseUint(f[1], 16, 64)
-			payload, err := hex.DecodeString(f[5])
-			if err != nil {
-				t.Fatalf("record payload is not hex: %v", err)
-			}
-			got[id] = payload
-		}
-	}
-	if malformed != "false" {
+
+	big := retainRunLuau(t, g, wire, 1<<20)
+	if big.malformed {
 		t.Fatalf("LoadRetain raised malformed on a good read")
 	}
-	if retained != oracleReport.Retained || lost != oracleReport.RetainLost || unknown != oracleReport.Unknown {
-		t.Fatalf("retain counters: got retained=%d lost=%d unknown=%d, oracle %+v", retained, lost, unknown, oracleReport)
+	if big.retained != oracleReport.Retained || big.lost != oracleReport.RetainLost || big.unknown != oracleReport.Unknown {
+		t.Fatalf("retain counters: got retained=%d lost=%d unknown=%d, oracle %+v", big.retained, big.lost, big.unknown, oracleReport)
 	}
-	for id, wantBytes := range want {
-		payload, ok := got[id]
-		if !ok {
-			t.Fatalf("the record for id %#x was not retained; got %v", id, got)
+	if big.retained != len(scan.retained) || big.lost != scan.lost {
+		t.Fatalf("retain counters vs scanner: got retained=%d lost=%d, scanner retained=%d lost=%d", big.retained, big.lost, len(scan.retained), scan.lost)
+	}
+	for p := range scan.retained {
+		if !big.payloads[p] {
+			t.Fatalf("the retained payload %x was not kept by Luau; got %v", p, big.payloads)
 		}
-		if string(payload) != string(wantBytes) {
-			t.Fatalf("id %#x: retained %x, the wire carries %x", id, payload, wantBytes)
+	}
+	for p := range big.payloads {
+		if !scan.retained[p] {
+			t.Fatalf("Luau kept a payload the oracle did not: %x", p)
 		}
 	}
 
-	cleanModel := tabletext.NewModel(oldUnit)
+	// A tiny capacity must not grow the store and must drop WHOLE records into
+	// `retain_lost`; a zero capacity keeps nothing.
+	small := retainRunLuau(t, g, wire, 8)
+	if small.retained >= big.retained {
+		t.Fatalf("a tiny capacity kept %d records (big kept %d): the store grew past its ceiling", small.retained, big.retained)
+	}
+	if small.lost <= big.lost {
+		t.Fatalf("a tiny capacity lost %d (big lost %d): the store never reported capacity loss", small.lost, big.lost)
+	}
+	none := retainRunLuau(t, g, wire, 0)
+	if none.retained != 0 || none.lost != big.retained+big.lost {
+		t.Fatalf("a zero capacity kept %d and lost %d (want 0 and %d)", none.retained, none.lost, big.retained+big.lost)
+	}
+
+	// A wire written by THIS build (nothing unknown) retains nothing in Luau.
 	clean := retainWire(t, oldUnit, `{"child":{"n":1},"choice":{"empty":{}}}`)
-	_ = cleanModel
 	cleanValue := oldModel.New(oldModel.Lookup("Root"))
 	var cr tabletext.Report
 	ok, err = tablewire.DecodeRetain(oldModel, cleanValue, clean, &tablewire.Retain{Capacity: 1 << 20, IdCapacity: 1024}, &cr)
 	if !ok || err != nil || cr.Retained != 0 || cr.RetainLost != 0 {
-		t.Fatalf("a wire with nothing unknown retained something: %v %v %+v", ok, err, cr)
+		t.Fatalf("a wire with nothing unknown retained something (Go): %v %v %+v", ok, err, cr)
+	}
+	cl := retainRunLuau(t, g, clean, 1<<20)
+	if cl.malformed || cl.retained != 0 || cl.lost != 0 || cl.unknown != 0 || len(cl.payloads) != 0 {
+		t.Fatalf("a clean wire retained something in Luau: %+v", cl)
 	}
 }

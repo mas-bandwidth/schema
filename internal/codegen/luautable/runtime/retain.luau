@@ -345,18 +345,18 @@ local function fields_by_id(desc: any): { [integer]: any }
 	return m
 end
 
--- one retained record, in the reader-private layout this file states above
-local function store_record(store: any, node: number, steps: { any }, id: integer, kind: number, payload: string)
+-- one retained record, in the reader-private layout this file states above. The
+-- store is the CALLER'S BOUNDED BUFFER (docs/SPEC-TABLES.md §6.6): a record the
+-- remaining capacity cannot hold WHOLE is dropped and counts one `retain_lost`,
+-- and the buffer never grows with file-controlled data and never holds a
+-- truncated field. `store.cap` is the ceiling the caller set; this store alloc
+-- nothing beyond it.
+local function store_record(store: any, node: number, steps: { any }, id: integer, kind: number, payload: string): boolean
 	local depth = #steps
 	local plen = #payload
 	local total = 26 + depth * 8 + plen
-	local need = store.used + total
-	if need > buffer.len(store.bytes) then
-		local cap = buffer.len(store.bytes) * 2
-		while cap < need do cap = cap * 2 end
-		local grown = buffer.create(cap)
-		buffer.copy(grown, 0, store.bytes, 0, store.used)
-		store.bytes = grown
+	if store.used + total > store.cap then
+		return false
 	end
 	local b = store.bytes
 	buffer.writeu32(b, store.used, total)
@@ -373,8 +373,9 @@ local function store_record(store: any, node: number, steps: { any }, id: intege
 	if plen > 0 then
 		buffer.copy(b, store.used + 26 + depth * 8, buffer.fromstring(payload), 0, plen)
 	end
-	store.used = need
+	store.used = store.used + total
 	store.count = store.count + 1
+	return true
 end
 
 local walk_body: any
@@ -395,7 +396,10 @@ local function capture(store: any, report: any, ids: { [number]: integer }, node
 		report.retainLost = report.retainLost + 1
 		return
 	end
-	store_record(store, node, steps, id, kind, out_string(out))
+	if not store_record(store, node, steps, id, kind, out_string(out)) then
+		report.retainLost = report.retainLost + 1
+		return
+	end
 	report.retained = report.retained + 1
 end
 
@@ -650,15 +654,22 @@ end
 
 -- LoadRetain is the ordinary load's answer beside §6.6's retained set. The
 -- value comes from load.luau's own walk; the capturing walk adds nothing to
--- the plain read's verdict and never raises `malformed`.
-function R.LoadRetain(root: string, bytes: buffer, report: any): (any, any)
+-- the plain read's verdict and never raises `malformed`. `capacity` is the
+-- byte ceiling the caller owns: the retained store never grows past it and a
+-- whole record that does not fit counts one `retain_lost` (§6.6).
+function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number?)
 	if report.retained == nil then report.retained = 0 end
 	if report.retainLost == nil then report.retainLost = 0 end
+	if capacity == nil then capacity = 65536 end
+	if capacity < 0 then capacity = 0 end
+	local new_store = function()
+		return { bytes = buffer.create(capacity), cap = capacity, used = 0, count = 0 }
+	end
 	local v = Load.load(root, bytes, report)
 	if v == nil then
-		return v, { bytes = buffer.create(0), used = 0, count = 0 }
+		return v, new_store()
 	end
-	local store = { bytes = buffer.create(256), used = 0, count = 0 }
+	local store = new_store()
 	local len = buffer.len(bytes)
 	local count = 0
 	if len >= 9 then
