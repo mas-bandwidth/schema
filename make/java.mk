@@ -1719,6 +1719,14 @@ tables-java-view: bin/schema test/java-view/View.java
 	@grep -q "listing is not the compiler's" build/java-view/negative.log
 	@echo "Java UnitView: $(words $(VIEW_CORPUS)) units match the compiler's listing; a damaged doc is detected"
 
-test-java: tables-java-view
+# The doc and tag columns of every descriptor and registry row (§8.1, §8.3):
+# the Java runtime's strings are compared with the unit the compiler read, over
+# an annotated unit and an unannotated one. It rides tables-java-view because
+# the listing already prints the same two columns; this test names them one by
+# one and says which declaration a wrong string belongs to.
+.PHONY: tables-java-descriptor-doc
+tables-java-descriptor-doc: bin/schema
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
+		-count=1 -timeout 600s -v -run '^TestJavaDescriptorDocAndTags$$'
 
-test-java: tables-java-view
+test-java: tables-java-view tables-java-descriptor-doc
