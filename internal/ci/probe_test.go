@@ -76,6 +76,11 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// make/schema-*.mk are card fragments the Makefile includes by wildcard;
+	// they are not compiler backends and the registry loop skips them.
+	legs = slices.DeleteFunc(legs, func(p string) bool {
+		return strings.HasPrefix(filepath.Base(p), "schema-")
+	})
 	if len(legs) == 0 || refused+carried != len(legs)-1 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
