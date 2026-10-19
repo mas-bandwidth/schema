@@ -127,7 +127,10 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		{"refuseLists", "unbounded array", "package probe\n\ntable L\n{\n    repos []int32\n}\n", "L.repos", false},
 		{"refuseOptionalArrays", "optional array", "package probe\n\ntable L\n{\n    maybe ?[..4]int32\n}\n", "L.maybe", false},
 		{"refuseTableArms", "union table arm", "package probe\n\ntype Inner\n{\n    x int32\n}\nunion Pick\n{\n    alpha Inner\n    beta int32\n}\ntable L\n{\n    u Pick\n}\n", "Pick", false},
-		{"refuseValueDefaults", "value default", "package probe\n\ntable L\n{\n    s string(8) = \"hi\"\n}\n", "L.s", false},
+		// squirrel now CARRIES the value default (compiler/target_squirrel_defaults.go;
+		// docs/SPEC-TABLES.md §4, §16.2), so this case is carried below and the
+		// refuser still refuses an unregistered target by name.
+		{"refuseValueDefaults", "value default", "package probe\n\ntable L\n{\n    s string(8) = \"hi\"\n}\n", "L.s", true},
 		{"refuseWasRows", "was on a variant", "package probe\n\nenum Grade\n{\n    Bronze,\n    Argent | was = \"Silver\"\n}\n\nfixed table L\n{\n    grade Grade\n}\n", "Grade.Argent", false},
 		{"refuseVoidArms", "payload-free arm", "package probe\n\ntype Fire\n{\n    target uint16\n}\n\nunion Weapon\n{\n    laser Fire\n    ram\n}\n\ntable L\n{\n    fire Weapon\n}\n", "Weapon", false},
 		{"refuseUnionArrays", "array of unions", "package probe\n\ntype Ping\n{\n    nonce uint32\n}\n\ntype Pong\n{\n    nonce uint32\n}\n\nunion Reply\n{\n    ping Ping\n    pong Pong\n}\n\nfixed table L\n{\n    history [..4]Reply\n}\n", "L.history", false},
@@ -153,8 +156,8 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		u := unitFromSource(t, tc.src)
 		if tc.carried {
 			// a construct the Squirrel table codec now carries is accepted, not
-			// refused: the refuser's nil means the map rides (docs/SPEC-TABLES.md
-			// §2.8)
+			// refused: the refuser's nil means the construct rides
+			// (docs/SPEC-TABLES.md §4, §16.2; compiler/target_squirrel_defaults.go)
 			if err := refusers[tc.refuser](u, "squirrel"); err != nil {
 				t.Errorf("%s: squirrel refused a construct it now carries: %v", tc.name+" ("+tc.refuser+")", err)
 			}
@@ -165,6 +168,12 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 				if _, err := c.Generate(u, "squirrel", nil); err != nil {
 					t.Errorf("%s (Generate squirrel): squirrel refused a construct it now carries: %v", tc.name, err)
 				}
+			}
+			// the refuser still refuses a target that has not registered, by
+			// name, naming the field and the target (compiler/target_squirrel_defaults.go)
+			if err := refusers[tc.refuser](u, "unregistered"); err == nil ||
+				!strings.Contains(err.Error(), tc.field) || !strings.Contains(err.Error(), "unregistered") {
+				t.Errorf("%s (%s): an unregistered target was not refused by name naming %s: %v", tc.name, tc.refuser, tc.field, err)
 			}
 			covered[tc.refuser] = true
 			continue
