@@ -22,7 +22,7 @@ type makeOffence struct {
 // variable name followed by one of the assignment operators make recognises
 // (= := ::= ?= != +=). Target-specific assignments (`target: VAR = x`) do not
 // match because the operator must directly follow the name at column 0.
-var makeVarAssignRE = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.-]*)\s*(::=|:=|\?=|!=|\+=|=)(.*)$`)
+var makeVarAssignRE = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.-]*)\s*(?::=|\?=|::=|!=|\+=|=)`)
 
 // makeDefineRE and makeEndefRE bracket the bodies of `define` blocks, which are
 // not variable assignments and must be skipped.
@@ -57,52 +57,27 @@ func scanMKLines(text string, fn func(i int, line string)) {
 	}
 }
 
-// makeAssignment renders one matched assignment as its operator and its value,
-// the form two assignments are compared in. GNU Make drops the whitespace
-// before a value but keeps the whitespace after it, so only the leading
-// whitespace is trimmed: a trailing-space variant is a different value.
-func makeAssignment(m []string) string {
-	return m[2] + " " + strings.TrimLeft(m[3], " \t")
-}
-
-// topLevelMakeVars collects every variable the Makefile defines at top level,
-// with each assignment it makes to it (operator and value), so the checker can
-// tell a redefinition from a first definition, and a clobber from a repeat.
-func topLevelMakeVars(text string) map[string][]string {
-	vars := map[string][]string{}
+// topLevelMakeVars collects the names of every variable the Makefile defines at
+// top level, so the checker can tell a redefinition from a first definition.
+func topLevelMakeVars(text string) map[string]bool {
+	vars := map[string]bool{}
 	scanMKLines(text, func(_ int, line string) {
 		if m := makeVarAssignRE.FindStringSubmatch(line); m != nil {
-			vars[m[1]] = append(vars[m[1]], makeAssignment(m))
+			vars[m[1]] = true
 		}
 	})
 	return vars
 }
 
 // checkOneMK returns the offences in one .mk: a top-level assignment of a
-// variable the Makefile also defines. A plain, simple, immediate or
-// conditional assignment (=, :=, ::=, ?=) byte-identical to one the Makefile
-// makes (same operator, same value text, trailing whitespace included) leaves
-// the value unchanged, so it clobbers nothing and is not an offence. Any
-// other assignment is, including a repeated += (it appends twice) and a
-// repeated != (it runs the shell again).
-func checkOneMK(vars map[string][]string, path, text string) []makeOffence {
+// variable the Makefile also defines.
+func checkOneMK(vars map[string]bool, path, text string) []makeOffence {
 	var out []makeOffence
 	scanMKLines(text, func(i int, line string) {
 		if m := makeVarAssignRE.FindStringSubmatch(line); m != nil {
-			defs, ok := vars[m[1]]
-			if !ok {
-				return
+			if vars[m[1]] {
+				out = append(out, makeOffence{mk: path, line: i + 1, variable: m[1]})
 			}
-			mine := makeAssignment(m)
-			for _, d := range defs {
-				if m[2] == "+=" || m[2] == "!=" {
-					break
-				}
-				if d == mine {
-					return
-				}
-			}
-			out = append(out, makeOffence{mk: path, line: i + 1, variable: m[1]})
 		}
 	})
 	return out
@@ -128,7 +103,7 @@ func checkMakeRedefinitions(makefile string, mkFiles map[string]string) []makeOf
 // TestIncludedMakeFilesDoNotRedefineMakefileVariables runs the checker on the
 // real tree. A .mk included by the Makefile (make/*.mk, make/checks/*.mk) that
 // assigns a variable the Makefile itself defines would clobber the Makefile's
-// value, so it is an offence. schema-squirrel-serialize-pin-no-clobber.
+// value, so it is an offence. schema-lua-serialize-pin-no-clobber.
 func TestIncludedMakeFilesDoNotRedefineMakefileVariables(t *testing.T) {
 	t.Parallel()
 
@@ -187,79 +162,33 @@ func TestIncludedMakeFilesDoNotRedefineMakefileVariables(t *testing.T) {
 }
 
 // TestMakeVariableCheckerCatchesAPlantedRedefinition feeds the checker an
-// in-memory Makefile and an in-memory .mk that redefines one of its variables,
-// plus a clean .mk, a tab-indented recipe line and a target-specific assignment
-// that must NOT be flagged, and asserts the planted offence is reported, naming
-// file and variable.
+// in-memory Makefile and an in-memory .mk shaped like make/lua-serialize.mk that
+// redefines SERIALIZE_PIN and SERIALIZE_REPO, plus a clean .mk, a tab-indented
+// recipe line and a target-specific assignment that must NOT be flagged, and
+// asserts the planted offences are reported, naming file and variable.
 func TestMakeVariableCheckerCatchesAPlantedRedefinition(t *testing.T) {
 	t.Parallel()
 
 	makefile := "SERIALIZE_PIN ?= v1.16.2\n" +
 		"SERIALIZE_REPO ?= https://github.com/mas-bandwidth/serialize.git\n"
-	planted := "SERIALIZE_PIN := internal/codegen/squirrel/serialize/SERIALIZE_PIN\n"
+	planted := "SERIALIZE_REPO := https://github.com/mas-bandwidth/serialize.lua\n" +
+		"SERIALIZE_PIN := internal/codegen/lua/runtime/SERIALIZE_PIN\n"
 	clean := "THE_LANGUAGE_ABC_PIN := v1.2.3\n" +
 		"\t@echo $(SERIALIZE_PIN)\n" +
-		"vendor-serialize-squirrel: SERIALIZE_PIN = foo\n"
+		"vendor-serialize-lua: SERIALIZE_PIN = foo\n"
 
 	offences := checkMakeRedefinitions(makefile, map[string]string{
 		"make/planted.mk": planted,
 		"make/clean.mk":   clean,
 	})
 
-	if len(offences) != 1 {
-		t.Fatalf("expected exactly one offence, got %d: %+v", len(offences), offences)
+	if len(offences) != 2 {
+		t.Fatalf("expected exactly two offences, got %d: %+v", len(offences), offences)
 	}
-	o := offences[0]
-	if o.mk != "make/planted.mk" {
-		t.Errorf("expected offence in make/planted.mk, got %s", o.mk)
+	if offences[0].mk != "make/planted.mk" || offences[1].mk != "make/planted.mk" {
+		t.Errorf("expected both offences in make/planted.mk, got %s and %s", offences[0].mk, offences[1].mk)
 	}
-	if o.variable != "SERIALIZE_PIN" {
-		t.Errorf("expected offence on SERIALIZE_PIN, got %s", o.variable)
-	}
-	if o.line != 1 {
-		t.Errorf("expected offence on line 1, got %d", o.line)
-	}
-}
-
-// TestMakeVariableCheckerAllowsAnIdenticalRepeat feeds the checker a .mk that
-// repeats a Makefile assignment byte for byte (as make/go.mk and the Makefile
-// both assign SERIALIZE_GO_FETCHED and SERIALIZE_GO_RUNTIME on schema-go) and
-// one that changes the value or the operator, adds trailing whitespace (which
-// Make keeps as part of the value), or repeats a += (which appends twice); only
-// the latter are offences, because only they change the value. Leading
-// whitespace before the value is dropped by Make, so it is not a change.
-func TestMakeVariableCheckerAllowsAnIdenticalRepeat(t *testing.T) {
-	t.Parallel()
-
-	makefile := "SERIALIZE_GO_FETCHED := build/serialize.go\n" +
-		"SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))\n"
-	repeat := "SERIALIZE_GO_FETCHED := build/serialize.go\n" +
-		"SERIALIZE_GO_RUNTIME :=  \t$(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))\n"
-	trailing := "SERIALIZE_GO_FETCHED := build/serialize.go  \n" +
-		"SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))\t\n"
-	changed := "SERIALIZE_GO_FETCHED := build/other.go\n" +
-		"SERIALIZE_GO_RUNTIME = $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))\n" +
-		"GOFLAGS_EXTRA += -trimpath\n"
-	makefile += "GOFLAGS_EXTRA += -trimpath\n"
-
-	offences := checkMakeRedefinitions(makefile, map[string]string{
-		"make/repeat.mk":   repeat,
-		"make/changed.mk":  changed,
-		"make/trailing.mk": trailing,
-	})
-
-	if len(offences) != 5 {
-		t.Fatalf("expected exactly five offences, got %d: %+v", len(offences), offences)
-	}
-	for i, want := range []makeOffence{
-		{mk: "make/changed.mk", line: 1, variable: "SERIALIZE_GO_FETCHED"},
-		{mk: "make/changed.mk", line: 2, variable: "SERIALIZE_GO_RUNTIME"},
-		{mk: "make/changed.mk", line: 3, variable: "GOFLAGS_EXTRA"},
-		{mk: "make/trailing.mk", line: 1, variable: "SERIALIZE_GO_FETCHED"},
-		{mk: "make/trailing.mk", line: 2, variable: "SERIALIZE_GO_RUNTIME"},
-	} {
-		if offences[i] != want {
-			t.Errorf("offence %d: got %+v, want %+v", i, offences[i], want)
-		}
+	if offences[0].variable != "SERIALIZE_REPO" || offences[1].variable != "SERIALIZE_PIN" {
+		t.Errorf("expected offences on SERIALIZE_REPO and SERIALIZE_PIN, got %s and %s", offences[0].variable, offences[1].variable)
 	}
 }

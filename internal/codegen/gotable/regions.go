@@ -125,12 +125,21 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 	}
 	g.pf("const tableRegionAlign int64 = %d\n", ir.TableRegionAlign(g.unit))
 	g.pf("const tableBytesTypeId uint64=0x%016x\nconst tableStringTypeId uint64=0x%016x\n", ir.TableWireId("bytes"), ir.TableWireId("string"))
-	source := tableRegionSource + tableRegionBlobSource + tableBuilderLoadSource
+	source := tableRegionSource + tableRegionBlobSource + tableBuilderLoadSource + tableWireExtentSource
 	if unitHasContainers(g.unit) {
 		source = containerRegionSource(source)
 		source += tableContainerSource + tableMapSource
 	}
 	source = unboundedTextRegion(g.unit, source)
+	// the strict measure's wstring arms (tableWireExtentSource): the load
+	// reports Malformed on a wstring field or arm body that is not valid
+	// UTF-16 (read.go emitReadField and emitReadArm, wstring.go
+	// emitReadWString), and tableUtf16Valid is emitted only where the unit
+	// declares a wstring (wire.go), so the check is patched in here
+	if len(ir.WideTextFields(g.unit)) > 0 {
+		source = tableSourceReplace(source, " case 1:if !r.Has(1){return bad};if r.Get8()>1&&nodes>=0{return bad}\n", " case 1:if !r.Has(1){return bad};if r.Get8()>1&&nodes>=0{return bad}\n case 33:body,ok:=r.Body();if !ok||nodes>=0&&!tableUtf16Valid(body.Buffer){return bad}\n", 1)
+		source = tableSourceReplace(source, "  case want==12:if !tableUtf8Valid(body.Buffer){return bad};return TableRefuseOk\n", "  case want==12:if !tableUtf8Valid(body.Buffer){return bad};return TableRefuseOk\n  case want==33:if !tableUtf16Valid(body.Buffer){return bad};return TableRefuseOk\n", 1)
+	}
 	// §2.3: an absent ?T over a variable closure owns no node, so Lock's pack
 	// writes it at its declared defaults, every pointer null, exactly as load
 	// leaves it, never the stale arena reference its storage may still hold;
@@ -333,7 +342,7 @@ func tableRegionMeasure(wire []byte,root *TableTypeInfo,nodeType func(uint64)*Ta
 // framing damage. A trailing true makes it tolerant: it skips the framing walk and the
 // whole-scan check, so tableRegionMeasure and tableRegionLoad keep the decoded prefix
 // of a damaged wire (docs/SPEC-TABLES.md section 4). No new package-scope name.
-func tableRegionMeasureReason(wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int,tolerant ...bool)(int64,int64,TableOpenVerdict,TableRefuseReason){strict:=len(tolerant)==0||!tolerant[0];var ignored TableReport;r,verdict:=tableOpenFramed(wire,&ignored);if verdict!=TableOpenOk{reason:=TableRefuseWireDamaged;if verdict==TableOpenRefused{reason=TableRefuseUnknownForm};return -1,0,verdict,reason};if strict{probe:=r;probe.Offset=0;framed:=true;for{ref,ok:=probe.Leb();if !ok{framed=false;break};if ref==0{break};id,ok:=probe.Resolve(ref);if !ok||!probe.Has(1){framed=false;break};kind:=probe.Get8();if id==0xffffffffffffffff{if kind!=12{framed=false;break};if _,ok:=probe.Body();!ok{framed=false;break}}else if !probe.Skip(kind){framed=false;break}};if !framed||probe.Offset!=int64(len(probe.Buffer)){return -1,0,TableOpenDamaged,TableRefuseWireDamaged}};data:=tableRegionRound(int64(root.Size));s:=tableNodeScanBegin(r);for{id,body,ok:=s.next();if !ok{break};n,reason:=tableNodeStorageReason(id,body,nodeType,blobs);if n== -2{return -1,0,TableOpenRefused,reason};if n>0{data+=n}};if strict&&!s.whole(){return -1,0,TableOpenDamaged,TableRefuseWireDamaged};attribution:=int64(s.records+1)*16;return data+attribution,attribution,TableOpenOk,TableRefuseOk}
+func tableRegionMeasureReason(wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int,tolerant ...bool)(int64,int64,TableOpenVerdict,TableRefuseReason){strict:=len(tolerant)==0||!tolerant[0];var ignored TableReport;r,verdict:=tableOpenFramed(wire,&ignored);if verdict!=TableOpenOk{reason:=TableRefuseWireDamaged;if verdict==TableOpenRefused{reason=TableRefuseUnknownForm};return -1,0,verdict,reason};if strict{probe:=r;probe.Offset=0;framed:=true;for{ref,ok:=probe.Leb();if !ok{framed=false;break};if ref==0{break};id,ok:=probe.Resolve(ref);if !ok||!probe.Has(1){framed=false;break};kind:=probe.Get8();if id==0xffffffffffffffff{if kind!=12{framed=false;break};if _,ok:=probe.Body();!ok{framed=false;break}}else if !probe.Skip(kind){framed=false;break}};if !framed||probe.Offset!=int64(len(probe.Buffer)){return -1,0,TableOpenDamaged,TableRefuseWireDamaged}};data:=tableRegionRound(int64(root.Size));s:=tableNodeScanBegin(r);for{id,body,ok:=s.next();if !ok{break};n,reason:=tableNodeStorageReason(id,body,nodeType,blobs);if n== -2{return -1,0,TableOpenRefused,reason};if n>0{data+=n}};if strict&&!s.whole(){return -1,0,TableOpenDamaged,TableRefuseWireDamaged};if strict{w:=TableReader{Buffer:r.Buffer,Ids:r.Ids};at:=int64(0);nodes:=int64(s.records);scan:=tableNodeScanBegin(w);for{id,body,ok:=scan.next();if !ok{break};if id==tableStringTypeId&&blobs&2!=0&&!tableUtf8Valid(body.Buffer){return -1,0,TableOpenDamaged,TableRefuseWireDamaged};if t:=nodeType(id);t!=nil&&tableWireExtent(&body,t,&at,nodes)!=TableRefuseOk{return -1,0,TableOpenDamaged,TableRefuseWireDamaged}};if tableWireExtent(&w,root,&at,nodes)!=TableRefuseOk{return -1,0,TableOpenDamaged,TableRefuseWireDamaged}};attribution:=int64(s.records+1)*16;return data+attribution,attribution,TableOpenOk,TableRefuseOk}
 
 func tableRegionLoad(region,wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int,report *TableReport) unsafe.Pointer {
  if report==nil {var ignored TableReport;report=&ignored};r,verdict:=tableOpenFramed(wire,report);report.Verdict=verdict;if verdict!=TableOpenOk {if verdict==TableOpenDamaged{report.Malformed=true}else {report.Reason="unsupported wire form"};return nil}

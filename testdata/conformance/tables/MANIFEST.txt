@@ -168,7 +168,8 @@ instance stream_arm_pointer   streamdemo  Feed        testdata/wire/tables/strea
 instance blob_small           blobdemo    Catalog     testdata/wire/tables/blob_small.bin
 instance blob_empty           blobdemo    Catalog     testdata/wire/tables/blob_empty.bin
 instance blob_large           blobdemo    Catalog     testdata/wire/tables/blob_large.bin
-instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_shared.bin  no-text
+# The Go wire writer names its §2.5 refusal for this instance.
+instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_shared.bin  no-text go-refusal=blob_shared
 # THE STRING TERMINATOR, at the two lengths that can see it (§6.3): a *string
 # node carries one zero byte after its data, and the node's extent is rounded
 # to the arena's alignment like every node's. At a length that is not a
@@ -793,10 +794,10 @@ unit backenddemo tables/backend
 unit vocabdemo   tables/vocab
 unit vocab9demo  tables/vocab9
 
-connection backend_conn backenddemo 0x851cdd594a04b3fd testdata/wire/tables/backend_conn.bin
-connection vocab_conn   vocabdemo   0xfc8907630599b68c testdata/wire/tables/vocab_conn.bin
-connection vocab9_conn  vocab9demo  0xbf9435fb11bd7357 testdata/wire/tables/vocab9_conn.bin
-connection graph_conn   graphdemo   0x8478eba1cb4a55e5 testdata/wire/tables/graph_conn.bin
+connection backend_conn backenddemo 0xb26d9d6c050117f0 testdata/wire/tables/backend_conn.bin
+connection vocab_conn   vocabdemo   0xd9664a7639d9a134 testdata/wire/tables/vocab_conn.bin
+connection vocab9_conn  vocab9demo  0x49d0eb14999f0285 testdata/wire/tables/vocab9_conn.bin
+connection graph_conn   graphdemo   0xa6069b3ec0d99c3c testdata/wire/tables/graph_conn.bin
 
 # The three backend messages of schema#523, each in both instances: 106 / 273 /
 # 104 bytes as files against 52 / 148 / 43 as messages, and 10 / 43 / 10 against
@@ -944,7 +945,7 @@ unit tblrt3 test/tables/RT3.schema
 
 # THE CONNECTION the message-form row resolves against: RT2's own announcement,
 # read by RT1, which is a receiver meeting a LARGER unit (§3.3).
-connection retain_conn tblrt2 0x59185ac86252d03a testdata/wire/tables/retain_conn.bin
+connection retain_conn tblrt2 0x64d6fb9798602c12 testdata/wire/tables/retain_conn.bin
 
 # THE ROUND TRIP AT DEPTH, and the two capacities. The first save is a pinned
 # byte string of its own: moving a field changes the order ids are first used
