@@ -15982,12 +15982,14 @@ authoring input: it is the form's answer to every value it cannot place by
 name rather than by range (a timestamp that names no instant, a reserved `&`
 key, §16.2, §16.7), and a read that dropped the field quietly would turn a
 person's typing into a silent loss. A string the read only SKIPS — the value
-of an unknown key, an object key naming a field — stores nothing and is not
-this event. A map key the read DROPS for its length (over a string
-key's bound, or too long to be any integer) is not skipped: it is still a key
-bound for text storage, so a zero in it refuses the read the same way, and in
-every Go reader alike. **The other answer, the wire and every writer carrying the zero,
-was considered and refused**: it would reverse the long-standing content rule
+of an unknown key, an object key, whether it names a field or none —
+stores nothing and is not this event, and a `\u0001` escape, or any escape
+but `\u0000`, is not affected. A map key the read DROPS for its length
+(over a string key's bound, or too long to be any integer) is not skipped:
+it is still a key bound for text storage, so a zero in it refuses the read
+the same way, and in every Go reader alike. **The other answer, the wire
+and every writer carrying the zero, was considered and refused**: it would
+reverse the long-standing content rule
 every table reader and the packet wire already hold, and break `string(N)`'s
 C and C++ storage, which is a valid C string after every read (USAGE.md), to
 admit a value only one form could produce. With this rule an instance any read
