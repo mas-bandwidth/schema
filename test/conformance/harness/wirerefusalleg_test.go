@@ -96,6 +96,37 @@ func TestWireRefusalIsPerLeg(t *testing.T) {
 		}
 	})
 
+	t.Run("a named refusal on a row that names none for the leg is red", func(t *testing.T) {
+		t.Parallel()
+		out := t.TempDir()
+		if err := os.WriteFile(filepath.Join(out, "blob_shared_string.absent"), []byte("blob_shared"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		r := &result{total: 1}
+		scoreLeg("cpp", "wire", out, want, refusals, r)
+		if len(r.failures) != 1 || r.missing != 0 {
+			t.Fatalf("cpp wire = absent %d failures %v; an unpinned named refusal must be red", r.missing, r.failures)
+		}
+		r = &result{total: 1}
+		scoreLeg("c", "wire", out, want, nil, r)
+		if len(r.failures) != 1 || r.missing != 0 {
+			t.Fatalf("unmarked c wire = absent %d failures %v; an unpinned named refusal must be red", r.missing, r.failures)
+		}
+	})
+
+	t.Run("an unnamed absence on an unmarked row is still a missing feature", func(t *testing.T) {
+		t.Parallel()
+		out := t.TempDir()
+		if err := os.WriteFile(filepath.Join(out, "blob_shared_string.absent"), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		r := &result{total: 1}
+		scoreLeg("cpp", "wire", out, want, refusals, r)
+		if r.missing != 1 || len(r.failures) != 0 {
+			t.Fatalf("cpp wire = absent %d failures %v; want one missing", r.missing, r.failures)
+		}
+	})
+
 	t.Run("the C refusal reaches the wire surface alone", func(t *testing.T) {
 		t.Parallel()
 		out := t.TempDir()

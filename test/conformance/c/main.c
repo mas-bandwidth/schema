@@ -534,8 +534,10 @@ static int surface_cook_write(const char * out)
         wire=slurp(instance->field[4],&wire_bytes); if(wire==NULL) { return 1; }
         value=codec->storage();
         if(!codec->load(value,wire,(int64_t)wire_bytes,&report) || (need=codec->cook_measure(value))<=0) {
-            /* a value the runtime refuses by a pinned name has no cooked
-               file: both files answer that name (SPEC-TABLES 2.5, c-refusal=) */
+            /* a value the runtime refuses by name (SPEC-TABLES 2.5) has no
+               cooked file: both answer an absence carrying that name, which
+               the harness counts as this leg's missing case on cook-write
+               (c-refusal= pins the name on the wire surface) */
             char be[1024]; int named=spill_refusal(codec,wire,wire_bytes,out,f->field[1]);
             snprintf(be,sizeof(be),"%s-be",f->field[1]);
             if(named==1) { named=spill_refusal(codec,wire,wire_bytes,out,be); }

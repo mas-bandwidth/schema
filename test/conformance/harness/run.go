@@ -547,7 +547,17 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 // scoreLeg scores one case written by a leg against the refusals the
 // instance's markers name per leg (`<lang>-refusal=`): a leg the instance names
 // owes that named refusal on the wire surface, and every other leg the bytes.
+//
+// A NAMED absence on the wire surface is a refusal, never a missing feature: a
+// leg that names one on a row whose markers name none for it is red, so a
+// refusal the corpus does not pin cannot pass as an ordinary absence.
 func scoreLeg(lang, surface, out string, e expectation, refusals map[string]string, r *result) {
+	if surface == "wire" && refusals[lang] == "" {
+		if reason, err := os.ReadFile(filepath.Join(out, e.name) + ".absent"); err == nil && len(reason) != 0 {
+			r.failures = append(r.failures, fmt.Sprintf("%s: named refusal %q, but the row names no %s-refusal", e.name, string(reason), lang))
+			return
+		}
+	}
 	if surface == "wire" && lang != "go" && refusals[lang] != "" {
 		scoreRefusal(out, e, refusals[lang], r)
 		return
