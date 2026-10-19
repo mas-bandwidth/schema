@@ -4,14 +4,19 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -76,16 +81,25 @@ func retainWire(t *testing.T, u *ir.Unit, json string) []byte {
 	return wire
 }
 
+type step struct {
+	o, i uint32
+}
+
 type rec struct {
 	node    uint32
 	depth   uint32
 	id      uint64
 	kind    uint8
+	steps   []step
 	payload []byte
 }
 
 func (r rec) key() string {
-	return fmt.Sprintf("%d/%d/%d/%d/%x", r.node, r.depth, r.id, r.kind, r.payload)
+	var steps strings.Builder
+	for _, s := range r.steps {
+		fmt.Fprintf(&steps, "/%d,%d", s.o, s.i)
+	}
+	return fmt.Sprintf("%d/%d/%d/%d%s/%x", r.node, r.depth, r.id, r.kind, steps.String(), r.payload)
 }
 
 // unknownFieldIds returns the field ids of the OLD unit that the NEW unit's
@@ -143,7 +157,9 @@ func retainRunLuau(t *testing.T, g *generatedUnit, wire []byte, capacity int) *r
 	b.WriteString("\tlocal idhex = tohex(buffer.readstring(store.bytes, at + 16, 8))\n")
 	b.WriteString("\tlocal kind = buffer.readu8(store.bytes, at + 24)\n")
 	b.WriteString("\tlocal payload = buffer.readstring(store.bytes, at + 26 + depth * 8, plen)\n")
-	b.WriteString("\tprint(string.format(\"rec %d %d %s %d %s\", node, depth, idhex, kind, tohex(payload)))\n")
+	b.WriteString("\tlocal steps = {}\n")
+	b.WriteString("\tfor i = 0, depth - 1 do steps[i + 1] = string.format(\"%d %d\", buffer.readu32(store.bytes, at + 26 + i * 8), buffer.readu32(store.bytes, at + 30 + i * 8)) end\n")
+	b.WriteString("\tprint(string.format(\"rec %d %d %s %d %s %s\", node, depth, idhex, kind, table.concat(steps, \" \"), tohex(payload)))\n")
 	b.WriteString("\tat = at + total\nend\n")
 	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(b.String()), 0o644); err != nil {
 		t.Fatal(err)
@@ -162,7 +178,7 @@ func retainRunLuau(t *testing.T, g *generatedUnit, wire []byte, capacity int) *r
 			r.malformed = f[4] == "true"
 			r.used, _ = strconv.Atoi(f[5])
 			r.count, _ = strconv.Atoi(f[6])
-		} else if f[0] == "rec" && len(f) == 6 {
+		} else if f[0] == "rec" && len(f) >= 6 && (len(f)-6)%2 == 0 {
 			node, _ := strconv.Atoi(f[1])
 			depth, _ := strconv.Atoi(f[2])
 			idBytes, err := hex.DecodeString(f[3])
@@ -171,11 +187,18 @@ func retainRunLuau(t *testing.T, g *generatedUnit, wire []byte, capacity int) *r
 			}
 			id := binary.LittleEndian.Uint64(idBytes)
 			kind, _ := strconv.Atoi(f[4])
-			payload, err := hex.DecodeString(f[5])
+			rc := rec{node: uint32(node), depth: uint32(depth), id: id, kind: uint8(kind)}
+			for i := 0; i < depth; i++ {
+				o, _ := strconv.Atoi(f[5+2*i])
+				ix, _ := strconv.Atoi(f[6+2*i])
+				rc.steps = append(rc.steps, step{o: uint32(o), i: uint32(ix)})
+			}
+			payload, err := hex.DecodeString(f[5+2*depth])
 			if err != nil {
 				t.Fatalf("record payload is not hex: %v", err)
 			}
-			r.records = append(r.records, rec{node: uint32(node), depth: uint32(depth), id: id, kind: uint8(kind), payload: payload})
+			rc.payload = payload
+			r.records = append(r.records, rc)
 		}
 	}
 	return r
@@ -186,6 +209,161 @@ type retainResult struct {
 	malformed               bool
 	used, count             int
 	records                 []rec
+}
+
+// retainGoOracle runs schema-go's own generated retaining reader over the same
+// wire and prints its report and every retained record in the order it keeps
+// them, including the path's ordinal/index pairs (docs/SPEC-TABLES.md §6.6).
+// The expected identity is therefore the Go engine's answer, never a
+// hand-typed one.
+func retainGoOracle(t *testing.T, u *ir.Unit, wire []byte) *retainResult {
+	t.Helper()
+	files, err := golang.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := gotable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	mod := "module probe\n\ngo 1.26\n"
+	for _, data := range files {
+		if strings.Contains(string(data), `"github.com/mas-bandwidth/serialize.go"`) {
+			runtime, err := filepath.Abs("../../../../serialize.go")
+			if err != nil {
+				t.Fatal(err)
+			}
+			mod += fmt.Sprintf("\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
+			break
+		}
+	}
+	probe := fmt.Sprintf(`package %s
+
+import (
+	"encoding/binary"
+	"encoding/hex"
+	"fmt"
+	"testing"
+	"unsafe"
+)
+
+func TestRetainOracle(t *testing.T) {
+	wire, err := hex.DecodeString(%q)
+	if err != nil { t.Fatal(err) }
+	n := RootLoadMeasure(wire)
+	if n < 0 { t.Fatal("measure") }
+	raw := make([]byte, n+63)
+	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+	region := raw[off : off+uintptr(n)]
+	store := TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]TableRetainId, 1024)}
+	var report TableReport
+	if RootLoadRetain(region, wire, &store, &report) == nil { t.Fatal("load") }
+	fmt.Printf("report %%d %%d %%d %%v %%d %%d\n", report.Retained, report.RetainLost, report.Unknown, report.Malformed, store.Used, store.Count)
+	for at := 0; at < int(store.Used); {
+		b := store.Bytes[at:]
+		total := int(binary.LittleEndian.Uint32(b))
+		node := binary.LittleEndian.Uint32(b[4:])
+		depth := int(binary.LittleEndian.Uint32(b[8:]))
+		plen := int(binary.LittleEndian.Uint32(b[12:]))
+		id := binary.LittleEndian.Uint64(b[16:])
+		var idBytes [8]byte
+		binary.LittleEndian.PutUint64(idBytes[:], id)
+		kind := b[24]
+		fmt.Printf("rec %%d %%d %%x %%d", node, depth, idBytes, kind)
+		for i := 0; i < depth; i++ {
+			fmt.Printf(" %%d %%d", binary.LittleEndian.Uint32(b[26+8*i:]), binary.LittleEndian.Uint32(b[30+8*i:]))
+		}
+		fmt.Printf(" %%x\n", b[26+depth*8:26+depth*8+plen])
+		at += total
+	}
+}
+`, u.Package, hex.EncodeToString(wire))
+	files["oracle_test.go"] = []byte(probe)
+	files["go.mod"] = []byte(mod)
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestRetainOracle$", "-v", ".")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the generated Go oracle failed: %v\n%s", err, out)
+	}
+	return parseRetainLines(t, string(out))
+}
+
+// parseRetainLines reads the report and records a retaining probe prints.
+func parseRetainLines(t *testing.T, out string) *retainResult {
+	t.Helper()
+	r := &retainResult{}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 {
+			continue
+		}
+		if f[0] == "report" {
+			r.retained, _ = strconv.Atoi(f[1])
+			r.lost, _ = strconv.Atoi(f[2])
+			r.unknown, _ = strconv.Atoi(f[3])
+			r.malformed = f[4] == "true"
+			r.used, _ = strconv.Atoi(f[5])
+			r.count, _ = strconv.Atoi(f[6])
+		} else if f[0] == "rec" && len(f) >= 6 && (len(f)-6)%2 == 0 {
+			node, _ := strconv.Atoi(f[1])
+			depth, _ := strconv.Atoi(f[2])
+			idBytes, err := hex.DecodeString(f[3])
+			if err != nil || len(idBytes) != 8 {
+				t.Fatalf("record id is not 8 hex bytes: %v", err)
+			}
+			id := binary.LittleEndian.Uint64(idBytes)
+			kind, _ := strconv.Atoi(f[4])
+			rc := rec{node: uint32(node), depth: uint32(depth), id: id, kind: uint8(kind)}
+			for i := 0; i < depth; i++ {
+				o, _ := strconv.Atoi(f[5+2*i])
+				ix, _ := strconv.Atoi(f[6+2*i])
+				rc.steps = append(rc.steps, step{o: uint32(o), i: uint32(ix)})
+			}
+			payload, err := hex.DecodeString(f[5+2*depth])
+			if err != nil {
+				t.Fatalf("record payload is not hex: %v", err)
+			}
+			rc.payload = payload
+			r.records = append(r.records, rc)
+		}
+	}
+	if r.count != len(r.records) {
+		t.Fatalf("the oracle kept %d records but printed %d", r.count, len(r.records))
+	}
+	return r
+}
+
+// retainDeepSchema spells a by-value chain long enough to drive the resolving
+// walk's stated nesting cap of 64 bodies (docs/SPEC-TABLES.md §6.6). Every table
+// but the last carries a leaf `n` and the next `f`, so one JSON value can stop
+// at any body.
+func retainDeepSchema(depth int) string {
+	var b strings.Builder
+	b.WriteString("package deep\n")
+	for i := 0; i < depth; i++ {
+		fmt.Fprintf(&b, "table T%d { n int32\n f T%d }\n", i, i+1)
+	}
+	fmt.Fprintf(&b, "table T%d { n int32 }\n", depth)
+	b.WriteString("table Root { deep T0 }\n")
+	return b.String()
+}
+
+// retainDeepJSON wraps `depth` T bodies under Root's unknown field.
+func retainDeepJSON(bodies int) string {
+	s := `{"n":1}`
+	for i := 1; i < bodies; i++ {
+		s = `{"f":` + s + `}`
+	}
+	return `{"deep":` + s + `}`
 }
 
 func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
@@ -225,6 +403,25 @@ func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 	}
 	if big.count != big.retained || len(big.records) != big.retained {
 		t.Fatalf("the store holds %d records but the report says %d retained (decoded %d)", big.count, big.retained, len(big.records))
+	}
+	// PER-RECORD IDENTITY, IN ORDER (§6.6): the body, every path step, the
+	// field's id and kind, and the resolved payload must be the records
+	// schema-go's own generated reader keeps from the same wire, not merely a
+	// set of plausible ones.
+	oracle := retainGoOracle(t, oldUnit, wire)
+	if oracle.malformed {
+		t.Fatalf("the Go oracle raised malformed on a good read")
+	}
+	if oracle.retained != oracleReport.Retained || oracle.lost != oracleReport.RetainLost || oracle.unknown != oracleReport.Unknown {
+		t.Fatalf("the Go oracle disagrees with tablewire: got retained=%d lost=%d unknown=%d, tablewire %+v", oracle.retained, oracle.lost, oracle.unknown, oracleReport)
+	}
+	if !reflect.DeepEqual(big.records, oracle.records) {
+		for i := 0; i < len(big.records) && i < len(oracle.records); i++ {
+			if !reflect.DeepEqual(big.records[i], oracle.records[i]) {
+				t.Fatalf("record %d: Luau kept %+v, Go oracle kept %+v", i, big.records[i], oracle.records[i])
+			}
+		}
+		t.Fatalf("Luau kept %d records, Go oracle kept %d", len(big.records), len(oracle.records))
 	}
 	// the wire's node table bounds the node index the walk may name: the root
 	// is node 1 and node record k is node k+2, so no retained record may name a
@@ -273,6 +470,27 @@ func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 	none := retainRunLuau(t, g, wire, 0)
 	if none.retained != 0 || none.lost != big.retained+big.lost || none.count != 0 {
 		t.Fatalf("a zero capacity kept %d/lost %d/count %d (want 0/%d/0)", none.retained, none.lost, none.count, big.retained+big.lost)
+	}
+
+	// THE CAPACITY BOUND, ONE PAST: a record the remaining capacity cannot hold
+	// WHOLE is not kept at all and counts one retain_lost.
+	capOldSrc := "package cap\ntable Root { seed int32 }\n"
+	capNewSrc := "package cap\ntable Root { seed int32\n extra string(32) }\n"
+	capOld, _ := retainCompile(t, capOldSrc)
+	capNew, _ := retainCompile(t, capNewSrc)
+	capWire := retainWire(t, capNew, `{"extra":"hello"}`)
+	capOracle := retainGoOracle(t, capOld, capWire)
+	if capOracle.retained != 1 || capOracle.used <= 0 {
+		t.Fatalf("the capacity fixture kept %+v", capOracle)
+	}
+	capGo := generateFiles(t, map[string]string{"Cap.schema": capOldSrc})
+	atCap := retainRunLuau(t, capGo, capWire, capOracle.used)
+	if atCap.retained != 1 || atCap.lost != 0 || !reflect.DeepEqual(atCap.records, capOracle.records) {
+		t.Fatalf("capacity %d kept %+v, want the oracle's one record %+v", capOracle.used, atCap, capOracle.records)
+	}
+	under := retainRunLuau(t, capGo, capWire, capOracle.used-1)
+	if under.retained != 0 || under.lost != 1 || under.count != 0 || len(under.records) != 0 {
+		t.Fatalf("capacity %d (one past) kept %+v, want 0 retained and one retain_lost", capOracle.used-1, under)
 	}
 
 	// a wire written by THIS build (nothing unknown) retains nothing.

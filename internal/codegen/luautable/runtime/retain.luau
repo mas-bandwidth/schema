@@ -174,7 +174,10 @@ resolve_body = function(r: any, ids: { any }, out: any, depth: number, e: number
 		o_u64(out, id)
 		local kind = r_u8(r)
 		o_byte(out, kind)
-		if not resolve_payload(r, ids, kind, out, depth + 1) then return false end
+		-- the field's own payload is NOT a nested body: the one step into a
+		-- framed body is taken by resolve_payload's own kind arm, exactly as
+		-- schema-go's walkPayload hands the same depth to framed (§6.6)
+		if not resolve_payload(r, ids, kind, out, depth) then return false end
 		if r.at > e then return false end
 	end
 end
