@@ -124,7 +124,10 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		{"refuseBytes", "byte buffer", "package probe\n\ntable L\n{\n    b *bytes\n}\n", "L.b", false},
 		{"refuseStrings", "string buffer", "package probe\n\ntable L\n{\n    s *string\n}\n", "L.s", false},
 		{refuser: "refuseMaps", name: "map", src: "package probe\n\ntable L\n{\n    index map[string(8)]int32\n}\n", field: "L.index", carried: true},
-		{"refuseLists", "unbounded array", "package probe\n\ntable L\n{\n    repos []int32\n}\n", "L.repos", false},
+		// this construct is LIFTED (compiler/target_squirrel_lists.go): the
+		// tagged target carries it, so the refuser accepts squirrel and still
+		// refuses a target that has not registered (docs/SPEC-TABLES.md §2.9).
+		{"refuseLists", "unbounded array", "package probe\n\ntable L\n{\n    repos []int32\n}\n", "L.repos", true},
 		{"refuseOptionalArrays", "optional array", "package probe\n\ntable L\n{\n    maybe ?[..4]int32\n}\n", "L.maybe", false},
 		{"refuseTableArms", "union table arm", "package probe\n\ntype Inner\n{\n    x int32\n}\nunion Pick\n{\n    alpha Inner\n    beta int32\n}\ntable L\n{\n    u Pick\n}\n", "Pick", false},
 		{"refuseValueDefaults", "value default", "package probe\n\ntable L\n{\n    s string(8) = \"hi\"\n}\n", "L.s", false},
@@ -153,17 +156,35 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		u := unitFromSource(t, tc.src)
 		if tc.carried {
 			// a construct the Squirrel table codec now carries is accepted, not
-			// refused: the refuser's nil means the map rides (docs/SPEC-TABLES.md
-			// §2.8)
-			if err := refusers[tc.refuser](u, "squirrel"); err != nil {
-				t.Errorf("%s: squirrel refused a construct it now carries: %v", tc.name+" ("+tc.refuser+")", err)
+			// refused: the refuser's nil means it rides (docs/SPEC-TABLES.md
+			// §2.8, §2.9). The registration is tagged for some constructs, so
+			// the check follows the build; the refuser still refuses a target
+			// that has not registered.
+			registered := true
+			if tc.refuser == "refuseLists" {
+				registered = slices.Contains(listTargets, "squirrel")
 			}
-			if err := chain(u); err != nil {
-				t.Errorf("%s (the squirrel chain): squirrel refused a construct it now carries: %v", tc.name, err)
-			}
-			if c != nil {
-				if _, err := c.Generate(u, "squirrel", nil); err != nil {
-					t.Errorf("%s (Generate squirrel): squirrel refused a construct it now carries: %v", tc.name, err)
+			if registered {
+				if err := refusers[tc.refuser](u, "squirrel"); err != nil {
+					t.Errorf("%s: squirrel refused a construct it now carries: %v", tc.name+" ("+tc.refuser+")", err)
+				}
+				if err := chain(u); err != nil {
+					t.Errorf("%s (the squirrel chain): squirrel refused a construct it now carries: %v", tc.name, err)
+				}
+				if c != nil {
+					if _, err := c.Generate(u, "squirrel", nil); err != nil {
+						t.Errorf("%s (Generate squirrel): squirrel refused a construct it now carries: %v", tc.name, err)
+					}
+				}
+				if err := refusers[tc.refuser](u, "nonesuch"); err == nil || !strings.Contains(err.Error(), "nonesuch") {
+					t.Errorf("%s: an unregistered target was not refused by name: %v", tc.name, err)
+				}
+			} else {
+				named(tc.name+" ("+tc.refuser+")", refusers[tc.refuser](u, "squirrel"), tc.field)
+				named(tc.name+" (the squirrel chain)", chain(u), tc.field)
+				if c != nil {
+					_, err := c.Generate(u, "squirrel", nil)
+					named(tc.name+" (Generate squirrel)", err, tc.field)
 				}
 			}
 			covered[tc.refuser] = true
