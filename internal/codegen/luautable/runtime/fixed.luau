@@ -23,9 +23,46 @@ local RECORD_MAX = 65536
 local PLAN_MAX = 4096
 local COUNT = 4
 local PRESENT = 1
+local TRAILER = 4
 
 local function refuse(name: string): Refusal
 	return { name = name }
+end
+
+-- crc32c is CRC-32C, the Castagnoli polynomial (docs/SPEC-TABLES.md §2.14):
+-- initial value and final XOR 0xFFFFFFFF, reflected 0x82F63B78.
+local function crc32c(b: buffer, n: number): number
+	local crc = 0xFFFFFFFF
+	for i = 0, n - 1 do
+		crc = bit32.bxor(crc, buffer.readu8(b, i))
+		for _ = 1, 8 do
+			if bit32.band(crc, 1) ~= 0 then
+				crc = bit32.bxor(bit32.rshift(crc, 1), 0x82F63B78)
+			else
+				crc = bit32.rshift(crc, 1)
+			end
+		end
+	end
+	return bit32.bxor(crc, 0xFFFFFFFF)
+end
+
+-- THE INTEGRITY TRAILER (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): four
+-- bytes, little-endian, the CRC-32C of every byte before them, after the last
+-- record and so the last four bytes of a declaring root's file.
+local function declaresIntegrity(d: any): boolean
+	return d.integrity ~= nil and d.integrity ~= ""
+end
+
+local function integrityHolds(b: buffer): boolean
+	local n = buffer.len(b)
+	return n >= 5 and buffer.readu32(b, n - 4) == crc32c(b, n - 4)
+end
+
+local function withoutTrailer(b: buffer): buffer
+	local n = buffer.len(b) - TRAILER
+	local out = buffer.create(n)
+	buffer.copy(out, 0, b, 0, n)
+	return out
 end
 
 local function signed(kind: number): boolean
@@ -481,11 +518,14 @@ local function parseFile(file: buffer): { hash: integer, layout: { LayoutEntry }
 end
 
 -- save writes one file: the form header, the writer's layout, and each record
--- behind its own eight-byte hash (docs/FIXED-FORM-ALGORITHM.md §2, §3).
+-- behind its own eight-byte hash (docs/FIXED-FORM-ALGORITHM.md §2, §3), then
+-- for a root that declares integrity = "crc32c" the four-byte trailer
+-- (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING).
 function F.save(d: any, fixed: Fixed, values: { any }): buffer
 	local layout = fixed.layout
+	local trailer = if declaresIntegrity(d) then TRAILER else 0
 	local bytes = HEADER + 4 + 4 + #layout * ENTRY
-	local out = buffer.create(bytes + #values * (8 + fixed.recordBytes))
+	local out = buffer.create(bytes + #values * (8 + fixed.recordBytes) + trailer)
 	buffer.fill(out, 0, 0, bytes)
 	buffer.writeu8(out, 0, 3)
 	put64(out, HASH_AT, fixed.hash)
@@ -510,12 +550,23 @@ function F.save(d: any, fixed: Fixed, values: { any }): buffer
 		buffer.copy(out, p, rec, 0, fixed.recordBytes)
 		p = p + fixed.recordBytes
 	end
+	if trailer > 0 then
+		buffer.writeu32(out, p, crc32c(out, p))
+		p = p + TRAILER
+	end
 	return out
 end
 
 -- load reads every record in a file through a plan compiled from the WRITER's
 -- layout; `foreign` is nil for the identity plan (docs/FIXED-FORM-ALGORITHM.md §4).
+-- The form byte is read first, then a declaring root's trailer is checked
+-- before the layout or any record; a mismatch refuses integrity_mismatch and
+-- the rest is read without it (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING).
 function F.load(d: any, fixed: Fixed, file: buffer, foreign: Fixed?): { any }
+	if declaresIntegrity(d) and buffer.len(file) >= 1 and buffer.readu8(file, 0) == 3 then
+		if not integrityHolds(file) then error(refuse("integrity_mismatch"), 0) end
+		file = withoutTrailer(file)
+	end
 	local parsed = parseFile(file)
 	local writer = foreign or fixed
 	if foreign == nil and parsed.hash ~= fixed.hash then
