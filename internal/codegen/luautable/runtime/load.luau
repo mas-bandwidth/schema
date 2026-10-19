@@ -224,8 +224,10 @@ local function open(bytes: buffer, report: any): any
 	if len < 1 then report.malformed = true; return nil end
 	if buffer.readu8(bytes, 0) ~= 1 then report.refused = report.refused + 1; return nil end
 	if len < 9 then report.malformed = true; return nil end
+	-- the count is the unsigned u64 of docs/SPEC-TABLES.md §3, not a signed
+	-- integer: a high-bit count is huge, never negative, and refuses here
 	local count = integer.tonumber(buffer.readinteger(bytes, len - 8))
-	if count > math.floor((len - 9) / 8) then report.malformed = true; return nil end
+	if count < 0 or count > math.floor((len - 9) / 8) then report.malformed = true; return nil end
 	local endpos = len - 8 - count * 8
 	local ids = {}
 	local seen: { [integer]: boolean } = {}
