@@ -242,6 +242,8 @@ func (g *gen) assemble() []byte {
 		if g.needNumScratch {
 			h.WriteString("/** @type {{value: number}} */\n")
 			h.WriteString("const NUMBER_SCRATCH = { value: 0 };\n")
+			h.WriteString("/** @returns {number} */\n")
+			h.WriteString("function numberScratchValue() { return NUMBER_SCRATCH.value; }\n")
 		}
 		if g.needBigScratch {
 			h.WriteString("/** @type {{value: bigint}} */\n")
