@@ -169,12 +169,22 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			one.Name = mem[i]
 			expected := ir.TableWireFieldKind(&one)
 			condition := fmt.Sprintf("kind==%d", expected)
+			widenKinds := []int{}
 			for k := 1; k <= 33; k++ {
 				if ir.TableKindWidens(k, expected) {
 					condition += fmt.Sprintf("||kind==%d", k)
+					widenKinds = append(widenKinds, k)
 				}
 			}
-			fmt.Fprintf(&b, "        if(!(%s)){report.kindMismatch++;return v;}TableVariable.Reader r=TableVariable.fieldPayload(body,kind);\n", condition)
+			fmt.Fprintf(&b, "        if(!(%s)){report.kindMismatch++;return v;}\n", condition)
+			if len(widenKinds) > 0 {
+				widthExpr := "0"
+				for _, k := range widenKinds {
+					widthExpr = fmt.Sprintf("(kind==%d?%d:%s)", k, ir.TableKindWidth(k), widthExpr)
+				}
+				fmt.Fprintf(&b, "        if(kind!=%d&&((body.limit-body.off)!=%s)){report.malformed=true;return v;}\n", expected, widthExpr)
+			}
+			b.WriteString("        TableVariable.Reader r=TableVariable.fieldPayload(body,kind);\n")
 			directText := one.Array == ir.ArrayNone && (one.Type.Kind == ir.TString || one.Type.Kind == ir.TWString) && !one.Type.Pointer
 			if directText {
 				b.WriteString("TableVariable.Report parentReport=report;report=new TableVariable.Report();TableVariable.Reader textReader=new TableVariable.Reader(r.buf,r.ids,report);textReader.off=r.off;textReader.limit=r.limit;r=textReader;\n")
