@@ -7,6 +7,10 @@ import (
 	"testing"
 )
 
+// The sibling array-root target file and this file register additive Luau
+// features only under this tag; the untagged registry must remain empty.
+func init() { nonGoCarriers[luau] = []string{carryOptionalVariableClosure, carryArrayRoot} }
+
 // TestLuauCarriesOptionalVariableClosure holds docs/SPEC-TABLES.md §2.3's
 // `?T` over a variable closure as the Luau target's own: Luau generates the
 // probe unit through c.Generate (the refusal lift), while every other

@@ -10,5 +10,5 @@ package compiler
 // non-Go target as carrying nothing), so no shared refusal line is edited and
 // every other target keeps refusing the construct by name.
 func init() {
-	targetCarries["luau"][carryOptionalVariableClosure] = struct{}{}
+	registerCarried("luau", carryOptionalVariableClosure)
 }
