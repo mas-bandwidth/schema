@@ -87,9 +87,52 @@ local manifestLines = function(s) {
   return out;
 };
 
-local cap = function(s) {
-  if (s.len() == 0) return s;
-  return format("%c", (s[0] & 0xdf)) + s.slice(1);
+local shq = function(s) {
+  local out = "'";
+  for (local i = 0; i < s.len(); i++) {
+    if ((s[i] & 0xff) == 39) out += "'\\''";
+    else out += format("%c", s[i] & 0xff);
+  }
+  return out + "'";
+};
+
+local baseName = function(path) {
+  local cut = -1;
+  local at;
+  while ((at = path.find("/", cut + 1)) != null) cut = at;
+  return path.slice(cut + 1);
+};
+
+// THE TABLE MODULE'S NAME. The target names it <Package>Tables, and the
+// manifest key is not the package (unit scalars is package scalardemo), so the
+// unit directory's single *Tables.nut names it; zero or two is no module.
+local tableModuleName = function(dir) {
+  local tmp = getenv("TMPDIR");
+  if (tmp == null || tmp.len() == 0) tmp = getenv("TMP");
+  if (tmp == null || tmp.len() == 0) tmp = dir;
+  local h = 2166136261;
+  for (local i = 0; i < dir.len(); i++) h = ((h ^ (dir[i] & 0xff)) * 16777619) & 0xffffffff;
+  local listing = tmp + "/schema-tables-" + format("%08x", h) + ".txt";
+  local name = null;
+  try {
+    system("ls -1 -- " + shq(dir) + "/*Tables.nut > " + shq(listing) + " 2>/dev/null");
+    local text = readText(listing);
+    local lines = [];
+    local start = 0;
+    for (local i = 0; i < text.len(); i++) {
+      if (text[i] == 10) {
+        if (i > start) lines.append(text.slice(start, i));
+        start = i + 1;
+      }
+    }
+    if (start < text.len()) lines.append(text.slice(start));
+    if (lines.len() == 1) {
+      local leaf = baseName(lines[0]);
+      if (leaf.len() > 4 && leaf.slice(leaf.len() - 4) == ".nut") name = leaf.slice(0, leaf.len() - 4);
+    }
+  } catch (e) { name = null; }
+  try { remove(listing); } catch (e) {}
+  return name;
 };
 
 local newReport = function() {
@@ -97,8 +140,11 @@ local newReport = function() {
 };
 
 local openUnit = function(unit) {
-  local schema = dofile(corpus + "/" + unit + "/schema_module.nut", true);
-  return [schema, schema.require(cap(unit) + "Tables")];
+  local dir = corpus + "/" + unit;
+  local module = tableModuleName(dir);
+  if (module == null) throw "main.nut: " + unit + " has zero or two *Tables.nut";
+  local schema = dofile(dir + "/schema_module.nut", true);
+  return [schema, schema.require(module)];
 };
 
 local loadReport = function(unit, root, bytes) {
