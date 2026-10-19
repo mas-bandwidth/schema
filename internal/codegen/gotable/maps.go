@@ -99,7 +99,12 @@ func (g *tableGen) emitMapRead(f *ir.Field, ind string) {
 		// an UNBOUNDED key's damage names the map (docs/SPEC-TABLES.md §2.13.1)
 		named = fmt.Sprintf("tableTextMalformed(r.Report,%q);", f.MapEntry.MapEntryOf)
 	}
-	g.pf("%sfor i:=uint64(0);i<count;i++ {elem,ok:=sub.Body();if !ok {r.Report.Malformed=true;"+named+"break};key,bad,over,wide,whole:=tableMapReadKey(%s,&field.Table().Fields[0]);if wide&&!widened {widened=true;r.Report.Widened++};if bad {r.Report.KindMismatch++;*holder=tableContainer{};break};if !whole {r.Report.Malformed=true;"+named+"break};if over {r.Report.Clamped++;continue};order:= -1;if prior!=nil {order=tableMapKeyOrder(last,key,&field.Table().Fields[0])};if order>0 {r.Report.Malformed=true;"+named+"break};p:=prior;if order==0 {r.Report.Duplicate++}else {p=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,holder,holder.Count,%d));if p==nil {r.Report.Malformed=true;break};if sub.Nodes.Carve.Worker==nil {holder.Count++}};\n", ind, keyReader, entry, layout.Size)
+	// the map-entry flow at p: when order==0 p=prior and prior is non-nil
+	// (order is -1 until prior!=nil), and otherwise p is freshly allocated and
+	// checked; the guard is unreachable but kept because NilAway cannot see the
+	// relational invariant. unreachable: order==0 needs prior!=nil; NilAway
+	// cannot see it.
+	g.pf("%sfor i:=uint64(0);i<count;i++ {elem,ok:=sub.Body();if !ok {r.Report.Malformed=true;"+named+"break};key,bad,over,wide,whole:=tableMapReadKey(%s,&field.Table().Fields[0]);if wide&&!widened {widened=true;r.Report.Widened++};if bad {r.Report.KindMismatch++;*holder=tableContainer{};break};if !whole {r.Report.Malformed=true;"+named+"break};if over {r.Report.Clamped++;continue};order:= -1;if prior!=nil {order=tableMapKeyOrder(last,key,&field.Table().Fields[0])};if order>0 {r.Report.Malformed=true;"+named+"break};p:=prior;if order==0 {r.Report.Duplicate++}else {p=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,holder,holder.Count,%d));if p==nil {r.Report.Malformed=true;break};if sub.Nodes.Carve.Worker==nil {holder.Count++}};if p==nil {r.Report.Malformed=true;"+named+"break};\n", ind, keyReader, entry, layout.Size)
 	g.retainReadPath("elem", "r", "holder.Count-1")
 	g.pf("%sLoadBody(&elem,p);\n", f.MapEntry.Name)
 	g.emitCarveReturn("sub", "elem", ind)
