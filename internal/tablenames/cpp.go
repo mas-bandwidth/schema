@@ -149,6 +149,7 @@ func init() {
 		Name{Name: "TableJsonWriteOptions", What: "the text write under the options (§16.2)"},
 		Name{Name: "TableJsonReadGraphOptions", What: "a variable root's text read under the options (§16.2, §16.7)"},
 		Name{Name: "TableJsonWriteGraphOptions", What: "a variable root's text write under the options (§16.2, §16.7)"},
+		Name{Name: "TableJsonRefused", What: "whether a report holds anything the strict text read refuses (§6.5, §16.2)"},
 		// C++'s float <-> IEEE-754 bit pattern helpers
 		Name{Name: "table_bits_to_float", What: "u32 bits -> float"},
 		Name{Name: "table_float_to_bits", What: "float -> u32 bits"},

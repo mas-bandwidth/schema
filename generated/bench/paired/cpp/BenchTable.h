@@ -222,6 +222,30 @@ struct TableReport
     // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
+
+// TableJsonRefused is the STRICT read's verdict (docs/SPEC-TABLES.md §6.5,
+// §16.2): true for any report the strict read refuses. It is the C++ side of
+// Go's TableReport.Err (internal/codegen/gotable/refusal.go): a clamp, a kind
+// mismatch, malformed text, an integrity mismatch, a non-finite float, a blob
+// shared by two slots, or a named refusal reason — any gap a tolerant read
+// would count or name, a strict read refuses.
+inline bool TableJsonRefused( const TableReport & r )
+{
+    if ( r.malformed ) { return true; }
+    if ( r.clamped != 0 || r.kind_mismatch != 0 ) { return true; }
+    switch ( r.refuse_reason )
+    {
+        case malformed:
+        case clamped:
+        case kind_mismatch:
+        case integrity_mismatch:
+        case non_finite:
+        case blob_shared:
+            return true;
+        default:
+            return false;
+    }
+}
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire

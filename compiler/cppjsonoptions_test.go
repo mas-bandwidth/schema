@@ -341,16 +341,18 @@ func TestCPPJsonOptions(t *testing.T) {
 // (jsonLegacyRequiredSchema/jsonLegacyRequiredProbe).
 const cppJsonRequiredSchema = `package probe
 
-table Child
+table Inner
 {
-    x int32
+    y int32 | required
+    z int32
 }
 
 table R
 {
     a int32 | required
     b int32
-    kids []Child
+    kids []Inner
+    one Inner
 }
 `
 
@@ -364,14 +366,19 @@ static const TableJsonOptions legacy = { true, true, true };
 
 int main()
 {
+    // The oracle is internal/codegen/gotable/jsonlegacy_test.go's "required"
+    // subtest (jsonLegacyRequiredSchema/jsonLegacyRequiredProbe): OmitDefaults
+    // never elides a | required field, while a nested table wholly at its
+    // default is still elided whole, and an array element is positional with
+    // its fields elided.
     const char * in[] = {
         "{\"a\":0}",
-        "{\"a\":0,\"kids\":[{\"x\":0},{\"x\":2}]}",
+        "{\"a\":0,\"kids\":[{\"y\":0},{\"y\":2,\"z\":3}]}",
         "{\"a\":5,\"b\":0}"
     };
     const char * want[] = {
         "{\"a\":0}",
-        "{\"a\":0,\"kids\":[{},{\"x\":2}]}",
+        "{\"a\":0,\"kids\":[{\"y\":0},{\"y\":2,\"z\":3}]}",
         "{\"a\":5}"
     };
     for ( int c = 0; c < 3; c++ )
@@ -379,6 +386,7 @@ int main()
         RBuilder b;
         TableReport r = {};
         CHECK( RFromJsonTolerantWith( b, in[c], (int64_t) strlen( in[c] ), &r, TableJsonOptions() ) );
+        CHECK( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0 && r.duplicate == 0 && !r.malformed );
         CHECK( b.Lock() );
         const int64_t n = RToJsonMeasureWith( b.AsConst(), legacy );
         char out[256] = {};

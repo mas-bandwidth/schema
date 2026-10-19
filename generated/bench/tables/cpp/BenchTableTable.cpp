@@ -3665,25 +3665,12 @@ namespace benchtable {
 
 bool TableEntityFromJsonTolerant( TableEntity & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, TableEntityTableType(), text, bytes, report );
+    return TableEntityFromJsonTolerantWith( value, text, bytes, report, TableJsonOptions() );
 }
 
 bool TableEntityFromJson( TableEntity & value, const char * text, int64_t bytes, TableReport * report )
 {
-    TableReport read;
-    bool ok = TableJsonRead( &value, TableEntityTableType(), text, bytes, &read );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
-    {
-        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
-        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }
-        TableEntityTableType()->reset( &value );
-        if ( report != NULL ) { *report = read; }
-        return false;
-    }
-    read.refuse_reason = TableRefuseReason::ok;
-    if ( report != NULL ) { *report = read; }
-    return true;
+    return TableEntityFromJsonWith( value, text, bytes, report, TableJsonOptions() );
 }
 
 int64_t TableEntityToJsonMeasure( const TableEntity & value )
@@ -3700,7 +3687,7 @@ bool TableEntityFromJsonWith( TableEntity & value, const char * text, int64_t by
 {
     TableReport read;
     bool ok = TableJsonReadOptions( &value, TableEntityTableType(), text, bytes, &read, options );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    if ( !ok || TableJsonRefused( read ) )
     {
         if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
@@ -3731,25 +3718,12 @@ int64_t TableEntityToJsonWith( const TableEntity & value, char * buffer, int64_t
 
 bool TableStatFromJsonTolerant( TableStat & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, TableStatTableType(), text, bytes, report );
+    return TableStatFromJsonTolerantWith( value, text, bytes, report, TableJsonOptions() );
 }
 
 bool TableStatFromJson( TableStat & value, const char * text, int64_t bytes, TableReport * report )
 {
-    TableReport read;
-    bool ok = TableJsonRead( &value, TableStatTableType(), text, bytes, &read );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
-    {
-        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
-        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }
-        TableStatTableType()->reset( &value );
-        if ( report != NULL ) { *report = read; }
-        return false;
-    }
-    read.refuse_reason = TableRefuseReason::ok;
-    if ( report != NULL ) { *report = read; }
-    return true;
+    return TableStatFromJsonWith( value, text, bytes, report, TableJsonOptions() );
 }
 
 int64_t TableStatToJsonMeasure( const TableStat & value )
@@ -3766,7 +3740,7 @@ bool TableStatFromJsonWith( TableStat & value, const char * text, int64_t bytes,
 {
     TableReport read;
     bool ok = TableJsonReadOptions( &value, TableStatTableType(), text, bytes, &read, options );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    if ( !ok || TableJsonRefused( read ) )
     {
         if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
@@ -3797,25 +3771,12 @@ int64_t TableStatToJsonWith( const TableStat & value, char * buffer, int64_t cap
 
 bool TableMixedFromJsonTolerant( TableMixed & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, TableMixedTableType(), text, bytes, report );
+    return TableMixedFromJsonTolerantWith( value, text, bytes, report, TableJsonOptions() );
 }
 
 bool TableMixedFromJson( TableMixed & value, const char * text, int64_t bytes, TableReport * report )
 {
-    TableReport read;
-    bool ok = TableJsonRead( &value, TableMixedTableType(), text, bytes, &read );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
-    {
-        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
-        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }
-        TableMixedTableType()->reset( &value );
-        if ( report != NULL ) { *report = read; }
-        return false;
-    }
-    read.refuse_reason = TableRefuseReason::ok;
-    if ( report != NULL ) { *report = read; }
-    return true;
+    return TableMixedFromJsonWith( value, text, bytes, report, TableJsonOptions() );
 }
 
 int64_t TableMixedToJsonMeasure( const TableMixed & value )
@@ -3832,7 +3793,7 @@ bool TableMixedFromJsonWith( TableMixed & value, const char * text, int64_t byte
 {
     TableReport read;
     bool ok = TableJsonReadOptions( &value, TableMixedTableType(), text, bytes, &read, options );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    if ( !ok || TableJsonRefused( read ) )
     {
         if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
@@ -3863,25 +3824,12 @@ int64_t TableMixedToJsonWith( const TableMixed & value, char * buffer, int64_t c
 
 bool TableHitEventFromJsonTolerant( TableHitEvent & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, TableHitEventTableType(), text, bytes, report );
+    return TableHitEventFromJsonTolerantWith( value, text, bytes, report, TableJsonOptions() );
 }
 
 bool TableHitEventFromJson( TableHitEvent & value, const char * text, int64_t bytes, TableReport * report )
 {
-    TableReport read;
-    bool ok = TableJsonRead( &value, TableHitEventTableType(), text, bytes, &read );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
-    {
-        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
-        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }
-        TableHitEventTableType()->reset( &value );
-        if ( report != NULL ) { *report = read; }
-        return false;
-    }
-    read.refuse_reason = TableRefuseReason::ok;
-    if ( report != NULL ) { *report = read; }
-    return true;
+    return TableHitEventFromJsonWith( value, text, bytes, report, TableJsonOptions() );
 }
 
 int64_t TableHitEventToJsonMeasure( const TableHitEvent & value )
@@ -3898,7 +3846,7 @@ bool TableHitEventFromJsonWith( TableHitEvent & value, const char * text, int64_
 {
     TableReport read;
     bool ok = TableJsonReadOptions( &value, TableHitEventTableType(), text, bytes, &read, options );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    if ( !ok || TableJsonRefused( read ) )
     {
         if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
@@ -3929,25 +3877,12 @@ int64_t TableHitEventToJsonWith( const TableHitEvent & value, char * buffer, int
 
 bool TableChatEventFromJsonTolerant( TableChatEvent & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, TableChatEventTableType(), text, bytes, report );
+    return TableChatEventFromJsonTolerantWith( value, text, bytes, report, TableJsonOptions() );
 }
 
 bool TableChatEventFromJson( TableChatEvent & value, const char * text, int64_t bytes, TableReport * report )
 {
-    TableReport read;
-    bool ok = TableJsonRead( &value, TableChatEventTableType(), text, bytes, &read );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
-    {
-        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
-        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }
-        TableChatEventTableType()->reset( &value );
-        if ( report != NULL ) { *report = read; }
-        return false;
-    }
-    read.refuse_reason = TableRefuseReason::ok;
-    if ( report != NULL ) { *report = read; }
-    return true;
+    return TableChatEventFromJsonWith( value, text, bytes, report, TableJsonOptions() );
 }
 
 int64_t TableChatEventToJsonMeasure( const TableChatEvent & value )
@@ -3964,7 +3899,7 @@ bool TableChatEventFromJsonWith( TableChatEvent & value, const char * text, int6
 {
     TableReport read;
     bool ok = TableJsonReadOptions( &value, TableChatEventTableType(), text, bytes, &read, options );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    if ( !ok || TableJsonRefused( read ) )
     {
         if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
@@ -3995,25 +3930,12 @@ int64_t TableChatEventToJsonWith( const TableChatEvent & value, char * buffer, i
 
 bool TablePickupEventFromJsonTolerant( TablePickupEvent & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, TablePickupEventTableType(), text, bytes, report );
+    return TablePickupEventFromJsonTolerantWith( value, text, bytes, report, TableJsonOptions() );
 }
 
 bool TablePickupEventFromJson( TablePickupEvent & value, const char * text, int64_t bytes, TableReport * report )
 {
-    TableReport read;
-    bool ok = TableJsonRead( &value, TablePickupEventTableType(), text, bytes, &read );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
-    {
-        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
-        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }
-        TablePickupEventTableType()->reset( &value );
-        if ( report != NULL ) { *report = read; }
-        return false;
-    }
-    read.refuse_reason = TableRefuseReason::ok;
-    if ( report != NULL ) { *report = read; }
-    return true;
+    return TablePickupEventFromJsonWith( value, text, bytes, report, TableJsonOptions() );
 }
 
 int64_t TablePickupEventToJsonMeasure( const TablePickupEvent & value )
@@ -4030,7 +3952,7 @@ bool TablePickupEventFromJsonWith( TablePickupEvent & value, const char * text, 
 {
     TableReport read;
     bool ok = TableJsonReadOptions( &value, TablePickupEventTableType(), text, bytes, &read, options );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    if ( !ok || TableJsonRefused( read ) )
     {
         if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }

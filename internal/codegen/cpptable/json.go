@@ -704,34 +704,13 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 		// duplicates onto the report, and answers true unless the text is
 		// malformed.
 		g.pf("bool %sFromJsonTolerant( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
-		g.pf("    %s * root = builder.GetRoot();\n", st.Name)
-		g.pf("    if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed\n")
-		g.pf("    return TableJsonReadGraph( builder.main, root, %sTableType(), text, bytes, report );\n}\n\n", st.Name)
-		// The plain read is STRICT (docs/SPEC-TABLES.md §6.5, §16.2): it answers
-		// false for a text whose report holds a clamp, a kind mismatch, a
-		// malformed value, resets the root to defaults, and overwrites the
-		// supplied report with this read's report. A builder already locked
-		// answers false before it reads, leaving the report empty. On a refusal
-		// the report's typed reason is filled in the order Go's TableReport.Err
-		// runs its clauses (internal/codegen/gotable/refusal.go): malformed,
-		// then clamped, then kind_mismatch; a clean read answers ok.
+		g.pf("    return %sFromJsonTolerantWith( builder, text, bytes, report, TableJsonOptions() );\n}\n\n", st.Name)
+		// The plain read is STRICT (docs/SPEC-TABLES.md §6.5, §16.2): it is the
+		// With read at the zero options value, exactly as Go's FromJson is its
+		// FromJsonWith (internal/codegen/gotable/json.go's FromJson), so both
+		// share the strict reset and the typed refuse_reason (gotable/refusal.go).
 		g.pf("bool %sFromJson( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
-		g.pf("    %s * root = builder.GetRoot();\n", st.Name)
-		g.pf("    if ( root == NULL ) { if ( report != NULL ) { *report = TableReport(); } return false; } // locked: the report stays empty\n")
-		g.pf("    TableReport read;\n")
-		g.pf("    bool ok = TableJsonReadGraph( builder.main, root, %sTableType(), text, bytes, &read );\n", st.Name)
-		g.pf("    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )\n")
-		g.pf("    {\n")
-		g.pf("        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }\n")
-		g.pf("        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }\n")
-		g.pf("        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }\n")
-		g.pf("        %sTableType()->reset( root );\n", st.Name)
-		g.pf("        if ( report != NULL ) { *report = read; }\n")
-		g.pf("        return false;\n")
-		g.pf("    }\n")
-		g.pf("    read.refuse_reason = TableRefuseReason::ok;\n")
-		g.pf("    if ( report != NULL ) { *report = read; }\n")
-		g.pf("    return true;\n}\n\n")
+		g.pf("    return %sFromJsonWith( builder, text, bytes, report, TableJsonOptions() );\n}\n\n", st.Name)
 		g.pf("int64_t %sToJsonMeasure( const %s * root, TableAllocator allocator )\n{\n", st.Name, st.Name)
 		g.pf("    return TableJsonWriteGraph( root, %sTableType(), NULL, 0, allocator );\n}\n\n", st.Name)
 		g.pf("int64_t %sToJson( const %s * root, char * buffer, int64_t capacity, TableAllocator allocator )\n{\n", st.Name, st.Name)
@@ -745,7 +724,7 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 		g.pf("    if ( root == NULL ) { if ( report != NULL ) { *report = TableReport(); } return false; } // locked: the report stays empty\n")
 		g.pf("    TableReport read;\n")
 		g.pf("    bool ok = TableJsonReadGraphOptions( builder.main, root, %sTableType(), text, bytes, &read, options );\n", st.Name)
-		g.pf("    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )\n")
+		g.pf("    if ( !ok || TableJsonRefused( read ) )\n")
 		g.pf("    {\n")
 		g.pf("        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }\n")
 		g.pf("        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }\n")
@@ -768,29 +747,13 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 		return
 	}
 	g.pf("bool %sFromJsonTolerant( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
-	g.pf("    return TableJsonRead( &value, %sTableType(), text, bytes, report );\n}\n\n", st.Name)
-	// The plain read is STRICT (docs/SPEC-TABLES.md §6.5, §16.2): it answers false
-	// for a text whose report holds a clamp, a kind mismatch or malformed text,
-	// resets the value to its declared defaults
-	// and overwrites the supplied report with this read's report. On a refusal
-	// the report's typed reason is filled in the order Go's TableReport.Err
-	// runs its clauses (internal/codegen/gotable/refusal.go): malformed, then
-	// clamped, then kind_mismatch; a clean read answers ok.
+	g.pf("    return %sFromJsonTolerantWith( value, text, bytes, report, TableJsonOptions() );\n}\n\n", st.Name)
+	// The plain read is STRICT (docs/SPEC-TABLES.md §6.5, §16.2): it is the
+	// With read at the zero options value, exactly as Go's FromJson is its
+	// FromJsonWith (internal/codegen/gotable/json.go's FromJson), so both
+	// share the strict reset and the typed refuse_reason (gotable/refusal.go).
 	g.pf("bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
-	g.pf("    TableReport read;\n")
-	g.pf("    bool ok = TableJsonRead( &value, %sTableType(), text, bytes, &read );\n", st.Name)
-	g.pf("    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )\n")
-	g.pf("    {\n")
-	g.pf("        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }\n")
-	g.pf("        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }\n")
-	g.pf("        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }\n")
-	g.pf("        %sTableType()->reset( &value );\n", st.Name)
-	g.pf("        if ( report != NULL ) { *report = read; }\n")
-	g.pf("        return false;\n")
-	g.pf("    }\n")
-	g.pf("    read.refuse_reason = TableRefuseReason::ok;\n")
-	g.pf("    if ( report != NULL ) { *report = read; }\n")
-	g.pf("    return true;\n}\n\n")
+	g.pf("    return %sFromJsonWith( value, text, bytes, report, TableJsonOptions() );\n}\n\n", st.Name)
 	g.pf("int64_t %sToJsonMeasure( const %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    return TableJsonWrite( &value, %sTableType(), NULL, 0 );\n}\n\n", st.Name)
 	g.pf("int64_t %sToJson( const %s & value, char * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
@@ -801,12 +764,12 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 	g.pf("bool %sFromJsonWith( %s & value, const char * text, int64_t bytes, TableReport * report, TableJsonOptions options )\n{\n", st.Name, st.Name)
 	g.pf("    TableReport read;\n")
 	g.pf("    bool ok = TableJsonReadOptions( &value, %sTableType(), text, bytes, &read, options );\n", st.Name)
-	g.pf("    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )\n")
-	g.pf("    {\n")
-	g.pf("        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }\n")
-	g.pf("        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }\n")
-	g.pf("        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }\n")
-	g.pf("        %sTableType()->reset( &value );\n", st.Name)
+ 	g.pf("    if ( !ok || TableJsonRefused( read ) )\n")
+ 	g.pf("    {\n")
+ 	g.pf("        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }\n")
+ 	g.pf("        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }\n")
+ 	g.pf("        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }\n")
+ 	g.pf("        %sTableType()->reset( &value );\n", st.Name)
 	g.pf("        if ( report != NULL ) { *report = read; }\n")
 	g.pf("        return false;\n")
 	g.pf("    }\n")
