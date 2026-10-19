@@ -603,7 +603,7 @@ local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
           report.kindMismatch = report.kindMismatch + 1
           if not skip_value(inp, depth + 1, graph) then return false end
         else
-          if not read_value(T, fd, inp, v, fd.name, depth, graph, report, false) then return false end
+          if not read_value(T, fd, inp, v, fd.name, depth, graph, report, false, desc.name) then return false end
         end
         if fd.optional then v[fd.name .. "_present"] = true end
       end
@@ -717,7 +717,7 @@ local function read_base64(inp, bound, report)
   return table.concat(out)
 end
 
-local function read_array(T, fd, inp, holder, key, depth, graph, report)
+local function read_array(T, fd, inp, holder, key, depth, graph, report, table_name)
   if peek(inp) ~= '[' then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out = {}
@@ -747,7 +747,7 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report)
     else
       placed = placed + 1
       if out[placed] == nil then out[placed] = zero_elem(T, fd.elem) end
-      if not read_value(T, fd.elem, inp, out, placed, depth + 1, graph, report, true) then
+      if not read_value(T, fd.elem, inp, out, placed, depth + 1, graph, report, true, table_name) then
         return false
       end
     end
@@ -766,7 +766,7 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report)
   return true
 end
 
-local function read_map(T, fd, inp, holder, key, depth, graph, report)
+local function read_map(T, fd, inp, holder, key, depth, graph, report, table_name)
   if peek(inp) ~= '{' then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out, seen = {}, {}
@@ -831,7 +831,7 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report)
       if seen[kval] then report.duplicate = report.duplicate + 1 end
       seen[kval] = true
       local tmp = {}
-      if not read_value(T, fd.value_field, inp, tmp, "v", depth + 1, graph, report, true) then
+      if not read_value(T, fd.value_field, inp, tmp, "v", depth + 1, graph, report, true, table_name) then
         return false
       end
       out[kval] = tmp.v
@@ -851,7 +851,7 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report)
   return true
 end
 
-local function read_keyed(T, fd, inp, holder, key, depth, graph, report)
+local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_name)
   if peek(inp) ~= '{' then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out = {}
@@ -880,7 +880,7 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report)
         report.kindMismatch = report.kindMismatch + 1
         if not skip_value(inp, depth + 1, graph) then return false end
       else
-        if not read_value(T, fd.elem, inp, out, slot, depth + 1, graph, report, true) then
+        if not read_value(T, fd.elem, inp, out, slot, depth + 1, graph, report, true, table_name) then
           return false
         end
       end
@@ -900,7 +900,7 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report)
   return true
 end
 
-local function read_union(T, u, inp, depth, graph, report)
+local function read_union(T, u, inp, depth, graph, report, table_name)
   if peek(inp) ~= '{' then inp.bad = true; return nil end
   inp.p = inp.p + 1
   if peek(inp) == '}' then inp.p = inp.p + 1; return { tag = 0 } end
@@ -935,7 +935,7 @@ local function read_union(T, u, inp, depth, graph, report)
     if not skip_value(inp, depth + 1, graph) then return nil end
   else
     out.tag = tag
-    if not read_value(T, arm.field, inp, out, arm.name, depth + 1, graph, report, false) then
+    if not read_value(T, arm.field, inp, out, arm.name, depth + 1, graph, report, false, table_name) then
       return nil
     end
   end
@@ -949,7 +949,7 @@ local function read_union(T, u, inp, depth, graph, report)
   return nil
 end
 
-read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
+read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_name)
   local s = d.shape
   if s == "pointer" then
     return read_pointer(T, d, inp, holder, key, depth, graph, report)
@@ -959,7 +959,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
     if nul then
       -- §16.3: a JSON text that lands U+0000 in bounded text storage is
       -- refused as text_holds_zero, naming the innermost field.
-      report.Reason = "text_holds_zero: " .. d.name
+      report.Reason = "text_holds_zero: " .. table_name .. "." .. d.name
       inp.bad = true
       return false
     end
@@ -995,10 +995,10 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
     else holder[key] = { value = out == false and "" or out } end
     return true
   elseif s == "array" then
-    if d.keyed ~= nil then return read_keyed(T, d, inp, holder, key, depth, graph, report) end
-    return read_array(T, d, inp, holder, key, depth, graph, report)
+    if d.keyed ~= nil then return read_keyed(T, d, inp, holder, key, depth, graph, report, table_name) end
+    return read_array(T, d, inp, holder, key, depth, graph, report, table_name)
   elseif s == "map" then
-    return read_map(T, d, inp, holder, key, depth, graph, report)
+    return read_map(T, d, inp, holder, key, depth, graph, report, table_name)
   elseif s == "table" then
     local node = fresh(T, T.Tables[d.target])
     holder[key] = node
@@ -1006,7 +1006,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
   elseif s == "union" then
     local u = T.Unions[d.target]
     if u == nil then inp.bad = true; return false end
-    local out = read_union(T, u, inp, depth, graph, report)
+    local out = read_union(T, u, inp, depth, graph, report, table_name)
     if out == nil then return false end
     holder[key] = out
     return true

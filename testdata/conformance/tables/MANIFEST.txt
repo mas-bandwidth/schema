@@ -676,6 +676,7 @@ json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conform
 # field. A zero in a value the read only SKIPS is not the event, and \u0001
 # reads clean.
 json-hostile str-zero-byte-bounded          tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded           refused
+json-hostile str-zero-byte-bounded-nested   tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded-nested    refused
 json-hostile union-table-arm-unknown        messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown        1,0,0,0,0,false,read
 json-hostile union-table-arm-two-keys       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys       refused
 json-hostile union-table-arm-wrong-shape    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape    0,1,0,0,0,false,read

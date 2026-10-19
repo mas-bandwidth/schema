@@ -34,9 +34,10 @@ func TestLuaJsonRefusesNulEscapeIntoBoundedText(t *testing.T) {
 	cases := []struct {
 		name, text, want string
 	}{
-		{"front", `{ "version_note": "\u0000ab" }`, "refused\ntext_holds_zero: version_note"},
-		{"middle", `{ "version_note": "a\u0000b" }`, "refused\ntext_holds_zero: version_note"},
-		{"end", `{ "version_note": "ab\u0000" }`, "refused\ntext_holds_zero: version_note"},
+		{"front", `{ "version_note": "\u0000ab" }`, "refused\ntext_holds_zero: RootConfig.version_note"},
+		{"middle", `{ "version_note": "a\u0000b" }`, "refused\ntext_holds_zero: RootConfig.version_note"},
+		{"end", `{ "version_note": "ab\u0000" }`, "refused\ntext_holds_zero: RootConfig.version_note"},
+		{"nested", `{ "profiles": [{ "name": "a\u0000b" }] }`, "refused\ntext_holds_zero: ProfileConfig.name"},
 		{"control_u0001", `{ "version_note": "a\u0001b" }`, "read\n-"},
 	}
 	for _, c := range cases {
