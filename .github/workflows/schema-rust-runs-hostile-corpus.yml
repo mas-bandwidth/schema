@@ -1,0 +1,46 @@
+name: schema-rust-runs-hostile-corpus
+
+# THE RUST PORT'S LEG OF THE SHARED HOSTILE-INPUT CORPUS
+# (schema-shared-hostile-corpus, docs/HOSTILE-CORPUS.md). The fast part runs on
+# every push and pull request: the port's generated reader reaches every
+# manifest verdict in the committed corpus. The planted-bad-pattern control runs
+# on schedule and workflow_dispatch, because it certifies the gate has blades
+# rather than the corpus's content.
+on:
+  push:
+    branches: [ main, 'sprint/**' ]
+  pull_request:
+    branches: [ main, 'sprint/**' ]
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+env:
+  GOFLAGS: -mod=readonly
+  NOVA_TEST_NO_HOST: '1'
+
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch head
+      - name: the port reaches every manifest verdict
+        run: make schema-rust-runs-hostile-corpus
+
+  negative-control:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch head
+      - name: the planted-bad-pattern control
+        run: make schema-rust-runs-hostile-corpus-negative-control
