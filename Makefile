@@ -5883,6 +5883,7 @@ include make/checks/packet-text.mk
 include make/checks/table-base64.mk
 include make/checks/generated-tree.mk
 include make/checks/schema-engine-is-the-oracle.mk
+include make/checks/schema-spec-pin-s34.mk
 
 # THE CONFORMANCE MATRIX (test/conformance/README.md): every discovered driver
 # over every surface it lists. The reference leg is C++ and is built here; the
