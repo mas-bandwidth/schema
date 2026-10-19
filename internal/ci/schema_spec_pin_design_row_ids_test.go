@@ -1596,8 +1596,8 @@ func specSizingRows(doc specDoc, roadmap map[string][]string, scopes map[string]
 
 func specSizingTable(rows []specSizeRow) string {
 	var b strings.Builder
-	b.WriteString("| Spec section | Normative sentences | Ports carrying the section's features | Mapping basis | Unmapped normative sentences |\n")
-	b.WriteString("| --- | ---: | --- | --- | ---: |\n")
+	b.WriteString("| Spec line | Spec section | Normative sentences | Ports carrying the section's features | Mapping basis | Unmapped normative sentences |\n")
+	b.WriteString("| ---: | --- | ---: | --- | --- | ---: |\n")
 	for _, row := range rows {
 		ports := strings.Join(row.Ports, ", ")
 		if ports == "" {
@@ -1607,7 +1607,7 @@ func specSizingTable(rows []specSizeRow) string {
 		if row.Section.Informative != "" {
 			unmapped = 0
 		}
-		fmt.Fprintf(&b, "| %s | %d | %s | %s | %d |\n", strings.ReplaceAll(row.Section.Title, "|", `\|`), row.Section.Normative, ports, row.Basis, unmapped)
+		fmt.Fprintf(&b, "| %d | %s | %d | %s | %s | %d |\n", row.Section.Line, strings.ReplaceAll(row.Section.Title, "|", `\|`), row.Section.Normative, ports, row.Basis, unmapped)
 	}
 	return b.String()
 }
