@@ -675,39 +675,11 @@ public final class Driver {
         boolean flag(Object report, String field) throws ReflectiveOperationException { return reportType.getField(field).getBoolean(report); }
     }
 
+    // The variable form is emitted for every table the unit holds, so the
+    // codec is looked up for every unit. A unit on another classpath, or a
+    // root the unit does not declare, is still an explicit absence below.
     private static boolean variablePkgCarried(String pkg) {
-        switch (pkg) {
-            case "tabledemo":
-            case "graphdemo":
-            case "blobdemo":
-            case "mapdemo":
-            case "armdemo":
-            case "messagedemo":
-            case "scalars":
-            case "widedemo":
-            case "tblscalars2":
-            case "tblv1":
-            case "tblv2":
-            case "tblw1":
-            case "tblw2":
-            case "tblr1":
-            case "tblr2":
-            case "tblp1":
-            case "tblp2":
-            case "tblp3":
-            case "tblm1":
-            case "tblm2":
-            case "tbla1":
-            case "tbla2":
-            case "tblg1":
-            case "tblk1":
-            case "tblk2":
-            case "kind1":
-            case "kind2":
-                return true;
-            default:
-                return false;
-        }
+        return true;
     }
 
     // The manifest names a unit by its key; the emitted classes live in the

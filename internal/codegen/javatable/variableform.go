@@ -2820,6 +2820,18 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "        }\n")
 		fmt.Fprintf(&b, "        readFields(r, v, nt, report);\n")
 		fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
+		// A READ THAT STOPPED EARLY never reached the container headers past
+		// the stop, but the oracle framing walk does (internal/tablewire
+		// extent.go FileRegionMeasure): a LIST COUNT whose elements cannot fit
+		// its own L inside a MAP VALUE the read abandoned is still
+		// count_over_length, and the file is refused, not loaded (docs/SPEC-TABLES.md
+		// §6.5 "The two load paths", §6.2, §3.3; §2.8, §2.9). The stop is not
+		// always counted as malformed: a value ref that resolves to the wrong
+		// kind stops the entry as kind_mismatch, and the list past it is never
+		// read either. So the walk runs on every load that has not refused:
+		// measureFields IS the oracle walk, and the load refuses exactly where
+		// loadMeasure answers -1, whatever the read reported.
+		fmt.Fprintf(&b, "        if (loadMeasure(data) < 0) { report.refused = true; return null; }\n")
 		fmt.Fprintf(&b, "        resolveNodes(v, nt, v, TYPE_ID, report);\n")
 		fmt.Fprintf(&b, "        if (nt.recs != null && !nt.bad) {\n")
 		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
@@ -3642,13 +3654,15 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
 	// bytes(N) rides the scalar-u8 array shape (§3.2), with a bounded copy.
+	// The body reads its element kind AND its count before it compares the kind
+	// (docs/SPEC-TABLES.md §3.3, §4): a count the body cannot carry is framing
+	// damage and counts malformed, never a kind mismatch, exactly as the
+	// oracle's arrayBody decides it.
 	// A count the body cannot cover keeps the decoded prefix and flags malformed
 	// (docs/SPEC-TABLES.md §4, "Framing damage"): the field body's L says where
 	// the next field begins, so a short array loses only its missing tail.
 	case f.Type.Kind == ir.TBytes:
-		b.WriteString("                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null){if(!ar.has(1)){report.malformed=true;}else if(ar.get8()!=6){report.kindMismatch++;}else {long n=ar.leb();if(ar.fail){report.malformed=true;}else {long keep=n;")
-		fmt.Fprintf(b, "if(Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.clamped++;}long avail=ar.limit-ar.off;if(keep>avail){keep=avail;report.malformed=true;}v.%s=java.util.Arrays.copyOfRange(ar.buf,ar.off,ar.off+(int)keep);ar.off=ar.limit;}", f.Type.Size, f.Type.Size, m)
-		b.WriteString("}}}else {r.skip(kind);report.kindMismatch++;}\n")
+		fmt.Fprintf(b, "                if(kind==14){long L=r.leb();if(r.fail||L<0||L>r.limit-r.off){report.malformed=true;r.fail=true;}else if(L<2){r.off+=(int)L;}else {int end=r.off+(int)L;int ek=r.get8();long n=r.leb();if(r.fail){r.fail=false;report.malformed=true;}else if(ek!=6){report.kindMismatch++;}else {long keep=n;if(Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.clamped++;}int avail=end-r.off;if(avail<0)avail=0;int take=(int)keep<avail?(int)keep:avail;v.%s=java.util.Arrays.copyOfRange(r.buf,r.off,r.off+take);if(take<(int)keep)report.malformed=true;}r.off=end;}}else {r.skip(kind);report.kindMismatch++;}\n", f.Type.Size, f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = %s; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, variableDefault(f), f.Type.Size, f.Type.Size, m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
