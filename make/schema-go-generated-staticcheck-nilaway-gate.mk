@@ -1,3 +1,4 @@
+# schema: support fragment, not a language backend
 # THE GO LENS: staticcheck + Uber NilAway over the GENERATED Go output for the
 # test-schema corpus (schema-per-language-lenses). Schema generates one
 # algorithm in many languages; each language's strictest checker over the
