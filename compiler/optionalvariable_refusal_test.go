@@ -32,6 +32,28 @@ func TestOptionalVariableRefusedOffGo(t *testing.T) {
 			t.Errorf("target %s refusal does not name the construct, the field and the target: %s", lang, msg)
 		}
 	}
+	// the by-value ?[N]T is the same §2.3 construct one shape up, and must
+	// be discovered on its OWN: a unit holding only the array carries no
+	// scalar ?T to trip the gate for it. Every non-carrier refuses it by
+	// name; the four carriers generate it.
+	pair := unitFromSource(t, "package probe\ntable Inner\n{\n    text *string\n}\ntable Outer\n{\n    pair ?[2]Inner\n}\n")
+	for _, lang := range c.Targets() {
+		_, err := c.Generate(pair, lang, nil)
+		if carries(lang, carryOptionalVariableClosure) {
+			if err != nil {
+				t.Errorf("target %s refused by-value ?[2]T over a variable closure: %v", lang, err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Errorf("target %s accepted by-value ?[2]T over a variable closure", lang)
+			continue
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "optional over a variable closure on field Outer.pair") || !strings.Contains(msg, "target \""+lang+"\"") {
+			t.Errorf("target %s refusal does not name the fixed-array construct, the field and the target: %s", lang, msg)
+		}
+	}
 	// a ?T over a FIXED closure is untouched: every target generates it
 	plain := unitFromSource(t, "package probe\ntable Inner\n{\n    n int32\n}\ntable Outer\n{\n    inner ?Inner\n}\n")
 	for _, lang := range c.Targets() {
