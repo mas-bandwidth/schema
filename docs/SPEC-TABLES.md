@@ -5127,7 +5127,7 @@ alone, so a reader that proved distinctness by a pairwise scan would spend
 distinct ids is about `8.6 × 10⁹`. So the id table has a MAXIMUM: a reader
 refuses as MALFORMED, on the first rule's terms, any table whose entry count
 exceeds **4096** (`kTableProbeBound` in the generated C++, `n > 4096` in the
-generated Go and C), whatever the buffer
+generated Go, `count > 4096` in the generated C), whatever the buffer
 would hold. At or below it the reader proves the entries distinct with an
 open-addressing probe over a fixed stack table of **8192** slots — twice the
 bound, so it is never more than half full — and the walk is allocation-free
