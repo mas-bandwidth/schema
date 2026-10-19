@@ -281,7 +281,7 @@ func variableRuntimeSourceForUnit(u *ir.Unit) string {
 		} {
 			s = dropElixirFunctionClauses(s, item[0], item[1])
 		}
-		s = strings.Replace(s, "        :union ->\n          collect_union_nodes(f.elem, Map.get(value, f.name), acc)\n\n", "", 1)
+		s = replaceVariableTemplateOnce(s, "        :union ->\n          collect_union_nodes(f.elem, Map.get(value, f.name), acc)\n\n", "")
 	} else if !unitHasUnionList(u) {
 		for _, item := range [][2]string{
 			{"collect_list_nodes", "elem_kind: 15"}, {"emit_element", "elem_kind: 15"},
@@ -291,15 +291,17 @@ func variableRuntimeSourceForUnit(u *ir.Unit) string {
 			s = dropElixirFunctionClauses(s, item[0], item[1])
 		}
 	}
-	if !unitHasNestedUnionArm(u) {
-		s = dropElixirFunctionClauses(s, "arm_content", "%{t: :union}")
-	}
-	if !unitHasVoidUnionArm(u) {
-		s = dropElixirFunctionClauses(s, "arm_content", "%{t: :void}")
-		s = dropElixirFunctionClauses(s, "read_arm_payload", "%{t: :void}")
+	if len(u.Unions) != 0 || len(u.TableUnions) != 0 {
+		if !unitHasNestedUnionArm(u) {
+			s = dropElixirFunctionClauses(s, "arm_content", "%{t: :union}")
+		}
+		if !unitHasVoidUnionArm(u) {
+			s = dropElixirFunctionClauses(s, "arm_content", "%{t: :void}")
+			s = dropElixirFunctionClauses(s, "read_arm_payload", "%{t: :void}")
+		}
 	}
 	if !unitHasKeyedTableElement(u) {
-		s = strings.Replace(s, `      {v, report} =
+		s = replaceVariableTemplateOnce(s, `      {v, report} =
         if f.elem_kind == 13 do
           {v, elem_report} = read_element(Map.fetch!(@tables, item.elem), elem, nodes, ids)
           {v, merge_report(report, elem_report)}
@@ -312,7 +314,7 @@ func variableRuntimeSourceForUnit(u *ir.Unit) string {
         case read_list_elements(item, elem, 1, nodes, ids, [], report) do
           {[v], report} -> {v, report}
           {_, report} -> {item.default, report}
-        end`, 1)
+        end`)
 	}
 	return s
 }
@@ -441,6 +443,7 @@ func unitHasVoidUnionArm(u *ir.Unit) bool {
 func dropElixirFunctionClauses(source, name, marker string) string {
 	lines := strings.SplitAfter(source, "\n")
 	var out strings.Builder
+	matched := 0
 	for i := 0; i < len(lines); {
 		line := lines[i]
 		if !strings.HasPrefix(line, "  defp ") {
@@ -457,13 +460,27 @@ func dropElixirFunctionClauses(source, name, marker string) string {
 		declName := strings.SplitN(decl, "(", 2)[0]
 		block := strings.Join(lines[start:end], "")
 		if declName == name && (marker == "" || strings.Contains(block, marker)) {
+			matched++
 			i = end
 			continue
 		}
 		out.WriteString(block)
 		i = end
 	}
+	if matched == 0 {
+		panic(fmt.Sprintf("Elixir runtime template: missing %s clause marker %q", name, marker))
+	}
+	if marker != "" && matched != 1 {
+		panic(fmt.Sprintf("Elixir runtime template: expected one %s clause marker %q, found %d", name, marker, matched))
+	}
 	return out.String()
+}
+
+func replaceVariableTemplateOnce(source, old, replacement string) string {
+	if count := strings.Count(source, old); count != 1 {
+		panic(fmt.Sprintf("Elixir runtime template: expected one replacement target, found %d: %q", count, old[:min(len(old), 80)]))
+	}
+	return strings.Replace(source, old, replacement, 1)
 }
 
 // variableRuntimeSource is the id-table wire engine, driven by @tables. It is

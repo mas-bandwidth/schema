@@ -74,7 +74,7 @@ fixed table Root { value int32 }
 `)
 	fixedFiles := generateVariableForm(fixed, "Probe")
 	fixedSource := string(fixedFiles[VariableTableModule+".ex"])
-	for _, forbidden := range []string{"cook_extent(", "cook_carve(", "n.desc.has_extent", "@dialyzer"} {
+	for _, forbidden := range []string{"cook_extent(", "cook_carve(", "cook_extent_field(", "cook_extent_after(", "cook_carve_field(", "cook_carve_after(", "n.desc.has_extent", "@dialyzer"} {
 		if strings.Contains(fixedSource, forbidden) {
 			t.Errorf("fixed-only source still contains %q", forbidden)
 		}
@@ -99,7 +99,7 @@ func TestVariableRuntimeUnionHelpersMatchIR(t *testing.T) {
 fixed table Root { value int32 }
 `)
 	noUnionSource := string(generateVariableForm(noUnion, "Probe")[VariableTableModule+".ex"])
-	for _, forbidden := range []string{"defp collect_union_nodes(", "defp arm_header(", "defp read_arm(", "defp json_arm(", "defp json_read_arm(", "@dialyzer"} {
+	for _, forbidden := range []string{"defp collect_union_nodes(", "collect_union_nodes(", "defp arm_header(", "arm_header(", "defp read_arm(", "read_arm(", "defp json_arm(", "json_arm(", "defp json_read_arm(", "json_read_arm(", ":union ->", "@dialyzer"} {
 		if strings.Contains(noUnionSource, forbidden) {
 			t.Errorf("no-union output contains %q", forbidden)
 		}
@@ -172,5 +172,71 @@ func TestVariableRuntimeKeyedTableElementBranchMatchesIR(t *testing.T) {
 	}
 	if strings.Contains(tableSource, "@dialyzer") {
 		t.Fatal("table-valued keyed output used a Dialyzer exemption")
+	}
+}
+
+func TestVariableRuntimeUnionCapabilityMatrix(t *testing.T) {
+	t.Parallel()
+	mixed := unitFrom(t, `package probe
+        enum Grade { First, Second }
+        fixed table Node { value int32 }
+        union Inner { leaf Node }
+        union Mixed {
+          empty
+          table_value Node
+          integer int32
+          real float32
+          flag bool
+          text string(8)
+          wide wstring(4)
+          raw bytes(4)
+          grade Grade
+          pointer *Node
+          children []*Node
+          nested Inner
+        }
+        table Root { choice Mixed }
+        `)
+	source := string(generateVariableForm(mixed, "Probe")[VariableTableModule+".ex"])
+	for _, required := range []string{
+		"defp collect_union_nodes(", "defp arm_header(", "defp read_arm(",
+		"defp arm_content(%{t: :void}", "defp arm_content(%{t: :table}",
+		"defp arm_content(%{t: :int}", "defp arm_content(%{t: :float}",
+		"defp arm_content(%{t: :bool}", "defp arm_content(%{t: :string}",
+		"defp arm_content(%{t: :wstring}", "defp arm_content(%{t: :bytes}",
+		"defp arm_content(%{t: :enum}", "defp arm_content(%{t: t}, nil",
+		"defp arm_content(%{t: :list}", "defp arm_content(%{t: :union}",
+		"defp read_arm_payload(%{t: :void}", "defp json_arm(", "defp json_read_arm(",
+	} {
+		if !strings.Contains(source, required) {
+			t.Errorf("mixed union output lost reachable arm capability %q", required)
+		}
+	}
+	if strings.Contains(source, "@dialyzer") {
+		t.Fatal("mixed union output used a Dialyzer exemption")
+	}
+}
+
+func TestCookExtentSourceKeepsDirectAndListOfTablePaths(t *testing.T) {
+	t.Parallel()
+	direct := unitFrom(t, `package probe
+        table Root { text string; values []uint8 }
+        `)
+	directSource := string(generateVariableForm(direct, "Probe")[VariableTableModule+".ex"])
+	for _, required := range []string{"cook_extent_field(", "cook_carve_field("} {
+		if !strings.Contains(directSource, required) {
+			t.Errorf("direct extent output lacks %q", required)
+		}
+	}
+
+	listOfTables := unitFrom(t, `package probe
+        table Child { values []uint8 }
+        table Root { children []Child }
+        `)
+	listSource := string(generateVariableForm(listOfTables, "Probe")[VariableTableModule+".ex"])
+	for _, required := range []string{"cook_extent_after(%{elem_kind: 13", "cook_carve_after(", "cook_extent_field(", "cook_carve_field("} {
+		if !strings.Contains(listSource, required) {
+			t.Errorf("list-of-extent-bearing-tables output lacks %q", required)
+		}
 	}
 }

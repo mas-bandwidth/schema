@@ -740,28 +740,35 @@ func cookWriteSourceForUnit(hasExtent bool) string {
 	if hasExtent {
 		return cookWriteSource
 	}
-	s := strings.Replace(cookWriteSource,
+	s := replaceCookSourceOnce(cookWriteSource,
 		"ext = if(d.has_extent, do: cook_extent(d, n.value), else: 0)",
-		"ext = 0", 1)
+		"ext = 0")
 	oldRender := `              if n.extent == 0 and not n.desc.has_extent do
                 data
               else
                 cook_carve(n.desc, n.value, n.offset, index, order, data)
               end`
-	s = strings.Replace(s, oldRender, "              data", 1)
+	s = replaceCookSourceOnce(s, oldRender, "              data")
 	s = replaceCookSourceRange(s, "  defp cook_extent(desc, value)", "  defp cook_list(value, f)", "")
 	s = replaceCookSourceRange(s, "  defp cook_carve(desc, value, node_off", "  defp cook_align(", "")
 	return s
 }
 
 func replaceCookSourceRange(source, start, end, replacement string) string {
-	i := strings.Index(source, start)
-	if i < 0 {
-		return source
+	if strings.Count(source, start) != 1 || strings.Count(source, end) != 1 {
+		panic(fmt.Sprintf("cook runtime template: expected one range %q .. %q", start, end))
 	}
+	i := strings.Index(source, start)
 	j := strings.Index(source[i:], end)
 	if j < 0 {
-		return source
+		panic(fmt.Sprintf("cook runtime template: inverted range %q .. %q", start, end))
 	}
 	return source[:i] + replacement + source[i+j:]
+}
+
+func replaceCookSourceOnce(source, old, replacement string) string {
+	if count := strings.Count(source, old); count != 1 {
+		panic(fmt.Sprintf("cook runtime template: expected one replacement target, found %d", count))
+	}
+	return strings.Replace(source, old, replacement, 1)
 }
