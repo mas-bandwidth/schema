@@ -1,0 +1,120 @@
+package darttable
+
+import (
+	"fmt"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+)
+
+// TestMessageReadClampsDeclaredRangeDart pins that the Dart message read clamps
+// a decoded scalar to the reader's own declaration and counts it, exactly as
+// the Go oracle does (internal/tablewire/messagedecode.go, `scalar`; docs/SPEC-
+// TABLES.md §3.3, §4). A ranged field rides at bits_required(0, max - min), so
+// an offset above max - min decodes to a value above max; the generated Dart
+// payload the base and stored with no range check and no count, so Dart landed
+// 11..16 where Go lands 10 and counted 0 where Go counts 1. The vector is the
+// coordinator's wire-fuzz mutant over backenddemo.MatchResult (bit 402 flipped),
+// the same bytes the finder traced: loaded through the generated Dart batch
+// message load and through tablewire.DecodeMessages, the six counters and body
+// one's saved bytes must agree.
+func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
+	t.Parallel()
+
+	var row *batchRow
+	for i := range batchManifest(t) {
+		r := &batchManifest(t)[i]
+		if r.name == "match_full" {
+			row = r
+			break
+		}
+	}
+	if row == nil {
+		t.Fatal("no match_full message row in the manifest")
+	}
+	u := batchUnit(t, row.path)
+	st := findTable(t, u, row.root)
+	if !st.IsTable || !st.FixedDeclared {
+		t.Skipf("§3.3 is a fixed table's; %s is a plain table", row.root)
+	}
+	// The Go oracle answers the same bytes: decode the mutant with
+	// tablewire.DecodeMessages and read its six-counter report and body one's
+	// saved bytes, so the Dart load is compared to the reference, never to a
+	// literal.
+	m := tabletext.NewModel(u)
+	vocabulary := &tablewire.Vocabulary{}
+	var oracle tabletext.Report
+	announce := tablewire.Announce(m.Unit)
+	if err := vocabulary.AnnounceRead(announce, &oracle); err != nil {
+		t.Fatalf("the Go oracle refused the announcement: %v", err)
+	}
+	value := m.New(m.Lookup(row.root))
+	_, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{value}, matchReadClampMutant, vocabulary, &oracle)
+	if err != nil {
+		t.Fatalf("the Go oracle erred on the mutant: %v", err)
+	}
+	if !ok {
+		t.Fatalf("the Go oracle did not decode the mutant whole")
+	}
+	if oracle.Clamped == 0 {
+		t.Fatalf("the oracle counts no clamp on the pinned mutant; the vector is wrong")
+	}
+	saved, err := tablewire.EncodeMessage(m, value)
+	if err != nil {
+		t.Fatalf("the oracle could not re-encode body one: %v", err)
+	}
+	out, err := runBatchProbe(t, u, row.root, messageReadClampBody(row.root, announce, oracle, saved))
+	if err != nil {
+		t.Fatalf("the clamped message read did not run green: %v\n%s", err, out)
+	}
+}
+
+// matchReadClampMutant is the coordinator's vector: the backenddemo match_full
+// message with bit 402 flipped, a mutant of 148 bytes whose placement field
+// decodes above its declared max (sha256 748a550a763569cd93d52bf1715fca0dcd3
+// 106b212a2bab4d584a57cd51d4218). The Go oracle counts one `clamped`; Dart
+// before this fix landed the out-of-range value uncounted.
+const matchReadClampMutantHex = "02004640404040404040c021a00f00000000000020d20400217d00000000000000f928900420a80f000000000000206c05120584f50100000000000024b7403280c03e000000000000801818480810da07000000000000902903490182fb00000000000000026a203140781f00000000000040da0d240708f00300000000000088ce810401217e00000000000000393c90240000"
+
+var matchReadClampMutant = mustHex(matchReadClampMutantHex)
+
+// messageReadClampBody loads the mutant with the generated Dart batch message
+// load and asserts the report's six counters and body one's saved bytes match
+// the Go oracle's on the same bytes (docs/SPEC-TABLES.md §3.3, §4): each want
+// is the Go oracle's, never a literal.
+func messageReadClampBody(root string, announce []byte, rep tabletext.Report, saved []byte) string {
+	lower := lowerFirst(root)
+	return fmt.Sprintf(`
+  final ann = Uint8List.fromList(%s);
+  final msg = Uint8List.fromList(%s);
+  final vocab = h.TableVocabulary(entries: List<h.TableMessageEntry>.generate(4096, (i) => h.TableMessageEntry(0, 0)));
+  final annRep = h.TableReport();
+  check(h.announceRead(vocab, ann, annRep), 'the connection announcement is refused: ' + annRep.reason);
+  final value = h.%s();
+  h.init%s(value);
+  final values = <h.%s>[value];
+  final rep = h.TableReport();
+  final count = r.%sLoadMessages(values, msg, vocab, rep);
+  check(count == 1 && !rep.refused && !rep.malformed,
+      'LoadMessages count=$count refused=${rep.refused} malformed=${rep.malformed}');
+  check(rep.unknown == %d && rep.kindMismatch == %d && rep.widened == %d &&
+      rep.clamped == %d && rep.duplicate == %d,
+      'six counters unknown=${rep.unknown} kindMismatch=${rep.kindMismatch} widened=${rep.widened} clamped=${rep.clamped} duplicate=${rep.duplicate}');
+  final measureRep = h.TableReport();
+  final measure = r.%sMeasureMessages(values, measureRep);
+  final buf = Uint8List(measure);
+  final saveRep = h.TableReport();
+  final wrote = r.%sSaveMessages(values, buf, saveRep);
+  check(wrote == %d, 'SaveMessages=$wrote want %d');
+  final want = Uint8List.fromList(%s);
+  var same = true;
+  for (var i = 0; i < want.length; i++) {
+    if (buf[i] != want[i]) { same = false; }
+  }
+  check(same, 'saved bytes of body one differ from the oracle');
+`, dartBytes(announce), dartBytes(matchReadClampMutant),
+		root, root, root, lower,
+		rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate,
+		lower, lower, len(saved), len(saved), dartBytes(saved))
+}

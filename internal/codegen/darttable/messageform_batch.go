@@ -20,6 +20,7 @@ package darttable
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 
@@ -558,6 +559,43 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	switch kind {
 	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32:
 		g.pf("%s%s = %s.toSigned(%d);\n", ind, expr, expr, 8*ir.TableKindWidth(int(kind)))
+	}
+	// THE VALUE IS THEN CLAMPED TO THIS READER'S OWN DECLARATION and counted,
+	// in the oracle's order (internal/tablewire/messagedecode.go, `scalar`;
+	// docs/SPEC-TABLES.md §3.3, §4): the integer range first — signed against
+	// the signed bounds, unsigned against the whole unsigned bounds — then the
+	// `bits(N)` width clamp, each counting one `clamped`.
+	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
+		if f.Type.Signed {
+			lo, hi := f.IntMin.Int64(), f.IntMax.Int64()
+			g.pf("%sif (%s < %d) { %s = %d; r.report.clamped++; } else if (%s > %d) { %s = %d; r.report.clamped++; }\n",
+				ind, expr, lo, expr, lo, expr, hi, expr, hi)
+		} else {
+			// THE UNSIGNED BOUNDS ARE READ WHOLE (docs/SPEC-TABLES.md §3.3,
+			// §4). A bound at 2^63 or above is not a Dart int literal, but a
+			// Dart int can never exceed 2^63-1, so a clamp to it can never
+			// fire and is omitted; the lower bound, when it is representable,
+			// still fires.
+			ulo, uhi := f.IntMin.Uint64(), f.IntMax.Uint64()
+			limit := uint64(math.MaxInt64)
+			loClamp := ulo <= limit
+			hiClamp := uhi <= limit
+			switch {
+			case loClamp && hiClamp:
+				g.pf("%sif (%s < %d) { %s = %d; r.report.clamped++; } else if (%s > %d) { %s = %d; r.report.clamped++; }\n",
+					ind, expr, ulo, expr, ulo, expr, uhi, expr, uhi)
+			case loClamp:
+				g.pf("%sif (%s < %d) { %s = %d; r.report.clamped++; }\n",
+					ind, expr, ulo, expr, ulo)
+			case hiClamp:
+				g.pf("%sif (%s > %d) { %s = %d; r.report.clamped++; }\n",
+					ind, expr, uhi, expr, uhi)
+			}
+		}
+	}
+	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+		maxBits := int64(uint64(1)<<uint(f.Type.Width) - 1)
+		g.pf("%sif (%s > %d) { %s = %d; r.report.clamped++; }\n", ind, expr, maxBits, expr, maxBits)
 	}
 }
 
