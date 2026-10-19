@@ -104,7 +104,9 @@ schema-cpp-fast-fuzz-replay: schema-cpp-fuzz-toolchain $(CPP_FUZZ_BUILD)/generat
 schema-cpp-nightly-fuzz-negative-control: schema-cpp-fuzz-toolchain $(CPP_FUZZ_BUILD)/generated/.stamp
 	@rm -rf $(CPP_FUZZ_BUILD)/sabotage && mkdir -p $(CPP_FUZZ_BUILD)/sabotage
 	@cp -r $(CPP_FUZZ_BUILD)/generated/tables-examples $(CPP_FUZZ_BUILD)/sabotage/unit
-	@sed -i 's/return bytes <= (uint64_t) ( size - offset );/return true; \/\/ PLANTED: the bounds helper lost its bound/' \
+	@sed -i 's|return bytes <= (uint64_t) ( size - offset );|(void) bytes; return true; } // PLANTED: the bounds helper lost its bound|' \
+		$(CPP_FUZZ_BUILD)/sabotage/unit/GuardedTable.h
+	@sed -i 's|return offset + bytes <= size;|(void) bytes; return true; } // PLANTED: has() lost its bound|' \
 		$(CPP_FUZZ_BUILD)/sabotage/unit/GuardedTable.h
 	@grep -q 'PLANTED: the bounds helper lost its bound' $(CPP_FUZZ_BUILD)/sabotage/unit/GuardedTable.h || { \
 		echo 'NEGATIVE CONTROL FAILED: the plant was not applied'; exit 1; }
