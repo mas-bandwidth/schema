@@ -49,7 +49,11 @@ local function max(a: number, b: number): number if a > b then return a end retu
 
 local record_layouts: { [any]: any } = {}
 local union_layouts: { [any]: any } = {}
-local value_piece, field_pieces, record_layout, union_layout, arm_layout
+local value_piece: (e: any) -> any
+local field_pieces: (fd: any) -> { any }
+local record_layout: (d: any) -> any
+local union_layout: (u: any) -> any
+local arm_layout: (arm: any) -> any
 
 local function storage_width(n: number): number
 	if n <= 0xff then return 1 end
@@ -436,8 +440,12 @@ end
 -- then element by element the arrays its elements hold by value. The measure
 -- and the write are one walk, with `w` nil in the measure.
 
-local record_has_extent, union_has_extent, field_has_extent
-local carve_record, carve_element, carve_field
+local record_has_extent: (d: any) -> boolean
+local union_has_extent: (u: any) -> boolean
+local field_has_extent: (fd: any) -> boolean
+local carve_record: (d: any, v: any, recordBase: number, extentBase: number, cursor: any, w: any, index: any) -> boolean
+local carve_element: (e: any, x: any, at: number, extentBase: number, cursor: any, w: any, index: any) -> boolean
+local carve_field: (fd: any, v: any, x: any, fieldAt: number, extentBase: number, cursor: any, w: any, index: any) -> boolean
 
 field_has_extent = function(fd: any): boolean
 	if fd.s == "map" or (fd.s == "arr" and fd.array == "list") then return true end
@@ -464,7 +472,11 @@ union_has_extent = function(u: any): boolean
 	return false
 end
 
-local write_record, write_value, write_array, write_ref, write_union
+local write_record: (d: any, v: any, base: number, w: any, index: any) -> boolean
+local write_value: (e: any, x: any, at: number, w: any, index: any, holder: any) -> boolean
+local write_array: (fd: any, holder: any, x: any, at: number, fl: any, w: any, index: any) -> boolean
+local write_ref: (fd: any, x: any, at: number, w: any, index: any) -> boolean
+local write_union: (fd: any, x: any, at: number, w: any, index: any) -> boolean
 
 carve_field = function(fd: any, v: any, x: any, fieldAt: number, extentBase: number, cursor: any, w: any, index: any): boolean
 	if fd.s == "map" then return false end
