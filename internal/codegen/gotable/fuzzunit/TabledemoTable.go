@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xf29d2162b6fb2613)
-const _ = uint64(0xf29d2162b6fb2613 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x90bdf7a9ff10d0e7)
+const _ = uint64(0x90bdf7a9ff10d0e7 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -166,6 +166,8 @@ type TableFixedEntry = goruntime.TableFixedEntry
 type TableFixedGuardLink = goruntime.TableFixedGuardLink
 
 type TableFixedDst = goruntime.TableFixedDst
+
+const tableFixedDstDeprecated = goruntime.TableFixedDstDeprecated
 
 type tableFixedPlan = goruntime.TableFixedPlan
 
@@ -1600,6 +1602,9 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
+	if d.Arg&tableFixedDstDeprecated != 0 {
+		return
+	}
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
 	if te.Kind != me.Kind && !(me.Kind == 35) {
@@ -2726,10 +2731,17 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 		if verdict == TableOpenDamaged {
 			report.Malformed = true
 		} else {
-			report.Reason = "unsupported wire form"
+			report.Reason = "newer_form"
+			if len(wire) > 0 {
+				if wire[0] == 2 {
+					report.Reason = "message_form_as_file"
+				} else if wire[0] == 0 {
+					report.Reason = "previous_form"
+				}
+			}
 		}
 		return nil
-	}
+	} // mas-bandwidth/schema docs/SPEC-TABLES.md §3 (THE FIRST BYTE), §6.5
 	n, attr, _ := tableRegionMeasure(wire, root, nodeType, blobs)
 	if n < 0 || int64(len(region)) < n || len(region) == 0 || uintptr(unsafe.Pointer(&region[0]))%uintptr(tableRegionAlign) != 0 {
 		report.Malformed = true
@@ -2964,7 +2976,14 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		if verdict == TableOpenDamaged {
 			report.Malformed = true
 		} else {
-			report.Reason = "unsupported wire form"
+			report.Reason = "newer_form"
+			if len(wire) > 0 {
+				if wire[0] == 2 {
+					report.Reason = "message_form_as_file"
+				} else if wire[0] == 0 {
+					report.Reason = "previous_form"
+				}
+			}
 		}
 		return false
 	}
@@ -2972,7 +2991,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		report.Malformed = true
 		return false
 	}
-	worker.refused = false
+	worker.refused = false // mas-bandwidth/schema docs/SPEC-TABLES.md §3 (THE FIRST BYTE), §6.5
 	scan := tableNodeScanBegin(r)
 	for {
 		_, _, ok := scan.next()
@@ -4240,10 +4259,17 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 		if verdict == TableOpenDamaged {
 			report.Malformed = true
 		} else {
-			report.Reason = "unsupported wire form"
+			report.Reason = "newer_form"
+			if len(wire) > 0 {
+				if wire[0] == 2 {
+					report.Reason = "message_form_as_file"
+				} else if wire[0] == 0 {
+					report.Reason = "previous_form"
+				}
+			}
 		}
 		return nil
-	}
+	} // mas-bandwidth/schema docs/SPEC-TABLES.md §3 (THE FIRST BYTE), §6.5
 	n, attr, _ := tableRegionMeasure(wire, root, nodeType, blobs)
 	if n < 0 || int64(len(region)) < n || len(region) == 0 || uintptr(unsafe.Pointer(&region[0]))%uintptr(tableRegionAlign) != 0 {
 		report.Malformed = true

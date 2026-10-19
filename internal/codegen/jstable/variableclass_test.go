@@ -149,7 +149,11 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 				t.Fatalf("%s: the oracle did not decode its own wire: %v", c.Name, err)
 			}
 			again, err := tablewire.Encode(m, inst)
-			if err != nil || !bytes.Equal(again, c.wire) {
+			if c.Name == "blob_shared" {
+				if rep.BlobShared != 1 || err == nil || !strings.Contains(err.Error(), "blob_shared") {
+					t.Fatalf("%s: the oracle did not count BlobShared=1 and refuse re-encode as blob_shared (rep=%+v, err=%v)", c.Name, rep, err)
+				}
+			} else if err != nil || !bytes.Equal(again, c.wire) {
 				t.Fatalf("%s: the oracle does not re-encode the committed wire (%v)", c.Name, err)
 			}
 			if c.RefuseText {
@@ -216,14 +220,14 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 			}
 		}
 		note2.Cell.Blob = note.Cell.Blob
-		g, err := tablewire.Number(pm, inst)
+		g, err := tablewire.NumberPacking(pm, inst)
 		if err != nil || len(g.Records()) != 1 {
-			t.Fatalf("probe_shared_string: the oracle does not number one record for one shared blob (%v)", err)
+			t.Fatalf("probe_shared_string: the packer does not number one record for one shared blob (%v)", err)
 		}
-		wire, err := tablewire.Encode(pm, inst)
-		if err != nil {
-			t.Fatal(err)
+		if _, err := tablewire.Encode(pm, inst); err == nil || !strings.Contains(err.Error(), "blob_shared") {
+			t.Fatalf("probe_shared_string: the oracle wire writer did not refuse a shared blob (%v)", err)
 		}
+		wire := variableClassSharedStringWire(t, probe)
 		if _, err := pm.Write(inst); err == nil {
 			t.Fatal("probe_shared_string: the oracle's writer did not refuse a shared blob")
 		}
@@ -530,6 +534,34 @@ func variableClassChain(t *testing.T, pm *tabletext.Model, n int) *vcCase {
 		t.Fatalf("the oracle's writer did not refuse a %d-node chain past the depth cap", n)
 	}
 	return &vcCase{Name: fmt.Sprintf("probe_chain_%d", n), Root: "Probe", wire: wire, RefuseText: true}
+}
+
+func variableClassSharedStringWire(t *testing.T, u *ir.Unit) []byte {
+	t.Helper()
+	var note, note2 *ir.Field
+	for _, f := range u.Tables["Probe"].Fields {
+		switch f.Name {
+		case "note":
+			note = f
+		case "note2":
+			note2 = f
+		}
+	}
+	if note == nil || note2 == nil {
+		t.Fatal("the probe declares no note or note2")
+	}
+	w := []byte{
+		byte(ir.TableWireForm),
+		1, byte(ir.TableKindPointer), 2,
+		2, byte(ir.TableKindPointer), 2,
+		3, byte(ir.TableKindString), 9, 1, 4, 6, 0x73, 0x68, 0x61, 0x72, 0x65, 0x64,
+		0,
+	}
+	ids := []uint64{ir.TableFieldWireId(note), ir.TableFieldWireId(note2), ir.TableNodeWireId, ir.TableWireId("string")}
+	for _, id := range ids {
+		w = binary.LittleEndian.AppendUint64(w, id)
+	}
+	return binary.LittleEndian.AppendUint64(w, uint64(len(ids)))
 }
 
 // variableClassLeastWire builds one Probe wire whose [2..4]uint8 `least`

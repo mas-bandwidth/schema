@@ -29,7 +29,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
@@ -86,10 +85,7 @@ func TestPeer(t *testing.T) {
 %s
 }
 `, setup, asserts)
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	root := map[string][]byte{
 		"go.mod":          []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)),
 		"version_test.go": []byte(src),

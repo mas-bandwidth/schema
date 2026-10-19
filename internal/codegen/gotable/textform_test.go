@@ -110,10 +110,7 @@ func runTextFormUnit(t *testing.T, schema string, tests map[string]string) {
 	}
 	maps.Copy(files, tables)
 	dir := t.TempDir()
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	for name, src := range tests {
 		files[name] = []byte(src)

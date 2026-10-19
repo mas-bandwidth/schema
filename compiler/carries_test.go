@@ -1,9 +1,19 @@
 package compiler
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
+
+// nonGoCarriers lists the constructs the non-Go targets carry: C, C# and C++
+// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3), and
+// every other target carries none at this stage.
+var nonGoCarriers = map[string][]string{
+	"c":   {carryOptionalVariableClosure},
+	"cs":  {carryOptionalVariableClosure},
+	"cpp": {carryOptionalVariableClosure},
+}
 
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 	t.Parallel()
@@ -24,8 +34,12 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 			t.Errorf("Go does not carry %q", construct)
 		}
 		for _, target := range targets {
-			if target != "go" && carries(target, construct) {
-				t.Errorf("target %q unexpectedly carries %q", target, construct)
+			if target == "go" {
+				continue
+			}
+			want := slices.Contains(nonGoCarriers[target], construct)
+			if carries(target, construct) != want {
+				t.Errorf("target %q carries %q = %v, want %v", target, construct, carries(target, construct), want)
 			}
 		}
 	}
@@ -38,8 +52,8 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 			if !known[construct] {
 				t.Errorf("target %q registers unknown construct %q", target, construct)
 			}
-			if target != "go" {
-				t.Errorf("target %q carries %q; only Go carries constructs at this stage", target, construct)
+			if target != "go" && !slices.Contains(nonGoCarriers[target], construct) {
+				t.Errorf("target %q carries %q without a registration in nonGoCarriers", target, construct)
 			}
 		}
 	}
