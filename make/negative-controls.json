@@ -571,9 +571,10 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the one control that does not fit the owner's rule for CI that runs per commit, on its own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
+      "why": "the controls that do not fit the owner's rule for CI that runs per commit: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120; the squirrel nightly fuzz control patches the emitted load, regenerates every conformance unit and runs the differential, which is the same minutes-long campaign its positive target carries. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at a few targets, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries, and schema-squirrel-nightly-fuzz.yml runs the squirrel one on its own nightly schedule.",
       "targets": [
-        "tables-message-form-negative-control"
+        "tables-message-form-negative-control",
+        "schema-squirrel-nightly-fuzz-negative-control"
       ]
     },
     {
@@ -621,9 +622,10 @@
     {
       "name": "squirrel",
       "when": "pull-request",
-      "why": "the Squirrel port's load-sabotage conformance control: it neutralizes the emitted kind-mismatch counter, so the report surface must go red while the wire surface (answered absent) stays green. Rebuilds the tagged compiler under the overlay and regenerates the corpus.",
+      "why": "the Squirrel port's load-sabotage conformance control: it neutralizes the emitted kind-mismatch counter, so the report surface must go red while the wire surface (answered absent) stays green. Rebuilds the tagged compiler under the overlay and regenerates the corpus. Beside it, the all-port differential's planted-bad-pattern control changes one byte of a scratch answer tree and requires the comparison to go red and name wire/Scene; both halves of that control run on a t.TempDir(), with no toolchain, so the Squirrel lens still has a blade on a host carrying none of the other ports. It costs milliseconds.",
       "targets": [
-        "conformance-negative-control-squirrel"
+        "conformance-negative-control-squirrel",
+        "schema-squirrel-all-port-differential-negative-control"
       ]
     }
   ],
