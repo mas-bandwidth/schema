@@ -28,7 +28,9 @@ SCHEMA_C_FUZZ_OUT       ?= build/schema-c-nightly-fuzz
 SCHEMA_C_FUZZ_SAVED     ?= testdata/fuzz/c-nightly
 SCHEMA_C_FUZZ_ARTIFACTS ?= $(SCHEMA_C_FUZZ_OUT)/artifacts
 
-CLANG          ?= clang
+# The pinned series by name: a bench whose plain `clang` is another release
+# (amd-3 carries clang 21 as `clang`) still builds with clang 18.
+CLANG          ?= clang-$(CLANG_SERIES)
 CLANG_SERIES   ?= 18
 AFL_FUZZ       ?= afl-fuzz
 AFL_CC         ?= afl-clang-fast
