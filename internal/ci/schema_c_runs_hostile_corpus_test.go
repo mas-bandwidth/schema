@@ -44,6 +44,67 @@ type cHostileCase struct {
 	digest  string
 }
 
+const cHostileFindingPrefix = "FIX-CARD: c-hostile-corpus: "
+
+// Keep the carried reader mismatches visible while making both repair and
+// regression observable: clearing an expected mismatch or adding another one
+// changes this exact set and turns the unit gate red.
+var cExpectedHostileMismatches = []string{
+	"conformance-label-type-mismatch",
+	"conformance-pointer-array-shared-label",
+	"conformance-shared-node-by-label",
+}
+
+func cHostileMismatchSetDrift(findings, expected []string) []string {
+	got := make([]string, 0, len(findings))
+	for _, finding := range findings {
+		name := "<unclassified>"
+		if strings.HasPrefix(finding, cHostileFindingPrefix) {
+			fields := strings.Fields(strings.TrimPrefix(finding, cHostileFindingPrefix))
+			if len(fields) > 0 {
+				name = fields[0]
+			}
+		}
+		got = append(got, name)
+	}
+	got = append([]string(nil), got...)
+	want := append([]string(nil), expected...)
+	sort.Strings(got)
+	sort.Strings(want)
+	if len(got) == len(want) {
+		equal := true
+		for i := range got {
+			if got[i] != want[i] {
+				equal = false
+				break
+			}
+		}
+		if equal {
+			return nil
+		}
+	}
+	return []string{fmt.Sprintf("got %v, want %v", got, want)}
+}
+
+func TestCHostileMismatchSetRejectsDrift(t *testing.T) {
+	t.Parallel()
+	want := []string{"known"}
+	exact := []string{cHostileFindingPrefix + "known got refuse want accept"}
+	if drift := cHostileMismatchSetDrift(exact, want); len(drift) != 0 {
+		t.Fatalf("exact carried mismatch set was rejected: %v", drift)
+	}
+	for label, changed := range map[string][]string{
+		"newly passing expected row": nil,
+		"new unexpected failure":     {cHostileFindingPrefix + "new got refuse want accept", exact[0]},
+	} {
+		t.Run(label, func(t *testing.T) {
+			if drift := cHostileMismatchSetDrift(changed, want); len(drift) == 0 {
+				t.Fatalf("mismatch set drift was accepted: %v", changed)
+			}
+		})
+	}
+}
+
 func loadCHostileManifest(t *testing.T, corpusDir string) []cHostileCase {
 	t.Helper()
 	f, err := os.Open(filepath.Join(corpusDir, "manifest.tsv"))
@@ -460,6 +521,9 @@ func TestCRunsHostileCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	findings := runCHostileCorpus(t, root, filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus"), false)
+	for _, drift := range cHostileMismatchSetDrift(findings, cExpectedHostileMismatches) {
+		t.Errorf("hostile mismatch list drift: %s", drift)
+	}
 	for _, f := range findings {
 		t.Error(f)
 	}
