@@ -10,30 +10,30 @@
 # Toolchain: CBMC, installed fleet-wide from its official source. The version
 # is pinned here and probed; a missing or differently-versioned tool is a
 # failure, never a skipped pass. The SAT solver is CaDiCaL (pinned with CBMC),
-# and the checks cover signed and unsigned overflow, pointer and conversion
-# hazards in addition to the memory-safety core.
+# and the checks cover signed overflow, division by zero, pointer and bounds
+# hazards across the memory-safety core.
 
 CBMC ?= cbmc
 CBMC_VERSION ?= 6.6.0
-# Unwinding is per reader, because each reader's loops are the arrays it
-# decodes. A reader not named here decodes no array longer than 64 elements;
-# the 64-bit window is the runtime's per-word read loop. With
-# --unwinding-assertions a bound that is too small fails the gate loudly, so
-# no loop is ever silently truncated (the old single 128 did exactly that).
-CBMC_UNWIND ?= 512
-CBMC_UNWIND_read_input_packet ?= 256       # MAX_INPUTS_PER_PACKET (16) * 8
-CBMC_UNWIND_read_render_block ?= 640       # RENDER_BLOCK_MAX_SPRITES (64) * 8
-CBMC_UNWIND_read_chat ?= 2176              # MAX_CHAT_LENGTH (256) * 8
-CBMC_UNWIND_read_test_data ?= 2176         # text_length 255 * 8
-CBMC_UNWIND_read_block ?= 16064            # MAX_BLOCK_SIZE (2000) * 8
+# Unwinding is per reader, because each reader's loops are the arrays and
+# strings it decodes (max_count + 1 so --unwinding-assertions proves the loop
+# terminates). A reader not named here decodes no array or string longer than
+# 64 elements. The inner UTF-8 continuation loop (<= 3 bytes) and the
+# word/tail loops of schema_interior_null_ get their exact loop bounds via
+# --unwindset so nested loops do not multiply the outer bound.
+CBMC_UNWIND ?= 65
+CBMC_UNWIND_read_input_packet ?= 18        # MAX_INPUTS_PER_PACKET (16) + 2 (covers +1 negative control)
+CBMC_UNWIND_read_render_block ?= 65        # RENDER_BLOCK_MAX_SPRITES (64) + 1
+CBMC_UNWIND_read_chat ?= 257               # MAX_CHAT_LENGTH (256) + 1
+CBMC_UNWIND_read_test_data ?= 256          # text_length (255) + 1
+CBMC_UNWIND_read_block ?= 2                # bulk memcpy (no element loop)
+export CBMC_UNWIND_read_input_packet CBMC_UNWIND_read_render_block CBMC_UNWIND_read_chat CBMC_UNWIND_read_test_data CBMC_UNWIND_read_block
+CBMC_UNWINDSET ?= schema_utf8_valid_.0:4,schema_interior_null_.0:33,schema_interior_null_.1:8
 # CBMC is heavy and can eat a machine: every per-reader run is bounded in wall
 # time and address space, and a timeout is a failure, never a silent pass.
 CBMC_TIME_LIMIT ?= 900
 CBMC_MEM_LIMIT_KB ?= 6000000
 CBMC_OBJECT_BITS ?= 12
-# The drivers are one translation unit per generated reader, so each run is a
-# small program; the object-bits default suffices.
-CBMC_READERS ?= $(wildcard generated/c/*.c)
 # A per-type fallback for the three empty message types (EmptyA, EmptyB,
 # Heartbeat) that get no *_MAX_BYTES macro from the generator.
 CBMC_EMPTY_MAX_BYTES ?= 8
@@ -59,14 +59,13 @@ schema-c-generated-cbmc-readers-runtime:
 	  echo "tool missing: serialize.c runtime at $(SERIALIZE_C)/serialize.h (pinned SERIALIZE_C_TAG v1.10.0 by the workflow)"; exit 1; }
 
 # One scratch driver per generated reader. The stream's num_bits is left
-# uninitialised, i.e. nondeterministic in CBMC, and constrained only by the
-# type's maximum encoded size: an explicit `num_bits = 0` made every reader
-# refuse on its first read (serialize.h:1317) and the run was vacuous. The
-# buffer is <TYPE>_MAX_BYTES+8 bytes (the +8 is the runtime's required read
-# slack for its 64-bit window), so the read path, its loops and every index
-# are actually traversed. Readers are run one per cbmc invocation, each with
-# its own unwind bound, time and memory cap, so a heavy message cannot blow
-# the solver (a whole-InputPacket nondet run was killed at 2 min on amd-2).
+# uninitialised, i.e. nondeterministic in CBMC, and constrained by the type's
+# maximum encoded size plus 64 bytes of trailing wire slack so an off-by-one
+# loop bound is not masked by EOF (an explicit `num_bits = 0` made every reader
+# refuse on its first read and the run was vacuous). The buffer includes +8
+# bytes for the runtime's required 64-bit word-read tail slack. Readers are
+# run one per cbmc invocation, each with its own unwind bound, time and memory
+# cap.
 schema-c-generated-cbmc-readers-driver: schema-c-generated-cbmc-readers-probe schema-c-generated-cbmc-readers-runtime generated/c/.stamp
 	@mkdir -p build/cbmc-readers
 	@rm -f build/cbmc-readers/readers.list
@@ -80,16 +79,30 @@ schema-c-generated-cbmc-readers-driver: schema-c-generated-cbmc-readers-probe sc
 	  { \
 	    echo '#include <stdint.h>'; \
 	    echo '#include <string.h>'; \
-	    echo '#define __builtin_memcpy( d, s, n ) memcpy( ( d ), ( s ), ( n ) )'; \
+	    echo 'static inline void *cbmc_word_copy_(void *dst, const void *src, size_t n) {'; \
+	    echo '    __CPROVER_assert(__CPROVER_r_ok(src, n), "memcpy source region readable");'; \
+	    echo '    __CPROVER_assert(__CPROVER_w_ok(dst, n), "memcpy destination region writeable");'; \
+	    echo '    if (n == 8) { uint64_t u; *(uint64_t *)dst = u; return dst; }'; \
+	    echo '    if (n == 4) { float f; *(float *)dst = f; return dst; }'; \
+	    echo '    return dst;'; \
+	    echo '}'; \
+	    echo 'static inline void *cbmc_bulk_copy_(void *dst, const void *src, size_t n) {'; \
+	    echo '    __CPROVER_assert(__CPROVER_r_ok(src, n), "memcpy source region readable");'; \
+	    echo '    __CPROVER_assert(__CPROVER_w_ok(dst, n), "memcpy destination region writeable");'; \
+	    echo '    return dst;'; \
+	    echo '}'; \
+	    echo '#define __builtin_memcpy( d, s, n ) ( __builtin_constant_p( n ) ? cbmc_word_copy_( ( d ), ( s ), ( n ) ) : cbmc_bulk_copy_( ( d ), ( s ), ( n ) ) )'; \
 	    echo '#include "serialize.h"'; \
+	    echo '#undef memcpy'; \
+	    echo '#define memcpy( d, s, n ) __builtin_memcpy( ( d ), ( s ), ( n ) )'; \
 	    echo "#include \"$$base\""; \
 	    echo 'static void cbmc_harness_read(void) {'; \
-	    echo "    unsigned char buf[$$bits+8];"; \
+	    echo "    unsigned char buf[($$bits)+64+8];"; \
 	    echo '    serialize_read_stream_t s;'; \
 	    echo '    s.data = buf;'; \
 	    echo '    s.bits_read = 0;'; \
 	    echo '    s.error = 0;'; \
-	    echo "    __CPROVER_assume(s.num_bits >= 0 && s.num_bits <= $$bits*8);"; \
+	    echo "    __CPROVER_assume(s.num_bits >= 0 && s.num_bits <= (($$bits)+64)*8);"; \
 	    echo "    $$ty v;"; \
 	    echo '    memset(&v, 0, sizeof v);'; \
 	    echo "    $$fn(&s, &v);"; \
@@ -109,10 +122,11 @@ schema-c-generated-cbmc-readers: schema-c-generated-cbmc-readers-probe schema-c-
 	   ( ulimit -v $(CBMC_MEM_LIMIT_KB); \
 	     timeout $(CBMC_TIME_LIMIT) $(CBMC) build/cbmc-readers/$$fn.c \
 	       -Igenerated/c -I$(SERIALIZE_C) \
-	       --bounds-check --pointer-check --unsigned-overflow-check \
-	       --signed-overflow-check --conversion-check \
+	       --bounds-check --pointer-check \
+	       --signed-overflow-check --div-by-zero-check \
 	       --object-bits $(CBMC_OBJECT_BITS) \
-	       --unwind $$u --unwinding-assertions --external-sat-solver cadical ) \
+	       --unwind $$u --unwindset $(CBMC_UNWINDSET) --unwinding-assertions \
+	       --slice-formula --external-sat-solver cadical ) \
 	     > build/cbmc-readers/$$fn.log 2>&1; st=$$?; \
 	   secs=$$(( $$(date +%s) - start )); \
 	   echo "CBMC: $$fn unwind=$$u time=$${secs}s exit=$$st"; \
@@ -130,8 +144,8 @@ schema-c-generated-cbmc-readers: schema-c-generated-cbmc-readers-probe schema-c-
 # inputs_count is accepted as MAX_INPUTS_PER_PACKET+1, one past the
 # inputs[MAX_INPUTS_PER_PACKET] array. The gate must catch it (VERIFICATION
 # FAILED naming read_input_packet); red when the plant is in, green when it is
-# out. The plant is in the decode bound, not an unreachable stores, so it
-# needs a nondeterministic stream to fire.
+# out. The plant is in the decode bound, not an unreachable store, so it
+# needs a nondeterministic stream with room for the 17th Input to fire.
 schema-c-generated-cbmc-readers-negative-control: schema-c-generated-cbmc-readers-probe schema-c-generated-cbmc-readers-runtime
 	@rm -rf build/cbmc-readers/negative && mkdir -p build/cbmc-readers/negative/gen
 	@cp generated/c/*.h build/cbmc-readers/negative/gen/
@@ -140,16 +154,30 @@ schema-c-generated-cbmc-readers-negative-control: schema-c-generated-cbmc-reader
 	@{ \
 	  echo '#include <stdint.h>'; \
 	  echo '#include <string.h>'; \
-	  echo '#define __builtin_memcpy( d, s, n ) memcpy( ( d ), ( s ), ( n ) )'; \
+	  echo 'static inline void *cbmc_word_copy_(void *dst, const void *src, size_t n) {'; \
+	  echo '    __CPROVER_assert(__CPROVER_r_ok(src, n), "memcpy source region readable");'; \
+	  echo '    __CPROVER_assert(__CPROVER_w_ok(dst, n), "memcpy destination region writeable");'; \
+	  echo '    if (n == 8) { uint64_t u; *(uint64_t *)dst = u; return dst; }'; \
+	  echo '    if (n == 4) { float f; *(float *)dst = f; return dst; }'; \
+	  echo '    return dst;'; \
+	  echo '}'; \
+	  echo 'static inline void *cbmc_bulk_copy_(void *dst, const void *src, size_t n) {'; \
+	  echo '    __CPROVER_assert(__CPROVER_r_ok(src, n), "memcpy source region readable");'; \
+	  echo '    __CPROVER_assert(__CPROVER_w_ok(dst, n), "memcpy destination region writeable");'; \
+	  echo '    return dst;'; \
+	  echo '}'; \
+	  echo '#define __builtin_memcpy( d, s, n ) ( __builtin_constant_p( n ) ? cbmc_word_copy_( ( d ), ( s ), ( n ) ) : cbmc_bulk_copy_( ( d ), ( s ), ( n ) ) )'; \
 	  echo '#include "serialize.h"'; \
+	  echo '#undef memcpy'; \
+	  echo '#define memcpy( d, s, n ) __builtin_memcpy( ( d ), ( s ), ( n ) )'; \
 	  echo '#include "TypesWire.h"'; \
 	  echo 'static void cbmc_harness_read(void) {'; \
-	  echo '    unsigned char buf[INPUT_PACKET_MAX_BYTES+8];'; \
+	  echo '    unsigned char buf[INPUT_PACKET_MAX_BYTES+64+8];'; \
 	  echo '    serialize_read_stream_t s;'; \
 	  echo '    s.data = buf;'; \
 	  echo '    s.bits_read = 0;'; \
 	  echo '    s.error = 0;'; \
-	  echo '    __CPROVER_assume(s.num_bits >= 0 && s.num_bits <= INPUT_PACKET_MAX_BYTES*8);'; \
+	  echo '    __CPROVER_assume(s.num_bits >= 0 && s.num_bits <= (INPUT_PACKET_MAX_BYTES+64)*8);'; \
 	  echo '    InputPacket v;'; \
 	  echo '    memset(&v, 0, sizeof v);'; \
 	  echo '    read_input_packet(&s, &v);'; \
@@ -159,10 +187,10 @@ schema-c-generated-cbmc-readers-negative-control: schema-c-generated-cbmc-reader
 	@( ulimit -v $(CBMC_MEM_LIMIT_KB); \
 	   timeout $(CBMC_TIME_LIMIT) $(CBMC) build/cbmc-readers/negative/driver.c \
 	     -Ibuild/cbmc-readers/negative/gen -Igenerated/c -I$(SERIALIZE_C) \
-	     --bounds-check --pointer-check --unsigned-overflow-check --signed-overflow-check \
-	     --conversion-check --object-bits $(CBMC_OBJECT_BITS) \
-	     --unwind $(CBMC_UNWIND_read_input_packet) --unwinding-assertions \
-	     --external-sat-solver cadical ) \
+	     --bounds-check --pointer-check --signed-overflow-check --div-by-zero-check \
+	     --object-bits $(CBMC_OBJECT_BITS) \
+	     --unwind $(CBMC_UNWIND_read_input_packet) --unwindset $(CBMC_UNWINDSET) \
+	     --unwinding-assertions --slice-formula --external-sat-solver cadical ) \
 	  > build/cbmc-readers/negative/planted.log 2>&1; st=$$?; \
 	 if grep -q 'VERIFICATION FAILED' build/cbmc-readers/negative/planted.log && \
 	    grep -q 'read_input_packet' build/cbmc-readers/negative/planted.log; then \

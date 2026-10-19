@@ -56,6 +56,8 @@ func TestCBMCReadersMakefilePinsAndProbesTheTool(t *testing.T) {
 		"CBMC_UNWIND_read_render_block",
 		"CBMC_UNWIND_read_chat",
 		"CBMC_UNWIND_read_block",
+		"export CBMC_UNWIND_read_input_packet",
+		"CBMC_UNWINDSET",
 		"CBMC_TIME_LIMIT",
 		"CBMC_MEM_LIMIT_KB",
 	} {
@@ -104,6 +106,9 @@ func TestCBMCReadersDriverHarnessesTypedValues(t *testing.T) {
 		"memset(&v, 0, sizeof v)",
 		"serialize_read_stream_t s;",
 		"int main(void) {",
+		"cbmc_word_copy_",
+		"cbmc_bulk_copy_",
+		"(INPUT_PACKET_MAX_BYTES+64)*8",
 		"schema_interior_null_",
 	} {
 		if must == "schema_interior_null_" {
