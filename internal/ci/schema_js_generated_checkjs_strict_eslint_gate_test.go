@@ -89,7 +89,7 @@ func TestSchemaJSCheckJSRatchetSelfTestCoversPartialFailureAndGrowth(t *testing.
 		"check not-analysed 2",
 		"check success-with-diagnostics 0",
 		"check at-pin 2 7006:1 PASS",
-		"check below-pin 2 7006:2 PASS",
+		"check below-pin 2 7006:2 'RATCHET-DOWN TS7006 count 1 is below its pin 2: lower it in SELF_TEST_PIN'",
 		"check empty-baseline-is-zero 2 '' 'TS7006 count 1 exceeds baseline 0'",
 		"tot=1; check total-growth 2 7006:5 'total 2 exceeds pinned total 1'",
 		"RATCHET-DOWN TS7006 count 1 is below its pin 2: lower it in SELF_TEST_PIN",

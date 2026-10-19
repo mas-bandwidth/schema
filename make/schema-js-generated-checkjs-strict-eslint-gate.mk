@@ -156,9 +156,9 @@ SCHEMA_JS_CHECKJS_FLAGS := --noEmit --allowJs --checkJs --strict --target es2022
 # trees alone (SCHEMA_JS_GATE_CORPUS=fast, every push and pull request), each
 # with its total. The pin is chosen by the corpus, never by the caller. The gate is RED when any code's count rises
 # above its pin or a code appears that has no pin; that is what catches a new
-# real bug in generated output. A count BELOW its pin is green and prints a
-# RATCHET-DOWN line naming the new count: the commit that made it fall lowers
-# the pin to that number, so the room a fix frees is never left for a new bug.
+# real bug in generated output. A count BELOW its pin is ALSO red (FAIL
+# RATCHET-DOWN naming the new count): the commit that made it fall must lower
+# the pin in lockstep, so the room a fix frees is never left for a new bug.
 # The pin can only be lowered by hand; no code is excused by a disable, no file
 # by @ts-nocheck (the corpus target refuses both).
 override SCHEMA_JS_CHECKJS_BASELINE := 18047:1095,2322:303,2339:674,2345:202,2353:25,2365:50,2367:3,2554:94,4104:26,7005:447,7006:36708,7008:103,7022:26,7023:113,7034:213,7053:1000
@@ -218,8 +218,9 @@ END {
   for (i = 1; i <= nx; i++) if (!(extra[i] in base)) line = line " TS" extra[i] "=" counts[extra[i]]
   print "checkJs diagnostic counts:" line "; total " parsed " (pinned " total "); tsc exit " rc
   for (i = 1; i <= nx; i++) { c = extra[i]; m = (c in base) ? base[c] : 0; if (counts[c] > m) err[++ne] = "TS" c " count " counts[c] " exceeds baseline " m }
-  for (i = 1; i <= no; i++) { c = order[i]; if (counts[c] + 0 < base[c]) print "RATCHET-DOWN TS" c " count " (counts[c] + 0) " is below its pin " base[c] ": lower it in " pinname }
+  for (i = 1; i <= no; i++) { c = order[i]; if (counts[c] + 0 < base[c]) err[++ne] = "RATCHET-DOWN TS" c " count " (counts[c] + 0) " is below its pin " base[c] ": lower it in " pinname }
   if (total != "" && parsed > total + 0) err[++ne] = "total " parsed " exceeds pinned total " total
+  if (total != "" && parsed < total + 0) err[++ne] = "RATCHET-DOWN total " parsed " is below pinned total " total ": lower it in " pinname "_TOTAL"
   for (i = 1; i <= ne; i++) print "FAIL " err[i]
   exit (ne > 0 ? 1 : 0)
 }
@@ -260,12 +261,13 @@ schema-js-generated-checkjs-strict-eslint-gate-ratchet-self-test:
 	check diagnostics-status-none 2 7006:1 'tsc returned a diagnostics status without parsed diagnostics' "$$f"; \
 	check bad-baseline 2 7006:1,7006:2 'duplicate baseline entry: 7006:2' "$$f\n$$one"; \
 	check at-pin 2 7006:1 PASS "$$f\n$$one"; \
-	check below-pin 2 7006:2 PASS "$$f\n$$one"; grep -Fq 'RATCHET-DOWN TS7006 count 1 is below its pin 2: lower it in SELF_TEST_PIN' $$d/below-pin.out || { cat $$d/below-pin.out; echo 'ratchet self-test FAILED: below-pin printed no RATCHET-DOWN line'; exit 1; }; \
+	check below-pin 2 7006:2 'RATCHET-DOWN TS7006 count 1 is below its pin 2: lower it in SELF_TEST_PIN' "$$f\n$$one"; \
 	check empty-baseline-is-zero 2 '' 'TS7006 count 1 exceeds baseline 0' "$$f\n$$one"; \
 	check empty-baseline-clean 0 '' PASS "$$f"; \
 	tot=1; check total-growth 2 7006:5 'total 2 exceeds pinned total 1' "$$f\n$$one\n$$f(2,1): error TS7006: second"; \
-	check at-total 2 7006:5 PASS "$$f\n$$one"; tot=; \
-	check clean 0 7006:1 PASS "$$f"
+	check at-total 2 7006:1 PASS "$$f\n$$one"; \
+	tot=2; check below-total 2 7006:1 'RATCHET-DOWN total 1 is below pinned total 2: lower it in SELF_TEST_PIN_TOTAL' "$$f\n$$one"; tot=; \
+	check clean 0 7006:0 PASS "$$f"
 	@echo 'schema-js checkJs ratchet self-test: status 2 multiline, same-code growth, new code, partial and indented tool failures, orphaned continuation, unlocated output, signal status, unlisted file, success-with-diagnostics, bad baseline, empty baseline as zero, total growth, at-pin, below-pin (RATCHET-DOWN) and clean all behave'
 
 .PHONY: schema-js-generated-checkjs-strict-eslint-gate-checkjs
