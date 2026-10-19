@@ -62,7 +62,31 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			rawKey.Type.Size = 2147483647
 		}
 		fmt.Fprintf(b, "    static void readMapKey_%s(TableVariable.Reader r, %s v, TableVariable.Report report) {\n        while(true) {long ref=r.leb();if(r.fail||ref==0)return;long id=r.resolve(ref);if(r.fail||!r.has(1)){report.malformed=true;return;}int kind=r.get8();if(id==0x%016xL){\n", m, entry, ir.TableFieldWireId(key))
-		writeFieldRead(b, u, f.MapEntry, &rawKey, false, 0, false)
+		// The key scan mirrors the oracle's mapKey (docs/SPEC-TABLES.md §2.8):
+		// a key under another kind is SKIPPED and marked, never counted, and the
+		// LAST occurrence decides the mark. A correct key clears it, so a bad
+		// kind followed by a good one reads the good key and lets the body's
+		// desynced tail fall out as malformed (the caller checks off!=limit);
+		// a body whose last key is bad leaves the mark for one kind_mismatch.
+		var keyRead strings.Builder
+		writeFieldRead(&keyRead, u, f.MapEntry, &rawKey, false, 0, false)
+		kr := keyRead.String()
+		// A mis-read key marks report.kindMismatch; the LAST occurrence of the
+		// key decides the map reset (§2.8). An exact-kind key clears the mark, a
+		// wrong kind sets it, and a WIDENED key leaves it as it was — exactly as
+		// the oracle's mapKey leaves kindBad untouched on the widened branch
+		// (internal/tablewire/decode.go mapKey). The clearing is placed inside
+		// the exact-kind read only, never in a widened branch.
+		kr = strings.Replace(kr,
+			"                } else { r.skip(kind); report.kindMismatch++; }",
+			"                } else { r.skip(kind); report.kindMismatch = 1; }", 1)
+		kr = strings.Replace(kr,
+			"                else { r.skip(kind); report.kindMismatch++; }",
+			"                else { r.skip(kind); report.kindMismatch = 1; }", 1)
+		kr = strings.Replace(kr,
+			fmt.Sprintf("if (kind == %d) {", variableWireKind(&rawKey)),
+			fmt.Sprintf("if (kind == %d) { report.kindMismatch = 0;", variableWireKind(&rawKey)), 1)
+		b.WriteString(kr)
 		b.WriteString("        }else{r.skip(kind);}if(r.fail)return;}\n    }\n")
 	}
 }
