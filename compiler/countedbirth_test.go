@@ -42,15 +42,16 @@ type T
 // countName is the count's spelling in each target's storage. It is the
 // identifier every claim below is made about.
 var countName = map[string]string{
-	"c":      "window_count",
-	"cpp":    "window_count",
-	"cs":     "WindowCount",
-	"dart":   "windowCount",
-	"elixir": "window", // the list IS the count: length(value.window)
-	"go":     "WindowCount",
-	"java":   "windowCount",
-	"js":     "WindowCount",
-	"rust":   "window_count",
+	"c":        "window_count",
+	"cpp":      "window_count",
+	"cs":       "WindowCount",
+	"dart":     "windowCount",
+	"elixir":   "window", // the list IS the count: length(value.window)
+	"go":       "WindowCount",
+	"java":     "windowCount",
+	"js":       "WindowCount",
+	"rust":     "window_count",
+	"squirrel": "WindowCount",
 }
 
 // bornAtMinimum is the text each target's CONSTRUCTED form carries when the
@@ -58,15 +59,16 @@ var countName = map[string]string{
 // here: it is all-zero by rule in every target, and a specified default does
 // not reach it either.
 var bornAtMinimum = map[string]string{
-	"c":      "value.window_count = 2;",
-	"cpp":    "int32_t window_count = 2;",
-	"cs":     "public int WindowCount = 2;",
-	"dart":   "int windowCount = 2;",
-	"elixir": "defstruct window: List.duplicate(0, 2)",
-	"go":     "value.WindowCount = 2",
-	"java":   "public int windowCount = 2;",
-	"js":     "this.WindowCount = 2;",
-	"rust":   "value.window_count = 2;",
+	"c":        "value.window_count = 2;",
+	"cpp":      "int32_t window_count = 2;",
+	"cs":       "public int WindowCount = 2;",
+	"dart":     "int windowCount = 2;",
+	"elixir":   "defstruct window: List.duplicate(0, 2)",
+	"go":       "value.WindowCount = 2",
+	"java":     "public int windowCount = 2;",
+	"js":       "this.WindowCount = 2;",
+	"rust":     "value.window_count = 2;",
+	"squirrel": "this.WindowCount = 2;",
 }
 
 // refusesEveryBuild is the write path's UNCONDITIONAL range refusal, for the
@@ -77,8 +79,9 @@ var bornAtMinimum = map[string]string{
 // only two: every other target has a build-removable idiom and is held to it
 // by assertsInDebug.
 var refusesEveryBuild = map[string][]string{
-	"elixir": {"if n < 2 do", "if n > 8 do", "raise ArgumentError"},
-	"go":     {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
+	"elixir":   {"if n < 2 do", "if n > 8 do", "raise ArgumentError"},
+	"go":       {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
+	"squirrel": {`if (typeof v.WindowCount != "integer" || v.WindowCount < 2 || v.WindowCount > 8) return false;`},
 }
 
 // assertsInDebug is the count's DEBUG-ONLY form in each target that has one:
