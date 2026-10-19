@@ -1006,6 +1006,7 @@ local function invalid_deprecated(d: any, v: any, seen: any): any
 end
 
 function S.save(d: any, v: any): (buffer?, any?)
+	if v == nil then return nil, { name = "nil_value", field = d.name } end
 	local invalid = invalid_deprecated(d, v, {})
 	if invalid ~= nil then return nil, invalid end
 	local w = walk(d, v, false)

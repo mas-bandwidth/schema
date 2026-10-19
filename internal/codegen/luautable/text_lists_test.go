@@ -49,7 +49,7 @@ local function hexstr(b)
 	return table.concat(parts)
 end
 local report = fresh()
-local v = load.load("Lists", inputs.wire, report)
+local v = load.loadTolerant("Lists", inputs.wire, report)
 if report.refused > 0 then print("REFUSED"); return end
 local d = St.lookup("Lists")
 local out = save.save(d, v)
@@ -58,7 +58,7 @@ if out == nil or measure == nil then print("SAVENIL"); return end
 print(hexstr(out))
 print(string.format("%d,%d,%d,%d,%d,%s", report.unknown, report.kindMismatch, report.widened, report.clamped, report.duplicate, tostring(report.malformed)))
 print(measure)
-local again = load.load("Lists", out, fresh())
+local again = load.loadTolerant("Lists", out, fresh())
 local out2 = save.save(d, again)
 if out2 == nil then print("RESAVENIL"); return end
 print(hexstr(out2))

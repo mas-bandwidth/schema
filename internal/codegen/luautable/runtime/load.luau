@@ -1021,9 +1021,12 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 			return true
 		end
 		if not utf8_ok(r.b, r.at, n) then
+			-- ill-formed UTF-8 or a zero byte in an element is malformed, and
+			-- the element does not land: the list keeps the prefix the body
+			-- covered, as the Go engine's element break leaves it (§2.13, §3)
 			report.malformed = true
 			r.at = r.at + n
-			return true
+			return false
 		end
 		-- an UNBOUNDED TEXT element (docs/SPEC-TABLES.md §2.13.1) has no
 		-- declared bound: the emitter spells it as a string with bound 0, and
