@@ -17,6 +17,14 @@ name: schema lua nightly fuzz
 # `make dist-lua` fetches PUC-Rio Lua 5.4.8 from www.lua.org and refuses a
 # tarball whose sha256 is not make/lua.mk's. The Makefile's LUA default then
 # points the targets at that build.
+#
+# FORK SAFETY: this repository is public and its runners are self-hosted on the
+# fleet, so a pull request from a fork must never run on fleet hardware. Every
+# fleet job carries the fork guard `if: github.event_name != 'pull_request' ||
+# github.event.pull_request.head.repo.full_name == github.repository`; a fork's
+# pull request therefore gets no CI run, and a maintainer runs it by
+# workflow_dispatch after reading the diff. Forks are never routed to a hosted
+# runner.
 
 on:
   schedule:
@@ -44,8 +52,8 @@ jobs:
   # replay the saved corpus inputs (no real time), then the planted control,
   # then the lane's structural test.
   fast:
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","fleet","schema"]') }}
+    if: (github.event_name == 'push' || github.event_name == 'pull_request') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,7 +74,7 @@ jobs:
   # THE NIGHTLY RUN: the time budget is the make variable, ten minutes by
   # default, and a finding fails the job after recording its exact input.
   nightly:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     timeout-minutes: 30
     steps:

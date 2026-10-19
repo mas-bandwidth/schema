@@ -11,6 +11,14 @@ name: Schema Lua version differential
 # the static test that holds this workflow and the gate's pins to their shape;
 # it runs on a push or pull request that touches the gate and stays well inside
 # the one-minute budget (a checkout, setup-go, and one package of Go tests).
+#
+# FORK SAFETY: this repository is public and its runners are self-hosted on the
+# fleet, so a pull request from a fork must never run on fleet hardware. Every
+# fleet job carries the fork guard `if: github.event_name != 'pull_request' ||
+# github.event.pull_request.head.repo.full_name == github.repository`; a fork's
+# pull request therefore gets no CI run, and a maintainer runs it by
+# workflow_dispatch after reading the diff. Forks are never routed to a hosted
+# runner.
 
 on:
   push:
@@ -46,36 +54,60 @@ env:
 jobs:
   static:
     name: the gate's pins and schedule
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    if: (github.event_name == 'push' || github.event_name == 'pull_request') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
+      - name: the pinned Go 1.26 is on the path
+        run: |
+          set -eu
+          if ! command -v go >/dev/null 2>&1; then
+            echo "TOOL-MISSING go 1.26 absent on $RUNNER_NAME"; exit 1
+          fi
+          GOT="$(go version | awk '{print $3}')"
+          case "$GOT" in
+            go1.26*) ;;
+            *) echo "TOOL-MISSING go 1.26 $GOT on $RUNNER_NAME"; exit 1 ;;
+          esac
       - run: go test ./internal/ci -run 'LuaVersionDifferential' -count=1 -timeout 600s
 
   differential:
     name: Lua 5.1 / 5.3 / 5.4 / LuaJIT differential
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
+      - name: the pinned Go 1.26 is on the path
+        run: |
+          set -eu
+          if ! command -v go >/dev/null 2>&1; then
+            echo "TOOL-MISSING go 1.26 absent on $RUNNER_NAME"; exit 1
+          fi
+          GOT="$(go version | awk '{print $3}')"
+          case "$GOT" in
+            go1.26*) ;;
+            *) echo "TOOL-MISSING go 1.26 $GOT on $RUNNER_NAME"; exit 1 ;;
+          esac
       - run: make schema-lua-version-differential
 
   negative-control:
     name: the planted 5.3-only divergence is caught
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
+      - name: the pinned Go 1.26 is on the path
+        run: |
+          set -eu
+          if ! command -v go >/dev/null 2>&1; then
+            echo "TOOL-MISSING go 1.26 absent on $RUNNER_NAME"; exit 1
+          fi
+          GOT="$(go version | awk '{print $3}')"
+          case "$GOT" in
+            go1.26*) ;;
+            *) echo "TOOL-MISSING go 1.26 $GOT on $RUNNER_NAME"; exit 1 ;;
+          esac
       - run: make schema-lua-version-differential-negative-control
