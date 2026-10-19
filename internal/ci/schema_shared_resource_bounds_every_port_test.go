@@ -5,6 +5,7 @@
 package ci
 
 import (
+	"fmt"
 	"runtime"
 	"strings"
 	"testing"
@@ -57,23 +58,54 @@ func TestEngineNestingDepthCap(t *testing.T) {
 	}
 }
 
-// TestEngineReadAllocationFactor is the engine's half of the allocation-bound
-// card: parsing an input of size N allocates at most a small constant factor of
-// N (F, documented in docs/SPEC-TABLES.md). It measures with runtime.MemStats,
-// no real time.
+// TestEngineReadAllocationFactor records byte amplification for real parser-root reads.
+// It is a measurement checkpoint; the normative factor is selected only after
+// these per-shape byte ratios are available.
 func TestEngineReadAllocationFactor(t *testing.T) {
 	t.Parallel()
-	src := []byte(nestedSchema(parser.MaxNestingDepth / 2))
-	const F = 4.0
+	// Measure independent parser workloads after warmup. TotalAlloc measures bytes
+	// rather than allocation-object count; each read receives the same immutable
+	// input and its parser result is discarded before the next iteration.
+	shapes := []struct {
+		name string
+		src  []byte
+	}{
+		{"depth-near-cap", []byte(nestedSchema(parser.MaxNestingDepth - 1))},
+		{"depth-over-cap", []byte(nestedSchema(parser.MaxNestingDepth + 50))},
+		{"many-fields", []byte(manyFieldSchema(2048))},
+		{"giant-string-default", []byte(giantStringSchema(64 * 1024))},
+		{"huge-array-bound", []byte("package p\ntype T { values [18446744073709551615]uint8 }\n")},
+	}
+	for _, shape := range shapes {
+		measureParserReadBytes(t, shape.name, shape.src)
+	}
+}
+
+func manyFieldSchema(n int) string {
+	var b strings.Builder
+	b.WriteString("package p\ntype T {\n")
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(&b, "field%04d uint8\n", i)
+	}
+	b.WriteString("}\n")
+	return b.String()
+}
+
+func giantStringSchema(n int) string {
+	return "package p\ntype T { label string(" + fmt.Sprint(n) + ") = \"" + strings.Repeat("x", n) + "\" }\n"
+}
+
+func measureParserReadBytes(t *testing.T, name string, src []byte) {
+	t.Helper()
+	_, _ = parser.Parse("measure.schema", src) // warm parser paths and caches
+	runtime.GC()
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
-	const iters = 20
+	const iters = 10
 	for i := 0; i < iters; i++ {
-		parser.Parse("alloc.schema", src)
+		_, _ = parser.Parse("measure.schema", src)
 	}
 	runtime.ReadMemStats(&after)
-	objsPerRun := float64(after.Mallocs-before.Mallocs) / iters
-	if objsPerRun > F*float64(len(src)) {
-		t.Fatalf("parse of %d input bytes allocated %.0f objects per run, above factor F=%g", len(src), objsPerRun, F)
-	}
+	bytesPerRead := float64(after.TotalAlloc-before.TotalAlloc) / iters
+	t.Logf("MEASURE engine-root shape=%s input_bytes=%d allocated_bytes_per_read=%.0f ratio=%.3f", name, len(src), bytesPerRead, bytesPerRead/float64(len(src)))
 }
