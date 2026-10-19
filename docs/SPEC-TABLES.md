@@ -9852,6 +9852,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `text_edit_conflict` | an edit cannot preserve the requested source spans or comment disposition (§16.9.4) |
   | `json_root_not_array` | an array-root table's text is not a top-level array (§16.10). The report's reason is `json_root_not_array: <Table>` |
   | `text_holds_zero` | a text field that holds a NUL where the declaration does not allow one (§16.3). The report's reason is `text_holds_zero: <Table>.<field>` |
+  | `string_not_utf8` | a string read whose bytes are not well-formed UTF-8, refused by name rather than replaced with `U+FFFD` (§16.3). The report's reason is `string_not_utf8: <key>`, `<root>` at the top |
   | `timestamp_not_rfc3339` | a timestamp string outside RFC 3339 §5.6's exact `date-time` production (§2.11). The report's reason is `timestamp_not_rfc3339: <field>` |
   | `timestamp_out_of_range` | a `time.Time` whose nanoseconds do not fit an `int64`: outside the years 1678 through 2262 (§2.11). Carried as the typed `TableTimestampError`, whose `Error()` is `timestamp_out_of_range: <field> <time> is outside the years 1678 through 2262` |
   <!-- refusal-names:end -->
