@@ -1018,9 +1018,9 @@ read_field = function(fd: any, r: any, v: any): boolean
 		local sub = new_reader(r.b, r.at, r.at + n)
 		local d = S.lookup(fd.t)
 		local inst = d.new()
-		if fd.slot ~= nil and v ~= nil then v[fd.slot] = inst end
 		read_body(d, sub, inst, true)
 		if sub.at ~= sub.e then _report.malformed = true; inst = d.new() end
+		if fd.slot ~= nil and v ~= nil then v[fd.slot] = inst end
 		r.at = r.at + n
 		return true
 	elseif s == "union" then
@@ -1207,7 +1207,11 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 		end
 	end
 	local rootReader = new_reader(bytes, 1, o.e)
-	read_body(desc, rootReader, v, false)
+	local ended = read_body(desc, rootReader, v, false)
+	-- ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY IS
+	-- MALFORMED, because no field claims it and the two ends of the file have
+	-- met (docs/SPEC-TABLES.md §3; internal/tablewire decode.go, bodyExtent).
+	if ended and rootReader.at ~= o.e then report.malformed = true end
 	resolve(report)
 	return v
 end
