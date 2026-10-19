@@ -115,6 +115,23 @@ func fixedFieldSupported(f *ir.Field) bool {
 	return false
 }
 
+// emitFixedCRC32C emits CRC-32C, the Castagnoli polynomial
+// (docs/SPEC-TABLES.md §2.14): initial value and final XOR 0xFFFFFFFF, the
+// reflected polynomial 0x82F63B78. It is a local of the declaring function,
+// which computes the trailer over every byte before it.
+func emitFixedCRC32C(m *Module) {
+	m.Printf("  local crc32c = function(bb, n) {\n")
+	m.Printf("    local c = 0xFFFFFFFF;\n")
+	m.Printf("    for (local i = 0; i < n; i++) {\n")
+	m.Printf("      c = (c ^ bb[i]) & 0xFFFFFFFF;\n")
+	m.Printf("      for (local k = 0; k < 8; k++) {\n")
+	m.Printf("        c = (c & 1) ? ((c >> 1) ^ 0x82F63B78) & 0xFFFFFFFF : (c >> 1) & 0xFFFFFFFF;\n")
+	m.Printf("      }\n")
+	m.Printf("    }\n")
+	m.Printf("    return c ^ 0xFFFFFFFF;\n")
+	m.Printf("  };\n")
+}
+
 func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("_M.%sFixedSave <- function(out, recs) {\n", st.Name)
 	m.Printf("  local b = out;\n")
@@ -132,25 +149,53 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("    for (local z = 0; z < body; z++) b.writen(0, 'b');\n")
 	m.Printf("    _M.%sFixedWriteBody(b, start, recs[k]);\n", st.Name)
 	m.Printf("  }\n")
-	m.Printf("  return b.tell();\n")
+	if st.Integrity != "" {
+		// THE INTEGRITY TRAILER (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING):
+		// four bytes, little-endian, the CRC-32C of every byte before them,
+		// after the last record, so the file ends with it. The CRC-32C is
+		// emitted with the declaring function, so a keyless unit carries none.
+		emitFixedCRC32C(m)
+		m.Printf("  local n = b.tell();\n")
+		m.Printf("  _rt_fixed.puti32(b, n, crc32c(b, n));\n")
+		m.Printf("  return n + 4;\n")
+	} else {
+		m.Printf("  return b.tell();\n")
+	}
 	m.Printf("};\n\n")
 }
 
 func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("_M.%sFixedLoad <- function(b, out, cap) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
-	m.Printf("  if (b.len() < 20) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
-	m.Printf("  if (b[0] == 1) { _M.FixedReason = \"previous_form\"; return -1; }\n")
-	m.Printf("  if (b[0] != 3) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	if st.Integrity != "" {
+		// THE INTEGRITY TRAILER (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING):
+		// the form byte is read first, then a declaring root's trailer is
+		// checked before the layout or any record; a mismatch is
+		// integrity_mismatch and the rest is read without it.
+		m.Printf("  if (b.len() < 1) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+		m.Printf("  if (b[0] == 1) { _M.FixedReason = \"previous_form\"; return -1; }\n")
+		m.Printf("  if (b[0] != 3) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+		emitFixedCRC32C(m)
+		m.Printf("  if (b.len() < 5 || _rt_fixed.u32le(b, b.len() - 4) != crc32c(b, b.len() - 4)) {\n")
+		m.Printf("    _M.FixedReason = \"integrity_mismatch\"; return -1;\n")
+		m.Printf("  }\n")
+		m.Printf("  local len = b.len() - 4;\n")
+		m.Printf("  if (len < 20) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	} else {
+		m.Printf("  if (b.len() < 20) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+		m.Printf("  if (b[0] == 1) { _M.FixedReason = \"previous_form\"; return -1; }\n")
+		m.Printf("  if (b[0] != 3) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+		m.Printf("  local len = b.len();\n")
+	}
 	m.Printf("  for (local i = 1; i < 8; i++) if (b[i] != 0) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	m.Printf("  local L = _rt_fixed.u32le(b, 16);\n")
-	m.Printf("  if (L < 4 || 20 + L > b.len()) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  if (L < 4 || 20 + L > len) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	m.Printf("  local n = _rt_fixed.u32le(b, 20);\n")
 	m.Printf("  if (n != (L - 4) / 17 || 4 + n * 17 != L) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	m.Printf("  local rb = 8 + _rt_fixed.u32le(b, 20 + 4 + 9);\n")
 	m.Printf("  if (rb < 8) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	m.Printf("  if (rb > 8 + %d) { _M.FixedReason = \"layout_record_too_large\"; return -1; }\n", ir.TableFixedRecordMaxBytes)
-	m.Printf("  local rest = b.len() - 20 - L;\n")
+	m.Printf("  local rest = len - 20 - L;\n")
 	m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	m.Printf("  local count = rest / rb;\n")
 	m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
