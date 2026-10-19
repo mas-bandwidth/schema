@@ -11,5 +11,5 @@
 .PHONY: schema-spec-pin-s8
 schema-spec-pin-s8:
 	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 sh test/slowgate/proof schema-spec-pin-s8 \
-		'TestSpecPinsHoldOnTheSpec TestSpecPinsS8Hold TestSpecPinsS8Plant' \
+		'TestSpecPinsHoldOnTheSpec TestSpecPinsS8Registered TestSpecPinsS8Plant' \
 		./internal/ci/ -run '^TestSpecPins(HoldOnTheSpec|S8)' -count=1 -timeout 600s

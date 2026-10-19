@@ -10770,8 +10770,6 @@ columns are specified with the rest of the descriptors in §8.1 and appear on
 the registry's records in §8.3.
 
 ### 8.1 The descriptors
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 For every table in the unit's closure the generated header carries static
 descriptors: field name, type name, wire id and kind, storage offset and
 element size, array bound and count-companion offset, declared bounds,
@@ -10885,7 +10883,7 @@ neither moves the build version; neither enters a baseline row (§18), so
 `schema check` never sees one and no doc or tag edit can be a warn or a
 refusal; and neither is a member of the silent class (§4.1), because there
 is no stored byte whose meaning a comment or an inert identifier could
-change.<!-- row T8.8.1-1 feature=reflection --> **The text form does not read them and never writes them** (§16):
+change.<!-- row T8.8.1-1 feature=compiler --> **The text form does not read them and never writes them** (§16):
 its keys are the `json` column and its values are the storage columns, and a
 doc comment is not a value. **The pack tree does not see them either**
 (§17): a directory and a file name a field by its text key, so nothing in a
@@ -10967,7 +10965,7 @@ before this section, so the rule is here, one shape for both:
   refused (SPEC.md §4.6) and a keyed array's is `E.Max`, so zero is free and
   means
   exactly this: **the field's `offset` names an `int64` REFERENCE, not the
-  first element**, and a walker resolves it before it steps.<!-- row T8.8.1-2 feature=reflection --> That is one
+  first element**, and a walker resolves it before it steps.<!-- row T8.8.1-2 feature=compiler --> That is one
   comparison in a generic walk and no new column in nine ports.
 - **`table` names the ELEMENT's descriptor**: the generated entry's for a map
   (§2.8), the element type's own for a list of tables, and NULL for a list of
@@ -11110,7 +11108,7 @@ directory — onto descriptors with no schema files on hand. The
 compile-time refusals those ids bring (§11) apply to EVERY unit, as the
 25 generated spellings do, because a unit gains and loses pointers as an
 edit and a name that was free yesterday must not become a collision
-tomorrow.<!-- row T8.8.1-3 feature=reflection --> A self-referential pointer resolves to its own type's
+tomorrow.<!-- row T8.8.1-3 feature=compiler --> A self-referential pointer resolves to its own type's
 descriptor. Where pointers exist the descriptors are CONSTANT-INITIALISED
 data and a target is the ADDRESS of another descriptor, so `Node` naming
 itself through `*Node` is expressible directly: no first-use link, which
@@ -11120,15 +11118,13 @@ editors and tools build on — walk properties by name, print a value, diff
 two, bind a property grid — with no RTTI and no schema files at runtime.
 
 ### 8.2 The type view: every type, on the side
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **Every type in the unit has a view, and nothing declares it.** A `type` a
 table reaches has carried these descriptors all along — a walk must be able
 to enter a nested type — and a `type` no table reaches now carries them too,
-in the view file rather than beside the table runtime (§8.5).<!-- row T8.8.2-1 feature=reflection --> There is no
+in the view file rather than beside the table runtime (§8.5).<!-- row T8.8.2-1 feature=compiler --> There is no
 marker: an editor that must inspect everything in the build cannot be served
 by a set someone remembered to mark, and a set that is complete needs no
-spelling to select it.<!-- row T8.8.2-2 feature=reflection --> The cost question the marker would have answered is
+spelling to select it.<!-- row T8.8.2-2 feature=compiler --> The cost question the marker would have answered is
 answered by placement instead (§8.4), and answered better, because a game
 build then pays nothing for a type a tools build views.
 
@@ -11167,14 +11163,14 @@ identity**: its `id` column is `0` and its `json` column is NULL. Those two
 columns describe the table wire, and such a type has none — its field ids
 were never checked for collisions (§5's refusal is scoped to the closure, as
 §16.4's key refusal is), so filling them would hand a tool two fields under
-one id and a text-form key for a text form that does not exist.<!-- row T8.8.2-3 feature=reflection --> A type
+one id and a text-form key for a text form that does not exist.<!-- row T8.8.2-3 feature=compiler --> A type
 inside a closure carries both as it always did.
 
 **The same rule governs EVERY id column the view carries, for the same
 reason.** §5's refusals are scoped to the closure throughout: the variant
 refusal reaches a vocabulary through a closure member's field, and through
 the KEY of a closure member's keyed array, so a declaration no table closure
-reaches has ids nothing ever checked.<!-- row T8.8.2-4 feature=reflection --> So **an enum, a flags or a union no
+reaches has ids nothing ever checked.<!-- row T8.8.2-4 feature=compiler --> So **an enum, a flags or a union no
 table closure reaches carries `id = 0` on every variant row** — the
 registry's `ViewVariant.id` (§8.3) and a descriptor's `variant_id()`
 function (§8.1) alike — and **an enum-keyed array whose KEY enum no table
@@ -11189,7 +11185,7 @@ refuses a collision by name; outside one it accepts the unit, because the
 packet wire identifies a variant by its ORDINAL and carries no name hash
 (§5) — an enum nothing in a table reaches keeps every spelling it ever had,
 and widening the refusal unit-wide would reject a packet-only schema over an
-identity its wire does not have.<!-- row T8.8.2-5 feature=reflection --> The consequence is the rule above, stated
+identity its wire does not have.<!-- row T8.8.2-5 feature=compiler --> The consequence is the rule above, stated
 so a tool never has to know it: **outside a table closure an id is not
 unique**, and the view hands out none.
 
@@ -11202,8 +11198,6 @@ in its view file behind the same include guard the table headers use, so a
 unit that has both carries one definition of them.
 
 ### 8.3 The unit registry
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **`UnitView()` is the entry point, and it returns constant data.** One
 function per unit, name-first in the unit's own namespace beside
 `ProtocolId` (SPEC §6.1), answering with the set of everything the build
@@ -11215,7 +11209,7 @@ every unit, including a table-free unit, with `unit_view()` as its entry point.
 The independently generated listing in §8.7 checks both. The C registry and
 its descriptors are immutable static data, with program lifetime; they own no
 decoded region. A caller using a descriptor to inspect a value must still keep
-that value's storage alive.<!-- row T8.8.3-1 feature=reflection --> Other ports' registries remain follow-ons (§15).
+that value's storage alive.<!-- row T8.8.3-1 feature=compiler --> Other ports' registries remain follow-ons (§15).
 
 ```cpp
 struct ViewConstant
@@ -11448,8 +11442,6 @@ per-schema-file name does not.
   relationship to the first: a project compiles either, both or neither.
 
 ### 8.6 What the view does not carry
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 - **No semantics.** A tag is an identifier the language assigns no meaning
   (SPEC §4.2); the view lists what a declaration or an item was tagged with
   because that is part of what was declared, and claims nothing about it. A
@@ -11468,7 +11460,7 @@ per-schema-file name does not.
   above the item (SPEC §4.1), and the view carries it in the `doc` column
   (§8.1, §8.3). A valued `doc` key is refused by name (SPEC §4.11) so that
   one text can never have two homes and a tool never has to decide which of
-  them won.<!-- row T8.8.6-1 feature=reflection -->
+  them won.<!-- row T8.8.6-1 feature=compiler -->
 - **No rendering of either.** `doc` is the block a person wrote, verbatim,
   and `tags` are identifiers; the view does not reflow, wrap, escape, parse
   or sort them, because every one of those would make the listing a function
@@ -11488,8 +11480,6 @@ per-schema-file name does not.
   so the two pages meet there rather than each inventing a column.
 
 ### 8.7 Held by test
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **The editor gate, and it is a dogfood rather than a thought
 experiment** — the shape §12's gates take. A test program that has the
 generated view file and NOTHING ELSE — no schema files on disk, no
@@ -11508,7 +11498,7 @@ it FOR THE UNITS THAT BACKEND ACCEPTS, so two backends that both carry a
 unit produce one view of it the way they produce one wire (§16's goldens,
 applied to reflection). The scope is per backend because acceptance already
 is: C# refuses a pointered unit by name (§11), and a gate cannot ask a
-backend for a listing of a unit it declines to emit at all.<!-- row T8.8.7-1 feature=reflection --> Completeness is
+backend for a listing of a unit it declines to emit at all.<!-- row T8.8.7-1 feature=compiler --> Completeness is
 the count the pin carries: every declaration, every field of every type,
 every variant of every enum, flags and union, and every constant, each set
 in DECLARATION-NAME order (§8.3) — a variant list keeps its declared order,
@@ -11552,7 +11542,7 @@ descriptor is spelled twice in the C++ reference, once as a lambda-local
 static in the table header and once in the view translation unit, and until
 the exhibit existed neither copy had ever carried an annotation at all. The TYPE pair: every `ViewType`'s `doc` and
 `tags` must equal the `doc` and `tags` on the `TableTypeInfo` its `type`
-points at, string for string and entry for entry.<!-- row T8.8.7-2 feature=reflection --> "They agree by
+points at, string for string and entry for entry.<!-- row T8.8.7-2 feature=compiler --> "They agree by
 construction" is a claim a test makes, not one this page makes.
 
 **ONE CORPUS DECLARATION SHOWS BOTH COLUMNS FILLED, and it is the exhibit
@@ -11580,7 +11570,7 @@ pinned** (SPEC §4.1), because a rule stated in prose and exercised only on
 empty line inside the text), and a double quote and a backslash (the
 target's own string-literal escape, and the one escaping rule there is). Its
 tags exercise the list: a declaration with one, an item with several in an
-order the listing must keep.<!-- row T8.8.7-3 feature=reflection -->
+order the listing must keep.<!-- row T8.8.7-3 feature=compiler -->
 
 **TRAILING WHITESPACE IS THE ONE EXTRACTION CASE THE EXHIBIT CANNOT CARRY,
 and the reason is the formatter.** `schemafmt` is the one style (SPEC §7.4)
@@ -11608,7 +11598,7 @@ and each has a failure a test can see:
   with no null test. A NULL column faults or throws there rather than
   printing a line that happens to look right, so the rule has a red state;
   the negative control is an emitter patched to write NULL for one absent
-  doc, and it must take the gate down.<!-- row T8.8.7-4 feature=reflection --> The DESCRIPTOR half of that walk is
+  doc, and it must take the gate down.<!-- row T8.8.7-4 feature=compiler --> The DESCRIPTOR half of that walk is
   the tabledemo closure, reached from its roots through the `table` column,
   and the REGISTRY half joins it with `UnitView()` (§8.3).
 - **ABSENCE IS ONE SHARED EMPTY STRING.** Where the language has address
@@ -11655,7 +11645,7 @@ What must NOT move with any of the three is anything the wire touches — no
 protocol id, no build version, no wire golden, no baseline row — and that
 half stays red-capable afterwards, which is the half worth having: the
 columns are metadata, and a metadata edit that moved a wire byte would be
-the bug this page exists to make impossible.<!-- row T8.8.7-5 feature=reflection -->
+the bug this page exists to make impossible.<!-- row T8.8.7-5 feature=compiler -->
 
 **Its left-hand side is the RECORDED SOURCE GOLDENS**, because with nothing
 selecting the view there is no second generate to compare against: "before
@@ -11673,8 +11663,6 @@ Beside it, the containment gate of §8.4: not one of the six registry symbols
 appears in any generated file but the view pair.
 
 ## 9. Relocatable, and built wide
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 Two properties are load-bearing for real content pipelines, and both are
 held by construction:
 
@@ -11739,8 +11727,6 @@ a type edit moves both. Peers connect on the protocol id alone and may differ
 in build version (§20.5).
 
 ## 11. Refused by name
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 - `table` bodies containing `const`/`reserved`/`align` (§2 — no bit
   positions). Extents have no wire ceiling (§3); an extent past the
   language's own int32 storage cap is refused there, not here.<!-- row T8.11-1 feature=compiler -->
@@ -12417,8 +12403,6 @@ in build version (§20.5).
   rule is stated so it does not have to rediscover the reason.)
 
 ## 12. The expressiveness gate
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **There are TWO gates, and a real game's data is both of them.** The first
 is the content pipeline — the config and asset files tools write and the
 game loads — and it is held below. The second is the per-frame render data
@@ -12461,8 +12445,6 @@ both sides — so a backend clears the gate only in its own language, and
 the per-language backends are named follow-ons (§15).
 
 ### 12.1 Gate 2: the render data
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **The second gate is SPEED, and it is measured.** A real game's per-frame
 render data — the block a simulation hands its host engine sixty or more
 times a second, and faster than it simulates, because rendering need not
@@ -12555,8 +12537,6 @@ proves nothing about the ABI the form exists to be. C++ and C# together are
 the gate; a third language joins it as its backend lands (§15).
 
 ## 13. Rulings, recorded
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **THE AIM, 2026-09-02, in the owner's words, and every ruling below is
 measured against it**: *"We aim to build the best cross-language data type
 system for games."* — *"This includes save games, tooling, cooking to runtime
@@ -12594,8 +12574,6 @@ Owner rulings, 2026-09-01, in the order given.
   work, and relocatability work (if possible)."
 
 ### 13.1 Pointer semantics, ruled
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 - **The founding line**: "types can remain value semantics. tables should
   ALLOW pointer semantics" — "we can't be a generic system if we don't
   have pointers to tables."
@@ -12662,8 +12640,6 @@ are these rulings, in the owner's words:
   primitive", so that "we can include say, images or assets inside them."
 
 ### 13.3 The fixed-class constructs, ruled
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 - **Optional fields** (§2.3): "If you want to have optional fields without
   needing pointers too, and that's elegant, then go for it" — and, once
   they existed, "it's cool to keep the Config.bin and Assets.bin fixed
@@ -12722,8 +12698,6 @@ are these rulings, in the owner's words:
   without `--reason` is refused.<!-- row T8.13.3-4 feature=compiler -->
 
 ### 13.4 The cooked form, ruled
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 - **What it is for**: "cooking is fundamentally an optimization", and
   "the only time we need the optimization is to reduce load times for
   assets. in short, it's the flatbuffer style optimization, don't parse,
@@ -12830,8 +12804,6 @@ convenience:
   number has been taken for them.
 
 ### 13.6 The block form, ruled
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 Owner rulings, 2026-09-02, in the order given.
 
 - **The requirement**: "New requirement just dropped. Using tables, or
@@ -12927,8 +12899,6 @@ Owner rulings, 2026-09-02, in the order given.
   records what the marker cost.
 
 ### 13.7 The view, ruled
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 Owner rulings, 2026-09-02, in the order given.
 
 - **The question that opened it, and both halves are yes**: "We should
@@ -12968,8 +12938,6 @@ Owner rulings, 2026-09-02, in the order given.
   went out together (§8.4, §14).<!-- row T8.13.7-1 feature=compiler -->
 
 ### 13.8 The build version, ruled
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 Owner rulings, 2026-09-02, in the order given. §20 is the section they
 produced.
 
@@ -13008,8 +12976,6 @@ produced.
   — two ids, and §20 states them as the two.
 
 ### 13.9 The C++ dialect, ruled
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 Owner ruling, 2026-09-03: *"It should also feel good and look native to a
 C++ game programmer (C-like C++, no modern C++ features, not pulling in STL or
 a lot of big headers from modern C++, ability to pass in custom assert
@@ -13109,8 +13075,6 @@ than an un-hookable call; and `inline constexpr` in the PACKET half, which is
 the packet emitter's own change.
 
 ## 14. Design notes: the shapes rejected
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 One paragraph a rejected shape: what it was, and the reason it lost. The
 designs of record are stated where they belong and are not restated here.
 
@@ -13295,8 +13259,6 @@ inspects everything in the schema built:
     class has four members and not five.
 
 ## 15. Named follow-ons
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 - **A GENERATED READER DOES NOT DISPATCH ON THE FORM BYTE** (§3.4). §3.4 says a
   reader for a fixed-table type "accepts BOTH, by the form byte". The C++
   reference emits TWO entry points instead — `<T>Load` for form `1` and
@@ -13776,8 +13738,6 @@ inspects everything in the schema built:
   case on the read path, so it wants the same measurement the passes above want.
 
 ## 16. The text form: JSON in and out of one table
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 Reading a JSON text into a table, and writing one out, is not an opinion:
 it is one table, one text, one walk over the reflection descriptors (§8),
 the same for every table in the closure. schema owns it. Everything AROUND
@@ -13807,7 +13767,7 @@ descriptor's key and a `string(N)`'s bytes, where C++ has one pointer type
 for both; and the reader is a plain cursor beside the span rather than one
 `ref struct` over it, because C# refuses to hand a stack buffer to a method
 that also takes a `ref struct` by reference and the walk needs a buffer for
-every key it compares.<!-- row T8.16-1 feature=text-form --> None of the four changes a byte of any text.
+every key it compares.<!-- row T8.16-1 feature=compiler --> None of the four changes a byte of any text.
 
 **The walk is a generated TRANSLATION UNIT, not header content.** A table
 unit file emits `<Base>Table.cpp` beside `<Base>Table.h`: the header declares
@@ -13820,8 +13780,6 @@ closure with no opt-out at the DECLARATION level — nothing is gated on a
 unit's mode — but paying for it is a build decision, not an include.
 
 ### 16.1 The surface
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 For every FIXED-SIZE table in a unit's closure, name first, C++:
 
 ```cpp
@@ -13923,7 +13881,7 @@ the text walk's count beside it, priced rather than gated.
 **The JavaScript walk is NOT `JSON.parse`/`JSON.stringify`, and could not be.**
 This section's clamping, counting, duplicate-key and trailing-comma rules ARE
 the form, and the output must be byte-identical to the goldens down to a float's
-`%.*g` spelling — so the port spells the C conversion out, as the Rust one does.<!-- row T8.16.1-1 feature=text-form -->
+`%.*g` spelling — so the port spells the C conversion out, as the Rust one does.<!-- row T8.16.1-1 feature=compiler -->
 **Both ends of that conversion bit in JavaScript, and both are worth recording,
 because the next port meets them too.**
 
@@ -13967,7 +13925,7 @@ source, byte-identical across every unit of the corpus, with nothing
 normalised away but the generated banner. Where C++ must cross the runtime's
 DECIMAL POINT twice, Rust's float formatting and parsing are locale-free and
 the walk consults no locale at all; C's `%.*g` is reproduced digit for digit
-so the goldens are the same bytes.<!-- row T8.16.1-2 feature=text-form --> Storage is reached the way C++ reaches it —
+so the goldens are the same bytes.<!-- row T8.16.1-2 feature=compiler --> Storage is reached the way C++ reaches it —
 an offset and a width, because a `#[repr(C)]` Rust record has both — with one
 exception: a UNION's payload address comes out of a match rather than off an
 offset, since Rust spells a union as a real enum, so the union descriptor
@@ -13986,7 +13944,7 @@ carries three accessors where C++ carries a tag offset and an arm offset.
 - **`ToJson` is PRETTY-PRINTED**, and the shape is part of the contract:
   one entry per line, two-space indent per nesting level. Measure must
   equal write byte for byte and `unpack` → `pack` must be byte-stable
-  (§17.2), and neither is checkable while the shape is unstated.<!-- row T8.16.1-3 feature=text-form --> It is the
+  (§17.2), and neither is checkable while the shape is unstated.<!-- row T8.16.1-3 feature=compiler --> It is the
   form's one formatting opinion, and it is held because a text these files
   exist for is read and diffed by people.
 - **THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE.** Every writer emits
@@ -14003,8 +13961,6 @@ carries three accessors where C++ carries a tag offset and an arm offset.
   reader still accepts and a writer never produces.
 
 ### 16.2 The mapping, field kind by field kind
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 The JSON form of a table is an object whose keys are field KEYS — a
 field's name, or the `json` attribute's value where one is declared (§16.4).
 Per kind:
@@ -14048,7 +14004,7 @@ references and the identity §3.1 preserves on the wire survives the round trip.
 The writer carries its own visit bound — a cyclic structure is refused at save
 (§3.1) but expressible in a region, and writing one in place would not
 terminate — and it carries this section's depth cap, because a pointer chain
-nests as deep as it is long.<!-- row T8.16.2-1 feature=text-form -->
+nests as deep as it is long.<!-- row T8.16.2-1 feature=compiler -->
 
 **Numbers.** JSON has ONE number type, so an integer field accepts any
 token whose VALUE is integral — `2`, `2.0` and `1e3` are the integers 2, 2
@@ -14092,12 +14048,12 @@ infers nothing from them:
 
 That order-independence is the whole reason the rule is stated this way: a
 text whose guard key follows the fields it guards must not silently lose
-them.<!-- row T8.16.2-2 feature=text-form --> A field that is genuinely present-or-absent is `?T`, which the walk
+them.<!-- row T8.16.2-2 feature=compiler --> A field that is genuinely present-or-absent is `?T`, which the walk
 DOES model, and that is the difference between the two constructs.
 
 **Bounds.** A number outside a field's declared `[min, max]` is clamped and
 counted, never refused — the wire's rule (§4), so a text and a wire loaded
-from the same data land the same instance.<!-- row T8.16.2-3 feature=text-form -->
+from the same data land the same instance.<!-- row T8.16.2-3 feature=compiler -->
 
 **Unknown keys** are skipped and counted in `report.unknown`. **Duplicate
 keys**: the last occurrence wins and the repeat is counted in
@@ -14113,7 +14069,7 @@ the line **or to the END OF INPUT, whichever comes first**, so a text whose
 last line is a comment with no trailing newline is accepted rather than
 truncated — the canonical text ends with exactly one newline (§16.1) and a
 hand-edited one may not, and an unterminated LINE comment is not a defect the
-way an unterminated block comment is, because nothing is left open.<!-- row T8.16.2-4 feature=text-form --> `/* */`
+way an unterminated block comment is, because nothing is left open.<!-- row T8.16.2-4 feature=compiler --> `/* */`
 runs to its closing delimiter, which does not nest. Both
 are legal wherever whitespace is, which is between tokens and nowhere inside
 one. A `//` or a `/*` inside a string is ordinary text, because a string ends
@@ -14123,7 +14079,7 @@ read stops there and the instance holds what was placed before the stop. This
 is the trailing comma's rule at one more construct, and it is here for the
 same reason: the authoring files this section exists for carry comments, and a
 form a person edits by hand that refuses an explanation beside a value sends
-the explanation to a file the value does not travel with.<!-- row T8.16.2-5 feature=text-form --> Neither writer emits
+the explanation to a file the value does not travel with.<!-- row T8.16.2-5 feature=compiler --> Neither writer emits
 one, `ToJson` or `unpack`, so a text this form produces is RFC 8259 and any
 conforming parser reads it.
 
@@ -14135,7 +14091,7 @@ own output, which carries no comment, and neither reaches a hand-edited text:
 **read then write drops every comment and every trailing comma the input
 carried**, exactly as it drops the input's own line breaks and key order. That
 is the honest statement of what round-trip byte stability covers, and a tool
-that must preserve a person's comments does not rewrite the file in place.<!-- row T8.16.2-6 feature=text-form -->
+that must preserve a person's comments does not rewrite the file in place.<!-- row T8.16.2-6 feature=compiler -->
 `unpack --tolerate` and the goldens hold the writer to a comment-free text.
 
 **The report** (§4): `unknown`, `kind_mismatch` (a key present with the
@@ -14146,23 +14102,21 @@ text's own event that the wire raises in one place, and `widened` is the
 wire's own event that a text cannot raise at all, because a JSON number
 carries no kind for a reader to find narrower than its own. Silence means the
 text matched the schema exactly, and it means it honestly: no value a read
-calls clean can be one the writer would refuse.<!-- row T8.16.2-7 feature=text-form -->
+calls clean can be one the writer would refuse.<!-- row T8.16.2-7 feature=compiler -->
 
 ### 16.3 What the writer refuses
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 `ToJsonMeasure` and `ToJson` return **-1** rather than write a text that
 does not say what the instance holds. This is §5's save-failure rule
 carried across: an unnameable value is refused on the way out rather than
-written as something else.<!-- row T8.16.3-1 feature=text-form -->
+written as something else.<!-- row T8.16.3-1 feature=compiler -->
 
 - **An enum value no variant names**, and **a set flags bit no variant
   names** — refused by the NAME, not by a bound, so a vocabulary that
-  disagrees with its own extent cannot slip through as a placeholder.<!-- row T8.16.3-2 feature=text-form -->
+  disagrees with its own extent cannot slip through as a placeholder.<!-- row T8.16.3-2 feature=compiler -->
 - **A union tag outside its arm range.**
 - **A non-finite float.** The read path cannot produce one (above), so an
   instance that came from a text is always writable; one built in code with
-  an infinity in it is refused, and says so.<!-- row T8.16.3-3 feature=text-form -->
+  an infinity in it is refused, and says so.<!-- row T8.16.3-3 feature=compiler -->
 
 `-1` therefore has two meanings on `ToJson` — a buffer too small, and a
 value that cannot be written — and a caller that distinguishes them calls
@@ -14172,7 +14126,7 @@ value that cannot be written — and a caller that distinguishes them calls
 STORAGE A PROGRAM BUILT and about nothing else.** No wire puts ill-formed text
 into storage: the packet wire refuses it terminally (SPEC.md §4.7, §4.12) and
 the table wire counts it `malformed` and leaves the field at its declared
-default (§3, §4).<!-- row T8.16.3-4 feature=text-form --> **NEITHER DOES A TEXT**, and this is the same rule met at
+default (§3, §4).<!-- row T8.16.3-4 feature=compiler --> **NEITHER DOES A TEXT**, and this is the same rule met at
 the point the defect ENTERS: RFC 8259 requires a JSON text to be valid UTF-8,
 so a byte in a string body that is not part of a well-formed sequence is not
 a code point either, and the READ replaces it with one `U+FFFD` exactly as a
@@ -14197,11 +14151,9 @@ rule** — a code point is escaped and preserved, and what is not a code point
 is replaced — and the two types are named separately only because each meets
 it through a different defect. RFC 8259 requires a JSON text to be valid UTF-8, and a
 text this form emits must be readable by any conforming parser, not only by
-schema's own reader.<!-- row T8.16.3-5 feature=text-form -->
+schema's own reader.<!-- row T8.16.3-5 feature=compiler -->
 
 ### 16.4 The key: `json`
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 A field's JSON key is its name. The one attribute this form adds lets a
 declaration meet an existing text:
 
@@ -14211,14 +14163,12 @@ ship_type ShipType | json = "type"
 
 The field reads from and writes to `"type"`. Two fields of one table whose
 keys collide are refused at compile time, naming both, as wire ids are
-(§5); `json` on a field no table closure reaches is refused (§11).<!-- row T8.16.4-1 feature=text-form --> **The
+(§5); `json` on a field no table closure reaches is refused (§11).<!-- row T8.16.4-1 feature=compiler --> **The
 attribute changes no byte on the wire**: keys are the text's business, ids
 are the wire's, and a schema may add, change or remove a `json` key without
 touching a stored file.
 
 ### 16.5 Held by test
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 - Every table in the corpus round-trips `ToJson` → `FromJson` → `Save` and
   byte-matches the wire of the original instance.
 - **A PINNED TEXT.** `ToJson` of a known instance equals a known literal
@@ -14238,7 +14188,7 @@ touching a stored file.
   round trip byte for byte, a `//` as the last line with NO trailing newline,
   which is accepted, an unclosed `/*`, which is `malformed`, a `/*/`,
   which opens and does not close, and a text of comments and trailing commas
-  whose instance equals the same text with both stripped.<!-- row T8.16.5-1 feature=text-form --> The writer's half is
+  whose instance equals the same text with both stripped.<!-- row T8.16.5-1 feature=compiler --> The writer's half is
   one gate and it is the stronger one: `ToJson` of every instance in the
   corpus contains no `/` outside a string, so a comment can never be emitted
   by accident.
@@ -14251,7 +14201,7 @@ touching a stored file.
   values through a `*wstring` blob, where nothing clamps. The two storage rows
   are built in code deliberately: no wire can deliver either (§3), and a row
   that reached them through a load would be pinning a case the reader now
-  refuses.<!-- row T8.16.5-2 feature=text-form -->
+  refuses.<!-- row T8.16.5-2 feature=compiler -->
 - **The ARM rows of that battery** (§16.2), each red for one reason, a
   counter or a union state that is not the one the row pins:
   `{ "count": "7" }` and `{ "count": null }` at a scalar arm are
@@ -14278,7 +14228,7 @@ touching a stored file.
   neighbour's — and the control's second half is what makes it a control:
   the conformance matrix must go red on `json-read` and stay green
   everywhere else, `json-write` included, which is what says the break is
-  the READER's.<!-- row T8.16.5-3 feature=text-form -->
+  the READER's.<!-- row T8.16.5-3 feature=compiler -->
 - The one-walk gate: within a backend that holds the form as a single
   walker, that walker's source is identical in every unit of the corpus —
   in every generated `.cpp` where the walk is a translation unit, and in the
@@ -14298,8 +14248,6 @@ Those are a packer's business; §17 is one packer, and it is a TOOL over
 this section rather than a second definition of it.
 
 ### 16.7 The variable class: the same text, and one construct for sharing
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **The FIXED form above is the whole of this form too**: the JSON syntax for
 fixed and variable tables is the same where possible and completely consistent
 otherwise. So nothing in §16.2's table changes, a fixed table's text does not move a byte, and a
@@ -14395,7 +14343,7 @@ the rules below are what keep a typo loud: a label alone that the text has not
 defined is refused rather than read as a default node, a field after a label
 the text has already defined is refused rather than read as a second node, and
 labels run from `1` in first-write order, so a stray number in a hand-edited
-text is most often one never defined.<!-- row T8.16.7-1 feature=text-form-variable --> The residual is stated plainly: a typo
+text is most often one never defined.<!-- row T8.16.7-1 feature=compiler --> The residual is stated plainly: a typo
 that lands on a label already defined, of the right type, is an ordinary wrong
 number, as any wrong number in JSON is. A node named once carries no label,
 which is why the tree above is untouched.
@@ -14413,17 +14361,17 @@ all.
 requirement and not an accident.** The `&` prefix is refused to every `json` key
 at compile time (§11) — the whole prefix, not the one spelling, so this form
 keeps room to grow without a later construct colliding with a field a schema
-already declares.<!-- row T8.16.7-2 feature=text-form-variable --> No fixed table has a key that begins with one and no writer
+already declares.<!-- row T8.16.7-2 feature=compiler --> No fixed table has a key that begins with one and no writer
 of the fixed form can emit one, so a reader never has to guess whether an `&`
 key it meets is sharing or a field it does not know: it cannot be a field. **A
 `&`-prefixed key among the keys a reader PLACES, where it does not expect one,
-is `malformed`, refused and counted — never `unknown`.**<!-- row T8.16.7-3 feature=text-form-variable --> `unknown` means "a
+is `malformed`, refused and counted — never `unknown`.**<!-- row T8.16.7-3 feature=compiler --> `unknown` means "a
 field this build does not have", which is a difference §4 exists to survive;
 this is "a construct this build cannot honor", and honoring it silently would
 read a shared graph as a tree with an empty object where every later reference
 stood. A FIXED reader handed a variable table's text refuses on the first `&node`
 it would have placed and says so, which is the whole point of spending the
-prefix.<!-- row T8.16.7-4 feature=text-form-variable --> **What it does not place it does not police**: a value it skips — an
+prefix.<!-- row T8.16.7-4 feature=compiler --> **What it does not place it does not police**: a value it skips — an
 unknown key's, a wrong shape's — is skipped whole with the prefix inside it,
 because that is §4's tolerance, and a newer schema's pointer field arriving at
 an older reader is exactly the unknown key §4 exists to survive.
@@ -14440,17 +14388,17 @@ an older reader is exactly the unknown key §4 exists to survive.
   it.** A definition carries at least one field: a label alone that the text
   has not defined is `malformed` — never a default node — and a shared node
   with nothing to write has no definition this form can spell, so the writer
-  refuses it as it refuses any value it cannot spell (§16.3).<!-- row T8.16.7-5 feature=text-form-variable -->
+  refuses it as it refuses any value it cannot spell (§16.3).<!-- row T8.16.7-5 feature=compiler -->
 - **A label the text has defined, alone, REFERS to it.** A field after it is
   a second definition and `malformed`. **Definition before reference, in
   document order** is the whole ordering rule, and it costs nothing: a data
   cycle is refused at save (§3.1), so a writer always reaches a node before
-  anything that shares it.<!-- row T8.16.7-6 feature=text-form-variable --> **A label is defined when its object CLOSES**, so
+  anything that shares it.<!-- row T8.16.7-6 feature=compiler --> **A label is defined when its object CLOSES**, so
   a bare `{ "&node": N }` met inside N's own definition — at any depth of
   by-value nesting — is `malformed`, exactly as a reference before its
   definition is: it names a node whose descent is still open, which is the
   cycle the wire refuses (§3.1), and the text refuses it where it is written
-  rather than later, at `Lock` or `Save`.<!-- row T8.16.7-7 feature=text-form-variable -->
+  rather than later, at `Lock` or `Save`.<!-- row T8.16.7-7 feature=compiler -->
 - **A reference resolves against the labeled node's TABLE.** A `*Node` slot
   naming a label that defined a `Palette` is `kind_mismatch`, the pointer null —
   the wire's rule for a record of another type (§3.1).
@@ -14467,18 +14415,18 @@ an older reader is exactly the unknown key §4 exists to survive.
   nesting, a union arm, an element of a BY-VALUE array, which are values and
   not nodes — an element of an array of pointers (§2.1) is a pointer slot and
   takes the pointer row, definition or reference alike; under any spelling but
-  `&node`.<!-- row T8.16.7-8 feature=text-form-variable -->
+  `&node`.<!-- row T8.16.7-8 feature=compiler -->
 - **`null` is unchanged**: it is a null pointer, as §16.2 says, and it never
   carries a label.
 - **A writer emits the construct only where it must** — for a node it will name
   more than once — so the text of any tree-shaped graph is byte-identical to the
-  text the same data would have as by-value nesting.<!-- row T8.16.7-9 feature=text-form-variable --> That is the ruling's "same
+  text the same data would have as by-value nesting.<!-- row T8.16.7-9 feature=compiler --> That is the ruling's "same
   where possible", made mechanical.
 - **A CHAIN NESTS AS DEEP AS IT IS LONG.** The wire indexes where the text
   nests (§3.1), so a pointer chain of N nodes is N levels of nesting, and
   §16.2's depth cap of 128 bounds it exactly as it bounds a by-value nesting
   — the WRITER carries the reader's cap and refuses a graph past it, so it
-  never produces a text the reader would refuse.<!-- row T8.16.7-10 feature=text-form-variable --> A graph deeper than the cap
+  never produces a text the reader would refuse.<!-- row T8.16.7-10 feature=compiler --> A graph deeper than the cap
   has a wire and no text: the conformance corpus's `graph_deep`, a 260-node
   chain, is that graph, its wire-only instance, marked `no-text` on its own
   line. It is the one thing this form does not carry
@@ -14496,7 +14444,7 @@ has no first key to carry `&node`, so a blob named from more than one slot has
 no definition this form can spell, and the writer refuses the graph as it
 refuses a shared node with nothing to write — the corpus carries that
 instance on the wire alone, marked `no-text` on its line, and the include by
-relative file that would give it a spelling is named in §15.<!-- row T8.16.7-11 feature=text-form-variable -->
+relative file that would give it a spelling is named in §15.<!-- row T8.16.7-11 feature=compiler -->
 
 **What a reader builds.** The variable class is not held by value (§6.2), so
 its text form reads through the BUILDER, and writes from the CONST root of a
@@ -14528,8 +14476,8 @@ the wire, surviving the seam.
 **What the writer refuses** (§16.3's list, extended by one): a graph the WIRE
 refuses is refused here for the same reason — a data cycle, met as a reference
 to a node whose descent is still open, the ROOT's included — and a graph past
-the depth cap, above.<!-- row T8.16.7-12 feature=text-form-variable --> There is no text-only refusal beyond that, because there
-is no text-only construct.<!-- row T8.16.7-13 feature=text-form-variable -->
+the depth cap, above.<!-- row T8.16.7-12 feature=compiler --> There is no text-only refusal beyond that, because there
+is no text-only construct.<!-- row T8.16.7-13 feature=compiler -->
 
 **What allocates.** Every node comes from the builder's arena, through the
 same `Alloc` a program uses (§6.2). Beside it, each direction carries ONE map
@@ -14543,7 +14491,7 @@ exactly as `Measure` and `Save` default it. Writing is TWO passes
 over one walk — the first counts how many slots name each node and refuses a
 cycle, the second writes — because a node's first occurrence has to know
 whether it will be named again; `ToJsonMeasure` runs both, as `ToJson` does,
-so measure and write agree byte for byte.<!-- row T8.16.7-14 feature=text-form-variable -->
+so measure and write agree byte for byte.<!-- row T8.16.7-14 feature=compiler -->
 
 **Still ONE walk.** The generic walk of §16.1 places every kind but the pointer
 by itself, and meets a pointer through three adapters it declares and does not
@@ -14560,7 +14508,7 @@ pointer-free one (`make tables-json-graph-walk`) — the zero-cost property
 Labels are a text's own, so a tree of `<field>.json` files — the expanded shape —
 would split a root across texts that cannot name each other's nodes: `unpack`
 writes `<Root>.json` for a variable root whichever shape is asked for, and
-`pack` refuses a tree of fields under one by name, before a file is read.<!-- row T8.16.7-15 feature=text-form-variable --> The
+`pack` refuses a tree of fields under one by name, before a file is read.<!-- row T8.16.7-15 feature=compiler --> The
 round trip is the gate: a text that lost a pointer, or a node's identity,
 cannot pack back to the bytes it came from.
 
@@ -14580,7 +14528,7 @@ cannot pack back to the bytes it came from.
   packs each text back to the wire it came from before it lands, and the C++
   leg's `json-write` is compared against that text byte for byte.
 - A cycle is refused by `ToJsonMeasure` as it is by `Measure`, on a region
-  that holds one — `Lock` refuses to make one, so the test makes it by hand.<!-- row T8.16.7-16 feature=text-form-variable -->
+  that holds one — `Lock` refuses to make one, so the test makes it by hand.<!-- row T8.16.7-16 feature=compiler -->
 - A hostile battery over the construct's own edges, in the corpus every leg
   runs (§17.5): a label alone the text never defined, a reference before its
   definition, a label defined twice, `&node` after a field, `&node` on the
@@ -14588,18 +14536,18 @@ cannot pack back to the bytes it came from.
   as one, a label of zero — each refused; a reference to a node of another table, a definition
   past an array's bound, a definition under an unknown key — each counted the
   way the page says, with the bytes both engines then write compared byte for
-  byte; and a shared node read back as one.<!-- row T8.16.7-17 feature=text-form-variable -->
+  byte; and a shared node read back as one.<!-- row T8.16.7-17 feature=compiler -->
 - **The one that proves the prefix was worth spending**: a FIXED table's
   `FromJson` handed a text carrying `&node` among the keys it places refuses
   with `malformed`, and handed one inside a value it skips counts the skip and
-  reads on — both rows of the corpus battery, answered by every leg.<!-- row T8.16.7-18 feature=text-form-variable --> The
+  reads on — both rows of the corpus battery, answered by every leg.<!-- row T8.16.7-18 feature=compiler --> The
   negative control is that reader treating the placed key as unknown instead,
   which reads a wrong instance and calls the report clean.
 - `graph_deep`, the 260-node chain, has a wire and no text, in the reference
   and in the tool alike, and the corpus says so on its line.
 - A label named from inside its own definition is refused, in both engines and
   in the corpus battery, beside a label that overflows a `u64`, a signed one
-  and one with a leading zero.<!-- row T8.16.7-19 feature=text-form-variable -->
+  and one with a leading zero.<!-- row T8.16.7-19 feature=compiler -->
 
 ## 17. Packing: a directory tree that mirrors a root table
 
@@ -14647,8 +14595,6 @@ against the same corpus, which is what keeps one wire and one text form as
 the number of implementations grows.
 
 ### 17.2 The directory rule
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 The tree MIRRORS the root table's shape, and nothing else:
 
 - a **directory named after a field** holds that field's value;
@@ -14684,8 +14630,6 @@ restated here. The tree rule is structural only — it says where a value
 lives, never what a value means.
 
 ### 17.3 What comes out
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **The output is the root table's wire bytes and nothing else**: no magic,
 no content hash, no protocol id, no length prefix around the whole. A
 caller that wants an envelope writes its own few lines around these bytes,
@@ -14730,8 +14674,6 @@ pointed at. An entry naming NO field is left exactly where it is: it is not
 the tool's, and `pack` refuses it by name (§17.4).<!-- row T8.17.3-2 feature=compiler -->
 
 ### 17.4 Refusals and the report
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 A tree that does not mirror the table is reported rather than guessed at: a
 directory or file naming no field, two files claiming one enum-keyed slot,
 a variant name the enum does not have, a `None.json`, a file that is not
@@ -14755,8 +14697,6 @@ part of what it promises:
   them; these two are pointed at a config tree and only READ the declarations.
 
 ### 17.5 Held by test
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 A directory corpus packs to bytes identical to `Save` of the same instance
 built by hand; `unpack` → `pack` is byte-stable, INTO A TREE THAT ALREADY
 HOLDS ONE and ACROSS BOTH SHAPES — unpacking either shape over the other packs
@@ -14780,8 +14720,6 @@ well-formed trees proves the happy path and nothing else, and the rules are
 where implementations drift apart.
 
 ## 18. The tables baseline
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **An optional committed projection of a unit's table closure, and the check
 that refuses the edits the wire cannot report.**<!-- row T8.18-1 feature=compiler --> §4.1 names those edits:
 exactly four: a changed specified default, a moved flags variant, a fixed
@@ -14803,8 +14741,6 @@ may make data already written unreadable, or quietly change what it
 means.**
 
 ### 18.1 The file
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **It is `tables.baseline`, in the unit directory, and it is opt-in: no
 file, no check.** It is a canonical text projection of the closure — the
 members sorted, each member's fields in declaration order, one fact per
@@ -14951,8 +14887,6 @@ union Effect
 ```
 
 ### 18.2 The check
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 `schema tables-baseline <unit>` prints the projection. `schema check` — and
 therefore every `schema generate` — diffs the live closure against the
 committed file whenever one is there, and:
@@ -15021,8 +14955,6 @@ baseline cannot know which tables a project actually blocks. Every verdict
 above is the wire's.
 
 ### 18.3 What a name is worth, and what a referent is worth
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **A DECLARATION NAME IS NOT ON THE WIRE, and renaming one must not take its
 contents out of coverage.**<!-- row T8.18.3-1 feature=compiler --> Members match by name first; a baseline name
 with no live namesake is then matched against the unmatched live
@@ -15111,8 +15043,6 @@ Those admit no substitute at all, so any change to one refuses: there is
 nothing to stand in for, and the change is the silent edit itself.<!-- row T8.18.3-8 feature=compiler -->
 
 ### 18.4 Moving it is an explicit act
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 ```
 schema tables-baseline --update --reason "damage rebalanced in 2.0; saves from 1.x read the new value" configs/
 ```
@@ -15165,8 +15095,6 @@ day was written against a shape nobody recorded, and no check can speak for
 it. The created file says so in its own first history entry.
 
 ### 18.6 Held by test
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 Each refusal class has a fixture pair and its negative control — remove the
 check and the edit passes.<!-- row T8.18.6-1 feature=compiler --> **The ARM refusal's sub-cases carry a pair each**
 (§18.2), and each goes red for one reason, the token beside it: an `int32`
@@ -15195,8 +15123,6 @@ line.<!-- row T8.18.6-6 feature=compiler -->
 
 
 ## 19. The block form
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **A fixed table writes into its own instance what it knows about its own
 rows — for each of its bounded arrays, where the rows start, how many there
 are, and how far apart they sit — so another language reads those facts and
@@ -15269,9 +15195,9 @@ every other column does, because they describe the language.
 **A VARIABLE-LENGTH table has no block form, and it is refused by ABSENCE**:
 no Block declarations are emitted for it, so a consumer that reaches for one
 gets a missing name from its own compiler rather than a diagnostic from this
-one.<!-- row T8.19-1 feature=block-build --> The reason is one line — a pointer anywhere in the closure means no fixed
+one.<!-- row T8.19-1 feature=compiler --> The reason is one line — a pointer anywhere in the closure means no fixed
 pitch anywhere in it — and there is nothing for the schema compiler to refuse,
-because nothing in the declaration asked.<!-- row T8.19-2 feature=block-build -->
+because nothing in the declaration asked.<!-- row T8.19-2 feature=compiler -->
 
 **A MAP is inside that sentence, not beside it** (§2.8). A map makes its holder
 variable-length, so a table holding one has no block form and a map's entries
@@ -15320,7 +15246,7 @@ declaration does not spell:**
   indexes with and it must come from the data rather than from the consumer's
   own constant (§19.2) — and because the pitch is `sizeof`, a consumer's rows
   are CONTIGUOUS, which is what lets C# reinterpret the byte range as a span
-  of blittable rows with no marshalling and no copy (§12.1, §19.2).<!-- row T8.19-3 feature=block-build -->
+  of blittable rows with no marshalling and no copy (§12.1, §19.2).<!-- row T8.19-3 feature=compiler -->
 - **A TABLE, NOT A NEW KIND OF TABLE.** A table in its block form keeps
   everything an ordinary fixed table has: `Measure`, `Save` and `Load` over
   the tolerant wire (§3), its cook (§7), its reflection descriptors (§8), its
@@ -15336,8 +15262,6 @@ question; the C# side is a reflection question; and the form is what falls
 out when both are asked of one table.
 
 ### 19.1 The builder
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **One extent, 64-byte aligned at its base**, laid out in this order:
 
 - **The PROJECTION at offset 0** (above). It opens with a generated PROLOGUE
@@ -15347,7 +15271,7 @@ out when both are asked of one table.
   follow, each at its natural offset, with every out-of-line array's storage
   replaced in place by its sixteen-byte `(offset_of, count, stride)`. The
   prologue is generated, as an optional's presence companion is, and a field
-  may not be named after any of the three (§11).<!-- row T8.19.1-1 feature=block-build -->
+  may not be named after any of the three (§11).<!-- row T8.19.1-1 feature=compiler -->
 
   **The magic's value is `0x4b4c42414d484353`**, which is `SCHMABLK` read as
   ASCII in the byte order a little-endian store produces, so a hex dump of a
@@ -15357,10 +15281,10 @@ out when both are asked of one table.
   **What each of the three does, stated because two of them look like one.**
   The MAGIC is what REFUSES a foreign byte order: read bytewise it either is
   this build's constant, or is that constant byte-reversed — which identifies
-  a block of the other order — or is not a block at all.<!-- row T8.19.1-2 feature=block-build --> The `byte_order`
+  a block of the other order — or is not a block at all.<!-- row T8.19.1-2 feature=compiler --> The `byte_order`
   word is what RECORDS which order wrote it, so the refusal can name the
   order rather than infer it and a tool dumping a block can read the fact
-  instead of deducing it from a constant.<!-- row T8.19.1-3 feature=block-build --> `BlockOpen` checks both: a block
+  instead of deducing it from a constant.<!-- row T8.19.1-3 feature=compiler --> `BlockOpen` checks both: a block
   whose magic matched and whose order word did not is a corrupt or
   hand-edited artifact, and there is no reading that recovers it. The
   BUILD VERSION cannot do either job — §20 digests `byteorder` as a
@@ -15447,17 +15371,17 @@ if ( !RenderFrameBlockBegin( block, storage, counts ) )
 ```
 
 `Begin` refuses counts past the declared maxima, stamps the prologue, writes
-every array's `offset_of`, `count` and `stride`, and hands back the block.<!-- row T8.19.1-4 feature=block-build --> It
+every array's `offset_of`, `count` and `stride`, and hands back the block.<!-- row T8.19.1-4 feature=compiler --> It
 touches no row, and it is `O( out-of-line arrays )` — a handful, not
 thousands.
 
 **A refusal NAMES the array, its count and its maximum**, because a producer
-at sixty hertz that silently drops a frame is worse than one that does not.<!-- row T8.19.1-5 feature=block-build -->
+at sixty hertz that silently drops a frame is worse than one that does not.<!-- row T8.19.1-5 feature=compiler -->
 
-**AND `Begin` DOES NOT CLAMP. It refuses.**<!-- row T8.19.1-6 feature=block-build --> A producer that gathered more rows
+**AND `Begin` DOES NOT CLAMP. It refuses.**<!-- row T8.19.1-6 feature=compiler --> A producer that gathered more rows
 than a declared maximum — a spawn wave past `MaxShips`, a level with more props
 than the bound admits — must clamp AT THE CALL SITE, before it fills the
-`Counts`.<!-- row T8.19.1-7 feature=block-build --> Nothing downstream will do it: `Begin` returns false and the frame is
+`Counts`.<!-- row T8.19.1-7 feature=compiler --> Nothing downstream will do it: `Begin` returns false and the frame is
 lost, which is the loud failure, and no accessor silently truncates, which
 would be the quiet one. The declared maximum is a contract the producer keeps
 and `Begin` checks; it is not a policy `Begin` applies. A gather buffer sized
@@ -15479,7 +15403,7 @@ ships[i].position = ...;
   no lock and no atomic**, and the build fails if one appears, on the model
   §2.2 already uses for the zero-cost gate. A backend may not satisfy this
   requirement with a serial `Begin` that allocates, or an accessor that
-  synchronises.<!-- row T8.19.1-8 feature=block-build --> It is held twice over: by that refuser, and by a real
+  synchronises.<!-- row T8.19.1-8 feature=compiler --> It is held twice over: by that refuser, and by a real
   multi-threaded fill in the corpus (§19.5) whose result is byte-identical to
   a serial one.
 - **An accessor is one add**, `block base + offset_of`, typed as the element.
@@ -15529,8 +15453,6 @@ chosen to be legible rather than measured. The prologue is free in this
 shape: 152, 168 and 176 all round to 192.
 
 ### 19.2 The reflective read
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **The descriptors are the mechanism, and they are what retires a hand-kept
 mirror.** §8's reflection carries, for a block-form table, the projection
 offset of every field and of the three members inside each triple, with the
@@ -15604,15 +15526,15 @@ columns carry it for; the canonical row dump does exactly that.
 OWN.** A row is `<Name>Row` and a projection is `<Table>BlockProjection`, in
 the unit's own namespace, both claimed in §11 like every other generated
 spelling — so a declaration that would collide is refused at the source, which
-is the doctrine the whole generated surface already follows.<!-- row T8.19.2-1 feature=block-read -->
+is the doctrine the whole generated surface already follows.<!-- row T8.19.2-1 feature=compiler -->
 
 **A generated NAMESPACE named by a common noun is a collision class no refusal
-can close, and that is the reason.**<!-- row T8.19.2-2 feature=block-read --> A nested `<Pkg>.Block` reads well until a
+can close, and that is the reason.**<!-- row T8.19.2-2 feature=compiler --> A nested `<Pkg>.Block` reads well until a
 unit declares a `Block` — and `Block` is a common noun a game will have. Worse,
 the collision is not even the DECLARING unit's to see: C# compiles many units
 into one assembly, so a `Block` in ANOTHER unit of the same package namespace
 collides with the namespace this unit planted, and a compiler that checks one
-unit at a time cannot refuse what it cannot see.<!-- row T8.19.2-3 feature=block-read --> A claimed suffix has neither
+unit at a time cannot refuse what it cannot see.<!-- row T8.19.2-3 feature=compiler --> A claimed suffix has neither
 problem: it collides only inside the unit that declares it, which is exactly
 where §11's claim reaches.
 
@@ -15682,7 +15604,7 @@ schema name, as everywhere else in that backend.
   `Begin`, because a consumer that sizes anything by the maximum overflows on
   a count the maximum does not bound. **OVERLAP is not refused**: two arrays
   whose ranges cross both open, because every row of each still lies inside
-  the region and a block has nothing an overlap could corrupt.<!-- row T8.19.2-4 feature=block-read --> On a match the
+  the region and a block has nothing an overlap could corrupt.<!-- row T8.19.2-4 feature=compiler --> On a match the
   bytes are what a build with this layout wrote, so there is nothing to
   validate and nothing to fix up. On any failure it returns false and points
   at nothing — §7's shape, for §7's reason. **And it NAMES the failure in the
@@ -15704,7 +15626,7 @@ schema name, as everywhere else in that backend.
   **The C++ reference carries it**, `bool <Name>BlockOpen( <Name>Block &
   block, void * base, int64_t bytes, TableRefuseReason * reason = NULL )`,
   written on the refusal path only, and every prologue word is read bytewise
-  so that the base's alignment can be the last clause.<!-- row T8.19.2-5 feature=block-read --> A block whose bytes
+  so that the base's alignment can be the last clause.<!-- row T8.19.2-5 feature=compiler --> A block whose bytes
   are fewer than its prologue answers `truncated`, and a null base
   `unaligned_base`, on the readings §7 gives those two.
 
@@ -15721,7 +15643,7 @@ schema name, as everywhere else in that backend.
   spans and typed base all hand back `const Row`. **THE CHECK IS ONE BODY**:
   both overloads run the same clauses in the same order and name the same
   reason on the same refusal, because a check reads and never writes, so the
-  two paths cannot drift.<!-- row T8.19.2-6 feature=block-read --> **The PRODUCER's path is unchanged** in every part:
+  two paths cannot drift.<!-- row T8.19.2-6 feature=compiler --> **The PRODUCER's path is unchanged** in every part:
   `Begin`, the fill accessors and the typed base a worker indexes are what
   they were, and a producer holds a mutable block exactly as before. The split
   is the one C# states above with `ref readonly` and `ReadOnlySpan<Row>`, and
@@ -15759,7 +15681,7 @@ suffix — and a row is a CURSOR of `(view, at)` rather than a struct, because
 Dart has no struct: `<field>At(int index, <Name>Row into)` moves the cursor the
 caller lends, `<field>Cursor()` makes the one to lend, and there is NO
 ALLOCATING TWIN — the obvious per-frame loop must not have an obvious call
-that allocates a row object per step.<!-- row T8.19.2-7 feature=block-read --> **The array is ITERATED** as this
+that allocates a row object per step.<!-- row T8.19.2-7 feature=compiler --> **The array is ITERATED** as this
 clause asks: `for (final row in block.<field>)` yields ONE cursor, moved to
 each row at the pitch the instance gives, so a row does not outlive its step
 and the idiomatic loop is the allocation-free one; the iteration costs one
@@ -15771,8 +15693,6 @@ read them with. Every `Endian.little` is spelled at the read, which is what
 makes a Dart reader's byte order the reader's rather than the host's.
 
 ### 19.3 The layout contract
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **The compiler computes the layout, and both backends assert it.** A record's
 layout is the C ABI's natural one: each field at its own alignment, the
 struct's alignment the greatest of its fields', the size rounded up to it.
@@ -15857,7 +15777,7 @@ own `field` line, and the by-value `record` lines move with it**, because
 raising a maximum grows the inline array's storage and every later field's
 offset — and those lines are what a COOK of that table is opened against. So
 the build version moves, and `BlockOpen` refuses the edit like any other
-(§19.4).<!-- row T8.19.3-1 feature=block-build -->
+(§19.4).<!-- row T8.19.3-1 feature=compiler -->
 
 **What the id sees, and what it does not.** It sees layout and it sees
 meaning — the facts that decide what a load puts in a slot are §20's group 3.
@@ -15868,53 +15788,49 @@ therefore an ordinary field an author declares and owns, and the id neither
 replaces nor covers it.
 
 ### 19.4 Evolution
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **A block is SAME-BUILD, and that is the whole of its evolution story.**
 Both sides are generated from one declaration by one compiler run, and the
 build version says whether the bytes in hand came from it. There is ONE
 entry point — `BlockOpen`, checking §19.2's whole list: the magic, the byte
 order it establishes, the build version, the base's alignment, each array's
 pitch, count, `offset_of` and extent, and the used extent against the `bytes`
-the caller passed. A match points; anything else refuses.<!-- row T8.19.4-1 feature=block-build -->
+the caller passed. A match points; anything else refuses.<!-- row T8.19.4-1 feature=compiler -->
 
 **So every edit that moves the build version refuses at open, and both sides
-regenerate.**<!-- row T8.19.4-2 feature=block-build --> That is not a gap in a tolerance story, it is the absence of
+regenerate.**<!-- row T8.19.4-2 feature=compiler --> That is not a gap in a tolerance story, it is the absence of
 one: a producer and a consumer generated together cannot be at different
 versions unless someone shipped half a build, and a refusal is what should
-happen then.<!-- row T8.19.4-3 feature=block-build --> The three edits worth naming, because a reader coming from §4's
+happen then.<!-- row T8.19.4-3 feature=compiler --> The three edits worth naming, because a reader coming from §4's
 tolerant wire will look for them:
 
 1. **A field appended at the END of a table with a block form** — a scalar, or a
    new out-of-line array. Every earlier offset is unchanged, but the id moves
-   (a new offset and size), so `BlockOpen` refuses.<!-- row T8.19.4-4 feature=block-build -->
+   (a new offset and size), so `BlockOpen` refuses.<!-- row T8.19.4-4 feature=compiler -->
 2. **A field appended at the END of a row type.** The row grows and so does
    its derived pitch; the id moves (a changed row size and pitch), so
-   `BlockOpen` refuses.<!-- row T8.19.4-5 feature=block-build -->
+   `BlockOpen` refuses.<!-- row T8.19.4-5 feature=compiler -->
 3. **A declared maximum raised.** The storage grows and the `offset_of`s
    move; the consumer reads them, so nothing it reads AT has moved and its
    own `slot` facts are unchanged. **The id moves anyway**, because the
    table's by-value layout moved and the id covers a cook of that
    table too (§19.3, §20.4) — so `BlockOpen` refuses like the other two, and
-   the three are one rule instead of three cases.<!-- row T8.19.4-6 feature=block-build -->
+   the three are one rule instead of three cases.<!-- row T8.19.4-6 feature=compiler -->
 
 **Everything else is a break, and the GENERATED ASSERTS refuse it** (§19.3):
 a field inserted before the end, reordered, removed or retyped, in the table
 or in a row type; an array's element swapped; an array moved between the
-out-of-line and inline classes, or removed, or moved earlier.<!-- row T8.19.4-7 feature=block-build --> Each moves a
+out-of-line and inline classes, or removed, or moved earlier.<!-- row T8.19.4-7 feature=compiler --> Each moves a
 byte the other side reads at, and a block has nothing that could report it —
 which is why the refusal is at compile time and loud, and why the baseline
-(§18) carries none of it.<!-- row T8.19.4-8 feature=block-build -->
+(§18) carries none of it.<!-- row T8.19.4-8 feature=compiler -->
 
 **The STRIDE still rides in the instance, and it still must be read from
-there** (§19.2).<!-- row T8.19.4-9 feature=block-build --> It is not a tolerance mechanism — the id already settled
+there** (§19.2).<!-- row T8.19.4-9 feature=compiler --> It is not a tolerance mechanism — the id already settled
 that both sides are one build — it is what keeps the consumer's indexing a
 fact of the data rather than a constant it compiled in, which is the
 difference between a form and a convention.
 
 ### 19.5 Held by test
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 - **A dogfood-shaped table with a block form in the corpus** — a root of several
   bounded arrays over fixed-size row types with a nested `type` apiece —
   compiled, built and read by every backend that carries the form.
@@ -15924,7 +15840,7 @@ difference between a form and a convention.
   the one that can see a race — an address sanitizer cannot, and neither can
   byte-identity between a serial fill and a deterministic wide one. That leg
   carries its own negative control: every worker filling the WHOLE of every
-  array instead of its own share must turn it red.<!-- row T8.19.5-1 feature=block-read --> **Beside it, the
+  array instead of its own share must turn it red.<!-- row T8.19.5-1 feature=compiler --> **Beside it, the
   conformance refuser** (§19.1): the build fails if the generated fill path
   contains an allocation, a lock or an atomic. That is the whole of what the
   refuser claims — the generated surface is `Begin` plus accessors, and
@@ -15939,7 +15855,7 @@ difference between a form and a convention.
   on both sides, so the test proves the two agree on the BYTES and not merely
   on the constants. It runs twice on the C# side — through the descriptors
   and through the generated struct — because §19.2 offers both and both must
-  land the same values.<!-- row T8.19.5-2 feature=block-read -->
+  land the same values.<!-- row T8.19.5-2 feature=compiler -->
 - **A NEGATIVE CONTROL for each half.** Perturb one row type's pitch constant
   on one side only and the two-language test goes red; perturb one field's
   offset in the compiler's layout model and the generated asserts go red on
@@ -15952,10 +15868,10 @@ difference between a form and a convention.
   value, against the same bytes opened writable, so the two overloads agree
   and the producer's path is proved unchanged rather than assumed. The refusal
   clauses answer on the const overload too, a null base and a short buffer and
-  an unaligned base each naming what §19.2 gives it.<!-- row T8.19.5-3 feature=block-read --> The CONTROL is the half a
+  an unaligned base each naming what §19.2 gives it.<!-- row T8.19.5-3 feature=compiler --> The CONTROL is the half a
   run cannot hold: the same program with one assignment through the const view
   must FAIL TO COMPILE, on the const qualification, because a read-only view
-  whose writes compile is a view in name only.<!-- row T8.19.5-4 feature=block-read -->
+  whose writes compile is a view in name only.<!-- row T8.19.5-4 feature=compiler -->
 - **A `bool` row.** A row type carrying two `bool`s beside its scalars, whose
   C# size and offsets are asserted under the managed model (§19.3) — the case
   where the two C# layout models disagree, pinned so a port cannot pick the
@@ -15965,7 +15881,7 @@ difference between a form and a convention.
   a view THROWS, "refuse, or open and be whole" and "no exception escapes a
   reader" are the same sentence, and the reading tier's leg states it that way:
   a forged block or cook either refuses, or opens and is walked in full through
-  its descriptors without one read leaving the bytes the caller passed.<!-- row T8.19.5-5 feature=block-read -->
+  its descriptors without one read leaving the bytes the caller passed.<!-- row T8.19.5-5 feature=compiler -->
 - **A FORGERY FUZZER over `BlockOpen`, on both backends, as a standing gate**:
   valid blocks from the generated builder over several count vectors — zero,
   mixed and every array at its declared maximum — mutated by seeded byte flips,
@@ -15974,25 +15890,25 @@ difference between a form and a convention.
   OPEN AND BE WHOLE: a refusal reads no byte outside the extent the caller
   passed, and an opened block has every row of every array addressable inside
   it, at this build's pitch, inside its declared maximum, with a full walk that
-  reads every byte of every row.<!-- row T8.19.5-6 feature=block-read --> Its own negative controls remove the extent
+  reads every byte of every row.<!-- row T8.19.5-6 feature=compiler --> Its own negative controls remove the extent
   check and the declared-maximum check from the emitters and require it to go
   red on both backends.
 
 - **The refusal battery**: one fixture per §11 block refusal, each with its
-  negative control.<!-- row T8.19.5-7 feature=block-read -->
+  negative control.<!-- row T8.19.5-7 feature=compiler -->
 - **The evolution battery** (§19.4), against the generated asserts and the one
   entry point rather than against a baseline: a field inserted in the middle
   fails the build; a field appended at the end of the table, a field appended
   at the end of a row, and a maximum raised each move the build version and
   each REFUSE at `BlockOpen`, which is the same rule three times and is what
-  same-build means.<!-- row T8.19.5-8 feature=block-read -->
+  same-build means.<!-- row T8.19.5-8 feature=compiler -->
 
 - **WHAT ALLOCATES, AS A RATE.** A soak with a flat heap is a LEAK instrument
   and nothing more: an allocation made and collected every iteration leaves the
   heap exactly as flat as no allocation at all. So a backend states its
   allocation floor as BYTES PER ITERATION, per path, measured — and gates the
   paths that must be zero, with a negative control that puts one extra
-  allocation per iteration in and requires them to go red.<!-- row T8.19.5-9 feature=block-read --> Every unavoidable
+  allocation per iteration in and requires them to go red.<!-- row T8.19.5-9 feature=compiler --> Every unavoidable
   allocation is named rather than absorbed: in the reading tier's first port
   that is one BigInt per 64-bit FIELD read, and nothing else — a 64-bit number
   the FORM's own framing carries (a block array's `offset_of`, a cook
@@ -16005,14 +15921,14 @@ difference between a form and a convention.
   optimization tiers, so the floor is claimed for a NAMED runtime: the reading
   tier's first port measures on the version its CI runs, refuses to certify on
   another major, and warms until the rate settles rather than for a fixed
-  count.<!-- row T8.19.5-10 feature=block-read --> What that instrument found, pointed at the right runtime, is one rule
+  count.<!-- row T8.19.5-10 feature=compiler --> What that instrument found, pointed at the right runtime, is one rule
   worth stating for every port that follows: **a float field is read and
   written by the generated body itself, never across a call.** A double that
   crosses a JavaScript call boundary is a heap number — sixteen bytes, per call
   — unless the callee is inlined, and whether it is inlined depends on the size
   of the body around it. A `putF32` helper therefore allocates in the codecs of
   big tables and not in those of small ones: the estate's law that a generated
-  codec must not depend on the compiler's inlining budget, arriving in a JIT.<!-- row T8.19.5-11 feature=block-read -->
+  codec must not depend on the compiler's inlining budget, arriving in a JIT.<!-- row T8.19.5-11 feature=compiler -->
   What a port CANNOT close this way is its own public accessor — a float
   returned to a caller boxes on the same terms if that caller's compiler
   declines to inline it — so the tier states that where the accessors are
@@ -16047,8 +15963,6 @@ that holds them, and every one of those is a struct with a wire beside it.
 Nothing here is a new kind of thing: **it's tables all the way down.**
 
 ## 20. The build version
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **Tooling cooks asset X to build version Y, and `(X, Y)` is the tuple a
 distributed store is indexed by** — written by the tools that produce a cook,
 asked for by the game that loads one. That is what the build version is for,
@@ -16060,7 +15974,7 @@ produce is a new build version.**
 **There are TWO UNIT-WIDE VERSION IDS in this design and no others** — the
 per-node type id §6.3 writes into a directory is an identity, not a version.
 The PROTOCOL ID is the type wire's, and it is the connect gate (SPEC.md §3):
-same-or-refuse, tables never in it.<!-- row T8.20-1 feature=build-version --> The BUILD VERSION is everything cooked or
+same-or-refuse, tables never in it.<!-- row T8.20-1 feature=compiler --> The BUILD VERSION is everything cooked or
 blocked: the cooked header carries it (§7), the block form's prologue carries
 it (§19), and the store is keyed by it. **A table edit moves the build version
 and never the protocol id; a type edit moves both.**
@@ -16070,7 +15984,7 @@ Tooling cooks before any game binary exists, so Y has to be knowable from the
 schema alone. The compiler owns every fact in it, including the layout: it
 computes each record's layout from its own C ABI model — the model §19.3
 states and both backends MUST assert against (§20.3) — and emits the id as one
-constant.<!-- row T8.20-2 feature=build-version --> A build whose compiler lays a record out differently fails to BUILD,
+constant.<!-- row T8.20-2 feature=compiler --> A build whose compiler lays a record out differently fails to BUILD,
 loudly, naming the type and the field; §20.3 states the asserts in full.
 
 **Backend status: the id, its projection and both READ sides are LIVE.**
@@ -16120,8 +16034,6 @@ the Java `<Root>Cook.open`, the JavaScript `<Root>Cook.Open` and the Rust
    cook and its wire are untouched, and C++ reads one. A named follow-on (§15).
 
 ### 20.1 What it digests
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 Three groups, and the grouping IS the definition — a cook's bytes depend on
 the type wire, on what the region looks like, and on what a load puts in it.
 
@@ -16139,7 +16051,7 @@ the type wire, on what the region looks like, and on what a load puts in it.
    DECLARATION it names, its array class, bound and key, an out-of-line
    array's pitch, and a presence companion (§20.2). Keyed by wire id and not
    by source name, because a `was` rename moves no byte and must not
-   invalidate a cooked file.<!-- row T8.20.1-1 feature=build-version --> **Kind is a fact in its own right**: a `uint32`
+   invalidate a cooked file.<!-- row T8.20.1-1 feature=compiler --> **Kind is a fact in its own right**: a `uint32`
    retyped to `float32` moves no offset, no size and no wire id, and a load
    that kind-mismatches leaves the slot at its default (§4) — different bytes
    under an id that had not moved. **And so is the REFERENT**: a kind number
@@ -16188,7 +16100,7 @@ A meaning fact is one that changes a stored VALUE while moving no offset, no
 size and no wire id; there is no fourth kind of such fact. **§4.1's table sets
 this column beside the other two** — what the read report tells a reader, and
 what the baseline refuses — so a reader asking "what does this edit do?" reads
-one table rather than three lists.<!-- row T8.20.1-2 feature=build-version -->
+one table rather than three lists.<!-- row T8.20.1-2 feature=compiler -->
 
 **Every fact below has a TOKEN that carries it** (§20.2), and that is the rule
 the table is held to: a fact with no token is a promise the digest does not
@@ -16242,8 +16154,6 @@ its header lines alone — which still carries the block form's prologue shape,
 because that is a fact of the BUILD (§20.2).
 
 ### 20.2 The cook projection, and the id taken over it
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **The build version is the low 64 bits of SHA-256 — the final eight bytes,
 interpreted big-endian — over the unit's COOK PROJECTION**, which is exactly
 how the protocol id is taken over the wire-shape projection (SPEC.md §3.1),
@@ -16408,7 +16318,7 @@ field's does, and `offset=` is the arm's offset within the union's storage,
 whose tag sits at 0 (§8.1). An arm takes no default and no `?`, so no
 `default=` and no `optional=` reaches an `arm` line, and a keyed array, a
 `map` and an unbounded `[]T` are all refused at an arm (§2.6), so none of
-`array=keyed`, `array=map`, `array=unbounded` or `key=` does.<!-- row T8.20.2-1 feature=build-version --> **An arm
+`array=keyed`, `array=map`, `array=unbounded` or `key=` does.<!-- row T8.20.2-1 feature=compiler --> **An arm
 with NO PAYLOAD carries `kind=none`**, the second line, which is this
 projection's spelling of the payload-free kind the arm carries on the wire
 (§3), and §18.1's too. The three spellings are disjoint, so a unit whose arms all
@@ -16500,8 +16410,6 @@ caller can substitute one for the other by accident.
 
 
 ### 20.3 The compiler computes the layout; the backends must assert it
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **§19.3's model, unit-wide.** A record's layout is the C ABI's natural one:
 each field at its own alignment, the struct's alignment the greatest of its
 fields', the size rounded up to it. The compiler derives every offset and size
@@ -16532,15 +16440,13 @@ true rather than one the model makes true on its own.
 **That is what replaces an ABI term in the id.** ABI drift as a runtime
 refusal — a cooked file that opens as NULL and degrades to a wire load nobody
 sees — becomes a build failure, which is louder, earlier and cheaper, and it
-is the only way Y can be settled before a binary exists.<!-- row T8.20.3-1 feature=build-version --> The price is stated
+is the only way Y can be settled before a binary exists.<!-- row T8.20.3-1 feature=compiler --> The price is stated
 rather than hidden: the compiler's layout model is committed to **every
 cookable closure**, not only to blocks and rows, so a platform the model gets
 wrong fails to build instead of degrading.
 
 
 ### 20.4 What moves it, and what does not
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **This is the §4.1 table's BUILD VERSION column**, whose fixtures are the pin
 (`TestEvolutionTableFrames`); the list is a derivation from that table rather
 than a second statement of it.
@@ -16574,7 +16480,7 @@ than a second statement of it.
   were — a build that read another's cook under a larger declared maximum
   would read past the region — and under one same-build entry point per form
   there is nothing for the exclusion to buy: `BlockOpen` refuses this edit
-  exactly as it refuses an appended field (§19.4), and both sides regenerate.<!-- row T8.20.4-1 feature=build-version -->
+  exactly as it refuses an appended field (§19.4), and both sides regenerate.<!-- row T8.20.4-1 feature=compiler -->
   The block's own `slot` lines still do not move, because a triple is sixteen
   bytes whatever the maximum is;
 
@@ -16604,7 +16510,7 @@ than a second statement of it.
   record is a fact, and it is a fact because it produces the offsets;
 - **a `was` rename** — a layout line carries the wire id, so the rename pair
   moves nothing, which is §7's stated obligation: a `was` rename must not
-  invalidate every cooked file in existence.<!-- row T8.20.4-2 feature=build-version --> **A map's generated entry moves
+  invalidate every cooked file in existence.<!-- row T8.20.4-2 feature=compiler --> **A map's generated entry moves
   nothing either**, because its `record` line is keyed by the holder's wire id
   and the map field's wire id and never by the entry's generated name (§20.2,
   §2.8);
@@ -16634,11 +16540,9 @@ than a second statement of it.
 - **adding a target LANGUAGE**, which changes no fact the compiler folds.
 
 ### 20.5 The connect gate is the protocol id, and nothing else
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **Peers connect on equal protocol ids; they may differ in build version.**
 The type wire is same-or-refuse because nothing could save two peers whose
-hardcoded bits disagree.<!-- row T8.20.5-1 feature=build-version --> Tables between the same two peers ride the tolerant
+hardcoded bits disagree.<!-- row T8.20.5-1 feature=compiler --> Tables between the same two peers ride the tolerant
 wire (§4), where any reader reads any data and the differences are reported —
 so a build-version difference is not a connection question, and §10's
 independence is the reason: a table edit never forces a lockstep redeploy.
@@ -16650,8 +16554,6 @@ asset's WIRE form, through tooling, which is the form that carries every
 version.
 
 ### 20.6 The tuple
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **`(asset hash, build version, byte order)` and nothing finer.** Tooling
 produces a cook under it, the store is indexed by it, and the game asks for
 it. §7 defines the
@@ -16673,7 +16575,7 @@ a match the bytes ARE what a build at this version wrote, so there is nothing
 to validate and nothing to fix up (§7). A hit in the store under the right
 tuple therefore cannot be refused by `Open`, save on a corrupt or truncated
 file, where it returns NULL and the caller falls back to a wire load — the
-path that carries every version.<!-- row T8.20.6-1 feature=build-version -->
+path that carries every version.<!-- row T8.20.6-1 feature=compiler -->
 
 **The block form carries the same id in its prologue** (§19.1), and `BlockOpen`
 checks it the same way. A cook and a block are still different accelerators
@@ -16682,8 +16584,6 @@ separates them is the MAGIC, which is where a form's identity belongs, and not
 a second digest.
 
 ### 20.7 The surface
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 - **`schema build-version <unit>`** prints the build version.
 - **`schema build-version --facts <unit>`** prints the cook projection of
   §20.2, in the tradition of `schema projection`: the facts are printable,
@@ -16695,17 +16595,15 @@ a second digest.
   wire-shape projection (SPEC.md §3.1) and §20.2's cook projection are
   INPUTS; the tables baseline (§18) is independent of it in both directions.
   A derived id that fed back into what derives it would be a cycle, and the
-  protocol id in particular must stay the type wire's alone.<!-- row T8.20.7-1 feature=build-version -->
+  protocol id in particular must stay the type wire's alone.<!-- row T8.20.7-1 feature=compiler -->
 - **`schema id` is unchanged**, in every respect. It prints the protocol id,
   it depends on the wire-shape projection and nothing else, and no table fact
   reaches it.
 
 ### 20.8 Held by test
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 - **The independence pair, both directions** (§10's test, extended): a table
   edit moves the build version and does not move the protocol id; a type edit
-  moves both. The second is the one that must never regress.<!-- row T8.20.8-1 feature=build-version -->
+  moves both. The second is the one that must never regress.<!-- row T8.20.8-1 feature=compiler -->
 - **The ARM's own id control** (SPEC.md §3.1), **restated under the scoped
   projection**: the union has to be one a `type` REACHES, and then a scalar
   arm added to it moves the PROTOCOL id, because an arm is a field line in
@@ -16748,7 +16646,7 @@ a second digest.
   same-shaped record; **an ARM retyped under one width**, `int32` to
   `float32`, which moves no `sizeof`, no offset and no wire id.
   Each must move the build version with kind, size, offset and wire id all
-  unchanged.<!-- row T8.20.8-2 feature=build-version -->
+  unchanged.<!-- row T8.20.8-2 feature=compiler -->
 
 - **The exclusions, each with the edit that proves it**: a `was` rename moves
   nothing; **a flags field's REFERENT swapped for a same-width
@@ -16776,21 +16674,17 @@ a second digest.
   only for blocks and rows.
 
 ## 21. The fixed table reads backward, never forward
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 **A fixed table's file is read by a build at least as new as the one that wrote it, and by no other.**
 A newer reader reads every older file. An older reader given a newer file refuses it by name, before any
-record, and reads nothing.<!-- row T8.21-1 feature=widening --> There is no partial read of a fixed table: no clamp across versions, no value
+record, and reads nothing.<!-- row T8.21-1 feature=compiler --> There is no partial read of a fixed table: no clamp across versions, no value
 landed as `None` for want of a name, no field dropped because the reader lacked it. (Glenn, 2026-09-10:
 "Newer versions of the fixed table should be able to read OLD versions. But old versions CANNOT read new
-versions, and complain loudly and refuse.<!-- row T8.21-2 feature=widening --> Nothing else makes sense." The bill is
+versions, and complain loudly and refuse.<!-- row T8.21-2 feature=compiler --> Nothing else makes sense." The bill is
 `docs/FIXED-FORM-BILL-READS-BACKWARD.md`; the algorithm is `docs/FIXED-FORM-ALGORITHM.md` §5.)
 
 ### 21.1 The law: everything that inputs into a fixed table only widens
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 A fixed table's closure is a tree of fixed things (§21.4), and every definition in it may only WIDEN over
-time. The baseline (§18) refuses any commit that narrows, naming the definition and the rule.<!-- row T8.21.1-1 feature=widening --> Widening is
+time. The baseline (§18) refuses any commit that narrows, naming the definition and the rule.<!-- row T8.21.1-1 feature=compiler --> Widening is
 defined by the default it fills: a change with no default to fill is not a widening.
 
 | definition | widens by | never |
@@ -16824,28 +16718,22 @@ wrote those bytes and nothing reads them. An older enum: its ordinals are the re
 prefix. Everything else: copied.
 
 ### 21.3 What an older reader does with a newer file
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
-Refuses, by name, at load, before any record: **`layout_newer`**.<!-- row T8.21.3-1 feature=widening --> No counter moves. REFUSE is total.<!-- row T8.21.3-2 feature=widening --> The
+Refuses, by name, at load, before any record: **`layout_newer`**.<!-- row T8.21.3-1 feature=compiler --> No counter moves. REFUSE is total.<!-- row T8.21.3-2 feature=compiler --> The
 refusal carries THE FILE'S LAYOUT HASH AND NOTHING ELSE: a layout the reader has not locked is never parsed,
-so there is no field, bound or variant to name, and the hash is what the writer is looked up by.<!-- row T8.21.3-3 feature=widening -->
+so there is no field, bound or variant to name, and the hash is what the writer is looked up by.<!-- row T8.21.3-3 feature=compiler -->
 
 ### 21.4 The closure rule
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 Every table or type a fixed table reaches by value is itself declared `fixed`, with its own layout and its
 own lineage. A pointer, a map, or an unbounded array in the closure is refused, so a fixed table never
-reaches itself.<!-- row T8.21.4-1 feature=widening -->
+reaches itself.<!-- row T8.21.4-1 feature=compiler -->
 
 ### 21.5 The lineage, the floor, and the plans
-<!-- spec-pins owed schema-spec-pin-s8 -->
-
 `schema.lock` keeps each fixed table's LINEAGE: every layout it has had, in order, with its hash and its
 layout bytes, and its DEFINITIONS DIGEST. The layout hash is the version — `fnv1a64` over the layout bytes
 AND THEN over that digest (§3.4, the bill §13) — and nothing on the wire carries a number; the digest does not
 ride the wire either, the hash being what binds it. A FLOOR per table names
 the oldest supported entry; the reader accepts the lineage from the floor to its own layout and refuses
-older ones as `layout_unsupported`.<!-- row T8.21.5-1 feature=widening --> Because the accepted set is finite and known at build time, the plan
+older ones as `layout_unsupported`.<!-- row T8.21.5-1 feature=compiler --> Because the accepted set is finite and known at build time, the plan
 for each supported version is compiled at build time from the lock and shipped as static data; at load the
 file's hash selects a plan, the file's layout bytes are compared to the known bytes for that hash, and a
 mismatch is `layout_malformed`. The reader never parses a layout it has not seen before.
