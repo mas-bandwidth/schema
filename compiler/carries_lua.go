@@ -3,5 +3,5 @@
 package compiler
 
 func init() {
-	registerCarries("lua")
+	registerCarries("lua", carryOneSidedRange)
 }
