@@ -50,6 +50,14 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 		g.pf("  // %s has no fixed-root cook writer here: a direct array of text, which v1 refuses (wrap the element in a type).\n", st.Name)
 		return
 	}
+	// A UNION in the closure (§2.6, §7.2): the fixed class holds it as its
+	// own value class, which this writer's scalar slots do not write, so the
+	// root's cook is the form-1 writer's (<Root>CookWire, cookwrite_form1.go)
+	// and never a scalar store of the union's class.
+	if name := fixedCookUnion(g.unit, st); name != "" {
+		g.pf("  // %s has no fixed-root cook writer here: %s is a union, which this writer does not carry; %s cooks the form-1 value (docs/SPEC-TABLES.md §2.6, §7.6).\n", st.Name, name, form1CookClass(st))
+		return
+	}
 	ml := ir.RecordLayout(g.unit, st)
 	align := ir.RegionAlignOf(ml.Align)
 	data := (ml.Size + align - 1) & -align
@@ -90,6 +98,20 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 		g.pf("    return true;\n  }\n\n")
 	})
 	g.trimBlank()
+}
+
+// fixedCookUnion names the first field of st's closure that holds a union
+// (§2.6), or "" when the closure holds none.
+func fixedCookUnion(u *ir.Unit, st *ir.Struct) string {
+	name := ""
+	cookWalk(u, st.Name, func(record string, ml *ir.MemberLayout) {
+		for _, fl := range ml.Fields {
+			if _, ok := fl.Field.Type.Ref.(*ir.Union); ok && name == "" {
+				name = record + "." + fl.Field.Name
+			}
+		}
+	})
+	return name
 }
 
 // needCookStorage names the existing caller-owned value class (§6.1).
@@ -244,12 +266,16 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 	}
 	g.prefixed[runtimeHome(g.unit)+"Wire.dart"] = "wire"
 	n := st.Name
-	var records []string
-	cookWalk(g.unit, n, func(name string, _ *ir.MemberLayout) { records = append(records, name) })
+	records := g.cookGraphRecords(n)
 	g.pf("  // THE VARIABLE COOK (docs/SPEC-TABLES.md §7.6): the extent, measured by the\n")
 	g.pf("  // walk the write repeats; negative when the value is refused.\n")
-	g.pf("  static int cookMeasure(wire.%s value, {TableCookWriteReport? report}) =>\n", n)
-	g.pf("      _writeRegion(value, null, Endian.little, report);\n\n")
+	// the spelling `dart format` writes, which a long root name splits (the
+	// tables-dart-clean gate holds the cook libraries to it)
+	if measure := fmt.Sprintf("  static int cookMeasure(wire.%s value, {TableCookWriteReport? report}) =>", n); len(measure) <= 80 {
+		g.pf("%s\n      _writeRegion(value, null, Endian.little, report);\n\n", measure)
+	} else {
+		g.pf("  static int cookMeasure(\n    wire.%s value, {\n    TableCookWriteReport? report,\n  }) => _writeRegion(value, null, Endian.little, report);\n\n", n)
+	}
 	g.pf("  // Measure before write: a refusal changes no byte of output (§7.6).\n")
 	g.pf("  static bool cook(\n    wire.%s value,\n    Uint8List output,\n    Endian order, {\n    TableCookWriteReport? report,\n  }) => _writeRegion(value, output, order, report) >= 0;\n\n", n)
 	g.pf("  static int _writeRegion(\n    wire.%s value,\n    Uint8List? output,\n    Endian order,\n    TableCookWriteReport? report,\n  ) {\n", n)
@@ -357,33 +383,44 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 // kinds: scalar, record, inline string, reference, blob).
 func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 	why := ""
-	cookWalk(g.unit, st.Name, func(name string, _ *ir.MemberLayout) {
+	for _, name := range g.cookGraphRecords(st.Name) {
 		rs := cookMember(g.unit, name)
 		if why != "" || rs == nil {
-			return
+			continue
+		}
+		if g.form1 {
+			// a fixed root's form-1 cook: every record of the closure, a
+			// `type` included, is a class of the wire library (§3), and the
+			// fixed class's own constructs are carried (cookwrite_form1.go)
+			for _, f := range rs.Fields {
+				if why == "" && !form1CookField(f) {
+					why = fmt.Sprintf("%s.%s's storage (%s) is not carried by the form-1 cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, tableFieldTypeName(f))
+				}
+			}
+			continue
 		}
 		if !rs.IsTable {
 			why = name + " is a `type`, whose Dart class the variable wire library does not carry"
-			return
+			continue
 		}
 		for _, f := range rs.Fields {
 			if f.Guard != "" && !guardedCookField(f) {
 				why = fmt.Sprintf("%s.%s is guarded and holds a reference or a record, whose numbering under a false guard this writer does not carry yet (docs/SPEC-TABLES.md §3.1, §7.6)", name, f.Name)
-				return
+				break
 			}
 			if un := unionRef(f); un != nil {
-				if why := variableCookUnion(un); why != "" {
-					why = fmt.Sprintf("%s.%s's union (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, why)
-					return
+				if arm := variableCookUnion(un); arm != "" {
+					why = fmt.Sprintf("%s.%s's union (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, arm)
+					break
 				}
 				continue
 			}
 			if !variableCookField(f) {
 				why = fmt.Sprintf("%s.%s's storage (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, tableFieldTypeName(f))
-				return
+				break
 			}
 		}
-	})
+	}
 	return why
 }
 
@@ -490,12 +527,16 @@ func (g *cookGen) emitCookVariableRecord(name string) {
 	outer := g.body
 	g.body = strings.Builder{}
 	for _, fl := range ml.Fields {
-		g.emitCookVariableField(fl.Field, fl.Offset, "value."+fieldMember(fl.Field), "    ")
+		g.emitCookGraphField(fl.Field, fl.Offset, "value."+fieldMember(fl.Field), "    ")
 	}
 	fields := g.body.String()
 	g.body = outer
 	g.pf("  // The shared ABI's field pieces at the cook's offsets (§7.2).\n")
-	g.pf("  static bool _cook%s(wire.%s value, TableCookGraph c, int at) {\n", name, name)
+	if sig := fmt.Sprintf("  static bool _cook%s(wire.%s value, TableCookGraph c, int at) {", name, name); len(sig) <= 80 {
+		g.pf("%s\n", sig)
+	} else {
+		g.pf("  static bool _cook%s(\n    wire.%s value,\n    TableCookGraph c,\n    int at,\n  ) {\n", name, name)
+	}
 	if cookUsesOut.MatchString(fields) {
 		g.pf("    final out = c.out;\n")
 	}
@@ -732,7 +773,11 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		case ref != nil:
 			// a DEAD slot holds the element's declared defaults, as the
 			// reference's storage does (§7.6)
-			g.pf("%s  final e = i < %s.length ? %s[i] : wire.%s();\n", ind, expr, expr, ref.Name)
+			if line := fmt.Sprintf("%s  final e = i < %s.length ? %s[i] : wire.%s();", ind, expr, expr, ref.Name); len(line) <= 80 {
+				g.pf("%s\n", line)
+			} else {
+				g.pf("%s  final e = i < %s.length\n%s      ? %s[i]\n%s      : wire.%s();\n", ind, expr, ind, expr, ind, ref.Name)
+			}
 			g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d)) return false;\n", ind, ref.Name, offset, stride)
 		default:
 			zero := "0"
