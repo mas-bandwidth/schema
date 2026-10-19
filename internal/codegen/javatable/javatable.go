@@ -175,7 +175,11 @@ func javaFile(u *ir.Unit, summary, body string) []byte {
 	b.WriteString(license)
 	fmt.Fprintf(&b, "// package %s — %s\n\n", u.Package, summary)
 	fmt.Fprintf(&b, "package %s;\n\n", u.Package)
-	b.WriteString(body)
+	// JSpecify marks only this backend's generated types (SPEC-TABLES §16):
+	// package-info.java would also mark the separate packet emitter's types.
+	b.WriteString("import org.jspecify.annotations.NullMarked;\n")
+	b.WriteString("import org.jspecify.annotations.Nullable;\n\n")
+	b.WriteString(nullMarkedTopLevel(body))
 	if !strings.HasSuffix(body, "\n") {
 		b.WriteString("\n")
 	}
