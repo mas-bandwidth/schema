@@ -43,6 +43,17 @@ DART_NIGHTLY_FUZZ_UNITS := \
 	stream:tables/stream \
 	vocab:tables/vocab \
 	vocab9:tables/vocab9 \
+	v1:test/tables/V1.schema \
+	v2:test/tables/V2.schema \
+	w1:test/tables/W1.schema \
+	w2:test/tables/W2.schema \
+	r1:test/tables/R1.schema \
+	r2:test/tables/R2.schema \
+	p1:test/tables/P1.schema \
+	p3:test/tables/P3.schema \
+	g1:test/tables/G1.schema \
+	m1:test/tables/M1.schema \
+	m2:test/tables/M2.schema \
 	wide:examples-wide
 
 .PHONY: schema-dart-nightly-fuzz-corpus
@@ -86,9 +97,9 @@ schema-dart-nightly-fuzz-replay: toolchain-dart $(DART_NIGHTLY_FUZZ_BUILD)/regis
 	fi; \
 	$(DART) $(DART_NIGHTLY_FUZZ_BUILD)/harness.dart --replay "$$@" $$saved
 
-# THE PLANTED BAD PATTERN: one bounds test is removed from a SCRATCH COPY of
-# the generated reader (readLeb no longer checks p against limit), the fuzzer
-# is pointed at the scratch registry, and it must go red inside one nightly
+# THE PLANTED BAD PATTERN: the generated open() count bound is removed from a
+# SCRATCH COPY of a reader, the fuzzer is pointed at the scratch registry, and
+# it must go red inside one nightly
 # budget. The minimised input is then replayed against the same scratch reader
 # and must fail, so the saved input is the replay proof and not a log line.
 # Nothing tracked is written to.

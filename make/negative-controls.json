@@ -559,8 +559,15 @@
       "when": "nightly",
       "why": "the one control that does not fit the owner's rule for CI that runs per commit, on its own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
       "targets": [
-        "schema-dart-nightly-fuzz-negative-control",
         "tables-message-form-negative-control"
+      ]
+    },
+    {
+      "name": "dart-nightly",
+      "when": "nightly",
+      "why": "the Dart nightly fuzzer's planted reader-bound control takes its own scheduled job with the card's pinned Dart 3.13.2 toolchain and 10-minute mutation budget; it never joins the shared nightly group or per-push controls.",
+      "targets": [
+        "schema-dart-nightly-fuzz-negative-control"
       ]
     },
     {

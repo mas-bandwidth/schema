@@ -46,6 +46,11 @@ func TestSchemaDartNightlyFuzzWiring(t *testing.T) {
 		"tables/blockhome", "tables/examples", "tables/lists", "tables/maps",
 		"tables/messages", "tables/pointers", "tables/scalars", "tables/stream",
 		"tables/vocab", "tables/vocab9", "examples-wide",
+		"test/tables/V1.schema", "test/tables/V2.schema",
+		"test/tables/W1.schema", "test/tables/W2.schema",
+		"test/tables/R1.schema", "test/tables/R2.schema",
+		"test/tables/P1.schema", "test/tables/P3.schema",
+		"test/tables/G1.schema", "test/tables/M1.schema", "test/tables/M2.schema",
 	} {
 		if !strings.Contains(makeText, unit) {
 			t.Errorf("the nightly corpus omits %s, which a Dart generate target reads", unit)
@@ -118,11 +123,17 @@ func TestSchemaDartNightlyFuzzWiring(t *testing.T) {
 	for _, g := range m.Groups {
 		for _, target := range g.Targets {
 			if target == "schema-dart-nightly-fuzz-negative-control" {
+				if g.Name != "dart-nightly" {
+					t.Errorf("the Dart fuzz control runs in group %q, want its own dart-nightly group", g.Name)
+				}
 				if g.When != "nightly" {
 					t.Errorf("the fuzz control runs on %q; the one-nightly-budget plant belongs nightly", g.When)
 				}
 				if strings.TrimSpace(g.Why) == "" {
 					t.Error("the fuzz control is registered without a justification")
+				}
+				if !strings.Contains(g.Why, "Dart 3.13.2") {
+					t.Error("the Dart fuzz group's toolchain justification does not pin Dart 3.13.2")
 				}
 				found = true
 			}
@@ -132,8 +143,23 @@ func TestSchemaDartNightlyFuzzWiring(t *testing.T) {
 		t.Error("schema-dart-nightly-fuzz-negative-control is not in make/negative-controls.json")
 	}
 
-	// The plant is real: the recipe removes the readLeb limit test in a copy.
-	if !strings.Contains(makeText, "SABOTAGED") || !strings.Contains(makeText, "readLeb") {
-		t.Error("the planted-pattern control does not sabotage a readLeb bound")
+	// Pin the actual generated-reader count guard and its mutation, not the
+	// explanatory comment, so a stale anchor cannot make the control inert.
+	if !strings.Contains(makeText, "grep -rl 'if (count < 0 || count > (data.length - 9) ~/ 8) return 2;'") ||
+		!strings.Contains(makeText, "if (count > (data.length - 9) ~/ 8) return 2; // SABOTAGED") {
+		t.Error("the planted-pattern control does not remove the generated open() count bound")
+	}
+
+	fuzzSource, err := os.ReadFile(filepath.Join(root, "test", "dart-tables", "nightly_fuzz.dart"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fuzzText := string(fuzzSource)
+	if !strings.Contains(fuzzText, "strict save round-trip was refused") {
+		t.Error("strict save round-trip ignores the second wire report")
+	}
+	if !strings.Contains(fuzzText, "if (target == 2) return null") ||
+		!strings.Contains(fuzzText, "wire reader threw FormatException") {
+		t.Error("FormatException is not distinguished between JSON refusal and wire-reader failure")
 	}
 }

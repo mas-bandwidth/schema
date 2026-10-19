@@ -137,6 +137,13 @@ Uint8List mutate(Uint8List source, Rng rng, int pass) {
   return out;
 }
 
+bool wireReportClean(dynamic report) =>
+    !(report.refused || report.malformed) &&
+    report.unknown == 0 &&
+    report.kindMismatch == 0 &&
+    report.widened == 0 &&
+    report.clamped == 0;
+
 String? evaluate(Table t, Uint8List data, int target) {
   try {
     switch (target) {
@@ -145,11 +152,7 @@ String? evaluate(Table t, Uint8List data, int target) {
       case 1:
         final first = t.newWireReport();
         final value = t.load(data, first);
-        final clean = !(first.refused || first.malformed) &&
-            first.unknown == 0 &&
-            first.kindMismatch == 0 &&
-            first.widened == 0 &&
-            first.clamped == 0;
+        final clean = wireReportClean(first);
         if (clean) {
           Uint8List? bytes;
           try {
@@ -160,7 +163,11 @@ String? evaluate(Table t, Uint8List data, int target) {
             // typed refusal, not a crash.
             return null;
           }
-          t.load(bytes, t.newWireReport());
+          final second = t.newWireReport();
+          t.load(bytes, second);
+          if (!wireReportClean(second)) {
+            return 'strict save round-trip was refused: $second';
+          }
         }
       default:
         final text = utf8.decode(data, allowMalformed: true);
@@ -168,7 +175,9 @@ String? evaluate(Table t, Uint8List data, int target) {
         t.fromJson(text, report);
     }
   } on FormatException {
-    return null;
+    if (target == 2) return null;
+    // Wire readers report malformed bytes through their report, not an exception.
+    return 'wire reader threw FormatException';
   } catch (e) {
     return 'uncaught ${e.runtimeType}: $e';
   }
