@@ -3604,7 +3604,16 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
 		}
-		fmt.Fprintf(b, "                                v.%s.clear();\n", m)
+		// A FIXED array always holds its declared bound: the oracle replaces
+		// only the slots a repeat reaches, so a later occurrence damaged before
+		// an element leaves that element as the earlier occurrence decoded it
+		// (docs/SPEC-TABLES.md §3.3, §4). A list or counted array is replaced
+		// whole by its new count, so it still starts empty.
+		if f.Array == ir.ArrayFixed {
+			fmt.Fprintf(b, "                                while (v.%s.size() < %d) { v.%s.add(new %sVariable.Value()); }\n", m, f.ArrayBound, m, target.Name)
+		} else {
+			fmt.Fprintf(b, "                                v.%s.clear();\n", m)
+		}
 		fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 		fmt.Fprintf(b, "                                    TableVariable.Reader er = ar.body();\n")
 		fmt.Fprintf(b, "                                    if (er == null) break;\n")
@@ -3616,7 +3625,11 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                    %sVariable.readFields(er, elem, nt, report);\n", target.Name)
 		}
 		fmt.Fprintf(b, "                                    if (er.off != er.limit) { report.malformed = true; elem = new %sVariable.Value(); } // §4: a body's unclaimed bytes reset this element.\n", target.Name)
-		fmt.Fprintf(b, "                                    v.%s.add(elem);\n", m)
+		if f.Array == ir.ArrayFixed {
+			fmt.Fprintf(b, "                                    v.%s.set((int) i, elem);\n", m)
+		} else {
+			fmt.Fprintf(b, "                                    v.%s.add(elem);\n", m)
+		}
 		fmt.Fprintf(b, "                                }\n")
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            }\n")
@@ -3703,7 +3716,15 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	if f.ArrayBound > 0 {
 		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.clamped++; }", f.ArrayBound, f.ArrayBound)
 	}
-	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (%s) { long n = ar.leb(); if (ar.fail) { } %s if (ek != %d) { report.widened++; } v.%s.clear(); ", cond, countCheck, ek, m)
+	// A FIXED array keeps the slots a repeated field's damaged tail never
+	// reaches, padded to its bound; a list or counted array is replaced whole
+	// (docs/SPEC-TABLES.md §3.3, §4).
+	prep := fmt.Sprintf("v.%s.clear(); ", m)
+	if f.Array == ir.ArrayFixed {
+		one := variableElement(f)
+		prep = fmt.Sprintf("while (v.%s.size() < %d) { v.%s.add(%s); } ", m, f.ArrayBound, m, variableDefault(one))
+	}
+	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (%s) { long n = ar.leb(); if (ar.fail) { } %s if (ek != %d) { report.widened++; } %s", cond, countCheck, ek, prep)
 	writeArrayElemRead(b, f, m)
 	fmt.Fprintf(b, " } } else { report.kindMismatch++; } } } }\n")
 	fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
@@ -3721,28 +3742,37 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m string) {
 		}
 		return ""
 	}
+	// A decoded element overwrites its FIXED slot in place, leaving every slot
+	// past the decoded prefix standing (docs/SPEC-TABLES.md §3.3, §4); a list
+	// or counted array appends the new occurrence's prefix.
+	store := func(expr string) string {
+		if f.Array == ir.ArrayFixed {
+			return fmt.Sprintf("v.%s.set((int) i, %s)", m, expr)
+		}
+		return fmt.Sprintf("v.%s.add(%s)", m, expr)
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
-		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(1)) { v.%s.add(ar.get8() != 0); } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("1"), m)
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(1)) { %s; } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("1"), store("ar.get8() != 0"))
 	case ir.TInt, ir.TBits:
 		lo, hi := variableRawBounds(f)
 		clamp := ""
 		if f.HasIntRange {
 			clamp = fmt.Sprintf("raw = TableVariable.clampInteger(raw, %s, %s, report); ", lo, hi)
 		}
-		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { java.math.BigInteger raw = TableVariable.readInteger(ar, ek); if (raw == null) break; %sv.%s.add(%s); } }", refusePrefix("TableVariable.integerWidth(ek)"), clamp, m, variableRawStorage(f, "raw"))
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { java.math.BigInteger raw = TableVariable.readInteger(ar, ek); if (raw == null) break; %s%s; } }", refusePrefix("TableVariable.integerWidth(ek)"), clamp, store(variableRawStorage(f, "raw")))
 	case ir.TFloat32:
-		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(4)) { v.%s.add(Float.intBitsToFloat(ar.get32())); } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("4"), m)
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(4)) { %s; } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("4"), store("Float.intBitsToFloat(ar.get32())"))
 	case ir.TFloat64:
-		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ek == 10) { if (ar.has(4)) { v.%s.add(TableVariable.widenF32(ar.get32())); } else { report.malformed = true; ar.fail = true; break; } } else { if (ar.has(8)) { v.%s.add(Double.longBitsToDouble(ar.get64())); } else { report.malformed = true; ar.fail = true; break; } } } }", refusePrefix("ek == 10 ? 4 : 8"), m, m)
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ek == 10) { if (ar.has(4)) { %s; } else { report.malformed = true; ar.fail = true; break; } } else { if (ar.has(8)) { %s; } else { report.malformed = true; ar.fail = true; break; } } } }", refusePrefix("ek == 10 ? 4 : 8"), store("TableVariable.widenF32(ar.get32())"), store("Double.longBitsToDouble(ar.get64())"))
 	case ir.TString:
-		fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long L = ar.leb(); int len = (int) L; if (ar.fail) { break; } if (!ar.has(len)) { report.malformed = true; ar.fail = true; break; } if (!TableVariable.textValid(ar.buf, ar.off, len)) { report.malformed = true; v.%s.add(\"\"); } else { int keep = len; if (keep > %d) { keep = %d; while (keep > 0 && (ar.buf[ar.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s.add(new String(ar.buf, ar.off, keep, StandardCharsets.UTF_8)); } ar.off += len; }", m, f.Type.Size, f.Type.Size, m)
+		fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long L = ar.leb(); int len = (int) L; if (ar.fail) { break; } if (!ar.has(len)) { report.malformed = true; ar.fail = true; break; } if (!TableVariable.textValid(ar.buf, ar.off, len)) { report.malformed = true; %s; } else { int keep = len; if (keep > %d) { keep = %d; while (keep > 0 && (ar.buf[ar.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } %s; } ar.off += len; }", store("\"\""), f.Type.Size, f.Type.Size, store("new String(ar.buf, ar.off, keep, StandardCharsets.UTF_8)"))
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
-			fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long vref = ar.leb(); if (ar.fail) { break; } if (vref == 0) { v.%s.add(0); } else { long vid = ar.resolve(vref); if (!ar.fail) { v.%s.add(%sEnum(vid, report)); } } }", m, m, m)
+			fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long vref = ar.leb(); if (ar.fail) { break; } if (vref == 0) { %s; } else { long vid = ar.resolve(vref); if (ar.fail) { break; } %s; } }", store("0"), store(fmt.Sprintf("%sEnum(vid, report)", m)))
 		case *ir.Flags:
-			fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(8)) { v.%s.add(ar.get64()); } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("8"), m)
+			fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(8)) { %s; } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("8"), store("ar.get64()"))
 		}
 	}
 }
