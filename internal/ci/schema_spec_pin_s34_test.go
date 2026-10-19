@@ -1,0 +1,1793 @@
+package ci
+
+// The spec-pins guard: every normative sentence of docs/SPEC-TABLES.md carries
+// a stable row id, every row is pinned to a test in every port that carries
+// its feature (or the pin is owed, by name), and every pin resolves to a test
+// that runs. The design is the section "Row ids and pins" at the top of
+// docs/SPEC-TABLES.md; this file is its guard, its pin registry and its
+// reversed witnesses.
+//
+// THE PIN REGISTRY. Pins are Go data, one file per spec section group
+// (internal/ci/schema_spec_pin_<group>_test.go), each adding its pins with
+// s34registerSpecPins. A group's card owns its file, so the pinning cards land
+// independently and never edit each other's pins. This file holds the
+// worked example's pins (§2.7).
+//
+// WHAT IT DOES NOT CHECK, so nobody reads more into a green than is there:
+// that a pinned test asserts what its row says (that is the reader's job at
+// the pin's card); that a non-Go test is wired into a make target CI runs (a
+// non-Go pin is held to: the file exists, the symbol is defined there, it is
+// not marked skipped or ignored on or above its definition, and it is called
+// from somewhere in its own directory); that a retired id is never removed
+// from the retired list (that is a property of history, not of one commit);
+// and calls a Go test makes through function values or interfaces (the skip
+// search follows plain calls, package-qualified calls into this module, and
+// method calls by name).
+
+import (
+	"bufio"
+	"fmt"
+	"go/ast"
+	"go/build"
+	"go/parser"
+	"go/token"
+	"io"
+	"io/fs"
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"testing"
+	"testing/fstest"
+)
+
+// s34specPin is one entry of the pin table: a row, a port, and either the test
+// that pins the row in that port or the reason the pin is owed.
+type s34specPin struct {
+	Row  string // the row id, as its marker in docs/SPEC-TABLES.md spells it
+	Port string // a port carrying the row's feature: a roadmap column, or "compiler"
+	// Test is "<path>:<symbol>", the path from the repository root. A path
+	// ending in _test.go names a Go test function; one ending in .tla names a
+	// TLA+ property checked by TLC under Cfg; any other source file names a
+	// harness function of a port.
+	Test   string
+	Cfg    string // .tla only: the TLC configuration that checks the property
+	Module string // .tla only: the module defining the property (default: the model's own)
+	Owed   string // non-empty: no test yet, and why
+	Want   string // with Owed: the name the owed test will carry; it is searched repo-wide
+	origin string // the file that registered it
+}
+
+// s34specPinRegistry is every pin the package's files register.
+var s34specPinRegistry []s34specPin
+
+// s34registerSpecPins adds one file's pins to the registry. It returns a value
+// so a file registers with a package-level `var _ = s34registerSpecPins(...)`.
+func s34registerSpecPins(origin string, pins ...s34specPin) bool {
+	for _, p := range pins {
+		p.origin = origin
+		s34specPinRegistry = append(s34specPinRegistry, p)
+	}
+	return true
+}
+
+// ---------------------------------------------------------------- the spec
+
+// s34specCompilerPort is the pseudo-port of a compiler rule: a declaration is
+// accepted or refused by the one compiler, whatever language it targets.
+const s34specCompilerPort = "compiler"
+
+var (
+	s34specRowIDPattern   = regexp.MustCompile(`^T[0-9A-Za-z.]+-[0-9]+$`)
+	s34specRowMarker      = regexp.MustCompile(`<!--\s*row\s+(\S+)((?:[^-]|-[^-])*)-->`)
+	s34specRetiredMarker  = regexp.MustCompile(`<!--\s*row-retired\s+(\S+)((?:[^-]|-[^-])*)-->`)
+	s34specSectionMarker  = regexp.MustCompile(`^\s*<!--\s*spec-pins\s+(owed|informative)\s+((?:[^-]|-[^-])*)-->\s*$`)
+	s34specAttr           = regexp.MustCompile(`([a-z]+)=("[^"]*"|\S+)`)
+	s34specHeading        = regexp.MustCompile(`^(#{1,6})\s+(.*)$`)
+	s34specHeadingNumber  = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)*)\.?\s`)
+	s34specFence          = regexp.MustCompile("^\\s{0,3}(`{3,}|~{3,})")
+	s34specListItem       = regexp.MustCompile(`^\s*(?:[-*+]|[0-9]+[.)])\s`)
+	s34specNormativeWords = regexp.MustCompile(`(?i)\b(must|shall|may\s+not|refus(?:e|es|ed|al|als|ing))\b`)
+	s34specOwedCard       = regexp.MustCompile(`^schema-spec-pin-[a-z0-9-]+$`)
+	// s34specInformativeSections is the closed list of sections that may be
+	// marked informative: a section added here is a reviewed decision in this
+	// file, never a marker a card can add to escape the guard.
+	s34specInformativeSections = map[string]bool{"Row ids and pins": true}
+	s34specComment             = regexp.MustCompile(`<!--(?:[^-]|-[^-])*-->`)
+	s34specTableRule           = regexp.MustCompile(`^[\s|:\-]*$`)
+)
+
+// s34pinSection is one heading's own body: the text up to the next heading of
+// any level.
+type s34pinSection struct {
+	Title       string
+	Number      string // "2.7", or "" for an unnumbered heading
+	Line        int
+	Owed        string // the card that owes this section its row ids
+	Informative string // why this section states no rule of the format
+	Normative   int    // normative sentences in its body
+	Unmarked    int    // of those, without a row id
+}
+
+// s34specSentence is one sentence unit: a sentence of a paragraph or list item,
+// or one table row.
+type s34specSentence struct {
+	Section   int
+	Line      int
+	Text      string
+	Normative bool
+	Rows      []string
+}
+
+// s34specRow is one row id's marker.
+type s34specRow struct {
+	ID          string
+	Section     int
+	Line        int
+	Features    []string
+	Informative string
+	Sentence    string
+}
+
+type s34specDoc struct {
+	Sections  []s34pinSection
+	Sentences []s34specSentence
+	Rows      map[string]s34specRow
+	Retired   map[string]bool
+	Findings  []string
+}
+
+// s34maskCode replaces the inside of each inline code span with x, so neither
+// the sentence splitter nor the normative-word search reads code.
+func s34maskCode(s string) string {
+	b := []byte(s)
+	in := false
+	for i := range b {
+		if b[i] == '`' {
+			in = !in
+			continue
+		}
+		if in && b[i] != '\n' {
+			b[i] = 'x'
+		}
+	}
+	return string(b)
+}
+
+// s34splitSentences returns the start offsets of the sentences of masked text.
+func s34splitSentences(masked string) []int {
+	var starts []int
+	i := 0
+	for i < len(masked) && s34isSpace(masked[i]) {
+		i++
+	}
+	if i < len(masked) {
+		starts = append(starts, i)
+	}
+	for ; i < len(masked); i++ {
+		c := masked[i]
+		if c != '.' && c != '!' && c != '?' {
+			continue
+		}
+		j := i + 1
+		for j < len(masked) && strings.IndexByte("*_)\"'`]", masked[j]) >= 0 {
+			j++
+		}
+		if j < len(masked) && !s34isSpace(masked[j]) {
+			continue
+		}
+		k := j
+		for k < len(masked) && s34isSpace(masked[k]) {
+			k++
+		}
+		if k >= len(masked) {
+			break
+		}
+		n := masked[k]
+		if (n >= 'A' && n <= 'Z') || (n >= '0' && n <= '9') || strings.IndexByte("*_`(\"[", n) >= 0 || strings.HasPrefix(masked[k:], "§") {
+			starts = append(starts, k)
+			i = k - 1
+		}
+	}
+	return starts
+}
+
+func s34isSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
+
+// s34parseSpecDoc reads the spec as the guard sees it.
+func s34parseSpecDoc(text string) s34specDoc {
+	doc := s34specDoc{Rows: map[string]s34specRow{}, Retired: map[string]bool{}}
+	lines := strings.Split(text, "\n")
+	cur := -1
+	var unit []string
+	unitLine := 0
+	table := false
+
+	flush := func() {
+		if len(unit) == 0 {
+			return
+		}
+		doc.s34addUnit(cur, unitLine, strings.Join(unit, "\n"), table)
+		unit, table = nil, false
+	}
+	start := func(n int, l string, isTable bool) {
+		flush()
+		unit, unitLine, table = []string{l}, n, isTable
+	}
+
+	fence := ""
+	inComment := false
+	for i, l := range lines {
+		n := i + 1
+		if fence != "" {
+			if m := s34specFence.FindStringSubmatch(l); m != nil && m[1][0] == fence[0] && len(m[1]) >= len(fence) {
+				fence = ""
+			}
+			continue
+		}
+		if inComment {
+			if strings.Contains(l, "-->") {
+				inComment = false
+			}
+			continue
+		}
+		if m := s34specFence.FindStringSubmatch(l); m != nil {
+			flush()
+			fence = m[1]
+			continue
+		}
+		for _, m := range s34specRetiredMarker.FindAllStringSubmatch(s34maskCode(l), -1) {
+			doc.Retired[m[1]] = true
+		}
+		if m := s34specSectionMarker.FindStringSubmatch(l); m != nil {
+			flush()
+			if cur < 0 {
+				doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: a spec-pins marker before the first heading", n))
+				continue
+			}
+			arg := strings.TrimSpace(m[2])
+			s := &doc.Sections[cur]
+			if s.Owed != "" || s.Informative != "" {
+				doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: section %q carries two spec-pins markers", n, s.Title))
+			}
+			if m[1] == "owed" {
+				if !s34specOwedCard.MatchString(arg) {
+					doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: an owed section names %q, not a schema-spec-pin-* card", n, arg))
+				}
+				s.Owed = arg
+			} else {
+				if arg == "" {
+					doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: an informative section gives no reason", n))
+				}
+				if !s34specInformativeSections[s.Title] {
+					doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: section %q is marked informative but is not in the guard's s34specInformativeSections", n, s.Title))
+				}
+				s.Informative = arg
+			}
+			continue
+		}
+		trimmed := strings.TrimSpace(l)
+		if strings.HasPrefix(trimmed, "<!--") && !strings.Contains(trimmed, "-->") {
+			flush()
+			inComment = true
+			continue
+		}
+		if m := s34specHeading.FindStringSubmatch(l); m != nil {
+			flush()
+			title := strings.TrimSpace(m[2])
+			num := ""
+			if nm := s34specHeadingNumber.FindStringSubmatch(title + " "); nm != nil {
+				num = nm[1]
+			}
+			doc.Sections = append(doc.Sections, s34pinSection{Title: title, Number: num, Line: n})
+			cur = len(doc.Sections) - 1
+			continue
+		}
+		if trimmed == "" {
+			flush()
+			continue
+		}
+		if strings.HasPrefix(trimmed, "|") {
+			start(n, l, true)
+			flush()
+			continue
+		}
+		if s34specListItem.MatchString(l) || strings.HasPrefix(trimmed, ">") {
+			start(n, l, false)
+			continue
+		}
+		if len(unit) == 0 {
+			unitLine = n
+		}
+		unit = append(unit, l)
+	}
+	flush()
+	return doc
+}
+
+// s34addUnit splits one block into sentences and binds each row marker to the
+// last sentence that starts before it.
+func (doc *s34specDoc) s34addUnit(section, line int, text string, table bool) {
+	if section < 0 {
+		section = doc.s34ensurePreamble()
+	}
+	type marker struct {
+		off   int
+		id    string
+		attrs string
+	}
+	var markers []marker
+	// markers are found outside inline code: a marker spelled in backticks is
+	// an example, not a row
+	codeMasked := s34maskCode(text)
+	for _, m := range s34specRowMarker.FindAllStringSubmatchIndex(codeMasked, -1) {
+		markers = append(markers, marker{m[0], text[m[2]:m[3]], text[m[4]:m[5]]})
+	}
+	// blank every comment so neither marker nor note reads as prose
+	clean := []byte(text)
+	for _, m := range s34specComment.FindAllStringIndex(codeMasked, -1) {
+		for k := m[0]; k < m[1]; k++ {
+			clean[k] = ' '
+		}
+	}
+	masked := s34maskCode(string(clean))
+	var starts []int
+	if table {
+		starts = []int{0}
+	} else {
+		starts = s34splitSentences(masked)
+	}
+	if len(starts) == 0 {
+		starts = []int{0}
+	}
+	if !table {
+		// a row marker ends its sentence: whatever follows it is the next one
+		for _, m := range markers {
+			end := m.off + len(s34specRowMarker.FindString(codeMasked[m.off:]))
+			for end < len(masked) && s34isSpace(masked[end]) {
+				end++
+			}
+			if end < len(masked) {
+				starts = append(starts, end)
+			}
+		}
+		sort.Ints(starts)
+		uniq := starts[:0]
+		for i, v := range starts {
+			if i == 0 || v != starts[i-1] {
+				uniq = append(uniq, v)
+			}
+		}
+		starts = uniq
+	}
+	first := len(doc.Sentences)
+	for k, s := range starts {
+		e := len(masked)
+		if k+1 < len(starts) {
+			e = starts[k+1]
+		}
+		body := masked[s:e]
+		if table && s34specTableRule.MatchString(body) {
+			continue
+		}
+		doc.Sentences = append(doc.Sentences, s34specSentence{
+			Section:   section,
+			Line:      line + strings.Count(text[:s], "\n"),
+			Text:      strings.Join(strings.Fields(string(clean[s:e])), " "),
+			Normative: s34specNormativeWords.MatchString(body),
+		})
+	}
+	for _, m := range markers {
+		at := -1
+		for k := first; k < len(doc.Sentences); k++ {
+			off := starts[0]
+			if !table {
+				off = starts[k-first]
+			}
+			if off <= m.off {
+				at = k
+			}
+		}
+		if at < 0 {
+			at = first
+		}
+		if at >= len(doc.Sentences) {
+			doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: row %s marks no sentence", line, m.id))
+			continue
+		}
+		mline := line + strings.Count(text[:m.off], "\n")
+		doc.s34addRow(m.id, m.attrs, at, mline)
+	}
+}
+
+func (doc *s34specDoc) s34ensurePreamble() int {
+	if len(doc.Sections) > 0 && doc.Sections[0].Line == 0 {
+		return 0
+	}
+	doc.Sections = append([]s34pinSection{{Title: "(before the first heading)", Line: 0}}, doc.Sections...)
+	return 0
+}
+
+func (doc *s34specDoc) s34addRow(id, attrs string, sentence, line int) {
+	s := &doc.Sentences[sentence]
+	s.Rows = append(s.Rows, id)
+	if !s34specRowIDPattern.MatchString(id) {
+		doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: row id %q is not T<section>-<n>", line, id))
+	}
+	if prev, dup := doc.Rows[id]; dup {
+		doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: row %s is also marked at line %d; an id names one sentence", line, id, prev.Line))
+		return
+	}
+	row := s34specRow{ID: id, Section: s.Section, Line: line, Sentence: s.Text}
+	for _, a := range s34specAttr.FindAllStringSubmatch(attrs, -1) {
+		v := strings.Trim(a[2], `"`)
+		switch a[1] {
+		case "feature":
+			for _, f := range strings.Split(v, ",") {
+				if f = strings.TrimSpace(f); f != "" {
+					row.Features = append(row.Features, f)
+				}
+			}
+		case "informative":
+			row.Informative = v
+		default:
+			doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: row %s has an unknown attribute %q", line, id, a[1]))
+		}
+	}
+	switch {
+	case row.Informative == "" && len(row.Features) == 0:
+		doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: row %s names no feature= and no informative=\"<reason>\"", line, id))
+	case row.Informative != "" && len(row.Features) > 0:
+		doc.Findings = append(doc.Findings, fmt.Sprintf("line %d: row %s is both informative and pinned to a feature", line, id))
+	}
+	doc.Rows[id] = row
+}
+
+// ------------------------------------------------------------- the roadmap
+
+// s34sexp is a parsed s-expression: an atom (string or symbol) or a list.
+type s34sexp struct {
+	atom string
+	str  bool
+	list []s34sexp
+	isL  bool
+}
+
+func s34parseSexp(text string) ([]s34sexp, error) {
+	var stack [][]s34sexp
+	var top []s34sexp
+	push := func(e s34sexp) {
+		if len(stack) == 0 {
+			top = append(top, e)
+		} else {
+			stack[len(stack)-1] = append(stack[len(stack)-1], e)
+		}
+	}
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		switch {
+		case c == ';':
+			for i < len(text) && text[i] != '\n' {
+				i++
+			}
+		case c == '(':
+			stack = append(stack, nil)
+		case c == ')':
+			if len(stack) == 0 {
+				return nil, fmt.Errorf("unbalanced ) at byte %d", i)
+			}
+			l := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			push(s34sexp{list: l, isL: true})
+		case c == '"':
+			var b strings.Builder
+			j := i + 1
+			for ; j < len(text) && text[j] != '"'; j++ {
+				if text[j] == '\\' && j+1 < len(text) {
+					j++
+				}
+				b.WriteByte(text[j])
+			}
+			if j >= len(text) {
+				return nil, fmt.Errorf("unterminated string at byte %d", i)
+			}
+			push(s34sexp{atom: b.String(), str: true})
+			i = j
+		case s34isSpace(c):
+		default:
+			j := i
+			for j < len(text) && !s34isSpace(text[j]) && text[j] != '(' && text[j] != ')' && text[j] != '"' {
+				j++
+			}
+			push(s34sexp{atom: text[i:j]})
+			i = j - 1
+		}
+	}
+	if len(stack) != 0 {
+		return nil, fmt.Errorf("unbalanced (")
+	}
+	return top, nil
+}
+
+func (e s34sexp) s34key(k string) (s34sexp, bool) {
+	for i := 0; i+1 < len(e.list); i++ {
+		if !e.list[i].isL && !e.list[i].str && e.list[i].atom == k {
+			return e.list[i+1], true
+		}
+	}
+	return s34sexp{}, false
+}
+
+// s34roadmapPorts maps "<roadmap>/<row>" to the ports with a cell in that row.
+func s34roadmapPorts(text string) (map[string][]string, error) {
+	top, err := s34parseSexp(text)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]string{}
+	var walk func(e s34sexp)
+	walk = func(e s34sexp) {
+		if !e.isL {
+			return
+		}
+		id, okID := e.s34key(":id")
+		typ, okT := e.s34key(":type")
+		if okID && okT && typ.atom == ":roadmap" {
+			cols := map[string]bool{}
+			if c, ok := e.s34key(":columns"); ok {
+				for _, col := range c.list {
+					if len(col.list) > 0 {
+						cols[col.list[0].atom] = true
+					}
+				}
+			}
+			if cells, ok := e.s34key(":cells"); ok {
+				for _, cell := range cells.list {
+					if len(cell.list) >= 2 && cols[cell.list[1].atom] {
+						k := id.atom + "/" + cell.list[0].atom
+						out[k] = append(out[k], cell.list[1].atom)
+					}
+				}
+			}
+		}
+		for _, c := range e.list {
+			walk(c)
+		}
+	}
+	for _, e := range top {
+		walk(e)
+	}
+	for k := range out {
+		sort.Strings(out[k])
+	}
+	return out, nil
+}
+
+// --------------------------------------------------------------- the guard
+
+// s34specPinsInput is everything the guard reads; fsys is rooted at the
+// repository root.
+type s34specPinsInput struct {
+	fsys    fs.FS
+	spec    string // docs/SPEC-TABLES.md
+	roadmap string // docs/roadmap.sexp
+	pins    []s34specPin
+}
+
+// s34SectionRange returns the source lines of one numbered section and its
+// unnumbered subheadings, up to the next numbered heading. A card owns one
+// section, so the guard is scoped to it: other sections are other cards' rows.
+func s34SectionRange(doc s34specDoc, number string) (int, int, bool) {
+	start := 0
+	for _, s := range doc.Sections {
+		if s.Number == number {
+			start = s.Line
+			break
+		}
+	}
+	if start == 0 {
+		return 0, 0, false
+	}
+	end := 1 << 30
+	seen := false
+	for _, s := range doc.Sections {
+		if s.Line == start {
+			seen = true
+			continue
+		}
+		if seen && s.Number != "" {
+			end = s.Line
+			break
+		}
+	}
+	return start, end, true
+}
+
+// s34checkSpecPins returns every finding; none is a pass.
+func s34checkSpecPins(in s34specPinsInput) (s34specDoc, []string) {
+	var out []string
+	specText, err := fs.ReadFile(in.fsys, in.spec)
+	if err != nil {
+		return s34specDoc{}, []string{"the spec cannot be read: " + err.Error()}
+	}
+	rmText, err := fs.ReadFile(in.fsys, in.roadmap)
+	if err != nil {
+		return s34specDoc{}, []string{"the roadmap cannot be read: " + err.Error()}
+	}
+	ports, err := s34roadmapPorts(string(rmText))
+	if err != nil {
+		return s34specDoc{}, []string{"the roadmap does not parse: " + err.Error()}
+	}
+	doc := s34parseSpecDoc(string(specText))
+	start, end, scoped := s34SectionRange(doc, "3.4")
+	if scoped {
+		var sentences []s34specSentence
+		for _, s := range doc.Sentences {
+			if s.Line >= start && s.Line < end {
+				sentences = append(sentences, s)
+			}
+		}
+		doc.Sentences = sentences
+		for id, r := range doc.Rows {
+			if r.Line < start || r.Line >= end {
+				delete(doc.Rows, id)
+			}
+		}
+	}
+	out = append(out, doc.Findings...)
+
+	// 1. every normative sentence of a section that owes nothing has an id
+	for _, s := range doc.Sentences {
+		sec := &doc.Sections[s.Section]
+		if !s.Normative {
+			continue
+		}
+		sec.Normative++
+		if len(s.Rows) > 0 {
+			continue
+		}
+		sec.Unmarked++
+		if sec.Owed == "" && sec.Informative == "" {
+			out = append(out, fmt.Sprintf("line %d: normative sentence without a row id (section %q): %s", s.Line, sec.Title, s34clip(s.Text)))
+		}
+	}
+	// an owed marker on a section with nothing left to mark is stale. The
+	// guard is scoped to §3.4, so markers on other sections are the design
+	// guard's to judge, not this one's.
+	for _, sec := range doc.Sections {
+		if scoped && (sec.Line < start || sec.Line >= end) {
+			continue
+		}
+		if sec.Owed != "" && sec.Unmarked == 0 {
+			out = append(out, fmt.Sprintf("line %d: section %q is marked owed by %s but every normative sentence has a row id; remove the marker", sec.Line, sec.Title, sec.Owed))
+		}
+	}
+	for id := range doc.Retired {
+		if r, live := doc.Rows[id]; live {
+			out = append(out, fmt.Sprintf("line %d: row %s is retired and marked again; a retired id is never reused", r.Line, id))
+		}
+	}
+
+	// 2. the ports each row owes a pin in
+	owes := map[string]map[string]bool{}
+	for id, r := range doc.Rows {
+		if r.Informative != "" {
+			continue
+		}
+		set := map[string]bool{}
+		for _, f := range r.Features {
+			if f == s34specCompilerPort {
+				set[s34specCompilerPort] = true
+				continue
+			}
+			ps, ok := ports[f]
+			if !ok {
+				out = append(out, fmt.Sprintf("line %d: row %s names feature %q, which is no row of a roadmap in %s", r.Line, id, f, in.roadmap))
+				continue
+			}
+			for _, p := range ps {
+				set[p] = true
+			}
+		}
+		owes[id] = set
+	}
+
+	// 3. every pin names a live row, a port that row owes, and a test that runs
+	have := map[string]map[string]string{} // row -> port -> "pin" | "owed"
+	index := s34newRepoIndex(in.fsys)
+	for _, p := range in.pins {
+		where := fmt.Sprintf("pin %s/%s (%s)", p.Row, p.Port, p.origin)
+		r, live := doc.Rows[p.Row]
+		switch {
+		case doc.Retired[p.Row]:
+			out = append(out, where+": dead pin, the row is retired")
+			continue
+		case !live:
+			out = append(out, where+": dead pin, no such row in "+in.spec)
+			continue
+		case r.Informative != "":
+			out = append(out, where+": the row is informative and takes no pin")
+			continue
+		case !owes[p.Row][p.Port]:
+			out = append(out, fmt.Sprintf("%s: port %q does not carry the row's feature %v", where, p.Port, r.Features))
+			continue
+		}
+		kind := "pin"
+		if p.Owed != "" {
+			kind = "owed"
+		}
+		if have[p.Row] == nil {
+			have[p.Row] = map[string]string{}
+		}
+		if prev := have[p.Row][p.Port]; prev != "" && (prev != kind || kind == "owed") {
+			out = append(out, fmt.Sprintf("%s: the port is already %s for this row; a row/port is pinned or owed, once", where, prev))
+			continue
+		}
+		have[p.Row][p.Port] = kind
+		if kind == "owed" {
+			if p.Test != "" {
+				out = append(out, where+": an owed entry names a test; pin it or drop the test")
+			}
+			if p.Want == "" {
+				out = append(out, where+": an owed entry names no Want, the test name it owes")
+				continue
+			}
+			if at := index.s34defines(p.Want); at != "" {
+				out = append(out, fmt.Sprintf("%s: owed test %s already exists at %s; pin it", where, p.Want, at))
+			}
+			continue
+		}
+		for _, f := range s34resolvePin(in.fsys, p) {
+			out = append(out, where+": "+f)
+		}
+	}
+	// 4. every row/port owed a pin has one
+	var ids []string
+	for id := range owes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		var ps []string
+		for p := range owes[id] {
+			ps = append(ps, p)
+		}
+		sort.Strings(ps)
+		for _, p := range ps {
+			if have[id][p] == "" {
+				out = append(out, fmt.Sprintf("line %d: row %s has no pin and no owed entry in port %s", doc.Rows[id].Line, id, p))
+			}
+		}
+	}
+	return doc, out
+}
+
+func s34clip(s string) string {
+	if len(s) > 120 {
+		return s[:120] + "..."
+	}
+	return s
+}
+
+// ------------------------------------------------------- resolving a pin
+
+func s34resolvePin(fsys fs.FS, p s34specPin) []string {
+	file, sym, ok := strings.Cut(p.Test, ":")
+	if !ok || file == "" || sym == "" {
+		return []string{fmt.Sprintf("test %q is not <path>:<symbol>", p.Test)}
+	}
+	if _, err := fs.Stat(fsys, file); err != nil {
+		return []string{fmt.Sprintf("dead pin, %s does not exist", file)}
+	}
+	switch {
+	case strings.HasSuffix(file, "_test.go"):
+		return s34resolveGoPin(fsys, file, sym)
+	case strings.HasSuffix(file, ".go"):
+		return []string{file + " is not a _test.go file"}
+	case strings.HasSuffix(file, ".tla"):
+		return s34resolveTLAPin(fsys, file, sym, p.Cfg, p.Module)
+	default:
+		return s34resolveHarnessPin(fsys, file, sym)
+	}
+}
+
+// s34specBuildContext is the build CI's go test runs under: linux/amd64, no
+// extra tags.
+func s34specBuildContext(fsys fs.FS) build.Context {
+	ctx := build.Default
+	ctx.GOOS, ctx.GOARCH, ctx.BuildTags, ctx.CgoEnabled = "linux", "amd64", nil, true
+	ctx.OpenFile = func(p string) (io.ReadCloser, error) { return fsys.Open(p) }
+	ctx.JoinPath = path.Join
+	return ctx
+}
+
+type s34goPkg struct {
+	name    string                     // the package clause of its non-test files
+	funcs   map[string][]*ast.FuncDecl // plain functions, and methods by name
+	imports map[*ast.File]map[string]string
+	files   map[*ast.FuncDecl]*ast.File
+	names   map[*ast.FuncDecl]string // the file each declaration is in
+}
+
+func s34loadGoPkg(fsys fs.FS, dir string, tests bool) (*s34goPkg, []string) {
+	ctx := s34specBuildContext(fsys)
+	entries, err := fs.ReadDir(fsys, dir)
+	if err != nil {
+		return nil, []string{err.Error()}
+	}
+	pkg := &s34goPkg{funcs: map[string][]*ast.FuncDecl{}, imports: map[*ast.File]map[string]string{}, files: map[*ast.FuncDecl]*ast.File{}, names: map[*ast.FuncDecl]string{}}
+	fset := token.NewFileSet()
+	for _, e := range entries {
+		n := e.Name()
+		if e.IsDir() || !strings.HasSuffix(n, ".go") || (!tests && strings.HasSuffix(n, "_test.go")) {
+			continue
+		}
+		if ok, err := ctx.MatchFile(dir, n); err != nil || !ok {
+			continue
+		}
+		src, err := fs.ReadFile(fsys, path.Join(dir, n))
+		if err != nil {
+			continue
+		}
+		f, err := parser.ParseFile(fset, n, src, 0)
+		if err != nil {
+			return nil, []string{fmt.Sprintf("%s does not parse: %v", path.Join(dir, n), err)}
+		}
+		if !strings.HasSuffix(n, "_test.go") && pkg.name == "" {
+			pkg.name = f.Name.Name
+		}
+		imps := map[string]string{}
+		for _, im := range f.Imports {
+			p := strings.Trim(im.Path.Value, `"`)
+			name := ""
+			if im.Name != nil {
+				name = im.Name.Name
+			}
+			imps[p] = name // the explicit name, or "" for the package clause's
+		}
+		pkg.imports[f] = imps
+		for _, d := range f.Decls {
+			if fd, ok := d.(*ast.FuncDecl); ok && fd.Body != nil {
+				pkg.funcs[fd.Name.Name] = append(pkg.funcs[fd.Name.Name], fd)
+				pkg.files[fd] = f
+				pkg.names[fd] = n
+			}
+		}
+	}
+	return pkg, nil
+}
+
+func s34goModulePath(fsys fs.FS) string {
+	data, err := fs.ReadFile(fsys, "go.mod")
+	if err != nil {
+		return ""
+	}
+	sc := bufio.NewScanner(strings.NewReader(string(data)))
+	for sc.Scan() {
+		if f := strings.Fields(sc.Text()); len(f) == 2 && f[0] == "module" {
+			return f[1]
+		}
+	}
+	return ""
+}
+
+var s34specGoTestName = regexp.MustCompile(`^Test([^a-z]|$)`)
+
+// s34isTestingT reports whether a function takes exactly one *testing.T.
+func s34isTestingT(fd *ast.FuncDecl, imps map[string]string) bool {
+	ps := fd.Type.Params.List
+	if len(ps) != 1 || len(ps[0].Names) > 1 {
+		return false
+	}
+	star, ok := ps[0].Type.(*ast.StarExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := star.X.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "T" {
+		return false
+	}
+	x, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	name, imported := imps["testing"]
+	return imported && (name == x.Name || name == "" && x.Name == "testing")
+}
+
+func s34resolveGoPin(fsys fs.FS, file, sym string) []string {
+	if !s34specGoTestName.MatchString(sym) {
+		return []string{fmt.Sprintf("%s is not a Test function; go test runs only Test functions", sym)}
+	}
+	for _, el := range strings.Split(file, "/") {
+		if el == "testdata" || strings.HasPrefix(el, "_") || strings.HasPrefix(el, ".") {
+			return []string{fmt.Sprintf("%s sits under %q, which go test ./... never visits", file, el)}
+		}
+	}
+	dir, name := path.Split(file)
+	dir = strings.TrimSuffix(dir, "/")
+	if dir == "" {
+		dir = "."
+	}
+	for d := dir; d != "." && d != "/" && d != ""; d = path.Dir(d) {
+		if _, err := fs.Stat(fsys, path.Join(d, "go.mod")); err == nil {
+			return []string{fmt.Sprintf("%s is in the nested module %s, which go test ./... from the root never visits", file, d)}
+		}
+	}
+	ctx := s34specBuildContext(fsys)
+	if ok, err := ctx.MatchFile(dir, name); err != nil || !ok {
+		return []string{fmt.Sprintf("%s is build-tagged out of a plain linux/amd64 go test", file)}
+	}
+	pkg, errs := s34loadGoPkg(fsys, dir, true)
+	if errs != nil {
+		return errs
+	}
+	var fn *ast.FuncDecl
+	for _, fd := range pkg.funcs[sym] {
+		if fd.Recv == nil && pkg.names[fd] == name {
+			fn = fd
+		}
+	}
+	if fn == nil {
+		return []string{fmt.Sprintf("dead pin, %s s34defines no func %s", file, sym)}
+	}
+	if !s34isTestingT(fn, pkg.imports[pkg.files[fn]]) {
+		return []string{fmt.Sprintf("%s does not take one *testing.T, so go test does not run it", sym)}
+	}
+	mod := s34goModulePath(fsys)
+	loaded := map[string]*s34goPkg{}
+	var order []*s34goPkg // every package loaded, for method lookup by name
+	load := func(ip string) *s34goPkg {
+		if mod == "" || (ip != mod && !strings.HasPrefix(ip, mod+"/")) {
+			return nil
+		}
+		d := strings.TrimPrefix(strings.TrimPrefix(ip, mod), "/")
+		if d == "" {
+			d = "."
+		}
+		if q, ok := loaded[d]; ok {
+			return q
+		}
+		q, _ := s34loadGoPkg(fsys, d, false)
+		loaded[d] = q
+		if q != nil {
+			order = append(order, q)
+		}
+		return q
+	}
+	order = append(order, pkg)
+	seen := map[*ast.FuncDecl]bool{}
+	var found []string
+	var walk func(p *s34goPkg, fd *ast.FuncDecl, via string)
+	walk = func(p *s34goPkg, fd *ast.FuncDecl, via string) {
+		if seen[fd] || len(found) > 0 {
+			return
+		}
+		seen[fd] = true
+		imps := p.imports[p.files[fd]]
+		// the file's in-module imports, by the name the file calls them
+		local := map[string]*s34goPkg{}
+		testingName := ""
+		for ip, nm := range imps {
+			if ip == "testing" {
+				testingName = nm
+				if nm == "" {
+					testingName = "testing"
+				}
+				continue
+			}
+			if q := load(ip); q != nil {
+				if nm == "" {
+					nm = q.name
+				}
+				local[nm] = q
+			}
+		}
+		here := via + fd.Name.Name
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			if len(found) > 0 {
+				return false
+			}
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			switch f := call.Fun.(type) {
+			case *ast.Ident:
+				for _, g := range p.funcs[f.Name] {
+					if g.Recv == nil {
+						walk(p, g, here+" -> ")
+					}
+				}
+			case *ast.SelectorExpr:
+				name := f.Sel.Name
+				if x, ok := f.X.(*ast.Ident); ok {
+					if x.Name == testingName && testingName != "" {
+						if name == "Short" {
+							found = append(found, fmt.Sprintf("%s reads testing.Short, so -short CI skips its body", here))
+							return false
+						}
+						return true
+					}
+					if q := local[x.Name]; q != nil {
+						for _, g := range q.funcs[name] {
+							if g.Recv == nil {
+								walk(q, g, here+" -> "+x.Name+".")
+							}
+						}
+						return true
+					}
+				}
+				if name == "Skip" || name == "Skipf" || name == "SkipNow" {
+					found = append(found, fmt.Sprintf("%s calls %s; a pin must name a test that runs", here, name))
+					return false
+				}
+				// a method call: every method of that name in a loaded package
+				for _, q := range order {
+					for _, g := range q.funcs[name] {
+						if g.Recv != nil {
+							walk(q, g, here+" -> ")
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+	walk(pkg, fn, "")
+	// a TestMain gates every test of the package
+	for _, tm := range pkg.funcs["TestMain"] {
+		if tm.Recv != nil || len(found) > 0 {
+			continue
+		}
+		runs := false
+		ast.Inspect(tm.Body, func(n ast.Node) bool {
+			if c, ok := n.(*ast.CallExpr); ok {
+				if s, ok := c.Fun.(*ast.SelectorExpr); ok && s.Sel.Name == "Run" {
+					runs = true
+				}
+			}
+			return true
+		})
+		if !runs {
+			found = append(found, "the package's TestMain never calls m.Run, so no test in it runs")
+			continue
+		}
+		walk(pkg, tm, "")
+	}
+	return found
+}
+
+var (
+	s34tlaExtends   = regexp.MustCompile(`(?m)^\s*EXTENDS\s+([^\n]*)`)
+	s34tlaCfgKeys   = regexp.MustCompile(`^(INVARIANTS?|PROPERTY|PROPERTIES|CONSTANTS?|SPECIFICATION|INIT|NEXT|SYMMETRY|CONSTRAINTS?|ACTION_CONSTRAINTS?|VIEW|CHECK_DEADLOCK|POSTCONDITION|ALIAS)\b`)
+	s34tlaModuleHdr = regexp.MustCompile(`-{4,}\s*MODULE\s+(\w+)\s*-{4,}`)
+)
+
+func s34resolveTLAPin(fsys fs.FS, model, prop, cfg, module string) []string {
+	var out []string
+	src, _ := fs.ReadFile(fsys, model)
+	hdr := s34tlaModuleHdr.FindStringSubmatch(string(src))
+	if hdr == nil {
+		return []string{model + " has no MODULE header"}
+	}
+	if module == "" {
+		module = hdr[1]
+	}
+	defText := string(src)
+	if module != hdr[1] {
+		extends := false
+		for _, m := range s34tlaExtends.FindAllStringSubmatch(string(src), -1) {
+			for _, n := range strings.Split(m[1], ",") {
+				if strings.TrimSpace(n) == module {
+					extends = true
+				}
+			}
+		}
+		if !extends {
+			out = append(out, fmt.Sprintf("model %s does not EXTENDS %s", model, module))
+		}
+		ms, err := fs.ReadFile(fsys, path.Join(path.Dir(model), module+".tla"))
+		if err != nil {
+			out = append(out, fmt.Sprintf("module %s.tla is not beside %s", module, model))
+		}
+		defText += "\n" + string(ms)
+	}
+	if !regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(prop) + `\s*(\([^)]*\))?\s*==`).MatchString(defText) {
+		out = append(out, fmt.Sprintf("dead pin, no %s == in %s or %s", prop, model, module))
+	}
+	if cfg == "" {
+		return append(out, "a .tla pin names no Cfg")
+	}
+	cs, err := fs.ReadFile(fsys, cfg)
+	if err != nil {
+		return append(out, fmt.Sprintf("dead pin, cfg %s does not exist", cfg))
+	}
+	listed, section := false, ""
+	cfgText := regexp.MustCompile(`(?s)\(\*.*?\*\)`).ReplaceAllString(string(cs), " ")
+	for _, l := range strings.Split(cfgText, "\n") {
+		f := strings.Fields(strings.SplitN(l, `\*`, 2)[0])
+		if len(f) == 0 {
+			continue
+		}
+		start := 0
+		if m := s34tlaCfgKeys.FindString(f[0]); m != "" {
+			section, start = m, 1
+		}
+		for _, w := range f[start:] {
+			if w == prop && strings.HasPrefix(section, "INVARIANT") || w == prop && strings.HasPrefix(section, "PROPERT") {
+				listed = true
+			}
+		}
+	}
+	if !listed {
+		out = append(out, fmt.Sprintf("%s is not under INVARIANT(S) or PROPERTY(IES) in %s, so TLC never checks it", prop, cfg))
+	}
+	if !s34referencedByBuild(fsys, path.Base(cfg), hdr[1]) {
+		out = append(out, fmt.Sprintf("no line of the Makefile, make/*.mk, a workflow or tla/RUNS.tsv names %s with the model %s, so nothing runs TLC on it", path.Base(cfg), hdr[1]))
+	}
+	return out
+}
+
+// s34referencedByBuild reports whether one line of the build, or of the TLC
+// run ledger tla/RUNS.tsv, names both the cfg and the model.
+func s34referencedByBuild(fsys fs.FS, cfg, model string) bool {
+	var files []string
+	files = append(files, "Makefile", "tla/RUNS.tsv")
+	for _, g := range []string{"make/*.mk", "make/*/*.mk", ".github/workflows/*.yml", "tla/Makefile", "tla/*.mk"} {
+		m, _ := fs.Glob(fsys, g)
+		files = append(files, m...)
+	}
+	cfgTok := regexp.MustCompile(`(^|[\s/])` + regexp.QuoteMeta(cfg) + `(\s|$)`)
+	modTok := regexp.MustCompile(`(^|[\s/])` + regexp.QuoteMeta(model) + `(\.tla)?(\s|$)`)
+	for _, f := range files {
+		b, err := fs.ReadFile(fsys, f)
+		if err != nil {
+			continue
+		}
+		for _, l := range strings.Split(string(b), "\n") {
+			if t := strings.TrimSpace(l); strings.HasPrefix(t, "#") {
+				continue
+			}
+			if cfgTok.MatchString(l) && modTok.MatchString(l) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+var s34harnessSkip = regexp.MustCompile(`(?i)(#\[ignore\b|@disabled|@ignore\b|\[ignore\b|skip\s*[:=]|@(module)?tag\s+:?skip|\.skip\s*\()`)
+
+// s34specComments strips //, /* */ and # line comments before calls are counted.
+var s34specComments = regexp.MustCompile(`(?s)/\*.*?\*/|//[^\n]*|(?m)^\s*#\s[^\n]*`)
+
+// s34resolveHarnessPin holds a port's harness function to: defined in the
+// file, not marked skipped on or above its definition, and called from
+// somewhere in its own directory.
+func s34resolveHarnessPin(fsys fs.FS, file, sym string) []string {
+	src, _ := fs.ReadFile(fsys, file)
+	q := regexp.QuoteMeta(sym)
+	def := regexp.MustCompile(`(?m)^.*(\bfn\s+` + q + `\b|\bdefp?\s+` + q + `\b|\bfunction\s+` + q + `\b|\b` + q + `\s*=\s*(async\s*)?(\([^)]*\)|\w+)\s*=>|^[\w<>\[\],*&: \t]+\b` + q + `\s*\([^)]*\)\s*(\{.*|[^;]*)$)`)
+	loc := def.FindStringIndex(string(src))
+	if loc == nil {
+		return []string{fmt.Sprintf("dead pin, %s s34defines no %s", file, sym)}
+	}
+	before := string(src[:loc[0]])
+	lines := strings.Split(before, "\n")
+	ctxLines := lines
+	if len(ctxLines) > 3 {
+		ctxLines = ctxLines[len(ctxLines)-3:]
+	}
+	defLine := string(src[loc[0]:loc[1]])
+	if s34harnessSkip.MatchString(strings.Join(ctxLines, "\n") + defLine) {
+		return []string{fmt.Sprintf("%s in %s is marked skipped or ignored", sym, file)}
+	}
+	call := regexp.MustCompile(`\b` + q + `\s*\(`)
+	proto := regexp.MustCompile(`^\s*(static\s+|extern\s+|inline\s+)*[A-Za-z_][\w<>:*&\s]*[\s*&]` + q + `\s*\([^)]*\)\s*;\s*$`)
+	dir := path.Dir(file)
+	entries, _ := fs.ReadDir(fsys, dir)
+	calls := 0
+	for _, e := range entries {
+		if e.IsDir() || path.Ext(e.Name()) != path.Ext(file) {
+			continue
+		}
+		b, _ := fs.ReadFile(fsys, path.Join(dir, e.Name()))
+		for _, l := range strings.Split(s34specComments.ReplaceAllString(string(b), ""), "\n") {
+			if def.MatchString(l) || proto.MatchString(l) {
+				continue // the definition, or a declaration, is not a call
+			}
+			calls += len(call.FindAllStringIndex(l, -1))
+		}
+	}
+	if calls == 0 {
+		return []string{fmt.Sprintf("nothing in %s calls %s", dir, sym)}
+	}
+	return nil
+}
+
+// s34repoIndex finds where a test name is defined, repo-wide.
+type s34repoIndex struct {
+	fsys  fs.FS
+	files []string
+}
+
+var s34specSourceExt = map[string]bool{".go": true, ".c": true, ".h": true, ".cpp": true, ".hpp": true, ".cc": true, ".cs": true, ".rs": true, ".java": true, ".js": true, ".mjs": true, ".dart": true, ".ex": true, ".exs": true, ".tla": true, ".ts": true, ".lua": true, ".luau": true, ".nut": true, ".py": true}
+
+func s34newRepoIndex(fsys fs.FS) *s34repoIndex {
+	ix := &s34repoIndex{fsys: fsys}
+	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			n := d.Name()
+			if p != "." && (strings.HasPrefix(n, ".") || n == "node_modules" || n == "target" || n == "build" || n == "obj") {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if s34specSourceExt[path.Ext(p)] {
+			ix.files = append(ix.files, p)
+		}
+		return nil
+	})
+	return ix
+}
+
+func (ix *s34repoIndex) s34defines(name string) string {
+	q := regexp.QuoteMeta(name)
+	def := regexp.MustCompile(`\b(func|fn|def|defp|function|void|static|public|private|async|local function)\s+(\([^)]*\)\s*)?` + q + `\b|^\s*` + q + `\s*==|\b(test|it)\(\s*["']` + q + `["']|^\s*(?:[A-Za-z_][\w<>:]*[\s*&]+)+` + q + `\s*\([^;]*$`)
+	for _, f := range ix.files {
+		b, err := fs.ReadFile(ix.fsys, f)
+		if err != nil || !strings.Contains(string(b), name) {
+			continue
+		}
+		for _, l := range strings.Split(string(b), "\n") {
+			if def.MatchString(l) {
+				return f
+			}
+		}
+	}
+	return ""
+}
+
+// ------------------------------------------------------------------ tests
+
+// TestSpecPinsS34HoldOnTheSpec is the guard on the real spec, roadmap and
+// registry.
+func TestSpecPinsS34HoldOnTheSpec(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	doc, findings := s34checkSpecPins(s34specPinsInput{fsys: os.DirFS(root), spec: "docs/SPEC-TABLES.md", roadmap: "docs/roadmap.sexp", pins: s34specPinRegistry})
+	for _, f := range findings {
+		t.Error(f)
+	}
+	if len(doc.Rows) == 0 || len(s34specPinRegistry) == 0 {
+		t.Fatalf("the guard read %d rows and %d pins; a guard over nothing proves nothing", len(doc.Rows), len(s34specPinRegistry))
+	}
+	normative := 0
+	for _, s := range doc.Sentences {
+		if s.Normative {
+			normative++
+		}
+	}
+	if normative < 40 {
+		t.Fatalf("only %d normative sentences found; the splitter is reading the wrong text", normative)
+	}
+}
+
+// TestSpecPinsS34SectionSizes prints the size table the pinning cards are
+// sized from: section, normative sentences, of those without a row id,
+// and the card that owes them. Run it with -v.
+func TestSpecPinsS34SectionSizes(t *testing.T) {
+	t.Parallel()
+	doc, _ := s34checkSpecPins(s34specPinsInput{fsys: os.DirFS(repoRoot(t)), spec: "docs/SPEC-TABLES.md", roadmap: "docs/roadmap.sexp", pins: s34specPinRegistry})
+	byCard := map[string]int{}
+	for _, s := range doc.Sections {
+		state := s.Owed
+		if s.Informative != "" {
+			state = "informative"
+		}
+		if state == "" {
+			state = "pinned"
+		}
+		byCard[state] += s.Unmarked
+		t.Logf("SIZE\t%d\t%s\t%d\t%d\t%s", s.Line, s.Title, s.Normative, s.Unmarked, state)
+	}
+	var cards []string
+	for c := range byCard {
+		cards = append(cards, c)
+	}
+	sort.Strings(cards)
+	for _, c := range cards {
+		t.Logf("CARD\t%s\t%d", c, byCard[c])
+	}
+}
+
+// ------------------------------------------------- the reversed witnesses
+
+// s34specFixture is a small repository the guard passes on; each witness below
+// breaks one thing in a copy and names the finding that must fire.
+func s34specFixture() fstest.MapFS {
+	return fstest.MapFS{
+		"go.mod": {Data: []byte("module example.com/fx\n\ngo 1.22\n")},
+		"docs/roadmap.sexp": {Data: []byte(`; fixture
+(:schema 1 :nodes ((:id "vt" :type :roadmap :rows (("blocks" "b")) :columns (("go" "go") ("rust" "rust"))
+  :cells (("blocks" "go" "t1") ("blocks" "rust" "t2")))))`)},
+		"docs/SPEC.md": {Data: []byte(`# fixture
+
+## 1. Pinned
+
+A reader MUST refuse a short buffer.<!-- row T1-1 feature=vt/blocks --> Some prose that states nothing.
+The compiler refuses a reserved name.<!-- row T1-2 feature=compiler -->
+
+| a | table row that must hold <!-- row T1-3 feature=compiler --> |
+
+See §2 for what it refuses.<!-- row T1-4 informative="points elsewhere" -->
+
+<!-- row-retired T1-9 replaced by T1-1 -->
+
+## 2. Owed
+<!-- spec-pins owed schema-spec-pin-s2 -->
+
+A writer must zero its slack.
+
+` + "```" + `
+code that must not count
+` + "```" + `
+`)},
+		"pkg/a_test.go": {Data: []byte(`package pkg
+
+import (
+	"testing"
+
+	"example.com/fx/helper"
+)
+
+func TestShort(t *testing.T) { check(t) }
+
+func TestCompiler(t *testing.T) { helper.Run(t) }
+
+func TestRow3(t *testing.T) {}
+
+func TestSkips(t *testing.T) { t.Skip("later") }
+
+func TestHelperSkips(t *testing.T) { helper.Gate(t) }
+
+func TestShortGated(t *testing.T) {
+	if testing.Short() {
+		return
+	}
+}
+
+func check(t *testing.T) { t.Helper() }
+
+func Testify(t *testing.T) {}
+
+func TestNoT() {}
+
+func TestMethodSkips(t *testing.T) { helper.G{}.Check(t) }
+`)},
+		"pkg/tagged_test.go": {Data: []byte("//go:build slow\n\npackage pkg\n\nimport \"testing\"\n\nfunc TestTagged(t *testing.T) {}\n")},
+		"helper/helper.go": {Data: []byte(`package helper
+
+import "testing"
+
+func Run(t *testing.T) { t.Helper() }
+
+func Gate(t *testing.T) { inner(t) }
+
+func inner(t *testing.T) { t.SkipNow() }
+
+type G struct{}
+
+func (G) Check(t *testing.T) { t.Skip("method") }
+`)},
+		"rs/main.rs":             {Data: []byte("fn main() { surface_block(); surface_slow(); }\n\nfn surface_block() {}\n\n#[ignore]\nfn surface_ignored() {}\n\n#[ignore = \"slow\"]\nfn surface_slow() {}\n\nfn never_called() {}\n")},
+		"c/h.c":                  {Data: []byte("int proto_only(void);\n// proto_only(); is only a comment\nint proto_only(void) { return 0; }\n")},
+		"pkg/testdata/x_test.go": {Data: []byte("package x\n\nimport \"testing\"\n\nfunc TestHidden(t *testing.T) {}\n")},
+		"nested/go.mod":          {Data: []byte("module example.com/nested\n")},
+		"nested/n_test.go":       {Data: []byte("package nested\n\nimport \"testing\"\n\nfunc TestNested(t *testing.T) {}\n")},
+		"tla/Pins.tla":           {Data: []byte("---- MODULE Pins ----\nInv == TRUE\nLive == TRUE\n====\n")},
+		"tla/MCPins.tla":         {Data: []byte("---- MODULE MCPins ----\nEXTENDS Pins, Naturals\n====\n")},
+		"tla/MCLone.tla":         {Data: []byte("---- MODULE MCLone ----\nEXTENDS Naturals\nInv2 == TRUE\n====\n")},
+		"tla/MCPins.cfg":         {Data: []byte("SPECIFICATION Spec\nINVARIANT Inv\nPROPERTIES\n  Live\n")},
+		"tla/Bare.cfg":           {Data: []byte("SPECIFICATION Spec\nCONSTANT Inv = 1\n")},
+		"Makefile":               {Data: []byte("tlc:\n\ttlc -config tla/MCPins.cfg tla/MCPins.tla\n\ttlc -config tla/Bare.cfg tla/MCPins.tla\n")},
+	}
+}
+
+func s34specFixturePins() []s34specPin {
+	return []s34specPin{
+		{Row: "T1-1", Port: "go", Test: "pkg/a_test.go:TestShort"},
+		{Row: "T1-1", Port: "rust", Test: "rs/main.rs:surface_block"},
+		{Row: "T1-2", Port: "compiler", Test: "pkg/a_test.go:TestCompiler"},
+		{Row: "T1-3", Port: "compiler", Test: "tla/MCPins.tla:Inv", Cfg: "tla/MCPins.cfg", Module: "Pins"},
+		// a second pin of the same row/port: the multi-line PROPERTIES form
+		{Row: "T1-3", Port: "compiler", Test: "tla/MCPins.tla:Live", Cfg: "tla/MCPins.cfg", Module: "Pins"},
+	}
+}
+
+func s34runSpecFixture(fsys fstest.MapFS, pins []s34specPin) []string {
+	_, f := s34checkSpecPins(s34specPinsInput{fsys: fsys, spec: "docs/SPEC.md", roadmap: "docs/roadmap.sexp", pins: pins})
+	return f
+}
+
+// TestSpecPinsS34FixturePasses is the positive control: the fixture is clean,
+// so every witness below is red for its own plant and nothing else.
+func TestSpecPinsS34FixturePasses(t *testing.T) {
+	t.Parallel()
+	if f := s34runSpecFixture(s34specFixture(), s34specFixturePins()); len(f) != 0 {
+		t.Fatalf("the clean fixture has findings:\n%s", strings.Join(f, "\n"))
+	}
+}
+
+// TestSpecPinsS34Refusals plants one defect per case and requires the guard to
+// name it.
+func TestSpecPinsS34Refusals(t *testing.T) {
+	t.Parallel()
+	edit := func(fx fstest.MapFS, file, old, new string) {
+		s := string(fx[file].Data)
+		if !strings.Contains(s, old) {
+			panic("fixture edit misses: " + old)
+		}
+		fx[file] = &fstest.MapFile{Data: []byte(strings.Replace(s, old, new, 1))}
+	}
+	setPin := func(pins []s34specPin, i int, p s34specPin) []s34specPin {
+		pins[i] = p
+		return pins
+	}
+	cases := []struct {
+		name  string
+		plant func(fstest.MapFS, []s34specPin) []s34specPin
+		want  string
+	}{
+		{"unpinned normative sentence", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "Some prose that states nothing.", "Some prose that must hold.")
+			return p
+		}, "normative sentence without a row id"},
+		{"normative table row without an id", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "| a | table row that must hold <!-- row T1-3 feature=compiler --> |", "| a | table row that must hold <!-- row T1-3 feature=compiler --> |\n| b | another that must hold |")
+			return p
+		}, "normative sentence without a row id"},
+		{"dead pin: no such row", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return append(p, s34specPin{Row: "T1-7", Port: "go", Test: "pkg/a_test.go:TestShort"})
+		}, "dead pin, no such row"},
+		{"dead pin: retired row", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return append(p, s34specPin{Row: "T1-9", Port: "go", Test: "pkg/a_test.go:TestShort"})
+		}, "dead pin, the row is retired"},
+		{"dead pin: no such test", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 0, s34specPin{Row: "T1-1", Port: "go", Test: "pkg/a_test.go:TestGone"})
+		}, "s34defines no func TestGone"},
+		{"dead pin: no such file", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 0, s34specPin{Row: "T1-1", Port: "go", Test: "pkg/gone_test.go:TestShort"})
+		}, "does not exist"},
+		{"row without a port pin", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return p[:1:1] // drops rust, T1-2 and T1-3
+		}, "row T1-1 has no pin and no owed entry in port rust"},
+		{"pin on a port the feature does not carry", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return append(p, s34specPin{Row: "T1-2", Port: "rust", Test: "rs/main.rs:surface_block"})
+		}, `port "rust" does not carry`},
+		{"t.Skip in the test", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 0, s34specPin{Row: "T1-1", Port: "go", Test: "pkg/a_test.go:TestSkips"})
+		}, "calls Skip"},
+		{"skip inside a helper in another package", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 0, s34specPin{Row: "T1-1", Port: "go", Test: "pkg/a_test.go:TestHelperSkips"})
+		}, "TestHelperSkips -> helper.Gate -> inner calls SkipNow"},
+		{"testing.Short gate", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 0, s34specPin{Row: "T1-1", Port: "go", Test: "pkg/a_test.go:TestShortGated"})
+		}, "reads testing.Short"},
+		{"build-tagged-out test", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 0, s34specPin{Row: "T1-1", Port: "go", Test: "pkg/tagged_test.go:TestTagged"})
+		}, "build-tagged out"},
+		{"skipped harness function", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 1, s34specPin{Row: "T1-1", Port: "rust", Test: "rs/main.rs:surface_ignored"})
+		}, "marked skipped or ignored"},
+		{"harness function nothing calls", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 1, s34specPin{Row: "T1-1", Port: "rust", Test: "rs/main.rs:never_called"})
+		}, "nothing in rs calls never_called"},
+		{"tla model does not EXTENDS the module", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 3, s34specPin{Row: "T1-3", Port: "compiler", Test: "tla/MCLone.tla:Inv", Cfg: "tla/MCPins.cfg", Module: "Pins"})
+		}, "does not EXTENDS Pins"},
+		{"tla property not under INVARIANTS or PROPERTIES", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 3, s34specPin{Row: "T1-3", Port: "compiler", Test: "tla/MCPins.tla:Inv", Cfg: "tla/Bare.cfg", Module: "Pins"})
+		}, "is not under INVARIANT(S) or PROPERTY(IES)"},
+		{"tla cfg nothing runs", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			fx["tla/Orphan.cfg"] = &fstest.MapFile{Data: []byte("INVARIANT Inv\n")}
+			return setPin(p, 3, s34specPin{Row: "T1-3", Port: "compiler", Test: "tla/MCPins.tla:Inv", Cfg: "tla/Orphan.cfg", Module: "Pins"})
+		}, "nothing runs TLC on it"},
+		{"owed test that already exists, found repo-wide", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 1, s34specPin{Row: "T1-1", Port: "rust", Owed: "rust port lands it", Want: "TestRow3"})
+		}, "owed test TestRow3 already exists at pkg/a_test.go"},
+		{"owed entry with no Want", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 1, s34specPin{Row: "T1-1", Port: "rust", Owed: "later"})
+		}, "names no Want"},
+		{"pinned and owed at once", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return append(p, s34specPin{Row: "T1-1", Port: "go", Owed: "dup", Want: "TestNotYet"})
+		}, "already pin for this row"},
+		{"stale owed section", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "A writer must zero its slack.", "A writer zeroes its slack.")
+			return p
+		}, "is marked owed by schema-spec-pin-s2 but every normative sentence has a row id"},
+		{"retired id reused", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "<!-- row T1-1 feature=vt/blocks -->", "<!-- row T1-9 feature=vt/blocks -->")
+			return p
+		}, "is retired and marked again"},
+		{"duplicate id", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "<!-- row T1-2 feature=compiler -->", "<!-- row T1-1 feature=compiler -->")
+			return p
+		}, "is also marked at line"},
+		{"row with no feature", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "<!-- row T1-2 feature=compiler -->", "<!-- row T1-2 -->")
+			return p
+		}, "names no feature="},
+		{"feature not on the roadmap", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "<!-- row T1-1 feature=vt/blocks -->", "<!-- row T1-1 feature=vt/nothing -->")
+			return p
+		}, "which is no row of a roadmap"},
+		{"malformed id", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "<!-- row T1-2 feature=compiler -->", "<!-- row t12 feature=compiler -->")
+			return p
+		}, "is not T<section>-<n>"},
+		{"normative words wrapped across a line", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "Some prose that states nothing.", "Some prose that may\nnot hold.")
+			return p
+		}, "normative sentence without a row id"},
+		{"a row marker ends its sentence", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "<!-- row T1-2 feature=compiler -->", "<!-- row T1-2 feature=compiler --> schema lock refuses a stale lock.")
+			return p
+		}, "schema lock refuses a stale lock"},
+		{"tla property with no definition", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 3, s34specPin{Row: "T1-3", Port: "compiler", Test: "tla/MCPins.tla:Nope", Cfg: "tla/MCPins.cfg", Module: "Pins"})
+		}, "dead pin, no Nope =="},
+		{"tla cfg that does not exist", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 3, s34specPin{Row: "T1-3", Port: "compiler", Test: "tla/MCPins.tla:Inv", Cfg: "tla/Gone.cfg", Module: "Pins"})
+		}, "cfg tla/Gone.cfg does not exist"},
+		{"tla pin with no cfg", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 3, s34specPin{Row: "T1-3", Port: "compiler", Test: "tla/MCPins.tla:Inv", Module: "Pins"})
+		}, "names no Cfg"},
+		{"tla property listed only inside a block comment", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			fx["tla/Commented.cfg"] = &fstest.MapFile{Data: []byte("SPECIFICATION Spec\n(* INVARIANT Inv *)\n")}
+			edit(fx, "Makefile", "tlc:\n", "tlc:\n\ttlc -config tla/Commented.cfg tla/MCPins.tla\n")
+			return setPin(p, 3, s34specPin{Row: "T1-3", Port: "compiler", Test: "tla/MCPins.tla:Inv", Cfg: "tla/Commented.cfg", Module: "Pins"})
+		}, "is not under INVARIANT(S) or PROPERTY(IES)"},
+		{"pin on an informative row", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return append(p, s34specPin{Row: "T1-4", Port: "compiler", Test: "pkg/a_test.go:TestRow3"})
+		}, "informative and takes no pin"},
+		{"row both informative and featured", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", `<!-- row T1-4 informative="points elsewhere" -->`, `<!-- row T1-4 feature=compiler informative="points elsewhere" -->`)
+			return p
+		}, "both informative and pinned"},
+		{"unknown row attribute", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "<!-- row T1-2 feature=compiler -->", "<!-- row T1-2 feature=compiler colour=red -->")
+			return p
+		}, "unknown attribute"},
+		{"two section markers", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "<!-- spec-pins owed schema-spec-pin-s2 -->", "<!-- spec-pins owed schema-spec-pin-s2 -->\n<!-- spec-pins owed schema-spec-pin-s3 -->")
+			return p
+		}, "carries two spec-pins markers"},
+		{"informative section not on the guard's list", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "<!-- spec-pins owed schema-spec-pin-s2 -->", "<!-- spec-pins informative it is only prose -->")
+			return p
+		}, "not in the guard's s34specInformativeSections"},
+		{"marker before the first heading", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "# fixture\n", "<!-- spec-pins owed schema-spec-pin-s0 -->\n# fixture\n")
+			return p
+		}, "before the first heading"},
+		{"not a Test function", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 0, s34specPin{Row: "T1-1", Port: "go", Test: "pkg/a_test.go:Testify"})
+		}, "is not a Test function"},
+		{"a Test without *testing.T", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 0, s34specPin{Row: "T1-1", Port: "go", Test: "pkg/a_test.go:TestNoT"})
+		}, "does not take one *testing.T"},
+		{"a non-test .go file", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 0, s34specPin{Row: "T1-1", Port: "go", Test: "helper/helper.go:Run"})
+		}, "is not a _test.go file"},
+		{"a test under testdata", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 0, s34specPin{Row: "T1-1", Port: "go", Test: "pkg/testdata/x_test.go:TestHidden"})
+		}, "never visits"},
+		{"a test in a nested module", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 0, s34specPin{Row: "T1-1", Port: "go", Test: "nested/n_test.go:TestNested"})
+		}, "is in the nested module nested"},
+		{"a TestMain that never runs the tests", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			fx["pkg/main_test.go"] = &fstest.MapFile{Data: []byte("package pkg\n\nimport \"testing\"\n\nfunc TestMain(m *testing.M) {}\n")}
+			return p
+		}, "TestMain never calls m.Run"},
+		{"skip in a method of another package's type", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 0, s34specPin{Row: "T1-1", Port: "go", Test: "pkg/a_test.go:TestMethodSkips"})
+		}, "TestMethodSkips -> Check calls Skip"},
+		{"rust ignore with a reason", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 1, s34specPin{Row: "T1-1", Port: "rust", Test: "rs/main.rs:surface_slow"})
+		}, "marked skipped or ignored"},
+		{"a prototype and a comment are not calls", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			fx["docs/roadmap.sexp"] = &fstest.MapFile{Data: []byte(strings.Replace(string(fx["docs/roadmap.sexp"].Data), `("rust" "rust"))`, `("rust" "rust") ("c" "c"))`, 1))}
+			edit(fx, "docs/roadmap.sexp", `("blocks" "rust" "t2")`, `("blocks" "rust" "t2") ("blocks" "c" "t3")`)
+			return append(p, s34specPin{Row: "T1-1", Port: "c", Test: "c/h.c:proto_only"})
+		}, "nothing in c calls proto_only"},
+		{"owed entry that names a test", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			return setPin(p, 1, s34specPin{Row: "T1-1", Port: "rust", Test: "rs/main.rs:surface_block", Owed: "x", Want: "surface_later"})
+		}, "an owed entry names a test"},
+		{"owed marker naming no card", func(fx fstest.MapFS, p []s34specPin) []s34specPin {
+			edit(fx, "docs/SPEC.md", "spec-pins owed schema-spec-pin-s2", "spec-pins owed someday")
+			return p
+		}, "not a schema-spec-pin-* card"},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			fx := s34specFixture()
+			pins := c.plant(fx, s34specFixturePins())
+			got := s34runSpecFixture(fx, pins)
+			for _, f := range got {
+				if strings.Contains(f, c.want) {
+					return
+				}
+			}
+			t.Fatalf("planted %q; want a finding containing %q, got:\n%s", c.name, c.want, strings.Join(got, "\n"))
+		})
+	}
+}
+
+// The pins of §3.4 ("The fixed form"). Each row carries the feature row its
+// rule belongs to; a fixed-tables feature is carried by every port the roadmap
+// lists, so the one test per port below pins every row that names it. The
+// compiler rows are rules the one compiler settles, pinned in the compiler.
+var _ = s34registerSpecPins("internal/ci/schema_spec_pin_s34_test.go", s34pins()...)
+
+var s34PortTest = map[string]string{
+	"cpp":    "test/tables/fixedform_main.cpp:fx_case",
+	"c":      "test/c-tables/fixedform_fx1.c:fixed_fx1_read_own",
+	"cs":     "test/cs-tables/src/FixedFormChecks.cs:TestFixedForm",
+	"go":     "internal/codegen/gotable/fixedroadmap_t06_test.go:TestFixedRoadmapGoT06Bounds",
+	"rust":   "test/rust-fixedform/src/main.rs:the_write",
+	"java":   "test/java-fixedform/src/Main.java:fx1Write",
+	"js":     "test/js-tables/fixedform.mjs:hostileByteSweep",
+	"dart":   "test/dart-tables/fixedform.dart:fixedBoundsCase",
+	"elixir": "test/elixir-fixedform/main.exs:start",
+}
+
+var s34Ports = []string{"cpp", "c", "cs", "go", "rust", "java", "js", "dart", "elixir"}
+
+var s34CompilerTest = map[string]string{
+	"T3.4-17": "compiler/fixedrecordsize_test.go:TestDeclaredFixedTablePastTheCeilingKeepsFormOneAndIsNamed",
+	"T3.4-18": "compiler/fixedrecordsize_test.go:TestTheCorpusMegabyteFixedTablesCompile",
+	"T3.4-19": "compiler/fixedrecordsize_test.go:TestDeclaredFixedTableInsideTheCeilingCompiles",
+	"T3.4-26": "internal/check/fixedtable_test.go:TestFixedTableClosureRefusals",
+	"T3.4-31": "internal/check/fixedtable_test.go:TestFixedTableClosureRefusals",
+	"T3.4-32": "compiler/fixedrecordsize_test.go:TestDeclaredFixedTablePastTheCeilingKeepsFormOneAndIsNamed",
+	"T3.4-41": "compiler/fixedrecordsize_test.go:TestFixedRecordLimitRefusesTheCompile",
+	"T3.4-45": "ir/formbyte_test.go:TestWireFormLineNamesTheLiveForms",
+}
+
+// s34RowFeature is the roadmap row each normative sentence of §3.4 belongs to.
+// The informative rows take no pin: their marker says why.
+var s34RowFeature = map[string]string{
+	"T3.4-2":  "fixed-tables/field-evolution",
+	"T3.4-3":  "fixed-tables/plan-selection",
+	"T3.4-4":  "fixed-tables/plan-selection",
+	"T3.4-5":  "fixed-tables/hostile-input",
+	"T3.4-6":  "fixed-tables/hostile-input",
+	"T3.4-7":  "fixed-tables/file-envelope",
+	"T3.4-8":  "fixed-tables/file-envelope",
+	"T3.4-9":  "fixed-tables/file-envelope",
+	"T3.4-10": "fixed-tables/file-envelope",
+	"T3.4-11": "fixed-tables/optional-values",
+	"T3.4-12": "fixed-tables/definition-hash",
+	"T3.4-13": "fixed-tables/hostile-input",
+	"T3.4-14": "fixed-tables/hostile-input",
+	"T3.4-16": "fixed-tables/fixed-closure",
+	"T3.4-17": "compiler",
+	"T3.4-18": "compiler",
+	"T3.4-19": "compiler",
+	"T3.4-20": "fixed-tables/counted-arrays",
+	"T3.4-21": "fixed-tables/utf8-values",
+	"T3.4-22": "fixed-tables/utf16-values",
+	"T3.4-23": "fixed-tables/byte-buffers",
+	"T3.4-24": "fixed-tables/union-values",
+	"T3.4-25": "fixed-tables/optional-values",
+	"T3.4-26": "compiler",
+	"T3.4-27": "fixed-tables/live-extents",
+	"T3.4-28": "fixed-tables/live-extents",
+	"T3.4-31": "compiler",
+	"T3.4-32": "compiler",
+	"T3.4-33": "fixed-tables/compiled-plans",
+	"T3.4-34": "fixed-tables/file-envelope",
+	"T3.4-35": "fixed-tables/file-envelope",
+	"T3.4-36": "fixed-tables/plan-selection",
+	"T3.4-37": "fixed-tables/file-envelope",
+	"T3.4-38": "fixed-tables/file-envelope",
+	"T3.4-40": "fixed-tables/hostile-input",
+	"T3.4-41": "compiler",
+	"T3.4-42": "fixed-tables/file-envelope",
+	"T3.4-43": "fixed-tables/file-envelope",
+	"T3.4-44": "fixed-tables/file-envelope",
+	"T3.4-45": "compiler",
+	"T3.4-46": "fixed-tables/hostile-input",
+	"T3.4-47": "fixed-tables/compiled-plans",
+}
+
+func s34pins() []s34specPin {
+	var out []s34specPin
+	for row, feature := range s34RowFeature {
+		if feature == s34specCompilerPort {
+			out = append(out, s34specPin{Row: row, Port: s34specCompilerPort, Test: s34CompilerTest[row]})
+			continue
+		}
+		for _, port := range s34Ports {
+			out = append(out, s34specPin{Row: row, Port: port, Test: s34PortTest[port]})
+		}
+	}
+	return out
+}
+
+// s34OverlayFS reads root except for one path, which it serves from data. It
+// lets a witness plant a defect in the real spec without editing it.
+type s34OverlayFS struct {
+	fs.FS
+	path string
+	data []byte
+}
+
+func (o s34OverlayFS) Open(name string) (fs.File, error) {
+	if name == o.path {
+		return fstest.MapFS{name: {Data: o.data}}.Open(name)
+	}
+	return o.FS.Open(name)
+}
+
+// TestSpecPinsS34RealSpecPlants proves the guard is red on the real section
+// with one plant in, and green with it out: the sentence is a normative one of
+// §3.4 and its row id is removed.
+func TestSpecPinsS34RealSpecPlants(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	spec, err := os.ReadFile(filepath.Join(root, "docs/SPEC-TABLES.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	planted := strings.Replace(string(spec), "<!-- row T3.4-27 feature=fixed-tables/live-extents -->", "", 1)
+	if planted == string(spec) {
+		t.Fatal("the plant misses: T3.4-27's marker is not in the spec")
+	}
+	overlay := s34OverlayFS{FS: os.DirFS(root), path: "docs/SPEC-TABLES.md", data: []byte(planted)}
+	_, findings := s34checkSpecPins(s34specPinsInput{fsys: overlay, spec: "docs/SPEC-TABLES.md", roadmap: "docs/roadmap.sexp", pins: s34specPinRegistry})
+	found := false
+	for _, f := range findings {
+		if strings.Contains(f, "normative sentence without a row id") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the planted unpinned §3.4 sentence was not refused; findings:\n%s", strings.Join(findings, "\n"))
+	}
+}
+
+// init also registers §3.4's pins with the package-wide spec-pins guard in
+// schema_spec_pin_design_row_ids_test.go. That guard defines the pin format and
+// holds this card's rows to the same digest and resolution rules; each group's
+// card owns only its own pins, so the registries are joined here rather than in
+// the design file.
+func init() {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		return
+	}
+	text, err := os.ReadFile(filepath.Join(root, "docs/SPEC-TABLES.md"))
+	if err != nil {
+		return
+	}
+	doc := parseSpecDoc(string(text))
+	var shared []specPin
+	for _, p := range s34specPinRegistry {
+		digest := ""
+		if r, ok := doc.Rows[p.Row]; ok {
+			digest = specRowDigest(r.Sentence)
+		}
+		shared = append(shared, specPin{Row: p.Row, Port: p.Port, Test: p.Test, Cfg: p.Cfg, Module: p.Module, Owed: p.Owed, Want: p.Want, Digest: digest})
+	}
+	registerSpecPins("internal/ci/schema_spec_pin_s34_test.go", shared...)
+}
