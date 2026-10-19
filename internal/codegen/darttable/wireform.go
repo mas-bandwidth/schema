@@ -481,6 +481,20 @@ final class TableWireReport {
   bool refused = false;
   int retained = 0;
   int retainLost = 0;
+
+  // reason is the read's refusal BY NAME, in the reference leg's vocabulary
+  // (internal/codegen/gotable/refusal.go, the TableRefuse* Error() strings;
+  // docs/SPEC-TABLES.md §3, §4): a form byte this reader does not carry is
+  // unknown_form, framing the reader cannot follow is wire_damaged, and a read
+  // that kept its verdict is ok — the mapping the Go leg's measure gives its
+  // two verdicts. It is DERIVED from the two flags rather than stored beside
+  // them, so the verdict and its reason can never disagree. A widened, clamped
+  // or unknown field is not a refusal: the read still answers ok.
+  String get reason {
+    if (refused) return 'unknown_form';
+    if (malformed) return 'wire_damaged';
+    return 'ok';
+  }
 }
 
 // WireState is the id table (§3) and node numbering (§3.1) a save accumulates
@@ -1086,14 +1100,20 @@ final class TableWireReader {
   // Go scan sets its widened flag before it reads that occurrence, so a key
   // that widened before the damage still counts the map's one widened
   // (docs/SPEC-TABLES.md §2.8, §4; internal/tablewire mapKey and mapField).
-  int mapEntryScan(int keyId, int keyKind, List<int> keyWidens) {
+  // Bit 8 is set when the LAST occurrence the scan keeps of the key is a
+  // string(N) whose wire length is over the declaration's bound N: KEYS
+  // NEVER CLAMP, the entry is dropped whole and counted one clamped
+  // (docs/SPEC-TABLES.md §2.8; internal/tabletext MapKeyFits). keySize is
+  // the string bound, or -1 for a key that is not a bounded string.
+  int mapEntryScan(int keyId, int keyKind, List<int> keyWidens, int keySize) {
     final s = TableWireReader.sub(this, pos, limit);
     var kindBad = false;
     var widened = 0;
+    var clamped = 0;
     while (true) {
       final ref = s.readLeb();
       if (ref == null) return (kindBad ? 2 : 1) | widened;
-      if (ref == 0) return (kindBad ? 2 : (s.pos == s.limit ? 0 : 1)) | widened;
+      if (ref == 0) return (kindBad ? 2 : (s.pos == s.limit ? 0 : 1)) | widened | clamped;
       final id = s.refToId[ref];
       if (id == null || !s.has(1)) return (kindBad ? 2 : 1) | widened;
       final kind = s.readByte();
@@ -1107,6 +1127,7 @@ final class TableWireReader {
         if (!kindBad && kind == 12) {
           final n = s.readLeb();
           if (n == null || !s.has(n) || !_lebValid(s.data, s.pos, n)) return 1 | widened;
+          clamped = (keySize >= 0 && n > keySize) ? 8 : 0;
           s.pos += n;
           continue;
         }
