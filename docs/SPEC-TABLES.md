@@ -4730,6 +4730,29 @@ names NO ID**, and it is the body terminator, the enum's `None` and the
 union's empty arm, which are the three places on this wire where "no id" is a
 value.
 
+**A VARIANT REFERENCE IS RESOLVED BY THE ENTRY IT NAMES, NEVER BY ITS POSITION
+OR BY THE ENUM'S DECLARATION ORDER.** Reference `k` names the `k`th entry; the
+reader compares that entry's ID, never `k`, with the ids THIS enum declares, so
+moving a reference from one entry to another can never alias the enum's
+ordinal. There are three outcomes: the entry's id is a variant this enum
+declares, and the field reads that variant; the entry's id is an id this enum
+does not declare — a field name's id, another enum's variant id, or an id this
+build removed — and the tolerant read counts one `unknown`, reads the field as
+`None`, and the strict read's report is not silent; or the reference is above
+the entry count, which is framing damage, `malformed`, like any other reference
+(§4). On the MESSAGE FORM the announcement gives every entry a KIND, so a
+variant reference naming an entry of the wrong sort is `malformed` rather than
+`unknown` (§3.3); the variable form's table carries no kind, so an id it cannot
+place is the ordinary `unknown`. **A wire whose variant reference is moved to
+an entry naming a DIFFERENT declared variant, or to reference `0` (`None`), is
+a valid spelling of a different value**: no reader can tell it from a writer
+that wrote that value, and only a table that declares `integrity` (§2.14)
+refuses it. **FIRST-USE ORDER IS A WRITER'S RULE (§3, below):** a reader
+resolves the entries it is given by entry, and the next save writes them in
+first-use order, so a table in another order re-encodes to different bytes with
+the same values. That difference is not a decode event, and neither it nor a
+same-length swap to another valid value is a reader defect.
+
 **Every length, count and index is the same unsigned LEB128.** `L` is a byte
 length, `N` an element count, a node index names a record of the numbering
 §3.1 defines, and a node count says how many records there are. **LEB128 is
@@ -16816,6 +16839,28 @@ under the house rule. The file is GENERATED, so a schema edit is followed by
 
 Go carries `testgen` first; every other `--lang` is refused by name, in the
 compiler, until its own turn.
+
+**A SAME-LENGTH VARIANT SWAP IS OUTSIDE THE TARGET'S ASSERTION.** A fuzz
+target can require a refused read, a re-encoding equal to its input, or — when
+the re-encoding is SHORTER — a respelling that reads back silently, because
+those are the outcomes a reader can distinguish. It cannot require anything of
+a mutant that moves an enum's variant reference to an entry naming another
+declared variant, or to reference `0` (`None`): that is a valid spelling of a
+DIFFERENT value, no reader can tell it from a writer's own bytes, and the
+re-encoding differs only in the id table's first-use order (§3). The class is
+refused only by a table that declares `integrity` (§2.14). A target's
+assertion therefore lives with the declaration: where the table carries the
+integrity check, the check refuses the swap; where it does not, the swap is
+accepted silently and the target allows it. Without that carve-out the target
+reports a faithful reader as a defect. The two LoadoutConfig crashers record
+the case: the enum field's reference is the id table's first entry, so its
+reference byte sits at offset 3 (reference 1, payload kind 30), and entry 3 is
+a FIELD-NAME id — `podium` in the 212-byte sample, `grades` in the 422-byte
+one — not a variant id, so rewriting the byte to `0x03` counts one `unknown`
+and reads None; it is never silent. The mutation that IS silent is `0x02` to
+`0x00`, the enum's `None`: a valid same-length spelling of a different value
+whose first-use renumbering swaps id-table entries 2 and 3 on the next save,
+exactly the class above.
 
 ### 16.12 The outside oracle: JSONTestSuite
 
