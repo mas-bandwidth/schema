@@ -2476,21 +2476,21 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 		}
 		if hoisted {
 			g.pf("};\n")
-			g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), %d, %sTableFields, %s%s, %s };\n",
-				st.Name, st.Name, st.Name, len(st.Fields), st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"))
+			g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), %d, %sTableFields, %s%s, %s, %v };\n",
+				st.Name, st.Name, st.Name, len(st.Fields), st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"), st.JsonArray)
 		} else {
 			g.pf("    };\n")
-			g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields, %s%s, %s };\n",
-				infoQualifier, st.Name, st.Name, len(st.Fields), resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"))
+			g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields, %s%s, %s, %v };\n",
+				infoQualifier, st.Name, st.Name, len(st.Fields), resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"), st.JsonArray)
 		}
 	case hoisted:
 		g.emitTagsStatic(st.Name+"_tags", st.Tags, qualifier, indent)
-		g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s };\n",
-			st.Name, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"))
+		g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s, %v };\n",
+			st.Name, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"), st.JsonArray)
 	default:
 		g.emitTagsStatic(st.Name+"_tags", st.Tags, qualifier, indent)
-		g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s };\n",
-			infoQualifier, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"))
+		g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s, %v };\n",
+			infoQualifier, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"), st.JsonArray)
 	}
 	if hoisted {
 		g.pf("inline const TableTypeInfo * %sTableType() { return &%sTableInfo; }\n\n", st.Name, st.Name)
