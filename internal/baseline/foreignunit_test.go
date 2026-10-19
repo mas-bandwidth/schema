@@ -1,4 +1,4 @@
-package baseline
+package baseline_test
 
 import (
 	"os"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/baseline"
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -36,25 +37,25 @@ fixed table Own { value int32 = 2 }
 	if err := os.WriteFile(source, []byte(ownSrc), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, FileName)
-	foreign := Render(makeUnit(foreignSrc))
-	foreign.History = []string{HistoryHeading, "### 2026-01-01 (UTC) — previous unit", "- retained foreign history"}
+	path := filepath.Join(dir, baseline.FileName)
+	foreign := baseline.Render(makeUnit(foreignSrc))
+	foreign.History = []string{baseline.HistoryHeading, "### 2026-01-01 (UTC) — previous unit", "- retained foreign history"}
 	if err := os.WriteFile(path, []byte(foreign.Text()), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	own := makeUnit(ownSrc)
-	_, errs := Check(own, []string{source})
+	_, errs := baseline.Check(own, []string{source})
 	if len(errs) != 1 || !strings.Contains(errs[0].Error(), "--update") {
 		t.Fatalf("Check must refuse and name --update, got %v", errs)
 	}
-	if _, rewrote, err := update(own, []string{source}, "repair foreign baseline", "1000.0"); err != nil || !rewrote {
+	if _, rewrote, err := baseline.Update(own, []string{source}, "repair foreign baseline"); err != nil || !rewrote {
 		t.Fatalf("Update foreign baseline: rewrote=%t err=%v", rewrote, err)
 	}
 	gotBytes, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := Parse(path, gotBytes)
+	got, err := baseline.Parse(path, gotBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +68,7 @@ fixed table Own { value int32 = 2 }
 			t.Errorf("salvaged baseline missing %q:\n%s", want, text)
 		}
 	}
-	if _, errs := Check(own, []string{source}); len(errs) != 0 {
+	if _, errs := baseline.Check(own, []string{source}); len(errs) != 0 {
 		t.Fatalf("Check after salvage: %v", errs)
 	}
 }
