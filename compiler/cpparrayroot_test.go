@@ -127,7 +127,7 @@ int main()
     HolderBuilder hm;
     TableReport hm_report;
     const char * nested_object = "{\"g\":{\"goals\":[{\"x\":7}]}}";
-    CHECK( HolderFromJson( hm, nested_object, (int64_t) strlen( nested_object ), &hm_report ) );
+    CHECK( HolderFromJsonTolerant( hm, nested_object, (int64_t) strlen( nested_object ), &hm_report ) );
     CHECK( hm_report.kind_mismatch == 1 );
 
     return failures != 0;

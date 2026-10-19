@@ -3208,9 +3208,23 @@ inline bool TableTextFormToJson( const char * text, int64_t bytes, const TableTy
 
 namespace bench {
 
-bool MixedEntityFromJson( MixedEntity & value, const char * text, int64_t bytes, TableReport * report )
+bool MixedEntityFromJsonTolerant( MixedEntity & value, const char * text, int64_t bytes, TableReport * report )
 {
     return TableJsonRead( &value, MixedEntityTableType(), text, bytes, report );
+}
+
+bool MixedEntityFromJson( MixedEntity & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, MixedEntityTableType(), text, bytes, &read );
+    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    {
+        MixedEntityTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    if ( report != NULL ) { *report = read; }
+    return true;
 }
 
 int64_t MixedEntityToJsonMeasure( const MixedEntity & value )
@@ -3223,9 +3237,23 @@ int64_t MixedEntityToJson( const MixedEntity & value, char * buffer, int64_t cap
     return TableJsonWrite( &value, MixedEntityTableType(), buffer, capacity );
 }
 
-bool MixedStatFromJson( MixedStat & value, const char * text, int64_t bytes, TableReport * report )
+bool MixedStatFromJsonTolerant( MixedStat & value, const char * text, int64_t bytes, TableReport * report )
 {
     return TableJsonRead( &value, MixedStatTableType(), text, bytes, report );
+}
+
+bool MixedStatFromJson( MixedStat & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, MixedStatTableType(), text, bytes, &read );
+    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    {
+        MixedStatTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    if ( report != NULL ) { *report = read; }
+    return true;
 }
 
 int64_t MixedStatToJsonMeasure( const MixedStat & value )
@@ -3238,9 +3266,23 @@ int64_t MixedStatToJson( const MixedStat & value, char * buffer, int64_t capacit
     return TableJsonWrite( &value, MixedStatTableType(), buffer, capacity );
 }
 
-bool MixedHitEventFromJson( MixedHitEvent & value, const char * text, int64_t bytes, TableReport * report )
+bool MixedHitEventFromJsonTolerant( MixedHitEvent & value, const char * text, int64_t bytes, TableReport * report )
 {
     return TableJsonRead( &value, MixedHitEventTableType(), text, bytes, report );
+}
+
+bool MixedHitEventFromJson( MixedHitEvent & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, MixedHitEventTableType(), text, bytes, &read );
+    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    {
+        MixedHitEventTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    if ( report != NULL ) { *report = read; }
+    return true;
 }
 
 int64_t MixedHitEventToJsonMeasure( const MixedHitEvent & value )
@@ -3253,9 +3295,23 @@ int64_t MixedHitEventToJson( const MixedHitEvent & value, char * buffer, int64_t
     return TableJsonWrite( &value, MixedHitEventTableType(), buffer, capacity );
 }
 
-bool MixedChatEventFromJson( MixedChatEvent & value, const char * text, int64_t bytes, TableReport * report )
+bool MixedChatEventFromJsonTolerant( MixedChatEvent & value, const char * text, int64_t bytes, TableReport * report )
 {
     return TableJsonRead( &value, MixedChatEventTableType(), text, bytes, report );
+}
+
+bool MixedChatEventFromJson( MixedChatEvent & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, MixedChatEventTableType(), text, bytes, &read );
+    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    {
+        MixedChatEventTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    if ( report != NULL ) { *report = read; }
+    return true;
 }
 
 int64_t MixedChatEventToJsonMeasure( const MixedChatEvent & value )
@@ -3268,9 +3324,23 @@ int64_t MixedChatEventToJson( const MixedChatEvent & value, char * buffer, int64
     return TableJsonWrite( &value, MixedChatEventTableType(), buffer, capacity );
 }
 
-bool MixedPickupEventFromJson( MixedPickupEvent & value, const char * text, int64_t bytes, TableReport * report )
+bool MixedPickupEventFromJsonTolerant( MixedPickupEvent & value, const char * text, int64_t bytes, TableReport * report )
 {
     return TableJsonRead( &value, MixedPickupEventTableType(), text, bytes, report );
+}
+
+bool MixedPickupEventFromJson( MixedPickupEvent & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, MixedPickupEventTableType(), text, bytes, &read );
+    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    {
+        MixedPickupEventTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    if ( report != NULL ) { *report = read; }
+    return true;
 }
 
 int64_t MixedPickupEventToJsonMeasure( const MixedPickupEvent & value )
@@ -3283,9 +3353,23 @@ int64_t MixedPickupEventToJson( const MixedPickupEvent & value, char * buffer, i
     return TableJsonWrite( &value, MixedPickupEventTableType(), buffer, capacity );
 }
 
-bool BenchMixedFromJson( BenchMixed & value, const char * text, int64_t bytes, TableReport * report )
+bool BenchMixedFromJsonTolerant( BenchMixed & value, const char * text, int64_t bytes, TableReport * report )
 {
     return TableJsonRead( &value, BenchMixedTableType(), text, bytes, report );
+}
+
+bool BenchMixedFromJson( BenchMixed & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, BenchMixedTableType(), text, bytes, &read );
+    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    {
+        BenchMixedTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    if ( report != NULL ) { *report = read; }
+    return true;
 }
 
 int64_t BenchMixedToJsonMeasure( const BenchMixed & value )

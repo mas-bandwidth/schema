@@ -608,6 +608,7 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 		g.pf("// builder, written from a region's const root. A node named more than once\n")
 		g.pf("// carries `&node` in the text. Defined in %sTable.cpp; link it to use them.\n", g.file.Base)
 		g.pf("bool %sFromJson( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report );\n", st.Name, st.Name)
+		g.pf("bool %sFromJsonTolerant( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report );\n", st.Name, st.Name)
 		g.pf("int64_t %sToJsonMeasure( const %s * root, TableAllocator allocator = TableDefaultAllocator() );\n", st.Name, st.Name)
 		g.pf("int64_t %sToJson( const %s * root, char * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() );\n\n", st.Name, st.Name)
 		return
@@ -616,6 +617,7 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 	g.pf("// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in\n")
 	g.pf("// %sTable.cpp; link it to use them.\n", g.file.Base)
 	g.pf("bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report );\n", st.Name, st.Name)
+	g.pf("bool %sFromJsonTolerant( %s & value, const char * text, int64_t bytes, TableReport * report );\n", st.Name, st.Name)
 	g.pf("int64_t %sToJsonMeasure( const %s & value );\n", st.Name, st.Name)
 	g.pf("int64_t %sToJson( const %s & value, char * buffer, int64_t capacity );\n\n", st.Name, st.Name)
 }
@@ -631,18 +633,55 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 		return
 	}
 	if g.isVar(st.Name) {
-		g.pf("bool %sFromJson( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+		// The TOLERANT read keeps BASE's signature and answers (docs/SPEC-TABLES.md
+		// §16.2): it reads what it can, counts clamps, kind mismatches and
+		// duplicates onto the report, and answers true unless the text is
+		// malformed.
+		g.pf("bool %sFromJsonTolerant( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
 		g.pf("    %s * root = builder.GetRoot();\n", st.Name)
 		g.pf("    if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed\n")
 		g.pf("    return TableJsonReadGraph( builder.main, root, %sTableType(), text, bytes, report );\n}\n\n", st.Name)
+		// The plain read is STRICT (docs/SPEC-TABLES.md §6.5, §16.2): it answers
+		// false for a text whose report holds a clamp, a kind mismatch, a
+		// malformed value, resets the root to defaults, and overwrites the
+		// supplied report with this read's report. A builder already locked
+		// answers false before it reads, leaving the report empty.
+		g.pf("bool %sFromJson( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+		g.pf("    %s * root = builder.GetRoot();\n", st.Name)
+		g.pf("    if ( root == NULL ) { if ( report != NULL ) { *report = TableReport(); } return false; } // locked: the report stays empty\n")
+		g.pf("    TableReport read;\n")
+		g.pf("    bool ok = TableJsonReadGraph( builder.main, root, %sTableType(), text, bytes, &read );\n", st.Name)
+		g.pf("    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )\n")
+		g.pf("    {\n")
+		g.pf("        %sTableType()->reset( root );\n", st.Name)
+		g.pf("        if ( report != NULL ) { *report = read; }\n")
+		g.pf("        return false;\n")
+		g.pf("    }\n")
+		g.pf("    if ( report != NULL ) { *report = read; }\n")
+		g.pf("    return true;\n}\n\n")
 		g.pf("int64_t %sToJsonMeasure( const %s * root, TableAllocator allocator )\n{\n", st.Name, st.Name)
 		g.pf("    return TableJsonWriteGraph( root, %sTableType(), NULL, 0, allocator );\n}\n\n", st.Name)
 		g.pf("int64_t %sToJson( const %s * root, char * buffer, int64_t capacity, TableAllocator allocator )\n{\n", st.Name, st.Name)
 		g.pf("    return TableJsonWriteGraph( root, %sTableType(), buffer, capacity, allocator );\n}\n\n", st.Name)
 		return
 	}
-	g.pf("bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+	g.pf("bool %sFromJsonTolerant( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
 	g.pf("    return TableJsonRead( &value, %sTableType(), text, bytes, report );\n}\n\n", st.Name)
+	// The plain read is STRICT (docs/SPEC-TABLES.md §6.5, §16.2): it answers false
+	// for a text whose report holds a clamp, a kind mismatch or malformed text,
+	// resets the value to its declared defaults
+	// and overwrites the supplied report with this read's report.
+	g.pf("bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+	g.pf("    TableReport read;\n")
+	g.pf("    bool ok = TableJsonRead( &value, %sTableType(), text, bytes, &read );\n", st.Name)
+	g.pf("    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )\n")
+	g.pf("    {\n")
+	g.pf("        %sTableType()->reset( &value );\n", st.Name)
+	g.pf("        if ( report != NULL ) { *report = read; }\n")
+	g.pf("        return false;\n")
+	g.pf("    }\n")
+	g.pf("    if ( report != NULL ) { *report = read; }\n")
+	g.pf("    return true;\n}\n\n")
 	g.pf("int64_t %sToJsonMeasure( const %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    return TableJsonWrite( &value, %sTableType(), NULL, 0 );\n}\n\n", st.Name)
 	g.pf("int64_t %sToJson( const %s & value, char * buffer, int64_t capacity )\n{\n", st.Name, st.Name)

@@ -5213,6 +5213,7 @@ inline const TableTypeInfo * FixedTableTableType()
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // FixedTableTable.cpp; link it to use them.
 bool FixedTableFromJson( FixedTable & value, const char * text, int64_t bytes, TableReport * report );
+bool FixedTableFromJsonTolerant( FixedTable & value, const char * text, int64_t bytes, TableReport * report );
 int64_t FixedTableToJsonMeasure( const FixedTable & value );
 int64_t FixedTableToJson( const FixedTable & value, char * buffer, int64_t capacity );
 
