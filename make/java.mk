@@ -1561,7 +1561,7 @@ cards-java-wire-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.stam
 	@set -- $(CARDS_JAVA_FUZZ_SEEDS); \
 		while [ "$$#" -ge 2 ]; do \
 			seed=$$1; n=$$2; shift 2; \
-			timeout $(CARDS_JAVA_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+			timeout $(TABLES_JAVA_WIRE_FUZZ_ALL_TIME) ./build/conformance-harness wire-fuzz \
 				--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 				--driver "$(CURDIR)/build/cards-java-wire-fuzz/driver" --seed $$seed --n $$n \
 				>> build/cards-java-wire-fuzz.log 2>&1; \
@@ -1585,7 +1585,7 @@ cards-java-retain-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.st
 	@set -- $(CARDS_JAVA_FUZZ_SEEDS); \
 		while [ "$$#" -ge 2 ]; do \
 			seed=$$1; n=$$2; shift 2; \
-			timeout $(CARDS_JAVA_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+			timeout $(TABLES_JAVA_WIRE_FUZZ_ALL_TIME) ./build/conformance-harness wire-fuzz \
 				--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 				--driver "$(CURDIR)/build/cards-java-wire-fuzz/driver" --seed $$seed --n $$n --retain \
 				>> build/cards-java-retain-fuzz.log 2>&1; \
@@ -1606,10 +1606,11 @@ test-java: cards-java-retain-fuzz
 # (Driver.wireFuzz), which binds every form-1 root of the roster to its unit's
 # generated codec and fails by name on one it cannot open. The zero-coverage
 # greps make a roster that opens nothing fail.
+TABLES_JAVA_WIRE_FUZZ_ALL_TIME ?= 20m
 .PHONY: tables-java-wire-fuzz-all
 tables-java-wire-fuzz-all: build/conformance-harness build/tables-generated-java/.stamp build-conformance-java
 	@rm -f build/tables-java-wire-fuzz-all.log
-	./build/conformance-harness wire-fuzz \
+	timeout $(TABLES_JAVA_WIRE_FUZZ_ALL_TIME) ./build/conformance-harness wire-fuzz \
 		--driver 'test/conformance/java/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-java-wire-fuzz-all.log 2>&1; \
 	status=$$?; cat build/tables-java-wire-fuzz-all.log; \

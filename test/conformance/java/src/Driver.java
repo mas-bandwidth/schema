@@ -1205,6 +1205,10 @@ public final class Driver {
                 break;
             }
             long size = wireU32(in);
+            if (size > Integer.MAX_VALUE - 8) {
+                System.err.println("wire-fuzz: a mutant of " + size + " bytes");
+                return 1;
+            }
             if (index >= count || roster[(int) index] == null) {
                 System.err.println("wire-fuzz: unsupported roster index " + index);
                 return 1;

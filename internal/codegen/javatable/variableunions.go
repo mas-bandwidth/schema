@@ -46,6 +46,14 @@ func variableUnionStruct(un *ir.Union) *ir.Struct {
 func unionMembers(un *ir.Union) []string {
 	mem := make([]string, len(un.Variants))
 	used := map[string]bool{"tag": true}
+	// every arm keeps its own name when it can, so those names are reserved
+	// before a renamed "tag" arm picks its member: an arm already named
+	// "tagArm" is never shadowed by the rename
+	for _, arm := range un.Variants {
+		if !arm.Void() && arm.Name != "tag" {
+			used[arm.Name] = true
+		}
+	}
 	for i, arm := range un.Variants {
 		if arm.Void() {
 			continue
