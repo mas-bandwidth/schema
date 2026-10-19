@@ -10,6 +10,7 @@
 // six counters, the malformed flag and the refusal verdict. It is filled in
 // place, never created here.
 local _M = vargv[0];
+local _require = vargv[1];
 
 // THE RESERVED IDS the language holds back (docs/SPEC-TABLES.md §3.1, §5).
 local NODE_TABLE_ID = 0xffffffffffffffff;
@@ -1029,10 +1030,11 @@ local resolve = function(st, root, report) {
   }
 };
 
-// THE LOAD (docs/SPEC-TABLES.md §3, §3.1, §4): the form byte, the id table,
-// the node table's records first, then every record's body, then the root
-// body, then the one numbering's resolution.
-_M.load <- function(T, rootName, bytes, report, retain = null) {
+// THE TOLERANT LOAD (docs/SPEC-TABLES.md §3, §3.1, §4): the form byte, the id
+// table, the node table's records first, then every record's body, then the
+// root body, then the one numbering's resolution. It keeps the recovered value
+// and its counters; the strict read lives under the plain name load (§6.5).
+_M.loadTolerant <- function(T, rootName, bytes, report, retain = null) {
   if (report.unknown == null) report.unknown <- 0;
   if (report.kindMismatch == null) report.kindMismatch <- 0;
   if (report.widened == null) report.widened <- 0;
@@ -1129,4 +1131,15 @@ _M.load <- function(T, rootName, bytes, report, retain = null) {
   // declares the slot `stopped`; the value is returned either way.
   if ("stopped" in report) report.stopped = !finished;
   return v;
+};
+
+// THE STRICT LOAD (docs/SPEC-TABLES.md §6.5): the plain name is the strict
+// read. It runs the tolerant walk and refuses whatever ReadStrict refuses,
+// leaving the reason and the first field that moved its counter in the report
+// and answering null. A retaining read (LoadRetain, §6.6) is a tolerant read
+// and takes the Tolerant twin.
+_M.load <- function(T, rootName, bytes, report, retain = null) {
+  if (retain != null) return _M.loadTolerant(T, rootName, bytes, report, retain);
+  local R = _require("schema_table_refusal");
+  return R.ReadStrict(T, rootName, bytes, report);
 };

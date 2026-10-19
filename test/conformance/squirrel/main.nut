@@ -107,7 +107,7 @@ local loadReport = function(unit, root, bytes) {
   local T = opened[1];
   local L = schema.require("schema_table_load");
   local report = newReport();
-  L.load(T, root, bytes, report);
+  L.loadTolerant(T, root, bytes, report);
   local verdict = report.refused ? "refused" : "read";
   local m = report.malformed ? "true" : "false";
   return report.unknown.tostring() + "," + report.kindMismatch.tostring() + "," +
@@ -162,7 +162,7 @@ if (mode == "wire") {
       local L = schema.require("schema_table_load");
       local S = schema.require("schema_table_save");
       local report = newReport();
-      local v = L.load(T, root, readBytes(wirepath), report);
+      local v = L.loadTolerant(T, root, readBytes(wirepath), report);
       if (v != null && !report.refused) out = S.save(T, root, v);
     } catch (e) { out = null; }
     if (out == null) { writeAbsent(cname); continue; }
