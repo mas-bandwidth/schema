@@ -309,13 +309,16 @@ func patchGeneratedReader(t *testing.T, pkg string) {
 }
 
 // TestNightlyFuzzRulesLiveInOwnMakeFragment pins the card's file layout: the
-// campaign's rules are in make/schema-go-nightly-fuzz.mk, which the Makefile's
-// make/*.mk wildcard includes, and make/go.mk carries none of them. The
-// regression fixtures live under internal/ci/testdata, not beside the test.
+// campaign's rules are in tools/schema-go-nightly-fuzz/nightly.mk, included by
+// path from make/go.mk. It is NOT under make/: $(wildcard make/*.mk) is the
+// live-port registry (tables-ports-refuse-wide-scalars probes every name as a
+// --lang), so a fragment there would be refused unless the root Makefile were
+// edited. The regression fixtures live under internal/ci/testdata, not beside
+// the test.
 func TestNightlyFuzzRulesLiveInOwnMakeFragment(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	fragmentPath := filepath.Join(root, "make", "schema-go-nightly-fuzz.mk")
+	fragmentPath := filepath.Join(root, "tools", "schema-go-nightly-fuzz", "nightly.mk")
 	fragment, err := os.ReadFile(fragmentPath)
 	if err != nil {
 		t.Fatalf("the campaign's make fragment is not at %s: %v", fragmentPath, err)
@@ -324,23 +327,25 @@ func TestNightlyFuzzRulesLiveInOwnMakeFragment(t *testing.T) {
 		"schema-go-nightly-fuzz:",
 		"schema-go-nightly-fuzz-generate:",
 		"schema-go-nightly-fuzz-replay:",
-		"schema-go-nightly-fuzz-negative-control:",
 		"SCHEMA_GO_NIGHTLY_FUZZ_FUZZTIME ?= 10m",
 		"internal/ci/testdata/nightly-fuzz-corpus",
 		"tool missing: go",
 	} {
 		if !strings.Contains(string(fragment), want) {
-			t.Errorf("make/schema-go-nightly-fuzz.mk does not carry %q", want)
+			t.Errorf("tools/schema-go-nightly-fuzz/nightly.mk does not carry %q", want)
 		}
 	}
 	goMake, err := os.ReadFile(filepath.Join(root, "make", "go.mk"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(goMake), "schema-go-nightly-fuzz") {
-		t.Error("make/go.mk still carries the campaign's rules; they belong in make/schema-go-nightly-fuzz.mk")
+	if !strings.Contains(string(goMake), "include tools/schema-go-nightly-fuzz/nightly.mk") {
+		t.Error("make/go.mk does not include tools/schema-go-nightly-fuzz/nightly.mk by path")
 	}
-	if _, err := os.Stat(filepath.Join(root, "tools", "schema-go-nightly-fuzz", "nightly.mk")); !os.IsNotExist(err) {
-		t.Errorf("tools/schema-go-nightly-fuzz/nightly.mk still exists: %v", err)
+	if !strings.Contains(string(goMake), "schema-go-nightly-fuzz-negative-control:") {
+		t.Error("make/go.mk does not define the negative control tools/negativecontrols enumerates")
+	}
+	if _, err := os.Stat(filepath.Join(root, "make", "schema-go-nightly-fuzz.mk")); !os.IsNotExist(err) {
+		t.Errorf("make/schema-go-nightly-fuzz.mk exists: the live-port registry would probe it as a --lang")
 	}
 }

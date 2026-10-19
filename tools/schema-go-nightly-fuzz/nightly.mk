@@ -1,10 +1,14 @@
-# make/schema-go-nightly-fuzz.mk — the Go port's nightly table-reader fuzzing.
+# tools/schema-go-nightly-fuzz/nightly.mk — the Go port's nightly table-reader
+# fuzzing.
 #
-# The Makefile's `include $(wildcard make/*.mk)` picks this fragment up; no
-# root Makefile edit is needed, exactly as the other ports' nightly fragments
-# land. This file is a gate fragment, not a --lang: it builds and drives the
-# fuzz harness and defines no compiler backend. All the campaign's rules live
-# here, none in make/go.mk.
+# This is a gate fragment, not a --lang: it builds and drives the fuzz harness
+# and defines no compiler backend. It lives outside make/ because
+# $(wildcard make/*.mk) is the live-port registry (tables-ports-refuse-wide-
+# scalars probes every name in it as a --lang), so the Go leg includes it by
+# path at the end of make/go.mk; the root Makefile is untouched. The campaign's
+# rules live here; the negative-control rule is the one exception, in make/go.mk,
+# because tools/negativecontrols enumerates the targets of the Makefile and its
+# direct includes only.
 #
 # The corpus set is make/schema-go-nightly-fuzz-corpus.txt: every directory is
 # one a Go generate target in make/go.mk reads, chosen to cover every table
@@ -82,7 +86,7 @@ schema-go-nightly-fuzz-generate: schema-go-nightly-fuzz-tool-check bin/schema sc
 		go run internal/codegen/gotable/fuzzunit/filter_generate.go "$(SCHEMA_GO_NIGHTLY_FUZZ_MODULE)/$$name" || exit 1; \
 		for f in "$(SCHEMA_GO_NIGHTLY_FUZZ_MODULE)/$$name"/*.go; do \
 			if grep -q 'serialize\.' "$$f" && ! grep -q 'mas-bandwidth/serialize.go' "$$f"; then \
-				sed -i '0,/^import (/s//import (\n\t"github.com\/mas-bandwidth\/serialize.go"/' "$$f" || exit 1; \
+				awk -v dep='"github.com/mas-bandwidth/serialize.go"' 'BEGIN { done=0 } /^import \(/ && !done { print; print "\t" dep; done=1; next } { print }' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 			fi; \
 		done; \
 	done < "$(SCHEMA_GO_NIGHTLY_FUZZ_CORPUS)"
@@ -113,13 +117,3 @@ schema-go-nightly-fuzz-replay: schema-go-nightly-fuzz-generate
 		SCHEMA_GO_FUZZ_REGRESSIONS="$(abspath $(SCHEMA_GO_NIGHTLY_FUZZ_REGRESSIONS))" \
 		go test -run 'TestSavedInputsReplay|TestSeedsRun|Fuzz' -count=1 -timeout 600s
 
-# The planted-pattern proof: a scratch copy of the REAL generated examples
-# reader has Room(n) dropped from TableReader.Body, the fuzzer finds it inside
-# the nightly budget, the saved input fails replay with the plant in and passes
-# with it out, and the same reader without the plant goes green. It runs through
-# test/slowgate/proof, so a skip or a missing --- PASS is a red.
-.PHONY: schema-go-nightly-fuzz-negative-control
-schema-go-nightly-fuzz-negative-control:
-	sh test/slowgate/proof schema-go-nightly-fuzz-negative-control \
-		'TestNightlyFuzzPlantedReaderIsCaught' \
-		./internal/ci -run '^TestNightlyFuzzPlantedReaderIsCaught$$' -count=1 -timeout 600s
