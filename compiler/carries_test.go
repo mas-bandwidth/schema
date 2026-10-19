@@ -7,13 +7,14 @@ import (
 )
 
 // nonGoCarriers lists the constructs the non-Go targets carry: C, C# and C++
-// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3), and
+// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3); Luau
+// carries `| required`, the optional map (§2.8) and the text list (§2.13);
 // every other target carries none at this stage.
 var nonGoCarriers = map[string][]string{
 	"c":    {carryOptionalVariableClosure},
 	"cs":   {carryOptionalVariableClosure},
 	"cpp":  {carryOptionalVariableClosure},
-	"luau": {carryRequired},
+	"luau": {carryRequired, carryOptionalMap, carryTextList},
 }
 
 // TestCarriedConstructsAreGoOnlyByDefault pins the registry's default: every

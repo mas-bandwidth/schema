@@ -107,6 +107,18 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := luau.RequireCycle(graph, order, "the table surface"); err != nil {
 		return nil, err
 	}
+	// the view is a leaf (docs/SPEC-TABLES.md §8.2, §8.5): a module per schema
+	// file carrying the descriptors the table module does not, so a game build
+	// that links the table modules pays nothing for a type no table reaches.
+	for _, f := range u.Files {
+		if !hasViewItems(f, reach) {
+			continue
+		}
+		g := luau.NewGen(u, f)
+		g.Self, g.Suffix, g.Kind = "_V", "View", "type view"
+		emitViewFile(g, reach)
+		out[f.Base+"View.luau"] = g.Assemble()
+	}
 	for name, data := range Runtime() {
 		out[name] = data
 	}
@@ -129,6 +141,9 @@ func Refuse(u *ir.Unit) error {
 	for _, f := range u.Files {
 		if bases[strings.ToLower(f.Base+"Table")] {
 			return fmt.Errorf("schema files %s and %sTable collide — the Luau table surface writes %sTable.luau as %s's table module; rename one file", f.Base, f.Base, f.Base, f.Base)
+		}
+		if bases[strings.ToLower(f.Base+"View")] {
+			return fmt.Errorf("schema files %s and %sView collide — the Luau view surface writes %sView.luau as %s's view module; rename one file", f.Base, f.Base, f.Base, f.Base)
 		}
 	}
 	return nil
@@ -216,11 +231,11 @@ func emitFile(g *luau.Gen, reach map[string]bool) {
 	g.Require(RuntimeModule)
 	for _, un := range g.File.TableUnions {
 		g.EmitUnion(un)
-		emitUnionDescriptor(g, un, "_T")
+		emitUnionDescriptor(g, un, "_T", true)
 	}
 	for _, t := range g.File.Tables {
 		g.EmitStruct(t)
-		emitDescriptor(g, t, g.Self)
+		emitDescriptor(g, t, g.Self, true)
 	}
 	// the packet types of this file a table reaches: their descriptors only;
 	// the type and its constructor are the type module's
@@ -228,27 +243,109 @@ func emitFile(g *luau.Gen, reach map[string]bool) {
 		switch d := d.(type) {
 		case *ir.Struct:
 			if reach[d.Name] {
-				emitDescriptor(g, d, g.Require(g.File.Base))
+				emitDescriptor(g, d, g.Require(g.File.Base), true)
 			}
 		case *ir.Union:
 			if reach[d.Name] {
-				emitUnionDescriptor(g, d, g.Require(g.File.Base))
+				emitUnionDescriptor(g, d, g.Require(g.File.Base), true)
 			}
 		}
 	}
 }
 
+// hasViewItems reports whether a file declares anything the table module does
+// not carry: a type or union no table closure reaches, or an enum or flags set
+// (docs/SPEC-TABLES.md §8.2).
+func hasViewItems(f *ir.File, reach map[string]bool) bool {
+	for _, d := range f.Decls {
+		switch d := d.(type) {
+		case *ir.Struct:
+			if !reach[d.Name] {
+				return true
+			}
+		case *ir.Union:
+			if !reach[d.Name] {
+				return true
+			}
+		case *ir.Enum, *ir.Flags:
+			return true
+		}
+	}
+	return false
+}
+
+// emitViewFile writes one <Base>View.luau: a descriptor for every type and
+// union the table module does not carry, and every enum and flags set, placed
+// beside the table runtime and required by nothing a game links
+// (docs/SPEC-TABLES.md §8.2, §8.5). A declaration no table closure reaches
+// carries no table-wire identity (§8.2): its ids are 0 and its json key nil.
+func emitViewFile(g *luau.Gen, reach map[string]bool) {
+	ctors := g.Require(g.File.Base)
+	for _, d := range g.File.Decls {
+		switch d := d.(type) {
+		case *ir.Struct:
+			if !reach[d.Name] {
+				emitDescriptor(g, d, ctors, false)
+			}
+		case *ir.Union:
+			if !reach[d.Name] {
+				emitUnionDescriptor(g, d, ctors, false)
+			}
+		case *ir.Enum:
+			emitEnumDescriptor(g, d, reach[d.Name])
+		case *ir.Flags:
+			emitFlagsDescriptor(g, d)
+		}
+	}
+}
+
+// emitEnumDescriptor writes <Name>Descriptor for an enum: its variants in
+// declared order, each a (name, wire id) pair, id 0 outside every table
+// closure (docs/SPEC-TABLES.md §8.2).
+func emitEnumDescriptor(g *luau.Gen, e *ir.Enum, wire bool) {
+	g.Pf("-- %sDescriptor — enum %s as data: variants in declared order (§8.2)\n", e.Name, e.Name)
+	g.Pf("%s.%sDescriptor = table.freeze({\n", g.Self, e.Name)
+	g.Pf("\tname = %q,\n", e.Name)
+	g.Pf("\tkind = \"enum\",\n")
+	g.Pf("\tvariants = %s,\n", enumVariants(e, wire))
+	g.Pf("})\n\n")
+}
+
+// emitFlagsDescriptor writes <Name>Descriptor for a flags set: one bit per
+// variant, in declared order (docs/SPEC-TABLES.md §8.2).
+func emitFlagsDescriptor(g *luau.Gen, f *ir.Flags) {
+	g.Pf("-- %sDescriptor — flags %s as data: one bit per variant (§8.2)\n", f.Name, f.Name)
+	g.Pf("%s.%sDescriptor = table.freeze({\n", g.Self, f.Name)
+	g.Pf("\tname = %q,\n", f.Name)
+	g.Pf("\tkind = \"flags\",\n")
+	g.Pf("\tvariants = {")
+	for i, v := range f.Variants {
+		if i > 0 {
+			g.Pf(", ")
+		}
+		g.Pf("{ %q, %d }", v, i)
+	}
+	g.Pf("},\n")
+	g.Pf("\tcount = %d,\n", len(f.Variants))
+	g.Pf("})\n\n")
+}
+
 // emitDescriptor writes <Name>Descriptor: the table as data, everything the
 // one runtime walk of each form reads (docs/SPEC-TABLES.md §3, §3.1, §8.1;
 // docs/PORT-LUAU.md, THE TYPE MAPPING). ctors is the module whose New<Name>
-// builds a fresh record.
-func emitDescriptor(g *luau.Gen, t *ir.Struct, ctors string) {
+// builds a fresh record. wire is false for a type no table closure reaches,
+// whose table-wire id and json keys are empty (§8.2).
+func emitDescriptor(g *luau.Gen, t *ir.Struct, ctors string, wire bool) {
 	st := g.Require(RuntimeModule)
 	g.Pf("-- %sDescriptor — %s as data: node type id, class, and one entry per field\n", t.Name, t.Name)
 	g.Pf("-- (docs/SPEC-TABLES.md §3, §8.1)\n")
 	g.Pf("%s.%sDescriptor = %s.table({\n", g.Self, t.Name, st)
 	g.Pf("\tname = %q,\n", t.Name)
-	g.Pf("\tid = %s, -- FNV-1a 64 of %q (§3.1)\n", luau.IntegerLit(new(big.Int).SetUint64(ir.TableWireId(t.WireName()))), t.WireName())
+	if wire {
+		g.Pf("\tid = %s, -- FNV-1a 64 of %q (§3.1)\n", luau.IntegerLit(new(big.Int).SetUint64(ir.TableWireId(t.WireName()))), t.WireName())
+	} else {
+		g.Pf("\tid = %s, -- no table-wire identity outside every closure (§8.2)\n", luau.IntegerLit(new(big.Int)))
+	}
 	g.Pf("\ttable = %v,\n", t.IsTable)
 	g.Pf("\tfixed = %v,\n", t.FixedDeclared)
 	g.Pf("\tvariable = %v,\n", ir.VariableTables(g.Unit)[t.Name])
@@ -269,7 +366,7 @@ func emitDescriptor(g *luau.Gen, t *ir.Struct, ctors string) {
 	g.Pf("\tfields = {\n")
 	guards := guardPairs(t)
 	for i, f := range t.Fields {
-		g.Pf("\t\t%s,\n", fieldDesc(g, f, i, guardLua(guards[f.Name])))
+		g.Pf("\t\t%s,\n", fieldDesc(g, f, i, guardLua(guards[f.Name]), wire))
 	}
 	g.Pf("\t},\n")
 	g.Pf("\tnew = %s.New%s,\n", ctors, t.Name)
@@ -278,21 +375,24 @@ func emitDescriptor(g *luau.Gen, t *ir.Struct, ctors string) {
 
 // emitUnionDescriptor writes <Name>Descriptor for a union: its arms, each a
 // field line under the arm's id (docs/SPEC-TABLES.md §2.6, §3).
-func emitUnionDescriptor(g *luau.Gen, un *ir.Union, ctors string) {
+func emitUnionDescriptor(g *luau.Gen, un *ir.Union, ctors string, wire bool) {
 	st := g.Require(RuntimeModule)
 	g.Pf("-- %sDescriptor — union %s as data: one entry per arm, tag order (§2.6)\n", un.Name, un.Name)
 	g.Pf("%s.%sDescriptor = %s.union({\n", g.Self, un.Name, st)
 	g.Pf("\tname = %q,\n", un.Name)
 	g.Pf("\tarms = {\n")
 	for i, v := range un.Variants {
-		id := luau.IntegerLit(new(big.Int).SetUint64(ir.TableWireId(v.WireName())))
+		id := luau.IntegerLit(new(big.Int))
+		if wire {
+			id = luau.IntegerLit(new(big.Int).SetUint64(ir.TableWireId(v.WireName())))
+		}
 		if v.Void() {
 			g.Pf("\t\t{ id = %s, name = %q, slot = \"\", tag = %d, s = \"void\" },\n", id, v.Name, i+1)
 			continue
 		}
 		f := *v.F
 		f.Name = v.Name
-		d := fieldDesc(g, &f, i, "")
+		d := fieldDesc(g, &f, i, "", wire)
 		g.Pf("\t\t%s, tag = %d }, \n", strings.TrimSuffix(d, " }"), i+1)
 	}
 	g.Pf("\t},\n")
@@ -316,11 +416,44 @@ func requireHome(g *luau.Gen, name string) {
 				hit = true
 			}
 		}
-		if hit && f.Base != g.File.Base {
-			g.Require(f.Base + "Table")
+		if !hit {
+			continue
+		}
+		if g.Suffix == "View" && viewCarries(g.Unit, f.Base, name) {
+			// the descriptor is in the same file's view, never the table module
+			if f.Base != g.File.Base {
+				g.Require(f.Base + "View")
+			}
 			return
 		}
+		g.Require(f.Base + "Table")
+		return
 	}
+}
+
+// viewCarries reports whether a file's view module, not its table module,
+// carries name's descriptor: a type or union no table closure reaches
+// (docs/SPEC-TABLES.md §8.2).
+func viewCarries(u *ir.Unit, base, name string) bool {
+	reach := closure(u)
+	for _, f := range u.Files {
+		if f.Base != base {
+			continue
+		}
+		for _, d := range f.Decls {
+			switch d := d.(type) {
+			case *ir.Struct:
+				if d.Name == name {
+					return !reach[name]
+				}
+			case *ir.Union:
+				if d.Name == name {
+					return !reach[name]
+				}
+			}
+		}
+	}
+	return false
 }
 
 // guardPairs composes each guarded field's branch condition as a conjunction
@@ -383,11 +516,16 @@ func guardLua(pairs [][2]any) string {
 //	                    a map and a []T are UNBOUNDED CONTAINERS (§8.1): an
 //	                    explicit unbounded = true beside bound = 0 says "no
 //	                    declared bound", never a stand-in maximum
-func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string) string {
+func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string, wire bool) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "{ id = %s, name = %q, slot = %q, json = %q, o = %d, k = %d, ",
-		luau.IntegerLit(new(big.Int).SetUint64(ir.TableFieldWireId(f))), f.Name, ir.GoExportName(f.Name),
-		ir.TableFieldJsonKey(f), ordinal, ir.TableWireFieldKind(f))
+	if wire {
+		fmt.Fprintf(&b, "{ id = %s, name = %q, slot = %q, json = %q, o = %d, k = %d, ",
+			luau.IntegerLit(new(big.Int).SetUint64(ir.TableFieldWireId(f))), f.Name, ir.GoExportName(f.Name),
+			ir.TableFieldJsonKey(f), ordinal, ir.TableWireFieldKind(f))
+	} else {
+		fmt.Fprintf(&b, "{ id = %s, name = %q, slot = %q, o = %d, k = %d, ",
+			luau.IntegerLit(new(big.Int)), f.Name, ir.GoExportName(f.Name), ordinal, ir.TableWireFieldKind(f))
+	}
 	if f.Type.Optional {
 		fmt.Fprintf(&b, "present = %q, ", ir.GoExportName(f.Name+"_present"))
 	}
@@ -421,13 +559,13 @@ func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string) string {
 		}
 		if f.KeyEnumRef != nil {
 			fmt.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d, keyvs = %s%s, e = %s }",
-				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), enumVariants(f.KeyEnumRef), unbounded, elemDesc(g, f))
+				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), enumVariants(f.KeyEnumRef, wire), unbounded, elemDesc(g, f, wire))
 		} else {
 			fmt.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d%s, e = %s }",
-				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), unbounded, elemDesc(g, f))
+				array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), unbounded, elemDesc(g, f, wire))
 		}
 	default:
-		b.WriteString(valueDesc(g, f, true))
+		b.WriteString(valueDesc(g, f, true, wire))
 		b.WriteString(" }")
 	}
 	return b.String()
@@ -435,17 +573,24 @@ func fieldDesc(g *luau.Gen, f *ir.Field, ordinal int, guard string) string {
 
 // elemDesc is an array's element descriptor: the same facts a field of the
 // element's type carries, at its zero (§2.9).
-func elemDesc(g *luau.Gen, f *ir.Field) string {
+func elemDesc(g *luau.Gen, f *ir.Field, wire bool) string {
+	// A PLAIN TEXT LIST's element is kind 12: its own L and bytes, not the
+	// element record's body its storage is (docs/SPEC-TABLES.md §2.13, §3).
+	// The optional spelling keeps the record, whose present companion frames
+	// the element under kind 13, so only the plain one is rewritten here.
+	if ir.TextListPlain(f) {
+		return fmt.Sprintf("{ s = \"str\", bound = %d }", ir.TextListValue(f).Type.Size)
+	}
 	e := *f
 	e.Array = ir.ArrayNone
 	e.KeyEnum = ""
 	e.HasDefault = false
-	return "{ " + valueDesc(g, &e, false) + " }"
+	return "{ " + valueDesc(g, &e, false, wire) + " }"
 }
 
 // valueDesc is the shape of a non-array value and what it needs; def adds
 // the declared default the reader fills an absent field with (§4).
-func valueDesc(g *luau.Gen, f *ir.Field, def bool) string {
+func valueDesc(g *luau.Gen, f *ir.Field, def bool, wire bool) string {
 	t := f.Type
 	switch {
 	case t.Pointer && t.Blob() && t.Kind == ir.TString:
@@ -487,7 +632,7 @@ func valueDesc(g *luau.Gen, f *ir.Field, def bool) string {
 	case t.Kind == ir.TNamed:
 		switch r := t.Ref.(type) {
 		case *ir.Enum:
-			s := fmt.Sprintf("s = \"enum\", t = %q, vs = %s", r.Name, enumVariants(r))
+			s := fmt.Sprintf("s = \"enum\", t = %q, vs = %s", r.Name, enumVariants(r, wire))
 			if def {
 				s += ", def = " + g.Slots(f)[0].Init
 			}
@@ -507,11 +652,15 @@ func valueDesc(g *luau.Gen, f *ir.Field, def bool) string {
 
 // enumVariants is an enum's variants as { name, wire id, deprecated } triples:
 // identity is the variant NAME's hash and retirement never changes it (§2.15, §5).
-func enumVariants(e *ir.Enum) string {
+func enumVariants(e *ir.Enum, wire bool) string {
 	parts := make([]string, len(e.Variants))
 	for i := range e.Variants {
 		deprecated := i < len(e.VariantDeprecated) && e.VariantDeprecated[i]
-		parts[i] = fmt.Sprintf("{ %q, %s, %v }", e.Variants[i], luau.IntegerLit(new(big.Int).SetUint64(ir.TableWireId(e.VariantWireName(i)))), deprecated)
+		id := luau.IntegerLit(new(big.Int))
+		if wire {
+			id = luau.IntegerLit(new(big.Int).SetUint64(ir.TableWireId(e.VariantWireName(i))))
+		}
+		parts[i] = fmt.Sprintf("{ %q, %s, %v }", e.Variants[i], id, deprecated)
 	}
 	return "{ " + strings.Join(parts, ", ") + " }"
 }
@@ -541,6 +690,8 @@ func intDesc(g *luau.Gen, f *ir.Field, def bool) string {
 	if f.Type.Kind == ir.TFixed {
 		parts = append(parts, fmt.Sprintf("ibits = %d, fbits = %d", f.Type.IntBits, f.Type.FracBits))
 	}
+	// A timestamp is an int64 count of nanoseconds on the binary forms (kind 36,
+	// kw = 8, signed = true, dom = "integer"; docs/SPEC-TABLES.md §2.11).
 	if f.Type.Timestamp {
 		parts = append(parts, "timestamp = true")
 	}

@@ -46,9 +46,9 @@ func TestMapPresenceRefusedOffGo(t *testing.T) {
 		u := unitFromSource(t, tc.src)
 		for _, lang := range c.Targets() {
 			_, err := c.Generate(u, lang, nil)
-			if lang == "go" {
+			if carries(lang, carryOptionalMap) {
 				if err != nil {
-					t.Errorf("%s: go refused: %v", tc.name, err)
+					t.Errorf("%s: carrier %s refused: %v", tc.name, lang, err)
 				}
 				continue
 			}

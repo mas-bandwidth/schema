@@ -85,7 +85,7 @@ func TestLuauTableLoadKeyedMapAndClampRules(t *testing.T) {
 local load = require("./load")
 require("./BoxTable")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.load("Box", inputs.wire, report)
+local v = load.loadTolerant("Box", inputs.wire, report)
 local parts = {}
 for _, x in ipairs(v.Arr) do parts[#parts + 1] = tostring(x) end
 print(table.concat(parts, ",") .. "|" .. %s)`, report)
@@ -144,7 +144,7 @@ print(table.concat(parts, ",") .. "|" .. %s)`, report)
 local load = require("./load")
 require("./BoxTable")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.load("Box", inputs.wire, report)
+local v = load.loadTolerant("Box", inputs.wire, report)
 print(#v.M .. "|" .. %s)`, report)
 		want := "0|0,1,0,0,0,false"
 		if got := run(t, g, main, w); got != want {
@@ -167,7 +167,7 @@ print(#v.M .. "|" .. %s)`, report)
 local load = require("./load")
 require("./BoxTable")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.load("Box", inputs.wire, report)
+local v = load.loadTolerant("Box", inputs.wire, report)
 -- a string(N) is a buffer and its used Length (docs/PORT-LUAU.md, THE TYPE MAPPING)
 print(buffer.readstring(v.S, 0, v.SLength) .. "|" .. %s)`, report)
 		want := "ab|0,0,0,1,0,false"
@@ -191,7 +191,7 @@ print(buffer.readstring(v.S, 0, v.SLength) .. "|" .. %s)`, report)
 local load = require("./load")
 require("./BoxTable")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.load("Box", inputs.wire, report)
+local v = load.loadTolerant("Box", inputs.wire, report)
 -- a wstring(N) is a buffer of UTF-16LE code units and its Length in units
 -- (docs/PORT-LUAU.md, THE TYPE MAPPING): the kept units print as UTF-8
 local units = {}

@@ -149,9 +149,18 @@ local function narrow_f32(v: number): number
 	return buffer.readu32(scratch, 0)
 end
 
-local function fround(v: number): number
-	buffer.writef32(scratch, 0, v)
-	return buffer.readf32(scratch, 0)
+-- whether two floats are the SAME BIT PATTERN, which is what a plain float's
+-- elision compares (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL
+-- VALUES"): -0 and +0 differ, and a NaN is equal only to its own pattern.
+local function same_float(a: any, b: any, f32: boolean): boolean
+	if typeof(a) == "integer" then a = integer.tonumber(a) end
+	if typeof(b) == "integer" then b = integer.tonumber(b) end
+	if f32 then return narrow_f32(a) == narrow_f32(b) end
+	buffer.writef64(scratch, 0, a)
+	local alo, ahi = buffer.readu32(scratch, 0), buffer.readu32(scratch, 4)
+	buffer.writef64(scratch, 0, b)
+	local blo, bhi = buffer.readu32(scratch, 0), buffer.readu32(scratch, 4)
+	return alo == blo and ahi == bhi
 end
 
 -- ---- VALUES (docs/PORT-LUAU.md, THE TYPE MAPPING) -------------------------
@@ -405,9 +414,10 @@ local function enum_ref(c: any, e: any, val: any): number
 	return ref(c.ids, pair[2])
 end
 
--- one integer-shaped value at its kind's width (§3): a 128-bit value is its
--- two halves low first, a 64-bit one the integer's bits, a narrower one its
--- low bytes
+-- one integer-shaped value at its kind's width (§2.11, §3): a 128-bit value is
+-- its two halves low first, a 64-bit one (int64, uint64, bits(33..64), fixed
+-- with I+F > 32, or timestamp kind 36) the integer's 8 little-endian bytes, a
+-- narrower one its low bytes
 local function write_int(w: any, e: any, val: any)
 	local kw = e.kw
 	if kw == 16 then
@@ -502,10 +512,7 @@ local function elem_is_default(e: any, val: any, len: number?): boolean
 	local s = e.s
 	if s == "bool" then return val == false or val == nil end
 	if s == "int" then return same_int(val, 0) end
-	if s == "float" then
-		if e.f32 then return fround(val) == 0 end
-		return val == 0
-	end
+	if s == "float" then return same_float(val, 0, e.f32) end
 	if s == "enum" then return as_number(val) == 0 end
 	if s == "ptr" or s == "sblob" or s == "bblob" then return not val end
 	if s == "union" then return val == nil or val.Type == 0 end
@@ -579,7 +586,9 @@ end
 
 -- A MAP (§2.8): kind 14 over element kind 13, its entries in ASCENDING KEY
 -- ORDER, each entry's body always riding (identity is the key). An empty map
--- elides.
+-- elides, EXCEPT when `required` or a PRESENT optional (both passed as true)
+-- forces it: then the header and the two-byte empty array body `0d 00` ride
+-- under L = 2 (§2.3, §2.8).
 local function write_map(c: any, fd: any, w: any, val: any, required: boolean?): boolean
 	if (val == nil or #val == 0) and not required then return true end
 	header(c, w, fd.id, 14)
@@ -666,10 +675,7 @@ end
 local function at_default(fd: any, val: any): boolean
 	local s = fd.s
 	if s == "bool" then return (val == true) == (fd.def == true) end
-	if s == "float" then
-		if fd.f32 then return fround(val) == fround(fd.def) end
-		return val == fd.def
-	end
+	if s == "float" then return same_float(val, fd.def, fd.f32) end
 	if s == "int" then return same_int(val, fd.def) end
 	return as_number(val) == as_number(fd.def)
 end
@@ -712,6 +718,12 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		return true
 	end
 	if s == "map" then
+		-- `?map[K]V`: absent writes nothing; present ALWAYS rides, even empty
+		-- (docs/SPEC-TABLES.md §2.3, §2.8)
+		if fd.present ~= nil then
+			if not v[fd.present] then return true end
+			return write_map(c, fd, w, val, true)
+		end
 		return write_map(c, fd, w, val, required)
 	end
 	if fd.present ~= nil then
