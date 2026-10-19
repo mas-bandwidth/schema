@@ -1,4 +1,4 @@
-# make/schema-spec-pin-s6.mk — SECTION 6'S SPEC PINS
+# make/checks/schema-spec-pin-s6.mk — SECTION 6'S SPEC PINS
 # (docs/SPEC-TABLES.md §6, "The two lives of a table", the two load paths and
 # retain-unknown): the section's normative sentences carry row ids and every
 # row is pinned to a test in each port that carries its feature, or owed by
