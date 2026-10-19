@@ -530,3 +530,11 @@ preflight or compare region extents. In particular, an int32 list count-cap
 refusal stops without inventing the region reader's malformed-data event.
 `--builder` cannot be combined with `--message` or `--retain`. The existing
 region and retention arms retain their measurement and bounds checks.
+
+For an instance with a Go writer refusal, the manifest may carry the
+go-refusal=<reason> marker. On that Go wire row the driver writes the
+case.absent file with the exact reason bytes, and the harness counts one named
+absence while rejecting emitted bytes or an empty/wrong reason. Other language
+legs keep comparing their wire bytes with the golden. The blob_shared row uses
+this marker because one blob node named from two slots is refused by Go
+writers (blob_shared, SPEC-TABLES sections 2.5 and 16.7).
