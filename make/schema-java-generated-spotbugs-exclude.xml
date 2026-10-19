@@ -1,0 +1,26 @@
+<!-- Each suppression is a single method, named with its reason. There are no
+     pattern-wide or package-wide disables here. -->
+<FindBugsFilter>
+    <!-- NOT a bug: EmptyA is a zero-byte struct, so emptyAMaxBytes is 0 and
+         `data.length >= 0` is vacuously true. It is the writer's buffer bound,
+         emitted from the struct's own ceiling, and not a behavioural defect.
+         The live bounds for non-empty structs stay gated. -->
+    <Match>
+        <Bug pattern="INT_BAD_COMPARISON_WITH_NONNEGATIVE_VALUE"/>
+        <Class name="example.Clauses"/>
+        <Method name="checkWriteEmptyA"/>
+    </Match>
+    <!-- NOT a bug: EmptyB is a zero-byte struct; same vacuous ceiling as
+         checkWriteEmptyA above. -->
+    <Match>
+        <Bug pattern="INT_BAD_COMPARISON_WITH_NONNEGATIVE_VALUE"/>
+        <Class name="example.Clauses"/>
+        <Method name="checkWriteEmptyB"/>
+    </Match>
+    <!-- NOT a bug: Heartbeat is a zero-byte struct; heartbeatMaxBytes is 0. -->
+    <Match>
+        <Bug pattern="INT_BAD_COMPARISON_WITH_NONNEGATIVE_VALUE"/>
+        <Class name="example.Wire"/>
+        <Method name="checkWriteHeartbeat"/>
+    </Match>
+</FindBugsFilter>

@@ -1,0 +1,14 @@
+<!-- The Java SpotBugs lens is a BUG lens, so it includes the two categories
+     that name a defect in the analysed code: SpotBugs' own CORRECTNESS and the
+     SECURITY category find-sec-bugs writes into. Effort stays at max; the
+     threshold is medium because the one security pattern this gate is proven
+     on (PREDICTABLE_RANDOM) is a medium-priority detector. At that threshold
+     the whole tree reports 4077 findings, 4074 of them STYLE, BAD_PRACTICE,
+     PERFORMANCE and MALICIOUS_CODE design reports over generated public value
+     classes , noise for a bug lens. Scoping the include to the bug categories
+     is the gate's definition, not a suppression: a CORRECTNESS or SECURITY
+     finding is always reported. -->
+<FindBugsFilter>
+    <Bug category="CORRECTNESS"/>
+    <Bug category="SECURITY"/>
+</FindBugsFilter>
