@@ -132,9 +132,7 @@ $(SCHEMA_ELIXIR_CHECK_DIR)/.stamp: bin/schema make/elixir.mk
 		mkdir -p $(SCHEMA_ELIXIR_CHECK_DIR)/ebin/$$name $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name; \
 		cp $(SCHEMA_ELIXIR_CHECK_DIR)/gen/$$name/*.ex $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/; \
 		if [ -f $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex ]; then \
-			# Empty union descriptors make these exact arm helpers unreachable; keep the exemption local to this unit and function. \
 			sed -i 's/^  @unions %{}$$/  $(SCHEMA_ELIXIR_EMPTY_UNIONS_DIALYZER)\n  @unions %{}/' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; \
-			# No table-list descriptor can take read_keyed_pairs/7's kind-13 arm when this unit has no table-list element. \
 			if ! grep -q 'elem_kind: 13' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; then \
 				sed -i '/^  @tables /i\  # This unit declares no table-list element, so kind 13 is absent in read_keyed_pairs/7.\n  @dialyzer {:no_match, [read_keyed_pairs: 7]}' $(SCHEMA_ELIXIR_CHECK_DIR)/src/$$name/Table.ex; \
 			fi; \
