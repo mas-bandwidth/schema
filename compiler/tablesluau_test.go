@@ -164,6 +164,7 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 	}
 
 	const table = "package p\n\ntable Game\n{\n    x uint8\n}\n"
+	const tableWithType = "package p\n\ntype T\n{\n    x uint8\n}\n\ntable Game\n{\n    x uint8\n}\n"
 	cases := []struct {
 		site, name string
 		files      map[string]string
@@ -172,9 +173,9 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 		{"luau.CheckBases", "a schema file named for the type surface's runtime",
 			map[string]string{"schema_runtime.schema": "package p\n\ntype T\n{\n    x uint8\n}\n"}, "schema_runtime.luau"},
 		{"luau.CheckBases", "a schema file named for the table runtime's strict read",
-			map[string]string{"refusal.schema": table}, "refusal.luau"},
+			map[string]string{"refusal.schema": tableWithType}, "refusal.luau"},
 		{"luau.CheckBases", "a schema file named for the table runtime's load",
-			map[string]string{"load.schema": table}, "load.luau"},
+			map[string]string{"load.schema": tableWithType}, "load.luau"},
 		// the table surface's own RequireCycle call is the same site: a
 		// cross-file TABLE cycle never reaches it, because the front end
 		// refuses one first (docs/SPEC-TABLES.md §11, a unit's table files

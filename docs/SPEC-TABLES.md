@@ -13212,6 +13212,16 @@ in build version (§20.5).
 
 ## 11. Refused by name
 
+- **Two generated file names equal ignoring case.** Within one output tree
+  the generator refuses any two emitted file names that are equal when case
+  is folded — runtime modules included — naming both names and what claims
+  each (the schema file's module or the runtime module). The comparison is on
+  the names alone and is the same on every host: macOS and Windows write one
+  file for such a pair, so a generation that succeeds on Linux would lose a
+  file there. A schema file whose declarations are all tables emits no
+  type-surface module `<Base>.luau`; its module is `<Base>Table.luau`, the
+  table surface's own name for the unit, so a table declared in `Text.schema`
+  claims `TextTable.luau` and not `Text.luau`.
 - `table` bodies containing `const`/`reserved`/`align` (§2 — no bit
   positions). Extents have no wire ceiling (§3); an extent past the
   language's own int32 storage cap is refused there, not here.
