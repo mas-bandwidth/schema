@@ -41,6 +41,28 @@ func TestCBMCReadersMakefilePinsAndProbesTheTool(t *testing.T) {
 	if !strings.Contains(s, "schema-c-generated-cbmc-readers-negative-control") {
 		t.Error("the CBMC make fragment has no planted-bad-pattern control target")
 	}
+	// Attempt 3's driver still set num_bits = 0 after the comment said it was
+	// nondeterministic, so every reader refused on its first read and the run
+	// verified nothing. The assignment must stay gone.
+	if strings.Contains(s, "s.num_bits = 0;") {
+		t.Error("the CBMC driver zeroes num_bits; the stream must be nondeterministic under the assume")
+	}
+	// One global 128 with no --unwinding-assertions truncated loops silently.
+	if !strings.Contains(s, "--unwinding-assertions") {
+		t.Error("the CBMC runs must pass --unwinding-assertions so a too-small bound fails loudly")
+	}
+	for _, must := range []string{
+		"CBMC_UNWIND_read_input_packet",
+		"CBMC_UNWIND_read_render_block",
+		"CBMC_UNWIND_read_chat",
+		"CBMC_UNWIND_read_block",
+		"CBMC_TIME_LIMIT",
+		"CBMC_MEM_LIMIT_KB",
+	} {
+		if !strings.Contains(s, must) {
+			t.Errorf("the CBMC fragment is missing per-reader bound %q", must)
+		}
+	}
 }
 
 func TestCBMCReadersWorkflowIsNightlyOnly(t *testing.T) {
@@ -93,6 +115,15 @@ func TestCBMCReadersDriverHarnessesTypedValues(t *testing.T) {
 		if !strings.Contains(s, must) {
 			t.Errorf("the CBMC driver is missing expected construct %q", must)
 		}
+	}
+	if strings.Contains(s, "inputs[1000]") {
+		t.Error("the negative control plants an unreachable store; plant the real inputs_count bound in a scratch copy")
+	}
+	if !strings.Contains(s, "MAX_INPUTS_PER_PACKET+1") {
+		t.Error("the negative control does not plant the real inputs_count bound bug")
+	}
+	if !strings.Contains(s, "grep -q 'read_input_packet'") {
+		t.Error("the negative control does not require VERIFICATION FAILED to name read_input_packet")
 	}
 }
 

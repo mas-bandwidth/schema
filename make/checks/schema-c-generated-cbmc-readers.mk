@@ -15,7 +15,21 @@
 
 CBMC ?= cbmc
 CBMC_VERSION ?= 6.6.0
-CBMC_UNWIND ?= 128
+# Unwinding is per reader, because each reader's loops are the arrays it
+# decodes. A reader not named here decodes no array longer than 64 elements;
+# the 64-bit window is the runtime's per-word read loop. With
+# --unwinding-assertions a bound that is too small fails the gate loudly, so
+# no loop is ever silently truncated (the old single 128 did exactly that).
+CBMC_UNWIND ?= 512
+CBMC_UNWIND_read_input_packet ?= 256       # MAX_INPUTS_PER_PACKET (16) * 8
+CBMC_UNWIND_read_render_block ?= 640       # RENDER_BLOCK_MAX_SPRITES (64) * 8
+CBMC_UNWIND_read_chat ?= 2176              # MAX_CHAT_LENGTH (256) * 8
+CBMC_UNWIND_read_test_data ?= 2176         # text_length 255 * 8
+CBMC_UNWIND_read_block ?= 16064            # MAX_BLOCK_SIZE (2000) * 8
+# CBMC is heavy and can eat a machine: every per-reader run is bounded in wall
+# time and address space, and a timeout is a failure, never a silent pass.
+CBMC_TIME_LIMIT ?= 900
+CBMC_MEM_LIMIT_KB ?= 6000000
 CBMC_OBJECT_BITS ?= 12
 # The drivers are one translation unit per generated reader, so each run is a
 # small program; the object-bits default suffices.
@@ -44,15 +58,15 @@ schema-c-generated-cbmc-readers-runtime:
 	@test -f "$(SERIALIZE_C)/serialize.h" || { \
 	  echo "tool missing: serialize.c runtime at $(SERIALIZE_C)/serialize.h (pinned SERIALIZE_C_TAG v1.10.0 by the workflow)"; exit 1; }
 
-# One scratch driver per generated reader. The previous harness zeroed the
-# stream (data=NULL, num_bits=0), so every reader refused on its first read and
-# no loop, length check or array index was ever reached. Each driver now hands
-# the reader a nondeterministic buffer of <TYPE>_MAX_BYTES+8 bytes (the +8 is
-# the runtime's required read slack for its 64-bit window) with num_bits
-# constrained to the type's maximum encoded size, so the read path, its loops
-# and every index are actually traversed. Readers are run one per cbmc
-# invocation so a heavy message cannot blow the solver (a whole-InputPacket
-# nondet run was killed at 2 min on amd-2).
+# One scratch driver per generated reader. The stream's num_bits is left
+# uninitialised, i.e. nondeterministic in CBMC, and constrained only by the
+# type's maximum encoded size: an explicit `num_bits = 0` made every reader
+# refuse on its first read (serialize.h:1317) and the run was vacuous. The
+# buffer is <TYPE>_MAX_BYTES+8 bytes (the +8 is the runtime's required read
+# slack for its 64-bit window), so the read path, its loops and every index
+# are actually traversed. Readers are run one per cbmc invocation, each with
+# its own unwind bound, time and memory cap, so a heavy message cannot blow
+# the solver (a whole-InputPacket nondet run was killed at 2 min on amd-2).
 schema-c-generated-cbmc-readers-driver: schema-c-generated-cbmc-readers-probe schema-c-generated-cbmc-readers-runtime generated/c/.stamp
 	@mkdir -p build/cbmc-readers
 	@rm -f build/cbmc-readers/readers.list
@@ -73,7 +87,6 @@ schema-c-generated-cbmc-readers-driver: schema-c-generated-cbmc-readers-probe sc
 	    echo "    unsigned char buf[$$bits+8];"; \
 	    echo '    serialize_read_stream_t s;'; \
 	    echo '    s.data = buf;'; \
-	    echo '    s.num_bits = 0;'; \
 	    echo '    s.bits_read = 0;'; \
 	    echo '    s.error = 0;'; \
 	    echo "    __CPROVER_assume(s.num_bits >= 0 && s.num_bits <= $$bits*8);"; \
@@ -91,11 +104,18 @@ schema-c-generated-cbmc-readers: schema-c-generated-cbmc-readers-probe schema-c-
 	 while IFS='|' read -r fn ty; do \
 	   [ -s build/cbmc-readers/$$fn.c ] || { echo "no driver for $$fn"; exit 1; }; \
 	   total=$$((total+1)); \
-	   $(CBMC) build/cbmc-readers/$$fn.c -Igenerated/c -I$(SERIALIZE_C) \
-	     --bounds-check --pointer-check --unsigned-overflow-check --signed-overflow-check \
-	     --conversion-check --object-bits $(CBMC_OBJECT_BITS) \
-	     --unwind $(CBMC_UNWIND) --external-sat-solver cadical \
+	   u=$$(eval echo \$$CBMC_UNWIND_$$fn); [ -n "$$u" ] || u=$(CBMC_UNWIND); \
+	   start=$$(date +%s); \
+	   ( ulimit -v $(CBMC_MEM_LIMIT_KB); \
+	     timeout $(CBMC_TIME_LIMIT) $(CBMC) build/cbmc-readers/$$fn.c \
+	       -Igenerated/c -I$(SERIALIZE_C) \
+	       --bounds-check --pointer-check --unsigned-overflow-check \
+	       --signed-overflow-check --conversion-check \
+	       --object-bits $(CBMC_OBJECT_BITS) \
+	       --unwind $$u --unwinding-assertions --external-sat-solver cadical ) \
 	     > build/cbmc-readers/$$fn.log 2>&1; st=$$?; \
+	   secs=$$(( $$(date +%s) - start )); \
+	   echo "CBMC: $$fn unwind=$$u time=$${secs}s exit=$$st"; \
 	   if [ $$st -ne 0 ] || grep -q 'VERIFICATION FAILED' build/cbmc-readers/$$fn.log; then \
 	     echo "CBMC: reader $$fn FAILED (exit $$st; see build/cbmc-readers/$$fn.log)"; \
 	     tail -15 build/cbmc-readers/$$fn.log; \
@@ -106,13 +126,17 @@ schema-c-generated-cbmc-readers: schema-c-generated-cbmc-readers-probe schema-c-
 	 if [ "$$failed" -ne 0 ]; then echo "$$failed/$$total readers failed"; exit 1; fi
 
 # The planted-bad-pattern control: it copies the real generated reader for
-# read_input_packet into a scratch tree and plants a definite out-of-bounds
-# write in it. The gate must catch it (VERIFICATION FAILED naming
-# read_input_packet); red when the plant is in, green when it is out.
+# read_input_packet into a scratch tree and plants the real bound bug there:
+# inputs_count is accepted as MAX_INPUTS_PER_PACKET+1, one past the
+# inputs[MAX_INPUTS_PER_PACKET] array. The gate must catch it (VERIFICATION
+# FAILED naming read_input_packet); red when the plant is in, green when it is
+# out. The plant is in the decode bound, not an unreachable stores, so it
+# needs a nondeterministic stream to fire.
 schema-c-generated-cbmc-readers-negative-control: schema-c-generated-cbmc-readers-probe schema-c-generated-cbmc-readers-runtime
 	@rm -rf build/cbmc-readers/negative && mkdir -p build/cbmc-readers/negative/gen
 	@cp generated/c/*.h build/cbmc-readers/negative/gen/
-	@awk 'BEGIN{p=0} /read_input_packet\( serialize_read_stream_t \* stream, InputPacket \* value \)/{p=1; print; getline nl; print nl; print "    value->inputs[1000].stick_x = 0;"; next} {print}' build/cbmc-readers/negative/gen/TypesWire.h > build/cbmc-readers/negative/gen/TypesWire.h.tmp && mv build/cbmc-readers/negative/gen/TypesWire.h.tmp build/cbmc-readers/negative/gen/TypesWire.h
+	@sed -i 's/&value->inputs_count, 0, MAX_INPUTS_PER_PACKET )/\&value->inputs_count, 0, MAX_INPUTS_PER_PACKET+1 )/' build/cbmc-readers/negative/gen/TypesWire.h
+	@grep -q 'inputs_count, 0, MAX_INPUTS_PER_PACKET+1 )' build/cbmc-readers/negative/gen/TypesWire.h || { echo 'NEGATIVE CONTROL FAILED: the inputs_count bound plant did not apply'; exit 1; }
 	@{ \
 	  echo '#include <stdint.h>'; \
 	  echo '#include <string.h>'; \
@@ -123,7 +147,6 @@ schema-c-generated-cbmc-readers-negative-control: schema-c-generated-cbmc-reader
 	  echo '    unsigned char buf[INPUT_PACKET_MAX_BYTES+8];'; \
 	  echo '    serialize_read_stream_t s;'; \
 	  echo '    s.data = buf;'; \
-	  echo '    s.num_bits = 0;'; \
 	  echo '    s.bits_read = 0;'; \
 	  echo '    s.error = 0;'; \
 	  echo '    __CPROVER_assume(s.num_bits >= 0 && s.num_bits <= INPUT_PACKET_MAX_BYTES*8);'; \
@@ -133,14 +156,17 @@ schema-c-generated-cbmc-readers-negative-control: schema-c-generated-cbmc-reader
 	  echo '}'; \
 	  echo 'int main(void) { cbmc_harness_read(); return 0; }'; \
 	} > build/cbmc-readers/negative/driver.c
-	@$(CBMC) build/cbmc-readers/negative/driver.c \
-	  -Ibuild/cbmc-readers/negative/gen -Igenerated/c -I$(SERIALIZE_C) \
-	  --bounds-check --pointer-check --unsigned-overflow-check --signed-overflow-check \
-	  --conversion-check --object-bits $(CBMC_OBJECT_BITS) \
-	  --unwind $(CBMC_UNWIND) --external-sat-solver cadical \
+	@( ulimit -v $(CBMC_MEM_LIMIT_KB); \
+	   timeout $(CBMC_TIME_LIMIT) $(CBMC) build/cbmc-readers/negative/driver.c \
+	     -Ibuild/cbmc-readers/negative/gen -Igenerated/c -I$(SERIALIZE_C) \
+	     --bounds-check --pointer-check --unsigned-overflow-check --signed-overflow-check \
+	     --conversion-check --object-bits $(CBMC_OBJECT_BITS) \
+	     --unwind $(CBMC_UNWIND_read_input_packet) --unwinding-assertions \
+	     --external-sat-solver cadical ) \
 	  > build/cbmc-readers/negative/planted.log 2>&1; st=$$?; \
-	 if grep -q 'VERIFICATION FAILED' build/cbmc-readers/negative/planted.log; then \
-	   echo 'CBMC negative control: planted read_input_packet OOB write caught'; \
+	 if grep -q 'VERIFICATION FAILED' build/cbmc-readers/negative/planted.log && \
+	    grep -q 'read_input_packet' build/cbmc-readers/negative/planted.log; then \
+	   echo 'CBMC negative control: planted inputs_count bound (MAX_INPUTS_PER_PACKET+1) caught in read_input_packet'; \
 	 else \
 	   echo 'NEGATIVE CONTROL FAILED: planted read_input_packet OOB write not caught (exit '$$st')'; \
 	   tail -15 build/cbmc-readers/negative/planted.log; exit 1; fi

@@ -4,7 +4,7 @@ name: schema C generated CBMC readers
 # schema-per-language-lenses; Glenn, 2026-10-18). CBMC is heavy, so this gate
 # runs on a nightly schedule and on demand only — never per push. The one
 # budget that matters here is the solver's, not the wall clock's; the unwind
-# bound is pinned in make/schema-c-generated-cbmc-readers.mk.
+# bound is pinned in make/checks/schema-c-generated-cbmc-readers.mk.
 #
 # The gate links the generated readers to the C serialize runtime, which lives
 # in its own repository. It is cloned below at the same pinned release the rest
