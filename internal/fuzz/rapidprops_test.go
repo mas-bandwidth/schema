@@ -30,7 +30,10 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
@@ -42,18 +45,27 @@ import (
 )
 
 // TestMain caps rapid's default check count for this package's expensive
-// properties; an explicit -rapid.checks (the make target passes one) wins.
+// properties; an explicit -rapid.checks (the make target passes one) wins. It
+// also keeps a failing run from leaving a fail file in the tree; the seed is
+// still printed as the replay hint.
 func TestMain(m *testing.M) {
+	if !flagWasSet("rapid.checks") {
+		_ = flag.Set("rapid.checks", "8")
+	}
+	if !flagWasSet("rapid.nofailfile") {
+		_ = flag.Set("rapid.nofailfile", "true")
+	}
+	os.Exit(m.Run())
+}
+
+func flagWasSet(name string) bool {
 	set := false
 	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "rapid.checks" {
+		if f.Name == name {
 			set = true
 		}
 	})
-	if !set {
-		_ = flag.Set("rapid.checks", "8")
-	}
-	os.Exit(m.Run())
+	return set
 }
 
 // rapidRand is a rand.Source whose every draw is a rapid draw, so rapid shrinks
@@ -187,16 +199,126 @@ func TestPropStrictTolerantAgree(t *testing.T) {
 	})
 }
 
-// TestRapidPropsNegativeControl flips one probe comparison. It must fail and
-// rapid must shrink the drawn schema; run it with a small -rapid.checks.
+// rapidRecorder is a rapid.TB that records a check's failure instead of failing
+// the enclosing test, so the negative control can require the check to fail.
+type rapidRecorder struct {
+	mu     sync.Mutex
+	failed bool
+	text   strings.Builder
+}
+
+func (r *rapidRecorder) Helper()      {}
+func (r *rapidRecorder) Name() string { return "TestRapidPropsNegativeControl" }
+func (r *rapidRecorder) SkipNow()     {}
+func (r *rapidRecorder) FailNow()     { r.setFailed() }
+func (r *rapidRecorder) Fail()        { r.setFailed() }
+func (r *rapidRecorder) Failed() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.failed
+}
+
+func (r *rapidRecorder) Logf(format string, args ...any) {
+	r.record(fmt.Sprintf(format, args...))
+}
+
+func (r *rapidRecorder) Log(args ...any) { r.record(fmt.Sprint(args...)) }
+
+func (r *rapidRecorder) Skipf(format string, args ...any) {
+	r.record(fmt.Sprintf(format, args...))
+}
+
+func (r *rapidRecorder) Skip(args ...any) { r.record(fmt.Sprint(args...)) }
+
+func (r *rapidRecorder) Errorf(format string, args ...any) {
+	r.fail(fmt.Sprintf(format, args...))
+}
+
+func (r *rapidRecorder) Error(args ...any) { r.fail(fmt.Sprint(args...)) }
+
+func (r *rapidRecorder) Fatalf(format string, args ...any) {
+	r.fail(fmt.Sprintf(format, args...))
+}
+
+func (r *rapidRecorder) Fatal(args ...any) { r.fail(fmt.Sprint(args...)) }
+
+func (r *rapidRecorder) record(s string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.text.WriteString(s)
+	r.text.WriteByte('\n')
+}
+
+func (r *rapidRecorder) fail(s string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.failed = true
+	r.text.WriteString(s)
+	r.text.WriteByte('\n')
+}
+
+func (r *rapidRecorder) setFailed() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.failed = true
+}
+
+func (r *rapidRecorder) output() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.text.String()
+}
+
+var shrunkSchemaRE = regexp.MustCompile(`schema \((\d+) bytes\)`)
+
+// shrunkSchemaBytes returns the smallest schema size named in a recorded rapid
+// failure, or -1 when the failure names none.
+func shrunkSchemaBytes(out string) int {
+	best := -1
+	for _, m := range shrunkSchemaRE.FindAllStringSubmatch(out, -1) {
+		n, err := strconv.Atoi(m[1])
+		if err != nil {
+			continue
+		}
+		if best < 0 || n < best {
+			best = n
+		}
+	}
+	return best
+}
+
+// maxShrunkSchemaBytes bounds the shrunk schema the negative control requires.
+// A schema that cannot shrink below this is not shrinking, it is a probe or
+// compile failure that merely happens to be large.
+const maxShrunkSchemaBytes = 512
+
+// TestRapidPropsNegativeControl flips one probe comparison. It runs rapid's
+// check against a recording TB, then requires both a failure and a shrunk
+// schema under maxShrunkSchemaBytes.
 func TestRapidPropsNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	rapidPropsGate(t)
-	rapid.Check(t, func(rt *rapid.T) {
+	rec := &rapidRecorder{}
+	rapid.Check(rec, func(rt *rapid.T) {
 		src, unit, vals := rapidDrawUnit(rt)
 		runRapidProbe(t, rt, src, unit, vals, "roundtrip", true)
 	})
+	if !rec.Failed() {
+		t.Fatalf("NEGATIVE CONTROL FAILED: flipping one probe comparison left rapid's check green")
+	}
+	out := rec.output()
+	if !strings.Contains(out, "negative control: flipped comparison") {
+		t.Fatalf("NEGATIVE CONTROL FAILED: rapid failed, but not on the flipped comparison:\n%s", out)
+	}
+	size := shrunkSchemaBytes(out)
+	if size < 0 {
+		t.Fatalf("NEGATIVE CONTROL FAILED: the shrunk case names no schema size:\n%s", out)
+	}
+	t.Logf("negative control: rapid failed and shrank the schema to %d bytes", size)
+	if size > maxShrunkSchemaBytes {
+		t.Fatalf("NEGATIVE CONTROL FAILED: the shrunk schema is %d bytes, want at most %d (rapid did not shrink):\n%s", size, maxShrunkSchemaBytes, out)
+	}
 }
 
 // rapidProbeSource is the generated probe's values_test.go. It reuses the
