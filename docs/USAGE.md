@@ -1969,13 +1969,15 @@ ship.loadouts_count   = 0;
 absence), and on strings and `bytes` — those carry a length whose framing
 already rides when the field does; wrap one in a table and make that
 optional. It is also refused on an optional array that could hold pointer
-edges — an array of pointers, an array of unions, an array of a table that
-holds a pointer — a named follow-on, and on an enum-keyed array, whose
-slots elide by name. An optional takes no specified default: presence is
-its only default.
+edges — an array of pointers, an array of unions, an optional COUNTED array
+of a table that holds a pointer — a named follow-on, and on an enum-keyed
+array, whose slots elide by name. A by-value `?[N]T` of a table that holds
+a pointer IS allowed on the carrying targets. An optional takes no specified
+default: presence is its only default.
 
-A plain `?T` whose `T` holds a pointer IS allowed (Go first; every other
-target refuses it by name). Every walk — save, measure, load, retain,
+A plain `?T` whose `T` holds a pointer IS allowed, and a by-value `?[N]T`
+of such a `T` is too (Go, C, C# and C++ carry it; every other target refuses
+it by name). Every walk — save, measure, load, retain,
 cook, the JSON writer and reader — follows `T`'s pointers only while the
 field is present, so an absent value, or one made absent after it was set,
 writes no node for whatever its pointers still hold:
