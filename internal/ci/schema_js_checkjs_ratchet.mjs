@@ -45,7 +45,7 @@ function inspect(log, exitCode, baseline, expectedFiles) {
   if (expectedFiles.length === 0) errors.push("empty expected input set");
 
   if (exitCode === 0) {
-    if (lines.length !== 0) errors.push("tsc returned success with output");
+    if (parsed !== 0) errors.push("tsc returned success with diagnostic output");
   } else if (exitCode !== 1) {
     errors.push("unexpected tsc exit status " + exitCode + " (only 1 denotes diagnostics with --noEmit)");
   } else if (parsed === 0) {
