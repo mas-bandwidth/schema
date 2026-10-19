@@ -13,6 +13,8 @@ local S = require("./schema_tables")
 local M = {}
 
 local BATCH_MAX = 256
+-- the receiver's conforming default entry bound (ir.TableVocabularyMaxEntries)
+local DEFAULT_MAX_ENTRIES = 4096
 local NODE_ID: integer = -1i          -- 0xffffffffffffffff
 local VERSION_ID: integer = -2i       -- 0xfffffffffffffffe
 local VOCAB_ID: integer = -3i         -- 0xfffffffffffffffd
@@ -262,7 +264,7 @@ end
 -- TWO STRICT CHECKS"; a refusal is terminal and a second is
 -- `second_announcement`).
 function M.NewVocabulary(): any
-	return { entries = {}, count = 0, refBits = 1, buildVersion = 0i, announced = false, refused = false, maxBytes = 65536, maxEntries = 0 }
+	return { entries = {}, count = 0, refBits = 1, buildVersion = 0i, announced = false, refused = false, maxBytes = 65536, maxEntries = 4096 }
 end
 
 local function refuse(report: any, why: string): boolean
@@ -341,8 +343,13 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 	end
 	-- the entry bound is the receiver's second declared bound (§3.3): an
 	-- announcement past it is refused by name before the vocabulary is set,
-	-- exactly as the byte bound above is. Zero is the conforming default.
-	if (v.maxEntries or 0) > 0 and n > v.maxEntries then
+	-- exactly as the byte bound above is. Zero (or no field) is the
+	-- conforming default, 4096 entries, as the engine reads it
+	-- (internal/tablewire/message.go: ir.TableVocabularyMaxEntries); zero
+	-- never means unbounded.
+	local maxEntries = v.maxEntries or 0
+	if maxEntries <= 0 then maxEntries = DEFAULT_MAX_ENTRIES end
+	if n > maxEntries then
 		return refuse(report, "vocabulary_too_large")
 	end
 	v.entries = entries

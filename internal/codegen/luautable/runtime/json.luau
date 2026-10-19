@@ -448,7 +448,7 @@ end
 
 walk_default = function(T: any, desc: any): any
   if desc == nil then return {} end
-  local out = {}
+  local out: { [string]: any } = {}
   for _, fd in desc.fields do
     local name = fd.name
     if not fd.optional then
@@ -1352,8 +1352,9 @@ end
 local function decimal_parts(s: string): (string, number)
   local t = s
   if t:sub(1, 1) == "-" or t:sub(1, 1) == "+" then t = t:sub(2) end
-  local mant, ex = t:match("^([^eE]+)[eE]([-+]?%d+)$")
-  if mant == nil then mant, ex = t, "0" end
+  local m1, e1 = t:match("^([^eE]+)[eE]([-+]?%d+)$")
+  local mant: string, ex: string = t, "0"
+  if m1 ~= nil and e1 ~= nil then mant, ex = m1, e1 end
   local exp = tonumber(ex) or 0
   local dot = mant:find(".", 1, true)
   local digits, frac

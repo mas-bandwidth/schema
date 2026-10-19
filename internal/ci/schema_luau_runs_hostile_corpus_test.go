@@ -13,7 +13,9 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -26,6 +28,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -317,11 +322,20 @@ for _, c in CASES do
 		elseif n ~= 1 then
 			verdict, reason = "refuse", "damaged"
 		else
-			-- message.luau hands back the bodies as bit ranges with no id
-			-- table or framing, so it cannot hand one back as an instance the
-			-- canonical writer takes (a later card). Name the gap rather than
-			-- forge a digest.
-			dig = "message-body-undecoded"
+			-- message.luau hands back each body as a bit range, not an
+			-- instance. A body exactly one reference wide can only be the
+			-- zero reference that ends it (every other reference is followed
+			-- by at least the terminator), so it decodes to the root's
+			-- default instance, which the canonical writer then digests like
+			-- any other accept. A wider body has fields this probe cannot
+			-- place yet: it prints a marker that is not a digest, so the
+			-- runner reports it as a finding instead of passing it unchecked.
+			local body = bodies[1]
+			if body ~= nil and body.to - body.from == voc.refBits then
+				v = S.lookup(c.root).new()
+			else
+				dig = "message-body-undecoded"
+			end
 		end
 	else
 		error("unknown carrier " .. c.carrier)
@@ -384,14 +398,11 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 				continue
 			}
 			digest := "-"
-			// The Luau message reader hands bodies back as bit ranges with no id
-			// table or framing, so it cannot ( yet hand one back as an instance the
-			// canonical writer takes (hostileProbe names the gap "message-body-
-			// undecoded"). A message carrier is therefore not yet held to the
-			// manifest's decoded-value digest: that is the named port gap, not a
-			// regression, so the digest check is skipped for it alone.
-			isMsg := c.carrier == "message" || c.carrier == "message_novocab"
-			if c.verdict == "accept" && !isMsg {
+			// Every accept is held to the manifest's decoded-value digest,
+			// message carriers included: a message body the probe cannot
+			// decode prints "message-body-undecoded", which is not hex and so
+			// fails here by name.
+			if c.verdict == "accept" {
 				// The probe writes the canonical text form (§16.1) with the Luau
 				// writer and reports it as hex; the manifest digest is SHA-256 of
 				// the engine canonical text, so hash the probe's text and compare
@@ -408,7 +419,7 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 					digest = hex.EncodeToString(sum[:])
 				}
 			}
-			if g[1] != c.verdict || g[2] != c.reason || (c.verdict == "accept" && !isMsg && digest != c.digest) {
+			if g[1] != c.verdict || g[2] != c.reason || (c.verdict == "accept" && digest != c.digest) {
 				// label the mismatched component so the triage table can tell a
 				// verdict/reason divergence (a reader bug) from a digest-only
 				// divergence (a canonical-writer gap) at a glance
@@ -429,6 +440,7 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 // at the manifest's carrier and holds it to the committed verdict.
 func TestLuauRunsHostileCorpus(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "luau (the pinned release)")
 	root, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
@@ -447,6 +459,7 @@ func TestLuauRunsHostileCorpus(t *testing.T) {
 // generated scratch program only, must go red and name the inputs it refuses.
 func TestLuauRunsHostileCorpusPlantedPattern(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "luau (the pinned release)")
 	root, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
@@ -463,5 +476,105 @@ func TestLuauRunsHostileCorpusPlantedPattern(t *testing.T) {
 	}
 	if found == 0 {
 		t.Fatal("the planted reader bug was caught without a FIX-CARD line")
+	}
+}
+
+// hostileAnnouncement is an announcement of `n` synthetic void entries (ids
+// 1..n, kind 0), spelled exactly as ir.TableAnnouncement spells a unit's. The
+// corpus bounds the entry count only at a declared MaxEntries of 1, so the
+// conforming default bound needs its own pair of inputs.
+func hostileAnnouncement(n int) []byte {
+	entries := make([]ir.TableVocabularyEntry, n)
+	for i := range entries {
+		entries[i] = ir.TableVocabularyEntry{Id: uint64(i + 1)}
+	}
+	vocabulary := ir.TableVocabularyBytes(entries)
+	leb := func(out []byte, v uint64) []byte {
+		for v >= 0x80 {
+			out = append(out, uint8(v)|0x80)
+			v >>= 7
+		}
+		return append(out, uint8(v))
+	}
+	out := []byte{ir.TableWireForm, 1, uint8(ir.TableKindU64)}
+	out = binary.LittleEndian.AppendUint64(out, 7)
+	out = append(out, 2, uint8(ir.TableKindArray))
+	body := leb([]byte{uint8(ir.TableKindU8)}, uint64(len(vocabulary)))
+	body = append(body, vocabulary...)
+	out = leb(out, uint64(len(body)))
+	out = append(out, body...)
+	out = append(out, 0)
+	out = binary.LittleEndian.AppendUint64(out, ir.TableBuildVersionWireId)
+	out = binary.LittleEndian.AppendUint64(out, ir.TableMessageVocabularyWireId)
+	return binary.LittleEndian.AppendUint64(out, 2)
+}
+
+// TestLuauVocabularyDefaultEntryBound pins the receiver's DEFAULT entry bound
+// (docs/SPEC-TABLES.md §3.3): a vocabulary with no declared MaxEntries takes
+// the conforming 4096 (ir.TableVocabularyMaxEntries), never "unbounded". The
+// engine is the oracle: it accepts 4096 entries and refuses 4097 by name, and
+// the Luau reader must agree on both. Red at the base, where the Luau reader
+// read a zero bound as no bound and accepted 4097.
+func TestLuauVocabularyDefaultEntryBound(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "luau (the pinned release)")
+	want := map[string]string{}
+	inputs := map[string][]byte{}
+	for _, n := range []int{ir.TableVocabularyMaxEntries, ir.TableVocabularyMaxEntries + 1} {
+		name := fmt.Sprintf("entries_%d", n)
+		data := hostileAnnouncement(n)
+		inputs[name] = data
+		v := &tablewire.Vocabulary{}
+		var r tabletext.Report
+		err := v.AnnounceRead(data, &r)
+		switch {
+		case err == nil && !r.Malformed:
+			want[name] = "accept\t-"
+		case err != nil:
+			var mr *tablewire.MessageRefusal
+			if !errors.As(err, &mr) {
+				t.Fatalf("%s: engine returned an unnamed refusal: %v", name, err)
+			}
+			want[name] = "refuse\t" + mr.Reason.String()
+		default:
+			t.Fatalf("%s: the engine read the hand-built announcement as damaged", name)
+		}
+	}
+	if want["entries_4096"] != "accept\t-" || want["entries_4097"] != "refuse\tvocabulary_too_large" {
+		t.Fatalf("the engine oracle moved: %q", want)
+	}
+	dir := t.TempDir()
+	for name, data := range luautable.Runtime() {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	main := `local inputs = require("./inputs")
+local M = require("./message")
+for _, name in { "entries_4096", "entries_4097" } do
+	local voc = M.NewVocabulary()
+	local rep = { malformed = false, verdict = 0, reason = "", unknown = 0 }
+	if M.AnnounceRead(voc, inputs[name], rep) then
+		print(name .. "\taccept\t-")
+	elseif rep.malformed then
+		print(name .. "\trefuse\tdamaged")
+	else
+		print(name .. "\trefuse\t" .. rep.reason)
+	end
+end
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := luaurun.Run(t, dir, "main.luau", inputs)
+	got := map[string]string{}
+	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+		name, rest, _ := strings.Cut(line, "\t")
+		got[name] = rest
+	}
+	for name, w := range want {
+		if got[name] != w {
+			t.Errorf("FIX-CARD: luau-hostile-corpus: %s got %q want %q (the engine's verdict)", name, got[name], w)
+		}
 	}
 }

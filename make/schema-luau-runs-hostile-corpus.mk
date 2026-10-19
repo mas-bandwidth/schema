@@ -12,10 +12,18 @@
 # reader bug in a scratch copy and requires the same runner to go red; it is
 # the nightly half because it runs the corpus twice.
 .PHONY: schema-luau-runs-hostile-corpus schema-luau-runs-hostile-corpus-negative-control
+# The tests shell out to the pinned interpreter, so they sit behind
+# slowtest.Gate; both targets run them through test/slowgate/proof, which sets
+# SCHEMA_SLOW=1, refuses a gate skip and requires each named --- PASS, so a
+# skipped run can never pass as green.
 schema-luau-runs-hostile-corpus: toolchain-luau
-	go test ./internal/ci -run '^TestLuauRunsHostileCorpus$$' -count=1 -timeout 600s
+	sh test/slowgate/proof schema-luau-runs-hostile-corpus \
+		'TestLuauRunsHostileCorpus TestLuauVocabularyDefaultEntryBound' \
+		./internal/ci -run '^(TestLuauRunsHostileCorpus|TestLuauVocabularyDefaultEntryBound)$$' -count=1 -timeout 600s
 
 schema-luau-runs-hostile-corpus-negative-control: toolchain-luau
-	go test ./internal/ci -run '^TestLuauRunsHostileCorpusPlantedPattern$$' -count=1 -timeout 600s
+	sh test/slowgate/proof schema-luau-runs-hostile-corpus-negative-control \
+		'TestLuauRunsHostileCorpusPlantedPattern' \
+		./internal/ci -run '^TestLuauRunsHostileCorpusPlantedPattern$$' -count=1 -timeout 600s
 
 test-luau: schema-luau-runs-hostile-corpus
