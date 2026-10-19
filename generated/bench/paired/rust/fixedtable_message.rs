@@ -225,4 +225,3 @@ pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &Tabl
     }
     (count, table_message_batch_close(&mut r, report))
 }
-

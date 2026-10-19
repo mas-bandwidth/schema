@@ -5139,7 +5139,8 @@ the slot table. Duplicate ids stay refused, and ids this reader cannot name stay
 legal: they are counted `unknown` exactly where a body names them, never at
 resolve time. Every table this schema's own writer emits is far under the
 bound, so the refusal is a reader's defense against a hostile file and no
-writer this schema can drive ever meets it.
+writer this schema can drive ever meets it. The Rust port does not yet enforce
+this 4096-entry / 8192-slot cap (tracked separately).
 
 **THIS FORM IS THE TOLERANT WIRE'S AND NOTHING ELSE'S.** No id, no kind
 byte, no reference and no length of this section appears in the other four

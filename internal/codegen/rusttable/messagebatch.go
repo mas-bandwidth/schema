@@ -89,7 +89,7 @@ use crate::*;
 			m.emitBatch(st)
 		}
 	}
-	return []byte(m.b.String())
+	return []byte(strings.TrimRight(m.b.String(), "\n") + "\n")
 }
 
 // emitDefaults is the declared defaults of one record, the PREFILL image the

@@ -1808,4 +1808,3 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
         }
     }
 }
-
