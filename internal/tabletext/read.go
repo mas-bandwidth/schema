@@ -375,9 +375,8 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 			}
 			// A SEQUENCE THAT IS NOT A CODE POINT IS REFUSED BY NAME
 			// (§16.3): RFC 8259 requires a JSON text to be valid UTF-8, and
-			// a silent U+FFFD would make two different texts one value.
-			// The lone-surrogate escape above still reads as U+FFFD; that is
-			// the sibling card schema-go-json-refuses-lone-surrogates.
+			// a silent U+FFFD would make two different texts one value. A
+			// lone-surrogate ESCAPE is refused by name above, as its own rule.
 			if !utf8.Valid(unit) {
 				in.utf8 = true
 				if in.report.Reason == "" {
@@ -844,8 +843,10 @@ func (in *reader) nameZero(table string, fv *Field) {
 	if in.report.Reason == "" {
 		if in.zero {
 			in.report.Reason = "text_holds_zero: " + table + "." + fv.Def.Name
-		} else if in.loneSurrogate {
-			in.report.Reason = "string_lone_surrogate: " + table + "." + fv.Def.Name
+		} else {
+			// §16.3 names <key>, the decoded key as written, not a
+			// table-qualified field name
+			in.nameLone()
 		}
 	}
 }
@@ -2120,7 +2121,7 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 		in.nameZero(m.ownerTable(fv.Def), fv) // §16.3, §17.4
 		report.Malformed = true
 		if report.Reason == "" && in.loneSurrogate {
-			report.Reason = "string_lone_surrogate: " + fv.Def.Name
+			in.nameLone()
 		}
 		return false
 	}

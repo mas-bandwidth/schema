@@ -584,8 +584,8 @@ func TestWriterEmitsValidUTF8(t *testing.T) {
 		`{ "callsign": "\uDC00x" }`,
 	} {
 		_, _, r = read(t, "GunnerSettings", text)
-		if !r.Malformed || r.Reason != "string_lone_surrogate: GunnerSettings.callsign" {
-			t.Fatalf("%s: report %+v, want Malformed with Reason string_lone_surrogate: GunnerSettings.callsign", text, r)
+		if !r.Malformed || r.Reason != "string_lone_surrogate: callsign" {
+			t.Fatalf("%s: report %+v, want Malformed with Reason string_lone_surrogate: callsign", text, r)
 		}
 	}
 	// a raw ill-formed byte is REFUSED BY NAME ON READ (§16.3) — a silent

@@ -26,24 +26,28 @@ fixed table Root
 const loneSurrogateProbe = `package probe
 
 import (
+	"strings"
 	"testing"
 )
 
 func TestLoneSurrogate(t *testing.T) {
+	// <key> is the decoded key as written (§16.3), not a table-qualified
+	// field name: a known field's value is named by its key, as a skipped
+	// value is.
 	cases := []struct{ label, text, reason string }{
-		{"high alone", "{\"s\":\"\\ud800\"}", "string_lone_surrogate: Root.s"},
-		{"low alone", "{\"s\":\"\\udfaa\"}", "string_lone_surrogate: Root.s"},
-		{"high followed by plain", "{\"s\":\"\\ud800abc\"}", "string_lone_surrogate: Root.s"},
-		{"high followed by raw utf8", "{\"s\":\"\\ud888ሴ\"}", "string_lone_surrogate: Root.s"},
-		{"low then high", "{\"s\":\"\\udd1e\\ud834\"}", "string_lone_surrogate: Root.s"},
-		{"two highs", "{\"s\":\"\\ud800\\ud800\\n\"}", "string_lone_surrogate: Root.s"},
+		{"high alone", "{\"s\":\"\\ud800\"}", "string_lone_surrogate: s"},
+		{"low alone", "{\"s\":\"\\udfaa\"}", "string_lone_surrogate: s"},
+		{"high followed by plain", "{\"s\":\"\\ud800abc\"}", "string_lone_surrogate: s"},
+		{"high followed by raw utf8", "{\"s\":\"\\ud888ሴ\"}", "string_lone_surrogate: s"},
+		{"low then high", "{\"s\":\"\\udd1e\\ud834\"}", "string_lone_surrogate: s"},
+		{"two highs", "{\"s\":\"\\ud800\\ud800\\n\"}", "string_lone_surrogate: s"},
 		{"key low alone", "{\"\\udfaa\":0}", "string_lone_surrogate: <root>"},
 		{"skipped unknown value", "{\"unknown\":\"\\ud800\"}", "string_lone_surrogate: unknown"},
 		{"skipped known wrong shape", "{\"s\":[\"\\ud800\"]}", "string_lone_surrogate: s"},
 		{"bad key after good field", "{\"s\":\"a\",\"\\udfaa\":0}", "string_lone_surrogate: <root>"},
 		{"bad key after skipped field", "{\"unknown\":1,\"\\udfaa\":0}", "string_lone_surrogate: <root>"},
 		{"bad key in skipped object", "{\"unknown\":{\"a\":1,\"\\udfaa\":2}}", "string_lone_surrogate: unknown"},
-		{"wstring high alone", "{\"w\":\"\\ud800\"}", "string_lone_surrogate: Root.w"},
+		{"wstring high alone", "{\"w\":\"\\ud800\"}", "string_lone_surrogate: w"},
 	}
 	for _, tc := range cases {
 		var v Root
@@ -54,6 +58,15 @@ func TestLoneSurrogate(t *testing.T) {
 		if !report.Malformed || report.Reason != tc.reason {
 			t.Fatalf("%s: report %+v, want Malformed with Reason %q", tc.label, report, tc.reason)
 		}
+	}
+	// a long key inside a SKIPPED object is not a clamp: the key only names a
+	// refusal (§16.3), and the engine does not count its bound either, so the
+	// two readers must agree on valid JSON.
+	long := strings.Repeat("k", 300)
+	var lv Root
+	var lr TableReport
+	if !RootFromJson(&lv, []byte("{\"unknown\":{\""+long+"\":1}}"), &lr) || lr.Malformed || lr.Clamped != 0 {
+		t.Fatalf("long key in a skipped object: %+v", lr)
 	}
 	// the astral character reads clean, as bytes and as code units
 	var v Root
