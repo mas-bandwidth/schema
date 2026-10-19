@@ -174,21 +174,16 @@ func init() {
 	//     image: every field of the image is present by construction, so there
 	//     is no absent field for a default to answer and nothing to elide.
 	//
-	// The id-table wire (§3) is emitted for this backend for the whole table
-	// class, fixed and variable alike (docs/SPEC-TABLES.md §2, §3); its codec
-	// elides a field at its declared default — the fixed class's string, bytes
-	// and flags defaults ride the wire — so the elision claim stays true as the
-	// class widens. Registered the way go, java and rust register (target_go.go,
+	// The id-table wire (§3) is emitted for this backend for the whole variable
+	// class (docs/SPEC-TABLES.md §2, §3); its codec elides a field at its
+	// declared default, so the elision claim stays true as the class widens.
+	// Registered the way go, java and rust register (target_go.go,
 	// target_java.go, target_rust.go): the append IS the registration.
 	valueDefaultTargets = append(valueDefaultTargets, "elixir")
 	registerWideTextCarrier("elixir")
 	registerListCarrier("elixir")
 	registerMapCarrier("elixir")
 	registerOptionalArrayCarrier("elixir")
-	// THE `was` ROWS (docs/SPEC-TABLES.md §5): the variable form's arm header
-	// and field descriptors hash the WireName, so renaming a table, a variant,
-	// an arm or a type's field reads across the rename the way the Go leg does.
-	wasRowTargets = append(wasRowTargets, "elixir")
 	// arms=true and unionArrays=true: the variable form carries a union whose
 	// arms are field lines of any type, payload-free arms among them, and an
 	// array of unions (docs/SPEC-TABLES.md §2.6, §3). blobs=true: it carries

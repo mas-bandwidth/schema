@@ -13,17 +13,13 @@ import (
 )
 
 // TestFixedClassOnTableWireElixir pins docs/SPEC-TABLES.md §3 (the id-table
-// wire, form byte 1), §4.2 (an absent field reads its declared default) and §5
-// (the `was` rows) for the fixed class:
-//
-//   - a closure that HOLDS a fixed table still rides form 1 (tblw1's Fleet
-//     reaches Vessel by pointer and by value; tblr1's Cfg IS a fixed table);
-//   - the string, bytes and flags defaults on W1 (name = "untitled",
-//     tag = "ab", caps = { Jump, Fly }, hull = 100 and a `type`'s label =
-//     "new") ride the wire and the text, so a dropped default is red here;
-//   - the four renames read across the rename the way the Go leg does: W2's
-//     Vessel→Ship table rename, and R2's Silver→Argent variant, ward→shield
-//     and ping→pong arm renames and Buff.multiplier→mult type-field rename.
+// wire, form byte 1) for the fixed class: a closure that HOLDS a fixed table
+// still rides form 1. tblw1's Fleet reaches Vessel by pointer and by value,
+// tblr1's Cfg IS a fixed table, and tblw2's Fleet reaches the renamed Ship
+// (`was = "Vessel"`, §5) — the table-declaration rename the fixed class
+// already carries on form 1 alone. The string, bytes and flags defaults and
+// the variant, arm and type-field renames are the sibling cards
+// (vt/defaults-and-table-rename/elixir and vt/renames/elixir).
 //
 // The COMMITTED oracle bytes are the reference's own wire, so every instance
 // is loaded, re-saved byte for byte and (where the corpus pins one) round
@@ -38,6 +34,10 @@ func TestFixedClassOnTableWireElixir(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// tblr2 is DELIBERATELY absent: its Cfg carries an enum-variant, a
+	// union-arm and a type-field `was`, which the sibling card
+	// elixir-renames-variants-arms-and-type-fields registers in
+	// wasRowTargets. This card's fixed class rides form 1 without it.
 	type instance struct{ name, root string }
 	units := []struct {
 		name, schema string
@@ -52,15 +52,11 @@ func TestFixedClassOnTableWireElixir(t *testing.T) {
 		{"tblr1", "test/tables/R1.schema", []instance{
 			{"r1_cfg", "Cfg"}, {"r1_ping", "Cfg"},
 		}},
-		{"tblr2", "test/tables/R2.schema", []instance{
-			{"r2_cfg", "Cfg"},
-		}},
 	}
 
 	// Generate every unit through the COMPILER path (`schema generate --lang
 	// elixir`): GatherPaths, Load and Generate, so a target refusal the backend
-	// never sees — the `was` rows of §5 — fails here rather than passing by
-	// bypassing the target.
+	// never sees fails here rather than passing by bypassing the target.
 	dir := t.TempDir()
 	mods := map[string]string{}
 	var builds, rest []string
@@ -148,24 +144,16 @@ end
 			check(in.name, in.name, mods[uu.name], in.root, true)
 		}
 	}
-	// THE RENAMES (§5), each direction the manifest's report rows name: the
-	// NEW side reads the OLD side's bytes in silence and re-saves them byte for
-	// byte, so a rename that did not hash the WireName would count unknown or
-	// write different bytes. W1 default carries all three defaults, so the
-	// table rename is checked over them too.
+	// THE TABLE RENAME (§5) on form 1 alone: the NEW side reads the OLD side's
+	// bytes in silence and re-saves them byte for byte, so a table declaration
+	// whose node type id ignored `was` would count unknown or write different
+	// bytes. The variant, arm and type-field renames are the sibling card.
 	for _, cross := range []struct{ name, wire, unit string }{
 		{"w1_fleet_as_w2", "w1_fleet", "tblw2"},
 		{"w1_fleet_default_as_w2", "w1_fleet_default", "tblw2"},
 		{"w2_fleet_as_w1", "w2_fleet", "tblw1"},
-		{"r1_cfg_as_r2", "r1_cfg", "tblr2"},
-		{"r1_ping_as_r2", "r1_ping", "tblr2"},
-		{"r2_cfg_as_r1", "r2_cfg", "tblr1"},
 	} {
-		table := "Fleet"
-		if strings.HasPrefix(cross.name, "r") {
-			table = "Cfg"
-		}
-		check(cross.name, cross.wire, mods[cross.unit], table, false)
+		check(cross.name, cross.wire, mods[cross.unit], "Fleet", false)
 	}
 
 	probe.WriteString("\nif Process.get(:failed), do: System.halt(1), else: IO.puts(\"ok\")\n")
