@@ -78,7 +78,6 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		"refuseOptionalArrays": refuseOptionalArrays,
 		"refuseMaps":           refuseMaps,
 		"refuseLists":          refuseLists,
-		"refuseTextForms":      refuseTextForms,
 		"refuseValueDefaults":  refuseValueDefaults,
 		"refuseWasRows":        refuseWasRows,
 		"refuseTableArms":      refuseTableArms,
@@ -120,10 +119,6 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		{"refuseBytes", "byte buffer", "package probe\n\ntable L\n{\n    b *bytes\n}\n", "L.b", false},
 		{"refuseStrings", "string buffer", "package probe\n\ntable L\n{\n    s *string\n}\n", "L.s", false},
 		{refuser: "refuseMaps", name: "map", src: "package probe\n\ntable L\n{\n    index map[string(8)]int32\n}\n", field: "L.index", carried: true},
-		// this construct is LIFTED (compiler/target_squirrel_unboundedtext.go):
-		// the tagged target carries it, so the refuser accepts squirrel and still
-		// refuses a target that has not registered (docs/SPEC-TABLES.md §2.13.1).
-		{refuser: "refuseTextForms", name: "unbounded text", src: "package probe\n\ntable Where\n{\n    rules []string\n}\n", field: "Where.rules", carried: true},
 		// this construct is LIFTED (compiler/target_squirrel_lists.go): the
 		// tagged target carries it, so the refuser accepts squirrel and still
 		// refuses a target that has not registered (docs/SPEC-TABLES.md §2.9).
@@ -166,8 +161,6 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			registered := true
 			if tc.refuser == "refuseLists" {
 				registered = slices.Contains(listTargets, "squirrel")
-			} else if tc.refuser == "refuseTextForms" {
-				registered = carries("squirrel", carryUnboundedText)
 			}
 			if slices.Contains([]string{"refuseTableArms", "refuseVoidArms", "refuseUnionArrays"}, tc.refuser) {
 				registered = c != nil

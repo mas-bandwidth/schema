@@ -16,14 +16,35 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
+// nonGoCarriers is the untagged registry test's table of non-Go carriers; this
+// tagged feature joins it here, the way compiler/carries_test.go expects.
+func init() {
+	nonGoCarriers["squirrel"] = append(nonGoCarriers["squirrel"], carryUnboundedText)
+}
+
+// TestSquirrelUnboundedTextRefuserFollowsTheRegistry pins refuseTextForms
+// (docs/SPEC-TABLES.md §2.13.1) for the tagged Squirrel target and an
+// unregistered target.
+func TestSquirrelUnboundedTextRefuserFollowsTheRegistry(t *testing.T) {
+	t.Parallel()
+	u := unitFromSource(t, "package probe\n\ntable Where\n{\n    rules []string\n}\n")
+	if err := refuseTextForms(u, "squirrel"); err != nil {
+		t.Fatalf("refuseTextForms refused squirrel after registration (docs/SPEC-TABLES.md §2.13.1): %v", err)
+	}
+	err := refuseTextForms(u, "nonesuch")
+	if err == nil || !strings.Contains(err.Error(), "nonesuch") || !strings.Contains(err.Error(), "Where.rules") {
+		t.Fatalf("refuseTextForms did not refuse nonesuch naming Where.rules: %v", err)
+	}
+}
+
 // TestSquirrelCarriesUnboundedText drives the construct this card lifts
 // (docs/SPEC-TABLES.md §2.13.1) through the tagged Squirrel target: the
 // module must generate, the value must save and load back to the same bytes,
 // its wire must equal internal/tablewire's Save of the same value, and its
 // JSON text must equal internal/tabletext's, byte for byte.
 func TestSquirrelCarriesUnboundedText(t *testing.T) {
-	ensurePinnedSquirrel(t)
 	t.Parallel()
+	ensurePinnedSquirrel(t)
 	cases := []struct {
 		name   string
 		src    string
