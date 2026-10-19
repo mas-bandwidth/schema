@@ -40,10 +40,6 @@ func TestJavaFixMapKeyKind5Malformed(t *testing.T) {
 		}
 	}
 	pkg := javaPackageOf(u)
-	classes := filepath.Join(t.TempDir(), "classes")
-	if err := os.MkdirAll(classes, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	var sources []string
 	for name, data := range files {
 		path := filepath.Join(t.TempDir(), name)
@@ -60,6 +56,10 @@ func TestJavaFixMapKeyKind5Malformed(t *testing.T) {
 		root, hexs := root, hexs
 		t.Run(root, func(t *testing.T) {
 			t.Parallel()
+			classes := filepath.Join(t.TempDir(), "classes")
+			if err := os.MkdirAll(classes, 0o755); err != nil {
+				t.Fatal(err)
+			}
 			mutant, err := hex.DecodeString(hexs)
 			if err != nil {
 				t.Fatal(err)
