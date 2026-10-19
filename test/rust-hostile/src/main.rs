@@ -60,15 +60,7 @@ fn main() {
             Ok(b) => b,
             Err(e) => die(&format!("{}: cannot read {}: {e}", c.name, c.input)),
         };
-        let (mut verdict, mut reason, mut text) = run_case(&c, &payload);
-        // THE PLANTED READER BUG (internal/ci/schema_rust_runs_hostile_corpus_test.go):
-        // a scratch switch the fast gate never sets, which makes this runner
-        // answer one named case wrongly so the comparison must name it red.
-        if env::var("SCHEMA_RUST_HOSTILE_PLANT").ok().as_deref() == Some(c.name.as_str()) {
-            verdict = "refuse".into();
-            reason = "damaged".into();
-            text = None;
-        }
+        let (verdict, reason, text) = run_case(&c, &payload);
         let mut body = format!("{verdict}\n{reason}\n");
         if let Some(t) = text {
             body.push_str(&t);

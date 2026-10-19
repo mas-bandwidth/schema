@@ -165,7 +165,7 @@ func TestSchemaRustRunsHostileCorpus(t *testing.T) {
 	if _, err := os.Stat(runner); err != nil {
 		t.Fatalf("the Rust hostile-corpus runner is not built at %s: %v (run make schema-rust-runs-hostile-corpus)", runner, err)
 	}
-	unexplained, stale, passed, carried := checkRustHostileCorpus(t, runner, corpus, "")
+	unexplained, stale, passed, carried := checkRustHostileCorpus(t, runner, corpus)
 	for _, f := range carried {
 		t.Logf("FIX-CARD: %s: %s %s", f.slug, f.input, f.summary)
 	}
@@ -194,9 +194,10 @@ func TestSchemaRustRunsHostileCorpusPlanted(t *testing.T) {
 		t.Fatalf("the Rust hostile-corpus runner is not built at %s: %v (run make schema-rust-runs-hostile-corpus)", runner, err)
 	}
 
+	planteRunner := buildPlantedRustHostileRunner(t, root)
 	const plantedName = "wire-valid"
 
-	unexplained, _, _, _ := checkRustHostileCorpus(t, runner, corpus, plantedName)
+	unexplained, _, _, _ := checkRustHostileCorpus(t, planteRunner, corpus)
 	var seen bool
 	for _, m := range unexplained {
 		if strings.HasPrefix(m, plantedName+" ") {
@@ -208,9 +209,93 @@ func TestSchemaRustRunsHostileCorpusPlanted(t *testing.T) {
 		t.Fatalf("a reader bug on %s left the runner green", plantedName)
 	}
 
-	unexplainedOut, staleOut, _, _ := checkRustHostileCorpus(t, runner, corpus, "")
+	unexplainedOut, staleOut, _, _ := checkRustHostileCorpus(t, runner, corpus)
 	if len(unexplainedOut) != 0 || len(staleOut) != 0 {
 		t.Fatalf("unplanted run had %d unexplained and %d stale findings", len(unexplainedOut), len(staleOut))
+	}
+}
+
+// buildPlantedRustHostileRunner copies the generated Rust crates and runner
+// crate into a scratch tree, sabotages the generated ShipEntry wire reader
+// (ship_entry_load in build/rust-hostile/tabledemo/src/pack_table.rs), and
+// compiles a scratch runner binary against that sabotaged generated reader.
+func buildPlantedRustHostileRunner(t *testing.T, root string) string {
+	t.Helper()
+	scratch := t.TempDir()
+	units := []string{"tabledemo", "graphdemo", "blobdemo", "streamdemo", "messagedemo", "probe"}
+	for _, u := range units {
+		srcDir := filepath.Join(root, "build", "rust-hostile", u)
+		dstDir := filepath.Join(scratch, "build", "rust-hostile", u)
+		copyTree(t, srcDir, dstDir)
+	}
+	copyTree(t, filepath.Join(root, "test", "rust-hostile"), filepath.Join(scratch, "test", "rust-hostile"))
+
+	packTablePath := filepath.Join(scratch, "build", "rust-hostile", "tabledemo", "src", "pack_table.rs")
+	raw, err := os.ReadFile(packTablePath)
+	if err != nil {
+		t.Fatalf("read generated pack_table.rs: %v", err)
+	}
+	const target = "pub fn ship_entry_load(wire: &[u8], report: &mut TableReport) -> Option<ShipEntry> {\n    ship_entry_load_inner(wire, None, report)\n}"
+	const planted = "pub fn ship_entry_load(_wire: &[u8], report: &mut TableReport) -> Option<ShipEntry> {\n    report.malformed = true;\n    None\n}"
+	if !strings.Contains(string(raw), target) {
+		t.Fatalf("generated pack_table.rs does not contain target reader function:\n%s", target)
+	}
+	sabotaged := strings.Replace(string(raw), target, planted, 1)
+	if err := os.WriteFile(packTablePath, []byte(sabotaged), 0o644); err != nil {
+		t.Fatalf("write sabotaged pack_table.rs: %v", err)
+	}
+
+	cargoBin := findCargo(t)
+	manifestPath := filepath.Join(scratch, "test", "rust-hostile", "Cargo.toml")
+	targetDir := filepath.Join(scratch, "build", "rust-hostile", "target")
+	cmd := exec.Command(cargoBin, "build", "--quiet", "--offline", "--manifest-path", manifestPath, "--target-dir", targetDir)
+	cmd.Env = append(os.Environ(), "PATH="+filepath.Dir(cargoBin)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("cargo build of planted runner failed: %v\n%s", err, out)
+	}
+	return filepath.Join(targetDir, "debug", "rust-hostile")
+}
+
+func findCargo(t *testing.T) string {
+	t.Helper()
+	if p, err := exec.LookPath("cargo"); err == nil {
+		return p
+	}
+	home, _ := os.UserHomeDir()
+	for _, cand := range []string{
+		filepath.Join(home, ".cargo", "bin", "cargo"),
+		filepath.Join(home, "sdk", "bin", "cargo"),
+	} {
+		if _, err := os.Stat(cand); err == nil {
+			return cand
+		}
+	}
+	t.Fatal("cargo not found in PATH, ~/.cargo/bin, or ~/sdk/bin")
+	return ""
+}
+
+func copyTree(t *testing.T, src, dst string) {
+	t.Helper()
+	err := filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, info.Mode())
+	})
+	if err != nil {
+		t.Fatalf("copyTree %s -> %s: %v", src, dst, err)
 	}
 }
 
@@ -241,13 +326,10 @@ func loadHostileManifest(t *testing.T, path string) []hostileCase {
 	return out
 }
 
-func checkRustHostileCorpus(t *testing.T, runner, corpus, plant string) (unexplained, stale []string, passed int, carried []rustHostileFinding) {
+func checkRustHostileCorpus(t *testing.T, runner, corpus string) (unexplained, stale []string, passed int, carried []rustHostileFinding) {
 	t.Helper()
 	out := t.TempDir()
 	cmd := exec.Command(runner, corpus, out)
-	if plant != "" {
-		cmd.Env = append(os.Environ(), "SCHEMA_RUST_HOSTILE_PLANT="+plant)
-	}
 	cmd.Stdout = io.Discard
 	var stderr strings.Builder
 	cmd.Stderr = &stderr

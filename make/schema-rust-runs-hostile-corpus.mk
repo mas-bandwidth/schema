@@ -99,12 +99,12 @@ schema-rust-runs-hostile-corpus: schema-rust-runs-hostile-corpus-build
 		go test -count=1 -timeout 600s ./internal/ci \
 		-run '^TestSchemaRustRunsHostileCorpus$$' -v
 
-# THE PLANTED-BAD-PATTERN CONTROL (nightly): change one verdict in a scratch
-# copy of the manifest and require the same comparison to go red on it, with
-# the unplanted corpus green beside it.
+# THE PLANTED-BAD-PATTERN CONTROL (nightly): alter the generated Rust reader
+# in a scratch copy of the generated tree and require the comparison to go red
+# on it, with the unplanted corpus green beside it.
 .PHONY: schema-rust-runs-hostile-corpus-negative-control
 schema-rust-runs-hostile-corpus-negative-control: schema-rust-runs-hostile-corpus-build
-	SCHEMA_RUST_HOSTILE_RUNNER=$$PWD/$(RUST_HOSTILE_DIR)/target/debug/rust-hostile \
+	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_RUST_HOSTILE_RUNNER=$$PWD/$(RUST_HOSTILE_DIR)/target/debug/rust-hostile \
 		go test -count=1 -timeout 600s ./internal/ci \
 		-run '^TestSchemaRustRunsHostileCorpusPlanted$$' -v
 
