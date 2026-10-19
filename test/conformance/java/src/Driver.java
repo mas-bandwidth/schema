@@ -828,10 +828,9 @@ public final class Driver {
     // (docs/SPEC-TABLES.md §7.6), never because a lookup failed:
     //   - the root's <Root>Cook is the generated STUB (cook.go emits a class
     //     with a private constructor and no method when the root's closure
-    //     holds a construct the Java cook form does not carry, a union), or
-    //   - the unit has no cook form in this leg at all: neither <Root>Cook nor
-    //     the unit's TableCookInfo exists (the wide-kind unit gets no
-    //     accelerators, and a unit off this classpath has neither).
+    //     holds a construct the Java cook form does not carry), or
+    //   - the unit has no cook form on this classpath at all: neither <Root>Cook
+    //     nor the unit's TableCookInfo exists.
     // Every other failure (a missing <Root>Cook in a unit that has a cook
     // form, a real writer whose cookMeasure, cookMeasureReason or cookFrom
     // lookup breaks, a Value class that will not load) is thrown, and the

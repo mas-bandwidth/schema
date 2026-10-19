@@ -49,6 +49,7 @@ type cookUnit struct {
 	tables  []*ir.Struct                // every table with a Java Open, sorted by name
 	members map[string]*ir.MemberLayout // every record the cook closure reaches
 	order   []string                    // those record names, sorted
+	unions  []*ir.Union                 // every union the cook closure reaches, sorted by name
 	skipped map[string]string           // table -> why it has no Java Open
 	align   int64                       // the unit's region alignment (§7.1)
 }
@@ -82,9 +83,12 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 		}
 		c.tables = append(c.tables, st)
 	}
+	unionMap := map[string]*ir.Union{}
 	for _, st := range c.tables {
 		cookWalk(u, st.Name, func(name string, ml *ir.MemberLayout) {
 			c.members[name] = ml
+		}, func(un *ir.Union) {
+			unionMap[un.Name] = un
 		})
 	}
 	aligns := make([]int64, 0, len(c.members))
@@ -93,6 +97,12 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 		aligns = append(aligns, c.members[name].Align)
 	}
 	sort.Strings(c.order)
+	for _, un := range unionMap {
+		c.unions = append(c.unions, un)
+	}
+	sort.Slice(c.unions, func(i, j int) bool {
+		return c.unions[i].Name < c.unions[j].Name
+	})
 	c.align = ir.RegionAlignOf(aligns...)
 	return c
 }
@@ -101,9 +111,31 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 // everything it nests by value, and everything it POINTS AT — a cook's region is
 // the whole graph, so a pointer edge reaches records a by-value walk never
 // would.
-func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
+func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout), visitUnion func(*ir.Union)) {
 	seen := map[string]bool{}
+	seenUnions := map[string]bool{}
 	var walk func(string)
+	var walkType func(ir.FieldType)
+	walkType = func(t ir.FieldType) {
+		if t.Kind != ir.TNamed {
+			return
+		}
+		switch ref := t.Ref.(type) {
+		case *ir.Struct:
+			walk(ref.Name)
+		case *ir.Union:
+			if seenUnions[ref.Name] {
+				return
+			}
+			seenUnions[ref.Name] = true
+			visitUnion(ref)
+			for _, v := range ref.Variants {
+				if v.F != nil {
+					walkType(v.F.Type)
+				}
+			}
+		}
+	}
 	walk = func(n string) {
 		if seen[n] {
 			return
@@ -115,12 +147,7 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 		seen[n] = true
 		visit(n, ir.RecordLayout(u, st))
 		for _, f := range st.Fields {
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
-				walk(ref.Name)
-			}
+			walkType(f.Type)
 		}
 	}
 	walk(name)
@@ -130,7 +157,41 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 // and why not when it cannot.
 func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 	seen := map[string]bool{}
+	seenUnions := map[string]bool{}
 	var walk func(string) string
+	var walkField func(string, *ir.Field) string
+	walkField = func(holder string, f *ir.Field) string {
+		// An UNBOUNDED ARRAY ([]T, docs/SPEC-TABLES.md §2.9) makes a table
+		// VARIABLE-LENGTH: there is no fixed pitch anywhere in it, so a
+		// cooked record's accessors cannot read one field at one offset
+		// (§7, §19). The card is the first such table this backend meets,
+		// and it is skipped here, not laid out.
+		if f.Array == ir.ArrayList {
+			return holder + "." + f.Name + " is an unbounded array, and a variable-length table has no fixed pitch to cook (docs/SPEC-TABLES.md §2.9)"
+		}
+		if f.Type.Kind != ir.TNamed {
+			return ""
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Union:
+			if seenUnions[ref.Name] {
+				return ""
+			}
+			seenUnions[ref.Name] = true
+			for _, v := range ref.Variants {
+				if v.F != nil {
+					if why := walkField(ref.Name, v.F); why != "" {
+						return why
+					}
+				}
+			}
+		case *ir.Struct:
+			if why := walk(ref.Name); why != "" {
+				return why
+			}
+		}
+		return ""
+	}
 	walk = func(name string) string {
 		if seen[name] {
 			return ""
@@ -141,24 +202,8 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 			return ""
 		}
 		for _, f := range m.Fields {
-			// An UNBOUNDED ARRAY ([]T, docs/SPEC-TABLES.md §2.9) makes a table
-			// VARIABLE-LENGTH: there is no fixed pitch anywhere in it, so a
-			// cooked record's accessors cannot read one field at one offset
-			// (§7, §19). The card is the first such table this backend meets,
-			// and it is skipped here, not laid out.
-			if f.Array == ir.ArrayList {
-				return name + "." + f.Name + " is an unbounded array, and a variable-length table has no fixed pitch to cook (docs/SPEC-TABLES.md §2.9)"
-			}
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			switch ref := f.Type.Ref.(type) {
-			case *ir.Union:
-				return name + "." + f.Name + " is a union, and a cooked record's accessors read one field at one offset, which cannot say which arm a slot holds"
-			case *ir.Struct:
-				if why := walk(ref.Name); why != "" {
-					return why
-				}
+			if why := walkField(name, f); why != "" {
+				return why
 			}
 		}
 		return ""
@@ -234,7 +279,9 @@ public final class TableCookInfo {
     public long typeId; // attribution entry's table id (§7.6)
     public int size;
     public int align;
+    public int tagSize; // union tag width in bytes, or 0 for a record (§2.6, §7.6)
     public int numFields;
+    public Object empty; // value-initialized record instance for unfilled array slots (§7.6)
     public TableCookFieldInfo[] fields;
 }
 `

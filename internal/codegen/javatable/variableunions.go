@@ -15,13 +15,20 @@ func variableUnion(f *ir.Field) *ir.Union {
 	}
 	return nil
 }
+func unionArmField(arm ir.UnionVariant) *ir.Field {
+	one := *arm.F
+	one.Name = arm.Name
+	if one.Name == "tag" {
+		one.Name = "arm_tag"
+	}
+	return &one
+}
 func variableUnionStruct(un *ir.Union) *ir.Struct {
 	st := &ir.Struct{Name: un.Name}
 	for _, arm := range un.Variants {
 		if !arm.Void() {
-			one := *arm.F
-			one.Name = arm.Name
-			st.Fields = append(st.Fields, &one)
+			one := unionArmField(arm)
+			st.Fields = append(st.Fields, one)
 		}
 	}
 	return variableStruct(st)
@@ -53,9 +60,8 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 	for i, arm := range un.Variants {
 		fmt.Fprintf(&b, "        case %d:{\n", i+1)
 		if !arm.Void() {
-			one := *arm.F
-			one.Name = arm.Name
-			writeVariableGraphField(&b, &one)
+			one := unionArmField(arm)
+			writeVariableGraphField(&b, one)
 		}
 		b.WriteString("        return true;}\n")
 	}
@@ -64,9 +70,8 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 	for i, arm := range un.Variants {
 		if !arm.Void() {
 			fmt.Fprintf(&b, "        case %d:{\n", i+1)
-			one := *arm.F
-			one.Name = arm.Name
-			writeVariableResolveField(&b, &one)
+			one := unionArmField(arm)
+			writeVariableResolveField(&b, one)
 			b.WriteString("        break;}\n")
 		}
 	}
@@ -88,16 +93,15 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 				b.WriteString("        w.putLeb(0);return;}\n")
 				continue
 			}
-			one := *arm.F
-			one.Name = arm.Name
+			one := unionArmField(arm)
 			b.WriteString("        int body=w.off;\n")
 			if retaining {
 				fmt.Fprintf(&b, "path[2*depth]=%d;path[2*depth+1]=0;\n", i)
-				writeVariableRetainedPayload(&b, u, un.Name, &one, "v."+varMember(&one), "w", 0, "depth+1")
+				writeVariableRetainedPayload(&b, u, un.Name, one, "v."+varMember(one), "w", 0, "depth+1")
 			} else {
-				writeVariablePayload(&b, u, un.Name, &one, "v."+varMember(&one), "w", 0)
+				writeVariablePayload(&b, u, un.Name, one, "v."+varMember(one), "w", 0)
 			}
-			fmt.Fprintf(&b, "        w.frameBody(body,%s);return;}\n", variablePayloadStart(&one, "w", "body"))
+			fmt.Fprintf(&b, "        w.frameBody(body,%s);return;}\n", variablePayloadStart(one, "w", "body"))
 		}
 		b.WriteString("        default:return;}}\n")
 	}
@@ -114,8 +118,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 				fmt.Fprintf(&b, "        if(kind!=32){report.kindMismatch++;return v;}if(body.off!=body.limit){report.malformed=true;return v;}v.tag=%d;return v;}\n", i+1)
 				continue
 			}
-			one := *arm.F
-			one.Name = arm.Name
+			one := *unionArmField(arm)
 			expected := ir.TableWireFieldKind(&one)
 			condition := fmt.Sprintf("kind==%d", expected)
 			for k := 1; k <= 33; k++ {
@@ -146,11 +149,10 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		if arm.Void() {
 			b.WriteString("        b.append(\"null\");\n")
 		} else {
-			one := *arm.F
-			one.Name = arm.Name
+			one := unionArmField(arm)
 			b.WriteString("        {int nestedDepth=depth+1;\n")
 			var child strings.Builder
-			writeJsonFieldValue(&child, u, st, &one)
+			writeJsonFieldValue(&child, u, st, one)
 			b.WriteString(strings.ReplaceAll(child.String(), "depth", "nestedDepth"))
 			b.WriteString("        }\n")
 		}
@@ -163,14 +165,13 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		if arm.Void() {
 			fmt.Fprintf(&b, "        if(in.peek()=='n'){in.lit(\"null\");v.tag=%d;}else{in.skipValue();in.rep.kindMismatch++;}\n", i+1)
 		} else {
-			one := *arm.F
-			one.Name = arm.Name
-			shape := variableJsonShape(&one, "in.peek()")
+			one := unionArmField(arm)
+			shape := variableJsonShape(one, "in.peek()")
 			if one.Type.Pointer {
 				shape = "(" + shape + "||in.peek()=='n')"
 			}
 			fmt.Fprintf(&b, "        if(%s){\n", shape)
-			readJsonFieldValue(&b, u, st, &one)
+			readJsonFieldValue(&b, u, st, one)
 			fmt.Fprintf(&b, "        if(!in.bad)v.tag=%d;}else{in.skipValue();in.rep.kindMismatch++;}\n", i+1)
 		}
 		b.WriteString("        }else ")
