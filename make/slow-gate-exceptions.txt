@@ -49,3 +49,4 @@ tables-java-cards-refusal-bites	./internal/codegen/javatable	a negative control 
 # test, so setting SCHEMA_SLOW would change nothing on that line. The package's
 # gated tests are run by the slow-gated table targets, not by this campaign.
 fuzz-tables-go	./internal/fuzz	the campaign runs only the fuzz target with -run '^$'; no test, gated or otherwise, is selected here, and the package's gated tests have their own slow-gated targets
+schema-go-generated-golangci-lint-gate-probe	./...	the go test runs after cd $(1) into a generated module under build/ that holds no slowtest-gated test; the scan cannot see that cd and reads the line as repo-root ./...

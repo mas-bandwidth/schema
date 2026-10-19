@@ -116,44 +116,195 @@ func ungatedExecs(fset *token.FileSet, files map[string]*ast.File) []execGateFin
 }
 
 func walkCalls(fset *token.FileSet, node ast.Node, gated bool, chain []string, visiting map[string]bool, funcs map[string]*ast.FuncDecl, report func(execGateFinding)) {
+	walkStmt(fset, node, gated, chain, visiting, funcs, report)
+}
+
+// walkStmt walks statements in source order and returns whether slowtest.Gate
+// has definitely run on every path to the end of the statement. Branches join
+// with AND: a Gate in one arm of an if does not gate the code after it unless
+// every arm reaches a Gate, and a loop body may run zero times, so neither
+// gates what follows. Expressions still follow local calls by name.
+func walkStmt(fset *token.FileSet, node ast.Node, gated bool, chain []string, visiting map[string]bool, funcs map[string]*ast.FuncDecl, report func(execGateFinding)) bool {
+	switch s := node.(type) {
+	case *ast.BlockStmt:
+		for _, st := range s.List {
+			gated = walkStmt(fset, st, gated, chain, visiting, funcs, report)
+		}
+		return gated
+	case *ast.IfStmt:
+		if s.Init != nil {
+			gated = walkStmt(fset, s.Init, gated, chain, visiting, funcs, report)
+		}
+		gated = walkExpr(fset, s.Cond, gated, chain, visiting, funcs, report)
+		body := walkStmt(fset, s.Body, gated, chain, visiting, funcs, report)
+		otherwise := gated
+		if s.Else != nil {
+			otherwise = walkStmt(fset, s.Else, gated, chain, visiting, funcs, report)
+		}
+		return body && otherwise
+	case *ast.ForStmt:
+		if s.Init != nil {
+			gated = walkStmt(fset, s.Init, gated, chain, visiting, funcs, report)
+		}
+		if s.Cond != nil {
+			gated = walkExpr(fset, s.Cond, gated, chain, visiting, funcs, report)
+		}
+		if s.Post != nil {
+			gated = walkStmt(fset, s.Post, gated, chain, visiting, funcs, report)
+		}
+		walkStmt(fset, s.Body, gated, chain, visiting, funcs, report)
+		return gated
+	case *ast.RangeStmt:
+		if s.Key != nil {
+			walkExpr(fset, s.Key, gated, chain, visiting, funcs, report)
+		}
+		if s.Value != nil {
+			walkExpr(fset, s.Value, gated, chain, visiting, funcs, report)
+		}
+		gated = walkExpr(fset, s.X, gated, chain, visiting, funcs, report)
+		walkStmt(fset, s.Body, gated, chain, visiting, funcs, report)
+		return gated
+	case *ast.SwitchStmt:
+		if s.Init != nil {
+			gated = walkStmt(fset, s.Init, gated, chain, visiting, funcs, report)
+		}
+		if s.Tag != nil {
+			gated = walkExpr(fset, s.Tag, gated, chain, visiting, funcs, report)
+		}
+		all := true
+		hasDefault := false
+		for _, clause := range s.Body.List {
+			cc := clause.(*ast.CaseClause)
+			if len(cc.List) == 0 {
+				hasDefault = true
+			}
+			if walkCase(fset, cc, gated, chain, visiting, funcs, report) != true {
+				all = false
+			}
+		}
+		if !hasDefault || !all {
+			return gated
+		}
+		return true
+	case *ast.TypeSwitchStmt:
+		if s.Init != nil {
+			gated = walkStmt(fset, s.Init, gated, chain, visiting, funcs, report)
+		}
+		gated = walkStmt(fset, s.Assign, gated, chain, visiting, funcs, report)
+		all := true
+		hasDefault := false
+		for _, clause := range s.Body.List {
+			cc := clause.(*ast.CaseClause)
+			if len(cc.List) == 0 {
+				hasDefault = true
+			}
+			if walkCase(fset, cc, gated, chain, visiting, funcs, report) != true {
+				all = false
+			}
+		}
+		if !hasDefault || !all {
+			return gated
+		}
+		return true
+	case *ast.SelectStmt:
+		for _, clause := range s.Body.List {
+			cc := clause.(*ast.CommClause)
+			state := gated
+			if cc.Comm != nil {
+				state = walkStmt(fset, cc.Comm, state, chain, visiting, funcs, report)
+			}
+			for _, st := range cc.Body {
+				state = walkStmt(fset, st, state, chain, visiting, funcs, report)
+			}
+			_ = state
+		}
+		return gated
+	case *ast.LabeledStmt:
+		return walkStmt(fset, s.Stmt, gated, chain, visiting, funcs, report)
+	case *ast.ExprStmt:
+		return walkExpr(fset, s.X, gated, chain, visiting, funcs, report)
+	case *ast.AssignStmt:
+		for _, e := range s.Rhs {
+			gated = walkExpr(fset, e, gated, chain, visiting, funcs, report)
+		}
+		return gated
+	case *ast.ReturnStmt:
+		for _, e := range s.Results {
+			gated = walkExpr(fset, e, gated, chain, visiting, funcs, report)
+		}
+		return gated
+	case *ast.IncDecStmt:
+		return walkExpr(fset, s.X, gated, chain, visiting, funcs, report)
+	case *ast.SendStmt:
+		gated = walkExpr(fset, s.Chan, gated, chain, visiting, funcs, report)
+		return walkExpr(fset, s.Value, gated, chain, visiting, funcs, report)
+	case *ast.GoStmt:
+		return walkExpr(fset, s.Call, gated, chain, visiting, funcs, report)
+	case *ast.DeferStmt:
+		return walkExpr(fset, s.Call, gated, chain, visiting, funcs, report)
+	case *ast.DeclStmt:
+		ast.Inspect(s, func(n ast.Node) bool {
+			if call, ok := n.(*ast.CallExpr); ok {
+				gated = walkCall(fset, call, gated, chain, visiting, funcs, report)
+			}
+			return true
+		})
+		return gated
+	}
+	return gated
+}
+
+func walkCase(fset *token.FileSet, cc *ast.CaseClause, gated bool, chain []string, visiting map[string]bool, funcs map[string]*ast.FuncDecl, report func(execGateFinding)) bool {
 	state := gated
+	for _, st := range cc.Body {
+		state = walkStmt(fset, st, state, chain, visiting, funcs, report)
+	}
+	return state
+}
+
+func walkExpr(fset *token.FileSet, node ast.Node, gated bool, chain []string, visiting map[string]bool, funcs map[string]*ast.FuncDecl, report func(execGateFinding)) bool {
 	ast.Inspect(node, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.FuncLit:
-			walkCalls(fset, x.Body, state, chain, visiting, funcs, report)
+			walkStmt(fset, x.Body, gated, chain, visiting, funcs, report)
 			return false
 		case *ast.CallExpr:
-			if isSlowGate(x) {
-				state = true
-				return true
-			}
-			if callee, ok := execCall(x); ok {
-				if !state {
-					pos := fset.Position(x.Pos())
-					report(execGateFinding{
-						test:   chain[0],
-						chain:  append([]string(nil), chain...),
-						file:   pos.Filename,
-						line:   pos.Line,
-						callee: callee,
-					})
-				}
-				return true
-			}
-			name, ok := localCallName(x)
-			if !ok {
-				return true
-			}
-			fn := funcs[name]
-			if fn == nil || visiting[name] {
-				return true
-			}
-			visiting[name] = true
-			walkCalls(fset, fn.Body, state, append(append([]string(nil), chain...), name), visiting, funcs, report)
-			delete(visiting, name)
+			gated = walkCall(fset, x, gated, chain, visiting, funcs, report)
 		}
 		return true
 	})
+	return gated
+}
+
+func walkCall(fset *token.FileSet, call *ast.CallExpr, gated bool, chain []string, visiting map[string]bool, funcs map[string]*ast.FuncDecl, report func(execGateFinding)) bool {
+	if isSlowGate(call) {
+		return true
+	}
+	if callee, ok := execCall(call); ok {
+		if !gated {
+			pos := fset.Position(call.Pos())
+			report(execGateFinding{
+				test:   chain[0],
+				chain:  append([]string(nil), chain...),
+				file:   pos.Filename,
+				line:   pos.Line,
+				callee: callee,
+			})
+		}
+		return gated
+	}
+	name, ok := localCallName(call)
+	if !ok {
+		return gated
+	}
+	fn := funcs[name]
+	if fn == nil || visiting[name] {
+		return gated
+	}
+	visiting[name] = true
+	walkStmt(fset, fn.Body, gated, append(append([]string(nil), chain...), name), visiting, funcs, report)
+	delete(visiting, name)
+	return gated
 }
 
 func isSlowGate(call *ast.CallExpr) bool {
@@ -226,6 +377,43 @@ import (
 )
 func TestGatedThroughHelper(t *testing.T) { slowtest.Gate(t, "cc"); helper() }
 func helper() { exec.Command("cc", "x") }
+`,
+			wantAny: false,
+		},
+		{
+			name: "a Gate in a branch that may not run does not cover the exec after it",
+			src: `package compiler
+import (
+	"os/exec"
+	"testing"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+)
+func TestConditionalGateBypass(t *testing.T) {
+	if false {
+		slowtest.Gate(t, "cc")
+	}
+	exec.Command("cc", "x")
+}
+`,
+			want:    []string{"TestConditionalGateBypass", "exec.Command"},
+			wantAny: true,
+		},
+		{
+			name: "Gate in every arm of an if covers the exec after it",
+			src: `package compiler
+import (
+	"os/exec"
+	"testing"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+)
+func TestGateInEveryArm(t *testing.T) {
+	if flag {
+		slowtest.Gate(t, "cc")
+	} else {
+		slowtest.Gate(t, "cc")
+	}
+	exec.Command("cc", "x")
+}
 `,
 			wantAny: false,
 		},
