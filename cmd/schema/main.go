@@ -35,7 +35,6 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/version"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -822,7 +821,7 @@ func fail(err error) {
 		}
 		fmt.Fprintf(os.Stderr, "schema: %d error(s)\n", len(diags))
 		if diags.HasSection() {
-			fmt.Fprintf(os.Stderr, "schema %s\n", version.Version())
+			fmt.Fprintf(os.Stderr, "schema %s\n", compiler.Version())
 		}
 		os.Exit(1)
 	}

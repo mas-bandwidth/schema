@@ -136,6 +136,10 @@ func ReservedWordDisplay(lang string) string {
 	return ""
 }
 
+// Version returns the compiler build identity used to date diagnostics.
+// It is public so cmd/schema remains a client of the public compiler API.
+func Version() string { return version.Version() }
+
 // Diagnostics is a compilation's error list — every parse and check error the
 // unit produced, in report order, rather than the first one. Load returns it
 // as the error when the unit does not compile; a caller that wants to print
