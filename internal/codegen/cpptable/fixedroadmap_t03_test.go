@@ -406,10 +406,10 @@ fixed table T
 
 	// THE LIVE PROOF OF "EACH IS TableFixedReason::layout_unknown NOW": save a lawful file, forge
 	// its count word to 12 — past the reader's own bound of 8 — and read it
-	// twice. Under the reader's own hash the count clamps to 8 and counts once
-	// (the hostile half stays); under an unknown header hash the SAME forged
-	// count lands TableFixedReason::layout_unknown, no counter moves and the poisoned destination
-	// keeps every byte.
+	// twice. Under the reader's own hash the count past the PLAN's bound refuses
+	// count_over_bound by name (the OWNER RULE, docs/SPEC-TABLES.md §3.4); under
+	// an unknown header hash the SAME forged count lands layout_newer, no counter
+	// moves and the poisoned destination keeps every byte.
 	out := t03RunCapability(t, u, `#include <stdio.h>
 #include <string.h>
 #include "ProbeTable.h"
@@ -443,7 +443,7 @@ int main()
 
     /* THE HOSTILE, KNOWN-LAYOUT HALF STAYS (§5.6: "every hostile check on a
        KNOWN layout's records stays"): the count forged past the reader's bound
-       is clamped to it and counted once. */
+       refuses count_over_bound by name, nothing decoded, no counter moved. */
     static uint8_t hostile[ 4096 ];
     memcpy( hostile, base, (size_t) written );
     TableFixedPut32( hostile + count_at, 12u );
@@ -451,7 +451,7 @@ int main()
     TReset( back[ 0 ] );
     memset( &r, 0, sizeof( r ) );
     n = TFixedLoad( back, 1, hostile, written, plan, 512, NULL, &r );
-    printf( "hostile n=%lld count=%d clamped=%d\n", (long long) n, back[ 0 ].vals_count, r.clamped );
+    printf( "hostile n=%lld clamped=%d cob=%d\n", (long long) n, r.clamped, (int) ( r.reason == count_over_bound ) );
 
     /* THE CROSS-VERSION HALF IS RETIRED: the SAME forged count under an UNKNOWN
        hash — a newer writer's file — lands TableFixedReason::layout_unknown before any record. No
@@ -470,7 +470,7 @@ int main()
 }
 `)
 	for _, want := range []string{
-		"hostile n=1 count=8 clamped=1",
+		"hostile n=-1 clamped=0 cob=1",
 		"newer n=-1 refused=1 newer=1 widened=0 clamped=0 poisoned=1",
 	} {
 		if !strings.Contains(out, want) {

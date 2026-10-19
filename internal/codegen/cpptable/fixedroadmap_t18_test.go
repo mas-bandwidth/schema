@@ -773,8 +773,9 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
     }
 `, pair.root, pair.newPkg, 1))
 
-		// clamped count: [..4]int32 -> [..8]int32, the count forged to 7 (past the
-		// writer's 4). One clamp per record; N=3 -> clamped=3.
+		// count past the writer's bound: [..4]int32 -> [..8]int32, the count forged
+		// to 7 (past the writer's 4). The OWNER RULE refuses count_over_bound by
+		// name; REFUSE is total over the batch, so n=-1 and no counter moves.
 		pair = cppT18Generate(t, "array_bounded_grow")
 		cppT18Run(t, pair, fmt.Sprintf(`
     {
@@ -795,9 +796,8 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
             if ( found != 3 ) { printf( "count: locator matched %%d times, want 3\n", found ); return 1; }
         }
 `+t18Read+`
-        if ( n != 3 ) { printf( "count: n=%%lld\n", (long long) n ); return 1; }
-        if ( r.clamped != 3 ) { printf( "count: clamped=%%d want 3\n", r.clamped ); return 1; }
-        if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 ) { printf( "count: a counter moved\n" ); return 1; }
+        if ( n != -1 || !r.refused || r.reason != %[2]s::count_over_bound ) { printf( "count: n=%%lld refused=%%d reason=%%d\n", (long long) n, (int) r.refused, (int) r.reason ); return 1; }
+        if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 ) { printf( "count: a counter moved\n" ); return 1; }
     }
 `, pair.root, pair.newPkg, 3))
 

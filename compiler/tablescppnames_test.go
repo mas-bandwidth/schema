@@ -50,6 +50,7 @@ var cppUnregisteredBaseline = []string{
 	"TableFixedPut8",
 	"TableFixedPutF32",
 	"TableFixedPutF64",
+	"TableFixedRefuseScan",
 	"TableIdTable",
 	"TableIdsBytes",
 	"TableIdsWrite",
