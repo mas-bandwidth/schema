@@ -263,7 +263,16 @@ inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const Tabl
         const void * entry = (const void *) ( entries + (int64_t) i * f->elem_size );
         TableJsonWriteMapKey( out, entry, key );
         out.raw( ": ", 2 );
-        if ( !TableJsonWriteField( out, entry, value, depth + 1 ) ) { return false; }
+        // AN ABSENT OPTIONAL MAP VALUE IS null (docs/SPEC-TABLES.md §2.8,
+        // §16.2): presence of the value is the presence companion, exactly as
+        // an absent optional FIELD writes no key. A map value that is not
+        // optional has no companion and is always written.
+        if ( value->optional && value->kind != 17 &&
+             TableJsonGetRaw( (const uint8_t *) entry + value->present_offset, 1 ) == 0 )
+        {
+            out.raw( "null", 4 );
+        }
+        else if ( !TableJsonWriteField( out, entry, value, depth + 1 ) ) { return false; }
     }
     out.line( depth );
     out.put( '}' );
@@ -386,6 +395,18 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         {
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         }
+        else if ( value->optional && value->kind != 17 && got == 'z' )
+        {
+            // AN OPTIONAL MAP VALUE'S null IS ABSENT (docs/SPEC-TABLES.md
+            // §2.8, §16.2): the key stands with its value absent, which is the
+            // companion cleared and the storage back at its default. This is
+            // the record rule for an optional field, applied to an entry's
+            // value because an entry's value IS a field line.
+            if ( !TableJsonLiteral( in, "null" ) ) { return false; }
+            if ( value->table != NULL ) { value->table->reset( (uint8_t *) entry + value->offset ); }
+            else { memset( (uint8_t *) entry + value->offset, 0, (size_t) value->elem_size ); }
+            TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 0 );
+        }
         else if ( value->kind == 17 && !value->is_array )
         {
             // A POINTER VALUE IS SHARED EXACTLY AS A POINTER FIELD IS (§2.8):
@@ -416,6 +437,12 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         else if ( !TableJsonReadField( in, entry, value, depth + 1 ) )
         {
             return false;
+        }
+        else if ( value->optional )
+        {
+            // the value was present, so its companion is set: presence of the
+            // key's value IS the presence (§16.2)
+            TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 1 );
         }
         c = TableJsonPeek( in );
         if ( c == ',' ) { in.pos++; continue; } // a trailing comma is accepted

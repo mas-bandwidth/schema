@@ -132,8 +132,12 @@ func init() {
 		Name{Name: "TableUtf16Length", What: "a UTF-8 string's length in UTF-16 code units (§16.9.2)"},
 		Name{Name: "TableTextFormKeyNode", What: "whether a node is a record key: a keyword or a string (§16.9.1)"},
 		Name{Name: "TableTextFormJsonString", What: "escape decoded UTF-8 as a JSON string (§16.9.2)"},
+		Name{Name: "TableTextFormLabel", What: "one shared node's label: its spelling, its table and whether its definition is complete (§16.7, §16.9.2)"},
+		Name{Name: "TableTextFormLabels", What: "the labels a document defines, keyed by their spelling (§16.7, §16.9.2)"},
 		Name{Name: "TableTextFormRecord", What: "resolve one record against its descriptor (§16.9.2)"},
+		Name{Name: "TableTextFormRecordFrom", What: "resolve a shared node's record from its first field pair, after its label (§16.7, §16.9.2)"},
 		Name{Name: "TableTextFormField", What: "resolve one field value against its descriptor (§16.9.2)"},
+		Name{Name: "TableTextFormPointer", What: "resolve a pointer: null, a blob's string, or a labelled node (§16.7, §16.9.2)"},
 		Name{Name: "TableTextFormScalar", What: "resolve one scalar, array element, keyed slot or arm value (§16.9.2)"},
 		Name{Name: "TableTextFormToJson", What: "transcode one strict document into the canonical JSON of the same value (§16.9.1, §16.9.2)"},
 		// C++'s float <-> IEEE-754 bit pattern helpers
