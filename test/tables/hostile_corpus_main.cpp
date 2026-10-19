@@ -31,10 +31,11 @@
 #include "StreamTable.h"
 #include "probeTable.h"
 
-static std::string slurp( const std::string & path )
+static std::string slurp( const std::string & path, bool * found = NULL )
 {
     std::string out;
     FILE * file = fopen( path.c_str(), "rb" );
+    if ( found != NULL ) { *found = file != NULL; }
     if ( file == NULL ) { return out; }
     char buffer[ 65536 ];
     size_t n = 0;
@@ -205,6 +206,41 @@ static std::string wire_fixed( const uint8_t * data, int64_t bytes,
     return "accept\t-\t" + b64( out );
 }
 
+// The variable reader's own refusal names (TableRefuseReason), printed as the
+// C++ reader spells them: a name the engine spells differently is a finding.
+static const char * refuse_name( probe::TableRefuseReason reason )
+{
+    switch ( reason )
+    {
+        case probe::ok: return "ok";
+        case probe::not_a_cook: return "not_a_cook";
+        case probe::foreign_order: return "foreign_order";
+        case probe::wrong_build_version: return "wrong_build_version";
+        case probe::reserved_not_zero: return "reserved_not_zero";
+        case probe::bad_alignment: return "bad_alignment";
+        case probe::truncated: return "truncated";
+        case probe::unaligned_base: return "unaligned_base";
+        case probe::bad_layout: return "bad_layout";
+        case probe::unknown_form: return "unknown_form";
+        case probe::count_over_length: return "count_over_length";
+        case probe::count_over_extent_cap: return "count_over_extent_cap";
+        case probe::blob_over_size_cap: return "blob_over_size_cap";
+        case probe::data_cycle: return "data_cycle";
+        case probe::invalid_value: return "invalid_value";
+        case probe::allocation_failed: return "allocation_failed";
+        case probe::wire_damaged: return "wire_damaged";
+        case probe::malformed: return "malformed";
+        case probe::clamped: return "clamped";
+        case probe::kind_mismatch: return "kind_mismatch";
+        case probe::base64_damaged: return "base64_damaged";
+        case probe::base64_not_canonical: return "base64_not_canonical";
+        case probe::integrity_mismatch: return "integrity_mismatch";
+        case probe::non_finite: return "non_finite";
+        case probe::blob_shared: return "blob_shared";
+        default: return "unnamed";
+    }
+}
+
 static std::string wire( const std::string & schema, const std::string & table, const uint8_t * data, int64_t bytes )
 {
     if ( schema == "tables/examples" && table == "ShipEntry" )
@@ -213,8 +249,13 @@ static std::string wire( const std::string & schema, const std::string & table, 
     if ( schema == "schemas/probe.schema" && table == "Root" )
     {
         probe::TableReport report;
-        const int64_t region_bytes = probe::RootLoadMeasure( data, bytes );
-        if ( region_bytes < 0 ) { return "refuse\tdamaged\t"; }
+        probe::TableRefuseReason why = probe::ok;
+        const int64_t region_bytes = probe::RootLoadMeasure( data, bytes, NULL, &why );
+        if ( region_bytes < 0 )
+        {
+            if ( why != probe::ok && why != probe::wire_damaged ) { return std::string( "refuse\t" ) + refuse_name( why ) + "\t"; }
+            return "refuse\tdamaged\t";
+        }
         std::vector<uint8_t> region( (size_t) ( region_bytes > 0 ? region_bytes : 1 ) );
         const probe::Root * root = probe::RootLoad( region.data(), region_bytes, data, bytes, &report );
         if ( report.refused ) { return refuse_reason( (int) report.reason ); }
@@ -238,7 +279,11 @@ static std::string announce( const std::string & carrier, const uint8_t * data, 
     tabledemo::TableReport report;
     if ( carrier == "announce_second" )
     {
-        if ( !tabledemo::AnnounceRead( vocabulary, data, bytes, &report ) ) { return refuse_reason( (int) report.reason ); }
+        if ( !tabledemo::AnnounceRead( vocabulary, data, bytes, &report ) )
+        {
+            if ( report.refused ) { return refuse_reason( (int) report.reason ); }
+            return "refuse\tdamaged\t";
+        }
         tabledemo::TableReport second;
         if ( !tabledemo::AnnounceRead( vocabulary, data, bytes, &second ) ) { return refuse_reason( (int) second.reason ); }
         return "accept\t-\t";
@@ -302,7 +347,15 @@ int main( int argc, char ** argv )
             start = tab + 1;
         }
         if ( f.size() != 9 ) { continue; }
-        const std::string payload = slurp( dir + "/" + f[ 4 ] );
+        bool found = false;
+        const std::string payload = slurp( dir + "/" + f[ 4 ], &found );
+        if ( !found )
+        {
+            // a missing input is never decoded as zero bytes: it answers a
+            // reason no manifest case carries, so the comparison is red
+            printf( "CASE\t%s\trefuse\tmissing_input\t\n", f[ 0 ].c_str() );
+            continue;
+        }
         const uint8_t * data = (const uint8_t *) payload.data();
         const int64_t bytes = (int64_t) payload.size();
         std::string answer;
