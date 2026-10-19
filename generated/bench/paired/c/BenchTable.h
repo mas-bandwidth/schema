@@ -784,16 +784,8 @@ enum
        string(N)'s used bytes that are not well-formed UTF-8 — or a
        wstring(N)'s used units that are not paired UTF-16 — refuse the read by
        name, the verdict the packet reader gives, this form having no L to
-        continue past. Nothing is decoded and no counter moves. */
-    SCHEMA_TABLE_TEXT_ILL_FORMED = 20,
-    /* A FIXED-FORM COUNT OR LENGTH PAST THE PLAN'S BOUND (docs/SPEC-TABLES.md
-       §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5): a count past the PLAN's bound
-       refuses count_over_bound and a text length past it length_over_bound,
-       checked before any destination byte is written, the count or length
-       lying about the wire rather than about the slack. It never clamps.
-       Nothing is decoded and no counter moves. */
-    SCHEMA_TABLE_COUNT_OVER_BOUND = 21,
-    SCHEMA_TABLE_LENGTH_OVER_BOUND = 22
+       continue past. Nothing is decoded and no counter moves. */
+    SCHEMA_TABLE_TEXT_ILL_FORMED = 20
 };
 
 /* THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
@@ -1269,67 +1261,6 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
     }
     report->clamped += clamped;
     report->widened += widened;
-}
-
-/* ---- THE COUNT AND TEXT PRE-SCAN -------------------------------------------
-
-   A COUNT OR LENGTH PAST THE PLAN'S BOUND REFUSES BY NAME (docs/SPEC-TABLES.md
-   §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5): count_over_bound for a count,
-   length_over_bound for a text length, checked before any destination byte is
-   written — the count or length lying about the wire and not about the slack.
-   REFUSE is total: no counter moves, nothing is decoded, and not one destination
-   byte is written. It walks each entry under its own guards, reads only the
-   source and writes nothing. It answers nonzero with the refusal in why; zero
-   means the plan holds the record's counts and lengths. */
-static SCHEMA_UNUSED int table_fixed_refuse_scan( const TableFixedEntry * plan, int32_t count, int32_t guarded,
-                                                  const uint8_t * src,
-                                                  const TableFixedGuardLink * guard_pool,
-                                                  int * why )
-{
-    int32_t i;
-    for ( i = 0; i < count; ++i )
-    {
-        const TableFixedEntry * p = &plan[i];
-        /* A PLAN IS PARTITIONED (§4.1): every UNGUARDED entry first, then every
-           guarded one. Below the split there is no guard to test — the guard
-           lane is kTableFixedNoGuard and must never be read as an offset. Above
-           it, an arm's entry runs only under its own tag and refuses only when
-           it runs. */
-        if ( i >= guarded )
-        {
-            if ( p->guard_count > 0 )
-            {
-                /* THE POOLED CHAIN (§5.8 row 6): same walk the run uses. */
-                int32_t matches = 1;
-                int32_t j;
-                for ( j = 0; j < (int32_t) p->guard_count; ++j )
-                {
-                    const TableFixedGuardLink * l = ( const TableFixedGuardLink * ) ( const void * )
-                        ( ( const uint8_t * ) guard_pool + p->guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
-                    if ( table_fixed_tag_at( src, l->guard, l->argw ) != l->arg ) { matches = 0; break; }
-                }
-                if ( !matches ) { continue; }
-            }
-            else
-            {
-                if ( table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
-                if ( p->guard2 != SCHEMA_TABLE_FIXED_NO_GUARD && table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
-            }
-        }
-        if ( p->op == kTableFixedCount )
-        {
-            int32_t v = (int32_t) table_fixed_get32( src + p->src );
-            if ( v < 0 || v > (int32_t) p->size ) { *why = SCHEMA_TABLE_COUNT_OVER_BOUND; return 1; }
-        }
-        else if ( p->op == kTableFixedText )
-        {
-            const uint32_t unit = ( p->meta == kTableFixedTextWide ) ? 2u : 1u;
-            const uint32_t cap = p->size / unit;
-            int32_t v = (int32_t) table_fixed_get32( src + p->src );
-            if ( v < 0 || (uint32_t) v > cap ) { *why = SCHEMA_TABLE_LENGTH_OVER_BOUND; return 1; }
-        }
-    }
-    return 0;
 }
 
 /* ---- THE PREFILL ----------------------------------------------------------

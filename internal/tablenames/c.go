@@ -536,7 +536,6 @@ func init() {
 		Name{Name: "table_fixed_putf32", What: "the fixed form's little-endian stores"},
 		Name{Name: "table_fixed_putf64", What: "the fixed form's little-endian stores"},
 		Name{Name: "table_fixed_run", What: "the fixed form's ONE read loop"},
-		Name{Name: "table_fixed_refuse_scan", What: "the fixed form: a count or text length past the plan's bound refuses by name — count_over_bound / length_over_bound (§3.4)"},
 		Name{Name: "TableFixedFill", What: "the fixed form: one prefill range, the bytes a plan does not land"},
 		Name{Name: "table_fixed_entry_lands", What: "the fixed form: the storage bytes one plan entry writes"},
 		Name{Name: "table_fixed_fill_run", What: "the fixed form: copy the prefill's ranges from the default image"},
