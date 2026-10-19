@@ -19,5 +19,8 @@ func init() {
 		Name{Name: "TableCookMaxAlign", What: "the greatest region alignment a cooked header may name (§7)"},
 		Name{Name: "TableCookHeaderBytes", What: "§7.1's 64-byte header", RustConst: true},
 		Name{Name: "TableCookLayout", What: "the cook closure's layout contract, run once (§20.3)"},
+		Name{Name: "TableDocNone", What: "the one shared empty doc of the reflection view (docs/SPEC-TABLES.md §8.1)"},
+		Name{Name: "TableTagsNone", What: "the one shared empty tag list of the reflection view (docs/SPEC-TABLES.md §8.1)"},
+		Name{Name: "TableUnitView", What: "the unit registry the reflection view lists (docs/SPEC-TABLES.md §8.3)"},
 	)
 }
