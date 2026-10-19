@@ -649,8 +649,8 @@ func utf8Sequence(s []byte) int {
 // §8.1). The read path is byte-transparent — the wire imposes no encoding (§3)
 // and a string may hold anything — so the WRITER is where that obligation is
 // met: a byte that is not part of a well-formed sequence is written as U+FFFD,
-// one per bad byte, and never raw (docs/SPEC-TABLES.md §16.3). The cost is stated
-// plainly: for a string holding invalid UTF-8 the round trip is NOT
+// one per maximal subpart (docs/SPEC-TABLES.md §16.3), and never raw. The cost
+// is stated plainly: for a string holding invalid UTF-8 the round trip is NOT
 // byte-identical, because the alternative is emitting a text that is not JSON.
 func writeString(w *writer, s []byte) {
 	const hex = "0123456789abcdef"
@@ -682,7 +682,7 @@ func writeString(w *writer, s []byte) {
 				w.put(c)
 			default:
 				if width := utf8Sequence(s[i:]); width < 0 {
-					w.raw("\ufffd") // U+FFFD, one per bad byte
+					w.raw("\ufffd") // U+FFFD, one per maximal subpart (docs/SPEC-TABLES.md §16.3)
 					i += -width - 1
 				} else {
 					w.raw(string(s[i : i+width]))

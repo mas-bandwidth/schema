@@ -762,12 +762,12 @@ func tableJsonWriteBase64(out *tableJsonOut, data []byte) {
 	out.put('"')
 }
 
-// tableJsonUtf8 is one UTF-8 sequence at the head of s, or -1 and the negated
-// maximal-subpart length (Unicode Table 3-7, Definition D93b; docs/SPEC-TABLES.md
-// §16.3, §17.3) when the bytes there are ill-formed. Overlong forms, surrogate
-// halves, and bytes past U+10FFFF stop at the first byte outside Table 3-7's
-// second-byte range so each ill-formed prefix is one maximal subpart, while
-// scanText continues to refuse any width <= 0 on read.
+// tableJsonUtf8 is one UTF-8 sequence at the head of s, or a negative width
+// whose magnitude is one Unicode maximal subpart (Unicode Table 3-7, Definition
+// D93b; docs/SPEC-TABLES.md §16.3, §17.3) when the bytes there are ill-formed.
+// A lead byte that begins no valid sequence (C0, C1, F5..FF) returns -1;
+// otherwise scanning stops at the first continuation byte outside Table 3-7's
+// range, so the maximal subpart ends there.
 func tableJsonUtf8(s []byte) (code int32, width int32) {
 	lead := s[0]
 	var want int32
@@ -807,11 +807,11 @@ func tableJsonUtf8(s []byte) (code int32, width int32) {
 // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
 // byte-transparent — the wire imposes no encoding (§3) and a string may hold
 // anything — so the WRITER is where that obligation is met: a byte that is not
-// part of a well-formed sequence is written as U+FFFD, one per bad byte, and
-// never raw. A text this walk writes is therefore readable by any conforming
-// parser, which a raw byte would not be. The cost is stated plainly: for a
-// string holding invalid UTF-8, the round trip is NOT byte-identical, because
-// the alternative is emitting a text that is not JSON.
+// part of a well-formed sequence is written as U+FFFD, one per maximal subpart
+// (docs/SPEC-TABLES.md §16.3), and never raw. A text this walk writes is
+// therefore readable by any conforming parser, which a raw byte would not be.
+// The cost is stated plainly: for a string holding invalid UTF-8, the round
+// trip is NOT byte-identical, because the alternative is emitting a text that is not JSON.
 func tableJsonWriteString(out *tableJsonOut, s []byte) { out.put('"');tableJsonWriteStringBody(out,s);out.put('"') }
 
 func tableJsonWriteStringBody(out *tableJsonOut, s []byte) {
