@@ -3,15 +3,23 @@ name: schema rust nightly fuzz
 # ONE CARD, ONE WORKFLOW (schema-rust-nightly-fuzz, 2026-10-18).
 #
 # NIGHTLY parts run on the schedule and on workflow_dispatch only: the
-# coverage-guided cargo-fuzz run is a ten-minute-per-reader-kind budget and
-# never a per-push tax.
+# planted-bug control, then the coverage-guided cargo-fuzz run over every
+# reader kind for the per-port budget (SCHEMA_RUST_FUZZ_TIME seconds). Never a
+# per-push tax.
 #
-# FAST parts run on every push and pull request touching the harness: the
-# replay of every saved regression input, with no clock and no mutation.
+# FAST parts run on a push or pull request touching the harness or its saved
+# corpus: the replay of every committed input through every reader kind, with
+# no clock and no mutation. A missing or empty corpus fails it.
+#
+# A FINDING FAILS THE NIGHT AND IS KEPT: libFuzzer writes each crash, hang and
+# OOM input into test/rust-nightly-fuzz-corpus/<kind>-crash-*, the make target
+# exits non-zero, and the upload step (if: always()) keeps every input of that
+# directory, so the input can be minimised and committed, after which the
+# replay holds it on every push.
 #
 # THE PINS LIVE IN make/schema-rust-nightly-fuzz.mk (cargo-fuzz version and the
-# nightly toolchain); this file names them once through the make variables so
-# the Makefile probe and CI cannot drift.
+# nightly toolchain). The two install lines below must name the same pins; the
+# structural test in internal/ci holds them equal.
 
 on:
   schedule:
@@ -37,13 +45,18 @@ permissions:
 jobs:
   replay:
     name: replay saved fuzz inputs (no clock)
-    # FAST HALF: the host stable cargo builds the replay binary; neither
-    # cargo-fuzz nor the nightly toolchain is installed on a push.
+    # FAST HALF: stable cargo builds the replay binary; neither cargo-fuzz nor
+    # the nightly toolchain is installed on a push.
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head; the SHA freezes the action, not the compiler
       - name: replay every saved input (no clock, no mutation)
         run: make schema-rust-nightly-fuzz-replay
 
@@ -51,20 +64,27 @@ jobs:
     name: cargo-fuzz (nightly budget)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head; the toolchain input names the pinned nightly
         with:
           toolchain: nightly-2026-10-01
-      - name: install pinned cargo-fuzz
+      - name: install pinned cargo-fuzz (crates.io)
         run: cargo install cargo-fuzz --version 0.13.1 --locked
-      - name: generate the corpus and fuzz every reader kind
-        run: make schema-rust-nightly-fuzz SCHEMA_RUST_FUZZ_TIME=10m
-      - name: keep saved regression inputs
+      - name: the planted reader bug must be found inside the budget (red with it in, green with it out)
+        run: make schema-rust-nightly-fuzz-negative-control
+      - name: fuzz every reader kind for the per-port budget (fails on any crash, hang or oracle finding)
+        run: make schema-rust-nightly-fuzz SCHEMA_RUST_FUZZ_TIME=600
+      - name: keep every saved input, the night's crashers among them
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: schema-rust-nightly-fuzz-corpus
           path: test/rust-nightly-fuzz-corpus/
-          if-no-files-found: ignore
+          if-no-files-found: error
+          retention-days: 90
