@@ -2505,6 +2505,12 @@ to_lua = function(desc: any, v: any, A: any, memo: any): any
       if fd.raw.array == "counted" then memo.count[av] = v[luau_slot .. "Count"] or 0
       elseif fd.raw.array == "list" then memo.count[av] = av ~= nil and (av.n or #av) or 0
       elseif fd.raw.array == "fixed" or fd.raw.array == "keyed" then memo.count[av] = fd.raw.bound or 0 end
+      if fd.str_elem and typeof(av) == "table" then
+        local lens = v[luau_slot .. "Length"]
+        if typeof(lens) == "table" then
+          for i = 1, #av do memo.len[av[i]] = lens[i] end
+        end
+      end
     end
     if fd.optional then
       if v[fd.raw.present] then
