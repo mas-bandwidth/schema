@@ -58,3 +58,49 @@ print(report.malformed and "refused" or "read")
 print(report.Reason or "-")
 `
 }
+
+func TestLuaJsonRefusesNulEscapeInBoundedMapValue(t *testing.T) {
+	t.Parallel()
+	repo := filepath.Join("..", "..", "..")
+
+	u := luarun.LoadUnit(t, filepath.Join(repo, "tables", "maps", "Text.schema"))
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("unit mapdemo: %v", err)
+	}
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	probe := strings.Replace(nulProbe(ModuleName(u)), "RootConfig", "Text", 1)
+	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	text := "{ \"names\": { \"key\": \"a\\u0000b\" } }"
+	got := strings.TrimRight(string(luarun.Run(t, dir, "main.lua", map[string][]byte{"text": []byte(text)})), "\n")
+	want := "refused\ntext_holds_zero: Text.names"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestLuaJsonRefusesNulEscapeInUnionArm(t *testing.T) {
+	t.Parallel()
+	repo := filepath.Join("..", "..", "..")
+
+	u := luarun.LoadUnit(t, filepath.Join(repo, "examples-wide", "Caption.schema"))
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("unit wide: %v", err)
+	}
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	probe := strings.Replace(nulProbe(ModuleName(u)), "RootConfig", "Caption", 1)
+	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	text := "{ \"body\": { \"narrow\": \"a\\u0000b\" } }"
+	got := strings.TrimRight(string(luarun.Run(t, dir, "main.lua", map[string][]byte{"text": []byte(text)})), "\n")
+	want := "refused\ntext_holds_zero: Caption.body"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
