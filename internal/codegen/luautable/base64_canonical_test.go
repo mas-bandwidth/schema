@@ -104,7 +104,9 @@ end
 // AQAAAAAAAAAAAB== (nonzero pad bits) and a line break are non-canonical; an
 // inner '=', a space and a byte outside the alphabet are damaged; and a cut
 // length is damaged. For every instance row the canonical SaveText reads back
-// clean and SaveText re-encodes to the same canonical text.
+// clean and SaveText re-encodes to the same canonical text, except the
+// blob_shared row, whose canonical wire the strict read refuses by name
+// (docs/SPEC-TABLES.md §2.5, §6.5).
 func TestLuauLoadTextRefusesNonCanonicalBase64(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
@@ -175,14 +177,25 @@ func TestLuauLoadTextRefusesNonCanonicalBase64(t *testing.T) {
 			if fields[0] != "canonical" {
 				t.Fatalf("instance %s (%s/%s): first line %q", row.caseName, key, row.root, lines[0])
 			}
-			if len(fields) < 2 || fields[1] != "SAVED" || len(fields) != 4 {
-				t.Fatalf("instance %s (%s/%s): the canonical text did not read clean: %q", row.caseName, key, row.root, lines[0])
-			}
-			if fields[2] != canonical {
-				t.Errorf("instance %s (%s/%s): SaveText is %q, want the canonical %q", row.caseName, key, row.root, fields[2], canonical)
-			}
-			if fields[3] != hexBytes(wire) {
-				t.Errorf("instance %s (%s/%s): the saved wire is not the instance's wire", row.caseName, key, row.root)
+			if row.caseName == "blob_shared" {
+				// LoadText IS the strict read (§6.5), and one blob named from
+				// two slots is refused by name (docs/SPEC-TABLES.md §2.5): the
+				// canonical text is a readable wire whose strict read refuses
+				// blob_shared, so there is no value to SaveText. The damaged
+				// and non-canonical texts still name their carrier refusals.
+				if len(fields) != 3 || fields[1] != "REFUSED" || fields[2] != "blob_shared" {
+					t.Fatalf("instance %s (%s/%s): the canonical blob_shared text did not refuse blob_shared: %q", row.caseName, key, row.root, lines[0])
+				}
+			} else {
+				if len(fields) < 2 || fields[1] != "SAVED" || len(fields) != 4 {
+					t.Fatalf("instance %s (%s/%s): the canonical text did not read clean: %q", row.caseName, key, row.root, lines[0])
+				}
+				if fields[2] != canonical {
+					t.Errorf("instance %s (%s/%s): SaveText is %q, want the canonical %q", row.caseName, key, row.root, fields[2], canonical)
+				}
+				if fields[3] != hexBytes(wire) {
+					t.Errorf("instance %s (%s/%s): the saved wire is not the instance's wire", row.caseName, key, row.root)
+				}
 			}
 			for i, c := range cases {
 				got := strings.Split(lines[i+1], "\t")
