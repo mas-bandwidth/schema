@@ -24,7 +24,9 @@ local MAGIC: integer = 0x4B4F4F434D484353i
 local MAGIC_FOREIGN: integer = 0x5343484D434F4F4Bi
 local HEADER_BYTES = 64
 local MAX_ALIGN = 64
-local MAP_KEY_ID: integer = 0x3dc94a19365b10eci -- FNV-1a 64 of "key"
+-- the number of storage slots an array value was read with, holes included;
+-- # cannot see a null pointer slot, so putField takes the count from here.
+local arrayCounts: { [any]: number } = {}
 
 local function as_number(v: any): number
 	if typeof(v) == "integer" then return integer.tonumber(v) end
@@ -38,11 +40,10 @@ end
 
 -- one unsigned integer at a storage width, little-endian (a cook is this
 -- build's order or it refuses foreign_order, §7.1).
-local function u_at(b: buffer, at: number, width: number): integer
+local function u_at(b: buffer, at: number, width: number): any
 	if width == 1 then return buffer.readu8(b, at) end
 	if width == 2 then return buffer.readu16(b, at) end
 	if width == 4 then return buffer.readu32(b, at) end
-	if width == 8 then return buffer.readinteger(b, at) end
 	return buffer.readinteger(b, at)
 end
 
@@ -51,11 +52,12 @@ local function i_at(b: buffer, at: number, width: number, signed: boolean): any
 		return { lo = buffer.readinteger(b, at), hi = buffer.readinteger(b, at + 8) }
 	end
 	local raw = u_at(b, at, width)
-	if not signed or width == 8 then return raw end
+	if width == 8 or not signed then return raw end
+	local n = as_number(raw)
 	local bits = width * 8
 	local top = 2 ^ (bits - 1)
-	if raw >= top then raw -= 2 ^ bits end
-	return raw
+	if n >= top then n -= 2 ^ bits end
+	return n
 end
 
 local function f_at(b: buffer, at: number, single: boolean): number
@@ -82,11 +84,22 @@ type Layout = { size: number, align: number }
 local recordLayouts: { [string]: Layout } = {}
 local unionLayouts: { [string]: { size: number, align: number, tag: number, armOffset: number } } = {}
 
+-- intWidth is an integer-shaped slot's cooked storage width (§7.2): bits(N)
+-- is a uint32/uint64 in C, whatever the wire's kind byte says, and every
+-- other integer kind carries its width in kw.
+local function intWidth(fd: any): number
+	if fd.bits ~= nil then
+		if fd.bits <= 32 then return 4 end
+		return 8
+	end
+	return fd.kw or 1
+end
+
 local function elemLayout(fd: any): Layout
 	local s = fd.s
 	if s == "bool" then return { size = 1, align = 1 } end
 	if s == "int" or s == "flags" then
-		local w = if s == "flags" then 8 else (fd.kw or 1)
+		local w = if s == "flags" then 8 else intWidth(fd)
 		return { size = w, align = w }
 	end
 	if s == "float" then
@@ -113,10 +126,6 @@ local function elemLayout(fd: any): Layout
 		return { size = fd.bound or 0, align = 1 }
 	end
 	return { size = 1, align = 1 }
-end
-
-local function piece(offset: number, size: number, align: number): number
-	return align_up(offset, align) + size
 end
 
 -- layoutField is one field's whole storage at an ABSOLUTE record offset: its
@@ -209,6 +218,7 @@ type Ctx = {
 local readRecord: any
 local readField: any
 local readUnion: any
+local putField: any
 
 local function recordOffsets(fields: { any }): { number }
 	local out, offset = {}, 0
@@ -218,10 +228,6 @@ local function recordOffsets(fields: { any }): { number }
 		offset = fl.finish
 	end
 	return out
-end
-
-local function emptyArray(fd: any): { any }
-	return {}
 end
 
 local function zeroElement(fd: any, list: boolean): any
@@ -254,7 +260,7 @@ function readField(ctx: Ctx, fd: any, at: number, present: boolean): any
 	end
 	local s = fd.s
 	if s == "bool" then return buffer.readu8(ctx.b, at) ~= 0 end
-	if s == "int" then return i_at(ctx.b, at, fd.kw or 1, fd.signed == true) end
+	if s == "int" then return i_at(ctx.b, at, intWidth(fd), fd.signed == true) end
 	if s == "flags" then return buffer.readinteger(ctx.b, at) end
 	if s == "float" then return f_at(ctx.b, at, fd.f32 == true) end
 	if s == "enum" then
@@ -263,7 +269,7 @@ function readField(ctx: Ctx, fd: any, at: number, present: boolean): any
 	end
 	if s == "str" then
 		local w = if fd.wide then 2 else 1
-		local lenAt = at + align_up(((fd.bound or 0) + 1) * w, 4)
+		local lenAt = align_up(at + ((fd.bound or 0) + 1) * w, 4)
 		local n = buffer.readi32(ctx.b, lenAt)
 		if n < 0 then n = 0 end
 		if fd.wide then
@@ -276,7 +282,7 @@ function readField(ctx: Ctx, fd: any, at: number, present: boolean): any
 		return out
 	end
 	if s == "bytes" then
-		local lenAt = at + align_up(fd.bound or 0, 4)
+		local lenAt = align_up(at + (fd.bound or 0), 4)
 		local n = buffer.readi32(ctx.b, lenAt)
 		if n < 0 then n = 0 end
 		local out = buffer.create(n)
@@ -339,21 +345,29 @@ function readField(ctx: Ctx, fd: any, at: number, present: boolean): any
 		if fd.array == "list" then
 			local delta = integer.tonumber(buffer.readinteger(ctx.b, at))
 			local count = buffer.readi32(ctx.b, at + 8)
-			if delta == 0 then return out end
-			local el = elemLayout(e)
-			local start = at + delta
-			for i = 0, count - 1 do
-				out[i + 1] = readElement(ctx, e, start + i * el.size, true)
+			local got = 0
+			if delta ~= 0 then
+				local el = elemLayout(e)
+				local start = at + delta
+				for i = 0, count - 1 do
+					out[i + 1] = readElement(ctx, e, start + i * el.size, true)
+					got = i + 1
+				end
 			end
+			-- a list of pointers may hold null slots, which a Luau length cannot
+			-- see: its live length rides as n, the table.pack convention (§2.9),
+			-- exactly as load.luau writes it.
+			if (e.s == "ptr" or e.s == "sblob" or e.s == "bblob") and got > 0 then out.n = got end
 			return out
 		end
-		local n = if fd.array == "fixed" then (fd.bound or 0) else buffer.readi32(ctx.b, at + align_up(elemLayout(e).size * (fd.bound or 0), 4))
+		local n = if fd.array == "fixed" then (fd.bound or 0) else buffer.readi32(ctx.b, align_up(at + elemLayout(e).size * (fd.bound or 0), 4))
 		if n < 0 then n = 0 end
 		if fd.array == "keyed" then n = fd.bound or 0 end
 		local el = elemLayout(e)
 		for i = 0, n - 1 do
 			out[i + 1] = readElement(ctx, e, at + i * el.size, false)
 		end
+		arrayCounts[out] = n
 		return out
 	end
 	return nil
@@ -374,14 +388,16 @@ function readUnion(ctx: Ctx, name: string, at: number): any
 	end
 	local value = readField(ctx, arm, at + L.armOffset, true)
 	u.Type = arm.tag
-	if value ~= nil and arm.slot ~= nil and arm.slot ~= "" then u[arm.slot] = value end
+	-- the arm lands through the same store as a record field, so a string
+	-- keeps its used length and a counted array its Count companion (§7.2).
+	putField(u, arm, value)
 	return u
 end
 
 -- ONE RECORD (§7.2): every field at its offset. Unguarded fields first,
 -- because a guard names bool fields of the same record; a field under a false
 -- guard is elided by the writer and keeps its constructor default.
-local function putField(value: any, fd: any, got: any): void
+function putField(value: any, fd: any, got: any)
 	if got == nil or fd.slot == nil or fd.slot == "" then return end
 	if fd.s == "arr" then
 		if fd.array ~= "list" and typeof(got) == "table" then
@@ -390,8 +406,11 @@ local function putField(value: any, fd: any, got: any): void
 				dst = {}
 				value[fd.slot] = dst
 			end
-			for i = 1, #got do dst[i] = got[i] end
-			if fd.array == "counted" then value[fd.slot .. "Count"] = #got end
+			local n = arrayCounts[got] or #got
+			for i = 1, n do
+				if got[i] ~= nil then dst[i] = got[i] end
+			end
+			if fd.array == "counted" then value[fd.slot .. "Count"] = n end
 			return
 		end
 		value[fd.slot] = got
@@ -412,7 +431,7 @@ local function putField(value: any, fd: any, got: any): void
 	value[fd.slot] = got
 end
 
-function readRecord(ctx: Ctx, value: any, name: string, base: number): void
+function readRecord(ctx: Ctx, value: any, name: string, base: number)
 	local d = S.lookup(name)
 	local offsets = recordOffsets(d.fields)
 	for i, fd in d.fields do
