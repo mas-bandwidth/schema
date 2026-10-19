@@ -467,9 +467,11 @@ table Root {
 }`)
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables["Root"])
-	blob := &tabletext.Blob{Data: []byte{0, 255, 42}}
-	value.Fields[0].Cell.Blob = blob
-	value.Fields[1].Cell.Blob = blob
+	// A blob is owned by one slot (§2.5), so equal payloads are distinct
+	// identities in the valid round-trip case. Shared-blob refusal is tested
+	// separately by the table-wire refusal suite.
+	value.Fields[0].Cell.Blob = &tabletext.Blob{Data: []byte{0, 255, 42}}
+	value.Fields[1].Cell.Blob = &tabletext.Blob{Data: []byte{0, 255, 42}}
 	value.Fields[2].Cell.Blob = &tabletext.Blob{Data: []byte("hello")}
 	value.Fields[3].Cell.Blob = &tabletext.Blob{}
 	expected, err := tablewire.Encode(model, value)
@@ -489,19 +491,21 @@ int main(void) {
  uint8_t saved[sizeof(expected)],*data,*region; int64_t extent; TableReport report={0};
  CHECK(root_builder_init(&builder));root=root_builder_root(&builder);ctx.arena=&builder.arena;
  data=table_bytes_emplace(&builder.main,&root->data,3);CHECK(data!=NULL);data[0]=0;data[1]=255;data[2]=42;
- root->alias=root->data;
+ data=table_bytes_emplace(&builder.main,&root->alias,3);CHECK(data!=NULL);data[0]=0;data[1]=255;data[2]=42;
  CHECK(table_string_emplace(&builder.main,&root->text,"hello",5)!=NULL);
  CHECK(table_bytes_emplace(&builder.main,&root->empty,0)!=NULL);
  CHECK(root_measure(&ctx,root)==(int64_t)sizeof(expected));
  CHECK(root_save(&ctx,root,saved,sizeof(saved))==(int64_t)sizeof(expected));CHECK(!memcmp(saved,expected,sizeof(saved)));
  CHECK(root_builder_lock(&builder));locked=(const Root *)(const void *)builder.region;
- CHECK(table_bytes_at(NULL,&locked->data).data==table_bytes_at(NULL,&locked->alias).data);
+ CHECK(table_bytes_at(NULL,&locked->data).data!=table_bytes_at(NULL,&locked->alias).data);
+ CHECK(!memcmp(table_bytes_at(NULL,&locked->data).data,table_bytes_at(NULL,&locked->alias).data,3));
  CHECK(table_bytes_at(NULL,&locked->empty).data!=NULL && table_bytes_at(NULL,&locked->empty).length==0);
  CHECK(!strcmp(table_string_at(NULL,&locked->text).data,"hello"));
- CHECK(root_to_json_measure(locked)==-1);
+ CHECK(root_to_json_measure(locked)>0);
  extent=root_load_measure(expected,sizeof(expected));CHECK(extent>0);region=(uint8_t *)malloc((size_t)extent);CHECK(region!=NULL);
  locked=root_load(region,extent,expected,sizeof(expected),&report);CHECK(locked!=NULL && !report.malformed && !report.unknown);
- CHECK(table_bytes_at(NULL,&locked->data).data==table_bytes_at(NULL,&locked->alias).data);
+ CHECK(table_bytes_at(NULL,&locked->data).data!=table_bytes_at(NULL,&locked->alias).data);
+ CHECK(!memcmp(table_bytes_at(NULL,&locked->data).data,table_bytes_at(NULL,&locked->alias).data,3));
  CHECK(!strcmp(table_string_at(NULL,&locked->text).data,"hello"));
  CHECK(root_builder_init(&copy));CHECK(root_load_builder(&copy,expected,sizeof(expected),&report));
  CHECK(root_builder_lock(&copy));CHECK(root_save(NULL,(const Root *)(const void *)copy.region,saved,sizeof(saved))==(int64_t)sizeof(expected));

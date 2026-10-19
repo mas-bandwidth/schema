@@ -1678,7 +1678,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		} else {
 			high := uint64(1)<<(f.ElemSize*8) - 1
 			if value < 0 {
-				value = 0
+				value = int64(high)
 				in.report.Clamped++
 			} else if uint64(value) > high {
 				value = int64(high)
