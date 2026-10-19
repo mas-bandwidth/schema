@@ -349,6 +349,13 @@ func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 				why = fmt.Sprintf("%s.%s is guarded and holds a reference or a record, whose numbering under a false guard this writer does not carry yet (docs/SPEC-TABLES.md §3.1, §7.6)", name, f.Name)
 				return
 			}
+			if un := unionRef(f); un != nil {
+				if why := variableCookUnion(un); why != "" {
+					why = fmt.Sprintf("%s.%s's union (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, why)
+					return
+				}
+				continue
+			}
 			if !variableCookField(f) {
 				why = fmt.Sprintf("%s.%s's storage (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, tableFieldTypeName(f))
 				return
@@ -356,6 +363,27 @@ func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 		}
 	})
 	return why
+}
+
+// variableCookUnion names the first arm of a union the variable cook writer
+// does not carry, or "" when it carries every arm (§7.2's storage kinds,
+// applied to an arm as a field line).
+func variableCookUnion(un *ir.Union) string {
+	for _, arm := range un.Variants {
+		if arm.Void() {
+			continue
+		}
+		if u2 := unionRef(arm.F); u2 != nil {
+			if why := variableCookUnion(u2); why != "" {
+				return why
+			}
+			continue
+		}
+		if !variableCookField(arm.F) {
+			return fmt.Sprintf("#arm %s's storage (%s)", arm.Name, tableFieldTypeName(arm.F))
+		}
+	}
+	return ""
 }
 
 func variableCookField(f *ir.Field) bool {
@@ -435,6 +463,35 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		} else {
 			g.pf("%sc.blob(at + %d, %s, %s);\n", ind, offset, dartU64Literal(ir.BytesWireTypeId), expr)
 		}
+	case isUnionField(f):
+		// §7.2 union storage: the tag at the field's offset, then the set
+		// arm's slot at the arms' overlay offset. The Go reference's tableCook
+		// writer (internal/codegen/gotable/cookwrite.go) writes the tag, refuses
+		// a tag naming no arm, and writes the set arm's field at the same slot.
+		un := unionRef(f)
+		_, _, cookTag, armOffset := ir.UnionLayout(g.unit, un)
+		writeTag := fmt.Sprintf("out.setUint64(%s, %s.armTag, order)", fmt.Sprintf("at + %d", offset), expr)
+		switch cookTag {
+		case 1:
+			writeTag = fmt.Sprintf("out.setUint8(%s, %s.armTag)", fmt.Sprintf("at + %d", offset), expr)
+		case 2:
+			writeTag = fmt.Sprintf("out.setUint16(%s, %s.armTag, order)", fmt.Sprintf("at + %d", offset), expr)
+		case 4:
+			writeTag = fmt.Sprintf("out.setUint32(%s, %s.armTag, order)", fmt.Sprintf("at + %d", offset), expr)
+		}
+		g.pf("%sif (%s.armTag < 0 || %s.armTag > %d) return false;\n", ind, expr, expr, len(un.Variants))
+		g.pf("%sif (out != null) {\n", ind)
+		g.pf("%s  %s;\n", ind, writeTag)
+		g.pf("%s}\n", ind)
+		g.pf("%sswitch (%s.armTag) {\n", ind, expr)
+		for i, arm := range un.Variants {
+			g.pf("%s  case %d:\n", ind, i+1)
+			if !arm.Void() {
+				g.emitCookVariableField(arm.F, offset+armOffset, expr+"."+armMember(arm), ind+"    ")
+			}
+			g.pf("%s    break;\n", ind)
+		}
+		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayCounted:
 		bound := f.ArrayBound
 		stride := pieces[0].Size / bound
