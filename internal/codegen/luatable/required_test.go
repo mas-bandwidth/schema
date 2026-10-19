@@ -96,6 +96,25 @@ table OldHasPick
     pid int32
     pick OldPick
 }
+enum State
+{
+    AtRest
+}
+union Choice
+{
+    a int32
+}
+table R
+{
+    s int32 | required
+    m map[string(32)]int32 | required
+    b *bytes | required
+    u Choice | required
+}
+table Keys
+{
+    k [State]int32 | required
+}
 `
 	dir := t.TempDir()
 	sf := filepath.Join(dir, "req.schema")
@@ -115,6 +134,20 @@ local function rep() return { malformed = false, refused = 0, unknown = 0, kindM
 local function line(label, r, v)
   print(string.format("%s %d|%s|%s", label, r.missingRequired or 0, r.reason or "-", v == nil and "nil" or "read"))
 end
+local function hexenc(s)
+  return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
+end
+local function hexdec(s)
+  assert(#s % 2 == 0)
+  local t = {}
+  for i = 1, #s, 2 do
+    table.insert(t, string.char(tonumber(s:sub(i, i + 1), 16)))
+  end
+  return table.concat(t)
+end
+-- the Go oracle wire for R{s:int32|required, m, b, u} at zero, measured from
+-- the generated Go (internal/codegen/gotable/required*.go).
+local ORACLE = "01010400000000020e020d00031100040f0000220b02864cee63af58f301864ce063afa5f101864cdf63aff00002864ce863af0400000000000000"
 -- resave pins the round trip (§16.2): a clean load re-saved equals the wire
 -- it came from, because a required field always rides.
 local function resave(label, target, w, v)
@@ -191,6 +224,32 @@ do
   local r = rep(); local v = load.Load(T, "HasPick", w, r)
   line("union_arm_on_missing", r, v)
 end
+-- G: a required map, blob and union ride at zero: the Lua save writes exactly
+-- the Go oracle bytes, and the Lua reader admits the Go oracle cleanly and
+-- resaves it byte for byte.
+do
+  local r = T.NewR()
+  local w = save.Save(T, "R", r)
+  print(string.format("oracle_save %s", tostring(hexenc(w) == ORACLE)))
+  local d = hexdec(ORACLE)
+  local r2 = rep(); local v = load.Load(T, "R", d, r2)
+  line("oracle_go", r2, v)
+  if v ~= nil then
+    local w2 = save.Save(T, "R", v)
+    print(string.format("oracle_resave %s", tostring(w2 == d)))
+  end
+end
+-- H: a required keyed array rides at zero and round-trips byte for byte.
+do
+  local k = T.NewKeys()
+  local w = save.Save(T, "Keys", k)
+  local r = rep(); local v = load.Load(T, "Keys", w, r)
+  line("keyed_zero", r, v)
+  if v ~= nil then
+    local w2 = save.Save(T, "Keys", v)
+    print(string.format("resave_keyed_zero %s", tostring(w2 == w)))
+  end
+end
 `
 	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
@@ -208,7 +267,12 @@ other_clean 0|-|read
 resave_other_clean true
 union_arm_off 0|-|read
 resave_union_arm_off true
-union_arm_on_missing 1|missing_required: x|nil`
+union_arm_on_missing 1|missing_required: x|nil
+oracle_save true
+oracle_go 0|-|read
+oracle_resave true
+keyed_zero 0|-|read
+resave_keyed_zero true`
 	if got != want {
 		t.Errorf("lua required behavior:\ngot:\n%s\nwant:\n%s", got, want)
 	}
