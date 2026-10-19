@@ -181,12 +181,14 @@ instance blob_str16           blobdemo    Catalog     testdata/wire/tables/blob_
 # BLOB IDENTITY (§2.5, §3.1): a node is numbered by IDENTITY, never by content
 # and never per slot. blob_equal_bytes holds two DISTINCT *bytes nodes carrying
 # equal bytes — two records that a by-content numbering would merge into one.
-# blob_shared_string holds ONE *string node named from two map slots — one
-# record that a per-slot numbering would write twice. Both are `no-text`: a
-# blob's text is a string with no first key to carry `&node`, so a shared blob
-# has no spelling (§16.7), and these two rows pin the wire alone.
+# blob_shared_string holds ONE *string node named from two map slots. A blob
+# belongs to one slot (§2.5), so the Go and C writers refuse it by name when
+# they measure the graph (go-refusal=, c-refusal=). Lua writes the one record once until
+# schema-lua-blob-named-twice-is-blob-shared-r ports the refusal, and the
+# golden pins those bytes. Both rows are `no-text`: a blob's text is a string
+# with no first key to carry `&node`, so a shared blob has no spelling (§16.7).
 instance blob_equal_bytes      blobdemo    Catalog     testdata/wire/tables/blob_equal_bytes.bin  no-text
-instance blob_shared_string    mapdemo     Docs        testdata/wire/tables/blob_shared_string.bin no-text
+instance blob_shared_string    mapdemo     Docs        testdata/wire/tables/blob_shared_string.bin no-text go-refusal=blob_shared c-refusal=blob_shared
 
 # WIDE TEXT, kind 33 (§3). wide_empty is the ELISION: wide text takes no
 # specified default (SPEC.md §4.12), so an empty wstring writes no line at all.
@@ -688,29 +690,33 @@ json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conform
 # str-illformed-at-bound: the ill-formed 0xFF byte is REFUSED BY NAME at the
 # string site, before any clamp (§16.3): it does not spell a code point, so
 # there is nothing to clamp — the read answers `string_not_utf8: <root>`.
-# HELD FIRST IN GO (§16.3): Go carries the rule, every other port keeps the
-# counters it answered before the ruling until its port.
-json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go uncarried=0,0,0,1,0,false,read
+# HELD FIRST IN GO (§16.3): Go and Lua carry the rule (Lua's text reader
+# refuses the ill-formed byte too), every other port keeps the counters it
+# answered before the ruling until its port.
+json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go,lua uncarried=0,0,0,1,0,false,read
 json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,0,false,read
 json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,0,false,read
 json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,0,false,read
 # THE NUL ESCAPE INTO BOUNDED TEXT (§16.3): a \u0000 escape that would land
 # U+0000 in a bounded string(N) field is refused as text_holds_zero, naming the
 # field. A zero in a value the read only SKIPS is not the event, and \u0001
-# reads clean.
-json-hostile str-zero-byte-bounded          tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded           refused
-json-hostile str-zero-byte-bounded-nested   tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded-nested    refused
+# reads clean. Go and Lua carry the refusal; every other port stores the zero
+# as text and keeps the counters its reader gives until its port, as the
+# str-zero-escape rows below say.
+json-hostile str-zero-byte-bounded          tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded           refused carried-by=go,lua uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-byte-bounded-nested   tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded-nested    refused carried-by=go,lua uncarried=0,0,0,0,0,false,read
 # THE ZERO RULE IN THE TEXT (§16.3): "A JSON string the read would PLACE in text
 # storage ... and that decodes to U+0000 ... refuses the read: FromJson returns
 # false, the report is Malformed, and Reason reads text_holds_zero:
 # <Table>.<field> for the innermost field that held it." A string the read only
 # SKIPS — the value of an unknown key — "stores nothing and is not this event".
-# Held first in Go: the two refusals carry the standard's verdict, and every
-# other port keeps the counters its reader gives (it stores the zero as text),
+# Held first in Go: the two refusals carry the standard's verdict. Lua carries
+# the value row (its reader refuses a zero placed in text, the bounded rows
+# above); Lua's map-key read and every other port keep the counters its reader gives (it stores the zero as text),
 # 0,0,0,0,0,false,read, until its port. The map-key row uses the existing
 # `mapdemo` unit's Text root, whose names field is map[string(8)]string(16);
 # tabledemo's RootConfig has no string-keyed map.
-json-hostile str-zero-escape-value        tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value         refused carried-by=go uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-escape-value        tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value         refused carried-by=go,lua uncarried=0,0,0,0,0,false,read
 json-hostile str-zero-escape-map-key      mapdemo Text          testdata/conformance/tables/json-hostile/str-zero-escape-map-key       refused carried-by=go uncarried=0,0,0,0,0,false,read
 json-hostile str-zero-escape-unknown-key  tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-unknown-key   1,0,0,0,0,false,read
 json-hostile union-table-arm-unknown        messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown        1,0,0,0,0,false,read

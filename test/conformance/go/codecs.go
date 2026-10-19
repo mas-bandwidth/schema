@@ -213,7 +213,7 @@ var codecTable = []codec{
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.DocsToJsonMeasure, mapdemo.DocsToJson, mapdemo.DocsCookMeasure, mapdemo.DocsCookFrom, func(r *mapdemo.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
-	}),
+	}, mapdemo.DocsMeasureReason),
 	regionRow("mapdemo", "Fleet", mapdemo.FleetLoadMeasure, mapdemo.FleetLoadTolerant, mapdemo.FleetMeasure, mapdemo.FleetSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Fleet, []byte, bool) {
 		var b mapdemo.FleetBuilder
 		if !b.Init() {

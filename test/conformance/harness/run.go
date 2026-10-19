@@ -453,10 +453,10 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 		want[s] = e
 	}
 
-	goWireRefusals := map[string]string{}
+	wireRefusals := map[string]map[string]string{}
 	for _, instance := range m.Instances {
-		if instance.GoWireRefusal != "" {
-			goWireRefusals[instance.Name] = instance.GoWireRefusal
+		if len(instance.WireRefusals) != 0 {
+			wireRefusals[instance.Name] = instance.WireRefusals
 		}
 	}
 	results := map[string]map[string]*result{}
@@ -530,7 +530,7 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
 			for _, e := range legWant {
-				scoreAnswer(d.lang, s, out, e, goWireRefusals[e.name], r)
+				scoreLeg(d.lang, s, out, e, wireRefusals[e.name], r)
 			}
 			if reference && r.missing > 0 {
 				r.failures = append(r.failures, fmt.Sprintf(
@@ -544,29 +544,23 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 	return report(w, langs, results), nil
 }
 
+// scoreLeg scores one case written by a leg against the refusals the
+// instance's markers name per leg (`<lang>-refusal=`): a leg the instance names
+// owes that named refusal on the wire surface, and every other leg the bytes.
+func scoreLeg(lang, surface, out string, e expectation, refusals map[string]string, r *result) {
+	if surface == "wire" && lang != "go" && refusals[lang] != "" {
+		scoreRefusal(out, e, refusals[lang], r)
+		return
+	}
+	scoreAnswer(lang, surface, out, e, refusals["go"], r)
+}
+
 // scoreAnswer scores one case written by a leg. The Go blob-shared marker
 // changes that one wire expectation from bytes to a named writer refusal.
 func scoreAnswer(lang, surface, out string, e expectation, goWireRefusal string, r *result) {
 	answer := filepath.Join(out, e.name)
 	if surface == "wire" && lang == "go" && goWireRefusal != "" {
-		if _, err := os.Stat(answer); err == nil {
-			r.failures = append(r.failures, fmt.Sprintf("%s: expected named writer refusal %q, got bytes", e.name, goWireRefusal))
-			return
-		} else if !errors.Is(err, os.ErrNotExist) {
-			r.failures = append(r.failures, fmt.Sprintf("%s: checking wire answer: %v", e.name, err))
-			return
-		}
-		marker := answer + ".absent"
-		reason, err := os.ReadFile(marker)
-		if err != nil {
-			r.failures = append(r.failures, fmt.Sprintf("%s: expected named absence %q, driver wrote nothing", e.name, goWireRefusal))
-			return
-		}
-		if string(reason) != goWireRefusal {
-			r.failures = append(r.failures, fmt.Sprintf("%s: absent reason %q, want %q", e.name, string(reason), goWireRefusal))
-			return
-		}
-		r.missing++
+		scoreRefusal(out, e, goWireRefusal, r)
 		return
 	}
 
@@ -585,6 +579,29 @@ func scoreAnswer(lang, surface, out string, e expectation, goWireRefusal string,
 		return
 	}
 	r.pass++
+}
+
+// scoreRefusal holds one case to a NAMED absence: no bytes, and an absent
+// marker whose content is the refusal's name. Any other answer is red.
+func scoreRefusal(out string, e expectation, refusal string, r *result) {
+	answer := filepath.Join(out, e.name)
+	if _, err := os.Stat(answer); err == nil {
+		r.failures = append(r.failures, fmt.Sprintf("%s: expected named refusal %q, got bytes", e.name, refusal))
+		return
+	} else if !errors.Is(err, os.ErrNotExist) {
+		r.failures = append(r.failures, fmt.Sprintf("%s: checking wire answer: %v", e.name, err))
+		return
+	}
+	reason, err := os.ReadFile(answer + ".absent")
+	if err != nil {
+		r.failures = append(r.failures, fmt.Sprintf("%s: expected named absence %q, driver wrote nothing", e.name, refusal))
+		return
+	}
+	if string(reason) != refusal {
+		r.failures = append(r.failures, fmt.Sprintf("%s: absent reason %q, want %q", e.name, string(reason), refusal))
+		return
+	}
+	r.missing++
 }
 
 // absentReference is what the REFERENCE leg's absence reads as in the failure
