@@ -20,6 +20,8 @@ func init() {
 		Name{Name: "TableRefuseCountOverExtentCap", What: "typed file and accelerator refusal errors"},
 		Name{Name: "TableRefuseBlobOverSizeCap", What: "typed file and accelerator refusal errors"},
 		Name{Name: "TableRefuseDataCycle", What: "typed file and accelerator refusal errors"},
+		Name{Name: "TableMaxNestingDepth", What: "bounded generated-reader nesting"},
+		Name{Name: "tableNestingDepthRefusal", What: "bounded generated-reader nesting refusal"},
 		Name{Name: "tableWireFrame", What: "one collector-visible writer frame per call"},
 		Name{Name: "tableRetainFrame", What: "one collector-visible retaining writer frame per call"},
 		Name{Name: "tableRegionContainerEdges", What: "one cursor lifetime per container"},
