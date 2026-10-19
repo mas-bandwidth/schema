@@ -5,8 +5,12 @@ package darttable
 // writer and compared byte for byte with `schema cook`'s production writer
 // (internal/tablecook) in both byte orders.
 //
-// This guard is grown family by family: the subtest names the family it pins,
-// so a family this leg refuses is a missing subtest, never a passing skip.
+// The families live in a package-level registry, cookEveryFamilies, grown one
+// file per card: this card registers the enum, array-of-scalars and
+// array-of-records families; sibling cards append their own through init() in
+// their own files. The guard loops over the registry with one subtest per
+// entry, so a family this leg refuses is a missing subtest, never a passing
+// skip.
 
 import (
 	"bytes"
@@ -24,28 +28,23 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
-// TestCookWriteEveryConstructDart pins the runtime cook writer to
-// `schema cook`'s bytes, one subtest per construct family. Each subtest cooks
-// a value holding that family and compares both byte orders.
-func TestCookWriteEveryConstructDart(t *testing.T) {
-	t.Parallel()
-	u := unitFrom(t, cookEverySchema)
-	files, err := dart.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tables, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	maps.Copy(files, tables)
-	for _, fam := range []struct {
-		name   string
-		schema string
-		probe  string
-		mutate func(t *testing.T, m *tabletext.Model, v *tabletext.Instance)
-	}{
-		{
+// cookEveryFamily names one construct family the variable cook writer carries:
+// the schema fragment the family needs, the Dart probe that cooks a value
+// holding it, and how to set that value in the tabletext model (§7.2, §7.6).
+type cookEveryFamily struct {
+	name, schema, probe string
+	mutate              func(t *testing.T, m *tabletext.Model, v *tabletext.Instance)
+}
+
+// cookEveryFamilies is the package-level registry of construct families the
+// cook-write guard pins. Sibling cards register their own families through
+// init() in their own files; a family this leg refuses is an absent entry,
+// never a passing skip.
+var cookEveryFamilies []cookEveryFamily
+
+func init() {
+	cookEveryFamilies = append(cookEveryFamilies,
+		cookEveryFamily{
 			name:   "enum",
 			schema: `table Root { tier Tier }`,
 			probe:  cookEveryEnumProbe,
@@ -53,7 +52,7 @@ func TestCookWriteEveryConstructDart(t *testing.T) {
 				v.Fields[0].Cell.U = 2
 			},
 		},
-		{
+		cookEveryFamily{
 			name:   "array-of-scalars",
 			schema: `table Root { vals [4]int32 }`,
 			probe:  cookEveryArrayProbe,
@@ -63,7 +62,7 @@ func TestCookWriteEveryConstructDart(t *testing.T) {
 				}
 			},
 		},
-		{
+		cookEveryFamily{
 			name: "array-of-records",
 			schema: `table Inner { v int32 }
 table Root { inner [2]Inner }`,
@@ -73,7 +72,18 @@ table Root { inner [2]Inner }`,
 				v.Fields[0].Elems[1].Tab.Fields[0].Cell.U = 20
 			},
 		},
-	} {
+	)
+}
+
+// TestCookWriteEveryConstructDart pins the runtime cook writer to
+// `schema cook`'s bytes, one subtest per construct family. Each subtest cooks
+// a value holding that family and compares both byte orders.
+func TestCookWriteEveryConstructDart(t *testing.T) {
+	t.Parallel()
+	if len(cookEveryFamilies) == 0 {
+		t.Fatal("cookEveryFamilies registry is empty: no construct family is pinned")
+	}
+	for _, fam := range cookEveryFamilies {
 		t.Run(fam.name, func(t *testing.T) {
 			t.Parallel()
 			slowtest.Gate(t, "dart")
@@ -127,11 +137,6 @@ table Root { inner [2]Inner }`,
 		})
 	}
 }
-
-const cookEverySchema = `package probe
-enum Tier { flash, pro, heavy, frontier }
-table Root { tier Tier }
-`
 
 const cookEveryEnumProbe = `import 'dart:io';
 import 'dart:typed_data';
