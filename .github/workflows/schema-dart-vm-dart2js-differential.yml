@@ -6,10 +6,11 @@ name: schema-dart vm/dart2js differential
 # 2^53 must be carried identically or refused by name; this workflow is where
 # the whole corpus is compared.
 #
-# THE SPLIT IS BY WHEN. The fast half (wiring plus the comparator's negative
-# control) runs on push and pull_request. The differential itself compiles a
-# corpus with dart2js and is HEAVY, so it runs on the nightly schedule and on
-# workflow_dispatch only, never per push (one-minute budget).
+# THE SPLIT IS BY WHEN. The fast half (the wiring test) runs on push and
+# pull_request. The differential itself generates the corpus, runs dart2js and
+# node, and drives the real target from its negative control, so it is HEAVY
+# and runs on the nightly schedule and on workflow_dispatch only, never per
+# push (one-minute budget).
 
 on:
   push:
@@ -37,9 +38,6 @@ jobs:
           cache: false
       - name: wiring test
         run: go test ./internal/ci -run TestDartVmDart2jsDifferentialWiring -count=1 -timeout 600s
-      - name: comparator negative control
-        run: make tables-dart-vm-dart2js-differential-negative-control
-
   differential:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -56,10 +54,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 26.7.0
-      - name: comparator negative control
-        run: make tables-dart-vm-dart2js-differential-negative-control
-      - name: VM / dart2js differential over the generate corpus
+      - name: VM / dart2js differential over the generated corpus
         run: make tables-dart-vm-dart2js-differential DART=dart
+      - name: the target reds on a planted run-time divergence
+        run: make tables-dart-vm-dart2js-differential-negative-control DART=dart
       - name: upload the divergence
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

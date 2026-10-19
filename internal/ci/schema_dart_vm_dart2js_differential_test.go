@@ -4,9 +4,11 @@ package ci
 // target in make/schema-dart-vm-dart2js-differential.mk, nightly only).
 //
 // This test pins the wiring a reader cannot hold by hand: the target exists,
-// the tool versions are pinned, the differential runs on a schedule and never
-// on a push, and run under node, and its negative control is registered with
-// the repository's negative-control convention. It invokes no Dart.
+// the tool versions are pinned, the corpus is the Dart generate target's own,
+// the runtime lane really compares the VM with node over a web-safe build, and
+// the negative control drives the REAL target with a planted run-time
+// divergence. The differential runs on a schedule and never on a push. The
+// test invokes no Dart.
 import (
 	"encoding/json"
 	"os"
@@ -28,9 +30,16 @@ func TestDartVmDart2jsDifferentialWiring(t *testing.T) {
 		"tables-dart-vm-dart2js-differential:",
 		"Dart SDK version: $(DART_SDK_PIN) ",
 		"v26.7.0",
-		"tables/examples",
+		"build/tables-generated-dart/.stamp",
 		"test/tables/Bases.schema",
+		"test/dart-differential/vmref.dart",
+		"test/dart-differential/webints.dart",
+		"test/dart-differential/websafe.py",
+		"DART_DIFF_PLANT",
+		"gen-websafe",
+		"PLANT seen",
 		"tables-dart-vm-dart2js-differential-negative-control:",
+		"$(MAKE) -s tables-dart-vm-dart2js-differential",
 	} {
 		if !strings.Contains(mkText, want) {
 			t.Errorf("the make file does not carry %q", want)
@@ -50,6 +59,10 @@ func TestDartVmDart2jsDifferentialWiring(t *testing.T) {
 	}
 	if strings.Contains(wf, "go run ./tools/negativecontrols") {
 		t.Error("the differential workflow types its own negative-control list")
+	}
+	fast, _, _ := strings.Cut(wf, "  differential:")
+	if strings.Contains(fast, "tables-dart-vm-dart2js-differential DART=dart") {
+		t.Error("the differential itself runs on the fast push job")
 	}
 
 	plan, err := os.ReadFile(filepath.Join(root, "make", "negative-controls.json"))

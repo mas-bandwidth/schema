@@ -6,16 +6,43 @@
 # 2^53 must either be carried identically or be REFUSED by name; silently
 # rounding it is the bug this lens exists to see.
 #
-# The corpus is the one the Makefile's own generate targets read:
-# tables/examples (the tables Dart generate target) and test/tables/Bases.schema
-# (read by the cpp, go and reference generate targets, and the source of the
-# uint64 defaults above 2^53).
+# THE CORPUS is the one the Dart generate target reads, not a second one:
+# build/tables-generated-dart/.stamp (make/dart.mk) plus test/tables/Bases.schema,
+# the source of the uint64 defaults above 2^53.
 #
-# HEAVY: this is a nightly differential, never a per-push gate. The fast part is
-# the wiring test in internal/ci, which runs on push and pull_request.
+# TWO LANES, BOTH REQUIRED:
+#
+#   1. THE RUNTIME LANE compares the VM and node transcripts of webints.dart
+#      over a WEB-SAFE build: a scratch copy of the generated tree whose
+#      schema-internal 64-bit literals are folded to their low 31 bits, so
+#      dart2js can represent them and the unsigned codec's shifts stay inside
+#      the 32-bit operator. This is the lane attempt 1 lacked: it really runs
+#      both runtimes and diffs their bytes. It is restricted to values below
+#      2^31 (unsigned tables); the compile lane is the refusal for the rest.
+#
+#   2. THE COMPILE LANE compiles the unmodified generated tree with dart2js and
+#      requires the pin-named refusal ("can't be represented exactly in
+#      JavaScript") for the schema-internal ids above 2^53. It first proves the
+#      refusal is not vacuous by finding the literal. The VM reference
+#      (vmref.dart) proves the VM carries those values exactly.
+#
+# TRIAGE. The schema-internal id literals are a REAL web-representability
+# finding in internal/codegen/darttable/wireform.go (dartU64Literal emits a
+# 64-bit int literal; the JS port already splits the same hash into two uint32
+# lanes). That file is outside this card's PATHS, so it is reported as
+# PATHS-PROPOSED and not fixed here; the compile lane records the refusal by
+# name. The narrow signed sign-extension (_signExtend with a shift of 32 or
+# more, which dart2js computes as a 32-bit shift) is the same class of finding
+# and is kept out of the runtime lane by using the unsigned table only; it is
+# in the same report row and the same PATHS-PROPOSED.
+#
+# HEAVY: nightly and workflow_dispatch only. The fast part is the wiring test in
+# internal/ci, which runs on push and pull_request.
 DART_DIFF_DART ?= $(DART)
 DART_DIFF_NODE ?= node
 DART_DIFF_DIR := build/schema-dart-vm-dart2js-differential
+DART_DIFF_PLANT ?=
+DART_DIFF_DEFINE := $(if $(DART_DIFF_PLANT),-DDART_DIFF_PLANT=true,)
 
 .PHONY: tables-dart-vm-dart2js-differential
 tables-dart-vm-dart2js-differential: bin/schema
@@ -32,31 +59,41 @@ tables-dart-vm-dart2js-differential: bin/schema
 		case "$$n" in \
 		"v26.7.0") ;; \
 		*) echo "differential pin: want node v26.7.0, running: $$n"; exit 1;; esac
-	@rm -rf $(DART_DIFF_DIR)/gen
-	./bin/schema generate --lang dart --out $(DART_DIFF_DIR)/gen/examples tables/examples
+	@rm -rf $(DART_DIFF_DIR)/gen $(DART_DIFF_DIR)/gen-websafe
+	$(MAKE) -s build/tables-generated-dart/.stamp
+	cp -r build/tables-generated-dart $(DART_DIFF_DIR)/gen
 	./bin/schema generate --lang dart --out $(DART_DIFF_DIR)/gen/bases test/tables/Bases.schema
-	$(DART_DIFF_DART) test/dart-differential/webints.dart > $(DART_DIFF_DIR)/vm.txt
-	# THE REFUSAL ARM: dart2js may refuse the generated tree by name (the
-	# field ids and uint64 literals are above 2^53). That is the card's
-	# "refused": the web build cannot silently round what it cannot hold. Only
-	# when it compiles is there a run-time output to compare.
-	@if $(DART_DIFF_DART) compile js -O2 -o $(DART_DIFF_DIR)/webints.js \
-			test/dart-differential/webints.dart > $(DART_DIFF_DIR)/webints-compile.log 2>&1; then \
-		$(DART_DIFF_NODE) $(DART_DIFF_DIR)/webints.js > $(DART_DIFF_DIR)/dart2js.txt; \
-		if ! diff -u $(DART_DIFF_DIR)/vm.txt $(DART_DIFF_DIR)/dart2js.txt > $(DART_DIFF_DIR)/diff.txt; then \
-			echo "tables-dart-vm-dart2js-differential: DIVERGENCE between the Dart VM and dart2js (REAL finding; $(DART_DIFF_DIR)/diff.txt):"; \
-			cat $(DART_DIFF_DIR)/diff.txt; \
-			exit 1; \
+	# THE VM REFERENCE: the unmodified tree, exact 64-bit values above 2^53.
+	$(DART_DIFF_DART) test/dart-differential/vmref.dart > $(DART_DIFF_DIR)/vmref.txt
+	# THE WEB-SAFE BUILD: fold every schema-internal 64-bit literal to its low
+	# 31 bits in a scratch copy, on both lanes alike. This is not a fix and no
+	# generated file in the tree is touched; it is the only shape dart2js can
+	# represent, and the unsigned codec's bytes are compared in it.
+	cp -r $(DART_DIFF_DIR)/gen $(DART_DIFF_DIR)/gen-websafe
+	python3 test/dart-differential/websafe.py $(DART_DIFF_DIR)/gen-websafe
+	# THE RUNTIME LANE: the same web-safe source on the VM and under dart2js.
+	$(DART_DIFF_DART) $(DART_DIFF_DEFINE) test/dart-differential/webints.dart > $(DART_DIFF_DIR)/vm.txt
+	$(DART_DIFF_DART) compile js -O2 $(DART_DIFF_DEFINE) -o $(DART_DIFF_DIR)/webints.js \
+		test/dart-differential/webints.dart > $(DART_DIFF_DIR)/webints-compile.log 2>&1
+	$(DART_DIFF_NODE) $(DART_DIFF_DIR)/webints.js > $(DART_DIFF_DIR)/dart2js.txt
+	@if ! diff -u $(DART_DIFF_DIR)/vm.txt $(DART_DIFF_DIR)/dart2js.txt > $(DART_DIFF_DIR)/diff.txt; then \
+		if [ -n "$(DART_DIFF_PLANT)" ]; then \
+			grep -q '^+plant=' $(DART_DIFF_DIR)/diff.txt && \
+			{ echo "tables-dart-vm-dart2js-differential: PLANT seen: the web run rounded a value above 2^53"; \
+			  cat $(DART_DIFF_DIR)/diff.txt; exit 1; }; \
 		fi; \
-		echo "tables-dart-vm-dart2js-differential: the VM and dart2js agree above 2^53"; \
-	else \
-		grep -q "can't be represented exactly in JavaScript" $(DART_DIFF_DIR)/webints-compile.log || \
-			{ echo "tables-dart-vm-dart2js-differential: dart2js refused the generated tree for an unrecognised reason"; \
-			  cat $(DART_DIFF_DIR)/webints-compile.log; exit 1; }; \
-		echo "tables-dart-vm-dart2js-differential: dart2js REFUSED the generated code by name (a value above 2^53 cannot be represented); the VM carried it exactly"; \
+		echo "tables-dart-vm-dart2js-differential: DIVERGENCE between the Dart VM and dart2js (REAL finding; $(DART_DIFF_DIR)/diff.txt):"; \
+		cat $(DART_DIFF_DIR)/diff.txt; \
+		exit 1; \
 	fi
-	# THE COMPILE-REFUSAL ROW: a >2^53 literal must be refused by name. If
-	# dart2js ever compiles it, the program's values are compared instead.
+	@if [ -n "$(DART_DIFF_PLANT)" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the planted run-time divergence left the comparator green"; exit 1; fi
+	# THE COMPILE LANE: the unmodified tree cannot name its >2^53 ids to
+	# dart2js, and refuses by name. Prove the literal is there first.
+	@found=0; for f in $(DART_DIFF_DIR)/gen/*/*Wire.dart; do \
+		grep -Eq '^const int [A-Za-z_0-9]+ = -?[0-9]{16,};' $$f && found=$$((found+1)); \
+	done; [ $$found -gt 0 ] || \
+		{ echo "tables-dart-vm-dart2js-differential: no >2^53 literal in the generated corpus, so the refusal lane is vacuous"; exit 1; }
 	@if $(DART_DIFF_DART) compile js -O2 -o $(DART_DIFF_DIR)/bases.js \
 			test/dart-differential/bases_literals.dart > $(DART_DIFF_DIR)/bases-compile.log 2>&1; then \
 		$(DART_DIFF_DART) test/dart-differential/bases_literals.dart > $(DART_DIFF_DIR)/bases-vm.txt; \
@@ -70,29 +107,23 @@ tables-dart-vm-dart2js-differential: bin/schema
 		grep -q "can't be represented exactly in JavaScript" $(DART_DIFF_DIR)/bases-compile.log || \
 			{ echo "tables-dart-vm-dart2js-differential: dart2js refused Bases.schema for an unrecognised reason"; \
 			  cat $(DART_DIFF_DIR)/bases-compile.log; exit 1; }; \
-		echo "tables-dart-vm-dart2js-differential: dart2js refused the >2^53 uint64 literal by name"; \
+		echo "tables-dart-vm-dart2js-differential: the VM carried >2^53 exactly and dart2js refused the tree by name ($(DART_DIFF_DIR)/vmref.txt, $(DART_DIFF_DIR)/diff.txt)"; \
 	fi
 
-# THE NEGATIVE CONTROL: a line the web run actually produces for a rounded
-# value (int64 max printed as 2^63) must red the comparator, and two equal
-# files must leave it green. This is what proves the gate can see a divergence
-# instead of comparing a file with itself.
+# THE NEGATIVE CONTROL runs the REAL target with a planted run-time divergence:
+# webints.dart prints a 2^53+1 value (as int.parse, not a literal) only when
+# DART_DIFF_PLANT=1. The VM prints 2^53+3 and dart2js prints 2^53+2, so the
+# target must exit non-zero and name the plant. No hand-written file pair is
+# compared here.
 .PHONY: tables-dart-vm-dart2js-differential-negative-control
 tables-dart-vm-dart2js-differential-negative-control:
 	@mkdir -p $(DART_DIFF_DIR)
-	@printf 'u64span=9007199254740993\nu64high=9007199254740993\ni64high=9223372036854775807\n' \
-		> $(DART_DIFF_DIR)/nc-vm.txt
-	@cp $(DART_DIFF_DIR)/nc-vm.txt $(DART_DIFF_DIR)/nc-same.txt
-	@diff -u $(DART_DIFF_DIR)/nc-vm.txt $(DART_DIFF_DIR)/nc-same.txt || \
-		{ echo "NEGATIVE CONTROL FAILED: equal files did not compare equal"; exit 1; }
-	@sed 's/^i64high=.*/i64high=9223372036854775808/' \
-		$(DART_DIFF_DIR)/nc-vm.txt > $(DART_DIFF_DIR)/nc-planted.txt
-	@if diff -u $(DART_DIFF_DIR)/nc-vm.txt $(DART_DIFF_DIR)/nc-planted.txt \
-			> $(DART_DIFF_DIR)/nc-diff.txt; then \
-		echo "NEGATIVE CONTROL FAILED: a rounded 2^63-1 left the comparator green"; exit 1; \
+	@if DART_DIFF_PLANT=1 $(MAKE) -s tables-dart-vm-dart2js-differential > $(DART_DIFF_DIR)/nc.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a planted run-time divergence left the target green"; \
+		cat $(DART_DIFF_DIR)/nc.log; exit 1; \
 	fi
-	@grep -q '^+i64high=9223372036854775808' $(DART_DIFF_DIR)/nc-diff.txt || \
-		{ echo "NEGATIVE CONTROL FAILED: the comparator went red for another reason"; \
-		  cat $(DART_DIFF_DIR)/nc-diff.txt; exit 1; }
-	@grep -m1 '^+i64high=9223372036854775808' $(DART_DIFF_DIR)/nc-diff.txt
-	@echo "negative control: the rounded int64 max reds the VM/dart2js comparator"
+	@grep -q "PLANT seen" $(DART_DIFF_DIR)/nc.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the target went red for another reason"; \
+		  cat $(DART_DIFF_DIR)/nc.log; exit 1; }
+	@grep -m1 "PLANT seen" $(DART_DIFF_DIR)/nc.log
+	@echo "negative control: the target itself reds on a planted VM/dart2js run-time divergence"
