@@ -110,7 +110,8 @@ func oneSidedOracle(t *testing.T, model *tabletext.Model, u *ir.Unit, tc oneSide
 	}
 	read := model.New(st)
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(model, read, wire, &report); !ok || err != nil {
+	var ok bool
+	if ok, err = tablewire.Decode(model, read, wire, &report); !ok || err != nil {
 		t.Fatalf("%s: the schema-go engine refused its own wire: ok=%v err=%v", tc.name, ok, err)
 	}
 	saved, err = tablewire.Encode(model, read)
