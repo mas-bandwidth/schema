@@ -81,8 +81,9 @@ name: CI fast
 # ONLY THE TABLE PUSHES TO THIS REPOSITORY. A self-hosted runner executes a pull
 # request's own code on our hardware, so a pull request from a FORK MUST NEVER
 # reach these machines: every job below carries
-#   if: github.event.pull_request.head.repo.full_name == github.repository
-# and a fork's pull request is covered by ci-full.yml on hosted runners.
+#   if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+# and a fork's pull request therefore gets no CI run at all: a maintainer runs
+# it by workflow_dispatch after reading the diff, never on a hosted runner.
 #
 # THE STUDIO IS FOR PULL REQUESTS INTO main, per the owner's ruling of
 # 2026-09-11: "Only run tests when merging into main, local runners elsewhere."
