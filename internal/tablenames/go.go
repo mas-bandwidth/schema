@@ -344,8 +344,6 @@ func init() {
 		Name{Name: "tableCookRecords", What: "the unit's whole cooked-record descriptor graph, one slice"},
 		Name{Name: "tableJsonBase64Alphabet", What: "the base64 alphabet a `bytes` field rides under"},
 		Name{Name: "tableJsonBase64Decode", What: "the base64 decode lookup for a `bytes` field"},
-		Name{Name: "tableJsonBase64LenientReader", What: "the tolerant JSON base64 compatibility reader"},
-		Name{Name: "tableJsonBase64Sink", What: "bounded JSON base64 decode storage"},
 		Name{Name: "tableJsonDecodeBase64", What: "bounded canonical and tolerant JSON base64 decoding"},
 		Name{Name: "TableJsonOptions", What: "the text form's three options for a text another library wrote (docs/SPEC-TABLES.md §16.2)"},
 		Name{Name: "tableJsonAtDefault", What: "the omit-defaults option's storage comparison (docs/SPEC-TABLES.md §16.2)"},

@@ -10,7 +10,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
-	"io"
 	"math"
 	"math/big"
 	"sort"
@@ -1146,54 +1145,58 @@ func (in *reader) scanBase64Body() ([]byte, bool) {
 	return raw, ok
 }
 
-// base64BoundedWriter counts the full decoded stream while retaining only the caller's bounded prefix.
-type base64BoundedWriter struct {
-	dst  []byte
-	used int
-}
-
-func (w *base64BoundedWriter) Write(p []byte) (int, error) {
-	if w.used < len(w.dst) {
-		w.used += copy(w.dst[w.used:], p)
-	}
-	return len(p), nil
-}
-
-type base64LenientReader struct {
-	body []byte
-	pos  int
-}
-
-func (r *base64LenientReader) Read(p []byte) (int, error) {
-	n := 0
-	for n < len(p) && r.pos < len(r.body) {
-		c := r.body[r.pos]
-		r.pos++
-		if c == '=' || c == ' ' || c == '\t' || c == '\r' || c == '\n' {
-			continue
-		}
-		p[n] = c
-		n++
-	}
-	if n == 0 {
-		return 0, io.EOF
-	}
-	return n, nil
-}
-
-// decodeBase64Bounded applies StdEncoding.Strict and the canonical EncodedLen rule from docs/SPEC-TABLES.md §§16.2, 16.8 while retaining at most len(dst) decoded bytes.
+// decodeBase64Bounded applies StdEncoding.Strict and the canonical EncodedLen rule from docs/SPEC-TABLES.md §§16.2, 16.8, retaining at most len(dst) decoded bytes. It decodes through fixed stack chunks of 256 characters, so a body of any
+// size costs no allocation and only the bounded prefix is retained. The
+// tolerant pass drops every `=` and the four whitespace bytes and reads what
+// is left as unpadded base64.
 func decodeBase64Bounded(body, dst []byte) (int, bool, bool) {
-	writer := &base64BoundedWriter{dst: dst}
-	decoded, err := io.Copy(writer, base64.NewDecoder(base64.StdEncoding.Strict(), bytes.NewReader(body)))
-	if err == nil && len(body) == base64.StdEncoding.EncodedLen(int(decoded)) {
-		return int(decoded), true, true
+	var chunk [192]byte
+	decoded, used := 0, 0
+	canonical := len(body)%4 == 0
+	for i := 0; canonical && i < len(body); i += 256 {
+		end := min(i+256, len(body))
+		if end < len(body) && body[end-1] == '=' {
+			canonical = false
+			break
+		}
+		n, err := base64.StdEncoding.Strict().Decode(chunk[:], body[i:end])
+		if err != nil {
+			canonical = false
+			break
+		}
+		used += copy(dst[used:], chunk[:n])
+		decoded += n
+	}
+	if canonical && len(body) == base64.StdEncoding.EncodedLen(decoded) {
+		return decoded, true, true
 	}
 	clear(dst)
-	writer.used = 0
-	decoded, err = io.Copy(writer, base64.NewDecoder(base64.RawStdEncoding, &base64LenientReader{body: body}))
+	decoded, used = 0, 0
+	var symbols [256]byte
+	held := 0
+	for i := 0; i <= len(body); i++ {
+		if i < len(body) {
+			c := body[i]
+			if c == '=' || c == ' ' || c == '\t' || c == '\r' || c == '\n' {
+				continue
+			}
+			symbols[held] = c
+			held++
+			if held < len(symbols) {
+				continue
+			}
+		}
+		n, err := base64.RawStdEncoding.Decode(chunk[:], symbols[:held])
+		if err != nil {
+			return 0, false, false
+		}
+		used += copy(dst[used:], chunk[:n])
+		decoded += n
+		held = 0
+	}
 	// a body with no alphabet symbol at all, such as lone whitespace, is not
 	// base64 of anything: it keeps kind_mismatch (§16.2)
-	return int(decoded), false, err == nil && decoded > 0
+	return decoded, false, decoded > 0
 }
 
 func (in *reader) readArray(fv *Field, depth int) bool {
