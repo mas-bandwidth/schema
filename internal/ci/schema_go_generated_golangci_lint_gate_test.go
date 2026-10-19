@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -16,6 +17,10 @@ import (
 // pattern actually turns the target red.
 
 const golangciGateMake = "make/schema-go-generated-golangci-lint-gate.mk"
+
+// The two make-driven tests share build/schema-go-generated-golangci-lint-gate;
+// t.Parallel schedules them together, and this lock keeps the make runs apart.
+var golangciGateMu sync.Mutex
 
 func TestGolangciLintGatePinsCheckerAndLinters(t *testing.T) {
 	t.Parallel()
@@ -63,6 +68,8 @@ func runGolangciGate(t *testing.T, target, want string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
+	golangciGateMu.Lock()
+	defer golangciGateMu.Unlock()
 	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", target)
 	cmd.Dir = repoRoot(t)
 	out, err := cmd.CombinedOutput()

@@ -76,6 +76,12 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A card's make fragment under make/ is not a compiler backend; the
+	// Makefile's SCHEMA_NON_LEG_MKS keeps it out of the registry, so this
+	// count must use the same set.
+	legs = slices.DeleteFunc(legs, func(path string) bool {
+		return filepath.Base(path) == "schema-go-generated-golangci-lint-gate.mk"
+	})
 	if len(legs) == 0 || refused+carried != len(legs)-1 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
