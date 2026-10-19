@@ -1720,3 +1720,5 @@ tables-java-view: bin/schema test/java-view/View.java
 	@echo "Java UnitView: $(words $(VIEW_CORPUS)) units match the compiler's listing; a damaged doc is detected"
 
 test-java: tables-java-view
+
+test-java: tables-java-view
