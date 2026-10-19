@@ -25,9 +25,12 @@ import (
 // wire, and the expected cook is schema-go's tablecook.Cook of that instance
 // (docs/SPEC-TABLES.md §7.6: a writer is held to the tool's bytes).
 const cookWriteSchema = `package cookprobe
+union Choice { number uint128
+ empty }
 table Node { value int32
  name string(16)
- next *Node }
+ next *Node
+ choice Choice }
 table Child { id uint8
  samples []uint16
  link *Node }
@@ -48,12 +51,13 @@ table Root { head *Node
  payload Payload
  other [..2]Payload
  optional ?Child
+ x float32
 }
 `
 
 var cookWriteTexts = []string{
 	`{}`,
-	`{"head":{"&node":1,"value":5,"name":"a","next":{"value":6,"name":"b"}},"alias":{"&node":1},"flag":true,"small":2,"wide":12345678901234567890,"label":"hello","blob":"Ynl0ZXM=","items":[{"id":7,"samples":[10,20],"link":{"&node":1}},{"id":9,"samples":[]}],"payload":{"children":{"items":[{"id":4,"samples":[8,9]}]}},"other":[{"nodes":{"items":[{"&node":1}]}},{"children":{"items":[{"id":3}]}}],"optional":{"id":11,"samples":[1,2,3]}}`,
+	`{"head":{"&node":1,"value":5,"name":"a","next":{"value":6,"name":"b"}},"alias":{"&node":1},"flag":true,"small":2,"wide":12345678901234567890,"label":"hello","blob":"Ynl0ZXM=","items":[{"id":7,"samples":[10,20],"link":{"&node":1}},{"id":9,"samples":[]}],"payload":{"children":{"items":[{"id":4,"samples":[8,9]}]}},"other":[{"nodes":{"items":[{"&node":1}]}},{"children":{"items":[{"id":3}]}}],"optional":{"id":11,"samples":[1,2,3]},"x":1}`,
 }
 
 func cookUnit(t *testing.T) *ir.Unit {
@@ -129,6 +133,19 @@ if v == nil then print("LOAD_REFUSED") else
 	end
 end
 `
+	probeInvalidUnion := `--!strict
+local T = require("./cookprobeTable")
+local L = require("./load")
+local C = require("./cook")
+local inputs = require("./inputs")
+C.BuildVersion = buffer.readinteger(inputs.build, 0)
+local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+local v = L.load("Root", inputs.wire, report)
+if v ~= nil and v.Head ~= nil then
+	v.Head.Choice.Type = 99
+	print(string.format("INVALID_UNION %d %s", C.CookMeasure(T.RootDescriptor, v), tostring(C.Cook(T.RootDescriptor, v, 1) == nil)))
+end
+`
 	probeCycle := `--!strict
 local T = require("./cookprobeTable")
 local L = require("./load")
@@ -146,6 +163,9 @@ end
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "cycle.luau"), []byte(probeCycle), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "invalid_union.luau"), []byte(probeInvalidUnion), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var cycWire []byte
@@ -238,5 +258,40 @@ end
 	f := strings.Fields(strings.TrimSpace(out))
 	if len(f) != 3 || f[0] != "CYCLE" || f[1] != "-1" || f[2] != "true" {
 		t.Fatalf("cycle refusal: got %q, want CYCLE -1 true", out)
+	}
+
+	// An invalid union held by a numbered pointee is invalid_value in both
+	// measure and cook, just as it is in schema-go's cook.
+	invalid := m.New(m.Lookup("Root"))
+	report = tabletext.Report{}
+	if !m.Read(invalid, []byte(cookWriteTexts[1]), &report) {
+		t.Fatalf("invalid-union row: schema-go's text read: %+v", report)
+	}
+	var invalidHead *tabletext.Instance
+	for i := range invalid.Fields {
+		if invalid.Fields[i].Def.Name == "head" {
+			invalidHead = invalid.Fields[i].Cell.Node
+		}
+	}
+	if invalidHead == nil {
+		t.Fatal("invalid-union row: no head")
+	}
+	var choice *tabletext.Field
+	for i := range invalidHead.Fields {
+		if invalidHead.Fields[i].Def.Name == "choice" {
+			choice = &invalidHead.Fields[i]
+		}
+	}
+	if choice == nil {
+		t.Fatal("invalid-union row: no choice")
+	}
+	choice.Cell.U = 99
+	if _, err := tablecook.Cook(m, invalid, tablecook.Options{}); err == nil {
+		t.Fatal("schema-go's Cook accepted an invalid union in a pointee")
+	}
+	out = string(luaurun.Run(t, dir, "invalid_union.luau", map[string][]byte{"wire": cycWire, "build": build}))
+	f = strings.Fields(strings.TrimSpace(out))
+	if len(f) != 3 || f[0] != "INVALID_UNION" || f[1] != "-1" || f[2] != "true" {
+		t.Fatalf("invalid union refusal: got %q, want INVALID_UNION -1 true", out)
 	}
 }

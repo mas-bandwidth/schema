@@ -378,6 +378,7 @@ end
 
 local function put(w: any, at: number, v: any, width: number)
 	local b = w.b
+	if b == nil then return end
 	if width == 8 then
 		if typeof(v) ~= "integer" then v = integer.create(v) end
 		buffer.writeinteger(b, at, v)
@@ -416,7 +417,7 @@ local function put(w: any, at: number, v: any, width: number)
 end
 
 local function put_float(w: any, at: number, v: number, f32: boolean)
-	buffer.writef64(w.b, at, v)
+	if w.b == nil then return end
 	if f32 then
 		buffer.writef32(w.b, at, v)
 		if w.big then
@@ -431,7 +432,7 @@ local function put_float(w: any, at: number, v: number, f32: boolean)
 end
 
 local function put_copy(w: any, at: number, src: buffer?, n: number)
-	if src ~= nil and n > 0 then buffer.copy(w.b, at, src, 0, n) end
+	if w.b ~= nil and src ~= nil and n > 0 then buffer.copy(w.b, at, src, 0, n) end
 end
 
 -- ---- THE EXTENT (§2.9, internal/tablecook/extent.go) ----------------------
@@ -749,7 +750,24 @@ end
 
 local function refused_layout(d: any, root: any): any
 	if d == nil then return nil end
-	return layout(d, root)
+	local l = layout(d, root)
+	if l == nil then return nil end
+	-- Run the same value walk Cook uses, without allocating or writing the
+	-- output buffer. Layout alone cannot validate values held by a numbered
+	-- pointee (for example a union tag that names no arm).
+	local w = { b = nil, big = false }
+	for _, e in l.entries do
+		if e.d ~= nil then
+			if not write_record(e.d, e.v, HEADER_BYTES + e.offset, w, l.index) then return nil end
+			if e.extent > 0 then
+				local cursor = { at = 0 }
+				local base = HEADER_BYTES + e.offset
+				if not carve_record(e.d, e.v, base, base + e.record, cursor, w, l.index) then return nil end
+				if cursor.at ~= e.extent then return nil end
+			end
+		end
+	end
+	return l
 end
 
 -- CookMeasure answers the whole file's length (§7.6), -1 when the cook refuses.
