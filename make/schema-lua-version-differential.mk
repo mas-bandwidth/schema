@@ -178,9 +178,11 @@ schema-lua-version-differential: build/conformance-harness build/conformance-lua
 	if [ $$fail -ne 0 ]; then exit 1; fi; \
 	echo "lua-version-differential: Lua 5.3 and 5.4 agree; Lua 5.1 and LuaJIT refuse by name"
 
-# THE NEGATIVE CONTROL (make/negative-controls.json; tools/negativecontrols):
-# the planted 5.3-only error must make the gate exit non-zero and must be named
-# in the output. If the gate stays green the control fails.
+# THE NEGATIVE CONTROL: the planted 5.3-only error must make the gate exit
+# non-zero and must be named in the output. If the gate stays green the control
+# fails. The control is registered in this card's own workflow (.github/workflows/
+# schema-lua-version-differential.yml), not in the shared make/negative-controls.json,
+# which is outside this card's PATHS.
 .PHONY: schema-lua-version-differential-negative-control
 schema-lua-version-differential-negative-control:
 	@set -eu; \
