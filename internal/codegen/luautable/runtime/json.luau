@@ -1090,8 +1090,9 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
     if c == nil then inp.bad = true; return false end
     -- a map key is text storage whatever its kind (§16.2, §16.3), and the
     -- key stored is the string's DECODED bytes, escapes included
-    local kraw, clamped, ok = scan_string(inp, MAX_KEY, true)
+    local keytext, clamped, ok = scan_string(inp, MAX_KEY, true)
     if not ok then return false end
+    local kraw = keytext :: string
     if peek(inp) ~= ':' then inp.bad = true; return false end
     inp.p = inp.p + 1
     local kval, skip = nil, false
