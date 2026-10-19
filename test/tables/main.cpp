@@ -3483,6 +3483,28 @@ static void test_golden_wire()
         pin_table_golden( "scalars_edges", buffer, wrote );
     }
     {
+        // THE INT128-FROM-INT64 WIDEN PINS (docs/SPEC-TABLES.md §3, the sign
+        // extension): the C++ reference writer's encode of a negative int64
+        // widened into an int128 field. Every other table backend byte-compares
+        // its own Save against these and loads them back; a widening that drops
+        // the sign extension leaves Hi zero instead of all ones.
+        static const int64_t wide_values[] = {
+            -1ll, -9223372036854775807ll - 1, -4294967301ll
+        };
+        static const char * wide_names[] = {
+            "int128from64_neg1", "int128from64_min", "int128from64_neg4294967301"
+        };
+        for ( int i = 0; i < 3; ++i )
+        {
+            scalardemo::SimState s;
+            scalardemo::SimStateReset( s );
+            s.flux = serialize::int128_t( wide_values[i] );
+            int64_t wrote = scalardemo::SimStateSave( s, buffer, sizeof( buffer ) );
+            CHECK( wrote > 0 && wrote == scalardemo::SimStateMeasure( s ) );
+            pin_table_golden( wide_names[i], buffer, wrote );
+        }
+    }
+    {
         // THE FLOAT BIT-PATTERN PIN (docs/SPEC-TABLES.md §3, schema#480): a
         // signalling NaN and a NaN with a nonzero payload, at both widths and
         // as array elements. Nothing canonicalizes a float on the way to the
