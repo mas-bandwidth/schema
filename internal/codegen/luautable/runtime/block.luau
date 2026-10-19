@@ -3,9 +3,9 @@
 -- Luau leg of what blockbuild.go emits on the Go side. It lays one extent out
 -- from its counts the way the generated Go builder does: it stamps the
 -- prologue, places each out-of-line array's (offset_of, count, stride) triple
--- at an offset aligned to max(64, elemAlign), and refuses a producer count past
--- its declared bound by name. It writes only the prologue and triples — never
--- rows or padding (docs/SPEC-TABLES.md §19.1).
+-- in the projection at the field's own TripleOffset, and refuses a producer
+-- count past its declared bound by name. It writes only the prologue and
+-- triples — never rows or padding (docs/SPEC-TABLES.md §19.1).
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local BLOCK_ALIGN = 64
@@ -53,7 +53,7 @@ export type BlockParams = {
 	buildVersionHi: number,
 	byteOrder: number,
 	size: number,
-	arrays: { { name: string, max: number, stride: number } },
+	arrays: { { name: string, max: number, stride: number, triple: number } },
 }
 
 -- Begin lays a block out from its counts (docs/SPEC-TABLES.md §19.1). It
@@ -95,14 +95,18 @@ local function Begin(p: BlockParams, counts: { [string]: number }, refusal: Refu
 	putU64(buf, 0, p.magicLo, p.magicHi)
 	putU64(buf, 8, p.buildVersionLo, p.buildVersionHi)
 	putU64(buf, 16, p.byteOrder, 0)
+	-- The triple lives in the projection, where ir.BlockArray.TripleOffset puts
+	-- it; starts[i] is only the triple's OffsetOf value. Writing at starts[i]
+	-- would overwrite the first rows' bytes (docs/SPEC-TABLES.md §19.1).
 	for i, a in ipairs(p.arrays) do
 		local s = starts[i]
+		local at = a.triple
 		local lo = s % SHIFT32
 		local hi = (s - lo) / SHIFT32
-		putU64(buf, s, lo, hi)
+		putU64(buf, at, lo, hi)
 		local c = counts[a.name] or 0
-		buffer.writeu32(buf, s + 8, c)
-		buffer.writeu32(buf, s + 12, a.stride)
+		buffer.writeu32(buf, at + 8, c)
+		buffer.writeu32(buf, at + 12, a.stride)
 	end
 	return buf, bytes
 end

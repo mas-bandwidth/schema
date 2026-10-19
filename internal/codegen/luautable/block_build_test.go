@@ -81,14 +81,17 @@ func blockParamsLiteral(bl *ir.BlockLayout, buildVersion uint64) string {
 	fmt.Fprintf(&b, ", buildVersionLo = %d, buildVersionHi = %d", uint32(buildVersion&0xffffffff), uint32(buildVersion>>32))
 	fmt.Fprintf(&b, ", byteOrder = 1, size = %d, arrays = {\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
-		fmt.Fprintf(&b, "\t\t{ name = %q, max = %d, stride = %d },\n", a.Field.Name, a.Max, a.Stride)
+		fmt.Fprintf(&b, "\t\t{ name = %q, max = %d, stride = %d, triple = %d },\n", a.Field.Name, a.Max, a.Stride, a.TripleOffset)
 	}
 	b.WriteString("\t} }")
 	return b.String()
 }
 
 // blockExpected lays a block out from its counts with the schema's own engine,
-// the same walk the generated Go builder runs (docs/SPEC-TABLES.md §19.1).
+// the same walk the generated Go builder runs: ir.BlockExtent chooses each
+// array's start, the triple goes into the projection at the field's
+// TripleOffset, and the start is only the triple's OffsetOf value
+// (docs/SPEC-TABLES.md §19.1; internal/codegen/gotable/blockbuild.go).
 func blockExpected(bl *ir.BlockLayout, buildVersion uint64, counts []int64) []byte {
 	elemAligns := make([]int64, len(bl.Arrays))
 	for i, a := range bl.Arrays {
@@ -100,8 +103,8 @@ func blockExpected(bl *ir.BlockLayout, buildVersion uint64, counts []int64) []by
 	binary.LittleEndian.PutUint64(buf[8:16], buildVersion)
 	binary.LittleEndian.PutUint64(buf[16:24], ir.BlockByteOrderLittle)
 	for i, a := range bl.Arrays {
-		at := starts[i]
-		binary.LittleEndian.PutUint64(buf[at:at+8], uint64(at))
+		at := a.TripleOffset
+		binary.LittleEndian.PutUint64(buf[at:at+8], uint64(starts[i]))
 		binary.LittleEndian.PutUint32(buf[at+8:at+12], uint32(counts[i]))
 		binary.LittleEndian.PutUint32(buf[at+12:at+16], uint32(a.Stride))
 	}
