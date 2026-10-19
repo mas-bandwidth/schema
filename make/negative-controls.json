@@ -607,9 +607,11 @@
     {
       "name": "schema-dart-vm-dart2js-differential",
       "when": "nightly",
-      "why": "the Dart VM / dart2js differential is a heavy nightly lens (it generates the corpus, compiles it with dart2js and runs it under node); its control sets DART_DIFF_PLANT=1 and runs the REAL target, whose webints.dart then prints a run-time value above 2^53: the VM prints 2^53+3 and dart2js prints the rounded 2^53+2, and the target must exit non-zero naming the plant, measured at about six seconds on the bench including generation, dart2js and node",
+      "why": "the Dart VM / dart2js differential is a heavy nightly lens (it generates the corpus, compiles it with dart2js and runs it under node); its control sets DART_DIFF_PLANT=1 and runs the REAL target, whose webints.dart then prints a run-time value above 2^53: the VM prints 2^53+3 and dart2js prints the rounded 2^53+2, and the target must exit non-zero naming the plant, measured at about six seconds on the bench including generation, dart2js and node; its two REVERSED WITNESSES (schema-dart-u64-codec-exact-on-web) each put the 32-bit form back at one site of the web-safe scratch copy, the union integer arm (wireunion.go) and readLeb (wireform.go), and require the lane to go red naming 2^32+5 and the LEB length 2^32+8",
       "targets": [
-        "tables-dart-vm-dart2js-differential-negative-control"
+        "tables-dart-vm-dart2js-differential-negative-control",
+        "tables-dart-vm-dart2js-differential-union-arm-negative-control",
+        "tables-dart-vm-dart2js-differential-leb-negative-control"
       ]
     }
   ],

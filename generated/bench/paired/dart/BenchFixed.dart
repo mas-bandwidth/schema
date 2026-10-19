@@ -1106,10 +1106,19 @@ int tableFixedRun(
         // writer wrote it. Every other exponent converts exactly.
         final bits = sourceView.getUint32(s, Endian.little);
         if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x007fffff) != 0) {
-          final sign = (bits & 0x80000000) << 32; // the f64 sign bit
-          final exp = 0x7ff0000000000000; // f64's all-ones exponent
-          final mant = (bits & 0x007fffff) << 29; // 23 bits up to 52
-          conv.setUint64(0, sign | exp | mant, Endian.little);
+          // WEB-EXACT (docs/SPEC-TABLES.md, THE WEB TARGET): the f64 is laid
+          // as its two 32-bit words, so no operator sees more than 32 bits —
+          // a shift of 32 is a 32-bit operator under dart2js. The high word is
+          // the sign,
+          // the all-ones exponent and the mantissa's top 20 bits; the low word
+          // holds its last 3 bits at the top: the same 8 bytes as before.
+          final mant = bits & 0x007fffff;
+          conv.setUint32(0, (mant & 0x7) << 29, Endian.little);
+          conv.setUint32(
+            4,
+            (bits & 0x80000000) | 0x7ff00000 | (mant >>> 3),
+            Endian.little,
+          );
         } else {
           conv.setFloat64(
             0,

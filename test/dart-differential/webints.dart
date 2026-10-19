@@ -15,7 +15,11 @@
 // 4294967301 (2^32+5) to 5 and _signExtend turned every negative int32 into
 // zero under dart2js. The VM-only reference (vmref.dart) covers the >2^53
 // values the compile arm refuses.
+import 'dart:typed_data';
+
 import '../../build/schema-dart-vm-dart2js-differential/gen-websafe/examples/TabledemoWire.dart';
+import '../../build/schema-dart-vm-dart2js-differential/gen-websafe/a2/Tbla2Wire.dart'
+    as a2;
 
 String hex(List<int> bytes) =>
     bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
@@ -106,6 +110,70 @@ void main() {
   same('uClamped', 0, urep.clamped);
   same('sClamped', 0, srep.clamped);
   same('wClamped', 0, wrep.clamped);
+  // THE UNION INT64 ARM (schema-dart-u64-codec-exact-on-web). test/tables/
+  // A2.schema's union Value has `a int64`; its read is the integer arm that
+  // wireunion.go emits. At BASE that arm assembled bytes 4..7 with shifts of
+  // 32..56, which dart2js computes with its 32-bit operator: 2^32+5 read back
+  // as 5 on the web while the VM read 2^32+5.
+  for (final want in <int>[4294967301, 1099511627779, 9007199254740991, -4294967301]) {
+    final root = a2.Root()..id = 7..tail = 9;
+    root.value.armTag = 1;
+    root.value.a = want;
+    final wire = a2.rootWireSave(root);
+    final rep = a2.TableWireReport();
+    final back = a2.rootWireLoad(wire, rep);
+    print('union[$want]=${back.value.armTag},${back.value.a},refused:${rep.refused},malformed:${rep.malformed} wire=${hex(wire)}');
+    same('union[$want]', want, back.value.a);
+    same('union[$want].tail', 9, back.tail);
+  }
+
+  // THE WEB REFUSAL. The same wire with the arm's eight bytes replaced by
+  // 2^62+5, a pattern no web int holds: the VM must read it exactly and the
+  // web must refuse it by name (report.refused, the arm left at its default),
+  // never round it. The line is the same on both runtimes only when each
+  // keeps its half of the rule.
+  {
+    final root = a2.Root()..id = 7..tail = 9;
+    root.value.armTag = 1;
+    root.value.a = 9007199254740991;
+    final wire = a2.rootWireSave(root);
+    final at = hex(wire).indexOf('ffffffffffff1f00') ~/ 2;
+    final high = <int>[5, 0, 0, 0, 0, 0, 0, 0x40];
+    for (var i = 0; i < 8; i++) {
+      wire[at + i] = high[i];
+    }
+    final rep = a2.TableWireReport();
+    final back = a2.rootWireLoad(wire, rep);
+    final web = identical(0, 0.0);
+    final kept = web
+        ? rep.refused && back.value.a == 0 && !rep.malformed
+        : !rep.refused && back.value.a == int.parse('4611686018427387909');
+    print('unionRefused=${at > 0 && kept ? 'ok' : 'BAD(at=$at,refused=${rep.refused},a=${back.value.a})'}');
+    same('unionRefusedTail', 9, back.tail);
+  }
+
+  // THE LEB128 LENGTH (readLeb). The arm's payload length re-encoded as the
+  // five-byte LEB of 2^32+8: no buffer holds that, so both runtimes must call
+  // the arm malformed. At BASE readLeb shifted the fifth group by 28, which
+  // dart2js computes with its 32-bit operator, so the web read a length of 8,
+  // took the payload and loaded the arm the VM refused.
+  {
+    final root = a2.Root()..id = 7..tail = 9;
+    root.value.armTag = 1;
+    root.value.a = 9007199254740991;
+    final h = hex(a2.rootWireSave(root));
+    final at = h.indexOf('0508ffffffffffff1f00') ~/ 2 + 1;
+    final bytes = <int>[];
+    for (var i = 0; i < h.length; i += 2) {
+      bytes.add(int.parse(h.substring(i, i + 2), radix: 16));
+    }
+    bytes.replaceRange(at, at + 1, <int>[0x88, 0x80, 0x80, 0x80, 0x10]);
+    final rep = a2.TableWireReport();
+    final back = a2.rootWireLoad(Uint8List.fromList(bytes), rep);
+    print('lebHigh=at:$at,arm:${back.value.armTag},a:${back.value.a},malformed:${rep.malformed}');
+    if (!rep.malformed || back.value.a != 0) bad.add('lebHigh read a length of 2^32+8 as a smaller one');
+  }
+
   print('roundtrip=${bad.isEmpty ? 'ok' : 'BAD:${bad.join(";")}'}');
 
   // THE PLANT: only the negative control sets DART_DIFF_PLANT=1. It is a

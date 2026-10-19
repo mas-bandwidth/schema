@@ -269,14 +269,21 @@ final class _RetainCursor {
   final List<int> b;
   int at = 0;
   _RetainCursor(this.b);
+  // WEB-EXACT (docs/SPEC-TABLES.md, THE WEB TARGET): two 32-bit words joined
+  // by exact arithmetic, as readU64; a pattern the web cannot hold is refused
+  // (null).
   int? u64() {
     if (at + 8 > b.length) return null;
-    var v = 0;
-    for (var i = 0; i < 8; i++) {
-      v |= b[at + i] << (8 * i);
+    var lo = 0;
+    var hi = 0;
+    for (var i = 0; i < 4; i++) {
+      lo |= b[at + i] << (8 * i);
+      hi |= b[at + 4 + i] << (8 * i);
     }
+    if (_webInts && hi > 0x1FFFFF) return null;
     at += 8;
-    return v;
+    if (hi >= 0x80000000) return (hi - 0x100000000) * 0x100000000 + lo;
+    return hi * 0x100000000 + lo;
   }
   int? byte() {
     if (at >= b.length) return null;
@@ -308,15 +315,18 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
       final start = c.at;
       var len = 0;
       var shift = 0;
+      var scale = 1; // WEB-EXACT: added at its scale, never shifted
       while (true) {
         if (c.at >= c.b.length) return null;
         final b = c.b[c.at];
         c.at++;
-        len |= (b & 0x7F) << shift;
+        len += (b & 0x7F) * scale;
+        scale *= 128;
         if ((b & 0x80) == 0) break;
         shift += 7;
         if (shift >= 64) return null;
       }
+      if (_webInts && len > 9007199254740991) return null;
       if (c.at + len > c.b.length) return null;
       final o = c.b.sublist(start, c.at + len);
       c.at += len;

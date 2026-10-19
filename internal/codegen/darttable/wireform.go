@@ -799,17 +799,27 @@ final class TableWireReader {
   // non-minimal encoding (§3). On any of those the cursor does not move, so a
   // nested body that ends short of its own length is seen to do so (§4), the
   // same answer the engine gives when a bad LEB leaves its cursor short.
+  //
+  // WEB-EXACT (docs/SPEC-TABLES.md, THE WEB TARGET): each group is added at
+  // its scale, never shifted (a shift is a 32-bit operator under dart2js, and
+  // (b & 0x7F) << 28 already drops bits there). The groups are disjoint, so
+  // the VM's wrapping
+  // sum is the same 64-bit pattern the OR was; a value the web cannot hold
+  // exactly is refused as an encoding it cannot read, never rounded.
   int? readLeb() {
     var v = 0;
+    var scale = 1;
     var p = pos;
     for (var i = 0; ; i++) {
       if (p >= limit || i >= 10) return null;
       final b = data[p];
       p++;
       if (i == 9 && b > 1) return null;
-      v |= (b & 0x7F) << (7 * i);
+      v += (b & 0x7F) * scale;
+      scale *= 128;
       if ((b & 0x80) == 0) {
         if (i > 0 && b == 0) return null;
+        if (_webInts && v > 9007199254740991) return null;
         pos = p;
         return v;
       }
@@ -1125,6 +1135,24 @@ int readU64(Uint8List d, int off) {
     return (hi - 0x100000000) * 0x100000000 + lo;
   }
   return hi * 0x100000000 + lo;
+}
+
+// _webInts is true under dart2js, where an int IS a double (THE WEB
+// TARGET), and false on the VM, whose int holds all 64 bits.
+const bool _webInts = identical(0, 0.0);
+
+// _webInexact64 reports whether the 8-byte little-endian pattern at off lies
+// outside [-(2^53 - 1), 2^53 - 1] (signed) or [0, 2^53 - 1] (unsigned) on the
+// web, where readU64 could only round it (THE WEB TARGET). Always false on
+// the VM. Only the 32-bit words are read, so it is exact on both runtimes.
+bool _webInexact64(Uint8List d, int off, bool signed) {
+  if (!_webInts) return false;
+  final hi = readU32(d, off + 4);
+  if (hi <= 0x1FFFFF) return false;
+  if (signed && (hi > 0xFFE00000 || (hi == 0xFFE00000 && readU32(d, off) != 0))) {
+    return false;
+  }
+  return true;
 }
 
 int readU32(Uint8List d, int off) {

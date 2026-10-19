@@ -35,9 +35,13 @@
 #   putU64, wireform.go: 32+ shift                      REAL     fixed here (split by division)
 #   readU64, wireform.go: 32+ shift                     REAL     fixed here (scale the high word)
 #   _signExtend, wireform.go: 32+ shift                 REAL     fixed here (sign-bit test)
-#   wireunion.go:624 (and :724) raw |= byte << (8*b)    REAL     owned by schema-dart-u64-codec-exact-on-web
-#   lo |= v << 32 (block/Render.dart, blockhome/Data.dart) REAL   owned by schema-dart-u64-codec-exact-on-web
-#   (bits & 0x80000000) << 32 (wide/WideFixed.dart)     REAL     owned by schema-dart-u64-codec-exact-on-web
+#   wireunion.go:624 (and :724) raw |= byte << (8*b)    REAL     fixed by schema-dart-u64-codec-exact-on-web (readU64 + web refusal; union-arm witness)
+#   readLeb, wireform.go: (b & 0x7F) << (7*i)           REAL     fixed by schema-dart-u64-codec-exact-on-web (exact scaling; leb witness)
+#   _RetainCursor u64/length, retainwire.go: shifts     REAL     fixed by schema-dart-u64-codec-exact-on-web (no lane value: retained ids fold below 2^31 here)
+#   (bits & 0x80000000) << 32 (wide/WideFixed.dart)     REAL     fixed by schema-dart-u64-codec-exact-on-web (two 32-bit words); the fixed form's
+#                                                                load reads getUint64, which dart2js refuses by name, so the lane cannot reach it
+#   lo |= v << 32 (block/Render.dart, blockhome/Data.dart) REAL   NOT fixed: internal/codegen/dart's packet layer; it is all
+#                                                                Uint64List/getUint64/setUint64, which dart2js refuses by name before the site
 #   dartU64Literal emits a >2^53 int literal            REAL     compile lane records the by-name refusal (PATHS-PROPOSED: a literal, not an operator)
 #
 # The three fixes here are pinned by TestDartWireWideIntHelpersAreWebSafe and
@@ -66,6 +70,11 @@ DART_DIFF_NODE ?= node
 DART_DIFF_DIR := build/schema-dart-vm-dart2js-differential
 DART_DIFF_PLANT ?=
 DART_DIFF_DEFINE := $(if $(DART_DIFF_PLANT),-DDART_DIFF_PLANT=true,)
+# THE REVERSED WITNESSES (schema-dart-u64-codec-exact-on-web): set only by the
+# witness controls below, each puts the 32-bit form back at ONE site of the
+# web-safe scratch copy (never a tracked file) and the lane must go red.
+DART_DIFF_WITNESS ?=
+DART_DIFF_A2 := $(DART_DIFF_DIR)/gen-websafe/a2/Tbla2Wire.dart
 
 .PHONY: tables-dart-vm-dart2js-differential
 tables-dart-vm-dart2js-differential: bin/schema
@@ -86,6 +95,8 @@ tables-dart-vm-dart2js-differential: bin/schema
 	$(MAKE) -s build/tables-generated-dart/.stamp
 	cp -r build/tables-generated-dart $(DART_DIFF_DIR)/gen
 	./bin/schema generate --lang dart --out $(DART_DIFF_DIR)/gen/bases test/tables/Bases.schema
+	# THE UNION INT64 ARM: A2.schema's union Value carries `a int64` (webints.dart).
+	./bin/schema generate --lang dart --out $(DART_DIFF_DIR)/gen/a2 test/tables/A2.schema
 	# THE VM REFERENCE: the unmodified tree, exact 64-bit values above 2^53.
 	$(DART_DIFF_DART) test/dart-differential/vmref.dart > $(DART_DIFF_DIR)/vmref.txt
 	# THE WEB-SAFE BUILD: fold every schema-internal 64-bit literal to its low
@@ -94,6 +105,18 @@ tables-dart-vm-dart2js-differential: bin/schema
 	# represent, and the unsigned codec's bytes are compared in it.
 	cp -r $(DART_DIFF_DIR)/gen $(DART_DIFF_DIR)/gen-websafe
 	python3 test/dart-differential/websafe.py $(DART_DIFF_DIR)/gen-websafe
+	# A REVERSED WITNESS, when one is asked for: union = wireunion.go's integer
+	# arm reads an 8-byte arm with the byte-shift loop again (shifts 32..56);
+	# leb = readLeb shifts each group by 7*i again. The plant is proved to
+	# have landed before the lane runs, so a witness cannot pass vacuously.
+	@case "$(DART_DIFF_WITNESS)" in \
+		"") ;; \
+		union) sed -i 's/if (width == 8) {/if (width == 99) {/' $(DART_DIFF_A2) && \
+			grep -q 'if (width == 99) {' $(DART_DIFF_A2) ;; \
+		leb) sed -i 's/v += (b [&] 0x7F) [*] scale;/v |= (b \& 0x7F) << (7 * i);/' $(DART_DIFF_A2) && \
+			grep -q 'v |= (b & 0x7F) << (7 [*] i);' $(DART_DIFF_A2) ;; \
+		*) echo "tables-dart-vm-dart2js-differential: unknown witness $(DART_DIFF_WITNESS)"; exit 1;; \
+	esac || { echo "tables-dart-vm-dart2js-differential: the $(DART_DIFF_WITNESS) witness did not land in $(DART_DIFF_A2)"; exit 1; }
 	# THE RUNTIME LANE: the same web-safe source on the VM and under dart2js.
 	$(DART_DIFF_DART) $(DART_DIFF_DEFINE) test/dart-differential/webints.dart > $(DART_DIFF_DIR)/vm.txt
 	$(DART_DIFF_DART) compile js -O2 $(DART_DIFF_DEFINE) -o $(DART_DIFF_DIR)/webints.js \
@@ -117,6 +140,8 @@ tables-dart-vm-dart2js-differential: bin/schema
 		  grep '^roundtrip=' $(DART_DIFF_DIR)/vm.txt $(DART_DIFF_DIR)/dart2js.txt; exit 1; }
 	@if [ -n "$(DART_DIFF_PLANT)" ]; then \
 		echo "NEGATIVE CONTROL FAILED: the planted run-time divergence left the comparator green"; exit 1; fi
+	@if [ -n "$(DART_DIFF_WITNESS)" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the $(DART_DIFF_WITNESS) witness left the lane green"; exit 1; fi
 	# THE COMPILE LANE: the unmodified tree cannot name its >2^53 ids to
 	# dart2js, and refuses by name. Prove the literal is there first.
 	@found=0; for f in $(DART_DIFF_DIR)/gen/*/*Wire.dart; do \
@@ -156,3 +181,31 @@ tables-dart-vm-dart2js-differential-negative-control:
 		  cat $(DART_DIFF_DIR)/nc.log; exit 1; }
 	@grep -m1 "PLANT seen" $(DART_DIFF_DIR)/nc.log
 	@echo "negative control: the target itself reds on a planted VM/dart2js run-time divergence"
+
+# THE REVERSED WITNESSES (schema-dart-u64-codec-exact-on-web), one per site the
+# runtime lane reaches. Each runs the REAL target with the 32-bit form put back
+# at that one site of the scratch copy, and requires the lane to go red naming
+# the value the site loses on the web.
+#   union: wireunion.go's integer arm (the emitter's `if (width == 8)` branch);
+#          dart2js reads the int64 arm 2^32+5 as 5.
+#   leb:   wireform.go's readLeb; dart2js reads the five-byte LEB 2^32+8 as 8.
+.PHONY: tables-dart-vm-dart2js-differential-union-arm-negative-control tables-dart-vm-dart2js-differential-leb-negative-control
+tables-dart-vm-dart2js-differential-union-arm-negative-control:
+	@mkdir -p $(DART_DIFF_DIR)
+	@if DART_DIFF_WITNESS=union $(MAKE) -s tables-dart-vm-dart2js-differential > $(DART_DIFF_DIR)/w-union.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the union-arm witness left the lane green"; cat $(DART_DIFF_DIR)/w-union.log; exit 1; fi
+	@grep -q '^+union\[4294967301\]=' $(DART_DIFF_DIR)/w-union.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the lane went red for another reason than the union arm 2^32+5"; \
+		  cat $(DART_DIFF_DIR)/w-union.log; exit 1; }
+	@grep -m1 '^+union\[4294967301\]=' $(DART_DIFF_DIR)/w-union.log
+	@echo "negative control: the 32-bit union arm read reds the lane at 2^32+5"
+
+tables-dart-vm-dart2js-differential-leb-negative-control:
+	@mkdir -p $(DART_DIFF_DIR)
+	@if DART_DIFF_WITNESS=leb $(MAKE) -s tables-dart-vm-dart2js-differential > $(DART_DIFF_DIR)/w-leb.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the readLeb witness left the lane green"; cat $(DART_DIFF_DIR)/w-leb.log; exit 1; fi
+	@grep -q '^+lebHigh=' $(DART_DIFF_DIR)/w-leb.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the lane went red for another reason than the LEB length 2^32+8"; \
+		  cat $(DART_DIFF_DIR)/w-leb.log; exit 1; }
+	@grep -m1 '^+lebHigh=' $(DART_DIFF_DIR)/w-leb.log
+	@echo "negative control: the 32-bit readLeb reds the lane at the length 2^32+8"

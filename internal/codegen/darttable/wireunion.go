@@ -621,7 +621,17 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sfinal width = _kindWidth(kind);\n", ind)
 		g.pf("%sif (%s.limit - %s.pos != width) %s\n", ind, p, p, bad)
 		g.pf("%svar raw = 0;\n", ind)
-		g.pf("%sfor (var b = 0; b < width; b++) { raw |= %s.readByte() << (8 * b); }\n", ind, p)
+		// WEB-EXACT (docs/SPEC-TABLES.md, THE WEB TARGET): an 8-byte arm is
+		// assembled by readU64's exact arithmetic, never by a shift of 32 or more
+		// (a 32-bit operator under dart2js), and a pattern outside the web's
+		// exact range is refused by name on the web, never rounded.
+		g.pf("%sif (width == 8) {\n", ind)
+		g.pf("%s\tif (_webInexact64(%s.data, %s.pos, %v)) { %s.report.refused = true; %s.pos = %s.limit; return true; }\n", ind, p, p, signed, p, p, p)
+		g.pf("%s\traw = readU64(%s.data, %s.pos);\n", ind, p, p)
+		g.pf("%s\t%s.pos += 8;\n", ind, p)
+		g.pf("%s} else {\n", ind)
+		g.pf("%s\tfor (var b = 0; b < width; b++) { raw |= %s.readByte() << (8 * b); }\n", ind, p)
+		g.pf("%s}\n", ind)
 		if signed {
 			g.pf("%svar value = _signExtend(raw, width);\n", ind)
 		} else {
@@ -721,7 +731,13 @@ func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
 		signed := ek >= wireKindI8 && ek <= wireKindI64
 		g.pf("%sif (!%s.has(%d)) %s\n", ind, p, w, bad)
 		g.pf("%svar raw = 0;\n", ind)
-		g.pf("%sfor (var b = 0; b < %d; b++) { raw |= %s.readByte() << (8 * b); }\n", ind, w, p)
+		if w == 8 { // WEB-EXACT, as the scalar arm (docs/SPEC-TABLES.md, THE WEB TARGET)
+			g.pf("%sif (_webInexact64(%s.data, %s.pos, %v)) { %s.report.refused = true; return false; }\n", ind, p, p, signed, p)
+			g.pf("%sraw = readU64(%s.data, %s.pos);\n", ind, p, p)
+			g.pf("%s%s.pos += 8;\n", ind, p)
+		} else {
+			g.pf("%sfor (var b = 0; b < %d; b++) { raw |= %s.readByte() << (8 * b); }\n", ind, w, p)
+		}
 		if signed {
 			g.pf("%s%s.add(_signExtend(raw, %d));\n", ind, out, w)
 		} else {
