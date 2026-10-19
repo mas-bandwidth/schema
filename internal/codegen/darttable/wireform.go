@@ -2736,7 +2736,7 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	g.pf("\t\t\tif (blen == null || blen < 0 || blen > pend - r.pos) return 0;\n")
 	g.pf("\t\t\tfinal tid = r.refToId[typeRef] ?? 0;\n")
 	g.pf("\t\t\tfinal bodyStart = r.pos;\n")
-	g.pf("\t\t\tfinal sn = nodeSizes[tid];\n")
+	g.pf("\t\t\tfinal sn = nodeSpec[tid];\n")
 	g.pf("\t\t\tif (sn != null) {\n")
 	g.pf("\t\t\t\tfinal over = TableWireReader.over(r.data.buffer.asUint8List(r.data.offsetInBytes + bodyStart, blen), r);\n")
 	g.pf("\t\t\t\tfinal nodeScan = _ExtentScan(%s, %s);\n", spec.structsVar, spec.unionsVar)
