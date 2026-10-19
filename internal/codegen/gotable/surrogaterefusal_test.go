@@ -14,12 +14,15 @@ func TestGoJsonRefusesLoneSurrogate(t *testing.T) {
 	runGenerated(t, loneSurrogateSchema, loneSurrogateProbe)
 }
 
+const longKeyFieldName = "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+
 const loneSurrogateSchema = `package probe
 
 fixed table Root
 {
     s string(16)
     w wstring(16)
+    ` + longKeyFieldName + ` string(16)
 }
 `
 
@@ -67,6 +70,23 @@ func TestLoneSurrogate(t *testing.T) {
 	var lr TableReport
 	if !RootFromJson(&lv, []byte("{\"unknown\":{\""+long+"\":1}}"), &lr) || lr.Malformed || lr.Clamped != 0 {
 		t.Fatalf("long key in a skipped object: %+v", lr)
+	}
+	// a COMPARED key that overflows the key buffer is not a shorter key
+	// (§2.8, §16.3): it keeps its clamp, so two spellings sharing the field's
+	// 255-byte prefix cannot alias one field.
+	fieldKey := strings.Repeat("k", 255)
+	var fv Root
+	var fr TableReport
+	if !RootFromJson(&fv, []byte("{\""+fieldKey+"\":\"a\"}"), &fr) || fr.Malformed || fr.Clamped != 0 {
+		t.Fatalf("a key exactly at the field's bound: %+v", fr)
+	}
+	for _, suffix := range []string{"x", "xyz"} {
+		var av Root
+		var ar TableReport
+		ok := RootFromJson(&av, []byte("{\""+fieldKey+suffix+"\":\"a\"}"), &ar)
+		if ok || ar.Clamped != 1 {
+			t.Fatalf("compared key over the key buffer %q: ok=%v %+v, want one clamp", suffix, ok, ar)
+		}
 	}
 	// the astral character reads clean, as bytes and as code units
 	var v Root

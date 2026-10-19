@@ -1137,7 +1137,7 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 			}
 		}
 	}
-	if clamped && !name { // a NAME only names a refusal, never stored (§16.3)
+	if clamped { // a NAME that overflows is not a shorter NAME (§2.8)
 		in.report.Clamped++
 	}
 	return placed, true
@@ -1320,7 +1320,11 @@ func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
 			// (16.3), so restore it before scanning the inner key
 			in.keyText = savedText
 			in.keyLength = savedLength
+			// this key only names the skipped object's value and is never
+			// compared, so its buffer bound is not a clamp (§16.3)
+			beforeClamped := in.report.Clamped
 			keyLength, ok := in.scanKey(key[:tableJsonMaxKey-1])
+			in.report.Clamped = beforeClamped
 			if !ok {
 				in.nameLone()
 				return false

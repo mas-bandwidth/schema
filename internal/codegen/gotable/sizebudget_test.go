@@ -17,10 +17,10 @@ import (
 // are pins, no slack: a later cut lowers them. Glenn's contraction item targets
 // 2500 and 40000 lines.
 const (
-	// re-pinned on 2026-10-18 after the lone-surrogate refusal work (schema-go-json-refuses-lone-surrogates) grew the emitted walk (+57); size reduction is deferred to profiling passes
-	goOneTableLineBudget = 9450
-	// re-pinned on 2026-10-18 after the lone-surrogate refusal work (schema-go-json-refuses-lone-surrogates) grew the emitted walk (+57); size reduction is deferred to profiling passes
-	goExamplesLineBudget = 64741
+	// re-pinned on 2026-10-19 after the compared-key clamp fix (schema-go-json-refuses-lone-surrogates.w8) grew the emitted walk (+4); size reduction is deferred to profiling passes
+	goOneTableLineBudget = 9454
+	// re-pinned on 2026-10-19 after the compared-key clamp fix (schema-go-json-refuses-lone-surrogates.w8) grew the emitted walk (+4); size reduction is deferred to profiling passes
+	goExamplesLineBudget = 64745
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
