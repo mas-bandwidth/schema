@@ -76,7 +76,10 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(legs) == 0 || refused+carried != len(legs)-1 {
+	// Two files in make/ are not ports: the lua new-leg scaffold written above,
+	// and schema-dart-vm-dart2js-differential.mk, which is a nightly GATE and is
+	// skipped by name in the recipe (it has no --lang and no target_*.go).
+	if len(legs) == 0 || refused+carried != len(legs)-2 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {

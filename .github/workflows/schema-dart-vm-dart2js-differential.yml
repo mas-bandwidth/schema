@@ -1,0 +1,69 @@
+name: schema-dart vm/dart2js differential
+
+# THE DART VM / dart2js DIFFERENTIAL (the schema-per-language-lenses lens).
+# The generated Dart table codec runs on the VM, whose int is exact 64-bit,
+# and through dart2js under node, whose int is a 53-bit double. Values above
+# 2^53 must be carried identically or refused by name; this workflow is where
+# the whole corpus is compared.
+#
+# THE SPLIT IS BY WHEN. The fast half (wiring plus the comparator's negative
+# control) runs on push and pull_request. The differential itself compiles a
+# corpus with dart2js and is HEAVY, so it runs on the nightly schedule and on
+# workflow_dispatch only, never per push (one-minute budget).
+
+on:
+  push:
+    branches: [sprint/schema-dart]
+  pull_request:
+    branches: [sprint/schema-dart]
+  schedule:
+    - cron: '40 7 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: schema-dart-vm-dart2js-differential-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  wiring:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: wiring test
+        run: go test ./internal/ci -run TestDartVmDart2jsDifferentialWiring -count=1 -timeout 600s
+      - name: comparator negative control
+        run: make tables-dart-vm-dart2js-differential-negative-control
+
+  differential:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: 3.13.2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26.7.0
+      - name: comparator negative control
+        run: make tables-dart-vm-dart2js-differential-negative-control
+      - name: VM / dart2js differential over the generate corpus
+        run: make tables-dart-vm-dart2js-differential DART=dart
+      - name: upload the divergence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dart-vm-dart2js-differential
+          path: build/schema-dart-vm-dart2js-differential/
+          if-no-files-found: ignore

@@ -603,6 +603,14 @@
       "targets": [
         "tables-go-view-negative-controls"
       ]
+    },
+    {
+      "name": "schema-dart-vm-dart2js-differential",
+      "when": "nightly",
+      "why": "the Dart VM / dart2js differential is a heavy nightly lens (it generates a corpus with dart2js and runs it under node); its control plants the rounded int64 max the web run produces and requires the comparator to go red naming it, measured at under one second because it compares two files and starts no toolchain",
+      "targets": [
+        "tables-dart-vm-dart2js-differential-negative-control"
+      ]
     }
   ],
   "excluded": [
