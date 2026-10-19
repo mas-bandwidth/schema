@@ -105,50 +105,53 @@ func TestCookWriteUnionsAndWideKindsJava(t *testing.T) {
 			model := tabletext.NewModel(irUnit)
 
 			for _, r := range u.roots {
-				st := irUnit.Tables[r.root]
-				if st == nil {
-					t.Fatalf("missing root table %s in %s", r.root, u.unit)
-				}
-				for _, row := range r.rows {
-					row := row
-					t.Run(row, func(t *testing.T) {
-						instMeta, cookMeta := m.instance[row], m.cook[row]
-						wirePath := filepath.Join(repo, instMeta[2])
-						wireBytes, err := os.ReadFile(wirePath)
-						if err != nil {
-							t.Fatal(err)
-						}
-						inst := model.New(st)
-						var rep tabletext.Report
-						if ok, err := tablewire.Decode(model, inst, wireBytes, &rep); !ok || err != nil || rep.Refused || rep.Malformed {
-							t.Fatalf("decode %s: ok=%v err=%v refused=%v malformed=%v", row, ok, err, rep.Refused, rep.Malformed)
-						}
-						wantLittle, err := tablecook.Cook(model, inst, tablecook.Options{Big: false})
-						if err != nil {
-							t.Fatalf("tablecook little %s: %v", row, err)
-						}
-						wantBig, err := tablecook.Cook(model, inst, tablecook.Options{Big: true})
-						if err != nil {
-							t.Fatalf("tablecook big %s: %v", row, err)
-						}
-						littleFile, err := os.ReadFile(filepath.Join(repo, cookMeta[0]))
-						if err != nil {
-							t.Fatal(err)
-						}
-						bigFile, err := os.ReadFile(filepath.Join(repo, cookMeta[1]))
-						if err != nil {
-							t.Fatal(err)
-						}
-						if !bytes.Equal(wantLittle, littleFile) || !bytes.Equal(wantBig, bigFile) {
-							t.Fatalf("%s: tablecook.Cook disagrees with committed cook golden", row)
-						}
-						cmd := exec.Command(javaBin, "-ea", "-cp", dir, "CookGolden"+r.root,
-							wirePath, filepath.Join(repo, cookMeta[0]), filepath.Join(repo, cookMeta[1]))
-						if out, err := cmd.CombinedOutput(); err != nil {
-							t.Fatalf("java cook %s: %v\n%s", row, err, out)
-						}
-					})
-				}
+				r := r
+				t.Run(r.root, func(t *testing.T) {
+					st := irUnit.Tables[r.root]
+					if st == nil {
+						t.Fatalf("missing root table %s in %s", r.root, u.unit)
+					}
+					for _, row := range r.rows {
+						row := row
+						t.Run(row, func(t *testing.T) {
+							instMeta, cookMeta := m.instance[row], m.cook[row]
+							wirePath := filepath.Join(repo, instMeta[2])
+							wireBytes, err := os.ReadFile(wirePath)
+							if err != nil {
+								t.Fatal(err)
+							}
+							inst := model.New(st)
+							var rep tabletext.Report
+							if ok, err := tablewire.Decode(model, inst, wireBytes, &rep); !ok || err != nil || rep.Refused || rep.Malformed {
+								t.Fatalf("decode %s: ok=%v err=%v refused=%v malformed=%v", row, ok, err, rep.Refused, rep.Malformed)
+							}
+							wantLittle, err := tablecook.Cook(model, inst, tablecook.Options{Big: false})
+							if err != nil {
+								t.Fatalf("tablecook little %s: %v", row, err)
+							}
+							wantBig, err := tablecook.Cook(model, inst, tablecook.Options{Big: true})
+							if err != nil {
+								t.Fatalf("tablecook big %s: %v", row, err)
+							}
+							littleFile, err := os.ReadFile(filepath.Join(repo, cookMeta[0]))
+							if err != nil {
+								t.Fatal(err)
+							}
+							bigFile, err := os.ReadFile(filepath.Join(repo, cookMeta[1]))
+							if err != nil {
+								t.Fatal(err)
+							}
+							if !bytes.Equal(wantLittle, littleFile) || !bytes.Equal(wantBig, bigFile) {
+								t.Fatalf("%s: tablecook.Cook disagrees with committed cook golden", row)
+							}
+							cmd := exec.Command(javaBin, "-ea", "-cp", dir, "CookGolden"+r.root,
+								wirePath, filepath.Join(repo, cookMeta[0]), filepath.Join(repo, cookMeta[1]))
+							if out, err := cmd.CombinedOutput(); err != nil {
+								t.Fatalf("java cook %s: %v\n%s", row, err, out)
+							}
+						})
+					}
+				})
 			}
 			// The Frame arm whose own wire name is "tag" (SPEC-TABLES §2.6):
 			// its Value member is tagArm, so the cook descriptor must name the
