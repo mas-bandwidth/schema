@@ -1,4 +1,5 @@
 # schema — tables
+<!-- spec-pins owed schema-spec-pin-s0 -->
 
 **Schema has two wires: types and tables — and the types wire leads.**
 Types are serialized bitpacked, versioned by the protocol id: the
@@ -33,7 +34,155 @@ The two contracts never mix. Flatbuffers- and protobuf-class evolution
 ideas apply here, to tables — they do not apply to `type`, whose wire is
 hardcoded under the protocol id, and nothing in this document changes that.
 
+## Row ids and pins
+
+<!-- spec-pins informative this section defines the markup the guard reads; its rules are pinned by the guard's own reversed witnesses (internal/ci/schema_spec_pin_design_row_ids_test.go) -->
+
+This document is normative, and "bulletproof" means each rule in it is held
+by a test in every port that carries it. A rule gets a ROW ID, the row gets
+PINS, and a guard in CI fails when a rule has no id, an id has no pin, or a
+pin no longer names a test that runs. The guard is
+`internal/ci/schema_spec_pin_design_row_ids_test.go`, run by `go test ./internal/ci/` on every pull request (CI fast), by `make schema-spec-pin-design-row-ids` (`make/checks/schema-spec-pin-design-row-ids.mk`)
+and by the `spec pins` workflow, which runs that target on the fleet.
+
+**A normative sentence** is a sentence of prose, a list item's sentence or one
+table row, outside code fences and comments, whose text (inline code masked)
+holds *must*, *shall*, *may not* or a form of *refuse*. The words are the floor,
+not the ceiling: any sentence may carry a row id.
+
+**A row id lives in the spec, beside its sentence**, as an HTML comment right
+after the sentence's closing punctuation (inside the last cell of a table
+row): `<!-- row T2.7-1 feature=compiler -->`. It binds to the last sentence
+that starts before it, and it ends that sentence: text after it is the next
+sentence. The spec is the one source of truth for which
+sentences are rules, so the id cannot drift from its sentence in a sidecar
+file; a comment does not render, so the published text is unchanged.
+
+- **Syntax**: `T<section>-<n>`, the section where the row was born and the
+  next free number in it. The id is an opaque name from then on: it does not
+  change when the section is renumbered, and it is never reused. A reworded
+  sentence keeps its id, but its pins must be re-confirmed: each pin records
+  a digest of the row's text, so a reword fails the guard until the test is
+  re-read against the new text and the digest updated. A rule removed leaves
+  `<!-- row-retired T2.7-4 <why> -->`, and a retired id marked again, or
+  pinned, fails.
+- **The feature**: `feature=<roadmap>/<row>` names a row of a roadmap in
+  `docs/roadmap.sexp` (`variable-tables/block-read`); the ports that carry
+  the rule are that row's columns with a cell. `feature=compiler` is the one
+  pseudo-port: a declaration is accepted or refused by the one compiler,
+  whatever it targets. Several features are comma-separated, and the ports
+  are their union.
+- **Informative**: `informative="<why>"` instead of a feature, for a sentence
+  that holds a normative word and states no rule (a pointer to another
+  section). The reason is required.
+
+**A section not yet given ids** carries `<!-- spec-pins owed schema-spec-pin-<group> -->` on a line of its own under its heading, naming the
+card that owes them. It covers that heading's own text up to the next
+heading of any level. The card must be on the guard's closed list
+(`specOwedCards`, the cards the sizing table was cut into) and must not have
+landed: once `internal/ci/schema_spec_pin_<group>_test.go` registers pins,
+card `schema-spec-pin-<group>` owes nothing, so a new rule cannot be excused
+by an invented card or by a finished one. An owed marker on a section with no
+unmarked normative sentence left is stale and fails, so the markers shrink as
+cards land.
+`<!-- spec-pins informative <why> -->` exempts a section that defines no rule
+of the format, such as this one; the sections allowed it are a closed list in
+the guard (`specInformativeSections`), so a card cannot mark its way out.
+
+**The pins are Go data**, one file per section group,
+`internal/ci/schema_spec_pin_<group>_test.go`, each registering its entries
+with `registerSpecPins`. A group's card owns its file, so cards never edit
+each other's pins. An entry is `{Row, Port, Test, Digest}`. `Digest` is the
+first 16 hex digits of the SHA-256 of the row's sentence as the splitter
+reads it (comments blanked, whitespace collapsed, inline code kept); the
+guard prints the current value when it is missing or stale, and an author
+copies it only after reading the test against that text. `Test` is
+`<path>:<symbol>` from the repository root:
+
+- a `_test.go` path names a Go `Test` function. It must exist in that file,
+  it must take one `*testing.T`, the file must build under a plain
+  linux/amd64 `go test` (no build tag excluding it), it must sit where
+  `go test ./...` from the root visits (not under `testdata`, `_` or `.`, not
+  in a nested module), and no `Skip`, `Skipf`, `SkipNow` or `testing.Short`
+  may be reachable from it or from the package's `TestMain` (which must call
+  `m.Run`), through functions and methods of its package or of the packages
+  of this module it imports;
+- a `.tla` path names a property TLC checks: `{Test: "tla/MCX.tla:Inv", Cfg: "tla/MCX.cfg", Module: "X"}`. The model must `EXTENDS` the module that
+  defines the property, the property's definition (and the `EXTENDS`) must
+  stand outside every TLA+ comment, `\*` to the end of the line and the
+  nesting `(* ... *)` (inside which a `\*` hides the rest of its line, so a
+  doubt refuses the pin rather than accepting a commented-out one), the
+  property must sit under
+  `INVARIANT(S)` or `PROPERTY`/`PROPERTIES` in the cfg (outside the same
+  comments), and one line of the
+  Makefile, `make/*.mk`, a workflow or the TLC run ledger `tla/RUNS.tsv` must
+  name the cfg with the model;
+- any other source path names a port's harness function: defined in the
+  file, not marked skipped or ignored on or above its definition, and called
+  from its own directory.
+
+**An owed pin** is `{Row, Port, Owed: "<why>", Want: "<TestName>", Digest}`: the row is
+a rule of that port with no test yet. `Want` is the name the test will carry,
+and it is searched repo-wide: an owed entry whose test already exists
+anywhere fails, so it must be pinned instead.
+
+**The guard fails on**: a normative sentence without an id outside an owed or
+informative section; a malformed, duplicate or reused-retired id; a row with
+no feature and no reason, both, or an unknown attribute; a feature that is no
+roadmap row; a row/port with neither a pin nor an owed entry, or with both; a
+pin on a port that does not carry the feature, or on an informative row; a
+dead pin (no such row, a retired row, a missing file, test, property or cfg);
+a pin to a skipped, tagged-out or unvisited test; an owed entry naming a test
+or no `Want`; a pin or owed entry with no digest, or one whose row's text has
+changed since it was recorded ("row <id> text changed since its pin; re-read
+the test and update the digest"); two section markers, a marker before the
+first heading, an informative section off the list; an owed marker naming a
+card off `specOwedCards` or one whose pin file has landed; and a stale owed
+marker. Each of these has
+a reversed witness in the guard's file (`TestSpecPinsRefusals`), a planted
+fixture on which it must fire, beside a clean fixture on which none does
+(`TestSpecPinsFixturePasses`).
+
+**What it does not check**: that a pinned test asserts what its row says
+(that is the reading at the pin's card; the digest guarantees only that a
+reworded row cannot land without an edit to its pin, which that card's
+reader sees in the diff); that a reworded row's re-confirmed pin was really
+re-read; that a non-Go harness is wired into
+a make target CI runs; that the retired list only grows (a property of
+history); calls through function values or interfaces, or env-var gates
+that return early; and the sentence splitter is a heuristic (an abbreviation
+followed by a capital splits a sentence; a lowercase start does not), the
+same for every reader, so a row id may cover a fragment.
+
+**Why no TLA+ model of the ledger**: the guard owns no state. It is one
+predicate over one commit's spec, roadmap and tree; rows being added, pinned
+and retired are edits to files, ordered by git, and the one property across
+commits (an id is never reused) is held by the retired markers inside the
+commit. There is no protocol here to model.
+
+**Sizing the remaining work.** `TestSpecPinsSectionSizes` prints a Markdown
+section/count/ports table for every heading, including zero-count headings.
+Counts use the same sentence splitter as the guard. For marked sentences the
+port union comes from their row features; for the remaining sentences it comes
+from the explicit section scopes in `specSizeScopes`, resolved through the
+roadmap's cells. A section union is a planning estimate, not a claim that each
+sentence applies to every listed port or that every roadmap cell is complete.
+The table identifies the mapping basis and the number of sentences still
+awaiting individual feature assignment. Compiler-only sections use `compiler`;
+the C++ dialect ruling narrows its roadmap-derived set to `cpp`. Nested headings
+inherit the enclosing scope; new top-level subjects need their own scope.
+The informative design section has no port obligation. This inventory assigns
+no extra row ids or pins: the section cards refine the estimates as they map
+their sentences. Copy the emitted table into the card report with its head.
+
+The worked example is §2.7, pinned fully, with no owed entry: T2.7-1 by
+`ir/blocklayout_test.go:TestBlockLayoutMatchesTheWorkedTable` and T2.7-2 by
+`internal/check/blockprologue_test.go:TestFixedTableFieldNamedAfterTheBlockPrologueIsRefused`;
+T2.7-3 is informative. (The card named §2.11, Timestamps; §2 ends at §2.10,
+so the small §2.7 stands in for it.)
+
 ## The three wires
+<!-- spec-pins owed schema-spec-pin-s0 -->
 
 **There are THREE WIRES over the same struct, and each is a different
 bargain.** In the owner's words: *"I also like that there are three quite
@@ -207,6 +356,7 @@ slower path that crosses versions, one generic path that trades speed for
 reach.
 
 ## What allocates, and what never does
+<!-- spec-pins owed schema-spec-pin-s0 -->
 
 - **A type never allocates**, in any backend, on any path. This rung does
   not move.
@@ -754,6 +904,7 @@ claimed where those sources are, in a unit that declares a table; a
 packet-only unit keeps `type Announce` and `const ok` (§11).
 
 ## 1. Purpose
+<!-- spec-pins owed schema-spec-pin-s0 -->
 
 **Table is king.** There is no document that things are put into, and no
 root that is anything other than a table. A file is a tree of nodes and every
@@ -785,6 +936,7 @@ refuses a table today is a gap, named in §15, not a design.
   readers default what old writers never wrote.
 
 ## 2. Declaration
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 fixed table Physics
@@ -875,6 +1027,7 @@ declaration laid out so another language points at its rows (§19). Nothing
 declares it, and it adds no field type, no wire kind and no byte on the wire.
 
 ### 2.1 Pointers
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 table Node
@@ -941,6 +1094,7 @@ pointers in the struct. Its meaning depends on the form it sits in
 at 2 GiB, and the scale a cook exists for is larger than that.
 
 ### 2.2 The class is declared: `fixed table`
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 fixed table Physics                 // FIXED: a plain struct of known sizeof
@@ -1066,6 +1220,7 @@ array extent lives in int32 storage (SPEC §4.3), and that cap (`2^31 - 1`) is w
 too-large extent is refused against.
 
 ### 2.3 Optional fields: `settings ?GunnerSettings`
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 table ShipConfig
@@ -1223,6 +1378,7 @@ the optional map: absent apart from empty). It is refused, by name, on:
 - **a specified default** — presence is the only default an optional has.
 
 #### The `| required` marker
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 A variable table cannot say a field must be present: a zero field is not
 written, so absence and a written default are indistinguishable. `| required`
@@ -1292,6 +1448,7 @@ existing table is the same break, and the baseline refuses it too (every
 stored record lacks the field); a new field that is not required is free.
 
 ### 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig`
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 enum ShipType { Fighter, Bomber, Scout }
@@ -1611,6 +1768,7 @@ COMPLETE by construction); an element that is a pointer, as for any array
 (§15); and an index of `E::None`, which names no slot.
 
 ### 2.5 Byte buffers: `data *bytes`
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 table Asset
@@ -1725,6 +1883,7 @@ and string of length zero beside null slots, each crossing the wire and the
 cook in the harness, and the text where the form can carry it. The `*wstring` blob is specified (§3, §3.1) ahead of its implementation and no backend emits it yet.
 
 ### 2.6 Union arms are field lines
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 Inside a TABLE closure a union's arm may name a `table`, not only a
 declared `type`:
@@ -1966,7 +2125,7 @@ those cases, so its fixed-class pass is untouched.
 
 ### 2.7 The block form is not declared
 
-**By default nothing in a declaration selects it, and nothing is refused for asking.**
+**By default nothing in a declaration selects it, and nothing is refused for asking.**<!-- row T2.7-1 feature=compiler -->
 Unless a table restricts its surfaces with `forms` (§2.12), every FIXED table
 has a block form — a THIRD projection beside its wire (§3) and its cook (§7),
 in which the table's own bounded arrays are laid out of line at a fixed pitch
@@ -1977,13 +2136,15 @@ a pointer anywhere in the closure means no fixed pitch anywhere in it.
 **It needs no marker because it costs a declaration nothing.** The form is
 emitted ON THE SIDE, in files of its own, and a consumer that does not include
 them pays for none of it — the same shape §16's text form already takes, one
-step further (§19). What a fixed table's declaration owes the form is two
-names it may not spell, `magic` and `build_version` (§11), and nothing else.
+step further (§19). What a fixed table's declaration owes the form is three
+names it may not spell, `magic`, `build_version` and `byte_order`, the
+projection's generated prologue (§19.1, §11), and nothing else.<!-- row T2.7-2 feature=compiler -->
 
 The form itself — which arrays move out of line, what the projection is, what
-the pitch is, what it costs and what it refuses — is §19.
+the pitch is, what it costs and what it refuses — is §19.<!-- row T2.7-3 informative="points to §19, where the refusals are stated" -->
 
 ### 2.8 Maps: `ships map[string(32)]ShipConfig`
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 fixed table ShipConfig
@@ -2779,6 +2940,7 @@ claim about a language with caller-owned buffers, and a port without them says
 what it holds instead.
 
 ### 2.9 Unbounded arrays: `placements []Placement`
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 table Placement
@@ -3455,6 +3617,7 @@ PLACE — it keeps its slot forever. Nothing is reordered, nothing is removed,
 nothing is widened, and nothing that has been deprecated comes back.
 
 #### The `deprecated` marker
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 fixed table ShipConfig
@@ -3511,6 +3674,7 @@ stays exactly as it is for as long as anything holds a record written under
 it.
 
 #### The lock
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 `schema.lock` sits beside the unit's schema files and is **written by the
 compiler only**. It records **everything a reader of a fixed record stands
@@ -3773,6 +3937,7 @@ and every append lands in the same commit as the schema change that made it: a
 change to a fixed table is never in the tree without the record of it.
 
 #### `schema lock`
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 schema lock [--print] [--verbose] [--retire Table[@0x...] --reason <text>] [dir|files...]
@@ -3817,6 +3982,7 @@ already written, and wants a sentence on that account; a retirement is the one
 LOCK write that declares something, and is the one that carries a reason.
 
 #### Held by test
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 `internal/lockfile` holds the mechanism over two fixture packages. Over the
 first: an appended field is refused until `schema lock` appends the entry and
@@ -3861,6 +4027,7 @@ check on.
 
 
 ### 2.11 Timestamps: `opened_at timestamp`
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 ```
 fixed table Session
@@ -3948,6 +4115,7 @@ table both recognize kind `36` as an eight-byte payload, so an unnamed or
 kind-mismatched `timestamp` field is skipped cleanly.
 
 ### 2.12 The forms a table carries: `forms`
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 **What a table carries is a property of the table, not of one generate call.** A
 table line may declare the FORMS it carries — the surfaces a backend emits for
@@ -4006,6 +4174,7 @@ construct by name, centrally, at generation, and no other emitter is edited; the
 other languages carry `forms` when their turn comes.
 
 ### 2.13 Text lists: `rules [..16]string(64)`
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 **A variable table may hold a counted list of text.** In a plain (VARIABLE)
 `table`, a field may be spelled four ways:
@@ -4202,6 +4371,7 @@ centrally, at generation** (§2.12's rule), naming the construct, the field and
 the target, so no other emitter is edited.
 
 #### 2.13.1 Unbounded text: `[]string` and `map[string]V`
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 **A variable table's text list may leave its ELEMENT unbounded, and a map may
 leave its KEY unbounded.** Five spellings, in a plain `table` body only:
@@ -4345,6 +4515,7 @@ the target. A unit that uses neither spelling generates byte-identical output
 to what it did before this section, for every target.
 
 ### 2.14 The integrity check: `integrity`
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 **A table may declare that its saved file carries a checksum.** The binary
 wire and its base64 text carry no check of their own, so a byte flipped on a
@@ -4541,6 +4712,7 @@ centrally, at generation** (§2.12's rule), naming the construct, the table and
 the target, so no other emitter is edited.
 
 ### 2.15 Enum variants: `| deprecated` in place
+<!-- spec-pins owed schema-spec-pin-s2 -->
 
 An `enum` variant may be retired in place with the SAME marker a field takes
 (§2.10), written in the same qualification section:
@@ -4614,6 +4786,7 @@ aligned and nothing is padded.
 ---
 
 #### THE FIRST BYTE
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **EVERY SCHEMA FILE BEGINS WITH THE FORM BYTE, AND THE REGISTRY (§3.4) IS THE
 ONLY PLACE A VALUE IS ASSIGNED.** This is the rule, stated once, that every
@@ -5384,6 +5557,7 @@ that instrument goes red.
   the sum of the rows above it, and a row that drifts moves a pinned wire.
 
 ### 3.1 Pointers on the wire: a flat node table
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 A pointered save writes every reachable node ONCE, into a **node table**,
 and a pointer field rides as an **index** into it under kind `17`, the same
@@ -5881,6 +6055,7 @@ reference in a save can do is name index `1`, because reaching the root
 again is reaching an entry still open — the cycle refusal, above.
 
 ### 3.2 Enum-keyed arrays on the wire: slots by name
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 An enum-keyed array (§2.4) rides as **kind `16`, its own kind**, and its
 body opens as an array's does, `element kind (u8)` and then the count.
@@ -5952,6 +6127,7 @@ variable-length class allocates by nature, and a union arm may allocate in
 a backend whose language has no native union.
 
 ### 3.3 The message form: a batch of bitpacked bodies under one announced vocabulary
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **THE DESIGN STATEMENT, in the owner's words.** *"Let's optimize it for
 bandwidth. It can't and won't be exactly as efficient as types, but we can make
@@ -5985,6 +6161,7 @@ variable root goes.
 ---
 
 #### The scope is the ANNOUNCEMENT, not the transport
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **The requirement is on the ANNOUNCEMENT and nothing else. It is delivered
 ONCE, RELIABLY, BEFORE THE FIRST BODY, and never again for the life of the
@@ -6056,6 +6233,7 @@ constant byte array with a length (below).
 ---
 
 #### The primitive is a BATCH
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **A BATCH OF BODIES IS THE UNIT THIS FORM READS AND WRITES, and a single message
 is the batch of one.** The owner's ruling: *"Make sure that the primitive is that
@@ -6141,6 +6319,7 @@ what §2.6 is for.
 ---
 
 #### The wire, exactly
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **A form-`2` wire is THREE PARTS: the FORM BYTE, the BODY COUNT, and the BODIES
 AS ONE CONTINUOUS BIT STREAM.**
@@ -6342,6 +6521,7 @@ arithmetic and lands the same bits.
 ---
 
 #### The announcement
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **THE ANNOUNCEMENT IS AN ORDINARY FORM-`1` FILE, and it carries the VOCABULARY
 IN ITS BODY.** It needs no second form byte, no envelope and no rule of its own
@@ -6633,6 +6813,7 @@ problems.
 ---
 
 #### Elision, defaults, and what a reader reports
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **ELISION, DEFAULTS AND THE READ REPORT ARE UNCHANGED.** A field at its declared
 default is not written, an empty string, array, union or all-default nested
@@ -6661,6 +6842,7 @@ variable form and is why the shapes carry ranges at all.
 ---
 
 #### Damage is terminal for the batch, and that is the price of bits
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **A BYTE-FRAMED BODY HAS A PLACE TO RESUME AND A BIT STREAM DOES NOT.** §3's
 recovery rule, that a damaged nested body costs only that body because its `L`
@@ -6730,6 +6912,7 @@ away, so element zero is element zero either way.
 ---
 
 #### Form byte `2` keeps its number, and the byte body is replaced
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **THE BITPACKED BODY TAKES FORM BYTE `2`. It does not take `3`.** An earlier
 byte-framed body for form `2` landed in this repository (#549) but was never
@@ -6751,6 +6934,7 @@ damage (§3). A wire that had shipped would have taken `3` on that same rule.
 ---
 
 #### Retention, and what does not move
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 **RETENTION (§6.6) ON A MESSAGE BODY: THE FORM CARRIES NONE, AND THE REFUSAL
 IS AT COMPILE TIME.** A message body is a FIXED table's (§2.2, above), and a
@@ -6970,6 +7154,7 @@ follow-on beside the wire-form work M20 already registers
 ---
 
 #### THE SURFACE, OWED TO §11's CLAIMED SET
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 Every name here is a name a user may still take until the checker refuses it,
 so the claim is deliberately not made in this page's own change, on §6.6's
@@ -7025,6 +7210,7 @@ caller's storage and reports how many bodies it read, and neither allocates.
 ---
 
 #### SECURITY
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 - **A RECEIVER NEITHER CHECKS NOR NEEDS TO CHECK THAT A VOCABULARY MATCHES THE
   BUILD VERSION IT CAME WITH.** It cannot: it does not hold the sender's schema,
@@ -7388,6 +7574,7 @@ entries announces about 5 KB once.
 ---
 
 #### HELD BY TEST
+<!-- spec-pins owed schema-spec-pin-s3a -->
 
 - **The form byte's rows.** A form-`2` wire read as a FILE, which must REFUSE and
   not decode. A form-`2` batch with no announcement, which must refuse naming the
@@ -7678,6 +7865,7 @@ fixed table Envelope
   wire that moved.
 
 ### 3.4 The fixed form: a record of values under a layout
+<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **THE DESIGN STATEMENT, in the owner's words.** *"Fixed tables are meant to be
 the fast equivalent of types, in table form."* And the standard the shape is
@@ -7705,6 +7893,7 @@ that page's footnoted rulings, which name the reference fixes still landing.
 ---
 
 #### THE VERSIONING INVARIANT, FIRST
+<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **"WE MUST NOT EVER BREAK VERSIONING IN FIXED TABLES"** — the project owner,
 ruling on this form. That is the constraint every rule below is shaped to meet,
@@ -7787,6 +7976,7 @@ keep honest against the first, and one row on the board.
 ---
 
 #### THE LAYOUT
+<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **THE LAYOUT IS THE WRITER'S WHOLE TYPE, FLATTENED: ids, kinds, constant sizes,
 in the writer's declared order, for the root and every nested type.** It is the
@@ -7877,6 +8067,7 @@ the hash as a constant, exactly as §3.3's announcement is emitted.
 ---
 
 #### THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER: WHAT A READER HOLDS IT TO
+<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **A LAYOUT IS THE ONE STRUCTURE A READER MUST PARSE BEFORE IT KNOWS ANYTHING AT
 ALL, AND THE ONLY LAYOUTS IT PARSES ARE THE LOCK'S OWN.** A file or a peer
@@ -7916,6 +8107,7 @@ rules and not a bucket they fall into.
 ---
 
 #### THE SIZE BOUNDS: 4096 AND 65536
+<!-- spec-pins owed schema-spec-pin-s34 -->
 
 *"Effectively, fixed tables should only be used for small things."* — the
 project owner. That is a design rule, and a design rule nobody is told about is
@@ -7973,6 +8165,7 @@ compiler's verdict cannot drift apart.
 ---
 
 #### THE RECORD
+<!-- spec-pins owed schema-spec-pin-s34 -->
 
 ```
 record := hash (u64 LE, 8 bytes) , the ROOT's BODY
@@ -8093,6 +8286,7 @@ coverage the emitters owe lives on a plain `table` — `tables/examples/Guarded.
 body is not a table with two wires to choose between; it is a diagnostic.
 
 #### SELECTION IS BY THE KEYWORD
+<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **A `fixed table` ENCODES AS FORM `3`. A `table` ENCODES AS FORM `1`. NOTHING
 IS DERIVED IN EITHER DIRECTION, AND NO VALUE OF A FIXED TABLE THIS FORM IS
@@ -8139,6 +8333,7 @@ exists to prevent.
   the declared set, so every emitter switches on one flag with one origin.
 
 #### A VARIABLE TABLE IN THE UNIT CHANGES NOTHING FOR ITS FIXED TABLES
+<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **THE FIXED FORM IS CARRIED BY EVERY FIXED TABLE THAT QUALIFIES FOR IT,
 WHATEVER ELSE THE UNIT HOLDS.** The qualification is the one this section
@@ -8174,6 +8369,7 @@ ordinary table wire. That is the surprise the keyword exists to prevent.
 ---
 
 #### THE ONE READER PATH: A PLAN
+<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **A PLAN IS A FLAT ARRAY OF ENTRIES, AND A READ IS ONE LOOP OVER IT.**
 
@@ -8299,6 +8495,7 @@ no second walk.
 ---
 
 #### THE FRAMING: WHERE THE FORM BYTE AND THE LAYOUT GO, IN ALL THREE CARRIERS
+<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **THE RULE IN ONE LINE: THE FORM BYTE AND THE LAYOUT EACH APPEAR ONCE PER
 CARRIER, AND A RECORD CARRIES ONLY THE HASH.** A record is never self-describing
@@ -8400,6 +8597,7 @@ exactly one framing per carrier.
 ---
 
 #### THE FORM-BYTE REGISTRY
+<!-- spec-pins owed schema-spec-pin-s34 -->
 
 **THIS TABLE IS THE ONLY PLACE A FORM BYTE IS ASSIGNED A MEANING** (§3, THE
 FIRST BYTE). A value absent from it is a value NO FORM DEFINES, and every
@@ -8440,6 +8638,7 @@ added moves it without anyone remembering to.
 ---
 
 #### HELD BY TEST
+<!-- spec-pins owed schema-spec-pin-s34 -->
 
 - **THE VERSIONING CONFORMANCE SET**, which is what the invariant above is worth
   if it is not measured: a SAME-SCHEMA read (the identity plan), an OLDER
@@ -8522,6 +8721,7 @@ added moves it without anyone remembering to.
   Red if the ratio moves past the bound the owner's ruling set.
 
 ## 4. Versioning is wire tolerance
+<!-- spec-pins owed schema-spec-pin-s45 -->
 
 There are no version declarations — no fences, no version numbers, no
 retained lineage. **The wire itself is evolution-tolerant**, and that
@@ -8838,6 +9038,7 @@ declaration and read under another, with all three frames pinned
 unchanged schema is stop-the-line.
 
 ### 4.1 The silent class, in full
+<!-- spec-pins owed schema-spec-pin-s45 -->
 
 Almost every edit lands in the read report. **Exactly four do not**, and
 naming the whole set is the point of this subsection — a person reading a
@@ -8981,6 +9182,7 @@ only.
 **The table is a GOLDEN.** One fixture per row, each edit written under the row's base schema and run through all three frames — the read report, the baseline check and the build version — with the three verdicts pinned, holds this table from going stale: `TestEvolutionTableFrames` in `internal/baseline`, whose fixtures are the pin and whose negative control is a flipped verdict. §4, §18.2 and §20.4 derive from this table by citation rather than restating it, and `TestEvolutionTableDocsAgreeWithTheGolden` reads the cells back out of this page.
 
 ### 4.2 The read is the verifier: the wire fuzzer
+<!-- spec-pins owed schema-spec-pin-s45 -->
 
 **A table read is UNTRUSTED input.** Tables come over the network — a save
 game uploaded to a server, a config a client hands back — and the posture is
@@ -9204,6 +9406,7 @@ The evolution seams and the pointer-spelling cases there are exactly that
 shape already.
 
 ### 4.3 One-sided integer ranges
+<!-- spec-pins owed schema-spec-pin-s45 -->
 
 On a field of a `table` or a `fixed table` whose type is an integer
 (`int8`..`int64`, `uint8`..`uint64`), a one-sided range declares the two-sided
@@ -9222,6 +9425,7 @@ other target refuses a unit with any such field by name at generation
 (SPEC §4.6).
 
 ## 5. Identity: the name hash, `was`, and the collision refusal
+<!-- spec-pins owed schema-spec-pin-s45 -->
 
 **ONE HASH SERVES EVERY VOCABULARY, at one width.** A field's wire id, an
 enum variant's id, a union arm's id and a table's own name id are all
@@ -9377,6 +9581,7 @@ and has exactly the life below. What changes is how one instance is laid
 out, not what kind of thing it is.
 
 ### 6.1 Fixed-size: a value
+<!-- spec-pins owed schema-spec-pin-s6 -->
 
 A fixed-size table is a struct. **A fixed table and a `type` are the same
 thing semantically — both are structs — and what differs between them is the
@@ -9467,6 +9672,7 @@ which must turn the translation unit red and name that header, and it is the
 control that measured the silence run in the other direction.
 
 ### 6.2 Variable-length: a lifecycle
+<!-- spec-pins owed schema-spec-pin-s6 -->
 
 A file-format-scale structure is not a struct you copy. It is built
 mutable, then locked const, and read through a region and a root pointer.
@@ -9595,6 +9801,7 @@ scene_builder_shutdown( &builder );           /* releases the arena and the regi
   `(const Scene *) builder.region` with a NULL context.
 
 ### 6.3 Two reference encodings, one slot
+<!-- spec-pins owed schema-spec-pin-s6 -->
 
 A pointer's eight-byte slot means different things in the two forms, and
 the form in hand always says which:
@@ -9745,6 +9952,7 @@ The builder is designed to go wide, lock-free by ownership:
   `Lock` removes all of it.
 
 ### 6.5 The two load paths
+<!-- spec-pins owed schema-spec-pin-s6 -->
 
 **A `1` BOOL byte that is neither `0` nor `1` is MALFORMED on this read**: the
 TOLERANT read keeps the value (`true`) and counts the field `malformed` by name;
@@ -10061,6 +10269,7 @@ nowhere, in any language, and a fixed-size table with no union allocates
 nowhere either.
 
 ### 6.6 Retain-unknown: an opt-in that keeps what this build cannot name
+<!-- spec-pins owed schema-spec-pin-s6 -->
 
 **By default a rewrite drops what the reader could not name**, and the
 never-clobber rule (VERSIONING.md) is the consequence a studio writes into its
@@ -10687,6 +10896,7 @@ already had, so `Load`, `Measure` and `Save` are unchanged. What is still owed
 is the other seven ports.
 
 ## 7. The cooked form
+<!-- spec-pins owed schema-spec-pin-s7 -->
 
 **Cooking is fundamentally an optimization.** Every rule in this section
 is a consequence of that one sentence, and none of it is a second format
@@ -11316,6 +11526,7 @@ cook does not answer it either — a cook is produced from a builder by a
 single-threaded `Lock` (§6.2), which is exactly the shape that lost.
 
 ### 7.1 The file, byte for byte
+<!-- spec-pins owed schema-spec-pin-s7 -->
 
 A cooked file is a HEADER, a DATA part and an ATTRIBUTION part, in that
 order. Every word of the header is a `u64` written in the byte order the
@@ -11383,6 +11594,7 @@ attribution beside the cook rather than inside it, and rejoining is the
 length word and a concatenation, because a split moves nothing else.
 
 ### 7.2 The region, byte for byte
+<!-- spec-pins owed schema-spec-pin-s7 -->
 
 The data part is `Lock`'s region written verbatim (§6.3). **Nodes are laid
 out in the DEPTH-FIRST PRE-ORDER §3.1 numbers them in**, the root at offset
@@ -11575,6 +11787,7 @@ The magic's first eight bytes then read `4b 4f 4f 43 4d 48 43 53`, which is
 what tells a little-endian consumer it is holding a foreign file.
 
 ### 7.4 What the check reads, and what it does not
+<!-- spec-pins owed schema-spec-pin-s7 -->
 
 §7's two passes are stated above; this is what each one touches.
 
@@ -11647,6 +11860,7 @@ partial region and a delta it cannot express, so the file it produces satisfies
 every clause above by construction.
 
 ### 7.5 Held by test
+<!-- spec-pins owed schema-spec-pin-s7 -->
 
 - **THE ROUND TRIP, and it is the gate**: `wire → cook → wire`,
   byte-identical, in BOTH byte orders, over every pointered graph in the
@@ -11884,6 +12098,7 @@ every clause above by construction.
     documentation goes red with the code rather than a release later.
 
 ### 7.6 The write side: `Cook` and `CookMeasure`
+<!-- spec-pins owed schema-spec-pin-s7 -->
 
 **A BUILD CAN WRITE A COOK, AND THE BYTES ARE THE TOOL'S.** `schema cook` is
 the reference and stays it: a generated writer is held to the tool's output
@@ -12137,6 +12352,7 @@ columns are specified with the rest of the descriptors in §8.1 and appear on
 the registry's records in §8.3.
 
 ### 8.1 The descriptors
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 For every table in the unit's closure the generated header carries static
 descriptors: field name, type name, wire id and kind, storage offset and
@@ -12556,6 +12772,7 @@ editors and tools build on — walk properties by name, print a value, diff
 two, bind a property grid — with no RTTI and no schema files at runtime.
 
 ### 8.2 The type view: every type, on the side
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **Every type in the unit has a view, and nothing declares it.** A `type` a
 table reaches has carried these descriptors all along — a walk must be able
@@ -12638,6 +12855,7 @@ in its view file behind the same include guard the table headers use, so a
 unit that has both carries one definition of them.
 
 ### 8.3 The unit registry
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **`UnitView()` is the entry point, and it returns constant data.** One
 function per unit, name-first in the unit's own namespace beside
@@ -12854,6 +13072,7 @@ asks "did the registry leak out of its file?", never "is there a descriptor
 here?" — §2.2's own distinction between machinery and columns.
 
 #### The shared Go runtime (the default)
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **Shared is the default; standalone is the named option.** The Go target's
 home file imports `tables/goruntime` in this module
@@ -12947,6 +13166,7 @@ per-schema-file name does not.
   relationship to the first: a project compiles either, both or neither.
 
 ### 8.6 What the view does not carry
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 - **No semantics.** A tag is an identifier the language assigns no meaning
   (SPEC §4.2); the view lists what a declaration or an item was tagged with
@@ -12986,6 +13206,7 @@ per-schema-file name does not.
   so the two pages meet there rather than each inventing a column.
 
 ### 8.7 Held by test
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **The editor gate, and it is a dogfood rather than a thought
 experiment** — the shape §12's gates take. A test program that has the
@@ -13170,6 +13391,7 @@ Beside it, the containment gate of §8.4: not one of the six registry symbols
 appears in any generated file but the view pair.
 
 ### 8.8 The `--surface` flag
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 The Go target can emit a subset of the table surfaces. `generate --lang go --surface <list>` takes a comma-separated list drawn from these nine names:
 
@@ -13211,6 +13433,7 @@ it removes nothing; no other file is ever touched; `--verbose` lists each
 removal.
 
 ## 9. Relocatable, and built wide
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 Two properties are load-bearing for real content pipelines, and both are
 held by construction:
@@ -13276,6 +13499,7 @@ a type edit moves both. Peers connect on the protocol id alone and may differ
 in build version (§20.5).
 
 ## 11. Refused by name
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 - `table` bodies containing `const`/`reserved`/`align` (§2 — no bit
   positions). Extents have no wire ceiling (§3); an extent past the
@@ -14042,6 +14266,7 @@ in build version (§20.5).
   rule is stated so it does not have to rediscover the reason.)
 
 ## 12. The expressiveness gate
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **There are TWO gates, and a real game's data is both of them.** The first
 is the content pipeline — the config and asset files tools write and the
@@ -14085,6 +14310,7 @@ both sides — so a backend clears the gate only in its own language, and
 the per-language backends are named follow-ons (§15).
 
 ### 12.1 Gate 2: the render data
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **The second gate is SPEED, and it is measured.** A real game's per-frame
 render data — the block a simulation hands its host engine sixty or more
@@ -14178,6 +14404,7 @@ proves nothing about the ABI the form exists to be. C++ and C# together are
 the gate; a third language joins it as its backend lands (§15).
 
 ## 13. Rulings, recorded
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **THE AIM, 2026-09-02, in the owner's words, and every ruling below is
 measured against it**: *"We aim to build the best cross-language data type
@@ -14216,6 +14443,7 @@ Owner rulings, 2026-09-01, in the order given.
   work, and relocatability work (if possible)."
 
 ### 13.1 Pointer semantics, ruled
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 - **The founding line**: "types can remain value semantics. tables should
   ALLOW pointer semantics" — "we can't be a generic system if we don't
@@ -14283,6 +14511,7 @@ are these rulings, in the owner's words:
   primitive", so that "we can include say, images or assets inside them."
 
 ### 13.3 The fixed-class constructs, ruled
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 - **Optional fields** (§2.3): "If you want to have optional fields without
   needing pointers too, and that's elegant, then go for it" — and, once
@@ -14342,6 +14571,7 @@ are these rulings, in the owner's words:
   without `--reason` is refused.
 
 ### 13.4 The cooked form, ruled
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 - **What it is for**: "cooking is fundamentally an optimization", and
   "the only time we need the optimization is to reduce load times for
@@ -14449,6 +14679,7 @@ convenience:
   number has been taken for them.
 
 ### 13.6 The block form, ruled
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 Owner rulings, 2026-09-02, in the order given.
 
@@ -14546,6 +14777,7 @@ Owner rulings, 2026-09-02, in the order given.
   records what the marker cost.
 
 ### 13.7 The view, ruled
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 Owner rulings, 2026-09-02, in the order given.
 
@@ -14586,6 +14818,7 @@ Owner rulings, 2026-09-02, in the order given.
   went out together (§8.4, §14).
 
 ### 13.8 The build version, ruled
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 Owner rulings, 2026-09-02, in the order given. §20 is the section they
 produced.
@@ -14625,6 +14858,7 @@ produced.
   — two ids, and §20 states them as the two.
 
 ### 13.9 The C++ dialect, ruled
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 Owner ruling, 2026-09-03: *"It should also feel good and look native to a
 C++ game programmer (C-like C++, no modern C++ features, not pulling in STL or
@@ -14725,6 +14959,7 @@ than an un-hookable call; and `inline constexpr` in the PACKET half, which is
 the packet emitter's own change.
 
 ## 14. Design notes: the shapes rejected
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 One paragraph a rejected shape: what it was, and the reason it lost. The
 designs of record are stated where they belong and are not restated here.
@@ -14911,6 +15146,7 @@ inspects everything in the schema built:
     class has four members and not five.
 
 ## 15. Named follow-ons
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 - **A GENERATED READER DOES NOT DISPATCH ON THE FORM BYTE** (§3.4). §3.4 says a
   reader for a fixed-table type "accepts BOTH, by the form byte". The C++
@@ -15423,6 +15659,7 @@ inspects everything in the schema built:
   case on the read path, so it wants the same measurement the passes above want.
 
 ## 16. The text form: JSON in and out of one table
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 Reading a JSON text into a table, and writing one out, is not an opinion:
 it is one table, one text, one walk over the reflection descriptors (§8),
@@ -15466,6 +15703,7 @@ closure with no opt-out at the DECLARATION level — nothing is gated on a
 unit's mode — but paying for it is a build decision, not an include.
 
 ### 16.1 The surface
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 For every FIXED-SIZE table in a unit's closure, name first, C++:
 
@@ -15659,6 +15897,7 @@ carries three accessors where C++ carries a tag offset and an arm offset.
   the read rather than being ignored.
 
 ### 16.2 The mapping, field kind by field kind
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 The JSON form of a table is an object whose keys are field KEYS — a
 field's name, or the `json` attribute's value where one is declared (§16.4).
@@ -15873,6 +16112,7 @@ an omit-defaults write in Go allocates one default instance per object it
 writes, to compare against, and the plain calls still allocate nothing.
 
 ### 16.3 What the writer refuses
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 `ToJsonMeasure` and `ToJson` return **-1** rather than write a text that
 does not say what the instance holds. This is §5's save-failure rule
@@ -16005,6 +16245,7 @@ the same `Reason`, so a pack never encodes a wire its own decode calls
 `malformed`; every other backend keeps its behaviour until its port.
 
 ### 16.4 The key: `json`
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 A field's JSON key is its name. The one attribute this form adds lets a
 declaration meet an existing text:
@@ -16022,6 +16263,7 @@ ids are the wire's, and a schema may add, change or remove a `json` key
 without touching a stored file.
 
 ### 16.5 Held by test
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 - Every table in the corpus round-trips `ToJson` → `FromJson` → `Save` and
   byte-matches the wire of the original instance.
@@ -16102,6 +16344,7 @@ Those are a packer's business; §17 is one packer, and it is a TOOL over
 this section rather than a second definition of it.
 
 ### 16.7 The variable class: the same text, and one construct for sharing
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **The FIXED form above is the whole of this form too**: the JSON syntax for
 fixed and variable tables is the same where possible and completely consistent
@@ -16409,6 +16652,7 @@ cannot pack back to the bytes it came from.
   and one with a leading zero.
 
 ### 16.8 Carrying a table over a text channel
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 A text channel is a pipe a wire byte cannot cross as-is — a bus body, a log
 line, a config field, a terminal. A table has two text carriers, and the
@@ -16473,6 +16717,7 @@ the value `FromJson` reads from `ToJson`'s text saves to the same bytes too.
 spelling one beside a table `<Name>` is refused naming the collision.
 
 ### 16.9 The hand-editable text form: a table with its document
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 This is a separate, STRICT authoring form for BOTH fixed and variable tables.
 It is not JSON, not a new binary form byte, and not a third carrier accepted
@@ -16489,6 +16734,7 @@ reader, it resolves every value against the table's field kind. Unlike a
 formatter, its document writer retains the source bytes.
 
 #### 16.9.1 Grammar and identity
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 The following grammar is over UTF-8 bytes. `gap` may occur between any two
 tokens, including a key and its value; adjacent atom tokens need at least one
@@ -16532,6 +16778,7 @@ whole record is read, so field order has no effect. This strict form never
 accepts data which saving would silently discard.
 
 #### 16.9.2 Mapping, field kind by field kind
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 All declared bounds and storage widths are checked BEFORE publishing a value.
 There is no clamping, truncation, unknown-key skipping or last-wins recovery.
@@ -16571,6 +16818,7 @@ An empty pointee cannot be first defined using the reference-only spelling;
 §16.7's empty-node rule applies unchanged. No implicit copying loses sharing.
 
 #### 16.9.3 Comments, layout and lossless edits
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 The result of a successful read is a **document AND its typed table value**.
 The document retains the entire original byte sequence, token spans, trivia
@@ -16631,6 +16879,7 @@ pointer reference itself is a different edit. If an edit requires label
 renumbering or changes graph structure, it is a structural operation.
 
 #### 16.9.4 Named refusals and conformance
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 Reads are transactional: any refusal yields no usable table/document pair,
 never a partial value. Every refusal reports the stable name below, a zero-based
@@ -16691,6 +16940,7 @@ is not a keyword or a string) is checked while resolving, and a semantic
 failure earlier in source order is reported first.
 
 ### 16.10 The array root: `table GoalList | json = "array"`
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **A table whose text is a top-level array.** A JSON reader that already exists
 may expect `[...]` at the top, where every table's text is an object. The
@@ -16732,6 +16982,7 @@ nothing. Go carries it first; every other target refuses a unit that uses it,
 centrally, by name.
 
 ### 16.11 Generated round-trip and damage tests: `schema testgen`
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **Every adopter wrote the same tests by hand, per table: a value through the
 three forms and back, and a damaged input refused by name.** `schema testgen`
@@ -16907,6 +17158,7 @@ whose first-use renumbering swaps id-table entries 2 and 3 on the next save,
 exactly the class above.
 
 ### 16.12 The outside oracle: JSONTestSuite
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **The JSON reader is held to an outside corpus, not only to schema's own.**
 JSONTestSuite (github.com/nst/JSONTestSuite, MIT) is vendored byte for byte at
@@ -17020,6 +17272,7 @@ files, a deleted `i_` row is named by the loader, and a dropped PENDING line is
 named by its file.
 
 ### 16.13 Any JSON value in a variable table: `table Doc | json = "value"`
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **Any JSON text §16.12's layer accepts can be held by ONE declaration and come
 back out equal.** That is every `y_` file, every `i_` file whose row says
@@ -17285,6 +17538,7 @@ against the same corpus, which is what keeps one wire and one text form as
 the number of implementations grows.
 
 ### 17.2 The directory rule
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 The tree MIRRORS the root table's shape, and nothing else:
 
@@ -17324,6 +17578,7 @@ restated here. The tree rule is structural only — it says where a value
 lives, never what a value means.
 
 ### 17.3 What comes out
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **The output is the root table's wire bytes and nothing else**: no magic,
 no content hash, no protocol id, no length prefix around the whole. A
@@ -17368,6 +17623,7 @@ pointed at. An entry naming NO field is left exactly where it is: it is not
 the tool's, and `pack` refuses it by name (§17.4).
 
 ### 17.4 Refusals and the report
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 A tree that does not mirror the table is reported rather than guessed at: a
 directory or file naming no field, two files claiming one enum-keyed slot,
@@ -17400,6 +17656,7 @@ part of what it promises:
   them; these two are pointed at a config tree and only READ the declarations.
 
 ### 17.5 Held by test
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 A directory corpus packs to bytes identical to `Save` of the same instance
 built by hand; `unpack` → `pack` is byte-stable, INTO A TREE THAT ALREADY
@@ -17424,6 +17681,7 @@ well-formed trees proves the happy path and nothing else, and the rules are
 where implementations drift apart.
 
 ## 18. The tables baseline
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **An optional committed projection of a unit's table closure, and the check
 that refuses the edits the wire cannot report.** §4.1 names those edits:
@@ -17446,6 +17704,7 @@ may make data already written unreadable, or quietly change what it
 means.**
 
 ### 18.1 The file
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **It is `tables.baseline`, in the unit directory, and it is opt-in: no
 file, no check.** It is a canonical text projection of the closure — the
@@ -17609,6 +17868,7 @@ union Effect
 ```
 
 ### 18.2 The check
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 `schema tables-baseline <unit>` prints the projection. `schema check` — and
 therefore every `schema generate` — diffs the live closure against the
@@ -17694,6 +17954,7 @@ baseline cannot know which tables a project actually blocks. Every verdict
 above is the wire's.
 
 ### 18.3 What a name is worth, and what a referent is worth
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **A DECLARATION NAME IS NOT ON THE WIRE, and renaming one must not take its
 contents out of coverage.** Members match by name first; a baseline name
@@ -17783,6 +18044,7 @@ Those admit no substitute at all, so any change to one refuses: there is
 nothing to stand in for, and the change is the silent edit itself.
 
 ### 18.4 Moving it is an explicit act
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 ```
 schema tables-baseline --update --reason "damage rebalanced in 2.0; saves from 1.x read the new value" configs/
@@ -17841,6 +18103,7 @@ day was written against a shape nobody recorded, and no check can speak for
 it. The created file says so in its own first history entry.
 
 ### 18.6 Held by test
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 Each refusal class has a fixture pair and its negative control — remove the
 check and the edit passes. **The ARM refusal's sub-cases carry a pair each**
@@ -17870,6 +18133,7 @@ line.
 
 
 ## 19. The block form
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **A fixed table writes into its own instance what it knows about its own
 rows — for each of its bounded arrays, where the rows start, how many there
@@ -18010,6 +18274,7 @@ question; the C# side is a reflection question; and the form is what falls
 out when both are asked of one table.
 
 ### 19.1 The builder
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **One extent, 64-byte aligned at its base**, laid out in this order:
 
@@ -18210,6 +18475,7 @@ chosen to be legible rather than measured. The prologue is free in this
 shape: 152, 168 and 176 all round to 192.
 
 ### 19.2 The reflective read
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **The descriptors are the mechanism, and they are what retires a hand-kept
 mirror.** §8's reflection carries, for a block-form table, the projection
@@ -18466,6 +18732,7 @@ read them with. Every `Endian.little` is spelled at the read, which is what
 makes a Dart reader's byte order the reader's rather than the host's.
 
 ### 19.3 The layout contract
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **The compiler computes the layout, and both backends assert it.** A record's
 layout is the C ABI's natural one: each field at its own alignment, the
@@ -18569,6 +18836,7 @@ therefore an ordinary field an author declares and owns, and the id neither
 replaces nor covers it.
 
 ### 19.4 Evolution
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **A block is SAME-BUILD, and that is the whole of its evolution story.**
 Both sides are generated from one declaration by one compiler run, and the
@@ -18613,6 +18881,7 @@ fact of the data rather than a constant it compiled in, which is the
 difference between a form and a convention.
 
 ### 19.5 Held by test
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 - **A dogfood-shaped table with a block form in the corpus** — a root of several
   bounded arrays over fixed-size row types with a nested `type` apiece —
@@ -18746,6 +19015,7 @@ that holds them, and every one of those is a struct with a wire beside it.
 Nothing here is a new kind of thing: **it's tables all the way down.**
 
 ## 20. The build version
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **Tooling cooks asset X to build version Y, and `(X, Y)` is the tuple a
 distributed store is indexed by** — written by the tools that produce a cook,
@@ -18821,6 +19091,7 @@ the Java `<Root>Cook.open`, the JavaScript `<Root>Cook.Open` and the Rust
    cook and its wire are untouched, and C++ reads one. A named follow-on (§15).
 
 ### 20.1 What it digests
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 Three groups, and the grouping IS the definition — a cook's bytes depend on
 the type wire, on what the region looks like, and on what a load puts in it.
@@ -18947,6 +19218,7 @@ its header lines alone — which still carries the block form's prologue shape,
 because that is a fact of the BUILD (§20.2).
 
 ### 20.2 The cook projection, and the id taken over it
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **The build version is the low 64 bits of SHA-256 — the final eight bytes,
 interpreted big-endian — over the unit's COOK PROJECTION**, which is exactly
@@ -19218,6 +19490,7 @@ caller can substitute one for the other by accident.
 
 
 ### 20.3 The compiler computes the layout; the backends must assert it
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **§19.3's model, unit-wide.** A record's layout is the C ABI's natural one:
 each field at its own alignment, the struct's alignment the greatest of its
@@ -19260,6 +19533,7 @@ wrong fails to build instead of degrading.
 
 
 ### 20.4 What moves it, and what does not
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **This is the §4.1 table's BUILD VERSION column**, whose fixtures are the pin
 (`TestEvolutionTableFrames`); the list is a derivation from that table rather
@@ -19353,6 +19627,7 @@ than a second statement of it.
 - **adding a target LANGUAGE**, which changes no fact the compiler folds.
 
 ### 20.5 The connect gate is the protocol id, and nothing else
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **Peers connect on equal protocol ids; they may differ in build version.**
 The type wire is same-or-refuse because nothing could save two peers whose
@@ -19370,6 +19645,7 @@ strict read refuses a peer's announcement as `build_version_mismatch`, and the
 default read tolerates the difference exactly as the wire does.
 
 ### 20.6 The tuple
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **`(asset hash, build version, byte order)` and nothing finer.** Tooling
 produces a cook under it, the store is indexed by it, and the game asks for
@@ -19401,6 +19677,7 @@ separates them is the MAGIC, which is where a form's identity belongs, and not
 a second digest.
 
 ### 20.7 The surface
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 - **`schema build-version <unit>`** prints the build version.
 - **`schema build-version --facts <unit>`** prints the cook projection of
@@ -19421,6 +19698,7 @@ a second digest.
   reaches it.
 
 ### 20.8 Held by test
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 - **The independence pair, both directions** (§10's test, extended): a table
   edit moves the build version and does not move the protocol id; a type edit
@@ -19494,6 +19772,7 @@ a second digest.
   only for blocks and rows.
 
 ## 21. The fixed table reads backward, never forward
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 **A fixed table's file is read by a build at least as new as the one that wrote it, and by no other.**
 A newer reader reads every older file. An older reader given a newer file refuses it by name, before any
@@ -19504,6 +19783,7 @@ versions, and complain loudly and refuse. Nothing else makes sense." The bill is
 `docs/FIXED-FORM-BILL-READS-BACKWARD.md`; the algorithm is `docs/FIXED-FORM-ALGORITHM.md` §5.)
 
 ### 21.1 The law: everything that inputs into a fixed table only widens
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 A fixed table's closure is a tree of fixed things (§21.4), and every definition in it may only WIDEN over
 time. The `schema.lock` monotone check, run by `schema check` (§2.10), refuses any commit that narrows,
@@ -19542,6 +19822,7 @@ wrote those bytes and nothing reads them. An older enum: its ordinals are the re
 prefix. Everything else: copied.
 
 ### 21.3 What an older reader does with a newer file
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 Refuses, by name, at load, before any record: **`layout_unknown`**, "a layout hash this build's lineage does
 not hold". No counter moves. REFUSE is total. The refusal carries THE FILE'S LAYOUT HASH AND NOTHING ELSE: a
@@ -19575,6 +19856,7 @@ two names are the same refusal in everything but what they claim about direction
 (algorithm §5.3) are assigned when those legs take the rule.
 
 ### 21.4 The closure rule
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 Every fixed table a fixed table reaches by value is itself declared `fixed`, with its own layout and its
 own lineage. A `type` is not declared fixed and has no lineage of its own: it rides in its holder's layout
@@ -19583,6 +19865,7 @@ lineage. A pointer, a byte buffer at its used size, a map, an unbounded array, a
 plain table in the closure is refused (§2.2), so a fixed table never reaches itself.
 
 ### 21.5 The lineage, the floor, and the plans
+<!-- spec-pins owed schema-spec-pin-s8 -->
 
 `schema.lock` keeps each fixed table's LINEAGE: every layout it has had, in order, with its hash and its
 layout bytes, and its DEFINITIONS DIGEST. The layout hash is the version — `fnv1a64` over the layout bytes
