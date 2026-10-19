@@ -670,7 +670,13 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 				local d = S.lookup(e.t)
 				local inst = d.new()
 				read_body(d, payload, inst, true)
-				if payload.at ~= payload.e then report.malformed = true end
+				if payload.at ~= payload.e then
+					-- A SLOT WHOSE BODY DID NOT SPEND ITS L RESETS TO ITS DECLARED
+					-- DEFAULTS (docs/SPEC-TABLES.md §3.2, §5): the engine's keyed
+					-- read refills the slot, so a partial element never rides.
+					report.malformed = true
+					inst = d.new()
+				end
 				x = inst
 			elseif e ~= nil and e.s == "enum" then
 				x = enum_read(e, payload, report)
@@ -1020,7 +1026,15 @@ read_field = function(fd: any, r: any, v: any): boolean
 		local inst = d.new()
 		if fd.slot ~= nil and v ~= nil then v[fd.slot] = inst end
 		read_body(d, sub, inst, true)
-		if sub.at ~= sub.e then _report.malformed = true; inst = d.new() end
+		if sub.at ~= sub.e then
+			-- A NESTED BODY THAT DID NOT SPEND ITS L FALLS BACK ON ITS DECLARED
+			-- DEFAULTS (docs/SPEC-TABLES.md §3, §5): the engine refills the
+			-- body, and the slot names the reset value rather than the partial
+			-- read.
+			_report.malformed = true
+			inst = d.new()
+			if fd.slot ~= nil and v ~= nil then v[fd.slot] = inst end
+		end
 		r.at = r.at + n
 		return true
 	elseif s == "union" then
