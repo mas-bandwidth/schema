@@ -173,6 +173,10 @@ end
 local function widens(kind: number, declared: number): boolean
 	if declared == 3 or declared == 4 or declared == 5 then return kind >= 2 and kind < declared end
 	if declared == 7 or declared == 8 or declared == 9 then return kind >= 6 and kind < declared end
+	-- the 128-BIT RUNGS (§4): a reader that declares i128/u128 widens every
+	-- narrower kind on its own ladder, exactly as ir.TableKindWidens says
+	if declared == 18 then return kind >= 2 and kind <= 5 end
+	if declared == 19 then return kind >= 6 and kind <= 9 end
 	if declared == 11 then return kind == 10 end
 	return false
 end
@@ -447,6 +451,17 @@ local function scalar_at(r: any, fd: any, kind: number, report: any): any
 	end
 	-- §4: a narrower value widens into this declaration's domain
 	if fd.dom == "integer" and typeof(x) == "number" then x = integer.create(x) end
+	-- A 128-BIT DECLARATION WIDENS A NARROWER WIRE KIND (§4): the value is
+	-- sign-extended on the signed ladder and zero-extended on the unsigned
+	-- one, so the declared bounds and the save see one 128-bit shape.
+	if fd.kw == 16 and not is128(x) then
+		local lo = if typeof(x) == "integer" then x else integer.create(x)
+		local hi = 0i
+		if fd.signed == true and ((typeof(x) == "integer" and integer.lt(x, 0i)) or (typeof(x) == "number" and x < 0)) then
+			hi = -1i
+		end
+		x = { lo = lo, hi = hi }
+	end
 	local lo, hi = fd.lo, fd.hi
 	if lo ~= nil and fd.fbits ~= nil and fd.fbits > 0 then
 		lo, hi = bound_shift(lo, fd.fbits), bound_shift(hi, fd.fbits)
@@ -669,13 +684,15 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 		local count = r_leb(sub)
 		if sub.bad then report.malformed = true; r.at = endpos; return true end
 		if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
-		-- the builder-path storage cap (internal/tablewire decode.go collectionCap):
-		-- a count past int32 refuses the whole value and counts nothing
+		-- THE STORAGE CAP (internal/tablewire decode.go collectionCap): a
+		-- REGION read reports damage and resumes, while the strict read refuses
+		-- by name; the flag is what ReadStrict turns into count_refusal.
 		if count > 0x7FFFFFFF then
 			_countRefused = true
+			report.malformed = true
 			report.reason = "count_refusal"
 			r.at = endpos
-			return false
+			return true
 		end
 		local entry = S.lookup(fd.t)
 		local entryFields = fields_by_id(entry)
@@ -717,6 +734,13 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 					if ref > #_table then report.malformed = true; break end
 					local id = _table[ref]
 					local kind = r_u8(body)
+					-- THE RESERVED IDS IN A NESTED BODY ARE MALFORMED (§3.1):
+					-- a map entry is one of those bodies, and the engine's
+					-- bodyAt enforces the same rule there.
+					if id == BuildVersionId or id == MessageVocabularyId or id == NodeTableId then
+						report.malformed = true
+						break
+					end
 					local efd = entryFields[id]
 					if efd == nil then
 						report.unknown = report.unknown + 1
@@ -846,7 +870,12 @@ read_array = function(fd: any, r: any, report: any, v: any): (boolean, boolean)
 	local endpos = r.at + n
 	local selected = true
 	if n >= 2 then
-		selected = array_body(fd, new_reader(r.b, r.at, endpos), report, v)
+		-- THE HEADER IS READ AGAINST THE PARENT BUFFER (§3): a canonical LEB128
+		-- count may be ten bytes and a body's `L` as short as two, so the count
+		-- can finish past the body's own end while still sitting inside the
+		-- parent. The engine reads it there (r.leb) and then bounds the ELEMENTS
+		-- by `L`; passing the parent end keeps that asymmetry.
+		selected = array_body(fd, new_reader(r.b, r.at, endpos), report, v, r.e)
 	end
 	r.at = endpos
 	return true, selected
@@ -860,10 +889,15 @@ end
 -- arrayBody): false for a foreign element kind, a damaged count and a count
 -- past the list cap. A damaged count still leaves an optional FIELD present
 -- (§2.3), so the presence bit is set here as the engine sets it.
-array_body = function(fd: any, sub: any, report: any, v: any): boolean
-	local ek = r_u8(sub)
-	local count = r_leb(sub)
-	if sub.bad then
+array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?): boolean
+	-- headerEnd is the PARENT body's end for a field (read_array); an ARM's
+	-- payload is its own frame, so the arm passes nil and the header is read
+	-- against the arm's L exactly as the engine's arm reader does.
+	local head = new_reader(sub.b, sub.at, headerEnd or sub.e)
+	local ek = r_u8(head)
+	local count = r_leb(head)
+	sub.at = if head.at > sub.e then sub.e else head.at
+	if head.bad then
 		report.malformed = true
 		if fd.present ~= nil and v ~= nil then v[fd.present] = true end
 		return false
@@ -875,7 +909,10 @@ array_body = function(fd: any, sub: any, report: any, v: any): boolean
 	local keep = count
 	if fd.array == "list" then
 		if count > 0x7FFFFFFF then
+			-- the REGION answer (collectionCap): one malformed event, the
+			-- prefix kept as far as the body covers, and the walk goes on.
 			_countRefused = true
+			report.malformed = true
 			report.reason = "count_refusal"
 			return false
 		end
@@ -998,6 +1035,14 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		dst[i] = inst
 		return true
 	elseif e.s == "union" then
+		-- THE ELEMENT IS RESET THE MOMENT IT IS REACHED (§3, §4): a repeat
+		-- under a COUNTED or FIXED array's field id must not leave an arm an
+		-- earlier occurrence decoded standing, even when its own framing is
+		-- damaged. The engine's element() clears U and Tab before unionCell.
+		-- A LIST is a fresh holder (array_body) whose tail the engine trims to
+		-- the decoded prefix, so a failed element there stays absent and must
+		-- not be planted as a None that the save would count.
+		if fd.array ~= "list" then dst[i] = S.lookup(e.t).new() end
 		local x, ok = read_union(e, r, report)
 		if not ok then return false end
 		dst[i] = x
@@ -1053,6 +1098,18 @@ end
 -- array body, everything else is what a field of that type carries.
 local function read_arm(arm: any, sub: any, u: any): boolean
 	local s = arm.s
+	-- A FIXED-WIDTH ARM'S L IS ITS KIND'S WIDTH (§3): an L that is not that
+	-- width is the arm's own framing damage, so the union reads None and the
+	-- parent reads on past L. The engine tests the same fact before reading
+	-- (internal/tablewire decode.go, arm: ArmWireFixedWidth).
+	if s == "bool" or s == "int" or s == "float" then
+		local w = width_of(arm.k)
+		if w > 0 and sub.e - sub.at ~= w then
+			_report.malformed = true
+			sub.at = sub.e
+			return false
+		end
+	end
 	if s == "str" then
 		local n = sub.e - sub.at
 		if arm.wide then
@@ -1081,7 +1138,29 @@ local function read_arm(arm: any, sub: any, u: any): boolean
 		-- union reads None (§3, internal/tablewire decode.go arm)
 		return selected
 	end
-	return read_field(arm, sub, u)
+	if s == "ptr" then
+		-- A POINTER ARM IS THE REFERENCE AND NOTHING ELSE (§3): an L that
+		-- framed more is the arm's own damage, and the index is never
+		-- RESOLVED — the engine checks r.off == n BEFORE resolveCell, so a
+		-- damaged arm cannot produce a pointee-kind mismatch. Registering it
+		-- here, after the check, is that same order.
+		local index = r_leb(sub)
+		if sub.bad or sub.at ~= sub.e then
+			_report.malformed = true
+			sub.at = sub.e
+			return false
+		end
+		_pending[#_pending + 1] = { holder = u, key = arm.slot, index = index, d = arm }
+		return true
+	end
+	local ok = read_field(arm, sub, u)
+	if ok and s == "enum" and sub.at ~= sub.e then
+		-- a reference-shaped arm's L is the byte count of the reference it
+		-- frames (§3): an L that framed more is the arm's own damage
+		_report.malformed = true
+		return false
+	end
+	return ok
 end
 
 -- AN ARM HEADER IS A FIELD HEADER (§3, §2.6): the arm id reference, the arm's
@@ -1436,7 +1515,8 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 	local rootReader = new_reader(bytes, 1, o.e)
 	read_body(desc, rootReader, v, false)
 	resolve(report)
-	if _countRefused then return nil end
+	-- A REGION READ KEEPS ITS RECOVERED VALUE under the explicit tolerant
+	-- name; ReadStrict is the caller that refuses a count_refusal by name.
 	return v
 end
 
@@ -1874,6 +1954,12 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 		return nil
 	end
 	local v = L.loadTolerant(root, b, rep)
+	if _countRefused then
+		-- the BUILDER-path storage refusal (Go tablewire.CountRefusal): the
+		-- tolerant region read kept its prefix, the strict read refuses whole
+		rep.reason = "count_refusal"
+		return nil
+	end
 	if v == nil and rep.malformed then
 		rep.reason = "wire_damaged"
 		return nil

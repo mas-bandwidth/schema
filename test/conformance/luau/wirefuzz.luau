@@ -384,7 +384,12 @@ extent_field = function(S: any, ids: { integer }, f: any, r: any): boolean
 			if not r_has(r, 1) then break end
 			if keyed and r_leb(r) == nil then return true end
 			if kind == KIND_UNION then
-				if not extent_union(S, ids, r, S.lookup(f.t)) then return false end
+				-- a POSITIONAL array's element union is f.e's descriptor; a
+				-- map's entry is f.t (and its element kind is kind 13, so this
+				-- arm is the array's)
+				local uname = if f.s == "map" then f.t elseif f.e ~= nil then f.e.t else nil
+				if uname == nil then return true end
+				if not extent_union(S, ids, r, S.lookup(uname)) then return false end
 			else
 				local body = extent_body(r)
 				if body == nil then return true end
@@ -521,10 +526,24 @@ local function answer(u: Unit, root: string, wire: buffer): buffer
 		duplicate = 0,
 	}
 	local desc = S.lookup(root)
+	-- LoadMeasure (§6.5) COMES FIRST for a VARIABLE root: the framing states
+	-- the region, and a wire it cannot read whole is a LoadMeasure refusal —
+	-- there is no region to load into, so the leg returns NO ROOT and never
+	-- saves (test/conformance/README.md, "The wire-fuzz driver"). A FIXED
+	-- root has no region and always answers -1 there.
+	local measure = -1
+	local measureRefused = false
+	if u.measure and desc ~= nil and desc.variable == true then
+		measure = region_measure(S, desc, wire, u.align) or -1
+		measureRefused = measure < 0
+	end
 	-- THE LEG'S LOAD IS THE TOLERANT READ (test/conformance/README.md, "The
 	-- wire-fuzz driver"): it recovers the value and counts the report, and the
 	-- plain name (the STRICT read, §6.5) is the caller's and not this pipe's.
-	local v = load.loadTolerant(root, wire, report)
+	local v = nil
+	if not measureRefused then
+		v = load.loadTolerant(root, wire, report)
+	end
 	-- A FIXED root always loads (test/conformance/README.md, "The wire-fuzz
 	-- driver"): its Load fills a value and reports, so a refused or damaged
 	-- wire answers the root at its defaults.
@@ -534,12 +553,6 @@ local function answer(u: Unit, root: string, wire: buffer): buffer
 	local saved = nil
 	if v ~= nil then
 		saved = save.save(desc, v)
-	end
-	-- LoadMeasure (§6.5): a VARIABLE root's whole framing states the exact
-	-- region; every other answer is the -1 refusal. A FIXED root has no region.
-	local measure = -1
-	if u.measure then
-		measure = region_measure(S, desc, wire, u.align) or -1
 	end
 	local n = 47 + (if saved ~= nil then buffer.len(saved) else 0)
 	local b = buffer.create(n)
