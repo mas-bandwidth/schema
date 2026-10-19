@@ -166,6 +166,20 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		}
 	}
 	t.Logf("%d constructs over %d refusers %v; the tagged target %v", len(cases), len(leaves), leaves, c != nil)
+
+	// The central optional-variable-closure gate (compiler/generate.go) is not
+	// in the chain above: Squirrel carries `?T` over a variable closure now
+	// (docs/SPEC-TABLES.md §2.3), and a target that does not register it still
+	// refuses the construct by name.
+	closure := unitFromSource(t, "package probe\ntable Leaf\n{\n    n int32\n}\ntable Inner\n{\n    child *Leaf\n}\ntable Outer\n{\n    inner ?Inner\n}\n")
+	if c != nil {
+		if _, err := c.Generate(closure, "squirrel", nil); err != nil {
+			t.Errorf("squirrel still refuses a construct it carries: %v", err)
+		}
+	}
+	if _, err := New().Generate(closure, "rust", nil); err == nil || !strings.Contains(err.Error(), "optional over a variable closure") {
+		t.Errorf("an unregistered target no longer refuses ?T over a variable closure by name: %v", err)
+	}
 }
 
 // TestUnionArmRefusalsNameTheUnion pins the two table union-arm refusals to
