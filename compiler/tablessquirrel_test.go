@@ -106,14 +106,22 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			t.Fatalf("compiler/target_squirrel.go calls refuser %s, which this test has no case for: add one", name)
 		}
 	}
-	chain := func(u *ir.Unit) error {
+	chain := func(u *ir.Unit, target string) error {
 		for _, name := range top {
-			if err := refusers[name](u, "squirrel"); err != nil {
+			if err := refusers[name](u, target); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
+	// The constructs squirrel now carries still have a refuser: it refuses an
+	// unregistered target. Under the tag the lifted cases prove both halves.
+	lifted := map[string]bool{
+		"refuseTableArms":   slices.Contains(tableArmTargets, "squirrel"),
+		"refuseVoidArms":    slices.Contains(tableArmTargets, "squirrel"),
+		"refuseUnionArrays": slices.Contains(unionArrayTargets, "squirrel"),
+	}
+	const unregistered = "unregistered-target"
 
 	cases := []struct {
 		refuser, name, src, field string
@@ -132,14 +140,14 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		{"refuseUnionArrays", "array of unions", "package probe\n\ntype Ping\n{\n    nonce uint32\n}\n\ntype Pong\n{\n    nonce uint32\n}\n\nunion Reply\n{\n    ping Ping\n    pong Pong\n}\n\nfixed table L\n{\n    history [..4]Reply\n}\n", "L.history"},
 	}
 	covered := map[string]bool{}
-	named := func(tc string, err error, field string) {
+	named := func(tc string, err error, field, target string) {
 		t.Helper()
 		if err == nil {
-			t.Errorf("%s: squirrel accepted the construct", tc)
+			t.Errorf("%s: %s accepted the construct", tc, target)
 			return
 		}
-		if msg := err.Error(); !strings.Contains(msg, field) || !strings.Contains(msg, "squirrel") {
-			t.Errorf("%s: refusal does not name the field %s and the target squirrel: %s", tc, field, msg)
+		if msg := err.Error(); !strings.Contains(msg, field) || !strings.Contains(msg, target) {
+			t.Errorf("%s: refusal does not name the field %s and the target %s: %s", tc, field, target, msg)
 		}
 	}
 	var c *Compiler
@@ -150,13 +158,23 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 	}
 	for _, tc := range cases {
 		u := unitFromSource(t, tc.src)
+		target := "squirrel"
+		if lifted[tc.refuser] {
+			target = unregistered
+		}
 		// the refuser this construct is for, alone
-		named(tc.name+" ("+tc.refuser+")", refusers[tc.refuser](u, "squirrel"), tc.field)
+		named(tc.name+" ("+tc.refuser+")", refusers[tc.refuser](u, target), tc.field, target)
 		// the target's whole chain, in its order
-		named(tc.name+" (the squirrel chain)", chain(u), tc.field)
+		named(tc.name+" (the squirrel chain)", chain(u, target), tc.field, target)
 		if c != nil {
 			_, err := c.Generate(u, "squirrel", nil)
-			named(tc.name+" (Generate squirrel)", err, tc.field)
+			if lifted[tc.refuser] {
+				if err != nil {
+					t.Errorf("%s: squirrel carries the construct and refused it: %v", tc.name, err)
+				}
+			} else {
+				named(tc.name+" (Generate squirrel)", err, tc.field, "squirrel")
+			}
 		}
 		covered[tc.refuser] = true
 	}
@@ -195,12 +213,12 @@ func TestUnionArmRefusalsNameTheField(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			u := unitFromSource(t, tc.src)
-			err := tc.refuse(u, "squirrel")
+			err := tc.refuse(u, "unregistered-target")
 			if err == nil {
-				t.Fatalf("squirrel accepted the construct")
+				t.Fatalf("an unregistered target accepted the construct")
 			}
-			if msg := err.Error(); !strings.Contains(msg, tc.field) || !strings.Contains(msg, "squirrel") {
-				t.Errorf("refusal does not name the field %s and the target squirrel: %s", tc.field, msg)
+			if msg := err.Error(); !strings.Contains(msg, tc.field) || !strings.Contains(msg, "unregistered-target") {
+				t.Errorf("refusal does not name the field %s and the target unregistered-target: %s", tc.field, msg)
 			}
 		})
 	}
