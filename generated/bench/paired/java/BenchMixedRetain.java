@@ -7,8 +7,12 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
 import java.nio.charset.StandardCharsets;
 
+@NullMarked
 public final class BenchMixedRetain {
     private BenchMixedRetain() {}
 
@@ -16,8 +20,7 @@ public final class BenchMixedRetain {
     // (§6.6): a field this reader cannot name is resolved and copied into
     // the caller's retain storage, and an excluded class is reported as
     // loss, never retained silently.
-    public static BenchMixedVariable.Value loadRetain(
-            byte[] data, TableRetain retain, TableVariable.Report report) {
+    public static BenchMixedVariable.@Nullable Value loadRetain(byte[] data, TableRetain retain, TableVariable.Report report) {
         if (retain == null) {
             return BenchMixedVariable.load(data, report);
         }
@@ -71,7 +74,7 @@ public final class BenchMixedRetain {
     static void readFieldsRetain(
             TableVariable.Reader r,
             BenchMixedVariable.Value v,
-            TableVariable.NodeTable nt,
+            TableVariable.@Nullable NodeTable nt,
             TableRetain retain,
             TableVariable.Report report,
             int[] path,
@@ -141,12 +144,12 @@ public final class BenchMixedRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.ackSequence < 0 || v.ackSequence > 65535)) {
-                        if (v.ackSequence < 0) {
-                            v.ackSequence = 0;
-                        } else {
-                            v.ackSequence = 65535;
-                        }
+                    if (!r.fail && v.ackSequence < 0) {
+                        v.ackSequence = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.ackSequence > 65535) {
+                        v.ackSequence = 65535;
                         report.clamped++;
                     }
                 } else {
@@ -333,13 +336,12 @@ public final class BenchMixedRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail
-                            && (v.worldTime < -1000000000000L || v.worldTime > 1000000000000L)) {
-                        if (v.worldTime < -1000000000000L) {
-                            v.worldTime = -1000000000000L;
-                        } else {
-                            v.worldTime = 1000000000000L;
-                        }
+                    if (!r.fail && v.worldTime < -1000000000000L) {
+                        v.worldTime = -1000000000000L;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.worldTime > 1000000000000L) {
+                        v.worldTime = 1000000000000L;
                         report.clamped++;
                     }
                 } else {
@@ -771,12 +773,12 @@ public final class BenchMixedRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.extra < 0 || v.extra > 255)) {
-                        if (v.extra < 0) {
-                            v.extra = 0;
-                        } else {
-                            v.extra = 255;
-                        }
+                    if (!r.fail && v.extra < 0) {
+                        v.extra = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.extra > 255) {
+                        v.extra = 255;
                         report.clamped++;
                     }
                 } else {
@@ -809,12 +811,12 @@ public final class BenchMixedRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.idleTicks < 0 || v.idleTicks > 15)) {
-                        if (v.idleTicks < 0) {
-                            v.idleTicks = 0;
-                        } else {
-                            v.idleTicks = 15;
-                        }
+                    if (!r.fail && v.idleTicks < 0) {
+                        v.idleTicks = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.idleTicks > 15) {
+                        v.idleTicks = 15;
                         report.clamped++;
                     }
                 } else {
@@ -890,8 +892,7 @@ public final class BenchMixedRetain {
         return n < 0 ? -1 : n;
     }
 
-    public static byte[] saveRetain(
-            BenchMixedVariable.Value v, TableRetain retain, TableVariable.Report report) {
+    public static byte @Nullable [] saveRetain(BenchMixedVariable.Value v, TableRetain retain, TableVariable.Report report) {
         if (report == null) {
             return null;
         }
@@ -907,7 +908,7 @@ public final class BenchMixedRetain {
             BenchMixedVariable.Value v,
             TableRetain retain,
             byte[] buf,
-            TableVariable.Report report) {
+            TableVariable.@Nullable Report report) {
         int[] path = new int[128];
         TableVariable.Ids ids = new TableVariable.Ids(64);
         TableVariable.Writer w = new TableVariable.Writer(buf, ids);
@@ -954,7 +955,7 @@ public final class BenchMixedRetain {
             TableVariable.NodeGraph nodes,
             BenchMixedVariable.Value v,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         TableVariable.NodeGraph graph = nodes;
@@ -1108,7 +1109,7 @@ public final class BenchMixedRetain {
             TableVariable.NodeGraph nodes,
             BenchMixedVariable.Value v,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         writeFieldsRetain(w, nodes, v, retain, report, path, depth);
@@ -1119,7 +1120,7 @@ public final class BenchMixedRetain {
     static void emitTail(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         if (retain == null) {

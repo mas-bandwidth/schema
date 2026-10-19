@@ -6,10 +6,13 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+
+@NullMarked
 public final class TableFieldInfo {
-    public String name;
+    public String name = "";
     public int kind;
-    public String shape;
+    public String shape = "";
     public long bound;
 
     public static TableFieldInfo of(String name, int kind, String shape, long bound) {

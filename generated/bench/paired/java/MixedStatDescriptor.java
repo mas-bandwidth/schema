@@ -6,6 +6,9 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+
+@NullMarked
 public final class MixedStatDescriptor {
     private MixedStatDescriptor() {}
 

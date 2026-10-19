@@ -6,10 +6,13 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+
 // MixedChatEvent under the FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3.
 //
 // A NESTED type: it rides INLINE inside its holder's body, at its own
 // constant size, with no length and no terminator.
+@NullMarked
 public final class MixedChatEventFixed {
     private MixedChatEventFixed() {}
 
@@ -60,7 +63,8 @@ public final class MixedChatEventFixed {
             if (q < 0L) {
                 q = 0L;
                 r.clamped++;
-            } else if (q > 3L) {
+            }
+            if (q > 3L) {
                 q = 3L;
                 r.clamped++;
             }

@@ -6,11 +6,15 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
 // The VARIABLE FORM's runtime (docs/SPEC-TABLES.md §3), form byte 1.
 // A body is a sequence of fields, each "id reference, kind (u8), payload",
 // terminated by a zero reference; the id table is the trailer, read from the
 // end of the wire. A reference is an unsigned LEB128 naming a slot of the id
 // table, counted from 1; reference 0 names no id and is the terminator.
+@NullMarked
 public final class TableVariable {
     static double widenF32(int raw) {
         if ((raw & 0x7f800000) == 0x7f800000 && (raw & 0x7fffff) != 0)
@@ -43,7 +47,7 @@ public final class TableVariable {
         public int widened;
         public int duplicate;
         public boolean refused;
-        public String reason;
+        public @Nullable String reason;
         public int retained;
         public int retainLost;
 
@@ -69,23 +73,23 @@ public final class TableVariable {
     // primitive reads, so a caller can stop the walk it is on without a nested
     // body's damage (which shares the report) stopping the walk above it (§3).
     public static final class Reader {
-        public byte[] buf;
+        public byte[] buf = new byte[0];
         public int off;
         public int limit;
-        public long[] ids;
+        public long @Nullable [] ids = new long[0];
         public int idBase;
         public final Report report;
         public boolean fail;
         public boolean rootBody;
 
-        public Reader(byte[] buf, long[] ids, Report report) {
+        public Reader(byte[] buf, long @Nullable [] ids, Report report) {
             this.buf = buf;
             this.ids = ids;
             this.report = report;
             this.limit = buf.length;
         }
 
-        private Reader(byte[] buf, long[] ids, int idBase, Report report) {
+        private Reader(byte[] buf, long @Nullable [] ids, int idBase, Report report) {
             this.buf = buf;
             this.ids = ids;
             this.idBase = idBase;
@@ -189,7 +193,7 @@ public final class TableVariable {
 
         // body reads an L-framed payload: L, then L bytes, as a sub-reader
         // bounded by its own L, exactly as a nested body is bounded (§3).
-        public Reader body() {
+        public @Nullable Reader body() {
             long n = leb();
             if (fail || !has((int) n)) {
                 report.malformed = true;
@@ -606,7 +610,7 @@ public final class TableVariable {
     // or a body whose terminator does not land at the table's first entry —
     // bytes no field claims — is malformed for the whole wire, and open says
     // so before any value is read.
-    public static Reader open(byte[] data, Report report) {
+    public static @Nullable Reader open(byte[] data, Report report) {
         int base = trailerBase(data, report);
         if (base < 0) {
             return null;
@@ -912,9 +916,9 @@ public final class TableVariable {
     public static final class NodeRecord {
         public long typeId;
         public final byte[] body;
-        public String value;
-        public byte[] bytes;
-        public Object table;
+        public @Nullable String value;
+        public byte @Nullable [] bytes;
+        public @Nullable Object table;
         public boolean textMalformed;
 
         public NodeRecord(long typeId, byte[] body) {
@@ -930,7 +934,7 @@ public final class TableVariable {
     // it reads null (§3.1, §4). Structural damage — a bad reference, a size
     // past the field, a declared count the scan does not match, or bytes left
     // over — is malformed for the whole table and answers null.
-    public static NodeRecord[] nodes(Reader r, boolean retain) {
+    public static NodeRecord @Nullable [] nodes(Reader r, boolean retain) {
         long declared = r.leb();
         if (r.fail || declared < 0 || declared > 0x7fffffffL) {
             r.report.malformed = true;
@@ -1006,7 +1010,7 @@ public final class TableVariable {
 
         // open is TableVariable.open over the caller's bytes into the one
         // reader: the same checks (trailerBase), the id table read in place.
-        public Reader open(byte[] data) {
+        public @Nullable Reader open(byte[] data) {
             report.reset();
             nodeRecords = -1;
             nodeBlobBytes = 0;
@@ -1076,7 +1080,7 @@ public final class TableVariable {
     // node resolves a body field's pointer payload — a node index, 1 the root,
     // k >= 2 the (k-2)-th record — to its record, or null for the null index 0
     // and for an index that names no record (§3.1).
-    public static NodeRecord node(NodeRecord[] recs, long index) {
+    public static @Nullable NodeRecord node(NodeRecord[] recs, long index) {
         if (index == 0) {
             return null;
         }
@@ -1167,7 +1171,7 @@ public final class TableVariable {
     // mismatch; an index past the records is malformed; and a record whose
     // type id is not the string id reads null, its unknown already counted at
     // the scan.
-    public static String resolveString(NodeRecord[] recs, long index, Report report) {
+    public static @Nullable String resolveString(NodeRecord @Nullable [] recs, long index, Report report) {
         if (index == 0) {
             return null;
         }
@@ -1185,7 +1189,7 @@ public final class TableVariable {
     // resolveBytes resolves one *bytes pointer index against the numbering
     // (§3.1), exactly as resolveString resolves a *string: 0 is null, 1 is the
     // ROOT (a kind mismatch), an index past the records is malformed.
-    public static byte[] resolveBytes(NodeRecord[] recs, long index, Report report) {
+    public static byte @Nullable [] resolveBytes(NodeRecord @Nullable [] recs, long index, Report report) {
         if (index == 0) {
             return null;
         }
@@ -1243,7 +1247,7 @@ public final class TableVariable {
     // when the reserved node-table field is met and read by every deferred
     // pointer index afterward (§3.1).
     public static final class NodeTable {
-        public NodeRecord[] recs;
+        public NodeRecord @Nullable [] recs;
         // bad is true when a node-table field was PRESENT but could not be read
         // whole: the numbering failed, so every pointer resolves null and moves
         // no counter (§3.1). It is false when the field is absent — an empty
@@ -1252,8 +1256,8 @@ public final class TableVariable {
     }
 
     @SuppressWarnings("unchecked")
-    public static <T> T resolveTable(
-            NodeRecord[] recs,
+    public static <T> @Nullable T resolveTable(
+            NodeRecord @Nullable [] recs,
             long index,
             long targetTypeId,
             Object root,
@@ -1367,7 +1371,7 @@ public final class TableVariable {
             return i;
         }
 
-        public long index(Object obj) {
+        public long index(@Nullable Object obj) {
             if (obj == null) return 0;
             int i = find(obj);
             return i < 0 ? 0 : keyIndex[i];
@@ -1559,7 +1563,7 @@ public final class TableVariable {
         return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24;
     }
 
-    static java.math.BigInteger readInteger(Reader r, int kind) {
+    static java.math.@Nullable BigInteger readInteger(Reader r, int kind) {
         int width = integerWidth(kind);
         if (width == 0 || !r.has(width)) {
             r.report.malformed = true;

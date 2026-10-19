@@ -7,8 +7,12 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
 // The batch bit stream and vocabulary walk of the MESSAGE FORM
 // (docs/SPEC-TABLES.md §3.3), form byte 2.
+@NullMarked
 public final class TableMessage {
     private TableMessage() {}
 
@@ -18,13 +22,13 @@ public final class TableMessage {
     // Low-bit-first bit writer. Measuring walks the identical stream, including
     // alignment, without touching a buffer.
     public static final class Writer {
-        public final byte[] buf;
+        public final byte @Nullable [] buf;
         public final int base;
         public final boolean measuring;
         public long bits;
         public boolean overflow;
 
-        public Writer(byte[] buf, int base, boolean measuring) {
+        public Writer(byte @Nullable [] buf, int base, boolean measuring) {
             this.buf = buf;
             this.base = base;
             this.measuring = measuring;
@@ -185,7 +189,7 @@ public final class TableMessage {
             return (int) (at >>> 3);
         }
 
-        public TableVocabulary.Entry ref() {
+        public TableVocabulary.@Nullable Entry ref() {
             long slot = get(vocab.refBits);
             if (err || slot == 0L) {
                 return null;
@@ -202,7 +206,7 @@ public final class TableMessage {
             return e;
         }
 
-        public TableVocabulary.Entry nameRef() {
+        public TableVocabulary.@Nullable Entry nameRef() {
             long slot = get(vocab.refBits);
             if (err || slot == 0L) {
                 return null;
@@ -219,7 +223,7 @@ public final class TableMessage {
             return e;
         }
 
-        public TableVocabulary.Entry armRef() {
+        public TableVocabulary.@Nullable Entry armRef() {
             long slot = get(vocab.refBits);
             if (err || slot == 0L) {
                 return null;
@@ -286,7 +290,7 @@ public final class TableMessage {
         return -1L;
     }
 
-    public static long elementRunBits(int kind, TableVocabulary.Shape elem) {
+    public static long elementRunBits(int kind, TableVocabulary.@Nullable Shape elem) {
         if (kind != 14 || elem == null) {
             return -1L;
         }
@@ -316,7 +320,7 @@ public final class TableMessage {
     }
 
     public static boolean skipAt(
-            Reader r, TableVocabulary.Shape s, TableVocabulary.Shape elem, int depth) {
+            Reader r, TableVocabulary.Shape s, TableVocabulary.@Nullable Shape elem, int depth) {
         if (depth > 128 || s == null) {
             r.err = true;
             return false;
@@ -423,7 +427,7 @@ public final class TableMessage {
                                 return false;
                             }
                         }
-                        if (!skipAt(r, elem, null, depth + 1)) {
+                        if (elem == null || !skipAt(r, elem, null, depth + 1)) {
                             return false;
                         }
                     }

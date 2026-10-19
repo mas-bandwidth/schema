@@ -6,6 +6,9 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
 // TableFixed — the FIXED FORM's runtime (docs/SPEC-TABLES.md §3.4), form byte 3.
 //
 // A fixed-table record is an eight-byte hash of the writer's LAYOUT and then
@@ -31,6 +34,7 @@ package bench;
 // the byte order is this reader's CONSTANT and never the host's.
 //
 // NOTHING HERE ALLOCATES.
+@NullMarked
 public final class TableFixed {
     private TableFixed() {}
 
@@ -327,6 +331,9 @@ public final class TableFixed {
      * record IMAGE; guard is the byte offset of the writer's union tag when the entry belongs to an
      * arm, and noGuard when it does not.
      */
+    // the empty guard pool an entry outside every multi-link chain carries
+    static final long[] noPool = new long[0];
+
     public static final class Entry {
         /** a byte offset into the record's body. */
         public int src;
@@ -401,7 +408,7 @@ public final class TableFixed {
         public int gindex;
 
         public int gcount;
-        public long[] gpool;
+        public long[] gpool = noPool;
 
         /** an entry, reset to a plain copy that belongs to no arm. */
         public void reset() {
@@ -421,7 +428,7 @@ public final class TableFixed {
             argw2 = 0;
             gindex = 0;
             gcount = 0;
-            gpool = null;
+            gpool = noPool;
         }
     }
 
@@ -993,7 +1000,7 @@ public final class TableFixed {
     /** a layout that has passed every rule below: its bytes and its count. */
     public static final class Layout {
         /** the layout's bytes, the caller's array. */
-        public byte[] bytes;
+        public byte[] bytes = new byte[0];
 
         /** where the layout starts in them. */
         public int at;
@@ -1141,7 +1148,7 @@ public final class TableFixed {
 
     // The walk's own state: the first failure wins, and it names itself.
     private static final class Check {
-        Layout layout;
+        Layout layout = new Layout();
         Reason why = Reason.layoutMalformed;
         boolean bad;
 
@@ -1365,7 +1372,7 @@ public final class TableFixed {
      *
      * <p>Answers null and a named refusal on the report.
      */
-    public static Layout parse(byte[] bytes, int at, int length, Report report) {
+    public static @Nullable Layout parse(byte[] bytes, int at, int length, Report report) {
         if (bytes == null || length < layoutHeaderBytes || at < 0 || at + length > bytes.length) {
             report.refuse(Reason.layoutMalformed);
             return null;
@@ -1423,9 +1430,10 @@ public final class TableFixed {
     // stranger chose and nobody checked.
 
     private static final class Compiler {
-        Entry[] plan;
-        short[] remap;
-        int[] dest; // MY side: five lanes per layout entry — dest, stride, aux, counted, arg
+        Entry[] plan = new Entry[0];
+        short[] remap = new short[0];
+        // MY side: five lanes per layout entry — dest, stride, aux, counted, arg
+        int[] dest = new int[0];
         int count;
         int remapUsed;
         boolean overflow;
@@ -1439,7 +1447,7 @@ public final class TableFixed {
         /** THE CURRENT UNION'S TAG WIDTH IN BYTES, 1 outside every union. */
         byte argw = 1;
 
-        Report report;
+        @Nullable Report report;
 
         /**
          * THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST (docs/FIXED-FORM-ALGORITHM.md
@@ -1548,7 +1556,7 @@ public final class TableFixed {
             e.argw2 = 0;
             e.gindex = 0;
             e.gcount = 0;
-            e.gpool = null;
+            e.gpool = noPool;
             // THE GUARD CHAIN (§4.1): an entry beneath a union answers to EVERY
             // enclosing tag. Its two lanes are the chain's innermost two, and a
             // chain past two rides the pool as offset+count.
@@ -2321,7 +2329,7 @@ public final class TableFixed {
             }
             final Layout theirs = parse(known[i].layout, 0, known[i].layoutBytes, new Report());
             if (theirs == null || me == null) {
-                out[i] = new Plan(null, 0, null, 0, 0, Reason.layoutMalformed);
+                out[i] = new Plan(new Entry[0], 0, new short[0], 0, 0, Reason.layoutMalformed);
                 continue;
             }
             // HOW THE BUILD SIZES THE PLAN is shape and not contract (5.9 #4,
@@ -2364,7 +2372,7 @@ public final class TableFixed {
                         (census.refused && census.reason == Reason.layoutRecordTooLarge)
                                 ? Reason.layoutRecordTooLarge
                                 : Reason.planTooLarge;
-                out[i] = new Plan(null, 0, null, 0, 0, why);
+                out[i] = new Plan(new Entry[0], 0, new short[0], 0, 0, why);
             }
         }
         return out;

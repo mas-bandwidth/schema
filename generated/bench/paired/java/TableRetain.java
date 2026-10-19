@@ -6,11 +6,15 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
 // The retain-unknown storage and resolving walk (docs/SPEC-TABLES.md §6.6): a
 // caller-owned byte buffer and a caller-owned id list, never grown on demand,
 // plus the two walks that move a field each way. The report counters —
 // retained and retain_lost — ride TableVariable.Report and accumulate across
 // the load and the save.
+@NullMarked
 public final class TableRetain {
     public byte[] bytes;
     public int capacity;
@@ -213,7 +217,7 @@ public final class TableRetain {
     // first, one retainLost past its capacity. Answers the reference, 0 when a
     // store is full.
     static long ref(
-            TableVariable.Writer w, TableRetain retain, long id, TableVariable.Report report) {
+            TableVariable.Writer w, TableRetain retain, long id, TableVariable.@Nullable Report report) {
         if (!nameable(id)) {
             boolean seen = false;
             for (int i = 0; i < retain.idUsed; i++) {
@@ -317,8 +321,9 @@ public final class TableRetain {
     // RESOLVED form — every reference widened to eight bytes, every framing
     // length recomputed. null is an excluded class or a shape the walk cannot
     // take (§6.6).
-    static byte[] resolve(byte[] buf, long[] ids, int off, int limit, int kind) {
-        Resolver r = new Resolver(buf, ids, off, limit);
+    static byte @Nullable [] resolve(byte[] buf, long @Nullable [] ids, int off, int limit, int kind) {
+        // no id list resolves no reference: Resolver.id refuses every ref (§3.1)
+        Resolver r = new Resolver(buf, ids == null ? new long[0] : ids, off, limit);
         byte[] out = new byte[1 << 20];
         int[] o = new int[] {0};
         if (!resolvePayload(r, kind, out, o, 0)) {
@@ -615,7 +620,7 @@ public final class TableRetain {
     static boolean emit(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             byte[] b,
             int[] at,
             int kind) {
@@ -625,7 +630,7 @@ public final class TableRetain {
     static boolean emitPayload(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             byte[] b,
             int[] at,
             int kind) {
@@ -672,7 +677,7 @@ public final class TableRetain {
     static boolean emitFramed(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             byte[] b,
             int[] at,
             int kind) {
@@ -696,7 +701,7 @@ public final class TableRetain {
     static boolean emitContent(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             byte[] b,
             int[] at,
             int end,
@@ -746,7 +751,7 @@ public final class TableRetain {
     static boolean emitBody(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             byte[] b,
             int[] at,
             int end) {

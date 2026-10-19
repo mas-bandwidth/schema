@@ -6,10 +6,13 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+
 // MixedPickupEvent under the FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3.
 //
 // A NESTED type: it rides INLINE inside its holder's body, at its own
 // constant size, with no length and no terminator.
+@NullMarked
 public final class MixedPickupEventFixed {
     private MixedPickupEventFixed() {}
 
@@ -65,7 +68,8 @@ public final class MixedPickupEventFixed {
             if (q < 0L) {
                 q = 0L;
                 r.clamped++;
-            } else if (q > 255L) {
+            }
+            if (q > 255L) {
                 q = 255L;
                 r.clamped++;
             }

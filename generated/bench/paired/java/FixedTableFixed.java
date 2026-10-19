@@ -6,11 +6,14 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+
 // FixedTable under the FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3.
 //
 // A ROOT: a file is the form byte, the layout, then the records back to
 // back to the end of it, each an eight-byte hash and a body of values in
 // declared order at their declared storage widths.
+@NullMarked
 public final class FixedTableFixed {
     private FixedTableFixed() {}
 

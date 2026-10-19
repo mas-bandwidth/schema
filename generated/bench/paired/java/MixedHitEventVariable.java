@@ -7,8 +7,12 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
 import java.nio.charset.StandardCharsets;
 
+@NullMarked
 public final class MixedHitEventVariable {
     private MixedHitEventVariable() {}
 
@@ -27,7 +31,7 @@ public final class MixedHitEventVariable {
     public static final long F_hitKind = 0x01fbc365b059b925L;
     public static final long F_crit = 0x126167908c9aa52dL;
 
-    static Object createNode(long typeId) {
+    static @Nullable Object createNode(long typeId) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
             return new BenchBitsVariable.Value();
         }
@@ -219,7 +223,7 @@ public final class MixedHitEventVariable {
     public static boolean readFields(
             TableVariable.Reader r,
             Value v,
-            TableVariable.NodeTable nt,
+            TableVariable.@Nullable NodeTable nt,
             TableVariable.Report report) {
         while (true) {
             long ref = r.leb();
@@ -286,12 +290,12 @@ public final class MixedHitEventVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.damage < 0 || v.damage > 4095)) {
-                        if (v.damage < 0) {
-                            v.damage = 0;
-                        } else {
-                            v.damage = 4095;
-                        }
+                    if (!r.fail && v.damage < 0) {
+                        v.damage = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.damage > 4095) {
+                        v.damage = 4095;
                         report.clamped++;
                     }
                 } else {
@@ -324,12 +328,12 @@ public final class MixedHitEventVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.hitKind < 0 || v.hitKind > 7)) {
-                        if (v.hitKind < 0) {
-                            v.hitKind = 0;
-                        } else {
-                            v.hitKind = 7;
-                        }
+                    if (!r.fail && v.hitKind < 0) {
+                        v.hitKind = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.hitKind > 7) {
+                        v.hitKind = 7;
                         report.clamped++;
                     }
                 } else {
@@ -422,11 +426,11 @@ public final class MixedHitEventVariable {
 
     // save writes v as the variable form (§3). The one-argument form makes a
     // fresh Saver; a caller that keeps a Saver allocates only the answer.
-    public static byte[] save(Value v) {
+    public static byte @Nullable [] save(Value v) {
         return save(v, new TableVariable.Saver());
     }
 
-    public static byte[] save(Value v, TableVariable.Saver saver) {
+    public static byte @Nullable [] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
         graph.setOpen(v, true);
@@ -467,7 +471,7 @@ public final class MixedHitEventVariable {
         return java.util.Arrays.copyOf(w.buf, w.off);
     }
 
-    public static Value load(byte[] data, TableVariable.Report report) {
+    public static @Nullable Value load(byte[] data, TableVariable.Report report) {
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;
@@ -556,7 +560,9 @@ public final class MixedHitEventVariable {
     }
 
     static long measureFields(
-            TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {
+            TableVariable.Reader r,
+            TableVariable.@Nullable Measure nt,
+            TableVariable.Report report) {
         long extent = 0;
         while (true) {
             long ref = r.leb();
@@ -593,7 +599,7 @@ public final class MixedHitEventVariable {
         }
     }
 
-    public static byte[] toJson(Value v) {
+    public static byte @Nullable [] toJson(Value v) {
         TableVariable.NodeGraph graph = new TableVariable.NodeGraph();
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
@@ -665,7 +671,7 @@ public final class MixedHitEventVariable {
     }
 
     public static void writeJsonPointer(
-            StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
+            StringBuilder b, TableVariable.NodeGraph graph, @Nullable Value child, int depth) {
         if (child == null) {
             b.append("null");
             return;
@@ -693,7 +699,7 @@ public final class MixedHitEventVariable {
         }
     }
 
-    public static Value readJsonPointer(TableJson.In in, long targetTypeId) {
+    public static @Nullable Value readJsonPointer(TableJson.In in, long targetTypeId) {
         if (in.peek() == 'n') {
             in.lit("null");
             return null;

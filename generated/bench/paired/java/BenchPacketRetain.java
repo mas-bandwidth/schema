@@ -7,6 +7,10 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
+@NullMarked
 public final class BenchPacketRetain {
     private BenchPacketRetain() {}
 
@@ -14,8 +18,7 @@ public final class BenchPacketRetain {
     // (§6.6): a field this reader cannot name is resolved and copied into
     // the caller's retain storage, and an excluded class is reported as
     // loss, never retained silently.
-    public static BenchPacketVariable.Value loadRetain(
-            byte[] data, TableRetain retain, TableVariable.Report report) {
+    public static BenchPacketVariable.@Nullable Value loadRetain(byte[] data, TableRetain retain, TableVariable.Report report) {
         if (retain == null) {
             return BenchPacketVariable.load(data, report);
         }
@@ -69,7 +72,7 @@ public final class BenchPacketRetain {
     static void readFieldsRetain(
             TableVariable.Reader r,
             BenchPacketVariable.Value v,
-            TableVariable.NodeTable nt,
+            TableVariable.@Nullable NodeTable nt,
             TableRetain retain,
             TableVariable.Report report,
             int[] path,
@@ -117,12 +120,12 @@ public final class BenchPacketRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.a < -100 || v.a > 100)) {
-                        if (v.a < -100) {
-                            v.a = -100;
-                        } else {
-                            v.a = 100;
-                        }
+                    if (!r.fail && v.a < -100) {
+                        v.a = -100;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.a > 100) {
+                        v.a = 100;
                         report.clamped++;
                     }
                 } else {
@@ -155,12 +158,12 @@ public final class BenchPacketRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.b < 0 || v.b > 65535)) {
-                        if (v.b < 0) {
-                            v.b = 0;
-                        } else {
-                            v.b = 65535;
-                        }
+                    if (!r.fail && v.b < 0) {
+                        v.b = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.b > 65535) {
+                        v.b = 65535;
                         report.clamped++;
                     }
                 } else {
@@ -193,12 +196,12 @@ public final class BenchPacketRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.c < -1000000 || v.c > 1000000)) {
-                        if (v.c < -1000000) {
-                            v.c = -1000000;
-                        } else {
-                            v.c = 1000000;
-                        }
+                    if (!r.fail && v.c < -1000000) {
+                        v.c = -1000000;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.c > 1000000) {
+                        v.c = 1000000;
                         report.clamped++;
                     }
                 } else {
@@ -462,8 +465,7 @@ public final class BenchPacketRetain {
         return n < 0 ? -1 : n;
     }
 
-    public static byte[] saveRetain(
-            BenchPacketVariable.Value v, TableRetain retain, TableVariable.Report report) {
+    public static byte @Nullable [] saveRetain(BenchPacketVariable.Value v, TableRetain retain, TableVariable.Report report) {
         if (report == null) {
             return null;
         }
@@ -479,7 +481,7 @@ public final class BenchPacketRetain {
             BenchPacketVariable.Value v,
             TableRetain retain,
             byte[] buf,
-            TableVariable.Report report) {
+            TableVariable.@Nullable Report report) {
         int[] path = new int[128];
         TableVariable.Ids ids = new TableVariable.Ids(64);
         TableVariable.Writer w = new TableVariable.Writer(buf, ids);
@@ -526,7 +528,7 @@ public final class BenchPacketRetain {
             TableVariable.NodeGraph nodes,
             BenchPacketVariable.Value v,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         TableVariable.NodeGraph graph = nodes;
@@ -604,7 +606,7 @@ public final class BenchPacketRetain {
             TableVariable.NodeGraph nodes,
             BenchPacketVariable.Value v,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         writeFieldsRetain(w, nodes, v, retain, report, path, depth);
@@ -615,7 +617,7 @@ public final class BenchPacketRetain {
     static void emitTail(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         if (retain == null) {

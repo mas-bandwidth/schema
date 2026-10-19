@@ -6,10 +6,13 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+
 // MixedHitEvent under the FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3.
 //
 // A NESTED type: it rides INLINE inside its holder's body, at its own
 // constant size, with no length and no terminator.
+@NullMarked
 public final class MixedHitEventFixed {
     private MixedHitEventFixed() {}
 
@@ -73,7 +76,8 @@ public final class MixedHitEventFixed {
             if (q < 0L) {
                 q = 0L;
                 r.clamped++;
-            } else if (q > 4095L) {
+            }
+            if (q > 4095L) {
                 q = 4095L;
                 r.clamped++;
             }
@@ -84,7 +88,8 @@ public final class MixedHitEventFixed {
             if (q < 0L) {
                 q = 0L;
                 r.clamped++;
-            } else if (q > 7L) {
+            }
+            if (q > 7L) {
                 q = 7L;
                 r.clamped++;
             }

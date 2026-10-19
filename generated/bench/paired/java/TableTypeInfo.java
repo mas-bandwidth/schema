@@ -6,7 +6,10 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+
+@NullMarked
 public final class TableTypeInfo {
-    public String name;
-    public TableFieldInfo[] fields;
+    public String name = "";
+    public TableFieldInfo[] fields = new TableFieldInfo[0];
 }

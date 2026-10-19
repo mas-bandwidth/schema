@@ -6,6 +6,9 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
 // The TEXT FORM's runtime (docs/SPEC-TABLES.md §16): pretty JSON in and out.
 // A text is one table as one object; the writer is pretty-printed (one entry
 // per line, two-space indent) and ends with exactly one newline (§16.1); the
@@ -13,6 +16,7 @@ package bench;
 // (skipped and counted), a key of the wrong shape (counted), a string longer
 // than its bound (clamped at a code point boundary and counted) and a number
 // outside its range (clamped and counted) (§16.2).
+@NullMarked
 public final class TableJson {
     private TableJson() {}
 
@@ -30,7 +34,7 @@ public final class TableJson {
         b.append(']');
     }
 
-    static Long readFlags(In in, String[] names) {
+    static @Nullable Long readFlags(In in, String[] names) {
         if (in.peek() != '[') {
             in.skipValue();
             in.rep.kindMismatch++;
@@ -403,7 +407,7 @@ public final class TableJson {
         // raw control character in the body, an invalid escape, or a lone
         // surrogate half is malformed (§16.2); a surrogate half that never met
         // its partner reads as the replacement character (§16.3).
-        public String scanString() {
+        public @Nullable String scanString() {
             space();
             if (p >= t.length || t[p] != '"') {
                 bad = true;
@@ -544,7 +548,7 @@ public final class TableJson {
         // scanNumber reads one JSON number token (RFC 8259 §6) and reports
         // whether it is an integral spelling: no fraction, no exponent (§16.2).
         // A token that is not a JSON number is malformed.
-        public String scanNumber(boolean[] integral) {
+        public @Nullable String scanNumber(boolean[] integral) {
             space();
             int start = p;
             if (p < t.length && t[p] == '-') {
@@ -599,7 +603,7 @@ public final class TableJson {
         public long integer(boolean signed, long min, long max) {
             boolean[] integral = new boolean[1];
             String tok = scanNumber(integral);
-            if (bad) {
+            if (bad || tok == null) {
                 return 0;
             }
             long v;
@@ -797,8 +801,7 @@ public final class TableJson {
 
     // Exact raw-scale conversion, with the oracle's bounded decimal band.
     // A huge exponent is classified before integer allocation (§15, §16.2).
-    static java.math.BigInteger readWide(
-            In in, boolean signed, int fraction, java.math.BigInteger lo, java.math.BigInteger hi) {
+    static java.math.@Nullable BigInteger readWide(In in, boolean signed, int fraction, java.math.BigInteger lo, java.math.BigInteger hi) {
         int c = in.peek();
         if (c != '-' && (c < '0' || c > '9')) {
             in.skipValue();

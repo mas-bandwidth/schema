@@ -7,6 +7,10 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
+@NullMarked
 public final class MixedStatRetain {
     private MixedStatRetain() {}
 
@@ -14,8 +18,7 @@ public final class MixedStatRetain {
     // (§6.6): a field this reader cannot name is resolved and copied into
     // the caller's retain storage, and an excluded class is reported as
     // loss, never retained silently.
-    public static MixedStatVariable.Value loadRetain(
-            byte[] data, TableRetain retain, TableVariable.Report report) {
+    public static MixedStatVariable.@Nullable Value loadRetain(byte[] data, TableRetain retain, TableVariable.Report report) {
         if (retain == null) {
             return MixedStatVariable.load(data, report);
         }
@@ -69,7 +72,7 @@ public final class MixedStatRetain {
     static void readFieldsRetain(
             TableVariable.Reader r,
             MixedStatVariable.Value v,
-            TableVariable.NodeTable nt,
+            TableVariable.@Nullable NodeTable nt,
             TableRetain retain,
             TableVariable.Report report,
             int[] path,
@@ -131,12 +134,12 @@ public final class MixedStatRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.delta < -512 || v.delta > 511)) {
-                        if (v.delta < -512) {
-                            v.delta = -512;
-                        } else {
-                            v.delta = 511;
-                        }
+                    if (!r.fail && v.delta < -512) {
+                        v.delta = -512;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.delta > 511) {
+                        v.delta = 511;
                         report.clamped++;
                     }
                 } else {
@@ -212,8 +215,7 @@ public final class MixedStatRetain {
         return n < 0 ? -1 : n;
     }
 
-    public static byte[] saveRetain(
-            MixedStatVariable.Value v, TableRetain retain, TableVariable.Report report) {
+    public static byte @Nullable [] saveRetain(MixedStatVariable.Value v, TableRetain retain, TableVariable.Report report) {
         if (report == null) {
             return null;
         }
@@ -229,7 +231,7 @@ public final class MixedStatRetain {
             MixedStatVariable.Value v,
             TableRetain retain,
             byte[] buf,
-            TableVariable.Report report) {
+            TableVariable.@Nullable Report report) {
         int[] path = new int[128];
         TableVariable.Ids ids = new TableVariable.Ids(64);
         TableVariable.Writer w = new TableVariable.Writer(buf, ids);
@@ -276,7 +278,7 @@ public final class MixedStatRetain {
             TableVariable.NodeGraph nodes,
             MixedStatVariable.Value v,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         TableVariable.NodeGraph graph = nodes;
@@ -297,7 +299,7 @@ public final class MixedStatRetain {
             TableVariable.NodeGraph nodes,
             MixedStatVariable.Value v,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         writeFieldsRetain(w, nodes, v, retain, report, path, depth);
@@ -308,7 +310,7 @@ public final class MixedStatRetain {
     static void emitTail(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         if (retain == null) {

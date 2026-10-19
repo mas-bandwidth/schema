@@ -6,10 +6,13 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+
 // BenchMixed under the FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3.
 //
 // A NESTED type: it rides INLINE inside its holder's body, at its own
 // constant size, with no length and no terminator.
+@NullMarked
 public final class BenchMixedFixed {
     private BenchMixedFixed() {}
 
@@ -202,7 +205,8 @@ public final class BenchMixedFixed {
             if (q < 0L) {
                 q = 0L;
                 r.clamped++;
-            } else if (q > 65535L) {
+            }
+            if (q > 65535L) {
                 q = 65535L;
                 r.clamped++;
             }
@@ -217,7 +221,8 @@ public final class BenchMixedFixed {
             if (q < -1000000000000L) {
                 q = -1000000000000L;
                 r.clamped++;
-            } else if (q > 1000000000000L) {
+            }
+            if (q > 1000000000000L) {
                 q = 1000000000000L;
                 r.clamped++;
             }
@@ -233,7 +238,8 @@ public final class BenchMixedFixed {
             if (q < 0L) {
                 q = 0L;
                 r.clamped++;
-            } else if (q > 16776960L) {
+            }
+            if (q > 16776960L) {
                 q = 16776960L;
                 r.clamped++;
             }
@@ -347,7 +353,8 @@ public final class BenchMixedFixed {
             if (q < 0L) {
                 q = 0L;
                 r.clamped++;
-            } else if (q > 64000L) {
+            }
+            if (q > 64000L) {
                 q = 64000L;
                 r.clamped++;
             }
@@ -364,7 +371,8 @@ public final class BenchMixedFixed {
             if (q < 0L) {
                 q = 0L;
                 r.clamped++;
-            } else if (q > 255L) {
+            }
+            if (q > 255L) {
                 q = 255L;
                 r.clamped++;
             }
@@ -375,7 +383,8 @@ public final class BenchMixedFixed {
             if (q < 0L) {
                 q = 0L;
                 r.clamped++;
-            } else if (q > 15L) {
+            }
+            if (q > 15L) {
                 q = 15L;
                 r.clamped++;
             }

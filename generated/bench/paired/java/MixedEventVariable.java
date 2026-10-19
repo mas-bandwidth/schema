@@ -6,6 +6,10 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
+@NullMarked
 public final class MixedEventVariable {
     private MixedEventVariable() {}
 
@@ -139,7 +143,7 @@ public final class MixedEventVariable {
             TableVariable.NodeGraph graph,
             Value v,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         switch (v.tag) {
@@ -203,7 +207,9 @@ public final class MixedEventVariable {
     }
 
     static Value readPayload(
-            TableVariable.Reader input, TableVariable.NodeTable nt, TableVariable.Report report) {
+            TableVariable.Reader input,
+            TableVariable.@Nullable NodeTable nt,
+            TableVariable.Report report) {
         Value v = new Value();
         long ref = input.leb();
         if (input.fail || ref == 0) return v;
@@ -302,7 +308,7 @@ public final class MixedEventVariable {
 
     static Value readPayloadRetain(
             TableVariable.Reader input,
-            TableVariable.NodeTable nt,
+            TableVariable.@Nullable NodeTable nt,
             TableVariable.Report report,
             TableRetain retain,
             int[] path,

@@ -6,7 +6,10 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+
 // MixedStat under the MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2.
+@NullMarked
 public final class MixedStatMessage {
     private MixedStatMessage() {}
 

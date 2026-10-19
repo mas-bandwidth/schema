@@ -7,6 +7,10 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
+@NullMarked
 public final class BenchIntsRetain {
     private BenchIntsRetain() {}
 
@@ -14,8 +18,7 @@ public final class BenchIntsRetain {
     // (§6.6): a field this reader cannot name is resolved and copied into
     // the caller's retain storage, and an excluded class is reported as
     // loss, never retained silently.
-    public static BenchIntsVariable.Value loadRetain(
-            byte[] data, TableRetain retain, TableVariable.Report report) {
+    public static BenchIntsVariable.@Nullable Value loadRetain(byte[] data, TableRetain retain, TableVariable.Report report) {
         if (retain == null) {
             return BenchIntsVariable.load(data, report);
         }
@@ -69,7 +72,7 @@ public final class BenchIntsRetain {
     static void readFieldsRetain(
             TableVariable.Reader r,
             BenchIntsVariable.Value v,
-            TableVariable.NodeTable nt,
+            TableVariable.@Nullable NodeTable nt,
             TableRetain retain,
             TableVariable.Report report,
             int[] path,
@@ -117,12 +120,12 @@ public final class BenchIntsRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f0 < -100 || v.f0 > 100)) {
-                        if (v.f0 < -100) {
-                            v.f0 = -100;
-                        } else {
-                            v.f0 = 100;
-                        }
+                    if (!r.fail && v.f0 < -100) {
+                        v.f0 = -100;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f0 > 100) {
+                        v.f0 = 100;
                         report.clamped++;
                     }
                 } else {
@@ -155,12 +158,12 @@ public final class BenchIntsRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f1 < 0 || v.f1 > 65535)) {
-                        if (v.f1 < 0) {
-                            v.f1 = 0;
-                        } else {
-                            v.f1 = 65535;
-                        }
+                    if (!r.fail && v.f1 < 0) {
+                        v.f1 = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f1 > 65535) {
+                        v.f1 = 65535;
                         report.clamped++;
                     }
                 } else {
@@ -193,12 +196,12 @@ public final class BenchIntsRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f2 < -1000000 || v.f2 > 1000000)) {
-                        if (v.f2 < -1000000) {
-                            v.f2 = -1000000;
-                        } else {
-                            v.f2 = 1000000;
-                        }
+                    if (!r.fail && v.f2 < -1000000) {
+                        v.f2 = -1000000;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f2 > 1000000) {
+                        v.f2 = 1000000;
                         report.clamped++;
                     }
                 } else {
@@ -231,12 +234,12 @@ public final class BenchIntsRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f3 < 0 || v.f3 > 3)) {
-                        if (v.f3 < 0) {
-                            v.f3 = 0;
-                        } else {
-                            v.f3 = 3;
-                        }
+                    if (!r.fail && v.f3 < 0) {
+                        v.f3 = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f3 > 3) {
+                        v.f3 = 3;
                         report.clamped++;
                     }
                 } else {
@@ -269,12 +272,12 @@ public final class BenchIntsRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f4 < -15 || v.f4 > 15)) {
-                        if (v.f4 < -15) {
-                            v.f4 = -15;
-                        } else {
-                            v.f4 = 15;
-                        }
+                    if (!r.fail && v.f4 < -15) {
+                        v.f4 = -15;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f4 > 15) {
+                        v.f4 = 15;
                         report.clamped++;
                     }
                 } else {
@@ -307,12 +310,12 @@ public final class BenchIntsRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f5 < 0 || v.f5 > 1000)) {
-                        if (v.f5 < 0) {
-                            v.f5 = 0;
-                        } else {
-                            v.f5 = 1000;
-                        }
+                    if (!r.fail && v.f5 < 0) {
+                        v.f5 = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f5 > 1000) {
+                        v.f5 = 1000;
                         report.clamped++;
                     }
                 } else {
@@ -345,12 +348,12 @@ public final class BenchIntsRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f6 < -2048 || v.f6 > 2047)) {
-                        if (v.f6 < -2048) {
-                            v.f6 = -2048;
-                        } else {
-                            v.f6 = 2047;
-                        }
+                    if (!r.fail && v.f6 < -2048) {
+                        v.f6 = -2048;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f6 > 2047) {
+                        v.f6 = 2047;
                         report.clamped++;
                     }
                 } else {
@@ -383,12 +386,12 @@ public final class BenchIntsRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f7 < 0 || v.f7 > 255)) {
-                        if (v.f7 < 0) {
-                            v.f7 = 0;
-                        } else {
-                            v.f7 = 255;
-                        }
+                    if (!r.fail && v.f7 < 0) {
+                        v.f7 = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f7 > 255) {
+                        v.f7 = 255;
                         report.clamped++;
                     }
                 } else {
@@ -421,12 +424,12 @@ public final class BenchIntsRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f8 < -600000 || v.f8 > 600000)) {
-                        if (v.f8 < -600000) {
-                            v.f8 = -600000;
-                        } else {
-                            v.f8 = 600000;
-                        }
+                    if (!r.fail && v.f8 < -600000) {
+                        v.f8 = -600000;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f8 > 600000) {
+                        v.f8 = 600000;
                         report.clamped++;
                     }
                 } else {
@@ -459,12 +462,12 @@ public final class BenchIntsRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f9 < 0 || v.f9 > 100)) {
-                        if (v.f9 < 0) {
-                            v.f9 = 0;
-                        } else {
-                            v.f9 = 100;
-                        }
+                    if (!r.fail && v.f9 < 0) {
+                        v.f9 = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f9 > 100) {
+                        v.f9 = 100;
                         report.clamped++;
                     }
                 } else {
@@ -540,8 +543,7 @@ public final class BenchIntsRetain {
         return n < 0 ? -1 : n;
     }
 
-    public static byte[] saveRetain(
-            BenchIntsVariable.Value v, TableRetain retain, TableVariable.Report report) {
+    public static byte @Nullable [] saveRetain(BenchIntsVariable.Value v, TableRetain retain, TableVariable.Report report) {
         if (report == null) {
             return null;
         }
@@ -557,7 +559,7 @@ public final class BenchIntsRetain {
             BenchIntsVariable.Value v,
             TableRetain retain,
             byte[] buf,
-            TableVariable.Report report) {
+            TableVariable.@Nullable Report report) {
         int[] path = new int[128];
         TableVariable.Ids ids = new TableVariable.Ids(64);
         TableVariable.Writer w = new TableVariable.Writer(buf, ids);
@@ -604,7 +606,7 @@ public final class BenchIntsRetain {
             TableVariable.NodeGraph nodes,
             BenchIntsVariable.Value v,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         TableVariable.NodeGraph graph = nodes;
@@ -665,7 +667,7 @@ public final class BenchIntsRetain {
             TableVariable.NodeGraph nodes,
             BenchIntsVariable.Value v,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         writeFieldsRetain(w, nodes, v, retain, report, path, depth);
@@ -676,7 +678,7 @@ public final class BenchIntsRetain {
     static void emitTail(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         if (retain == null) {

@@ -7,10 +7,14 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
+@NullMarked
 public final class BenchMixedVariable {
     private BenchMixedVariable() {}
 
@@ -75,7 +79,7 @@ public final class BenchMixedVariable {
     public static final long F_extra = 0xfd29ee12a979cb69L;
     public static final long F_idleTicks = 0x78101ac0aa8cbcfeL;
 
-    static Object createNode(long typeId) {
+    static @Nullable Object createNode(long typeId) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
             return new BenchBitsVariable.Value();
         }
@@ -280,7 +284,7 @@ public final class BenchMixedVariable {
     public static boolean readFields(
             TableVariable.Reader r,
             Value v,
-            TableVariable.NodeTable nt,
+            TableVariable.@Nullable NodeTable nt,
             TableVariable.Report report) {
         while (true) {
             long ref = r.leb();
@@ -347,12 +351,12 @@ public final class BenchMixedVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.ackSequence < 0 || v.ackSequence > 65535)) {
-                        if (v.ackSequence < 0) {
-                            v.ackSequence = 0;
-                        } else {
-                            v.ackSequence = 65535;
-                        }
+                    if (!r.fail && v.ackSequence < 0) {
+                        v.ackSequence = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.ackSequence > 65535) {
+                        v.ackSequence = 65535;
                         report.clamped++;
                     }
                 } else {
@@ -539,13 +543,12 @@ public final class BenchMixedVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail
-                            && (v.worldTime < -1000000000000L || v.worldTime > 1000000000000L)) {
-                        if (v.worldTime < -1000000000000L) {
-                            v.worldTime = -1000000000000L;
-                        } else {
-                            v.worldTime = 1000000000000L;
-                        }
+                    if (!r.fail && v.worldTime < -1000000000000L) {
+                        v.worldTime = -1000000000000L;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.worldTime > 1000000000000L) {
+                        v.worldTime = 1000000000000L;
                         report.clamped++;
                     }
                 } else {
@@ -964,12 +967,12 @@ public final class BenchMixedVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.extra < 0 || v.extra > 255)) {
-                        if (v.extra < 0) {
-                            v.extra = 0;
-                        } else {
-                            v.extra = 255;
-                        }
+                    if (!r.fail && v.extra < 0) {
+                        v.extra = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.extra > 255) {
+                        v.extra = 255;
                         report.clamped++;
                     }
                 } else {
@@ -1002,12 +1005,12 @@ public final class BenchMixedVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.idleTicks < 0 || v.idleTicks > 15)) {
-                        if (v.idleTicks < 0) {
-                            v.idleTicks = 0;
-                        } else {
-                            v.idleTicks = 15;
-                        }
+                    if (!r.fail && v.idleTicks < 0) {
+                        v.idleTicks = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.idleTicks > 15) {
+                        v.idleTicks = 15;
                         report.clamped++;
                     }
                 } else {
@@ -1253,11 +1256,11 @@ public final class BenchMixedVariable {
 
     // save writes v as the variable form (§3). The one-argument form makes a
     // fresh Saver; a caller that keeps a Saver allocates only the answer.
-    public static byte[] save(Value v) {
+    public static byte @Nullable [] save(Value v) {
         return save(v, new TableVariable.Saver());
     }
 
-    public static byte[] save(Value v, TableVariable.Saver saver) {
+    public static byte @Nullable [] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
         graph.setOpen(v, true);
@@ -1298,7 +1301,7 @@ public final class BenchMixedVariable {
         return java.util.Arrays.copyOf(w.buf, w.off);
     }
 
-    public static Value load(byte[] data, TableVariable.Report report) {
+    public static @Nullable Value load(byte[] data, TableVariable.Report report) {
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;
@@ -1387,7 +1390,9 @@ public final class BenchMixedVariable {
     }
 
     static long measureFields(
-            TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {
+            TableVariable.Reader r,
+            TableVariable.@Nullable Measure nt,
+            TableVariable.Report report) {
         long extent = 0;
         while (true) {
             long ref = r.leb();
@@ -1470,7 +1475,7 @@ public final class BenchMixedVariable {
         }
     }
 
-    public static byte[] toJson(Value v) {
+    public static byte @Nullable [] toJson(Value v) {
         TableVariable.NodeGraph graph = new TableVariable.NodeGraph();
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
@@ -1773,7 +1778,7 @@ public final class BenchMixedVariable {
     }
 
     public static void writeJsonPointer(
-            StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
+            StringBuilder b, TableVariable.NodeGraph graph, @Nullable Value child, int depth) {
         if (child == null) {
             b.append("null");
             return;
@@ -1801,7 +1806,7 @@ public final class BenchMixedVariable {
         }
     }
 
-    public static Value readJsonPointer(TableJson.In in, long targetTypeId) {
+    public static @Nullable Value readJsonPointer(TableJson.In in, long targetTypeId) {
         if (in.peek() == 'n') {
             in.lit("null");
             return null;

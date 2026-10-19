@@ -6,10 +6,13 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+
 // union MixedEvent under the FIXED FORM (docs/SPEC-TABLES.md §3.4): the TAG at its
 // own storage width, then the WIDEST ARM. Tag 0 is None, as an enum's
 // ordinal 0 is; the slack behind a narrower arm is zero on write and
 // IGNORED on read, never a refusal.
+@NullMarked
 public final class MixedEventFixed {
     private MixedEventFixed() {}
 

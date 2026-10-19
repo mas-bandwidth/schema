@@ -7,6 +7,10 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
+@NullMarked
 public final class MixedEntityRetain {
     private MixedEntityRetain() {}
 
@@ -65,8 +69,7 @@ public final class MixedEntityRetain {
     // (§6.6): a field this reader cannot name is resolved and copied into
     // the caller's retain storage, and an excluded class is reported as
     // loss, never retained silently.
-    public static MixedEntityVariable.Value loadRetain(
-            byte[] data, TableRetain retain, TableVariable.Report report) {
+    public static MixedEntityVariable.@Nullable Value loadRetain(byte[] data, TableRetain retain, TableVariable.Report report) {
         if (retain == null) {
             return MixedEntityVariable.load(data, report);
         }
@@ -120,7 +123,7 @@ public final class MixedEntityRetain {
     static void readFieldsRetain(
             TableVariable.Reader r,
             MixedEntityVariable.Value v,
-            TableVariable.NodeTable nt,
+            TableVariable.@Nullable NodeTable nt,
             TableRetain retain,
             TableVariable.Report report,
             int[] path,
@@ -190,12 +193,12 @@ public final class MixedEntityRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.posX < -16383 || v.posX > 16383)) {
-                        if (v.posX < -16383) {
-                            v.posX = -16383;
-                        } else {
-                            v.posX = 16383;
-                        }
+                    if (!r.fail && v.posX < -16383) {
+                        v.posX = -16383;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.posX > 16383) {
+                        v.posX = 16383;
                         report.clamped++;
                     }
                 } else {
@@ -228,12 +231,12 @@ public final class MixedEntityRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.posY < -16383 || v.posY > 16383)) {
-                        if (v.posY < -16383) {
-                            v.posY = -16383;
-                        } else {
-                            v.posY = 16383;
-                        }
+                    if (!r.fail && v.posY < -16383) {
+                        v.posY = -16383;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.posY > 16383) {
+                        v.posY = 16383;
                         report.clamped++;
                     }
                 } else {
@@ -266,12 +269,12 @@ public final class MixedEntityRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.posZ < -16383 || v.posZ > 16383)) {
-                        if (v.posZ < -16383) {
-                            v.posZ = -16383;
-                        } else {
-                            v.posZ = 16383;
-                        }
+                    if (!r.fail && v.posZ < -16383) {
+                        v.posZ = -16383;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.posZ > 16383) {
+                        v.posZ = 16383;
                         report.clamped++;
                     }
                 } else {
@@ -348,12 +351,12 @@ public final class MixedEntityRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.velX < -2048 || v.velX > 2047)) {
-                        if (v.velX < -2048) {
-                            v.velX = -2048;
-                        } else {
-                            v.velX = 2047;
-                        }
+                    if (!r.fail && v.velX < -2048) {
+                        v.velX = -2048;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.velX > 2047) {
+                        v.velX = 2047;
                         report.clamped++;
                     }
                 } else {
@@ -386,12 +389,12 @@ public final class MixedEntityRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.velY < -2048 || v.velY > 2047)) {
-                        if (v.velY < -2048) {
-                            v.velY = -2048;
-                        } else {
-                            v.velY = 2047;
-                        }
+                    if (!r.fail && v.velY < -2048) {
+                        v.velY = -2048;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.velY > 2047) {
+                        v.velY = 2047;
                         report.clamped++;
                     }
                 } else {
@@ -424,12 +427,12 @@ public final class MixedEntityRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.velZ < -2048 || v.velZ > 2047)) {
-                        if (v.velZ < -2048) {
-                            v.velZ = -2048;
-                        } else {
-                            v.velZ = 2047;
-                        }
+                    if (!r.fail && v.velZ < -2048) {
+                        v.velZ = -2048;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.velZ > 2047) {
+                        v.velZ = 2047;
                         report.clamped++;
                     }
                 } else {
@@ -462,12 +465,12 @@ public final class MixedEntityRetain {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.health < 0 || v.health > 1000)) {
-                        if (v.health < 0) {
-                            v.health = 0;
-                        } else {
-                            v.health = 1000;
-                        }
+                    if (!r.fail && v.health < 0) {
+                        v.health = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.health > 1000) {
+                        v.health = 1000;
                         report.clamped++;
                     }
                 } else {
@@ -596,8 +599,7 @@ public final class MixedEntityRetain {
         return n < 0 ? -1 : n;
     }
 
-    public static byte[] saveRetain(
-            MixedEntityVariable.Value v, TableRetain retain, TableVariable.Report report) {
+    public static byte @Nullable [] saveRetain(MixedEntityVariable.Value v, TableRetain retain, TableVariable.Report report) {
         if (report == null) {
             return null;
         }
@@ -613,7 +615,7 @@ public final class MixedEntityRetain {
             MixedEntityVariable.Value v,
             TableRetain retain,
             byte[] buf,
-            TableVariable.Report report) {
+            TableVariable.@Nullable Report report) {
         int[] path = new int[128];
         TableVariable.Ids ids = new TableVariable.Ids(64);
         TableVariable.Writer w = new TableVariable.Writer(buf, ids);
@@ -660,7 +662,7 @@ public final class MixedEntityRetain {
             TableVariable.NodeGraph nodes,
             MixedEntityVariable.Value v,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         TableVariable.NodeGraph graph = nodes;
@@ -785,7 +787,7 @@ public final class MixedEntityRetain {
             TableVariable.NodeGraph nodes,
             MixedEntityVariable.Value v,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         writeFieldsRetain(w, nodes, v, retain, report, path, depth);
@@ -796,7 +798,7 @@ public final class MixedEntityRetain {
     static void emitTail(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         if (retain == null) {

@@ -6,7 +6,10 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+
 // BenchMixed under the MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2.
+@NullMarked
 public final class BenchMixedMessage {
     private BenchMixedMessage() {}
 
@@ -590,7 +593,12 @@ public final class BenchMixedMessage {
                     r.report.malformed = true;
                     return false;
                 }
-                if (entry.element.kind == 6 && !r.align()) {
+                TableVocabulary.Shape n15e = entry.element;
+                if (n15e == null) {
+                    r.report.malformed = true;
+                    return false;
+                }
+                if (n15e.kind == 6 && !r.align()) {
                     r.report.malformed = true;
                     return false;
                 }
@@ -598,7 +606,7 @@ public final class BenchMixedMessage {
                 if (keep16 < n15) {
                     r.report.clamped++;
                 }
-                long run17 = TableMessage.elementRunBits(14, entry.element);
+                long run17 = TableMessage.elementRunBits(14, n15e);
                 long walk18 = (run17 >= 0L && n15 > keep16) ? keep16 : n15;
                 for (long i19 = 0; i19 < walk18; i19++) {
                     if (i19 < keep16) {
@@ -647,7 +655,12 @@ public final class BenchMixedMessage {
                     r.report.malformed = true;
                     return false;
                 }
-                if (entry.element.kind == 6 && !r.align()) {
+                TableVocabulary.Shape n22e = entry.element;
+                if (n22e == null) {
+                    r.report.malformed = true;
+                    return false;
+                }
+                if (n22e.kind == 6 && !r.align()) {
                     r.report.malformed = true;
                     return false;
                 }
@@ -655,7 +668,7 @@ public final class BenchMixedMessage {
                 if (keep23 < n22) {
                     r.report.clamped++;
                 }
-                long run24 = TableMessage.elementRunBits(14, entry.element);
+                long run24 = TableMessage.elementRunBits(14, n22e);
                 long walk25 = (run24 >= 0L && n22 > keep23) ? keep23 : n22;
                 for (long i26 = 0; i26 < walk25; i26++) {
                     if (i26 < keep23) {
@@ -831,7 +844,12 @@ public final class BenchMixedMessage {
                     r.report.malformed = true;
                     return false;
                 }
-                if (entry.element.kind == 6 && !r.align()) {
+                TableVocabulary.Shape n39e = entry.element;
+                if (n39e == null) {
+                    r.report.malformed = true;
+                    return false;
+                }
+                if (n39e.kind == 6 && !r.align()) {
                     r.report.malformed = true;
                     return false;
                 }
@@ -839,13 +857,12 @@ public final class BenchMixedMessage {
                 if (keep40 < n39) {
                     r.report.clamped++;
                 }
-                long run41 = TableMessage.elementRunBits(14, entry.element);
+                long run41 = TableMessage.elementRunBits(14, n39e);
                 long walk42 = (run41 >= 0L && n39 > keep40) ? keep40 : n39;
                 for (long i43 = 0; i43 < walk42; i43++) {
                     if (i43 < keep40) {
                         {
-                            long v45 =
-                                    TableMessage.readUnsigned(r, entry.element, 0L, 0L, false, 0);
+                            long v45 = TableMessage.readUnsigned(r, n39e, 0L, 0L, false, 0);
                             if (r.err) {
                                 r.report.malformed = true;
                                 return false;
@@ -855,8 +872,7 @@ public final class BenchMixedMessage {
                     } else {
                         byte scratch44 = (byte) 0;
                         {
-                            long v46 =
-                                    TableMessage.readUnsigned(r, entry.element, 0L, 0L, false, 0);
+                            long v46 = TableMessage.readUnsigned(r, n39e, 0L, 0L, false, 0);
                             if (r.err) {
                                 r.report.malformed = true;
                                 return false;

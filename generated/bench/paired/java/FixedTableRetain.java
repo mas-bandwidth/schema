@@ -7,6 +7,10 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
+@NullMarked
 public final class FixedTableRetain {
     private FixedTableRetain() {}
 
@@ -14,8 +18,7 @@ public final class FixedTableRetain {
     // (§6.6): a field this reader cannot name is resolved and copied into
     // the caller's retain storage, and an excluded class is reported as
     // loss, never retained silently.
-    public static FixedTableVariable.Value loadRetain(
-            byte[] data, TableRetain retain, TableVariable.Report report) {
+    public static FixedTableVariable.@Nullable Value loadRetain(byte[] data, TableRetain retain, TableVariable.Report report) {
         if (retain == null) {
             return FixedTableVariable.load(data, report);
         }
@@ -37,7 +40,7 @@ public final class FixedTableRetain {
     static void readFieldsRetain(
             TableVariable.Reader r,
             FixedTableVariable.Value v,
-            TableVariable.NodeTable nt,
+            TableVariable.@Nullable NodeTable nt,
             TableRetain retain,
             TableVariable.Report report,
             int[] path,
@@ -147,8 +150,7 @@ public final class FixedTableRetain {
         return n < 0 ? -1 : n;
     }
 
-    public static byte[] saveRetain(
-            FixedTableVariable.Value v, TableRetain retain, TableVariable.Report report) {
+    public static byte @Nullable [] saveRetain(FixedTableVariable.Value v, TableRetain retain, TableVariable.Report report) {
         if (report == null) {
             return null;
         }
@@ -164,7 +166,7 @@ public final class FixedTableRetain {
             FixedTableVariable.Value v,
             TableRetain retain,
             byte[] buf,
-            TableVariable.Report report) {
+            TableVariable.@Nullable Report report) {
         int[] path = new int[128];
         TableVariable.Ids ids = new TableVariable.Ids(64);
         TableVariable.Writer w = new TableVariable.Writer(buf, ids);
@@ -211,7 +213,7 @@ public final class FixedTableRetain {
             TableVariable.NodeGraph nodes,
             FixedTableVariable.Value v,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         TableVariable.NodeGraph graph = nodes;
@@ -236,7 +238,7 @@ public final class FixedTableRetain {
             TableVariable.NodeGraph nodes,
             FixedTableVariable.Value v,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         writeFieldsRetain(w, nodes, v, retain, report, path, depth);
@@ -247,7 +249,7 @@ public final class FixedTableRetain {
     static void emitTail(
             TableVariable.Writer w,
             TableRetain retain,
-            TableVariable.Report report,
+            TableVariable.@Nullable Report report,
             int[] path,
             int depth) {
         if (retain == null) {

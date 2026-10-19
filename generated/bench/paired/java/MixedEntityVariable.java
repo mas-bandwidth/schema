@@ -7,8 +7,12 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
 import java.nio.charset.StandardCharsets;
 
+@NullMarked
 public final class MixedEntityVariable {
     private MixedEntityVariable() {}
 
@@ -47,7 +51,7 @@ public final class MixedEntityVariable {
     public static final long F_moving = 0x11a44fc1d1243da7L;
     public static final long F_firing = 0x7674cfd19b9031caL;
 
-    static Object createNode(long typeId) {
+    static @Nullable Object createNode(long typeId) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
             return new BenchBitsVariable.Value();
         }
@@ -239,7 +243,7 @@ public final class MixedEntityVariable {
     public static boolean readFields(
             TableVariable.Reader r,
             Value v,
-            TableVariable.NodeTable nt,
+            TableVariable.@Nullable NodeTable nt,
             TableVariable.Report report) {
         while (true) {
             long ref = r.leb();
@@ -306,12 +310,12 @@ public final class MixedEntityVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.posX < -16383 || v.posX > 16383)) {
-                        if (v.posX < -16383) {
-                            v.posX = -16383;
-                        } else {
-                            v.posX = 16383;
-                        }
+                    if (!r.fail && v.posX < -16383) {
+                        v.posX = -16383;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.posX > 16383) {
+                        v.posX = 16383;
                         report.clamped++;
                     }
                 } else {
@@ -344,12 +348,12 @@ public final class MixedEntityVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.posY < -16383 || v.posY > 16383)) {
-                        if (v.posY < -16383) {
-                            v.posY = -16383;
-                        } else {
-                            v.posY = 16383;
-                        }
+                    if (!r.fail && v.posY < -16383) {
+                        v.posY = -16383;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.posY > 16383) {
+                        v.posY = 16383;
                         report.clamped++;
                     }
                 } else {
@@ -382,12 +386,12 @@ public final class MixedEntityVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.posZ < -16383 || v.posZ > 16383)) {
-                        if (v.posZ < -16383) {
-                            v.posZ = -16383;
-                        } else {
-                            v.posZ = 16383;
-                        }
+                    if (!r.fail && v.posZ < -16383) {
+                        v.posZ = -16383;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.posZ > 16383) {
+                        v.posZ = 16383;
                         report.clamped++;
                     }
                 } else {
@@ -464,12 +468,12 @@ public final class MixedEntityVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.velX < -2048 || v.velX > 2047)) {
-                        if (v.velX < -2048) {
-                            v.velX = -2048;
-                        } else {
-                            v.velX = 2047;
-                        }
+                    if (!r.fail && v.velX < -2048) {
+                        v.velX = -2048;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.velX > 2047) {
+                        v.velX = 2047;
                         report.clamped++;
                     }
                 } else {
@@ -502,12 +506,12 @@ public final class MixedEntityVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.velY < -2048 || v.velY > 2047)) {
-                        if (v.velY < -2048) {
-                            v.velY = -2048;
-                        } else {
-                            v.velY = 2047;
-                        }
+                    if (!r.fail && v.velY < -2048) {
+                        v.velY = -2048;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.velY > 2047) {
+                        v.velY = 2047;
                         report.clamped++;
                     }
                 } else {
@@ -540,12 +544,12 @@ public final class MixedEntityVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.velZ < -2048 || v.velZ > 2047)) {
-                        if (v.velZ < -2048) {
-                            v.velZ = -2048;
-                        } else {
-                            v.velZ = 2047;
-                        }
+                    if (!r.fail && v.velZ < -2048) {
+                        v.velZ = -2048;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.velZ > 2047) {
+                        v.velZ = 2047;
                         report.clamped++;
                     }
                 } else {
@@ -578,12 +582,12 @@ public final class MixedEntityVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.health < 0 || v.health > 1000)) {
-                        if (v.health < 0) {
-                            v.health = 0;
-                        } else {
-                            v.health = 1000;
-                        }
+                    if (!r.fail && v.health < 0) {
+                        v.health = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.health > 1000) {
+                        v.health = 1000;
                         report.clamped++;
                     }
                 } else {
@@ -866,11 +870,11 @@ public final class MixedEntityVariable {
 
     // save writes v as the variable form (§3). The one-argument form makes a
     // fresh Saver; a caller that keeps a Saver allocates only the answer.
-    public static byte[] save(Value v) {
+    public static byte @Nullable [] save(Value v) {
         return save(v, new TableVariable.Saver());
     }
 
-    public static byte[] save(Value v, TableVariable.Saver saver) {
+    public static byte @Nullable [] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
         graph.setOpen(v, true);
@@ -911,7 +915,7 @@ public final class MixedEntityVariable {
         return java.util.Arrays.copyOf(w.buf, w.off);
     }
 
-    public static Value load(byte[] data, TableVariable.Report report) {
+    public static @Nullable Value load(byte[] data, TableVariable.Report report) {
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;
@@ -1000,7 +1004,9 @@ public final class MixedEntityVariable {
     }
 
     static long measureFields(
-            TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {
+            TableVariable.Reader r,
+            TableVariable.@Nullable Measure nt,
+            TableVariable.Report report) {
         long extent = 0;
         while (true) {
             long ref = r.leb();
@@ -1057,7 +1063,7 @@ public final class MixedEntityVariable {
         }
     }
 
-    public static byte[] toJson(Value v) {
+    public static byte @Nullable [] toJson(Value v) {
         TableVariable.NodeGraph graph = new TableVariable.NodeGraph();
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
@@ -1271,7 +1277,7 @@ public final class MixedEntityVariable {
     }
 
     public static void writeJsonPointer(
-            StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
+            StringBuilder b, TableVariable.NodeGraph graph, @Nullable Value child, int depth) {
         if (child == null) {
             b.append("null");
             return;
@@ -1299,7 +1305,7 @@ public final class MixedEntityVariable {
         }
     }
 
-    public static Value readJsonPointer(TableJson.In in, long targetTypeId) {
+    public static @Nullable Value readJsonPointer(TableJson.In in, long targetTypeId) {
         if (in.peek() == 'n') {
             in.lit("null");
             return null;

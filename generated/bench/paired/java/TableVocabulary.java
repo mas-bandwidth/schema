@@ -6,10 +6,14 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
 // The announcement surface of the MESSAGE FORM (docs/SPEC-TABLES.md §3.3),
 // form byte 2. `announce` and `announceMeasure` are the unit's
 // compile-time constant and its length; `announceRead` parses a peer's
 // announcement into the caller's resolved vocabulary.
+@NullMarked
 public final class TableVocabulary {
     public TableVocabulary() {}
 
@@ -973,8 +977,8 @@ public final class TableVocabulary {
     public static final class Entry {
         public long id;
         public int kind;
-        public Shape shape;
-        public Shape element;
+        public Shape shape = new Shape();
+        public @Nullable Shape element;
     }
 
     // The width and range facts a reader needs to skip a field exactly and to
@@ -993,7 +997,7 @@ public final class TableVocabulary {
     public static final class Report {
         public boolean malformed;
         public boolean refused;
-        public String reason;
+        public @Nullable String reason;
         public int unknown;
         public int kindMismatch;
         public int widened;
@@ -1013,7 +1017,7 @@ public final class TableVocabulary {
     // The caller's storage, declared by capacity and filled once. The
     // announcement is delivered once and holds for the connection's life, so
     // the resolved vocabulary does too (§3.3).
-    public Entry[] entries;
+    public Entry[] entries = new Entry[0];
     public int count;
     public int refBits;
     public long buildVersion;
@@ -1165,6 +1169,10 @@ public final class TableVocabulary {
         // The ENTRY bound is the caller's capacity, and an announcement above it
         // is refused by name as vocabulary_too_large before an entry is touched
         // (§3.3).
+        if (vocab == null) {
+            report.malformed = true;
+            return false;
+        }
         Reader src = new Reader(vocab, 0);
         int count = 0;
         boolean nodeSeen = false;
@@ -1358,7 +1366,7 @@ public final class TableVocabulary {
         }
     }
 
-    static Shape shapeRead(Reader r, int kind) {
+    static @Nullable Shape shapeRead(Reader r, int kind) {
         Shape s = new Shape();
         s.kind = kind;
         if ((kind >= 2 && kind <= 10) || (kind >= 18 && kind <= 29)) {
@@ -1457,10 +1465,11 @@ public final class TableVocabulary {
             return false;
         }
         e.kind = kind;
-        e.shape = shapeRead(r, kind);
-        if (e.shape == null) {
+        Shape shape = shapeRead(r, kind);
+        if (shape == null) {
             return false;
         }
+        e.shape = shape;
         if (kind == 14 || kind == 16) {
             if (!r.has(1)) {
                 return false;

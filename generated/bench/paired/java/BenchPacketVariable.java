@@ -7,10 +7,14 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
+@NullMarked
 public final class BenchPacketVariable {
     private BenchPacketVariable() {}
 
@@ -45,7 +49,7 @@ public final class BenchPacketVariable {
     public static final long F_big = 0x00541119134fd259L;
     public static final long F_blob = 0xc573b39bc29148caL;
 
-    static Object createNode(long typeId) {
+    static @Nullable Object createNode(long typeId) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
             return new BenchBitsVariable.Value();
         }
@@ -237,7 +241,7 @@ public final class BenchPacketVariable {
     public static boolean readFields(
             TableVariable.Reader r,
             Value v,
-            TableVariable.NodeTable nt,
+            TableVariable.@Nullable NodeTable nt,
             TableVariable.Report report) {
         while (true) {
             long ref = r.leb();
@@ -282,12 +286,12 @@ public final class BenchPacketVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.a < -100 || v.a > 100)) {
-                        if (v.a < -100) {
-                            v.a = -100;
-                        } else {
-                            v.a = 100;
-                        }
+                    if (!r.fail && v.a < -100) {
+                        v.a = -100;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.a > 100) {
+                        v.a = 100;
                         report.clamped++;
                     }
                 } else {
@@ -320,12 +324,12 @@ public final class BenchPacketVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.b < 0 || v.b > 65535)) {
-                        if (v.b < 0) {
-                            v.b = 0;
-                        } else {
-                            v.b = 65535;
-                        }
+                    if (!r.fail && v.b < 0) {
+                        v.b = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.b > 65535) {
+                        v.b = 65535;
                         report.clamped++;
                     }
                 } else {
@@ -358,12 +362,12 @@ public final class BenchPacketVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.c < -1000000 || v.c > 1000000)) {
-                        if (v.c < -1000000) {
-                            v.c = -1000000;
-                        } else {
-                            v.c = 1000000;
-                        }
+                    if (!r.fail && v.c < -1000000) {
+                        v.c = -1000000;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.c > 1000000) {
+                        v.c = 1000000;
                         report.clamped++;
                     }
                 } else {
@@ -689,11 +693,11 @@ public final class BenchPacketVariable {
 
     // save writes v as the variable form (§3). The one-argument form makes a
     // fresh Saver; a caller that keeps a Saver allocates only the answer.
-    public static byte[] save(Value v) {
+    public static byte @Nullable [] save(Value v) {
         return save(v, new TableVariable.Saver());
     }
 
-    public static byte[] save(Value v, TableVariable.Saver saver) {
+    public static byte @Nullable [] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
         graph.setOpen(v, true);
@@ -734,7 +738,7 @@ public final class BenchPacketVariable {
         return java.util.Arrays.copyOf(w.buf, w.off);
     }
 
-    public static Value load(byte[] data, TableVariable.Report report) {
+    public static @Nullable Value load(byte[] data, TableVariable.Report report) {
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;
@@ -823,7 +827,9 @@ public final class BenchPacketVariable {
     }
 
     static long measureFields(
-            TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {
+            TableVariable.Reader r,
+            TableVariable.@Nullable Measure nt,
+            TableVariable.Report report) {
         long extent = 0;
         while (true) {
             long ref = r.leb();
@@ -876,7 +882,7 @@ public final class BenchPacketVariable {
         }
     }
 
-    public static byte[] toJson(Value v) {
+    public static byte @Nullable [] toJson(Value v) {
         TableVariable.NodeGraph graph = new TableVariable.NodeGraph();
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
@@ -1029,7 +1035,7 @@ public final class BenchPacketVariable {
     }
 
     public static void writeJsonPointer(
-            StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
+            StringBuilder b, TableVariable.NodeGraph graph, @Nullable Value child, int depth) {
         if (child == null) {
             b.append("null");
             return;
@@ -1057,7 +1063,7 @@ public final class BenchPacketVariable {
         }
     }
 
-    public static Value readJsonPointer(TableJson.In in, long targetTypeId) {
+    public static @Nullable Value readJsonPointer(TableJson.In in, long targetTypeId) {
         if (in.peek() == 'n') {
             in.lit("null");
             return null;

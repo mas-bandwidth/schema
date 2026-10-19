@@ -7,8 +7,12 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
 import java.nio.charset.StandardCharsets;
 
+@NullMarked
 public final class BenchIntsVariable {
     private BenchIntsVariable() {}
 
@@ -39,7 +43,7 @@ public final class BenchIntsVariable {
     public static final long F_f8 = 0x08988407b5421c53L;
     public static final long F_f9 = 0x08988307b5421aa0L;
 
-    static Object createNode(long typeId) {
+    static @Nullable Object createNode(long typeId) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
             return new BenchBitsVariable.Value();
         }
@@ -231,7 +235,7 @@ public final class BenchIntsVariable {
     public static boolean readFields(
             TableVariable.Reader r,
             Value v,
-            TableVariable.NodeTable nt,
+            TableVariable.@Nullable NodeTable nt,
             TableVariable.Report report) {
         while (true) {
             long ref = r.leb();
@@ -276,12 +280,12 @@ public final class BenchIntsVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f0 < -100 || v.f0 > 100)) {
-                        if (v.f0 < -100) {
-                            v.f0 = -100;
-                        } else {
-                            v.f0 = 100;
-                        }
+                    if (!r.fail && v.f0 < -100) {
+                        v.f0 = -100;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f0 > 100) {
+                        v.f0 = 100;
                         report.clamped++;
                     }
                 } else {
@@ -314,12 +318,12 @@ public final class BenchIntsVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f1 < 0 || v.f1 > 65535)) {
-                        if (v.f1 < 0) {
-                            v.f1 = 0;
-                        } else {
-                            v.f1 = 65535;
-                        }
+                    if (!r.fail && v.f1 < 0) {
+                        v.f1 = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f1 > 65535) {
+                        v.f1 = 65535;
                         report.clamped++;
                     }
                 } else {
@@ -352,12 +356,12 @@ public final class BenchIntsVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f2 < -1000000 || v.f2 > 1000000)) {
-                        if (v.f2 < -1000000) {
-                            v.f2 = -1000000;
-                        } else {
-                            v.f2 = 1000000;
-                        }
+                    if (!r.fail && v.f2 < -1000000) {
+                        v.f2 = -1000000;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f2 > 1000000) {
+                        v.f2 = 1000000;
                         report.clamped++;
                     }
                 } else {
@@ -390,12 +394,12 @@ public final class BenchIntsVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f3 < 0 || v.f3 > 3)) {
-                        if (v.f3 < 0) {
-                            v.f3 = 0;
-                        } else {
-                            v.f3 = 3;
-                        }
+                    if (!r.fail && v.f3 < 0) {
+                        v.f3 = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f3 > 3) {
+                        v.f3 = 3;
                         report.clamped++;
                     }
                 } else {
@@ -428,12 +432,12 @@ public final class BenchIntsVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f4 < -15 || v.f4 > 15)) {
-                        if (v.f4 < -15) {
-                            v.f4 = -15;
-                        } else {
-                            v.f4 = 15;
-                        }
+                    if (!r.fail && v.f4 < -15) {
+                        v.f4 = -15;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f4 > 15) {
+                        v.f4 = 15;
                         report.clamped++;
                     }
                 } else {
@@ -466,12 +470,12 @@ public final class BenchIntsVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f5 < 0 || v.f5 > 1000)) {
-                        if (v.f5 < 0) {
-                            v.f5 = 0;
-                        } else {
-                            v.f5 = 1000;
-                        }
+                    if (!r.fail && v.f5 < 0) {
+                        v.f5 = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f5 > 1000) {
+                        v.f5 = 1000;
                         report.clamped++;
                     }
                 } else {
@@ -504,12 +508,12 @@ public final class BenchIntsVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f6 < -2048 || v.f6 > 2047)) {
-                        if (v.f6 < -2048) {
-                            v.f6 = -2048;
-                        } else {
-                            v.f6 = 2047;
-                        }
+                    if (!r.fail && v.f6 < -2048) {
+                        v.f6 = -2048;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f6 > 2047) {
+                        v.f6 = 2047;
                         report.clamped++;
                     }
                 } else {
@@ -542,12 +546,12 @@ public final class BenchIntsVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f7 < 0 || v.f7 > 255)) {
-                        if (v.f7 < 0) {
-                            v.f7 = 0;
-                        } else {
-                            v.f7 = 255;
-                        }
+                    if (!r.fail && v.f7 < 0) {
+                        v.f7 = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f7 > 255) {
+                        v.f7 = 255;
                         report.clamped++;
                     }
                 } else {
@@ -580,12 +584,12 @@ public final class BenchIntsVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f8 < -600000 || v.f8 > 600000)) {
-                        if (v.f8 < -600000) {
-                            v.f8 = -600000;
-                        } else {
-                            v.f8 = 600000;
-                        }
+                    if (!r.fail && v.f8 < -600000) {
+                        v.f8 = -600000;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f8 > 600000) {
+                        v.f8 = 600000;
                         report.clamped++;
                     }
                 } else {
@@ -618,12 +622,12 @@ public final class BenchIntsVariable {
                             r.fail = true;
                         }
                     }
-                    if (!r.fail && (v.f9 < 0 || v.f9 > 100)) {
-                        if (v.f9 < 0) {
-                            v.f9 = 0;
-                        } else {
-                            v.f9 = 100;
-                        }
+                    if (!r.fail && v.f9 < 0) {
+                        v.f9 = 0;
+                        report.clamped++;
+                    }
+                    if (!r.fail && v.f9 > 100) {
+                        v.f9 = 100;
                         report.clamped++;
                     }
                 } else {
@@ -734,11 +738,11 @@ public final class BenchIntsVariable {
 
     // save writes v as the variable form (§3). The one-argument form makes a
     // fresh Saver; a caller that keeps a Saver allocates only the answer.
-    public static byte[] save(Value v) {
+    public static byte @Nullable [] save(Value v) {
         return save(v, new TableVariable.Saver());
     }
 
-    public static byte[] save(Value v, TableVariable.Saver saver) {
+    public static byte @Nullable [] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
         graph.setOpen(v, true);
@@ -779,7 +783,7 @@ public final class BenchIntsVariable {
         return java.util.Arrays.copyOf(w.buf, w.off);
     }
 
-    public static Value load(byte[] data, TableVariable.Report report) {
+    public static @Nullable Value load(byte[] data, TableVariable.Report report) {
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;
@@ -868,7 +872,9 @@ public final class BenchIntsVariable {
     }
 
     static long measureFields(
-            TableVariable.Reader r, TableVariable.Measure nt, TableVariable.Report report) {
+            TableVariable.Reader r,
+            TableVariable.@Nullable Measure nt,
+            TableVariable.Report report) {
         long extent = 0;
         while (true) {
             long ref = r.leb();
@@ -917,7 +923,7 @@ public final class BenchIntsVariable {
         }
     }
 
-    public static byte[] toJson(Value v) {
+    public static byte @Nullable [] toJson(Value v) {
         TableVariable.NodeGraph graph = new TableVariable.NodeGraph();
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
@@ -1037,7 +1043,7 @@ public final class BenchIntsVariable {
     }
 
     public static void writeJsonPointer(
-            StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
+            StringBuilder b, TableVariable.NodeGraph graph, @Nullable Value child, int depth) {
         if (child == null) {
             b.append("null");
             return;
@@ -1065,7 +1071,7 @@ public final class BenchIntsVariable {
         }
     }
 
-    public static Value readJsonPointer(TableJson.In in, long targetTypeId) {
+    public static @Nullable Value readJsonPointer(TableJson.In in, long targetTypeId) {
         if (in.peek() == 'n') {
             in.lit("null");
             return null;

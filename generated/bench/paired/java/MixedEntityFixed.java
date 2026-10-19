@@ -6,10 +6,13 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+
 // MixedEntity under the FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3.
 //
 // A NESTED type: it rides INLINE inside its holder's body, at its own
 // constant size, with no length and no terminator.
+@NullMarked
 public final class MixedEntityFixed {
     private MixedEntityFixed() {}
 
@@ -113,7 +116,8 @@ public final class MixedEntityFixed {
             if (q < -16383L) {
                 q = -16383L;
                 r.clamped++;
-            } else if (q > 16383L) {
+            }
+            if (q > 16383L) {
                 q = 16383L;
                 r.clamped++;
             }
@@ -124,7 +128,8 @@ public final class MixedEntityFixed {
             if (q < -16383L) {
                 q = -16383L;
                 r.clamped++;
-            } else if (q > 16383L) {
+            }
+            if (q > 16383L) {
                 q = 16383L;
                 r.clamped++;
             }
@@ -135,7 +140,8 @@ public final class MixedEntityFixed {
             if (q < -16383L) {
                 q = -16383L;
                 r.clamped++;
-            } else if (q > 16383L) {
+            }
+            if (q > 16383L) {
                 q = 16383L;
                 r.clamped++;
             }
@@ -156,7 +162,8 @@ public final class MixedEntityFixed {
             if (q < -2048L) {
                 q = -2048L;
                 r.clamped++;
-            } else if (q > 2047L) {
+            }
+            if (q > 2047L) {
                 q = 2047L;
                 r.clamped++;
             }
@@ -167,7 +174,8 @@ public final class MixedEntityFixed {
             if (q < -2048L) {
                 q = -2048L;
                 r.clamped++;
-            } else if (q > 2047L) {
+            }
+            if (q > 2047L) {
                 q = 2047L;
                 r.clamped++;
             }
@@ -178,7 +186,8 @@ public final class MixedEntityFixed {
             if (q < -2048L) {
                 q = -2048L;
                 r.clamped++;
-            } else if (q > 2047L) {
+            }
+            if (q > 2047L) {
                 q = 2047L;
                 r.clamped++;
             }
@@ -189,7 +198,8 @@ public final class MixedEntityFixed {
             if (q < 0L) {
                 q = 0L;
                 r.clamped++;
-            } else if (q > 1000L) {
+            }
+            if (q > 1000L) {
                 q = 1000L;
                 r.clamped++;
             }

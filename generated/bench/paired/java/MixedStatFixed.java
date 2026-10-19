@@ -6,10 +6,13 @@
 
 package bench;
 
+import org.jspecify.annotations.NullMarked;
+
 // MixedStat under the FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3.
 //
 // A NESTED type: it rides INLINE inside its holder's body, at its own
 // constant size, with no length and no terminator.
+@NullMarked
 public final class MixedStatFixed {
     private MixedStatFixed() {}
 
@@ -65,7 +68,8 @@ public final class MixedStatFixed {
             if (q < -512L) {
                 q = -512L;
                 r.clamped++;
-            } else if (q > 511L) {
+            }
+            if (q > 511L) {
                 q = 511L;
                 r.clamped++;
             }
