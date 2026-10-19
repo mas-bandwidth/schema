@@ -733,6 +733,18 @@ tables-elixir-variable-fixed-class: build/conformance/manifest.txt
 
 test-elixir: tables-elixir-variable-fixed-class
 
+# THE `was` ROWS (docs/SPEC-TABLES.md §5) on the Elixir leg. TestElixirWasRowsCarried
+# renaming one enum variant, one packet-union arm and one type field, feeds the new
+# build an older writer's bytes (the engine over the old unit), and requires the new
+# build to read and re-save them byte for byte. It is a FUNCTIONAL test (it runs the
+# leg's own toolchain through elixirBinary), so it runs under
+# SCHEMA_REQUIRE_CORPUS=1 and fails on any SKIP.
+.PHONY: tables-elixir-wasrows
+tables-elixir-wasrows:
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirWasRowsCarried$$'
+test-elixir: tables-elixir-wasrows
+
 # THE FILE-MODULE STEP-ASIDE GATE (docs/SPEC.md, the Elixir backend list):
 # a schema file whose base is also a declaration's name (tables/arms/Carry.schema
 # declares union Carry) makes the packet emitter's file-scope module step aside
