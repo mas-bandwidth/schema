@@ -1951,6 +1951,17 @@ static const char * reason_name( graphdemo::TableRefuseReason reason )
         case graphdemo::count_over_extent_cap: return "count_over_extent_cap";
         case graphdemo::blob_over_size_cap: return "blob_over_size_cap";
         case graphdemo::data_cycle: return "data_cycle";
+        case graphdemo::invalid_value: return "invalid_value";
+        case graphdemo::allocation_failed: return "allocation_failed";
+        case graphdemo::wire_damaged: return "wire_damaged";
+        case graphdemo::malformed: return "malformed";
+        case graphdemo::clamped: return "clamped";
+        case graphdemo::kind_mismatch: return "kind_mismatch";
+        case graphdemo::base64_damaged: return "base64_damaged";
+        case graphdemo::base64_not_canonical: return "base64_not_canonical";
+        case graphdemo::integrity_mismatch: return "integrity_mismatch";
+        case graphdemo::non_finite: return "non_finite";
+        case graphdemo::blob_shared: return "blob_shared";
     }
     return "?";
 }

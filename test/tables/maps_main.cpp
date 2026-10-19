@@ -941,7 +941,7 @@ static void test_text()
     // and the text reads back: one instance, one text, both ways
     FleetBuilder into;
     TableReport report;
-    CHECK( FleetFromJson( into, text, written, &report ) );
+    CHECK( FleetFromJsonTolerant( into, text, written, &report ) );
     CHECK_EQ( report.unknown, 0 );
     CHECK_EQ( report.kind_mismatch, 0 );
     CHECK_EQ( report.clamped, 0 );
@@ -980,7 +980,7 @@ static void test_text()
     {
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJson( rb, rows[i].text, (int64_t) strlen( rows[i].text ), &r ) );
+        CHECK( RowFromJsonTolerant( rb, rows[i].text, (int64_t) strlen( rows[i].text ), &r ) );
         CHECK_EQ( rb.GetRoot()->entries.count, rows[i].count );
         CHECK_EQ( r.duplicate, rows[i].dup );
         CHECK_EQ( r.clamped, rows[i].clamp );
@@ -992,7 +992,7 @@ static void test_text()
         const char * t = "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( rb.GetRoot()->entries.count, 1 );
         CHECK_EQ( RowEntriesFind( rb.arena, rb.GetRoot()->entries, "aa" )->count, 0 );
     }
@@ -1003,7 +1003,7 @@ static void test_text()
         const char * t = "{\"entries\":{\"2.0\":{\"count\":7},\"1e3\":{\"count\":8},\"99999999999\":{\"count\":9}}}";
         WideRowBuilder rb;
         TableReport r;
-        CHECK( WideRowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( WideRowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( rb.GetRoot()->entries.count, 2 );
         CHECK_EQ( r.kind_mismatch, 1 );
         CHECK_EQ( r.clamped, 0 );
@@ -1015,7 +1015,7 @@ static void test_text()
         const char * t = "{\"entries\":{\"nope\":{\"count\":1}}}";
         WideRowBuilder rb;
         TableReport r;
-        CHECK( !WideRowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( !WideRowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
         CHECK( r.malformed );
     }
     {
@@ -1027,7 +1027,7 @@ static void test_text()
         const char * t = "{\"entries\":{\"a\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( rb.GetRoot()->entries.count, 2 );
         CHECK_EQ( r.duplicate, 0 );
         CHECK_EQ( r.clamped, 0 );
@@ -1038,7 +1038,7 @@ static void test_text()
         const char * t = "{\"entries\":{\"a\\u0000b\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( rb.GetRoot()->entries.count, 1 );
         CHECK_EQ( r.duplicate, 1 );
     }
@@ -1068,7 +1068,7 @@ static void test_text()
                   first, second );
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJson( eb, both, (int64_t) strlen( both ), &r ) );
+        CHECK( EdgeRowFromJsonTolerant( eb, both, (int64_t) strlen( both ), &r ) );
         CHECK_EQ( r.duplicate, 0 );
         for ( auto [ key, item ] : EdgeRowNamesEach( eb.arena, eb.GetRoot()->names ) )
         {
@@ -1091,7 +1091,7 @@ static void test_text()
                          "\"18446744073709551615\":{\"count\":3},\"-1\":{\"count\":4},\"1e30\":{\"count\":5}}}";
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( EdgeRowFromJsonTolerant( eb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( eb.GetRoot()->ids.count, 3 );
         CHECK_EQ( r.kind_mismatch, 2 );
         CHECK_EQ( r.clamped, 0 );
@@ -1113,7 +1113,7 @@ static void test_text()
         const char * t = "{\"ids\":{\"2402\":{\"count\":7},\" 2\":{\"count\":1}}}";
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( !EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( !EdgeRowFromJsonTolerant( eb, t, (int64_t) strlen( t ), &r ) );
         CHECK( r.malformed );
         CHECK_EQ( r.duplicate, 0 );
         for ( auto [ key, item ] : EdgeRowIdsEach( eb.arena, eb.GetRoot()->ids ) )
@@ -1132,7 +1132,7 @@ static void test_text()
                          "\"9007199254740993.0\":{\"count\":2}}}";
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( EdgeRowFromJsonTolerant( eb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( eb.GetRoot()->ids.count, 2 );
         CHECK_EQ( r.duplicate, 0 );
         CHECK_EQ( r.kind_mismatch, 0 );
@@ -1151,7 +1151,7 @@ static void test_text()
                          "\"18446744073709551615.0\":{\"count\":2}}}";
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( EdgeRowFromJsonTolerant( eb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( eb.GetRoot()->ids.count, 1 );
         CHECK_EQ( r.kind_mismatch, 0 );
         CHECK_EQ( r.clamped, 0 );
@@ -1178,7 +1178,7 @@ static void test_text()
         n += snprintf( t + n, sizeof( t ) - (size_t) n, "\":{\"count\":9}}}" );
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJson( eb, t, (int64_t) n, &r ) );
+        CHECK( EdgeRowFromJsonTolerant( eb, t, (int64_t) n, &r ) );
         CHECK_EQ( eb.GetRoot()->ids.count, 1 );
         CHECK_EQ( r.kind_mismatch, 1 );
         CHECK_EQ( r.duplicate, 0 );
@@ -1284,7 +1284,7 @@ static void test_text_allocation_refusals()
     budget.refuse_from = before + 1; // the arena can carve nothing more
 
     TableReport r;
-    if ( FleetFromJson( fb, text, length, &r ) )
+    if ( FleetFromJsonTolerant( fb, text, length, &r ) )
     {
         printf( "FAIL %s:%d: the arena refused and the read still called itself clean"
                 " (clamped=%d, entries=%d)\n",
@@ -1542,7 +1542,7 @@ static void test_text_values()
     // and it reads back to the same instance, so the same wire
     TextBuilder into;
     TableReport text_report;
-    CHECK( TextFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( TextFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     CHECK_EQ( text_report.clamped, 0 );
     CHECK_EQ( text_report.kind_mismatch, 0 );
@@ -1664,7 +1664,7 @@ static void test_array_values()
 
     CellsBuilder into;
     TableReport text_report;
-    CHECK( CellsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( CellsFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( CellsSave( into, from_text, sizeof( from_text ) ), n );
@@ -1747,7 +1747,7 @@ static void test_counted_array_values()
 
     RunsBuilder into;
     TableReport text_report;
-    CHECK( RunsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( RunsFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( RunsSave( into, from_text, sizeof( from_text ) ), n );
@@ -1833,7 +1833,7 @@ static void test_enum_extent_values()
 
     SlotsBuilder into;
     TableReport text_report;
-    CHECK( SlotsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( SlotsFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( SlotsSave( into, from_text, sizeof( from_text ) ), n );
@@ -1935,7 +1935,7 @@ static void test_unbounded_values()
 
     SpansBuilder into;
     TableReport text_report;
-    CHECK( SpansFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( SpansFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( SpansSave( into, from_text, sizeof( from_text ) ), n );
@@ -2020,7 +2020,7 @@ static void test_blob_values()
 
     DocsBuilder into;
     TableReport text_report;
-    CHECK( DocsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( DocsFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( DocsSave( into, from_text, sizeof( from_text ) ), n );
@@ -2102,7 +2102,7 @@ static void test_byte_blob_values()
 
     ChunksBuilder chunks_into;
     TableReport chunk_text_report;
-    CHECK( ChunksFromJson( chunks_into, chunk_json, chunk_json_bytes, &chunk_text_report ) );
+    CHECK( ChunksFromJsonTolerant( chunks_into, chunk_json, chunk_json_bytes, &chunk_text_report ) );
     CHECK( !chunk_text_report.malformed );
     static uint8_t chunk_from_text[1u << 16];
     CHECK_EQ( ChunksSave( chunks_into, chunk_from_text, sizeof( chunk_from_text ) ), cn );
@@ -2210,7 +2210,7 @@ static void test_pointer_array_values()
 
     PairsBuilder into;
     TableReport text_report;
-    CHECK( PairsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( PairsFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( PairsSave( into, from_text, sizeof( from_text ) ), n );
@@ -2316,7 +2316,7 @@ static void test_counted_pointer_array_values()
 
     CrewsBuilder into;
     TableReport text_report;
-    CHECK( CrewsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( CrewsFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( CrewsSave( into, from_text, sizeof( from_text ) ), n );
@@ -2433,7 +2433,7 @@ static void test_unbounded_pointer_array_values()
 
     TrailsBuilder into;
     TableReport text_report;
-    CHECK( TrailsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( TrailsFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( TrailsSave( into, from_text, sizeof( from_text ) ), n );

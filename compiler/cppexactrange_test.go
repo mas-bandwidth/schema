@@ -116,7 +116,7 @@ int main( void )
     Big v;
     TableReport r{};
     const char * text = "{\"n\":9007199254740994,\"m\":-9223372036854775808,\"u\":18446744073709551615}";
-    if ( !BigFromJson( v, text, (int64_t) strlen( text ), &r ) )
+    if ( !BigFromJsonTolerant( v, text, (int64_t) strlen( text ), &r ) )
     { printf( "FromJson failed\n" ); return 5; }
     if ( v.n != 9007199254740993LL || v.m != -9223372036854775807LL || v.u != 18446744073709551614ULL )
     { printf( "clamp read n=%lld m=%lld u=%llu\n",

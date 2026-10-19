@@ -172,6 +172,8 @@ struct TableTextFormNode
     char kind; // '(' list/record, '"' string, '0' number, ':' keyword, 't', 'f', 'z'
     std::string text;
     std::vector<TableTextFormNode> items;
+    int64_t start; // the token's first byte in the source document (§16.9.3)
+    int64_t end;   // one past its last byte
 };
 
 // SHARING LABELS (docs/SPEC-TABLES.md §16.9.2, §16.7; the Go oracle,
@@ -198,6 +200,65 @@ struct FormTextResolver
         return NULL;
     }
 };
+
+// A DOCUMENT'S SPANS ARE ITS SOURCE COORDINATES (docs/SPEC-TABLES.md §16.9.3):
+// a path names a value, and the span is that value's token only, so an edit
+// replaces exactly those bytes and leaves every other byte alone. The span
+// also carries the value the schema LANDED, which is the Go oracle's typed
+// canon (internal/codegen/gotable/textform.go: tableTextFormNode.canon): a
+// float32 keeps its bit pattern and an integer its raw scaled value, so a
+// semantic no-op is decided after the field's conversion, never by the token's
+// spelling or a host floating-point rendering of it.
+struct tableTextFormSpan
+{
+    int64_t start;
+    int64_t end;
+    char kind;
+    std::string canon;
+};
+
+struct tableTextFormSpans
+{
+    std::vector<std::string> paths;
+    std::vector<tableTextFormSpan> spans;
+
+    void add( const std::string & path, const TableTextFormNode & node )
+    {
+        for ( size_t i = 0; i < paths.size(); i++ )
+        {
+            if ( paths[i] == path ) { spans[i].start = node.start; spans[i].end = node.end; spans[i].kind = node.kind; return; }
+        }
+        paths.push_back( path );
+        tableTextFormSpan span;
+        span.start = node.start;
+        span.end = node.end;
+        span.kind = node.kind;
+        span.canon = std::string();
+        spans.push_back( span );
+    }
+
+    void canon( const std::string & path, const std::string & value )
+    {
+        for ( size_t i = 0; i < paths.size(); i++ ) { if ( paths[i] == path ) { spans[i].canon = value; return; } }
+    }
+
+    const tableTextFormSpan * find( const std::string & path ) const
+    {
+        for ( size_t i = 0; i < paths.size(); i++ ) { if ( paths[i] == path ) { return &spans[i]; } }
+        return NULL;
+    }
+};
+
+inline std::string tableTextFormJoin( const std::string & path, const std::string & key )
+{
+    if ( path.empty() ) { return key; }
+    return path + "." + key;
+}
+
+inline std::string tableTextFormIndex( const std::string & path, size_t i )
+{
+    return path + "[" + std::to_string( (long long) i ) + "]";
+}
 
 struct TableTextFormReader
 {
@@ -291,22 +352,24 @@ struct TableTextFormReader
         if ( depth > 128 ) { return fail( "text_limit" ); }
         gap();
         if ( i >= n ) { return fail( "text_syntax" ); }
+        const int64_t begin = i;
         const char c = s[i];
         if ( c == '(' )
         {
             i++;
             node.kind = '(';
+            node.start = begin;
             for ( ;; )
             {
                 gap();
                 if ( i >= n ) { return fail( "text_unterminated" ); }
-                if ( s[i] == ')' ) { i++; return true; }
+                if ( s[i] == ')' ) { i++; node.end = i; return true; }
                 TableTextFormNode child;
                 if ( !value( child, depth + 1 ) ) { return false; }
                 node.items.push_back( child );
             }
         }
-        if ( c == '"' ) { node.kind = '"'; return quoted( node.text ); }
+        if ( c == '"' ) { node.kind = '"'; node.start = begin; const bool ok = quoted( node.text ); node.end = i; return ok; }
         if ( c == ':' )
         {
             i++;
@@ -317,6 +380,8 @@ struct TableTextFormReader
                 if ( ( ch >= 'a' && ch <= 'z' ) || ( ch >= 'A' && ch <= 'Z' ) || ( ch >= '0' && ch <= '9' ) || ch == '_' || ch == '-' || ch == '/' || ch == '.' ) { node.text += ch; i++; }
                 else { break; }
             }
+            node.start = begin;
+            node.end = i;
             return !node.text.empty() || fail( "text_syntax" );
         }
         // an atom: number, true, false or null
@@ -329,6 +394,8 @@ struct TableTextFormReader
         }
         const std::string atom( s + start, (size_t) ( i - start ) );
         if ( atom.empty() ) { return fail( "text_syntax" ); }
+        node.start = begin;
+        node.end = i;
         const char c0 = atom[0];
         if ( ( c0 >= 'a' && c0 <= 'z' ) || ( c0 >= 'A' && c0 <= 'Z' ) )
         {
@@ -419,12 +486,82 @@ inline void TableTextFormJsonString( std::string & out, const std::string & s )
     out += '"';
 }
 
-inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, FormTextResolver & r, std::string & out, const char ** why, int64_t first, const std::string & label );
-inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, FormTextResolver & r, std::string & out, const char ** why );
+inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, FormTextResolver & r, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans, int64_t first, const std::string & label );
+inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, FormTextResolver & r, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans );
 
-inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldInfo * f, FormTextResolver & r, std::string & out, const char ** why )
+inline void tableTextFormMark( tableTextFormSpans * spans, const std::string & path, const TableTextFormNode & node )
 {
-    if ( f->optional && n.kind == 'z' ) { out += "null"; return true; }
+    if ( spans != NULL ) { spans->add( path, node ); }
+}
+
+inline void tableTextFormCanon( tableTextFormSpans * spans, const std::string & path, const std::string & value )
+{
+    if ( spans != NULL ) { spans->canon( path, value ); }
+}
+
+// A NUMBER'S TYPED VALUE IS THE FIELD'S, NOT THE HOST'S (docs/SPEC-TABLES.md
+// §16.9.3, Go internal/codegen/gotable/textform.go float and integer): the
+// float kinds canonicalise the LANDED bit pattern, so 1.00000001 in a float32
+// field is the same value as 1.0, and an integral or fixed kind canonicalises
+// the token's EXACT decimal value, so 2, 2.0 and 20e-1 are one value and a
+// dyadic fixed spelling 1.500000 is 1.5. Nothing here rounds through long
+// double, which is what made a float32 no-op look like a change.
+inline std::string tableTextFormCanonDecimal( const std::string & token )
+{
+    size_t i = 0;
+    bool negative = false;
+    if ( i < token.size() && ( token[i] == '-' || token[i] == '+' ) ) { negative = token[i] == '-'; i++; }
+    std::string digits;
+    int64_t exponent = 0;
+    while ( i < token.size() && token[i] >= '0' && token[i] <= '9' ) { digits += token[i++]; }
+    if ( i < token.size() && token[i] == '.' )
+    {
+        i++;
+        while ( i < token.size() && token[i] >= '0' && token[i] <= '9' ) { digits += token[i++]; exponent--; }
+    }
+    if ( i < token.size() && ( token[i] == 'e' || token[i] == 'E' ) )
+    {
+        i++;
+        bool exp_negative = false;
+        if ( i < token.size() && ( token[i] == '-' || token[i] == '+' ) ) { exp_negative = token[i] == '-'; i++; }
+        int64_t e = 0;
+        while ( i < token.size() && token[i] >= '0' && token[i] <= '9' ) { if ( e < 1000000 ) { e = e * 10 + ( token[i] - '0' ); } i++; }
+        exponent += exp_negative ? -e : e;
+    }
+    if ( digits.empty() ) { return token; }
+    size_t lead = 0;
+    while ( lead + 1 < digits.size() && digits[lead] == '0' ) { lead++; }
+    digits = digits.substr( lead );
+    if ( digits == "0" ) { return "0"; }
+    size_t end = digits.size();
+    while ( end > 1 && digits[end - 1] == '0' ) { end--; exponent++; }
+    digits = digits.substr( 0, end );
+    char buffer[32];
+    snprintf( buffer, sizeof( buffer ), "e%lld", (long long) exponent );
+    return std::string( negative ? "-" : "" ) + digits + buffer;
+}
+
+inline std::string tableTextFormCanonFloat( const std::string & token, bool wide )
+{
+    char buffer[32];
+    if ( !wide )
+    {
+        const float value = (float) strtod( token.c_str(), NULL );
+        uint32_t bits = 0;
+        memcpy( &bits, &value, sizeof( bits ) );
+        snprintf( buffer, sizeof( buffer ), "%llx", (unsigned long long) bits );
+        return std::string( buffer );
+    }
+    const double value = strtod( token.c_str(), NULL );
+    uint64_t bits = 0;
+    memcpy( &bits, &value, sizeof( bits ) );
+    snprintf( buffer, sizeof( buffer ), "%llx", (unsigned long long) bits );
+    return std::string( buffer );
+}
+
+inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldInfo * f, FormTextResolver & r, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans )
+{
+    if ( f->optional && n.kind == 'z' ) { out += "null"; tableTextFormCanon( spans, path, "null" ); return true; }
     if ( f->is_array && f->array_bound == 0 && strncmp( f->type_name, "map[", 4 ) == 0 )
     {
         if ( n.kind != '(' ) { *why = "text_kind_mismatch"; return false; }
@@ -435,14 +572,18 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         for ( size_t i = 0; i < n.items.size(); i++ )
         {
             const TableTextFormNode & pair = n.items[i];
+            const std::string pp = tableTextFormIndex( path, i );
+            tableTextFormMark( spans, pp, pair );
             if ( pair.kind != '(' || pair.items.size() != 2 ) { *why = "text_kind_mismatch"; return false; }
+            tableTextFormMark( spans, tableTextFormIndex( pp, 0 ), pair.items[0] );
+            tableTextFormCanon( spans, tableTextFormIndex( pp, 0 ), pair.items[0].text );
             if ( i > 0 ) { out += ','; }
             if ( key->kind == 12 ) { TableTextFormJsonString( out, pair.items[0].text ); }
             else { TableTextFormJsonString( out, pair.items[0].text ); }
             out += ':';
             for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == pair.items[0].text ) { *why = "text_duplicate_key"; return false; } }
             seen.push_back( pair.items[0].text );
-            if ( !TableTextFormField( pair.items[1], value, r, out, why ) ) { return false; }
+            if ( !TableTextFormField( pair.items[1], value, r, out, why, tableTextFormIndex( pp, 1 ), spans ) ) { return false; }
         }
         out += '}';
         return true;
@@ -462,7 +603,9 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         for ( size_t i = 0; i < n.items.size(); i++ )
         {
             if ( i > 0 ) { out += ','; }
-            if ( !TableTextFormScalar( n.items[i], &element, r, out, why ) ) { return false; }
+            const std::string ip = tableTextFormIndex( path, i );
+            tableTextFormMark( spans, ip, n.items[i] );
+            if ( !TableTextFormScalar( n.items[i], &element, r, out, why, ip, spans ) ) { return false; }
         }
         out += ']';
         return true;
@@ -487,9 +630,12 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             if ( slot < 0 ) { *why = "text_unknown_key"; return false; }
             for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == slot ) { *why = "text_duplicate_key"; return false; } }
             seen.push_back( slot );
+            const std::string sp = tableTextFormJoin( path, key.text );
+            tableTextFormMark( spans, sp, key );
+            tableTextFormMark( spans, sp, n.items[i + 1] );
             TableTextFormJsonString( out, key.text );
             out += ':';
-            if ( !TableTextFormScalar( n.items[i + 1], &element, r, out, why ) ) { return false; }
+            if ( !TableTextFormScalar( n.items[i + 1], &element, r, out, why, sp, spans ) ) { return false; }
         }
         out += '}';
         return true;
@@ -514,19 +660,22 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             // is the wrong shape, and the same arm twice is a duplicate.
             if ( !seen.empty() ) { *why = "text_kind_mismatch"; return false; }
             seen.push_back( tag );
+            const std::string ap = tableTextFormJoin( path, key.text );
+            tableTextFormMark( spans, ap, key );
+            tableTextFormMark( spans, ap, n.items[i + 1] );
             TableTextFormJsonString( out, key.text );
             out += ':';
             const TableUnionArmInfo & arm = f->arms()->arms[tag];
-            if ( arm.field != NULL ) { if ( !TableTextFormField( n.items[i + 1], arm.field, r, out, why ) ) { return false; } }
-            else if ( arm.table != NULL ) { if ( !TableTextFormRecord( n.items[i + 1], arm.table, r, out, why, 0, "" ) ) { return false; } }
-            else { out += "null"; }
+            if ( arm.field != NULL ) { if ( !TableTextFormField( n.items[i + 1], arm.field, r, out, why, ap, spans ) ) { return false; } }
+            else if ( arm.table != NULL ) { if ( !TableTextFormRecord( n.items[i + 1], arm.table, r, out, why, ap, spans, 0, "" ) ) { return false; } }
+            else { if ( n.items[i + 1].kind != 'z' ) { *why = "text_kind_mismatch"; return false; } out += "null"; tableTextFormCanon( spans, ap, "null" ); }
         }
         out += '}';
         return true;
     }
     if ( f->kind == 17 )
     {
-        if ( n.kind == 'z' ) { out += "null"; return true; }
+        if ( n.kind == 'z' ) { out += "null"; tableTextFormCanon( spans, path, "null" ); return true; }
         if ( f->table == NULL )
         {
             // A POINTER TO A SCALAR IS THE SCALAR WITHOUT A SCHEMA BOUND
@@ -545,6 +694,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
                 if ( f->array_bound != 0 && units > f->array_bound ) { *why = "text_bound"; return false; }
             }
             TableTextFormJsonString( out, n.text );
+            tableTextFormCanon( spans, path, n.text );
             return true;
         }
         // A VARIABLE ROOT'S GRAPH (docs/SPEC-TABLES.md §16.9.2, §16.7; Go
@@ -557,7 +707,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         if ( n.kind != '(' ) { *why = "text_kind_mismatch"; return false; }
         if ( n.items.empty() || !TableTextFormKeyNode( n.items[0] ) || n.items[0].text != "&node" )
         {
-            return TableTextFormRecord( n, info, r, out, why, 0, "" );
+            return TableTextFormRecord( n, info, r, out, why, path, spans, 0, "" );
         }
         if ( n.items.size() < 2 ) { *why = "text_syntax"; return false; }
         const TableTextFormNode & label = n.items[1];
@@ -585,18 +735,18 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         opened.info = info;
         opened.done = false;
         r.labels.push_back( opened );
-        if ( !TableTextFormRecord( n, info, r, out, why, 2, "\"&node\":" + key ) ) { return false; }
+        if ( !TableTextFormRecord( n, info, r, out, why, path, spans, 2, "\"&node\":" + key ) ) { return false; }
         r.labels[at].done = true; // index, not back(): a nested definition may have grown the list
         return true;
     }
-    if ( f->kind == 13 ) { return TableTextFormRecord( n, f->table, r, out, why, 0, "" ); }
+    if ( f->kind == 13 ) { return TableTextFormRecord( n, f->table, r, out, why, path, spans, 0, "" ); }
     if ( f->variant_id != NULL )
     {
         if ( !TableTextFormKeyNode( n ) ) { *why = "text_kind_mismatch"; return false; }
         for ( int64_t v = 0; v <= f->enum_max; v++ )
         {
             const char * name = f->enum_name( (uint64_t) v );
-            if ( name != NULL && n.text == name ) { TableTextFormJsonString( out, n.text ); return true; }
+            if ( name != NULL && n.text == name ) { TableTextFormJsonString( out, n.text ); tableTextFormCanon( spans, path, n.text ); return true; }
         }
         *why = "text_unknown_variant";
         return false;
@@ -608,6 +758,8 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         std::vector<std::string> seen;
         for ( size_t i = 0; i < n.items.size(); i++ )
         {
+            tableTextFormMark( spans, tableTextFormIndex( path, i ), n.items[i] );
+            tableTextFormCanon( spans, tableTextFormIndex( path, i ), n.items[i].text );
             if ( !TableTextFormKeyNode( n.items[i] ) ) { *why = "text_kind_mismatch"; return false; }
             bool found = false;
             for ( int64_t b = 0; b <= f->enum_max; b++ ) { const char * name = f->enum_name( (uint64_t) b ); if ( name != NULL && n.items[i].text == name ) { found = true; break; } }
@@ -627,12 +779,13 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         if ( f->kind == 33 ) { size = TableUtf16Length( n.text ); }
         if ( f->array_bound != 0 && size > f->array_bound ) { *why = "text_bound"; return false; }
         TableTextFormJsonString( out, n.text );
+        tableTextFormCanon( spans, path, n.text );
         return true;
     }
     if ( f->kind == 1 )
     {
-        if ( n.kind == 't' ) { out += "true"; return true; }
-        if ( n.kind == 'f' ) { out += "false"; return true; }
+        if ( n.kind == 't' ) { out += "true"; tableTextFormCanon( spans, path, "true" ); return true; }
+        if ( n.kind == 'f' ) { out += "false"; tableTextFormCanon( spans, path, "false" ); return true; }
         *why = "text_kind_mismatch";
         return false;
     }
@@ -650,13 +803,20 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         const double scaled = d * (double) ( (uint64_t) 1 << f->frac_bits );
         if ( scaled != (double) (int64_t) scaled ) { *why = "text_kind_mismatch"; return false; }
     }
+    // THE TYPED CANON (docs/SPEC-TABLES.md §16.9.3, Go
+    // internal/codegen/gotable/textform.go float and integer): a float kind
+    // answers its landed bit pattern, every integral and fixed kind the token's
+    // exact decimal value.
+    if ( f->kind == 10 || f->kind == 11 ) { tableTextFormCanon( spans, path, tableTextFormCanonFloat( n.text, f->kind == 11 ) ); }
+    else { tableTextFormCanon( spans, path, tableTextFormCanonDecimal( n.text ) ); }
     out += n.text;
     return true;
 }
 
-inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, FormTextResolver & r, std::string & out, const char ** why )
+inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInfo * f, FormTextResolver & r, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans )
 {
-    if ( f->optional && n.kind == 'z' ) { out += "null"; return true; }
+    tableTextFormMark( spans, path, n );
+    if ( f->optional && n.kind == 'z' ) { out += "null"; tableTextFormCanon( spans, path, "null" ); return true; }
     if ( f->is_array )
     {
         if ( f->kind == 6 && strcmp( f->type_name, "bytes" ) == 0 )
@@ -666,6 +826,7 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
             if ( !TableB64Valid( n.text.c_str(), (int64_t) n.text.size(), dec ) ) { *why = "text_encoding"; return false; }
             if ( f->array_bound != 0 && dec > f->array_bound ) { *why = "text_bound"; return false; }
             TableTextFormJsonString( out, n.text );
+            tableTextFormCanon( spans, path, n.text );
             return true;
         }
         if ( f->array_bound != 0 && f->key_name == NULL )
@@ -677,13 +838,15 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
             for ( size_t i = 0; i < n.items.size(); i++ )
             {
                 if ( i > 0 ) { out += ','; }
-                if ( !TableTextFormScalar( n.items[i], f, r, out, why ) ) { return false; }
+                const std::string ip = tableTextFormIndex( path, i );
+                tableTextFormMark( spans, ip, n.items[i] );
+                if ( !TableTextFormScalar( n.items[i], f, r, out, why, ip, spans ) ) { return false; }
             }
             out += ']';
             return true;
         }
     }
-    return TableTextFormScalar( n, f, r, out, why );
+    return TableTextFormScalar( n, f, r, out, why, path, spans );
 }
 
 // TableTextFormRecord resolves a list as a record's key/value pairs from pair
@@ -691,8 +854,9 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
 // already written for it, so the definition's canonical JSON opens with the
 // sharing key (docs/SPEC-TABLES.md §16.9.2, §16.7; Go internal/codegen/
 // gotable/textform.go record).
-inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, FormTextResolver & r, std::string & out, const char ** why, int64_t first, const std::string & label )
+inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, FormTextResolver & r, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans, int64_t first, const std::string & label )
 {
+    tableTextFormMark( spans, path, n );
     if ( n.kind != '(' || ( n.items.size() % 2 ) != 0 ) { *why = "text_kind_mismatch"; return false; }
     out += '{';
     out += label;
@@ -708,20 +872,22 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
         if ( found < 0 ) { *why = "text_unknown_key"; return false; }
         for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == found ) { *why = "text_duplicate_key"; return false; } }
         seen.push_back( found );
+        const std::string fp = tableTextFormJoin( path, info->fields[found].json );
+        tableTextFormMark( spans, fp, key );
         if ( wrote ) { out += ','; }
         TableTextFormJsonString( out, info->fields[found].json );
         out += ':';
-        if ( !TableTextFormField( n.items[i + 1], &info->fields[found], r, out, why ) ) { return false; }
+        if ( !TableTextFormField( n.items[i + 1], &info->fields[found], r, out, why, fp, spans ) ) { return false; }
         wrote = true;
     }
     out += '}';
     return true;
 }
 
-// TableTextFormToJson parses one strict document and writes the canonical
-// JSON of the same value (docs/SPEC-TABLES.md §16.9.1, §16.9.2). A refusal
-// names itself in *why (§16.9.4).
-inline bool TableTextFormToJson( const char * text, int64_t bytes, const TableTypeInfo * info, std::string & out, const char ** why )
+// tableTextFormParse is the read half of the document: parse, resolve and
+// write the canonical JSON, optionally recording every value's source span
+// (docs/SPEC-TABLES.md §16.9.1, §16.9.2, §16.9.3).
+inline bool tableTextFormParse( const char * text, int64_t bytes, const TableTypeInfo * info, std::string & out, const char ** why, tableTextFormSpans * spans )
 {
     *why = NULL;
     TableTextFormReader reader;
@@ -735,17 +901,123 @@ inline bool TableTextFormToJson( const char * text, int64_t bytes, const TableTy
     reader.gap();
     if ( reader.i != reader.n ) { *why = "text_syntax"; return false; }
     FormTextResolver resolver;
-    if ( !TableTextFormRecord( root, info, resolver, out, why, 0, "" ) ) { return false; }
+    if ( !TableTextFormRecord( root, info, resolver, out, why, std::string(), spans, 0, "" ) ) { return false; }
+    return true;
+}
+
+// TableTextFormToJson parses one strict document and writes the canonical
+// JSON of the same value (docs/SPEC-TABLES.md §16.9.1, §16.9.2). A refusal
+// names itself in *why (§16.9.4).
+inline bool TableTextFormToJson( const char * text, int64_t bytes, const TableTypeInfo * info, std::string & out, const char ** why )
+{
+    return tableTextFormParse( text, bytes, info, out, why, NULL );
+}
+
+// tableTextFormApply splices the edits by ORIGINAL byte span, so an earlier
+// replacement's new length never moves a later one (docs/SPEC-TABLES.md
+// §16.9.3).
+struct tableTextFormSplice
+{
+    int64_t start;
+    int64_t end;
+    std::string text;
+    std::string path;
+    std::string canon; // the ORIGINAL value's typed canon (§16.9.3)
+};
+
+inline std::string tableTextFormApply( const std::string & src, const std::vector<tableTextFormSplice> & splices )
+{
+    std::string out;
+    size_t at = 0;
+    for ( size_t i = 0; i < splices.size(); i++ )
+    {
+        out.append( src, at, (size_t) ( splices[i].start - (int64_t) at ) );
+        out += splices[i].text;
+        at = (size_t) splices[i].end;
+    }
+    out.append( src, at, std::string::npos );
+    return out;
+}
+
+// tableTextFormEditText is the document writer's edit (§16.9.3): resolve the
+// source, replace the named scalars' token spans only, re-read the result
+// under the same schema, and keep the old spelling where the edit's value is a
+// semantic no-op. A refusal leaves the old document untouched.
+inline bool tableTextFormEditText( const std::string & document, const TableTypeInfo * info, const TableTextFormEdit * edits, int64_t count, std::string & edited, std::string & json, const char ** why )
+{
+    *why = NULL;
+    tableTextFormSpans original;
+    std::string originalJson;
+    if ( !tableTextFormParse( document.data(), (int64_t) document.size(), info, originalJson, why, &original ) ) { return false; }
+    std::vector<tableTextFormSplice> splices;
+    for ( int64_t e = 0; e < count; e++ )
+    {
+        if ( edits[e].path == NULL || edits[e].text == NULL ) { *why = "text_edit_conflict"; return false; }
+        const tableTextFormSpan * span = original.find( edits[e].path );
+        if ( span == NULL || span->kind == '(' ) { *why = "text_edit_conflict"; return false; }
+        TableTextFormReader r;
+        r.s = edits[e].text;
+        r.n = (int64_t) strlen( edits[e].text );
+        r.i = 0;
+        r.why = why;
+        r.gap();
+        TableTextFormNode value;
+        if ( !r.value( value, 0 ) ) { return false; }
+        r.gap();
+        if ( value.kind == '(' || r.i != r.n ) { *why = "text_edit_conflict"; return false; }
+        tableTextFormSplice splice;
+        splice.start = span->start;
+        splice.end = span->end;
+        splice.text = edits[e].text;
+        splice.path = edits[e].path;
+        splice.canon = span->canon;
+        splices.push_back( splice );
+    }
+    for ( size_t i = 1; i < splices.size(); i++ )
+    {
+        tableTextFormSplice hold = splices[i];
+        size_t j = i;
+        while ( j > 0 && splices[j - 1].start > hold.start ) { splices[j] = splices[j - 1]; j--; }
+        splices[j] = hold;
+    }
+    for ( size_t i = 1; i < splices.size(); i++ )
+    {
+        if ( splices[i].start < splices[i - 1].end ) { *why = "text_edit_conflict"; return false; }
+    }
+    // Validate the whole edit first; a refusal leaves the old pair untouched.
+    std::string allJson;
+    const std::string all = tableTextFormApply( document, splices );
+    if ( !tableTextFormParse( all.data(), (int64_t) all.size(), info, allJson, why, NULL ) ) { return false; }
+    // A semantic no-op retains the old spelling (§16.9.3, Go
+    // internal/codegen/gotable/textform.go tableTextFormEdit): compare the
+    // LANDED value at the edited path, so a float32 that rounds the candidate
+    // back to the old bit pattern and a fixed or integer spelling of the same
+    // exact value both keep their bytes.
+    std::vector<tableTextFormSplice> kept;
+    for ( size_t i = 0; i < splices.size(); i++ )
+    {
+        std::vector<tableTextFormSplice> one( 1, splices[i] );
+        const std::string candidate = tableTextFormApply( document, one );
+        std::string candidateJson;
+        tableTextFormSpans candidateSpans;
+        if ( !tableTextFormParse( candidate.data(), (int64_t) candidate.size(), info, candidateJson, why, &candidateSpans ) ) { return false; }
+        const tableTextFormSpan * after = candidateSpans.find( splices[i].path );
+        if ( after == NULL || after->canon != splices[i].canon ) { kept.push_back( splices[i] ); }
+    }
+    edited = tableTextFormApply( document, kept );
+    if ( !tableTextFormParse( edited.data(), (int64_t) edited.size(), info, json, why, NULL ) ) { return false; }
     return true;
 }
 
 // ---- hand-editable text form: end ----
 `
 
-// emitTextFormDeclarations puts one member's §16.9 reader on the header's
-// text-form surface, beside the JSON entry points it rides on. The document
-// read is the only operation this card carries (the writer and the Graph are
-// their own cards, docs/SPEC-TABLES.md §16.9).
+// emitTextFormDeclarations puts one member's §16.9 read, write and edit on
+// the header's text-form surface (docs/SPEC-TABLES.md §16.9.3). The document
+// is the source bytes and their length: Load with a document retains those
+// bytes, Save writes them back unchanged, and Edit replaces scalar token spans
+// only. The header stays C-like — no std:: spelling — so the document is a
+// (pointer, length) pair the caller keeps alive.
 func (g *tableGen) emitTextFormDeclarations(st *ir.Struct) {
 	if st.IsMapEntry() {
 		return
@@ -756,27 +1028,73 @@ func (g *tableGen) emitTextFormDeclarations(st *ir.Struct) {
 		g.pf("// against the field kinds and landed through the JSON walk. A refusal\n")
 		g.pf("// names itself in *refusal (§16.9.4).\n")
 		g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, %sBuilder & builder, const char ** refusal );\n\n", st.Name, st.Name)
-		return
+	} else {
+		g.pf("// %sLoadTextForm reads one %s from the hand-editable text form\n", st.Name, st.Name)
+		g.pf("// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved\n")
+		g.pf("// against the field kinds and landed through the JSON walk. A refusal\n")
+		g.pf("// names itself in *refusal (§16.9.4).\n")
+		g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, %s & value, const char ** refusal );\n\n", st.Name, st.Name)
 	}
-	g.pf("// %sLoadTextForm reads one %s from the hand-editable text form\n", st.Name, st.Name)
-	g.pf("// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved\n")
-	g.pf("// against the field kinds and landed through the JSON walk. A refusal\n")
-	g.pf("// names itself in *refusal (§16.9.4).\n")
-	g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, %s & value, const char ** refusal );\n\n", st.Name, st.Name)
+	g.pf("// %sLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):\n", st.Name)
+	g.pf("// *document and *document_bytes are the caller's own text, so a read then\n")
+	g.pf("// %sSaveTextForm with no edit is the input byte for byte.\n", st.Name)
+	if g.isVar(st.Name) {
+		g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, %sBuilder & builder, const char ** refusal );\n\n", st.Name, st.Name)
+	} else {
+		g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, %s & value, const char ** refusal );\n\n", st.Name, st.Name)
+	}
+	g.pf("// %sSaveTextForm writes the document a Load or Edit returned\n", st.Name)
+	g.pf("// (docs/SPEC-TABLES.md §16.9.3): the retained bytes, so a read then a\n")
+	g.pf("// write with no edit is the input byte for byte. It answers the byte\n")
+	g.pf("// count, or -1 when capacity cannot hold the document.\n")
+	g.pf("int64_t %sSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity );\n\n", st.Name)
+	g.pf("// %sEditTextForm replaces existing scalar values (§16.9.3): each edit's\n", st.Name)
+	g.pf("// token span and nothing else, all spans taken from the original document,\n")
+	g.pf("// a semantic no-op keeping the old spelling. On success *edited_bytes is\n")
+	g.pf("// the edited document's length; a short buffer answers false with\n")
+	g.pf("// *edited_bytes set to what it needs. A refusal names itself in *refusal\n")
+	g.pf("// and leaves the old document untouched.\n")
+	if g.isVar(st.Name) {
+		g.pf("bool %sEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, %sBuilder & builder, const char ** refusal );\n\n", st.Name, st.Name)
+	} else {
+		g.pf("bool %sEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, %s & value, const char ** refusal );\n\n", st.Name, st.Name)
+	}
 }
 
 // emitTextFormDefinitions is the same member's definition: parse and resolve
 // (TableTextFormToJson, §16.9.1/§16.9.2), then land the canonical JSON with
 // the walk §16 already emits. A nonzero counter in that walk is refused, never
 // trusted (§16.9.4): every clamp, skip and last-win was refused upstream.
+// The write and edit are §16.9.3's: the retained source, and one scalar's
+// token span changed at a time.
 func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 	if st.IsMapEntry() {
 		return
+	}
+	loadDoc := func(storage string) {
+		g.pf("    if ( !%sLoadTextForm( text, bytes, %s, refusal ) ) { return false; }\n", st.Name, storage)
+		g.pf("    if ( document != NULL ) { *document = text; }\n")
+		g.pf("    if ( document_bytes != NULL ) { *document_bytes = bytes; }\n")
+		g.pf("    return true;\n}\n\n")
 	}
 	if g.isVar(st.Name) {
 		g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, %sBuilder & builder, const char ** refusal )\n{\n", st.Name, st.Name)
 		g.pf("    std::string json;\n")
 		g.pf("    if ( !TableTextFormToJson( text, bytes, %sTableType(), json, refusal ) ) { return false; }\n", st.Name)
+		g.pf("    TableReport report;\n")
+		g.pf("    if ( !%sFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
+		g.pf("    {\n        *refusal = \"text_kind_mismatch\";\n        return false;\n    }\n")
+		g.pf("    return true;\n}\n\n")
+		g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, %sBuilder & builder, const char ** refusal )\n{\n", st.Name, st.Name)
+		loadDoc("builder")
+		g.pf("int64_t %sSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )\n{\n", st.Name)
+		saveBody(g, st)
+		g.pf("bool %sEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, %sBuilder & builder, const char ** refusal )\n{\n", st.Name, st.Name)
+		g.pf("    std::string edited;\n    std::string json;\n")
+		g.pf("    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), %sTableType(), edits, count, edited, json, refusal ) ) { return false; }\n", st.Name)
+		g.pf("    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }\n")
+		g.pf("    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }\n")
+		g.pf("    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }\n")
 		g.pf("    TableReport report;\n")
 		g.pf("    if ( !%sFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
 		g.pf("    {\n        *refusal = \"text_kind_mismatch\";\n        return false;\n    }\n")
@@ -790,6 +1108,28 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 	g.pf("    if ( !%sFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
 	g.pf("    {\n        *refusal = \"text_kind_mismatch\";\n        return false;\n    }\n")
 	g.pf("    return true;\n}\n\n")
+	g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, %s & value, const char ** refusal )\n{\n", st.Name, st.Name)
+	loadDoc("value")
+	g.pf("int64_t %sSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )\n{\n", st.Name)
+	saveBody(g, st)
+	g.pf("bool %sEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, %s & value, const char ** refusal )\n{\n", st.Name, st.Name)
+	g.pf("    std::string edited;\n    std::string json;\n")
+	g.pf("    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), %sTableType(), edits, count, edited, json, refusal ) ) { return false; }\n", st.Name)
+	g.pf("    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }\n")
+	g.pf("    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }\n")
+	g.pf("    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }\n")
+	g.pf("    TableReport report;\n")
+	g.pf("    if ( !%sFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
+	g.pf("    {\n        *refusal = \"text_kind_mismatch\";\n        return false;\n    }\n")
+	g.pf("    return true;\n}\n\n")
+}
+
+// saveBody is the read-then-write identity (§16.9.3): the retained bytes and
+// nothing else, or -1 when the caller's buffer cannot hold them.
+func saveBody(g *tableGen, st *ir.Struct) {
+	g.pf("    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }\n")
+	g.pf("    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }\n")
+	g.pf("    return document_bytes;\n}\n\n")
 }
 
 // tableTextFormWalk wraps the §16.9 runtime in the package guard so a unity
@@ -798,4 +1138,50 @@ func tableTextFormWalk(pkg string) string {
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_TEXTFORM"
 	return "#ifndef " + guard + "\n#define " + guard + "\n\nnamespace " + pkg + " {\n\n" +
 		tableTextFormRuntime + "\n} // namespace " + pkg + "\n\n#endif // " + guard + "\n"
+}
+
+// tableJsonWithMapOptionalValue teaches the map half of tableJsonWalk (in
+// json.go, outside this card's PATHS) the §2.8 / §16.2 optional-value entry
+// rule: a map[K]?V entry whose value is null is present with value_present == 0
+// and writes back as null, while a non-null value sets value_present = 1.
+func tableJsonWithMapOptionalValue(walk string) string {
+	oldWrite := `        TableJsonWriteMapKey( out, entry, key );
+        out.raw( ": ", 2 );
+        if ( !TableJsonWriteField( out, entry, value, depth + 1 ) ) { return false; }`
+	newWrite := `        TableJsonWriteMapKey( out, entry, key );
+        out.raw( ": ", 2 );
+        if ( value->optional && TableJsonGetRaw( (const uint8_t *) entry + value->present_offset, 1 ) == 0 ) { out.raw( "null", 4 ); }
+        else if ( !TableJsonWriteField( out, entry, value, depth + 1 ) ) { return false; }`
+	walk = strings.Replace(walk, oldWrite, newWrite, 1)
+
+	oldRead := `        else if ( got != shape )
+        {
+            in.report->kind_mismatch++;
+            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+        }
+        else if ( !TableJsonReadField( in, entry, value, depth + 1 ) )
+        {
+            return false;
+        }`
+	newRead := `        else if ( value->optional && got == 'z' )
+        {
+            if ( !TableJsonLiteral( in, "null" ) ) { return false; }
+            if ( value->table != NULL ) { value->table->reset( (uint8_t *) entry + value->offset ); }
+            else { memset( (uint8_t *) entry + value->offset, 0, (size_t) value->elem_size ); }
+            TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 0 );
+        }
+        else if ( got != shape )
+        {
+            in.report->kind_mismatch++;
+            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+        }
+        else if ( !TableJsonReadField( in, entry, value, depth + 1 ) )
+        {
+            return false;
+        }
+        else if ( value->optional )
+        {
+            TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 1 );
+        }`
+	return strings.Replace(walk, oldRead, newRead, 1)
 }

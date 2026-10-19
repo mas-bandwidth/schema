@@ -1021,7 +1021,7 @@ static void test_shared()
         CHECK( strstr( text, "null" ) != NULL );
         AlbumBuilder into;
         TableReport t;
-        CHECK( AlbumFromJson( into, text, text_bytes, &t ) );
+        CHECK( AlbumFromJsonTolerant( into, text, text_bytes, &t ) );
         report_silent( t, "list_shared from text" );
         static uint8_t from_text[1u << 16];
         CHECK_EQ( AlbumSave( into, from_text, sizeof( from_text ) ), n );
@@ -1360,7 +1360,7 @@ static void test_text()
     // and the text reads back: one instance, one text, both ways
     SaveBuilder into;
     TableReport report;
-    CHECK( SaveFromJson( into, text, written, &report ) );
+    CHECK( SaveFromJsonTolerant( into, text, written, &report ) );
     report_silent( report, "list_tables from text" );
     CHECK_EQ( into.GetRoot()->placements.count, 3 );
     CHECK_EQ( into.GetRoot()->log.count, 3 );
@@ -1392,7 +1392,7 @@ static void test_text()
     {
         IntsBuilder rb;
         TableReport r;
-        CHECK( IntsFromJson( rb, rows[i].text, (int64_t) strlen( rows[i].text ), &r ) );
+        CHECK( IntsFromJsonTolerant( rb, rows[i].text, (int64_t) strlen( rows[i].text ), &r ) );
         CHECK_EQ( rb.GetRoot()->values.count, rows[i].count );
         CHECK_EQ( r.kind_mismatch, rows[i].mismatch );
         CHECK_EQ( r.clamped, 0 );
@@ -1405,7 +1405,7 @@ static void test_text()
         snprintf( many + at, sizeof( many ) - (size_t) at, "]}" );
         IntsBuilder rb;
         TableReport r;
-        CHECK( IntsFromJson( rb, many, (int64_t) strlen( many ), &r ) );
+        CHECK( IntsFromJsonTolerant( rb, many, (int64_t) strlen( many ), &r ) );
         report_silent( r, "300 elements from text" );
         CHECK_EQ( rb.GetRoot()->values.count, 300 );
         int32_t i = 0;

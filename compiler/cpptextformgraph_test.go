@@ -55,17 +55,10 @@ func TestCPPTextFormGraphVector(t *testing.T) {
 		}
 	}
 
-	// The corpus vector's `("west" null)` is an OPTIONAL MAP VALUE. The C++
-	// FromJson map walk at this base counts a null optional value as
-	// kind_mismatch (a FIX-CARD proposal in the report, json.go is outside
-	// this card's PATHS), so the port cannot land the vector without an
-	// out-of-PATHS change. The sharing bytes, the map key and the blob are the
-	// oracle's own; only that one map value carries 1 where it carried null.
 	input, err := os.ReadFile(filepath.Join("..", "test", "conformance", "textform", "variable.input.sexp"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	input = []byte(strings.Replace(string(input), `("west" null)`, `("west" 1)`, 1))
 	main := filepath.Join(dir, "graph.cpp")
 	if err := os.WriteFile(main, []byte(strings.ReplaceAll(cppGraphTextFormDriver, "DOCUMENT", cppEscape(string(input)))), 0600); err != nil {
 		t.Fatal(err)
@@ -93,7 +86,7 @@ func TestCPPTextFormGraphVector(t *testing.T) {
 			map[string]any{"&node": json.Number("1")},
 			nil,
 		},
-		"lookup": map[string]any{"west": json.Number("1"), "east": json.Number("2")},
+		"lookup": map[string]any{"west": nil, "east": json.Number("2")},
 		"blob":   "",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -118,7 +111,6 @@ func TestCPPTextFormGraphVector(t *testing.T) {
 		{"map-key-is-data", `(:lookup (("&node" 1)))`, ""},
 		{"triple-reference", `(:items (("&node" 3 :id 1) ("&node" 3) ("&node" 3)))`, ""},
 		{"blob-pad-bits", `(:blob "AB==")`, "text_encoding"},
-		{"short-map-pair", `(:lookup (("east")))`, "text_kind_mismatch"},
 	}
 	refMain := filepath.Join(dir, "refusals.cpp")
 	if err := os.WriteFile(refMain, []byte(cppGraphRefusalDriver(refusals)), 0600); err != nil {
@@ -177,7 +169,7 @@ table GNode
 table Graph
 {
     items []*GNode
-    lookup map[string(8)]int32
+    lookup map[string(8)]?int32
     blob *bytes
 }
 `

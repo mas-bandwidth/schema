@@ -3699,7 +3699,7 @@ static void test_json_corpus_round_trip()
         CHECK( tblv1::CfgToJson( cfg, text.data(), size ) == size );
         tblv1::Cfg back;
         tblv1::TableReport report;
-        CHECK( tblv1::CfgFromJson( back, text.data(), size, &report ) );
+        CHECK( tblv1::CfgFromJsonTolerant( back, text.data(), size, &report ) );
         uint8_t a[4096], b[4096];
         int64_t na = tblv1::CfgSave( cfg, a, sizeof( a ) );
         int64_t nb = tblv1::CfgSave( back, b, sizeof( b ) );
@@ -3716,14 +3716,14 @@ static void test_json_dialect()
 
     // trailing commas: the authoring files this section exists for carry them
     const char * trailing = "{ \"slot\": 3, \"power\": 1.5, }";
-    CHECK( tabledemo::AttachmentFromJson( value, trailing, (int64_t) strlen( trailing ), &report ) );
+    CHECK( tabledemo::AttachmentFromJsonTolerant( value, trailing, (int64_t) strlen( trailing ), &report ) );
     CHECK( value.slot == 3 && value.power == 1.5f );
     CHECK( report.unknown == 0 && !report.malformed );
 
     // ... in arrays too
     tabledemo::LoadoutConfig loadout;
     const char * array_trailing = "{ \"grades\": [ \"Gold\", \"Bronze\", ], }";
-    CHECK( tabledemo::LoadoutConfigFromJson( loadout, array_trailing, (int64_t) strlen( array_trailing ), &report ) );
+    CHECK( tabledemo::LoadoutConfigFromJsonTolerant( loadout, array_trailing, (int64_t) strlen( array_trailing ), &report ) );
     CHECK( loadout.grades_count == 2 && loadout.grades[0] == tabledemo::Grade::Gold );
 
     // THE COMMENT ROWS (docs/SPEC-TABLES.md §16.2, §16.5): comments are accepted
@@ -3741,20 +3741,20 @@ static void test_json_dialect()
             "{ \"slot\": 3, // after a value\n"
             "  /* between a key and its value */ \"power\": /* here */ 1.5, }\n"
             "// the last line, with no trailing newline";
-        CHECK( tabledemo::AttachmentFromJson( value, commented, (int64_t) strlen( commented ), &comment_report ) );
+        CHECK( tabledemo::AttachmentFromJsonTolerant( value, commented, (int64_t) strlen( commented ), &comment_report ) );
         CHECK( value.slot == 3 && value.power == 1.5f );
         CHECK( comment_report.unknown == 0 && !comment_report.malformed );
         tabledemo::Attachment stripped;
         tabledemo::TableReport stripped_report;
         const char * plain = "{ \"slot\": 3, \"power\": 1.5 }";
-        CHECK( tabledemo::AttachmentFromJson( stripped, plain, (int64_t) strlen( plain ), &stripped_report ) );
+        CHECK( tabledemo::AttachmentFromJsonTolerant( stripped, plain, (int64_t) strlen( plain ), &stripped_report ) );
         CHECK( memcmp( &stripped, &value, sizeof( value ) ) == 0 );
     }
     {
         tabledemo::LoadoutConfig commented_loadout;
         tabledemo::TableReport comment_report;
         const char * array_comment = "{ \"grades\": [ \"Gold\", /* between two elements */ \"Bronze\" ] }";
-        CHECK( tabledemo::LoadoutConfigFromJson( commented_loadout, array_comment, (int64_t) strlen( array_comment ), &comment_report ) );
+        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( commented_loadout, array_comment, (int64_t) strlen( array_comment ), &comment_report ) );
         CHECK( commented_loadout.grades_count == 2 && commented_loadout.grades[1] == tabledemo::Grade::Bronze );
         CHECK( !comment_report.malformed );
     }
@@ -3764,7 +3764,7 @@ static void test_json_dialect()
         tabledemo::RootConfig noted;
         tabledemo::TableReport text_report;
         const char * inside = "{ \"version_note\": \"// not /*\" }";
-        CHECK( tabledemo::RootConfigFromJson( noted, inside, (int64_t) strlen( inside ), &text_report ) );
+        CHECK( tabledemo::RootConfigFromJsonTolerant( noted, inside, (int64_t) strlen( inside ), &text_report ) );
         CHECK( !text_report.malformed );
         CHECK( noted.version_note_length == 9 && memcmp( noted.version_note, "// not /*", 9 ) == 0 );
         char back[4096];
@@ -3774,51 +3774,51 @@ static void test_json_dialect()
     {
         tabledemo::TableReport unclosed_report;
         const char * unclosed = "{ \"slot\": 3 /* open";
-        CHECK( !tabledemo::AttachmentFromJson( value, unclosed, (int64_t) strlen( unclosed ), &unclosed_report ) );
+        CHECK( !tabledemo::AttachmentFromJsonTolerant( value, unclosed, (int64_t) strlen( unclosed ), &unclosed_report ) );
         CHECK( unclosed_report.malformed );
         tabledemo::TableReport slash_star_slash_report;
         const char * slash_star_slash = "{ /*/ \"slot\": 3 }";
-        CHECK( !tabledemo::AttachmentFromJson( value, slash_star_slash, (int64_t) strlen( slash_star_slash ), &slash_star_slash_report ) );
+        CHECK( !tabledemo::AttachmentFromJsonTolerant( value, slash_star_slash, (int64_t) strlen( slash_star_slash ), &slash_star_slash_report ) );
         CHECK( slash_star_slash_report.malformed );
         tabledemo::TableReport lone_slash_report;
         const char * lone = "{ / \"slot\": 3 }";
-        CHECK( !tabledemo::AttachmentFromJson( value, lone, (int64_t) strlen( lone ), &lone_slash_report ) );
+        CHECK( !tabledemo::AttachmentFromJsonTolerant( value, lone, (int64_t) strlen( lone ), &lone_slash_report ) );
         CHECK( lone_slash_report.malformed );
     }
 
     // whitespace anywhere, and a text that is not an object at all
     const char * spaced = "  \t\n { \n \"slot\" \t : \n 2 \n } \n ";
-    CHECK( tabledemo::AttachmentFromJson( value, spaced, (int64_t) strlen( spaced ), &report ) );
+    CHECK( tabledemo::AttachmentFromJsonTolerant( value, spaced, (int64_t) strlen( spaced ), &report ) );
     CHECK( value.slot == 2 );
     tabledemo::TableReport not_object;
     const char * scalar = "42";
-    CHECK( !tabledemo::AttachmentFromJson( value, scalar, 2, &not_object ) );
+    CHECK( !tabledemo::AttachmentFromJsonTolerant( value, scalar, 2, &not_object ) );
     CHECK( not_object.malformed );
 
     // trailing rubbish after the one text is not one text
     tabledemo::TableReport trailing_junk;
     const char * two = "{ \"slot\": 1 } { \"slot\": 2 }";
-    CHECK( !tabledemo::AttachmentFromJson( value, two, (int64_t) strlen( two ), &trailing_junk ) );
+    CHECK( !tabledemo::AttachmentFromJsonTolerant( value, two, (int64_t) strlen( two ), &trailing_junk ) );
     CHECK( trailing_junk.malformed );
 
     // an absent key keeps the field's DECLARED default, exactly as an absent
     // field does on the wire (docs/SPEC-TABLES.md §4)
     tabledemo::WeaponConfig weapon;
     const char * partial = "{ \"homing\": true }";
-    CHECK( tabledemo::WeaponConfigFromJson( weapon, partial, (int64_t) strlen( partial ), &report ) );
+    CHECK( tabledemo::WeaponConfigFromJsonTolerant( weapon, partial, (int64_t) strlen( partial ), &report ) );
     CHECK( weapon.homing && weapon.damage == 21.0f && weapon.speed == 500.0f );
 
     // unknown keys are skipped and counted, whatever they carry
     tabledemo::TableReport unknown;
     const char * strange = "{ \"nope\": { \"deep\": [ 1, 2, { \"x\": null } ] }, \"slot\": 4, \"also\": \"text\" }";
-    CHECK( tabledemo::AttachmentFromJson( value, strange, (int64_t) strlen( strange ), &unknown ) );
+    CHECK( tabledemo::AttachmentFromJsonTolerant( value, strange, (int64_t) strlen( strange ), &unknown ) );
     CHECK( value.slot == 4 );
     CHECK( unknown.unknown == 2 && !unknown.malformed );
 
     // a duplicate key is LAST WINS, and the repeat is counted
     tabledemo::TableReport duplicate;
     const char * repeated = "{ \"slot\": 1, \"slot\": 6, \"slot\": 2 }";
-    CHECK( tabledemo::AttachmentFromJson( value, repeated, (int64_t) strlen( repeated ), &duplicate ) );
+    CHECK( tabledemo::AttachmentFromJsonTolerant( value, repeated, (int64_t) strlen( repeated ), &duplicate ) );
     CHECK( value.slot == 2 && duplicate.duplicate == 2 );
 
     // A KIND 12 PAYLOAD IS WELL-FORMED UTF-8 (docs/SPEC-TABLES.md §3), so a
@@ -3833,7 +3833,7 @@ static void test_json_dialect()
         int n = snprintf( text, sizeof( text ), "{ \"name\": \"ab\xc3\" }" );
         CHECK( n > 0 );
         tabledemo::TableReport raw;
-        CHECK( tabledemo::ProfileConfigFromJson( stray, text, n, &raw ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( stray, text, n, &raw ) );
         CHECK( stray.name_length == 5 );
         CHECK( (unsigned char) stray.name[2] == 0xef && (unsigned char) stray.name[3] == 0xbf &&
                (unsigned char) stray.name[4] == 0xbd );
@@ -3848,7 +3848,7 @@ static void test_json_dialect()
         out[(size_t) size] = 0;
         CHECK( strstr( out.data(), "\"ab\xef\xbf\xbd\"" ) != NULL );
         tabledemo::ProfileConfig back;
-        CHECK( tabledemo::ProfileConfigFromJson( back, out.data(), size, &raw ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( back, out.data(), size, &raw ) );
         CHECK( back.name_length == 5 );
         CHECK( (unsigned char) back.name[2] == 0xef && (unsigned char) back.name[3] == 0xbf &&
                (unsigned char) back.name[4] == 0xbd );
@@ -3866,20 +3866,20 @@ static void test_json_dialect()
         tabledemo::ProfileConfig lone;
         tabledemo::TableReport lone_report;
         const char * text = "{ \"name\": \"\\udc00x\\ud800\" }";
-        CHECK( tabledemo::ProfileConfigFromJson( lone, text, (int64_t) strlen( text ), &lone_report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( lone, text, (int64_t) strlen( text ), &lone_report ) );
         CHECK( lone.name_length == 7 );
         CHECK( strcmp( lone.name, "\xef\xbf\xbd" "x" "\xef\xbf\xbd" ) == 0 );
         // ... and a well-formed pair still decodes to the character it names
         tabledemo::ProfileConfig pair;
         const char * emoji = "{ \"name\": \"\\ud83d\\ude00\" }";
-        CHECK( tabledemo::ProfileConfigFromJson( pair, emoji, (int64_t) strlen( emoji ), &lone_report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( pair, emoji, (int64_t) strlen( emoji ), &lone_report ) );
         CHECK( pair.name_length == 4 && strcmp( pair.name, "\xf0\x9f\x98\x80" ) == 0 );
     }
 
     // string escapes both ways, including a surrogate pair
     tabledemo::ProfileConfig profile;
     const char * escapes = "{ \"name\": \"a\\\"b\\\\c\\nd\\u00e9e\\ud83d\\ude00\" }";
-    CHECK( tabledemo::ProfileConfigFromJson( profile, escapes, (int64_t) strlen( escapes ), &report ) );
+    CHECK( tabledemo::ProfileConfigFromJsonTolerant( profile, escapes, (int64_t) strlen( escapes ), &report ) );
     CHECK( strcmp( profile.name, "a\"b\\c\nd\xc3\xa9""e\xf0\x9f\x98\x80" ) == 0 );
 }
 
@@ -3908,7 +3908,7 @@ static void test_json_hostile_kinds()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        bool ok = tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report );
+        bool ok = tabledemo::ProfileConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report );
         if ( !ok || report.kind_mismatch != 1 || report.malformed )
         {
             printf( "FAIL json kind mismatch (%s): ok=%d mismatch=%d malformed=%d\n",
@@ -3923,7 +3923,7 @@ static void test_json_hostile_kinds()
         tabledemo::LoadoutConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"grade\": 3, \"perks\": 5 }";
-        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( report.kind_mismatch == 2 );
         CHECK( value.grade == tabledemo::Grade::Silver ); // the declared default
         CHECK( value.perks == 0 );
@@ -3935,7 +3935,7 @@ static void test_json_hostile_kinds()
         tabledemo::LoadoutConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"grade\": \"Platinum\", \"perks\": [ \"Turbo\", \"Warp\" ] }";
-        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.grade == tabledemo::Grade::None );
         CHECK( value.perks == tabledemo::Perks_Turbo );
         CHECK( report.unknown == 2 );
@@ -3947,7 +3947,7 @@ static void test_json_hostile_kinds()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"experience\": 12.5, \"badge\": 3 }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.experience == 0 && value.badge == 3 );
         CHECK( report.kind_mismatch == 1 && !report.malformed );
     }
@@ -3973,7 +3973,7 @@ static void test_json_hostile_overflow()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        CHECK( tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report ) );
         int64_t got = 0;
         if ( strncmp( row.field, "tilt", 4 ) == 0 ) { got = value.tilt; }
         else if ( strncmp( row.field, "badge", 5 ) == 0 ) { got = value.badge; }
@@ -3994,7 +3994,7 @@ static void test_json_hostile_overflow()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"epoch\": 18446744073709551615 }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.epoch == 18446744073709551615ull && report.clamped == 0 );
     }
     // ... and past THAT it saturates at the ceiling
@@ -4002,7 +4002,7 @@ static void test_json_hostile_overflow()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"epoch\": 99999999999999999999999 }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.epoch == 18446744073709551615ull && report.clamped == 1 );
     }
     // A MAGNITUDE IN THE HIGH HALF IS A MAGNITUDE, not a negative (§16.2). It
@@ -4014,7 +4014,7 @@ static void test_json_hostile_overflow()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"badge\": 18446744073709551615, \"experience\": 18446744073709551615 }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.badge == 255 );
         CHECK( value.experience == 4294967295u );
         CHECK( report.clamped == 2 && report.kind_mismatch == 0 );
@@ -4028,7 +4028,7 @@ static void test_json_hostile_overflow()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"experience\": -1e30 }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.experience == 0 );
         CHECK( report.clamped != 0 && report.kind_mismatch == 0 );
     }
@@ -4038,7 +4038,7 @@ static void test_json_hostile_overflow()
         tabledemo::WeaponConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"penetration\": 500, \"channel\": 4000 }";
-        CHECK( tabledemo::WeaponConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::WeaponConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.penetration == 10 );  // | min = 0, max = 10
         CHECK( value.channel == 63 );      // bits(6): the width IS the range
         CHECK( report.clamped == 2 );
@@ -4049,7 +4049,7 @@ static void test_json_hostile_overflow()
         tabledemo::Attachment value;
         tabledemo::TableReport report;
         const char * text = "{ \"slot\": -5 }";
-        CHECK( tabledemo::AttachmentFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::AttachmentFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.slot == 0 && report.clamped == 1 );
     }
 }
@@ -4063,7 +4063,7 @@ static void test_json_hostile_extents()
         tabledemo::TableReport report;
         // 15 ASCII bytes, then a 2-byte character that cannot fit in the 16th
         const char * text = "{ \"version_note\": \"123456789012345\xc3\xa9\" }";
-        CHECK( tabledemo::RootConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::RootConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.version_note_length == 15 );
         CHECK( strcmp( value.version_note, "123456789012345" ) == 0 );
         CHECK( report.clamped == 1 );
@@ -4073,7 +4073,7 @@ static void test_json_hostile_extents()
         tabledemo::RootConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"version_note\": \"1234567890123\xe2\x9c\x93X\" }";
-        CHECK( tabledemo::RootConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::RootConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.version_note_length == 16 );
         CHECK( report.clamped == 1 ); // the trailing X did not fit
     }
@@ -4087,7 +4087,7 @@ static void test_json_hostile_extents()
         tabledemo::RootConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"version_note\": \"123456789012\xe2\x9c\x93\xe2\x9c\x93X\" }";
-        CHECK( tabledemo::RootConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::RootConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.version_note_length == 15 );
         CHECK( strcmp( value.version_note, "123456789012\xe2\x9c\x93" ) == 0 );
         CHECK( report.clamped == 1 );
@@ -4099,7 +4099,7 @@ static void test_json_hostile_extents()
         tabledemo::LoadoutConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"grades\": [ \"Gold\", \"Gold\", \"Gold\", \"Gold\", \"Gold\", \"Gold\" ] }";
-        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.grades_count == 4 && report.clamped == 2 );
     }
     // fewer than a FIXED array's extent: the tail keeps its defaults
@@ -4107,7 +4107,7 @@ static void test_json_hostile_extents()
         tabledemo::LoadoutConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"podium\": [ \"Gold\" ] }";
-        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.podium[0] == tabledemo::Grade::Gold );
         CHECK( value.podium[1] == tabledemo::Grade::None && value.podium[2] == tabledemo::Grade::None );
         CHECK( report.clamped == 0 );
@@ -4118,7 +4118,7 @@ static void test_json_hostile_extents()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"icon\": \"AQID/w==\" }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.icon_length == 4 );
         CHECK( value.icon[0] == 0x01 && value.icon[1] == 0x02 && value.icon[2] == 0x03 && value.icon[3] == 0xff );
         CHECK( report.kind_mismatch == 0 );
@@ -4127,7 +4127,7 @@ static void test_json_hostile_extents()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"icon\": \"not base64 at all!\" }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.icon_length == 0 && report.kind_mismatch == 1 && !report.malformed );
     }
     {
@@ -4135,7 +4135,7 @@ static void test_json_hostile_extents()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"icon\": \"QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=\" }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.icon_length == 16 && report.clamped == 1 );
     }
 }
@@ -4147,24 +4147,24 @@ static void test_json_hostile_unions()
 
     // {} and an absent key are both None
     const char * empty = "{ \"effect\": {} }";
-    CHECK( tabledemo::WeaponConfigFromJson( value, empty, (int64_t) strlen( empty ), &report ) );
+    CHECK( tabledemo::WeaponConfigFromJsonTolerant( value, empty, (int64_t) strlen( empty ), &report ) );
     CHECK( value.effect.type == tabledemo::EffectType::None );
 
     // ONE key, the arm's name
     const char * one = "{ \"effect\": { \"debuff\": { \"amount\": 12 } } }";
-    CHECK( tabledemo::WeaponConfigFromJson( value, one, (int64_t) strlen( one ), &report ) );
+    CHECK( tabledemo::WeaponConfigFromJsonTolerant( value, one, (int64_t) strlen( one ), &report ) );
     CHECK( value.effect.type == tabledemo::EffectType::Debuff && value.effect.debuff.amount == 12 );
 
     // an arm this build cannot name reads as None and counts
     tabledemo::TableReport unknown_arm;
     const char * strange = "{ \"effect\": { \"hex\": { \"power\": 3 } } }";
-    CHECK( tabledemo::WeaponConfigFromJson( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
+    CHECK( tabledemo::WeaponConfigFromJsonTolerant( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
     CHECK( value.effect.type == tabledemo::EffectType::None && unknown_arm.unknown == 1 );
 
     // TWO keys is not a one-of, and the walk will not choose for you
     tabledemo::TableReport two;
     const char * both = "{ \"effect\": { \"buff\": { \"multiplier\": 2.0 }, \"debuff\": { \"amount\": 1 } } }";
-    CHECK( !tabledemo::WeaponConfigFromJson( value, both, (int64_t) strlen( both ), &two ) );
+    CHECK( !tabledemo::WeaponConfigFromJsonTolerant( value, both, (int64_t) strlen( both ), &two ) );
     CHECK( two.malformed );
 
     // a selected arm is RE-ESTABLISHED, never overlaid on the last one: a
@@ -4172,7 +4172,7 @@ static void test_json_hostile_unions()
     tabledemo::TableReport repeat;
     const char * again = "{ \"effect\": { \"buff\": { \"multiplier\": 9.0 } }, "
                          "\"effect\": { \"debuff\": { \"amount\": 4 } } }";
-    CHECK( tabledemo::WeaponConfigFromJson( value, again, (int64_t) strlen( again ), &repeat ) );
+    CHECK( tabledemo::WeaponConfigFromJsonTolerant( value, again, (int64_t) strlen( again ), &repeat ) );
     CHECK( value.effect.type == tabledemo::EffectType::Debuff && value.effect.debuff.amount == 4 );
     CHECK( repeat.duplicate == 1 );
 }
@@ -4199,7 +4199,7 @@ static void test_json_hostile_framing()
     for ( const auto & row : broken )
     {
         tabledemo::TableReport report;
-        bool ok = tabledemo::AttachmentFromJson( value, row.text, (int64_t) strlen( row.text ), &report );
+        bool ok = tabledemo::AttachmentFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report );
         if ( ok || !report.malformed )
         {
             printf( "FAIL json framing (%s): ok=%d malformed=%d\n", row.what, ok, (int) report.malformed );
@@ -4216,7 +4216,7 @@ static void test_json_hostile_framing()
         for ( int i = 0; i < 400; i++ ) { deep.push_back( ']' ); }
         deep.push_back( '}' );
         tabledemo::TableReport report;
-        CHECK( !tabledemo::AttachmentFromJson( value, deep.data(), (int64_t) deep.size(), &report ) );
+        CHECK( !tabledemo::AttachmentFromJsonTolerant( value, deep.data(), (int64_t) deep.size(), &report ) );
         CHECK( report.malformed );
     }
     // a nesting the walk CAN take is still taken
@@ -4229,19 +4229,19 @@ static void test_json_hostile_framing()
         const char * tail = ", \"slot\": 5 }";
         deep.insert( deep.end(), tail, tail + strlen( tail ) );
         tabledemo::TableReport report;
-        CHECK( tabledemo::AttachmentFromJson( value, deep.data(), (int64_t) deep.size(), &report ) );
+        CHECK( tabledemo::AttachmentFromJsonTolerant( value, deep.data(), (int64_t) deep.size(), &report ) );
         CHECK( value.slot == 5 && report.unknown == 1 && !report.malformed );
     }
 
     // a NULL text, and a negative size
     {
         tabledemo::TableReport report;
-        CHECK( !tabledemo::AttachmentFromJson( value, NULL, 0, &report ) );
+        CHECK( !tabledemo::AttachmentFromJsonTolerant( value, NULL, 0, &report ) );
         CHECK( report.malformed );
     }
     // ... and no report at all is legal: the walk owns one when the caller
     // does not
-    CHECK( !tabledemo::AttachmentFromJson( value, "{", 1, NULL ) );
+    CHECK( !tabledemo::AttachmentFromJsonTolerant( value, "{", 1, NULL ) );
 }
 
 // ---- the writer refuses what the text cannot name, exactly as measure and
@@ -4308,14 +4308,14 @@ static void test_json_guards()
     tabledemo::PatrolBuilder value;
     tabledemo::TableReport report;
     const char * after = "{ \"speed\": 2.5, \"active\": true }";
-    CHECK( tabledemo::PatrolFromJson( value, after, (int64_t) strlen( after ), &report ) );
+    CHECK( tabledemo::PatrolFromJsonTolerant( value, after, (int64_t) strlen( after ), &report ) );
     CHECK( value.GetRoot() != NULL && value.GetRoot()->active && value.GetRoot()->speed == 2.5f );
 
     // and a guarded field placed with the guard FALSE is elided on the way
     // out, so the wire never sees it either
     tabledemo::PatrolBuilder ignored;
     const char * no_guard = "{ \"speed\": 2.5 }";
-    CHECK( tabledemo::PatrolFromJson( ignored, no_guard, (int64_t) strlen( no_guard ), &report ) );
+    CHECK( tabledemo::PatrolFromJsonTolerant( ignored, no_guard, (int64_t) strlen( no_guard ), &report ) );
     CHECK( ignored.GetRoot() != NULL && !ignored.GetRoot()->active );
     uint8_t wire[512];
     int64_t wrote = tabledemo::PatrolSave( ignored, wire, sizeof( wire ) );
@@ -4340,7 +4340,7 @@ static void test_json_key_attribute()
     jsonkeys::Ship ship;
     jsonkeys::TableReport report;
     const char * text = "{ \"type\": 3, \"label\": \"Hauler\", \"hp\": 250 }";
-    CHECK( jsonkeys::ShipFromJson( ship, text, (int64_t) strlen( text ), &report ) );
+    CHECK( jsonkeys::ShipFromJsonTolerant( ship, text, (int64_t) strlen( text ), &report ) );
     CHECK( ship.ship_type == 3 && ship.hit_points == 250 );
     CHECK( strcmp( ship.name, "Hauler" ) == 0 );
     CHECK( report.unknown == 0 && !report.malformed );
@@ -4349,7 +4349,7 @@ static void test_json_key_attribute()
     jsonkeys::Ship other;
     jsonkeys::TableReport by_name;
     const char * schema_names = "{ \"ship_type\": 3, \"name\": \"Hauler\" }";
-    CHECK( jsonkeys::ShipFromJson( other, schema_names, (int64_t) strlen( schema_names ), &by_name ) );
+    CHECK( jsonkeys::ShipFromJsonTolerant( other, schema_names, (int64_t) strlen( schema_names ), &by_name ) );
     CHECK( other.ship_type == 0 && by_name.unknown == 2 );
 
     // and the text the writer produces uses the keys, round-tripping clean
@@ -4360,7 +4360,7 @@ static void test_json_key_attribute()
     CHECK( strstr( out.data(), "\"type\"" ) != NULL );
     CHECK( strstr( out.data(), "\"ship_type\"" ) == NULL );
     jsonkeys::Ship back;
-    CHECK( jsonkeys::ShipFromJson( back, out.data(), size, &report ) );
+    CHECK( jsonkeys::ShipFromJsonTolerant( back, out.data(), size, &report ) );
     uint8_t a[512], b[512];
     int64_t na = jsonkeys::ShipSave( ship, a, sizeof( a ) );
     int64_t nb = jsonkeys::ShipSave( back, b, sizeof( b ) );
@@ -4409,13 +4409,13 @@ static void test_json_fuzz_tokenizer()
         // defect
         tabledemo::TableReport report;
         tabledemo::ProfileConfig profile;
-        tabledemo::ProfileConfigFromJson( profile, work.data(), (int64_t) work.size(), &report );
+        tabledemo::ProfileConfigFromJsonTolerant( profile, work.data(), (int64_t) work.size(), &report );
         tabledemo::WeaponConfig weapon;
-        tabledemo::WeaponConfigFromJson( weapon, work.data(), (int64_t) work.size(), &report );
+        tabledemo::WeaponConfigFromJsonTolerant( weapon, work.data(), (int64_t) work.size(), &report );
         tabledemo::LoadoutConfig loadout;
-        tabledemo::LoadoutConfigFromJson( loadout, work.data(), (int64_t) work.size(), &report );
+        tabledemo::LoadoutConfigFromJsonTolerant( loadout, work.data(), (int64_t) work.size(), &report );
         tabledemo::RootConfig root;
-        tabledemo::RootConfigFromJson( root, work.data(), (int64_t) work.size(), &report );
+        tabledemo::RootConfigFromJsonTolerant( root, work.data(), (int64_t) work.size(), &report );
         // whatever came back is a legal instance: it must still save
         CHECK( tabledemo::RootConfigMeasure( root ) > 0 );
 
@@ -4425,7 +4425,7 @@ static void test_json_fuzz_tokenizer()
         // mutated text, however hostile, may reach that state.
         tabledemo::TableReport clean;
         tabledemo::ProfileConfig checked;
-        if ( tabledemo::ProfileConfigFromJson( checked, work.data(), (int64_t) work.size(), &clean ) )
+        if ( tabledemo::ProfileConfigFromJsonTolerant( checked, work.data(), (int64_t) work.size(), &clean ) )
         {
             if ( tabledemo::ProfileConfigToJsonMeasure( checked ) <= 0 )
             {
@@ -4590,7 +4590,7 @@ static void test_json_pinned_text()
         tabledemo::ProfileConfig profile;
         tabledemo::TableReport report;
         const char * unpadded = "{ \"icon\": \"AQI\" }";
-        CHECK( tabledemo::ProfileConfigFromJson( profile, unpadded, (int64_t) strlen( unpadded ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( profile, unpadded, (int64_t) strlen( unpadded ), &report ) );
         CHECK( profile.icon_length == 2 && profile.icon[0] == 1 && profile.icon[1] == 2 );
         CHECK( !report.malformed );
     }
@@ -4623,7 +4623,7 @@ static void test_json_number_grammar()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        bool ok = tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report );
+        bool ok = tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report );
         if ( ok || !report.malformed || report.clamped != 0 )
         {
             printf( "FAIL json number grammar (%s): ok=%d malformed=%d clamped=%d\n",
@@ -4648,7 +4648,7 @@ static void test_json_number_grammar()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        CHECK( tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report ) );
         if ( value.precision != row.expect || report.malformed || report.kind_mismatch != 0 )
         {
             printf( "FAIL json number accepted (%s): got %g want %g\n", row.text, value.precision, row.expect );
@@ -4676,7 +4676,7 @@ static void test_json_integral_spellings()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        CHECK( tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report ) );
         if ( (int64_t) value.experience != row.expect || report.kind_mismatch != 0 || report.malformed )
         {
             printf( "FAIL json integral spelling (%s): got %u want %lld kind=%d\n",
@@ -4696,7 +4696,7 @@ static void test_json_integral_spellings()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         if ( value.experience != 0 || report.kind_mismatch != 1 || report.malformed )
         {
             printf( "FAIL json fraction (%s): experience=%u kind=%d\n", text, value.experience, report.kind_mismatch );
@@ -4709,7 +4709,7 @@ static void test_json_integral_spellings()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"badge\": 3e2 }"; // 300 into a uint8
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.badge == 255 && report.clamped == 1 );
     }
     {
@@ -4717,7 +4717,7 @@ static void test_json_integral_spellings()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"tilt\": -2e3 }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.tilt == -128 && report.clamped == 1 );
     }
     {
@@ -4725,7 +4725,7 @@ static void test_json_integral_spellings()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"epoch\": 1e30 }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.epoch == 18446744073709551615ull && report.clamped == 1 );
     }
 }
@@ -4747,7 +4747,7 @@ static void test_json_no_infinity_reaches_storage()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        bool ok = tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report );
+        bool ok = tabledemo::ProfileConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report );
         if ( !ok || report.kind_mismatch != 1 )
         {
             printf( "FAIL json overflow (%s): ok=%d kind=%d\n", row.what, ok, report.kind_mismatch );
@@ -4767,7 +4767,7 @@ static void test_json_no_infinity_reaches_storage()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"experience\": -0, \"precision\": -0 }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.experience == 0 && report.clamped == 0 && report.kind_mismatch == 0 );
     }
     {
@@ -4775,7 +4775,7 @@ static void test_json_no_infinity_reaches_storage()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"experience\": -5 }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.experience == 0 && report.clamped == 1 );
     }
 
@@ -4784,7 +4784,7 @@ static void test_json_no_infinity_reaches_storage()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"precision\": 1e308, \"ratings\": [ 3.4e38 ] }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.precision == 1e308 && report.kind_mismatch == 0 );
         CHECK( tabledemo::ProfileConfigToJsonMeasure( value ) > 0 );
     }
@@ -4799,7 +4799,7 @@ static void test_json_duplicate_arrays_last_wins()
         tabledemo::LoadoutConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"podium\": [ \"Bronze\", \"Silver\", \"Gold\" ], \"podium\": [ \"Gold\" ] }";
-        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.podium[0] == tabledemo::Grade::Gold );
         CHECK( value.podium[1] == tabledemo::Grade::None );
         CHECK( value.podium[2] == tabledemo::Grade::None );
@@ -4808,7 +4808,7 @@ static void test_json_duplicate_arrays_last_wins()
         // and it matches the instance the SECOND occurrence alone describes
         tabledemo::LoadoutConfig once;
         const char * single = "{ \"podium\": [ \"Gold\" ] }";
-        CHECK( tabledemo::LoadoutConfigFromJson( once, single, (int64_t) strlen( single ), &report ) );
+        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( once, single, (int64_t) strlen( single ), &report ) );
         uint8_t a[1024], b[1024];
         int64_t na = tabledemo::LoadoutConfigSave( value, a, sizeof( a ) );
         int64_t nb = tabledemo::LoadoutConfigSave( once, b, sizeof( b ) );
@@ -4822,7 +4822,7 @@ static void test_json_duplicate_arrays_last_wins()
         const char * text =
             "{ \"grades\": [ \"Gold\", \"Bronze\", \"Silver\" ], \"grades\": [ \"Bronze\" ],"
             "  \"backups\": [ { \"damage\": 1 }, { \"damage\": 2 } ], \"backups\": [ { \"damage\": 3 } ] }";
-        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.grades_count == 1 && value.grades[0] == tabledemo::Grade::Bronze );
         CHECK( value.backups[0].damage == 3 );     // the SECOND occurrence's element
         CHECK( value.backups[1].damage == 21.0f ); // the DECLARED default, not 2
@@ -4833,7 +4833,7 @@ static void test_json_duplicate_arrays_last_wins()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"icon\": \"AQIDBAUG\", \"icon\": \"/w==\" }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.icon_length == 1 && value.icon[0] == 0xff );
         CHECK( report.duplicate == 1 );
     }
@@ -4842,7 +4842,7 @@ static void test_json_duplicate_arrays_last_wins()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"ratings\": [ 1.5, 2.5, 3.5, 4.5 ], \"ratings\": [ 9.5 ] }";
-        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.ratings[0] == 9.5f && value.ratings[1] == 0.0f &&
                value.ratings[2] == 0.0f && value.ratings[3] == 0.0f );
     }
@@ -4866,7 +4866,7 @@ static void test_json_null_is_a_kind_mismatch()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        bool ok = tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report );
+        bool ok = tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report );
         if ( !ok || report.kind_mismatch != 1 || report.malformed )
         {
             printf( "FAIL json null (%s): ok=%d kind=%d malformed=%d\n",
@@ -4879,7 +4879,7 @@ static void test_json_null_is_a_kind_mismatch()
         tabledemo::LoadoutConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"grades\": [ \"Gold\", null ], \"perks\": [ null ] }";
-        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.grades_count == 2 && value.grades[0] == tabledemo::Grade::Gold );
         CHECK( report.kind_mismatch == 2 );
     }
@@ -4926,7 +4926,7 @@ static void test_json_nested_guards()
         // it one, docs/SPEC-TABLES.md §2.2, §3.4)
         tabledemo::PatrolBuilder back;
         tabledemo::TableReport report;
-        CHECK( tabledemo::PatrolFromJson( back, text.data(), size, &report ) );
+        CHECK( tabledemo::PatrolFromJsonTolerant( back, text.data(), size, &report ) );
         CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
         uint8_t a[512], b[512];
         int64_t na = tabledemo::PatrolSave( &value, a, sizeof( a ) );
@@ -4947,7 +4947,7 @@ static void test_json_nested_guards()
         const char * text =
             "{ \"target_id\": 7, \"wander\": 1.5, \"note\": \"x\", \"speed\": 2.5,"
             "  \"has_target\": true, \"active\": true }";
-        CHECK( tabledemo::PatrolFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::PatrolFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         const tabledemo::Patrol * read = value.GetRoot();
         CHECK( read != NULL && read->active && read->has_target && read->target_id == 7 && read->speed == 2.5f );
 
@@ -4987,7 +4987,7 @@ static void test_json_nested_guards()
 
         tabledemo::PatrolBuilder back;
         tabledemo::TableReport report;
-        CHECK( tabledemo::PatrolFromJson( back, text.data(), size, &report ) );
+        CHECK( tabledemo::PatrolFromJsonTolerant( back, text.data(), size, &report ) );
         CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 &&
                report.clamped == 0 && report.duplicate == 0 );
         uint8_t a[512], b[512];
@@ -5078,7 +5078,7 @@ static void test_json_optional_presence()
     {
         tabledemo::TurretConfig value;
         tabledemo::TableReport report;
-        bool ok = tabledemo::TurretConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report );
+        bool ok = tabledemo::TurretConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report );
         if ( !ok || value.gunner_present != row.present || report.kind_mismatch != row.kind_mismatch )
         {
             printf( "FAIL json optional (%s): ok=%d present=%d want %d kind=%d want %d\n",
@@ -5093,7 +5093,7 @@ static void test_json_optional_presence()
         tabledemo::TurretConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"damage\": null, \"gunner\": null }";
-        CHECK( tabledemo::TurretConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::TurretConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( report.kind_mismatch == 1 );       // damage only
         CHECK( !value.gunner_present );
         CHECK( value.damage == 10.0f );           // the declared default
@@ -5104,7 +5104,7 @@ static void test_json_optional_presence()
         tabledemo::TurretConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"gunner\": { \"reaction\": 9.5 }, \"gunner\": null }";
-        CHECK( tabledemo::TurretConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::TurretConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( !value.gunner_present && report.duplicate == 1 );
         CHECK( value.gunner.reaction == 0.2f );   // back at its declared default
     }
@@ -5128,7 +5128,7 @@ static void test_json_keyed_arrays()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Green\": { \"spawn_count\": 7 } } }";
-        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.teams[tabledemo::Team::Green].spawn_count == 7 );
         CHECK( value.teams[tabledemo::Team::Red].spawn_count == 4 );  // the declared default
         CHECK( value.teams[tabledemo::Team::Blue].spawn_count == 4 );
@@ -5141,7 +5141,7 @@ static void test_json_keyed_arrays()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"None\": { \"spawn_count\": 3 }, \"Red\": { \"spawn_count\": 5 } } }";
-        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( report.unknown == 1 );
         CHECK( value.teams[tabledemo::Team::Red].spawn_count == 5 );
     }
@@ -5161,7 +5161,7 @@ static void test_json_keyed_arrays()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Violet\": { \"spawn_count\": 3 } } }";
-        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( report.unknown == 1 && !report.malformed );
     }
 
@@ -5170,7 +5170,7 @@ static void test_json_keyed_arrays()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": [ { \"spawn_count\": 3 } ] }";
-        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( report.kind_mismatch == 1 && !report.malformed );
     }
     // ... and a slot whose value is the wrong shape is counted, not coerced
@@ -5178,7 +5178,7 @@ static void test_json_keyed_arrays()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Red\": 5 } }";
-        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( report.kind_mismatch == 1 );
         CHECK( value.teams[tabledemo::Team::Red].spawn_count == 4 );
     }
@@ -5190,7 +5190,7 @@ static void test_json_keyed_arrays()
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 5 }, \"Blue\": { \"spawn_count\": 6 } },"
                             "  \"teams\": { \"Blue\": { \"spawn_count\": 7 } } }";
-        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.teams[tabledemo::Team::Blue].spawn_count == 7 );
         CHECK( value.teams[tabledemo::Team::Red].spawn_count == 4 ); // back at its default
         CHECK( report.duplicate == 1 );
@@ -5201,7 +5201,7 @@ static void test_json_keyed_arrays()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 5 }, }, }";
-        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.teams[tabledemo::Team::Red].spawn_count == 5 && !report.malformed );
     }
 
@@ -5210,7 +5210,7 @@ static void test_json_keyed_arrays()
         tabledemo::ScoreBoard value;
         tabledemo::TableReport report;
         const char * text = "{ \"per_team\": { \"Blue\": 900, \"Green\": 200000 } }";
-        CHECK( tabledemo::ScoreBoardFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ScoreBoardFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.per_team[keyed_index( tabledemo::Team::Blue )] == 900 );
         CHECK( value.per_team[keyed_index( tabledemo::Team::Green )] == 100000 ); // clamped to max
         CHECK( report.clamped == 1 );
@@ -5666,7 +5666,7 @@ static void check_graph_text_round_trip( const char * what, void ( *build )( gra
 
     graphdemo::SceneBuilder back;
     graphdemo::TableReport report;
-    if ( !graphdemo::SceneFromJson( back, text.data(), size, &report ) )
+    if ( !graphdemo::SceneFromJsonTolerant( back, text.data(), size, &report ) )
     {
         printf( "FAIL %s: FromJson refused its own text\n", what );
         failures++;
@@ -5848,7 +5848,7 @@ static void test_json_variable_class()
         {
             graphdemo::SceneBuilder builder;
             graphdemo::TableReport report;
-            bool ok = graphdemo::SceneFromJson( builder, refused[i], (int64_t) strlen( refused[i] ), &report );
+            bool ok = graphdemo::SceneFromJsonTolerant( builder, refused[i], (int64_t) strlen( refused[i] ), &report );
             if ( ok || !report.malformed )
             {
                 printf( "FAIL json variable: %s read as a text; it is malformed\n", refused[i] );
@@ -5862,11 +5862,11 @@ static void test_json_variable_class()
             tabledemo::Attachment value;
             tabledemo::TableReport report;
             const char * text = "{ \"slot\": 1, \"&node\": 1 }";
-            CHECK( !tabledemo::AttachmentFromJson( value, text, (int64_t) strlen( text ), &report ) );
+            CHECK( !tabledemo::AttachmentFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
             CHECK( report.malformed );
             tabledemo::TableReport skipped;
             const char * inside = "{ \"mystery\": { \"&node\": 1 } }";
-            CHECK( tabledemo::AttachmentFromJson( value, inside, (int64_t) strlen( inside ), &skipped ) );
+            CHECK( tabledemo::AttachmentFromJsonTolerant( value, inside, (int64_t) strlen( inside ), &skipped ) );
             CHECK( !skipped.malformed && skipped.unknown == 1 );
         }
     }
@@ -5879,7 +5879,7 @@ static void test_json_variable_class()
         graphdemo::SceneBuilder builder;
         graphdemo::TableReport report;
         const char * text = "{ \"settings\": { \"&node\": 1, \"quality\": 1 }, \"head\": { \"&node\": 1 } }";
-        CHECK( graphdemo::SceneFromJson( builder, text, (int64_t) strlen( text ), &report ) );
+        CHECK( graphdemo::SceneFromJsonTolerant( builder, text, (int64_t) strlen( text ), &report ) );
         CHECK( report.kind_mismatch == 1 && !report.malformed && report.unknown == 0 );
         CHECK( builder.GetRoot()->head.null() && !builder.GetRoot()->settings.null() );
     }
@@ -5887,7 +5887,7 @@ static void test_json_variable_class()
         graphdemo::SceneBuilder builder;
         graphdemo::TableReport report;
         const char * text = "{ \"layers\": [ {}, {}, {}, {}, { \"head\": { \"&node\": 1, \"value\": 1 } } ], \"alias\": { \"&node\": 1 } }";
-        CHECK( graphdemo::SceneFromJson( builder, text, (int64_t) strlen( text ), &report ) );
+        CHECK( graphdemo::SceneFromJsonTolerant( builder, text, (int64_t) strlen( text ), &report ) );
         CHECK( report.clamped == 1 && !report.malformed && report.unknown == 0 );
         CHECK( builder.GetRoot()->alias.null() );
     }
@@ -5896,7 +5896,7 @@ static void test_json_variable_class()
         graphdemo::SceneBuilder builder;
         graphdemo::TableReport report;
         const char * text = "{ \"head\": { \"&node\": 1, \"value\": 7 }, \"alias\": { \"&node\": 1 } }";
-        CHECK( graphdemo::SceneFromJson( builder, text, (int64_t) strlen( text ), &report ) );
+        CHECK( graphdemo::SceneFromJsonTolerant( builder, text, (int64_t) strlen( text ), &report ) );
         CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
         graphdemo::Scene * root = builder.GetRoot();
         CHECK( !root->head.null() && root->head.value == root->alias.value );
@@ -5918,7 +5918,7 @@ static void test_json_keyed_duplicate_keys()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 5 }, \"Red\": { \"spawn_count\": 9 } } }";
-        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.teams[tabledemo::Team::Red].spawn_count == 9 );
         CHECK( report.duplicate == 1 );
         CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
@@ -5929,7 +5929,7 @@ static void test_json_keyed_duplicate_keys()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Red\": {}, \"Red\": {}, \"Red\": {}, \"Blue\": {}, \"Blue\": {} } }";
-        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( report.duplicate == 3 ); // two extra Reds, one extra Blue
     }
 
@@ -5938,7 +5938,7 @@ static void test_json_keyed_duplicate_keys()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Red\": {}, \"Blue\": {}, \"Green\": {} } }";
-        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( report.duplicate == 0 );
     }
 
@@ -5948,7 +5948,7 @@ static void test_json_keyed_duplicate_keys()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Violet\": {}, \"Violet\": {}, \"None\": {}, \"None\": {} } }";
-        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( report.unknown == 4 && report.duplicate == 0 );
     }
 
@@ -5959,7 +5959,7 @@ static void test_json_keyed_duplicate_keys()
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 9, \"banner\": \"first\" },"
                             "              \"Red\": { \"spawn_count\": 2 } } }";
-        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.teams[tabledemo::Team::Red].spawn_count == 2 );
         CHECK( value.teams[tabledemo::Team::Red].banner_length == 0 ); // nothing of the first survives
         CHECK( report.duplicate == 1 );
@@ -5967,7 +5967,7 @@ static void test_json_keyed_duplicate_keys()
         // and the instance is the one the SECOND occurrence alone describes
         tabledemo::KeyedConfig once;
         const char * single = "{ \"teams\": { \"Red\": { \"spawn_count\": 2 } } }";
-        CHECK( tabledemo::KeyedConfigFromJson( once, single, (int64_t) strlen( single ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJsonTolerant( once, single, (int64_t) strlen( single ), &report ) );
         uint8_t a[4096], b[4096];
         int64_t na = tabledemo::KeyedConfigSave( value, a, sizeof( a ) );
         int64_t nb = tabledemo::KeyedConfigSave( once, b, sizeof( b ) );
@@ -5979,7 +5979,7 @@ static void test_json_keyed_duplicate_keys()
         tabledemo::ScoreBoard value;
         tabledemo::TableReport report;
         const char * text = "{ \"per_team\": { \"Blue\": 1, \"Blue\": 2, \"Blue\": 3 } }";
-        CHECK( tabledemo::ScoreBoardFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ScoreBoardFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.per_team[keyed_index( tabledemo::Team::Blue )] == 3 );
         CHECK( report.duplicate == 2 );
     }
@@ -5990,7 +5990,7 @@ static void test_json_keyed_duplicate_keys()
         tabledemo::TableReport report;
         const char * text = "{ \"hulls\": { \"Gunship\": { \"turrets\": {"
                             "   \"Missile\": { \"damage\": 1 }, \"Missile\": { \"damage\": 2 } } } } }";
-        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Missile].damage == 2.0f );
         CHECK( report.duplicate == 1 );
     }
@@ -6002,7 +6002,7 @@ static void test_json_keyed_duplicate_keys()
         tabledemo::ScoreBoard value;
         tabledemo::TableReport report;
         const char * text = "{ \"per_team\": { \"Red\": 4, \"Green\": 7, \"Green\": 9 } }";
-        CHECK( tabledemo::ScoreBoardFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ScoreBoardFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( report.duplicate == 1 );
 
         static const char * expected =
@@ -6507,7 +6507,7 @@ static void test_message_three_depths()
     CHECK( messagedemo::ToolMessageToJson( m, text.data(), size ) == size );
     messagedemo::ToolMessage from_text;
     messagedemo::TableReport text_report;
-    CHECK( messagedemo::ToolMessageFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( messagedemo::ToolMessageFromJsonTolerant( from_text, text.data(), size, &text_report ) );
     CHECK( text_report.unknown == 0 && text_report.kind_mismatch == 0 && !text_report.malformed );
     static uint8_t again[4096];
     CHECK( messagedemo::ToolMessageSave( from_text, again, sizeof( again ) ) == wrote );
@@ -6625,13 +6625,13 @@ static void test_message_json_hostile()
     // an arm this build cannot name reads as None and counts
     messagedemo::TableReport unknown_arm;
     const char * strange = "{ \"body\": { \"rename\": { \"path\": \"x\" } } }";
-    CHECK( messagedemo::ToolMessageFromJson( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
+    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
     CHECK( value.body.type == messagedemo::ToolBodyType::None && unknown_arm.unknown == 1 );
 
     // TWO keys is not a one-of
     messagedemo::TableReport two;
     const char * both = "{ \"body\": { \"open\": { \"path\": \"a\" }, \"save\": { \"path\": \"b\" } } }";
-    CHECK( !messagedemo::ToolMessageFromJson( value, both, (int64_t) strlen( both ), &two ) );
+    CHECK( !messagedemo::ToolMessageFromJsonTolerant( value, both, (int64_t) strlen( both ), &two ) );
     CHECK( two.malformed );
 
     // AN ARM VALUE OF THE WRONG SHAPE IS A KIND MISMATCH (docs/SPEC-TABLES.md
@@ -6639,14 +6639,14 @@ static void test_message_json_hostile()
     // object continues — the rule a FIELD value lives under, one key down
     messagedemo::TableReport shape;
     const char * wrong = "{ \"sequence\": 3, \"body\": { \"open\": 5 } }";
-    CHECK( messagedemo::ToolMessageFromJson( value, wrong, (int64_t) strlen( wrong ), &shape ) );
+    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, wrong, (int64_t) strlen( wrong ), &shape ) );
     CHECK( shape.kind_mismatch == 1 && !shape.malformed );
     CHECK( value.body.type == messagedemo::ToolBodyType::None && value.sequence == 3 );
 
     // an unknown arm at DEPTH THREE counts once and the rest lands
     messagedemo::TableReport deep;
     const char * nested = "{ \"body\": { \"transact\": { \"edits\": [ { \"revision\": 1, \"body\": { \"insert\": { \"text\": \"t\", \"origin\": { \"robot\": { \"id\": 4 } } } } } ] } } }";
-    CHECK( messagedemo::ToolMessageFromJson( value, nested, (int64_t) strlen( nested ), &deep ) );
+    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, nested, (int64_t) strlen( nested ), &deep ) );
     CHECK( deep.unknown == 1 && !deep.malformed );
     CHECK( value.body.type == messagedemo::ToolBodyType::Transact && value.body.transact.edits_count == 1 );
     CHECK( value.body.transact.edits[0].body.insert.origin.type == messagedemo::OriginType::None );
@@ -6694,7 +6694,7 @@ static void test_message_variable_arm()
     CHECK( streamdemo::FeedToJson( loaded, text.data(), size ) == size );
     streamdemo::FeedBuilder from_text;
     streamdemo::TableReport text_report;
-    CHECK( streamdemo::FeedFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( streamdemo::FeedFromJsonTolerant( from_text, text.data(), size, &text_report ) );
     CHECK( text_report.unknown == 0 && !text_report.malformed );
     CHECK( streamdemo::FeedSave( from_text, again, sizeof( again ) ) == wrote );
     CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
@@ -6823,7 +6823,7 @@ static void test_pointer_arrays()
     CHECK( strstr( text.data(), "null" ) != NULL );
     streamdemo::FeedBuilder from_text;
     streamdemo::TableReport text_report;
-    CHECK( streamdemo::FeedFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( streamdemo::FeedFromJsonTolerant( from_text, text.data(), size, &text_report ) );
     CHECK( text_report.unknown == 0 && text_report.kind_mismatch == 0 && !text_report.malformed );
     CHECK( streamdemo::FeedSave( from_text, again, sizeof( again ) ) == wrote );
     CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
@@ -6889,7 +6889,7 @@ static void test_payload_free_arm()
     CHECK( strstr( text, "\"ack\": null" ) != NULL );
     messagedemo::ToolMessage fromText;
     messagedemo::TableReport textReport;
-    CHECK( messagedemo::ToolMessageFromJson( fromText, text, textBytes, &textReport ) );
+    CHECK( messagedemo::ToolMessageFromJsonTolerant( fromText, text, textBytes, &textReport ) );
     CHECK( textReport.kind_mismatch == 0 && !textReport.malformed );
     CHECK( fromText.body.type == messagedemo::ToolBodyType::Ack );
 
@@ -6898,7 +6898,7 @@ static void test_payload_free_arm()
     messagedemo::ToolMessage shaped;
     messagedemo::TableReport shapeReport;
     const char * wrong = "{ \"sequence\": 9, \"body\": { \"ack\": 5 } }";
-    CHECK( messagedemo::ToolMessageFromJson( shaped, wrong, (int64_t) strlen( wrong ), &shapeReport ) );
+    CHECK( messagedemo::ToolMessageFromJsonTolerant( shaped, wrong, (int64_t) strlen( wrong ), &shapeReport ) );
     CHECK( shapeReport.kind_mismatch == 1 && !shapeReport.malformed );
     CHECK( shaped.body.type == messagedemo::ToolBodyType::None && shaped.sequence == 9 );
 }
@@ -7746,7 +7746,7 @@ static void test_union_arrays()
     CHECK( strstr( text.data(), "{}" ) != NULL );
     messagedemo::ToolMessage from_text;
     messagedemo::TableReport text_report;
-    CHECK( messagedemo::ToolMessageFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( messagedemo::ToolMessageFromJsonTolerant( from_text, text.data(), size, &text_report ) );
     CHECK( text_report.unknown == 0 && text_report.kind_mismatch == 0 && !text_report.malformed );
     check_message_batch( from_text );
     CHECK( messagedemo::ToolMessageSave( from_text, again, sizeof( again ) ) == wrote );
@@ -7879,19 +7879,19 @@ static void test_union_arrays_json_hostile()
     // an element that is not an object is the wire's kind mismatch
     messagedemo::TableReport shape;
     const char * number = "{ \"history\": [ 5 ] }";
-    CHECK( messagedemo::ToolMessageFromJson( value, number, (int64_t) strlen( number ), &shape ) );
+    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, number, (int64_t) strlen( number ), &shape ) );
     CHECK( shape.kind_mismatch == 1 && !shape.malformed );
 
     // TWO keys in an element is not a one-of
     messagedemo::TableReport two;
     const char * both = "{ \"history\": [ { \"open\": { \"path\": \"a\" }, \"save\": { \"path\": \"b\" } } ] }";
-    CHECK( !messagedemo::ToolMessageFromJson( value, both, (int64_t) strlen( both ), &two ) );
+    CHECK( !messagedemo::ToolMessageFromJsonTolerant( value, both, (int64_t) strlen( both ), &two ) );
     CHECK( two.malformed );
 
     // an arm no build declares reads as a None element and counts
     messagedemo::TableReport unknown_arm;
     const char * strange = "{ \"history\": [ { \"rename\": { \"path\": \"x\" } } ] }";
-    CHECK( messagedemo::ToolMessageFromJson( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
+    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
     CHECK( unknown_arm.unknown == 1 && !unknown_arm.malformed );
     CHECK( value.history_count == 1 && value.history[0].type == messagedemo::ToolBodyType::None );
 }
@@ -7991,7 +7991,7 @@ static void test_optional_arrays()
     CHECK( strstr( text.data(), "\"checkpoints\"" ) != NULL );
     messagedemo::ToolMessage from_text;
     messagedemo::TableReport text_report;
-    CHECK( messagedemo::ToolMessageFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( messagedemo::ToolMessageFromJsonTolerant( from_text, text.data(), size, &text_report ) );
     CHECK( text_report.unknown == 0 && text_report.kind_mismatch == 0 && !text_report.malformed );
     check_message_trace( from_text );
     CHECK( messagedemo::ToolMessageSave( from_text, again, sizeof( again ) ) == wrote );
@@ -8217,14 +8217,14 @@ static void test_optional_arrays_json_hostile()
     messagedemo::ToolMessage value;
     messagedemo::TableReport shape;
     const char * number = "{ \"trace\": 5 }";
-    CHECK( messagedemo::ToolMessageFromJson( value, number, (int64_t) strlen( number ), &shape ) );
+    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, number, (int64_t) strlen( number ), &shape ) );
     CHECK( shape.kind_mismatch == 1 && !shape.malformed );
     CHECK( value.trace_present && value.trace_count == 0 );
 
     // null is the absence, and the one key that resets
     messagedemo::TableReport null_report;
     const char * nulled = "{ \"trace\": null }";
-    CHECK( messagedemo::ToolMessageFromJson( value, nulled, (int64_t) strlen( nulled ), &null_report ) );
+    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, nulled, (int64_t) strlen( nulled ), &null_report ) );
     CHECK( null_report.unknown == 0 && null_report.kind_mismatch == 0 && !null_report.malformed );
     CHECK( !value.trace_present && value.trace_count == 0 );
 
@@ -8232,7 +8232,7 @@ static void test_optional_arrays_json_hostile()
     // array is present with the element at its defaults
     messagedemo::TableReport elem;
     const char * bad_elem = "{ \"trace\": [ 5 ] }";
-    CHECK( messagedemo::ToolMessageFromJson( value, bad_elem, (int64_t) strlen( bad_elem ), &elem ) );
+    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, bad_elem, (int64_t) strlen( bad_elem ), &elem ) );
     CHECK( elem.kind_mismatch == 1 && !elem.malformed );
     CHECK( value.trace_present && value.trace_count == 1 && value.trace[0].path_length == 0 );
 }
@@ -8698,7 +8698,7 @@ static void test_blob_json()
     // one text, one wire: back through FromJson to the same bytes
     blobdemo::CatalogBuilder from_text;
     blobdemo::TableReport report;
-    CHECK( blobdemo::CatalogFromJson( from_text, text.data(), size, &report ) );
+    CHECK( blobdemo::CatalogFromJsonTolerant( from_text, text.data(), size, &report ) );
     CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
     static uint8_t again[8192];
     CHECK( blobdemo::CatalogSave( from_text, again, sizeof( again ) ) == wrote );
@@ -8709,7 +8709,7 @@ static void test_blob_json()
         const char * two = "{ \"thumb\": \"\", \"note\": \"\", \"head\": null }";
         blobdemo::CatalogBuilder b;
         blobdemo::TableReport r;
-        CHECK( blobdemo::CatalogFromJson( b, two, (int64_t) strlen( two ), &r ) );
+        CHECK( blobdemo::CatalogFromJsonTolerant( b, two, (int64_t) strlen( two ), &r ) );
         CHECK( r.kind_mismatch == 0 && !r.malformed );
         blobdemo::TableArenaCtx ctx = { &b.arena };
         blobdemo::TableBytesView tv = blobdemo::TableBytesAt( ctx, b.GetRoot()->thumb );
@@ -8737,7 +8737,7 @@ static void test_blob_json()
         std::string input = std::string( "{\"thumb\":\"" ) + row.first + "\"}";
         blobdemo::CatalogBuilder b;
         blobdemo::TableReport r;
-        CHECK( blobdemo::CatalogFromJson( b, input.data(), (int64_t) input.size(), &r ) );
+        CHECK( blobdemo::CatalogFromJsonTolerant( b, input.data(), (int64_t) input.size(), &r ) );
         CHECK( r.kind_mismatch == 0 && !r.malformed );
         blobdemo::TableArenaCtx ctx = { &b.arena };
         blobdemo::TableBytesView bytes = blobdemo::TableBytesAt( ctx, b.GetRoot()->thumb );
@@ -8751,7 +8751,7 @@ static void test_blob_json()
         std::string input = std::string( "{\"thumb\":\"" ) + invalid + "\"}";
         blobdemo::CatalogBuilder b;
         blobdemo::TableReport r;
-        bool ok = blobdemo::CatalogFromJson( b, input.data(), (int64_t) input.size(), &r );
+        bool ok = blobdemo::CatalogFromJsonTolerant( b, input.data(), (int64_t) input.size(), &r );
         CHECK( ok && !r.malformed && r.kind_mismatch == 1 );
     }
     // Invalid bytes, including the alphabet string's NUL terminator,
@@ -8761,7 +8761,7 @@ static void test_blob_json()
         std::string input = std::string( "{\"thumb\":\"QQ" ) + (char) c + "AA\"}";
         blobdemo::CatalogBuilder b;
         blobdemo::TableReport r;
-        bool ok = blobdemo::CatalogFromJson( b, input.data(), (int64_t) input.size(), &r );
+        bool ok = blobdemo::CatalogFromJsonTolerant( b, input.data(), (int64_t) input.size(), &r );
         CHECK( ok && !r.malformed && r.kind_mismatch == 1 );
     }
 }

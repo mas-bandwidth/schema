@@ -730,7 +730,11 @@ namespace ` + pkg + ` {
 // caller meeting one of these has been refused a MESSAGE on a connection,
 // which is a different recovery with a different owner than a file a header
 // match turned down.
-enum TableMessageReason
+// THE UNDERLYING TYPE HOLDS THE FIXED FORM'S PRIVATE HIGH RANGE (§3.4):
+// TableFixedReason's names sit at 0x40000000.. and a constexpr cast into an
+// unscoped enum with no fixed underlying type must land inside the enum's own
+// range, which clang 21 enforces.
+enum TableMessageReason : int32_t
 {
     newer_form,           // a FORM BYTE this reader does not carry (§3)
     // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
@@ -775,7 +779,15 @@ enum TableMessageReason
     // used units that are not paired UTF-16 — refuses the read BY NAME, the
     // verdict the packet reader gives, this form having no L to continue past.
     // Nothing is decoded and no counter moves.
-    text_ill_formed
+    text_ill_formed,
+    // A FIXED-FORM COUNT OR LENGTH PAST THE PLAN'S BOUND (docs/SPEC-TABLES.md
+    // §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5): a count past the PLAN's bound
+    // refuses count_over_bound and a text length past it length_over_bound,
+    // checked before any destination byte is written, the count or length
+    // lying about the wire rather than about the slack. It never clamps.
+    // Nothing is decoded and no counter moves.
+    count_over_bound,
+    length_over_bound
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -816,6 +828,10 @@ struct TableReport
     // was not refused has no reason, and this member is the one the caller
     // must not look at then (docs/SPEC-TABLES.md §3.3).
     TableMessageReason reason = newer_form;
+    // WHOLE-FILE DAMAGE can have a named cause even when it is not a refusal:
+    // integrity_mismatch is §2.14's checked-trailer damage. Read this member
+    // when malformed is true; the reason above remains the message refusal name.
+    TableRefuseReason damage_reason = ok;
     // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
     // the reason duplicate is: a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
@@ -1548,7 +1564,7 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
-` + tableFixedRuntime + fixed128 + `
+` + tableFixedRuntime + fixed128 + tableIntegrityRuntime + `
 } // namespace ` + pkg + `
 
 #endif // ` + guard + `
@@ -1738,6 +1754,15 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 				g.emitJsonDeclarations(st)
 			}
 			g.pf("// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----\n\n")
+			// One document edit record for the whole package: every file's
+			// header is includable together and they all share this namespace.
+			editGuard := strings.ToUpper(u.Package) + "_SCHEMA_TABLE_TEXTFORM_EDIT"
+			g.pf("#ifndef %s\n#define %s\n", editGuard, editGuard)
+			g.pf("// TableTextFormEdit replaces one existing scalar value (§16.9.3): path\n")
+			g.pf("// names it as \"field\", \"field[2]\" or \"field.child\", and text is its\n")
+			g.pf("// replacement spelling, one token of this form.\n")
+			g.pf("struct TableTextFormEdit\n{\n    const char * path;\n    const char * text;\n};\n")
+			g.pf("#endif // %s\n\n", editGuard)
 			for _, st := range members {
 				g.emitTextFormDeclarations(st)
 			}
@@ -1761,7 +1786,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// The C spellings, as serialize.h uses them: <stdint.h>, not <cstdint>.
 		// The relocatability and standard-layout asserts read the COMPILER
 		// INTRINSICS, so <type_traits> — 124 headers on its own — is not here.
-		h.WriteString("#pragma once\n\n#include <stdint.h>\n#include <string.h> // the prefill's scalar-array fills\n#include <stddef.h> // offsetof, for the reflection descriptors\n")
+		h.WriteString("#pragma once\n\n#include <stdint.h>\n#include <string.h> // the prefill's scalar-array fills\n#include <stddef.h> // offsetof, for the reflection descriptors\n#include <string> // the hand-editable text form's document (§16.9.3)\n")
 		// THE FIXED FORM'S WRITE-SIDE BOUNDS need schema_assert and nothing
 		// else (docs/SPEC-TABLES.md §3.4): a text field's used length and a
 		// counted array's live count, checked debug-only, with no abort behind
@@ -1889,7 +1914,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			c.WriteString("#include <string> // the hand-editable text form (§16.9)\n")
 			c.WriteString("#include <vector> // the hand-editable text form (§16.9)\n")
 			c.WriteString("#include <string.h> // the hand-editable text form (§16.9)\n\n")
-			c.WriteString(tableJsonWalk(u.Package, anyVariable, anyMap, anyList))
+			c.WriteString(tableJsonWithMapOptionalValue(tableJsonWalk(u.Package, anyVariable, anyMap, anyList)))
 			c.WriteString(tableTextFormWalk(u.Package))
 			fmt.Fprintf(&c, "\nnamespace %s {\n\n", u.Package)
 			cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
