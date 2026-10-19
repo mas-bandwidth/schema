@@ -4454,6 +4454,12 @@ inline bool FixedTableLoadMessages( FixedTable * values, int64_t * count, const 
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !FixedTableLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( to->refuse_reason == non_finite ) // THE PLAIN NAME IS STRICT (docs/SPEC-TABLES.md §6.5, §3.3): a non-finite plain float refuses, and a refused batch keeps no value
+        {
+            for ( int64_t j = 0; j <= i; j++ ) { FixedTableReset( values[j] ); }
+            *count = 0;
+            return false;
+        }
         br.remaining--;
     }
     *count = bodies;

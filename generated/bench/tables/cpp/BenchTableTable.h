@@ -5822,6 +5822,12 @@ inline bool TableEntityLoadMessages( TableEntity * values, int64_t * count, cons
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !TableEntityLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( to->refuse_reason == non_finite ) // THE PLAIN NAME IS STRICT (docs/SPEC-TABLES.md §6.5, §3.3): a non-finite plain float refuses, and a refused batch keeps no value
+        {
+            for ( int64_t j = 0; j <= i; j++ ) { TableEntityReset( values[j] ); }
+            *count = 0;
+            return false;
+        }
         br.remaining--;
     }
     *count = bodies;
@@ -6245,6 +6251,12 @@ inline bool TableStatLoadMessages( TableStat * values, int64_t * count, const Ta
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !TableStatLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( to->refuse_reason == non_finite ) // THE PLAIN NAME IS STRICT (docs/SPEC-TABLES.md §6.5, §3.3): a non-finite plain float refuses, and a refused batch keeps no value
+        {
+            for ( int64_t j = 0; j <= i; j++ ) { TableStatReset( values[j] ); }
+            *count = 0;
+            return false;
+        }
         br.remaining--;
     }
     *count = bodies;
@@ -6360,8 +6372,8 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
     if ( value.aim_x != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ) ) + 1 + 4; } // aim_x
     if ( value.aim_y != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ) ) + 1 + 4; } // aim_y
     if ( value.aim_z != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 70, 0xdbaf79e5e2429363ull ) ) + 1 + 4; } // aim_z
-    if ( value.recoil != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 50, 0x9cef31fff7e2e457ull ) ) + 1 + 4; } // recoil
-    if ( value.drift != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x5ab3f9c9341f6c04ull ) ) + 1 + 8; } // drift
+    if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) ) { bytes += TableLebBytes( ids.ref_at( 50, 0x9cef31fff7e2e457ull ) ) + 1 + 4; } // recoil
+    if ( table_double_to_bits( value.drift ) != table_double_to_bits( 0.0 ) ) { bytes += TableLebBytes( ids.ref_at( 27, 0x5ab3f9c9341f6c04ull ) ) + 1 + 8; } // drift
     if ( value.wide_key != 0 ) { bytes += TableLebBytes( ids.ref_at( 55, 0xa3348580461faf16ull ) ) + 1 + 8; } // wide_key
     if ( value.flux != 0 ) { bytes += TableLebBytes( ids.ref_at( 68, 0xd61bdd7908af2642ull ) ) + 1 + 8; } // flux
     if ( value.ping != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 62, 0xbf30e00dc53307a9ull ) ) + 1 + 4; } // ping
@@ -6585,12 +6597,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
         w.header( ids.ref_at( 70, 0xdbaf79e5e2429363ull ), 10 ); // aim_z
         w.put32( table_float_to_bits( value.aim_z ) );
     }
-    if ( value.recoil != 0.0f )
+    if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) )
     {
         w.header( ids.ref_at( 50, 0x9cef31fff7e2e457ull ), 10 ); // recoil
         w.put32( table_float_to_bits( value.recoil ) );
     }
-    if ( value.drift != 0.0 )
+    if ( table_double_to_bits( value.drift ) != table_double_to_bits( 0.0 ) )
     {
         w.header( ids.ref_at( 27, 0x5ab3f9c9341f6c04ull ), 11 ); // drift
         w.put64( table_double_to_bits( value.drift ) );
@@ -7320,6 +7332,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 value.recoil = table_bits_to_float( r.get32() );
+                if ( value.recoil != value.recoil || value.recoil - value.recoil != 0 ) { if ( r.report->refuse_reason == ok ) { r.report->refuse_reason = non_finite; r.report->refused = true; } } // §3.3: a plain float's NaN or infinity rides and is named
                 break;
             }
             case 0x5ab3f9c9341f6c04ull: // drift
@@ -7343,6 +7356,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 }
                 if ( !r.has( 8 ) ) { r.report->malformed = true; return false; }
                 value.drift = table_bits_to_double( r.get64() );
+                if ( value.drift != value.drift || value.drift - value.drift != 0 ) { if ( r.report->refuse_reason == ok ) { r.report->refuse_reason = non_finite; r.report->refused = true; } } // §3.3: a plain float's NaN or infinity rides and is named
                 break;
             }
             case 0xa3348580461faf16ull: // wide_key
@@ -7774,12 +7788,12 @@ inline int64_t TableMixedMeasureMessageBody( int64_t at, const TableMixed & valu
         bits += kTableMessageRefBitsHere;
         bits += 8;
     }
-    if ( value.recoil != 0.0f )
+    if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
     }
-    if ( value.drift != 0.0 )
+    if ( table_double_to_bits( value.drift ) != table_double_to_bits( 0.0 ) )
     {
         bits += kTableMessageRefBitsHere;
         bits += 64;
@@ -7969,12 +7983,12 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
         w.put( 39, kTableMessageRefBitsHere );
         w.put( (uint64_t) TableMessageQuantize( float( value.aim_z ), -1.0f, 2.0f, 200u ), 8 );
     }
-    if ( value.recoil != 0.0f )
+    if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) )
     {
         w.put( 40, kTableMessageRefBitsHere );
         w.put( (uint64_t) table_float_to_bits( value.recoil ), 32 );
     }
-    if ( value.drift != 0.0 )
+    if ( table_double_to_bits( value.drift ) != table_double_to_bits( 0.0 ) )
     {
         w.put( 41, kTableMessageRefBitsHere );
         w.put( table_double_to_bits( value.drift ), 64 );
@@ -8794,6 +8808,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     value.recoil = decoded_f;
                 }
+                if ( value.recoil != value.recoil || value.recoil - value.recoil != 0 ) { if ( report->refuse_reason == ok ) { report->refuse_reason = non_finite; report->refused = true; } } // §3.3: a plain float's NaN or infinity rides and is named
                 break;
             }
             case 0x5ab3f9c9341f6c04ull: // drift
@@ -8820,6 +8835,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 value.drift = TableWidenF32( (uint32_t) raw );
                             }
                         }
+                        if ( value.drift != value.drift || value.drift - value.drift != 0 ) { if ( report->refuse_reason == ok ) { report->refuse_reason = non_finite; report->refused = true; } } // §3.3: a plain float's NaN or infinity rides and is named
                         report->widened++;
                         break;
                     }
@@ -8828,6 +8844,7 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     break;
                 }
                 { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } value.drift = table_bits_to_double( raw ); }
+                if ( value.drift != value.drift || value.drift - value.drift != 0 ) { if ( report->refuse_reason == ok ) { report->refuse_reason = non_finite; report->refused = true; } } // §3.3: a plain float's NaN or infinity rides and is named
                 break;
             }
             case 0xa3348580461faf16ull: // wide_key
@@ -9177,6 +9194,12 @@ inline bool TableMixedLoadMessages( TableMixed * values, int64_t * count, const 
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !TableMixedLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( to->refuse_reason == non_finite ) // THE PLAIN NAME IS STRICT (docs/SPEC-TABLES.md §6.5, §3.3): a non-finite plain float refuses, and a refused batch keeps no value
+        {
+            for ( int64_t j = 0; j <= i; j++ ) { TableMixedReset( values[j] ); }
+            *count = 0;
+            return false;
+        }
         br.remaining--;
     }
     *count = bodies;
@@ -9770,6 +9793,12 @@ inline bool TableHitEventLoadMessages( TableHitEvent * values, int64_t * count, 
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !TableHitEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( to->refuse_reason == non_finite ) // THE PLAIN NAME IS STRICT (docs/SPEC-TABLES.md §6.5, §3.3): a non-finite plain float refuses, and a refused batch keeps no value
+        {
+            for ( int64_t j = 0; j <= i; j++ ) { TableHitEventReset( values[j] ); }
+            *count = 0;
+            return false;
+        }
         br.remaining--;
     }
     *count = bodies;
@@ -10223,6 +10252,12 @@ inline bool TableChatEventLoadMessages( TableChatEvent * values, int64_t * count
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !TableChatEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( to->refuse_reason == non_finite ) // THE PLAIN NAME IS STRICT (docs/SPEC-TABLES.md §6.5, §3.3): a non-finite plain float refuses, and a refused batch keeps no value
+        {
+            for ( int64_t j = 0; j <= i; j++ ) { TableChatEventReset( values[j] ); }
+            *count = 0;
+            return false;
+        }
         br.remaining--;
     }
     *count = bodies;
@@ -10676,6 +10711,12 @@ inline bool TablePickupEventLoadMessages( TablePickupEvent * values, int64_t * c
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !TablePickupEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( to->refuse_reason == non_finite ) // THE PLAIN NAME IS STRICT (docs/SPEC-TABLES.md §6.5, §3.3): a non-finite plain float refuses, and a refused batch keeps no value
+        {
+            for ( int64_t j = 0; j <= i; j++ ) { TablePickupEventReset( values[j] ); }
+            *count = 0;
+            return false;
+        }
         br.remaining--;
     }
     *count = bodies;

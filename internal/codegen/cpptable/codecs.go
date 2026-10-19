@@ -186,6 +186,25 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 	return "0"
 }
 
+// elideDiffers is the default-elision test a writer applies to one field: the
+// field rides when it differs from its default. A PLAIN float compares BIT
+// PATTERNS, not values (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL
+// VALUES TAKE ONE RULE"): under ==, -0 equals +0 and would be elided and read
+// back as +0, so the wire and the text of one value would disagree. A
+// compressed float keeps ==, because its -0 IS +0 by §3.3's compressed-float
+// rule. The Go oracle is internal/codegen/gotable/write.go elideDiffers.
+func (g *tableGen) elideDiffers(f *ir.Field, lhs string) string {
+	if !f.HasFloatRange {
+		switch f.Type.Kind {
+		case ir.TFloat32:
+			return "table_float_to_bits( " + lhs + " ) != table_float_to_bits( " + g.fieldDefaultExpr(f) + " )"
+		case ir.TFloat64:
+			return "table_double_to_bits( " + lhs + " ) != table_double_to_bits( " + g.fieldDefaultExpr(f) + " )"
+		}
+	}
+	return lhs + " != " + g.fieldDefaultExpr(f)
+}
+
 // ---- storage (table declarations only; closure types come from <Base>.h) ----
 
 func (g *tableGen) emitTableStruct(st *ir.Struct) {
@@ -1054,8 +1073,8 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 	case f.Array == ir.ArrayFixed:
 		g.pf("    {\n")
 		g.pf("        bool all_default_%s = true;\n", f.Name)
-		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i] != %s ) { all_default_%s = false; break; } }\n",
-			f.ArrayBound, f.Name, g.fieldDefaultExpr(f), f.Name)
+		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( %s ) { all_default_%s = false; break; } }\n",
+			f.ArrayBound, g.elideDiffers(f, "value."+f.Name+"[i]"), f.Name)
 		g.pf("        if ( !all_default_%s )\n        {\n", f.Name)
 		g.pf("            const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("            int64_t body_%s = 0;\n", f.Name)
@@ -1088,7 +1107,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return -1; }\n", f.Name, f.Name)
 		g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + TableLebBytes( variant_%s ); // %s: the variant's reference\n    }\n", f.Name, f.Name, f.Name)
 	default:
-		g.pf("    if ( value.%s != %s ) { bytes += %s + %d; } // %s\n", f.Name, g.fieldDefaultExpr(f), g.hdrBytes(id), width, f.Name)
+		g.pf("    if ( %s ) { bytes += %s + %d; } // %s\n", g.elideDiffers(f, "value."+f.Name), g.hdrBytes(id), width, f.Name)
 	}
 }
 
@@ -1151,7 +1170,7 @@ func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) 
 			g.pf("%sif ( %s == %s ) { continue; } // a default slot elides\n", ind, expr, g.fieldDefaultExpr(f))
 			g.pf("%sif ( !TableEnumNamed( %s ) ) { %s } // no variant names this value\n", ind, expr, onBad)
 		default:
-			g.pf("%sif ( %s == %s ) { continue; } // a default slot elides\n", ind, expr, g.fieldDefaultExpr(f))
+			g.pf("%sif ( !( %s ) ) { continue; } // a default slot elides\n", ind, g.elideDiffers(f, expr))
 		}
 	}
 	if kind == tkTable {
@@ -1541,8 +1560,8 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		// (parity with the reader's prefill)
 		g.pf("    {\n")
 		g.pf("        bool all_default_%s = true;\n", f.Name)
-		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i] != %s ) { all_default_%s = false; break; } }\n",
-			f.ArrayBound, f.Name, g.fieldDefaultExpr(f), f.Name)
+		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( %s ) { all_default_%s = false; break; } }\n",
+			f.ArrayBound, g.elideDiffers(f, "value."+f.Name+"[i]"), f.Name)
 		g.pf("        if ( !all_default_%s )\n        {\n", f.Name)
 		g.emitArrayField(f, id, elemKind, strconv.FormatInt(f.ArrayBound, 10), "value."+f.Name+"[%s]", "            ")
 		g.pf("        }\n    }\n")
@@ -1582,7 +1601,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return false; }\n", f.Name, f.Name)
 		g.pf("        w.header( ref_%s, %d ); w.putleb( variant_%s ); // %s\n    }\n", f.Name, tkEnum, f.Name, f.Name)
 	default:
-		g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
+		g.pf("    if ( %s )\n    {\n", g.elideDiffers(f, "value."+f.Name))
 		g.pf("        w.header( %s, %d ); // %s\n", g.wireRef(id), kind, f.Name)
 		g.emitTableWriteElement(f, kind, "value."+f.Name, "        ", "")
 		g.pf("    }\n")
@@ -2266,8 +2285,12 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 			return
 		}
 		g.pf("%s%s = table_bits_to_float( %s.get32() );\n", ind, lvalue, rdr)
+		g.pf("%sif ( %s != %s || %s - %s != 0 ) { if ( r.report->refuse_reason == ok ) { r.report->refuse_reason = non_finite; r.report->refused = true; } } // §3.3: a plain float's NaN or infinity rides and is named\n", ind, lvalue, lvalue, lvalue, lvalue)
 	case tkF64:
 		g.pf("%s%s = table_bits_to_double( %s.get64() );\n", ind, lvalue, rdr)
+		if !f.HasFloatRange {
+			g.pf("%sif ( %s != %s || %s - %s != 0 ) { if ( r.report->refuse_reason == ok ) { r.report->refuse_reason = non_finite; r.report->refused = true; } } // §3.3: a plain float's NaN or infinity rides and is named\n", ind, lvalue, lvalue, lvalue, lvalue)
+		}
 	default:
 		// A TIMESTAMP IS THE INT64'S PAYLOAD under its own kind 36: the bytes
 		// are two's complement and the storage is int64_t, so the decode takes
