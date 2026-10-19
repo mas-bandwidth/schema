@@ -3,98 +3,128 @@ package darttable
 import (
 	"encoding/hex"
 	"fmt"
+	"strconv"
+	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // THE DART MESSAGE LOAD COUNTS UNKNOWN FIELDS AS GO DOES (docs/SPEC-TABLES.md
-// §3.3): a form-2 message carrying unknown field references is counted by the
-// Dart batch message load exactly as the Go reference message decode counts it.
-// The reference's `body` walk counts an announced entry this root does not name
-// as ONE `unknown` and STEPS ITS PAYLOAD, continuing the body; a reference
-// naming no announced entry, or a reserved id, is damage. The Dart emitter once
-// treated every non-field reference as damage and terminated the body at the
-// first unknown, so a message carrying two unknowns counted one
+// §3.3): the Go reference's `body` walk (internal/tablewire/messagedecode.go)
+// counts an announced entry the root does not name as ONE `unknown` and STEPS
+// ITS PAYLOAD by the entry's announced shape (`skip`), continuing the body; only
+// a reference naming no announced entry, or a reserved id, is damage. The Dart
+// emitter once treated every non-field reference as damage and ended the body
+// at the first unknown, so a body carrying two unknowns counted one
 // (dart-fix-message-unknown-count, cause D5 of the Dart wire fuzz).
 
-// messageUnknownRow is one fuzz mutation of a form-2 message whose unknown count
-// diverged: the root, the Go oracle's `unknown` count on the same bytes, and
-// the mutated wire. Restored from the receipts of
-// dart-fix-message-fuzz-arm-checks-load-result w4 with `xxd -r -p`.
+// messageUnknownRow is one wire-fuzz mutant of a form-2 message whose unknown
+// count diverged between the legs: the manifest message row whose connection
+// announces the vocabulary, the root, and the mutated wire, restored from the
+// receipts of dart-fix-message-fuzz-arm-checks-load-result w4 (`xxd -r -p`).
+// wantGo pins the reference's own count on the bytes, so a regression of the
+// reference cannot carry the Dart leg with it.
 type messageUnknownRow struct {
-	name   string
-	root   string
-	want   int
+	row     string
+	root    string
+	wantGo  int
 	wireHex string
 }
 
+const wide09Mutant = "0200760100000077020000007803000000ac79040000007a050000007b060000007c070000007d080000007e090000007f0a000000800b000000810c000000820d00000000"
+
 var messageUnknownRows = []messageUnknownRow{
 	// backenddemo.LoginRequest (corpus seed login_full_message), message fuzz
-	// pass reference #1, mutant 60, run seed 24845619678: oracle report=2
-	// unknown; the Dart leg reported 1.
-	{name: "login_full", root: "LoginRequest", want: 2,
+	// pass reference #1, mutant 60, run seed 24845619678: the reference
+	// counts 2 unknown, the Dart leg counted 1 (the 1-vs-2 case).
+	{row: "login_full", root: "LoginRequest", wantGo: 2,
 		wireHex: "02006100000000000008c00002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800403101"},
-	// The second receipt, run against the root that makes it an unknown-count
-	// case: the same bytes name slots past the wide vocabulary's first table,
-	// and the Go oracle counts three unknowns on vocabdemo.Wide00. (The
-	// receipt labels them vocabdemo.Wide09; against Wide09 those slots are
-	// that root's own fields and the oracle counts zero, so the row is kept
-	// under Wide09 too, at the oracle's count, and the unknown case rides
-	// Wide00.)
-	{name: "vocab_wide", root: "Wide09", want: 0,
-		wireHex: "0200760100000077020000007803000000ac79040000007a050000007b060000007c070000007d080000007e090000007f0a000000800b000000810c000000820d00000000"},
-	{name: "vocab_low", root: "Wide00", want: 3,
-		wireHex: "0200760100000077020000007803000000ac79040000007a050000007b060000007c070000007d080000007e090000007f0a000000800b000000810c000000820d00000000"},
+	// The vocabdemo.Wide09 receipt (vocab_conn's announcement).
+	{row: "vocab_wide", root: "Wide09", wantGo: 0, wireHex: wide09Mutant},
+	// The same bytes against the connection's other message root, whose
+	// fields are not the slots the mutant names.
+	{row: "vocab_low", root: "Wide00", wantGo: 3, wireHex: wide09Mutant},
 }
 
-// TestMessageUnknownCountDart loads each representative mutation by the
-// generated Dart batch message load and asserts the report's `unknown` count
-// equals the Go reference message decode's on the same bytes
+// goMessageUnknown is the Go reference message decode's answer on the bytes:
+// tablewire.DecodeMessages under the connection's announcement.
+func goMessageUnknown(t *testing.T, row batchRow, root string, wire []byte) (unknown int, malformed bool) {
+	t.Helper()
+	m := tabletext.NewModel(batchUnit(t, row.path))
+	var v tablewire.Vocabulary
+	var annRep tabletext.Report
+	if err := v.AnnounceRead(row.announce, &annRep); err != nil || !v.Announced() {
+		t.Fatalf("%s: the reference refuses the connection announcement: %v", row.name, err)
+	}
+	st := m.Unit.Tables[root]
+	if st == nil || !st.FixedDeclared {
+		t.Fatalf("%s is not a fixed root of %s", root, row.path)
+	}
+	var rep tabletext.Report
+	if _, _, err := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(st)}, wire, &v, &rep); err != nil {
+		t.Fatalf("%s: the reference refuses the mutant: %v", root, err)
+	}
+	return rep.Unknown, rep.Malformed
+}
+
+// TestMessageUnknownCountDart loads each mutant by the generated Dart batch
+// message load and by the Go reference message decode, under the same
+// announcement, and asserts the two `unknown` counts are equal
 // (docs/SPEC-TABLES.md §3.3).
 func TestMessageUnknownCountDart(t *testing.T) {
 	t.Parallel()
-	rows := batchManifest(t)
-	paths := map[string]string{}
-	for _, row := range rows {
-		paths[row.name] = row.path
+	rows := map[string]batchRow{}
+	for _, row := range batchManifest(t) {
+		rows[row.name] = row
 	}
-	for _, m := range messageUnknownRows {
-		m := m
-		t.Run(m.root, func(t *testing.T) {
+	for _, c := range messageUnknownRows {
+		t.Run(c.root, func(t *testing.T) {
 			t.Parallel()
-			path, ok := paths[m.name]
+			row, ok := rows[c.row]
 			if !ok {
-				t.Fatalf("no manifest message row named %s", m.name)
+				t.Fatalf("the manifest carries no message row %s", c.row)
 			}
-			u := batchUnit(t, path)
-			st := findTable(t, u, m.root)
-			if !st.IsTable || !st.FixedDeclared {
-				t.Fatalf("%s is not a fixed root", m.root)
+			wire, err := hex.DecodeString(c.wireHex)
+			if err != nil {
+				t.Fatal(err)
 			}
-			lower := lowerFirst(m.root)
+			goUnknown, goMalformed := goMessageUnknown(t, row, c.root, wire)
+			if goUnknown != c.wantGo {
+				t.Fatalf("%s: the Go reference counts unknown=%d on the mutant, the receipt says %d", c.root, goUnknown, c.wantGo)
+			}
+			u := batchUnit(t, row.path)
+			st := findTable(t, u, c.root)
+			lower := lowerFirst(c.root)
 			body := fmt.Sprintf(`
+  final ann = Uint8List.fromList(%s);
   final msg = Uint8List.fromList(%s);
   final vocab = h.TableVocabulary(entries: List<h.TableMessageEntry>.generate(4096, (i) => h.TableMessageEntry(0, 0)));
-  check(h.announceRead(vocab, h.tableAnnouncement, h.TableReport()), 'announce');
+  final annRep = h.TableReport();
+  check(h.announceRead(vocab, ann, annRep), 'the connection announcement is refused: ' + annRep.reason);
   final v = h.%s();
   h.init%s(v);
   final values = <h.%s>[v];
   final rep = h.TableReport();
-  final count = r.%sLoadMessages(values, msg, vocab, rep);
-  check(rep.unknown == %d, 'unknown ' + rep.unknown.toString() + ' want %d');
-  print('unknown=${rep.unknown} count=$count');
-`, dartBytes(mustHex(m.wireHex)), st.Name, st.Name, st.Name, lower, m.want, m.want)
-			out, err := runBatchProbe(t, u, m.root, body)
+  r.%sLoadMessages(values, msg, vocab, rep);
+  print('unknown=${rep.unknown} malformed=${rep.malformed}');
+`, dartBytes(row.announce), dartBytes(wire), st.Name, st.Name, st.Name, lower)
+			out, err := runBatchProbe(t, u, c.root, body)
 			if err != nil {
-				t.Fatalf("%s: the unknown-count probe did not run green: %v\n%s", m.root, err, out)
+				t.Fatalf("%s: the Dart probe did not run: %v\n%s", c.root, err, out)
+			}
+			dartUnknown := -1
+			for line := range strings.SplitSeq(out, "\n") {
+				if rest, ok := strings.CutPrefix(line, "unknown="); ok {
+					n, _, _ := strings.Cut(rest, " ")
+					dartUnknown, _ = strconv.Atoi(n)
+				}
+			}
+			if dartUnknown != goUnknown {
+				t.Errorf("%s: Dart counts unknown=%d, the Go reference counts %d (Go malformed=%v); Dart said %q",
+					c.root, dartUnknown, goUnknown, goMalformed, strings.TrimSpace(out))
 			}
 		})
 	}
-}
-
-func mustHex(s string) []byte {
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		panic(err)
-	}
-	return b
 }
