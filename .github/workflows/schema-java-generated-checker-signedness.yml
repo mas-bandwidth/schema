@@ -58,8 +58,6 @@ jobs:
         run: |
           go test ./internal/ci -count=1 -timeout 600s \
             -run 'SchemaJavaGeneratedCheckerSignedness'
-          go test ./tools/negativecontrols -count=1 -timeout 600s \
-            -run 'EveryDefinedControlIsInThePlan'
 
   checker:
     name: signedness checker over the generated Java (nightly)

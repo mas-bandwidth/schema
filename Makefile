@@ -5642,13 +5642,18 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 # names the fields and the follow-on. A `schema new-leg` skeleton has
 # make/<lang>.mk but no `--lang` yet; that is a skip, not a gate failure.
 # Nothing here lists a language.
+#
+# A make fragment under make/ that is a lens, not a compiler backend, is named
+# here so the wildcard registry stays live ports only (the same reason
+# tools/agentsmap/map.mk is included by path below).
+NON_PORT_MAKE_FRAGMENTS := make/schema-java-generated-checker-signedness.mk
 .PHONY: tables-ports-refuse-wide-scalars
 tables-ports-refuse-wide-scalars: bin/schema
 	@rm -rf build/tables-wide-refusal && mkdir -p build/tables-wide-refusal
 	# Successful probe output is a fixture, outside the compiler's Go module.
 	@printf 'module wide-scalar-probe\n\ngo 1.26\n' > build/tables-wide-refusal/go.mod
 	@carry=0; refuse=0; \
-	for lang in $(patsubst make/%.mk,%,$(wildcard make/*.mk)); do \
+	for lang in $(patsubst make/%.mk,%,$(filter-out $(NON_PORT_MAKE_FRAGMENTS),$(wildcard make/*.mk))); do \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
 		fi; \

@@ -55,6 +55,23 @@ func TestSchemaJavaGeneratedCheckerSignednessGateWiring(t *testing.T) {
 	}
 }
 
+// TestSchemaJavaGeneratedCheckerSignednessIsNotAPort holds the lens out of the
+// wide-scalar refusal gate's port registry: that gate discovers every
+// make/*.mk as a live compiler backend, and this fragment is a lens. Without
+// the exclusion the registry runs `schema generate --lang schema-java-...` and
+// fails as an unregistered backend, reddening a gate the lens never touched.
+func TestSchemaJavaGeneratedCheckerSignednessIsNotAPort(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	body := readRepoFile(t, root, "Makefile")
+	if !strings.Contains(body, "NON_PORT_MAKE_FRAGMENTS := "+signednessMakeFile) {
+		t.Errorf("the Makefile does not name %s as a non-port fragment", signednessMakeFile)
+	}
+	if !strings.Contains(body, "$(filter-out $(NON_PORT_MAKE_FRAGMENTS),$(wildcard make/*.mk))") {
+		t.Errorf("tables-ports-refuse-wide-scalars does not filter NON_PORT_MAKE_FRAGMENTS out of its registry")
+	}
+}
+
 // TestSchemaJavaGeneratedCheckerSignednessProbeNamesAMissingTool requires the
 // probe to report by name and exit non-zero when the pin does not resolve. A
 // probe that passed over an absent tool would make the nightly green over a
