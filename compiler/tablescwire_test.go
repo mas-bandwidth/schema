@@ -458,6 +458,7 @@ int main(void) {
 }
 
 func TestCTableWireBlobIdentity(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, `package probe
 table Root {
  data *bytes
@@ -466,12 +467,22 @@ table Root {
  empty *bytes
 }`)
 	model := tabletext.NewModel(u)
+
+	// A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): the wire writers
+	// refuse a graph whose two slots name one blob, by name and by field.
+	shared := model.New(u.Tables["Root"])
+	blob := &tabletext.Blob{Data: []byte{0, 255, 42}}
+	shared.Fields[0].Cell.Blob = blob
+	shared.Fields[1].Cell.Blob = blob
+	if _, err := tablewire.Encode(model, shared); err == nil || !strings.Contains(err.Error(), "blob_shared") || !strings.Contains(err.Error(), "Root.alias") {
+		t.Fatalf("Encode of a shared blob = %v, want the named refusal blob_shared naming Root.alias", err)
+	}
+
+	// The non-shared value: two DISTINCT blobs, a string and an empty blob,
+	// each named once. It must round-trip through the C wire byte for byte.
 	value := model.New(u.Tables["Root"])
-	// A blob is owned by one slot (§2.5), so equal payloads are distinct
-	// identities in the valid round-trip case. Shared-blob refusal is tested
-	// separately by the table-wire refusal suite.
 	value.Fields[0].Cell.Blob = &tabletext.Blob{Data: []byte{0, 255, 42}}
-	value.Fields[1].Cell.Blob = &tabletext.Blob{Data: []byte{0, 255, 42}}
+	value.Fields[1].Cell.Blob = &tabletext.Blob{Data: []byte{7, 8, 9}}
 	value.Fields[2].Cell.Blob = &tabletext.Blob{Data: []byte("hello")}
 	value.Fields[3].Cell.Blob = &tabletext.Blob{}
 	expected, err := tablewire.Encode(model, value)
@@ -488,24 +499,24 @@ table Root {
 static const uint8_t expected[]={%s};
 int main(void) {
  RootBuilder builder,copy; Root * root; const Root * locked; TableCtx ctx;
- uint8_t saved[sizeof(expected)],*data,*region; int64_t extent; TableReport report={0};
+ uint8_t saved[sizeof(expected)],*data,*alias,*region; int64_t extent; TableReport report={0};
  CHECK(root_builder_init(&builder));root=root_builder_root(&builder);ctx.arena=&builder.arena;
  data=table_bytes_emplace(&builder.main,&root->data,3);CHECK(data!=NULL);data[0]=0;data[1]=255;data[2]=42;
- data=table_bytes_emplace(&builder.main,&root->alias,3);CHECK(data!=NULL);data[0]=0;data[1]=255;data[2]=42;
+ alias=table_bytes_emplace(&builder.main,&root->alias,3);CHECK(alias!=NULL);alias[0]=7;alias[1]=8;alias[2]=9;
  CHECK(table_string_emplace(&builder.main,&root->text,"hello",5)!=NULL);
  CHECK(table_bytes_emplace(&builder.main,&root->empty,0)!=NULL);
  CHECK(root_measure(&ctx,root)==(int64_t)sizeof(expected));
  CHECK(root_save(&ctx,root,saved,sizeof(saved))==(int64_t)sizeof(expected));CHECK(!memcmp(saved,expected,sizeof(saved)));
  CHECK(root_builder_lock(&builder));locked=(const Root *)(const void *)builder.region;
  CHECK(table_bytes_at(NULL,&locked->data).data!=table_bytes_at(NULL,&locked->alias).data);
- CHECK(!memcmp(table_bytes_at(NULL,&locked->data).data,table_bytes_at(NULL,&locked->alias).data,3));
+ CHECK(table_bytes_at(NULL,&locked->data).length==3 && table_bytes_at(NULL,&locked->alias).length==3);
  CHECK(table_bytes_at(NULL,&locked->empty).data!=NULL && table_bytes_at(NULL,&locked->empty).length==0);
  CHECK(!strcmp(table_string_at(NULL,&locked->text).data,"hello"));
  CHECK(root_to_json_measure(locked)>0);
  extent=root_load_measure(expected,sizeof(expected));CHECK(extent>0);region=(uint8_t *)malloc((size_t)extent);CHECK(region!=NULL);
  locked=root_load(region,extent,expected,sizeof(expected),&report);CHECK(locked!=NULL && !report.malformed && !report.unknown);
+ CHECK(report.blob_shared==0);
  CHECK(table_bytes_at(NULL,&locked->data).data!=table_bytes_at(NULL,&locked->alias).data);
- CHECK(!memcmp(table_bytes_at(NULL,&locked->data).data,table_bytes_at(NULL,&locked->alias).data,3));
  CHECK(!strcmp(table_string_at(NULL,&locked->text).data,"hello"));
  CHECK(root_builder_init(&copy));CHECK(root_load_builder(&copy,expected,sizeof(expected),&report));
  CHECK(root_builder_lock(&copy));CHECK(root_save(NULL,(const Root *)(const void *)copy.region,saved,sizeof(saved))==(int64_t)sizeof(expected));
