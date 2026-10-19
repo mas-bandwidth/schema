@@ -356,7 +356,11 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
     }
     if (!(id in c.byId)) {
       report.unknown = report.unknown + 1;
+      // CAPTURE THE UNKNOWN FIELD'S SPAN before the plain read skips it
+      // (docs/SPEC-TABLES.md §6.6): the resolving walk is retain.nut's
+      local start = r.at;
       if (!skipField(r, kind)) { report.malformed = true; return false; }
+      if (st.retain != null) st.retain.capture(v, r.b, start, r.at, id, kind, table, report);
       continue;
     }
     local fd = c.byId[id];
@@ -800,7 +804,7 @@ local resolve = function(st, root, report) {
 // THE LOAD (docs/SPEC-TABLES.md §3, §3.1, §4): the form byte, the id table,
 // the node table's records first, then every record's body, then the root
 // body, then the one numbering's resolution.
-_M.load <- function(T, rootName, bytes, report) {
+_M.load <- function(T, rootName, bytes, report, retain = null) {
   if (report.unknown == null) report.unknown <- 0;
   if (report.kindMismatch == null) report.kindMismatch <- 0;
   if (report.widened == null) report.widened <- 0;
@@ -849,7 +853,7 @@ _M.load <- function(T, rootName, bytes, report) {
   // §3.1): a value-only root has no pointer and no numbering, and the
   // reserved id in its body is a field it cannot name, counted unknown
   local raw = c.variable ? nodeScan(bytes, table, end, report) : [];
-  local st = { good = raw != null, nodes = [], root = v, pending = [] };
+  local st = { good = raw != null, nodes = [], root = v, pending = [], retain = retain };
   if (raw != null) {
     foreach (rec in raw) {
       if (rec.tid == STRING_BLOB_ID) {
@@ -864,6 +868,9 @@ _M.load <- function(T, rootName, bytes, report) {
       }
       if (!(rec.tid in byType)) {
         report.unknown = report.unknown + 1;
+        // an unknown NODE RECORD is an excluded class (§6.6) and is never
+        // retained; a retaining read still reports it as retain_lost
+        if (retain != null) report.retainLost = report.retainLost + 1;
         st.nodes.append(null);
         continue;
       }
