@@ -24,9 +24,11 @@ fixed table Session
 `
 
 // TestTimestampIsCarriedByGoAndRefusedByName pins the central refusal: Go
-// carries the kind first, and generating a unit that uses it for any other
-// target is an error naming the construct, the target and "Go carries it
-// first" — raised once, in Generate, with no other emitter edited.
+// carries the kind first, and generating a unit that uses it for any target
+// that has not lifted the refusal is an error naming the construct, the target
+// and "Go carries it first" — raised once, in Generate, with no other emitter
+// edited. A target that has registered carryTimestamp (Go, and squirrel under
+// its tag) generates the unit instead (docs/SPEC-TABLES.md §2.11, §16.2).
 func TestTimestampIsCarriedByGoAndRefusedByName(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -47,10 +49,13 @@ func TestTimestampIsCarriedByGoAndRefusedByName(t *testing.T) {
 		t.Fatalf("expected the other targets to be registered: %v", targets)
 	}
 	for _, target := range targets {
-		if target == "go" {
+		files, err := c.Generate(u, target, Options{})
+		if carries(target, carryTimestamp) {
+			if err != nil || len(files) == 0 {
+				t.Errorf("target %s carries timestamp but did not generate the unit: files=%d err=%v", target, len(files), err)
+			}
 			continue
 		}
-		files, err := c.Generate(u, target, Options{})
 		if err == nil {
 			t.Errorf("target %s generated a unit that uses timestamp (%d files)", target, len(files))
 			continue
