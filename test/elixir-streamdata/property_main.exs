@@ -124,13 +124,14 @@ defmodule SchemaElixirStreamData do
         {:error, failure} ->
           fail(
             "round-trip on #{inspect(mod)}.#{name} failed: " <>
-              inspect(Map.get(failure, :original_failure, failure))
+              inspect(Map.get(failure, :shrunk_failure, failure))
           )
       end
     end)
   end
 
   defp mutations(tables, runs, seed) do
+    :rand.seed(:exsss, {seed, seed + 1, seed + 2})
     Enum.each(tables, fn {mod, name, desc} ->
       gen =
         StreamData.bind(gen_desc(desc, 3, mod), fn value ->
@@ -168,7 +169,7 @@ defmodule SchemaElixirStreamData do
         {:error, failure} ->
           fail(
             "clean-refusal on #{inspect(mod)}.#{name} failed: " <>
-              inspect(Map.get(failure, :original_failure, failure))
+              inspect(Map.get(failure, :shrunk_failure, failure))
           )
       end
     end)
@@ -217,7 +218,7 @@ defmodule SchemaElixirStreamData do
         if :rand.uniform(2) == 1 do
           <<0::size(byte_size(bytes) * 8)>>
         else
-          :crypto.strong_rand_bytes(byte_size(bytes))
+          :rand.bytes(byte_size(bytes))
         end
     end
   end

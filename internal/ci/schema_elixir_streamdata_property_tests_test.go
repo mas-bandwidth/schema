@@ -102,6 +102,8 @@ func TestElixirStreamDataHarnessStaysInDeclaredRange(t *testing.T) {
 		"defp table_desc(mod, name) do",
 		"Map.get(mod.descriptors(), name)",
 		"Task.async_stream",
+		":shrunk_failure",
+		":rand.seed(:exsss",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("property script does not carry %q", want)
@@ -109,5 +111,11 @@ func TestElixirStreamDataHarnessStaysInDeclaredRange(t *testing.T) {
 	}
 	if strings.Contains(text, ":persistent_term.get({__MODULE__, :tables}") {
 		t.Error("property script still resolves tables through a global name index")
+	}
+	if strings.Contains(text, ":original_failure") {
+		t.Error("property script prints the unshrunk failure instead of the shrunk one")
+	}
+	if strings.Contains(text, ":crypto.strong_rand_bytes") {
+		t.Error("property script uses unseeded crypto randomness for mutations")
 	}
 }
