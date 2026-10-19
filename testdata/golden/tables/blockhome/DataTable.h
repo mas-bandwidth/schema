@@ -256,8 +256,18 @@ struct TableFieldInfo
     uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
-    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_min;       // the float range; an integer range also has the exact columns below
     double range_max;
+    // THE EXACT INTEGER RANGE (docs/SPEC-TABLES.md §8.1, §4): an integer kind's
+    // declared bounds as the exact integers the schema wrote, beside the
+    // float64 pair that stays for float and fixed-point ranges. A signed kind
+    // fills range_int_min/range_int_max, an unsigned kind (and bits(N)) fills
+    // range_uint_min/range_uint_max. Both pairs are zero on every other field,
+    // and the wide kinds (18-29) carry none: their exact bounds are in wide.
+    int64_t range_int_min;
+    int64_t range_int_max;
+    uint64_t range_uint_min;
+    uint64_t range_uint_max;
     // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
     // field's F — its storage holds units × 2^F — and wide is the declared
     // range on that RAW scale, exact, as two 128-bit two's-complement values
@@ -1550,7 +1560,7 @@ static const int64_t kTableAnnounceBytes = 288;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0xe9, 0xda, 0xee, 0xa6, 0x6b, 0x76, 0x68, 0xa4, 0x02,
+    0x01, 0x01, 0x09, 0x07, 0xbf, 0x11, 0x60, 0xa3, 0x84, 0x27, 0x50, 0x02,
     0x0e, 0xf8, 0x01, 0x06, 0xf5, 0x01, 0x38, 0x4b, 0x9e, 0x6e, 0x56, 0x8c,
     0x8b, 0x53, 0x0d, 0x03, 0xe7, 0xdd, 0xbf, 0x1f, 0x5d, 0xe6, 0x4c, 0x0d,
     0xd0, 0xf4, 0x5f, 0xfe, 0xbe, 0xec, 0x79, 0x4e, 0x0a, 0x00, 0x89, 0x59,
@@ -3617,7 +3627,7 @@ namespace blockhome {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xa468766ba6eedae9ull;
+static const uint64_t BuildVersion = 0x502784a36011bf07ull;
 
 } // namespace blockhome
 
@@ -6316,9 +6326,9 @@ inline const TableTypeInfo * GunnerSettingsTableType();
 inline const TableTypeInfo * ArmorPlateTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "thickness", "thickness", "float64", 0xdbae65ca25b4f315ull, 11, false, false, false, 0, (uint32_t) offsetof( ArmorPlate, thickness ), (uint32_t) sizeof( ArmorPlate::thickness ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "material", "material", "uint32", 0x026f7568983161e0ull, 8, false, false, false, 0, (uint32_t) offsetof( ArmorPlate, material ), (uint32_t) sizeof( ArmorPlate::material ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "layer", "layer", "uint8", 0x84e39fec29768c56ull, 6, false, false, false, 0, (uint32_t) offsetof( ArmorPlate, layer ), (uint32_t) sizeof( ArmorPlate::layer ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "thickness", "thickness", "float64", 0xdbae65ca25b4f315ull, 11, false, false, false, 0, (uint32_t) offsetof( ArmorPlate, thickness ), (uint32_t) sizeof( ArmorPlate::thickness ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "material", "material", "uint32", 0x026f7568983161e0ull, 8, false, false, false, 0, (uint32_t) offsetof( ArmorPlate, material ), (uint32_t) sizeof( ArmorPlate::material ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "layer", "layer", "uint8", 0x84e39fec29768c56ull, 6, false, false, false, 0, (uint32_t) offsetof( ArmorPlate, layer ), (uint32_t) sizeof( ArmorPlate::layer ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
     static const TableTypeInfo info = { "ArmorPlate", (uint32_t) sizeof( ArmorPlate ), 3, fields, +[]( void * p ) { ArmorPlateReset( *(ArmorPlate *) p ); }, TableDocNone, 0, NULL };
     return &info;
@@ -6327,10 +6337,10 @@ inline const TableTypeInfo * ArmorPlateTableType()
 inline const TableTypeInfo * ArmorConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "front", "front", "ArmorPlate", 0x538b8c566e9e4b38ull, 13, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, front ), (uint32_t) sizeof( ArmorConfig::front ), 0xffffffffu, 0xffffffffu, ArmorPlateTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "rear", "rear", "ArmorPlate", 0x4ce65d1fbfdde703ull, 13, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, rear ), (uint32_t) sizeof( ArmorConfig::rear ), 0xffffffffu, 0xffffffffu, ArmorPlateTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "rating", "rating", "float32", 0x4e79ecbefe5ff4d0ull, 10, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, rating ), (uint32_t) sizeof( ArmorConfig::rating ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "tier", "tier", "uint8", 0x1e6f84ef2eb65989ull, 6, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, tier ), (uint32_t) sizeof( ArmorConfig::tier ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "front", "front", "ArmorPlate", 0x538b8c566e9e4b38ull, 13, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, front ), (uint32_t) sizeof( ArmorConfig::front ), 0xffffffffu, 0xffffffffu, ArmorPlateTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "rear", "rear", "ArmorPlate", 0x4ce65d1fbfdde703ull, 13, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, rear ), (uint32_t) sizeof( ArmorConfig::rear ), 0xffffffffu, 0xffffffffu, ArmorPlateTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "rating", "rating", "float32", 0x4e79ecbefe5ff4d0ull, 10, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, rating ), (uint32_t) sizeof( ArmorConfig::rating ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "tier", "tier", "uint8", 0x1e6f84ef2eb65989ull, 6, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, tier ), (uint32_t) sizeof( ArmorConfig::tier ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
     static const TableTypeInfo info = { "ArmorConfig", (uint32_t) sizeof( ArmorConfig ), 4, fields, +[]( void * p ) { ArmorConfigReset( *(ArmorConfig *) p ); }, TableDocNone, 0, NULL };
     return &info;
@@ -6339,8 +6349,8 @@ inline const TableTypeInfo * ArmorConfigTableType()
 inline const TableTypeInfo * FiringGroupTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "barrel", "barrel", "uint32", 0x8ece059ad360b651ull, 8, false, false, false, 0, (uint32_t) offsetof( FiringGroup, barrel ), (uint32_t) sizeof( FiringGroup::barrel ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "cooldown", "cooldown", "float32", 0xdc2cbe6953343d48ull, 10, false, false, false, 0, (uint32_t) offsetof( FiringGroup, cooldown ), (uint32_t) sizeof( FiringGroup::cooldown ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "barrel", "barrel", "uint32", 0x8ece059ad360b651ull, 8, false, false, false, 0, (uint32_t) offsetof( FiringGroup, barrel ), (uint32_t) sizeof( FiringGroup::barrel ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "cooldown", "cooldown", "float32", 0xdc2cbe6953343d48ull, 10, false, false, false, 0, (uint32_t) offsetof( FiringGroup, cooldown ), (uint32_t) sizeof( FiringGroup::cooldown ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
     static const TableTypeInfo info = { "FiringGroup", (uint32_t) sizeof( FiringGroup ), 2, fields, +[]( void * p ) { FiringGroupReset( *(FiringGroup *) p ); }, TableDocNone, 0, NULL };
     return &info;
@@ -6349,10 +6359,10 @@ inline const TableTypeInfo * FiringGroupTableType()
 inline const TableTypeInfo * GunnerSettingsTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "firing_groups", "firing_groups", "FiringGroup", 0x260b8ca6b0c3db7full, 13, true, true, false, 32, (uint32_t) offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( GunnerSettings::firing_groups[0] ), (uint32_t) offsetof( GunnerSettings, firing_groups_count ), 0xffffffffu, FiringGroupTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "missile_groups", "missile_groups", "FiringGroup", 0x3c99105aa087f6bcull, 13, true, true, false, 4, (uint32_t) offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( GunnerSettings::missile_groups[0] ), (uint32_t) offsetof( GunnerSettings, missile_groups_count ), 0xffffffffu, FiringGroupTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "reload_seconds", "reload_seconds", "float32", 0xad9b64728ea52486ull, 10, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, reload_seconds ), (uint32_t) sizeof( GunnerSettings::reload_seconds ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "gunner_id", "gunner_id", "uint32", 0xbd9be53180256e02ull, 8, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, gunner_id ), (uint32_t) sizeof( GunnerSettings::gunner_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "firing_groups", "firing_groups", "FiringGroup", 0x260b8ca6b0c3db7full, 13, true, true, false, 32, (uint32_t) offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( GunnerSettings::firing_groups[0] ), (uint32_t) offsetof( GunnerSettings, firing_groups_count ), 0xffffffffu, FiringGroupTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "missile_groups", "missile_groups", "FiringGroup", 0x3c99105aa087f6bcull, 13, true, true, false, 4, (uint32_t) offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( GunnerSettings::missile_groups[0] ), (uint32_t) offsetof( GunnerSettings, missile_groups_count ), 0xffffffffu, FiringGroupTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "reload_seconds", "reload_seconds", "float32", 0xad9b64728ea52486ull, 10, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, reload_seconds ), (uint32_t) sizeof( GunnerSettings::reload_seconds ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "gunner_id", "gunner_id", "uint32", 0xbd9be53180256e02ull, 8, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, gunner_id ), (uint32_t) sizeof( GunnerSettings::gunner_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
     static const TableTypeInfo info = { "GunnerSettings", (uint32_t) sizeof( GunnerSettings ), 4, fields, +[]( void * p ) { GunnerSettingsReset( *(GunnerSettings *) p ); }, TableDocNone, 0, NULL };
     return &info;

@@ -292,8 +292,18 @@ struct TableFieldInfo
     uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
-    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_min;       // the float range; an integer range also has the exact columns below
     double range_max;
+    // THE EXACT INTEGER RANGE (docs/SPEC-TABLES.md §8.1, §4): an integer kind's
+    // declared bounds as the exact integers the schema wrote, beside the
+    // float64 pair that stays for float and fixed-point ranges. A signed kind
+    // fills range_int_min/range_int_max, an unsigned kind (and bits(N)) fills
+    // range_uint_min/range_uint_max. Both pairs are zero on every other field,
+    // and the wide kinds (18-29) carry none: their exact bounds are in wide.
+    int64_t range_int_min;
+    int64_t range_int_max;
+    uint64_t range_uint_min;
+    uint64_t range_uint_max;
     // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
     // field's F — its storage holds units × 2^F — and wide is the declared
     // range on that RAW scale, exact, as two 128-bit two's-complement values
@@ -1672,7 +1682,7 @@ static const int64_t kTableAnnounceBytes = 901;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0xdd, 0x70, 0xc9, 0xd2, 0x68, 0x20, 0x4c, 0x19, 0x02,
+    0x01, 0x01, 0x09, 0xdc, 0xde, 0x7b, 0x79, 0x38, 0x68, 0x8e, 0x1c, 0x02,
     0x0e, 0xdd, 0x06, 0x06, 0xda, 0x06, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
     0xc9, 0x3d, 0x06, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
     0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36,
@@ -7973,7 +7983,7 @@ namespace mapdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x194c2068d2c970ddull;
+static const uint64_t BuildVersion = 0x1c8e6838797bdedcull;
 
 } // namespace mapdemo
 
@@ -12087,15 +12097,15 @@ extern const TableTypeInfo SpansTracksEntryTableInfo;
 extern const TableTypeInfo SpansTableInfo;
 
 inline const TableFieldInfo SpansTracksEntryTableFields[] = {
-    { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SpansTracksEntry, key ), (uint32_t) sizeof( SpansTracksEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( SpansTracksEntry, value ), (uint32_t) sizeof( Item ), (uint32_t) offsetof( SpansTracksEntry, value.count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Item> *) slot ); }, "", TableDocNone, 0, NULL },
+    { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SpansTracksEntry, key ), (uint32_t) sizeof( SpansTracksEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( SpansTracksEntry, value ), (uint32_t) sizeof( Item ), (uint32_t) offsetof( SpansTracksEntry, value.count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Item> *) slot ); }, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo SpansTracksEntryTableInfo = { "SpansTracksEntry", (uint32_t) sizeof( SpansTracksEntry ), 2, SpansTracksEntryTableFields, +[]( void * p ) { SpansTracksEntryReset( *(SpansTracksEntry *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * SpansTracksEntryTableType() { return &SpansTracksEntryTableInfo; }
 
 inline const TableFieldInfo SpansTableFields[] = {
-    { "tracks", "tracks", "map[uint8]Item", 0x755332609c470fbdull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Spans, tracks ), (uint32_t) sizeof( SpansTracksEntry ), (uint32_t) offsetof( Spans, tracks.count ), 0xffffffffu, &SpansTracksEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SpansTracksEntry> *) slot, (uint8_t) key_value ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Spans, after ), (uint32_t) sizeof( Spans::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "tracks", "tracks", "map[uint8]Item", 0x755332609c470fbdull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Spans, tracks ), (uint32_t) sizeof( SpansTracksEntry ), (uint32_t) offsetof( Spans, tracks.count ), 0xffffffffu, &SpansTracksEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SpansTracksEntry> *) slot, (uint8_t) key_value ); }, "", TableDocNone, 0, NULL },
+    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Spans, after ), (uint32_t) sizeof( Spans::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo SpansTableInfo = { "Spans", (uint32_t) sizeof( Spans ), 2, SpansTableFields, +[]( void * p ) { SpansReset( *(Spans *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * SpansTableType() { return &SpansTableInfo; }

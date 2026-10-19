@@ -2140,14 +2140,44 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     if ( number.saturated ) { in.report->clamped++; } // past what sixty-four bits hold
     // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
-    // The comparison is on the value's OWN scale, correctly signed past
-    // INT64_MAX, where the storage's bit pattern is not a number to compare.
+    // AN INTEGER RANGE CLAMPS AGAINST ITS EXACT COLUMNS (docs/SPEC-TABLES.md
+    // §8.1), never through a double: the same rule and the same expected
+    // values internal/codegen/gotable/exactrange_test.go
+    // TestGoExactIntegerRangeBounds pins for Go, where a bound past 2^53 is
+    // the exact integer the schema declared. The comparison is on the value's
+    // OWN scale, correctly signed past INT64_MAX, where the storage's bit
+    // pattern is not a number to compare.
     TableJsonInteger bounded = number;
     if ( f->has_range )
     {
-        const double scale = number.negative ? -(double) number.magnitude : (double) number.magnitude;
-        if ( scale < f->range_min ) { bounded = TableJsonIntegerOf( f->range_min ); in.report->clamped++; }
-        else if ( scale > f->range_max ) { bounded = TableJsonIntegerOf( f->range_max ); in.report->clamped++; }
+        bool below = false;
+        bool above = false;
+        if ( is_signed )
+        {
+            const uint64_t lo_magnitude = f->range_int_min < 0
+                ? (uint64_t) ( -( f->range_int_min + 1 ) ) + 1 : (uint64_t) f->range_int_min;
+            const uint64_t hi_magnitude = f->range_int_max < 0
+                ? (uint64_t) ( -( f->range_int_max + 1 ) ) + 1 : (uint64_t) f->range_int_max;
+            if ( number.negative )
+            {
+                below = f->range_int_min >= 0 || number.magnitude > lo_magnitude;
+                above = f->range_int_max < 0 && number.magnitude < hi_magnitude;
+            }
+            else
+            {
+                below = f->range_int_min > 0 && number.magnitude < (uint64_t) f->range_int_min;
+                above = f->range_int_max < 0 || number.magnitude > hi_magnitude;
+            }
+            if ( below ) { bounded.magnitude = lo_magnitude; bounded.negative = f->range_int_min < 0; in.report->clamped++; }
+            else if ( above ) { bounded.magnitude = hi_magnitude; bounded.negative = f->range_int_max < 0; in.report->clamped++; }
+        }
+        else
+        {
+            below = number.negative || ( !number.negative && number.magnitude < f->range_uint_min );
+            above = !number.negative && !below && number.magnitude > f->range_uint_max;
+            if ( below ) { bounded.magnitude = f->range_uint_min; bounded.negative = false; in.report->clamped++; }
+            else if ( above ) { bounded.magnitude = f->range_uint_max; bounded.negative = false; in.report->clamped++; }
+        }
     }
     bool moved = false;
     const int64_t value = TableJsonIntegerInDomain( bounded, is_signed, (int32_t) f->elem_size, moved );

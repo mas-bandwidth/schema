@@ -46,6 +46,21 @@ func init() {
 		Name{Name: "count_over_extent_cap", What: "a count above the int32 extent cap (§6.5)"},
 		Name{Name: "blob_over_size_cap", What: "a blob whose length is past the derived-size cap (§6.5)"},
 		Name{Name: "data_cycle", What: "a data cycle reached from a builder: the authoring side's -1 (§6.5)"},
+		// THE VALUES GO APPENDED AFTER data_cycle (docs/SPEC-TABLES.md §6.5,
+		// §11): the strict read's, the tolerant report's, the carrier's, the
+		// integrity trailer's and the blob's refusals, in Go's order. They are
+		// appended and never renumbered, and no call writes one yet.
+		Name{Name: "invalid_value", What: "a writer handed a value outside the declaration (§3.1, §11)"},
+		Name{Name: "allocation_failed", What: "an allocation the codec asked for was refused (§7.6)"},
+		Name{Name: "wire_damaged", What: "a read that reached damage rather than a refusal (§4)"},
+		Name{Name: "malformed", What: "a tolerant read that saw a malformed body; the report counts it (§4)"},
+		Name{Name: "clamped", What: "a tolerant read that clamped a value to its declared bound (§4)"},
+		Name{Name: "kind_mismatch", What: "a wire field whose kind does not match the declaration (§4)"},
+		Name{Name: "base64_damaged", What: "base64 text with a byte outside the alphabet or the wrong padding (§16.8)"},
+		Name{Name: "base64_not_canonical", What: "base64 text that decodes but is not the canonical spelling of its bytes (§16.8)"},
+		Name{Name: "integrity_mismatch", What: "the integrity trailer does not match the bytes before it (§2.14, §3, §19)"},
+		Name{Name: "non_finite", What: "a plain float the read landed as a NaN or an infinity (§3.3)"},
+		Name{Name: "blob_shared", What: "one blob record named from two slots; every writer refuses to emit it (§2.5)"},
 		Name{Name: "Announce", What: "the unit's announcement, written into the caller's buffer (§3.3)"},
 		Name{Name: "AnnounceMeasure", What: "the announcement's byte count, a constant of the unit"},
 		Name{Name: "AnnounceRead", What: "read an announcement into one direction's table"},

@@ -256,8 +256,18 @@ struct TableFieldInfo
     uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
-    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_min;       // the float range; an integer range also has the exact columns below
     double range_max;
+    // THE EXACT INTEGER RANGE (docs/SPEC-TABLES.md §8.1, §4): an integer kind's
+    // declared bounds as the exact integers the schema wrote, beside the
+    // float64 pair that stays for float and fixed-point ranges. A signed kind
+    // fills range_int_min/range_int_max, an unsigned kind (and bits(N)) fills
+    // range_uint_min/range_uint_max. Both pairs are zero on every other field,
+    // and the wide kinds (18-29) carry none: their exact bounds are in wide.
+    int64_t range_int_min;
+    int64_t range_int_max;
+    uint64_t range_uint_min;
+    uint64_t range_uint_max;
     // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
     // field's F — its storage holds units × 2^F — and wide is the declared
     // range on that RAW scale, exact, as two 128-bit two's-complement values
@@ -1618,7 +1628,7 @@ static const int64_t kTableAnnounceBytes = 197;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x70, 0x3c, 0x95, 0x65, 0x2a, 0xfd, 0xbb, 0xe8, 0x02,
+    0x01, 0x01, 0x09, 0x2c, 0x12, 0xcd, 0x25, 0xbf, 0xb9, 0xcd, 0x39, 0x02,
     0x0e, 0x9d, 0x01, 0x06, 0x9a, 0x01, 0x29, 0x60, 0x1b, 0x0c, 0x6c, 0x29,
     0x31, 0xda, 0x21, 0x07, 0x07, 0x59, 0x4f, 0x69, 0xad, 0xa5, 0x4b, 0xbf,
     0x0d, 0x1c, 0x00, 0xd5, 0xf1, 0xa9, 0xf9, 0xe3, 0x5c, 0x0e, 0x00, 0x03,
@@ -3678,7 +3688,7 @@ namespace wide {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xe8bbfd2a65953c70ull;
+static const uint64_t BuildVersion = 0x39cdb9bf25cd122cull;
 
 } // namespace wide
 
