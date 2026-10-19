@@ -185,9 +185,9 @@ func TestLuauResourceBoundsHostileShapes(t *testing.T) {
 	got := runLuauResourceBounds(t, dir, false)
 
 	want := map[string]string{
-		"deep":        "text_limit",
-		"hugecount":   "text_limit",
-		"giantstring": "text_limit",
+		"deep":          "text_limit",
+		"hugecount":     "text_limit",
+		"giantstring":   "text_limit",
 		"unknownfields": "text_unknown_key",
 	}
 	for name, wantRefusal := range want {
