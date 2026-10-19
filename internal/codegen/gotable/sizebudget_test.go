@@ -20,7 +20,8 @@ import (
 // Error() case to every emitted Go file.
 const (
 	goOneTableLineBudget = 9466
-	goExamplesLineBudget = 64757
+	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
+	goExamplesLineBudget = 65126
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
