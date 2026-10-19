@@ -420,7 +420,8 @@ local function zero_elem(T: any, e: any): any
   return nil
 end
 
-local function shape_of(d: any): string
+-- §16.10: a table value uses its declared array-root shape at every depth.
+local function shape_of(T: any, d: any): string
   local s = d.shape
   if s == "bool" then return 'b' end
   if s == "string" or s == "wstring" or s == "bytes" then return 's' end
@@ -429,7 +430,12 @@ local function shape_of(d: any): string
   -- a timestamp's text is a JSON STRING, never the count's number (§16.2)
   if s == "int" and d.timestamp then return 's' end
   if s == "flags" then return 'a' end
-  if s == "table" or s == "union" or s == "pointer" or s == "map" then return 'o' end
+  if s == "table" then
+    local target = T.Tables[d.target]
+    if target ~= nil and target.jsonArray then return 'a' end
+    return 'o'
+  end
+  if s == "union" or s == "pointer" or s == "map" then return 'o' end
   if s == "array" then
     if d.keyed ~= nil then return 'o' end
     return 'a'
@@ -865,6 +871,7 @@ end
 ----------------------------------------------------------------------------
 
 local read_value: (any, any, Input, any, any, number, any, any, boolean) -> boolean
+local read_array: (any, any, Input, any, any, number, any, any) -> boolean
 local parse_timestamp: (text: string) -> integer?
 
 local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, first_key: string?, graph: any, report: any): boolean
@@ -905,7 +912,7 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
           v[fd.name] = nil
         end
       else
-        local want = shape_of(fd)
+        local want = shape_of(T, fd)
         if shape ~= want then
           report.kindMismatch = report.kindMismatch + 1
           if not skip_value(inp, depth + 1, graph) then return false end
@@ -935,8 +942,14 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
   end
 end
 
+-- §16.10: an array-root table reads its sole field directly from the array.
 local function read_table(T: any, desc: any, inp: Input, v: any, depth: number, graph: any, report: any): boolean
   if depth > MAX_DEPTH then inp.bad = true; return false end
+  if desc.jsonArray then
+    local fd = desc.fields[1]
+    if fd == nil then inp.bad = true; return false end
+    return read_array(T, fd, inp, v, fd.name, depth, graph, report)
+  end
   if peek(inp) ~= '{' then inp.bad = true; return false end
   inp.p = inp.p + 1
   return read_keys(T, desc, inp, v, depth, nil, graph, report)
@@ -1031,7 +1044,7 @@ local function read_base64(inp: Input, bound: number, report: any): (string | fa
   return table.concat(out)
 end
 
-local function read_array(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
+read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if peek(inp) ~= '[' then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out = {}
@@ -1040,7 +1053,7 @@ local function read_array(T: any, fd: any, inp: Input, holder: any, key: any, de
   end
   local bound = fd.list and 0x7fffffff or fd.bound
   local placed = 0
-  local eshape = shape_of(fd.elem)
+  local eshape = shape_of(T, fd.elem)
   while true do
     local c = peek(inp)
     local vs = value_shape(inp)
@@ -1131,7 +1144,7 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
     if not skip and value_shape(inp) == 'z' and (vf.shape == "pointer"
         or vf.shape == "string_blob" or vf.shape == "bytes_blob") then
       null_ref = true
-    elseif not skip and value_shape(inp) ~= shape_of(vf) then
+    elseif not skip and value_shape(inp) ~= shape_of(T, vf) then
       report.kindMismatch = report.kindMismatch + 1
       skip = true
     end
@@ -1172,7 +1185,7 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
   local out = {}
   for i = 1, fd.bound do out[i] = zero_elem(T, fd.elem) end
   local seen = {}
-  local eshape = shape_of(fd.elem)
+  local eshape = shape_of(T, fd.elem)
   while true do
     local c = peek(inp)
     if c == '}' then inp.p = inp.p + 1; break end
@@ -1245,7 +1258,7 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
     -- reads `null` as the arm selected with a null reference
     literal(inp, "null")
     out.tag = tag
-  elseif value_shape(inp) ~= shape_of(arm.field) then
+  elseif value_shape(inp) ~= shape_of(T, arm.field) then
     report.kindMismatch = report.kindMismatch + 1
     if not skip_value(inp, depth + 1, graph) then return nil end
   else
@@ -1548,11 +1561,16 @@ parse_timestamp = function(text: string): integer?
   return integer.add(integer.mul(integer.create(secs), 1000000000i), integer.create(nanos))
 end
 
--- ONE TEXT: the root's object and nothing after it (§16.1)
+-- ONE TEXT: the root's object or declared array and nothing after it (§16.1, §16.10)
 local function core_from(T: any, name: string, text: string, report: any): any
   local desc = T.Tables[name]
   if desc == nil then report.malformed = true; return nil end
   local inp = new_in(text)
+  if desc.jsonArray and value_shape(inp) ~= 'a' then
+    report.malformed = true
+    report.reason = "json_root_not_array: " .. name
+    return nil
+  end
   local graph = nil
   if desc.variable then graph = {} end
   local v = fresh(T, desc)
@@ -2062,6 +2080,7 @@ end
 
 local write_value: (any, any, any, number, any, any, boolean) -> boolean
 local write_table: (any, any, any, number, any, any) -> boolean
+local write_array: (any, any, any, number, any, any) -> boolean
 local write_pointer: (T: any, target: string, node: any, depth: number, g: any, w: any) -> boolean
 local write_field: (any, any, any, number, any, any) -> boolean
 local write_fields: (any, any, any, number, any, any, boolean) -> (boolean, boolean)
@@ -2080,8 +2099,14 @@ write_fields = function(T: any, desc: any, v: any, depth: number, g: any, w: any
   return true, any
 end
 
+-- §16.10: an array-root table writes its sole field directly, wherever it appears.
 write_table = function(T: any, desc: any, v: any, depth: number, g: any, w: any): boolean
   if depth > MAX_DEPTH then return false end
+  if desc.jsonArray then
+    local fd = desc.fields[1]
+    if fd == nil then return false end
+    return write_array(T, fd, v[fd.name] or {}, depth, g, w)
+  end
   local ok, any = write_fields(T, desc, v, depth, g, w, false)
   if not ok then return false end
   if not any then raw(w, "{}"); return true end
@@ -2139,7 +2164,7 @@ local function write_union(T: any, u: any, val: any, depth: number, g: any, w: a
   return true
 end
 
-local function write_array(T: any, fd: any, val: any, depth: number, g: any, w: any): boolean
+write_array = function(T: any, fd: any, val: any, depth: number, g: any, w: any): boolean
   -- §2.9, §5: a counted array past its bound is a value the strict reader
   -- clamps, so the writer refuses it instead of writing the first bound.
   if not fd.fixed and fd.keyed == nil and not fd.list and #val > (fd.bound or 0) then
@@ -2305,7 +2330,9 @@ write_field = function(T: any, fd: any, v: any, depth: number, g: any, w: any): 
   return ok
 end
 
--- ONE INSTANCE as ONE text (§16.1): a trailing newline belongs to the form.
+-- ONE INSTANCE as ONE text (§16.1): a trailing newline belongs to the form;
+-- an array root is its field's own text with no framing newline, exactly as
+-- schema-go's tabletext writer emits it (§16.10).
 local function core_to(T: any, name: string, v: any): string?
   local desc = T.Tables[name]
   if desc == nil or v == nil then return nil end
@@ -2313,7 +2340,7 @@ local function core_to(T: any, name: string, v: any): string?
   if g == nil then return nil end
   local w = W()
   if not write_table(T, desc, v, 0, g, w) then return nil end
-  w.parts[#w.parts + 1] = "\n"
+  if not desc.jsonArray then w.parts[#w.parts + 1] = "\n" end
   return table.concat(w.parts)
 end
 
@@ -2351,7 +2378,7 @@ end
 adapt_table = function(desc: any): any
   local got = TCache[desc.name]
   if got ~= nil then return got end
-  local a = { name = desc.name, variable = desc.variable, new = desc.new, raw = desc, fields = {} }
+  local a = { name = desc.name, variable = desc.variable, jsonArray = desc.jsonArray, new = desc.new, raw = desc, fields = {} }
   TCache[desc.name] = a
   for _, fd in desc.fields do
     a.fields[#a.fields + 1] = adapt_field(fd, desc)
