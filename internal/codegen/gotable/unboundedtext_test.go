@@ -133,6 +133,26 @@ func TestJSONMaxDepthOnePastNamedLimitRefuses(t *testing.T) {
 	}
 }
 
+func TestJSONReadTableDepthAtNamedLimit(t *testing.T) {
+	t.Parallel()
+	var value Root
+	RootReset(&value)
+	in := tableJsonIn{text: []byte("{}")}
+	if !tableJsonReadTable(&in, unsafe.Pointer(&value), RootTableType(), tableJsonMaxDepth) {
+		t.Fatalf("json table read at json_max_depth %d was refused", tableJsonMaxDepth)
+	}
+}
+
+func TestJSONReadTableDepthOnePastNamedLimitRefuses(t *testing.T) {
+	t.Parallel()
+	var value Root
+	RootReset(&value)
+	in := tableJsonIn{text: []byte("{}")}
+	if tableJsonReadTable(&in, unsafe.Pointer(&value), RootTableType(), tableJsonMaxDepth+1) {
+		t.Fatalf("json table read at json_max_depth %d was accepted", tableJsonMaxDepth+1)
+	}
+}
+
 func TestWrongCookMagicRefusesByName(t *testing.T) {
 	t.Parallel()
 	value := Root{}
@@ -235,10 +255,11 @@ func TestFixedRemapMaxOnePastRefusesByName(t *testing.T) {
 	}
 }
 
-`, nil, "-timeout", "600s")
+`, nil, "-v", "-timeout", "600s")
 	if err != nil {
 		t.Fatalf("generated runtime: %v\n%s", err, out)
 	}
+	t.Logf("generated runtime boundary probes:\n%s", out)
 }
 
 func TestGoTableSpecLimitTextFormDefaults(t *testing.T) {
