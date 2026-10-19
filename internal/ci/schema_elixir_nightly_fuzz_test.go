@@ -2,8 +2,8 @@ package ci
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -27,7 +27,10 @@ func TestSchemaElixirNightlyFuzzMakefileContract(t *testing.T) {
 	for _, want := range []string{
 		"SCHEMA_ELIXIR_FUZZ_ELIXIR_VERSION := 1.20.4",
 		"SCHEMA_ELIXIR_FUZZ_TIME            ?= 10m",
-		"SCHEMA_ELIXIR_FUZZ_SECONDS         ?= 540",
+		"SCHEMA_ELIXIR_FUZZ_BUDGET",
+		"SCHEMA_ELIXIR_FUZZ_SLACK_SECONDS",
+		"SCHEMA_ELIXIR_FUZZ_STREAM_DATA_VERSION := 1.4.0",
+		"SCHEMA_ELIXIR_FUZZ_STREAM_DATA_EBIN",
 		"$(ELIXIR_TABLE_UNITS)",
 		"schema-elixir-nightly-fuzz:",
 		"schema-elixir-nightly-fuzz-corpus:",
@@ -47,49 +50,48 @@ func TestSchemaElixirNightlyFuzzMakefileContract(t *testing.T) {
 		t.Errorf("the nightly target must not ride test-elixir: the ten-minute pass is scheduled, never per push")
 	}
 
-	// The timeout (SCHEMA_ELIXIR_FUZZ_TIME) must carry slack over the harness
-	// loop (SCHEMA_ELIXIR_FUZZ_SECONDS): the loop runs for SECONDS and then
-	// seeds and starts up, so a timeout equal to the loop seconds kills a healthy
-	// timed pass (exit 124). The default loop must be strictly shorter than the
-	// default timeout.
-	timeSec := parseTimeBudget(t, fragment, "SCHEMA_ELIXIR_FUZZ_TIME")
-	seconds := parseTimeBudget(t, fragment, "SCHEMA_ELIXIR_FUZZ_SECONDS")
-	if timeSec <= seconds {
-		t.Errorf("the night fuzz timeout (%ds) carries no slack over the loop (%ds); give the timeout room over SECONDS", timeSec, seconds)
+	// The loop must be DERIVED from the chosen budget, not pinned at 540s: a
+	// workflow_dispatch time=1m would otherwise ask the harness for nine minutes
+	// and die on its own timeout with exit 124, no finding.
+	if strings.Contains(fragment, "SCHEMA_ELIXIR_FUZZ_SECONDS         ?=") {
+		t.Errorf("the harness loop must be derived from SCHEMA_ELIXIR_FUZZ_TIME, not a fixed ?= default")
+	}
+	if !strings.Contains(fragment, "SCHEMA_ELIXIR_FUZZ_SECONDS         := $(shell sh $(SCHEMA_ELIXIR_FUZZ_BUDGET)") {
+		t.Errorf("the harness loop is not derived from SCHEMA_ELIXIR_FUZZ_TIME through budget.sh")
 	}
 }
 
-// parseTimeBudget reads a make `?=` default for a time budget variable (either
-// "600" seconds or "10m" style) out of the fragment.
-func parseTimeBudget(t *testing.T, fragment, name string) int64 {
-	t.Helper()
-	lines := strings.Split(fragment, "\n")
-	for _, line := range lines {
-		if !strings.HasPrefix(line, name) {
-			continue
-		}
-		eq := strings.Index(line, "?=")
-		if eq < 0 {
-			continue
-		}
-		val := strings.TrimSpace(line[eq+2:])
-		if seconds, err := strconv.ParseInt(val, 10, 64); err == nil {
-			return seconds
-		}
-		if strings.HasSuffix(val, "m") {
-			if m, err := strconv.ParseInt(strings.TrimSuffix(val, "m"), 10, 64); err == nil {
-				return m * 60
+// TestSchemaElixirNightlyFuzzBudgetDerivation pins the override, not just the
+// two defaults: the script the make fragment calls derives the loop from any
+// budget syntax the dispatch input accepts, always with bounded slack.
+func TestSchemaElixirNightlyFuzzBudgetDerivation(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	script := filepath.Join(root, "internal", "ci", "testdata", "schema-elixir-nightly-fuzz", "budget.sh")
+	for _, tc := range []struct {
+		budget string
+		slack  string
+		want   string
+	}{
+		{"10m", "5", "595"},
+		{"1m", "5", "55"},
+		{"90s", "5", "85"},
+		{"600", "5", "595"},
+		{"10s", "5", "5"},
+	} {
+		t.Run(tc.budget+"_"+tc.slack, func(t *testing.T) {
+			t.Parallel()
+			cmd := exec.Command("sh", script, tc.budget, tc.slack)
+			cmd.Dir = root
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("budget.sh %s %s: %v: %s", tc.budget, tc.slack, err, out)
 			}
-		}
-		if strings.HasSuffix(val, "s") {
-			if s, err := strconv.ParseInt(strings.TrimSuffix(val, "s"), 10, 64); err == nil {
-				return s
+			if got := strings.TrimSpace(string(out)); got != tc.want {
+				t.Errorf("budget.sh %s %s = %s, want %s", tc.budget, tc.slack, got, tc.want)
 			}
-		}
-		t.Fatalf("could not parse %s default %q", name, val)
+		})
 	}
-	t.Fatalf("%s default not found in fragment", name)
-	return 0
 }
 
 // TestSchemaElixirNightlyFuzzWorkflowContract holds the card's own workflow to
@@ -124,9 +126,10 @@ func TestSchemaElixirNightlyFuzzWorkflowContract(t *testing.T) {
 // TestSchemaElixirNightlyFuzzPlantedBadPattern is the card's planted-pattern
 // test. It reads the harness the make target copies (or the copy a negative
 // control plants through SCHEMA_ELIXIR_FUZZ_HARNESS) and requires the three
-// reader kinds and the four named mutations to be present. The negative-control
-// target removes the JSON reader with sed and requires this test to go red on
-// that exact absence; the real harness is green. No toolchain, no clock.
+// reader kinds, the four named mutations, the StreamData property runner and
+// the :cover feedback path to be present. The negative-control target removes
+// the JSON reader with sed and requires this test to go red on that exact
+// absence; the real harness is green. No toolchain, no clock.
 func TestSchemaElixirNightlyFuzzPlantedBadPattern(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -146,7 +149,7 @@ func TestSchemaElixirNightlyFuzzPlantedBadPattern(t *testing.T) {
 		":load_retain,",
 		":load_measure,",
 		":strict,",
-		":json,",
+		":strict,\n    :json,\n    :save_retain,",
 		":save_retain,",
 		":measure_retain,",
 		":cook_from,",
@@ -166,6 +169,14 @@ func TestSchemaElixirNightlyFuzzPlantedBadPattern(t *testing.T) {
 		"defp boundary_integer(",
 		"defp minimize(",
 		"defp replay(",
+		"StreamData.check_all(",
+		"StreamData.tuple(",
+		"StreamData.member_of(",
+		"mutation_generator(",
+		":cover.start()",
+		":cover.compile_beam(module)",
+		":cover.analyse(module, :coverage, :line)",
+		"defp apply_coverage(",
 	} {
 		if !strings.Contains(harness, want) {
 			t.Errorf("nightly-fuzz pattern missing: %s (in %s)", want, path)

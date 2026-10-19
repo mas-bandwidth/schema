@@ -22,24 +22,39 @@
 TABLES_REFUSE_PORTS += schema-elixir-nightly-fuzz
 
 SCHEMA_ELIXIR_FUZZ_ELIXIR_VERSION := 1.20.4
-# The timeout must carry slack over the harness loop: the loop runs for
-# SCHEMA_ELIXIR_FUZZ_SECONDS and then seeds and starts up, so a timeout equal to
-# the loop seconds kills a healthy run (exit 124). The default loop is a minute
-# shorter than the default timeout so the timed pass survives its own seeding.
+# The outer timeout is the budget the caller chose (10m by default, and
+# workflow_dispatch passes its own). The harness deadline is DERIVED from it
+# with a bounded shutdown margin: a fixed loop ignored a shorter `time=1m`
+# dispatch and died on its own timeout with exit 124. The harness counts
+# startup (including :cover instrumentation) inside the same deadline.
 SCHEMA_ELIXIR_FUZZ_TIME            ?= 10m
-SCHEMA_ELIXIR_FUZZ_SECONDS         ?= 540
+SCHEMA_ELIXIR_FUZZ_SLACK_SECONDS   ?= 5
+SCHEMA_ELIXIR_FUZZ_BUDGET          := internal/ci/testdata/schema-elixir-nightly-fuzz/budget.sh
+SCHEMA_ELIXIR_FUZZ_SECONDS         := $(shell sh $(SCHEMA_ELIXIR_FUZZ_BUDGET) $(SCHEMA_ELIXIR_FUZZ_TIME) $(SCHEMA_ELIXIR_FUZZ_SLACK_SECONDS))
 SCHEMA_ELIXIR_FUZZ_SEED            ?= 20261018
 SCHEMA_ELIXIR_FUZZ_DIR             := build/schema-elixir-nightly-fuzz
 SCHEMA_ELIXIR_FUZZ_CORPUS          := $(SCHEMA_ELIXIR_FUZZ_DIR)/corpus.txt
 SCHEMA_ELIXIR_FUZZ_HARNESS         := $(SCHEMA_ELIXIR_FUZZ_DIR)/harness.exs
 SCHEMA_ELIXIR_FUZZ_SAVED           := internal/ci/testdata/schema-elixir-nightly-fuzz/saved
 SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE  := internal/ci/testdata/schema-elixir-nightly-fuzz/harness.exs
+# The mutation library is StreamData, vendored at a pinned version so the
+# nightly run needs no network and no Hex/mix project.
+SCHEMA_ELIXIR_FUZZ_STREAM_DATA_VERSION := 1.4.0
+SCHEMA_ELIXIR_FUZZ_STREAM_DATA_DIR     := internal/ci/testdata/schema-elixir-nightly-fuzz/vendor/stream_data
+SCHEMA_ELIXIR_FUZZ_STREAM_DATA_EBIN    := $(SCHEMA_ELIXIR_FUZZ_DIR)/stream_data-ebin
+SCHEMA_ELIXIR_FUZZ_STREAM_DATA_SOURCES := $(wildcard $(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_DIR)/lib/*.ex $(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_DIR)/lib/stream_data/*.ex)
 # The Go fuzz corpus and the conformance vectors seed the mutator, as the card
 # asks. They are raw bytes, not this wire's, so they are extra SPLICE sources
 # and a small share of the mutant population, never a valid encoding.
 SCHEMA_ELIXIR_FUZZ_SEED_DIRS       := internal/fuzz/testdata testdata/conformance/tables
 
 ELIXIR_FUZZ_EBIN := build/elixir-tables-ebin
+
+$(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_EBIN)/.stamp: $(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_SOURCES)
+	@rm -rf $(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_EBIN)
+	@mkdir -p $(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_EBIN)
+	$(ELIXIRC) -o $(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_EBIN) $(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_SOURCES)
+	@touch $@
 
 .PHONY: schema-elixir-nightly-fuzz-corpus
 schema-elixir-nightly-fuzz-corpus: build/tables-generated-elixir/.stamp
@@ -60,7 +75,7 @@ schema-elixir-nightly-fuzz-corpus: build/tables-generated-elixir/.stamp
 	@echo "schema-elixir-nightly-fuzz corpus: $$(grep -c '^unit ' $(SCHEMA_ELIXIR_FUZZ_CORPUS)) units from ELIXIR_TABLE_UNITS"
 
 .PHONY: schema-elixir-nightly-fuzz-prepare
-schema-elixir-nightly-fuzz-prepare: bin/schema $(ELIXIR_FUZZ_EBIN)/.stamp schema-elixir-nightly-fuzz-corpus
+schema-elixir-nightly-fuzz-prepare: bin/schema $(ELIXIR_FUZZ_EBIN)/.stamp $(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_EBIN)/.stamp schema-elixir-nightly-fuzz-corpus
 	@mkdir -p $(SCHEMA_ELIXIR_FUZZ_DIR)
 	@cp $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) $(SCHEMA_ELIXIR_FUZZ_HARNESS)
 
@@ -74,7 +89,7 @@ schema-elixir-nightly-fuzz: schema-elixir-nightly-fuzz-prepare
 		[ "$$v" = "$(SCHEMA_ELIXIR_FUZZ_ELIXIR_VERSION)" ] || \
 		{ echo "tool missing: elixir $(SCHEMA_ELIXIR_FUZZ_ELIXIR_VERSION) (found $${v:-unknown})"; exit 1; }
 	SCHEMA_ELIXIR_FUZZ_SEED=$(SCHEMA_ELIXIR_FUZZ_SEED) \
-		timeout $(SCHEMA_ELIXIR_FUZZ_TIME) elixir -pa $(ELIXIR_FUZZ_EBIN) \
+		timeout $(SCHEMA_ELIXIR_FUZZ_TIME) elixir -pa $(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_EBIN) -pa $(ELIXIR_FUZZ_EBIN) \
 		$(SCHEMA_ELIXIR_FUZZ_HARNESS) $(SCHEMA_ELIXIR_FUZZ_CORPUS) \
 		$(SCHEMA_ELIXIR_FUZZ_SECONDS) $(SCHEMA_ELIXIR_FUZZ_SAVED) \
 		$(SCHEMA_ELIXIR_FUZZ_SEED_DIRS)
@@ -83,14 +98,14 @@ schema-elixir-nightly-fuzz: schema-elixir-nightly-fuzz-prepare
 # THE FAST ARM: replay every saved input on every push. No clock, no mutation,
 # no network — just the inputs a past run saved, through the same readers.
 .PHONY: schema-elixir-nightly-fuzz-replay
-schema-elixir-nightly-fuzz-replay: bin/schema $(ELIXIR_FUZZ_EBIN)/.stamp schema-elixir-nightly-fuzz-corpus
+schema-elixir-nightly-fuzz-replay: bin/schema $(ELIXIR_FUZZ_EBIN)/.stamp $(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_EBIN)/.stamp schema-elixir-nightly-fuzz-corpus
 	@[ -d $(SCHEMA_ELIXIR_FUZZ_SAVED) ] || \
 		{ echo "schema-elixir-nightly-fuzz replay: saved-input directory $(SCHEMA_ELIXIR_FUZZ_SAVED) is missing"; exit 1; }
 	@files=$$(ls -A $(SCHEMA_ELIXIR_FUZZ_SAVED) 2>/dev/null | grep -v -F -x '.gitkeep'); \
 	if [ -z "$$files" ]; then \
 		echo "schema-elixir-nightly-fuzz replay: no saved inputs (0)"; \
 	else \
-		$(ELIXIR) -pa $(ELIXIR_FUZZ_EBIN) $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) \
+		$(ELIXIR) -pa $(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_EBIN) -pa $(ELIXIR_FUZZ_EBIN) $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) \
 			--replay $(SCHEMA_ELIXIR_FUZZ_CORPUS) $(SCHEMA_ELIXIR_FUZZ_SAVED); \
 	fi
 
@@ -116,7 +131,7 @@ schema-elixir-nightly-fuzz-negative-control: schema-elixir-nightly-fuzz-prepare
 	@$(ELIXIRC) -o $(SCHEMA_ELIXIR_FUZZ_PLANT)/ebin $(SCHEMA_ELIXIR_FUZZ_PLANT)/src/*.ex
 	@grep '^unit $(SCHEMA_ELIXIR_FUZZ_PLANT_UNIT) ' $(SCHEMA_ELIXIR_FUZZ_CORPUS) > $(SCHEMA_ELIXIR_FUZZ_PLANT)/corpus.txt
 	@if SCHEMA_ELIXIR_FUZZ_SEED=$(SCHEMA_ELIXIR_FUZZ_SEED) \
-			timeout $(SCHEMA_ELIXIR_FUZZ_PLANT_SECONDS)s elixir -pa $(SCHEMA_ELIXIR_FUZZ_PLANT)/ebin \
+			timeout $$(($(SCHEMA_ELIXIR_FUZZ_PLANT_SECONDS)+30))s elixir -pa $(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_EBIN) -pa $(SCHEMA_ELIXIR_FUZZ_PLANT)/ebin \
 			$(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) $(SCHEMA_ELIXIR_FUZZ_PLANT)/corpus.txt \
 			$(SCHEMA_ELIXIR_FUZZ_PLANT_SECONDS) $(SCHEMA_ELIXIR_FUZZ_PLANT)/saved \
 			> $(SCHEMA_ELIXIR_FUZZ_PLANT)/log 2>&1; then \
@@ -127,7 +142,7 @@ schema-elixir-nightly-fuzz-negative-control: schema-elixir-nightly-fuzz-prepare
 		{ echo "NEGATIVE CONTROL FAILED: the fuzzer failed without a FINDING line"; cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/log; exit 1; }
 	@n=$$(ls -A $(SCHEMA_ELIXIR_FUZZ_PLANT)/saved | wc -l | tr -d ' '); \
 		[ "$$n" -ge 1 ] || { echo "NEGATIVE CONTROL FAILED: the finding was not saved"; exit 1; }
-	@if elixir -pa $(SCHEMA_ELIXIR_FUZZ_PLANT)/ebin $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) \
+	@if elixir -pa $(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_EBIN) -pa $(SCHEMA_ELIXIR_FUZZ_PLANT)/ebin $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) \
 			--replay $(SCHEMA_ELIXIR_FUZZ_PLANT)/corpus.txt $(SCHEMA_ELIXIR_FUZZ_PLANT)/saved \
 			> $(SCHEMA_ELIXIR_FUZZ_PLANT)/replay.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the planted reader replayed the saved input green"; \
@@ -136,13 +151,28 @@ schema-elixir-nightly-fuzz-negative-control: schema-elixir-nightly-fuzz-prepare
 	@grep -q 'REPLAY FAILED' $(SCHEMA_ELIXIR_FUZZ_PLANT)/replay.log || \
 		{ echo "NEGATIVE CONTROL FAILED: replay refused without naming the saved input"; \
 		  cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/replay.log; exit 1; }
-	@if ! elixir -pa $(ELIXIR_FUZZ_EBIN) $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) \
+	@if ! elixir -pa $(SCHEMA_ELIXIR_FUZZ_STREAM_DATA_EBIN) -pa $(ELIXIR_FUZZ_EBIN) $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) \
 			--replay $(SCHEMA_ELIXIR_FUZZ_PLANT)/corpus.txt $(SCHEMA_ELIXIR_FUZZ_PLANT)/saved \
 			> $(SCHEMA_ELIXIR_FUZZ_PLANT)/replay.green.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the unplanted reader is red on the planted finding"; \
 		cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/replay.green.log; exit 1; \
 	fi
 	@echo 'schema-elixir-nightly-fuzz negative control: dropped open/1 count check found, saved, and replayed red; the unplanted reader replays it green'
+	# THE PLANTED-PATTERN CONTROL: a scratch harness loses its JSON reader; the
+	# static contract must go red on that copy and green on the real one.
+	@sed '/^    :json,$$/d' $(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) > $(SCHEMA_ELIXIR_FUZZ_PLANT)/harness.bad.exs
+	@if SCHEMA_ELIXIR_FUZZ_HARNESS=$(CURDIR)/$(SCHEMA_ELIXIR_FUZZ_PLANT)/harness.bad.exs \
+			go test ./internal/ci -count=1 -timeout 600s -run '^TestSchemaElixirNightlyFuzzPlantedBadPattern$$' \
+			> $(SCHEMA_ELIXIR_FUZZ_PLANT)/pattern.bad.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a harness with no JSON reader passed the planted-pattern test"; \
+		cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/pattern.bad.log; exit 1; \
+	fi
+	@SCHEMA_ELIXIR_FUZZ_HARNESS=$(CURDIR)/$(SCHEMA_ELIXIR_FUZZ_HARNESS_SOURCE) \
+		go test ./internal/ci -count=1 -timeout 600s -run '^TestSchemaElixirNightlyFuzzPlantedBadPattern$$' \
+		> $(SCHEMA_ELIXIR_FUZZ_PLANT)/pattern.good.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the real harness did not pass the planted-pattern test"; \
+		  cat $(SCHEMA_ELIXIR_FUZZ_PLANT)/pattern.good.log; exit 1; }
+	@echo 'schema-elixir-nightly-fuzz planted-pattern control: a harness with no JSON reader reds the test; the real harness is green'
 
 # THE FAST CI ARM, inside the one-minute budget: the structural checks and the
 # pattern test (no toolchain boot, no mutation) and the replay of saved inputs.

@@ -5,7 +5,18 @@
 # encodings are generated through the public API (the declared default value
 # and one non-default variant per scalar field), spliced with the valid
 # encodings found in the Go fuzz corpus and the conformance vectors, then
-# mutated and fed to every reader entry point the generated module carries:
+# mutated and fed to every reader entry point the generated module carries.
+#
+# The mutator is StreamData (vendored under vendor/stream_data, pinned in the
+# make fragment): a generator chooses the table, seed, reader, mutation kind,
+# bit, boundary value and offsets, and `StreamData.check_all/3` is the property
+# runner. Coverage feedback closes the loop: every generated Table module is
+# compiled through `:cover`, and a mutant batch that covers a source line no
+# earlier batch covered is added to the splice corpus, so later StreamData
+# choices are drawn from inputs that reached new code as well as the valid
+# seeds. Nothing here is a bare `:rand` loop.
+#
+# The readers fed:
 #
 #   load            Table.load/2 on mutated wire bytes
 #   load_retain     Table.load_retain/4 on mutated wire bytes
@@ -51,6 +62,8 @@ defmodule SchemaElixirNightlyFuzz do
   @max_variants 4
   @max_table_extras 3
   @retain_cap 65_536
+  @runs_per_batch 250
+  @max_cov_corpus 256
 
   def main(argv) do
     case argv do
@@ -69,6 +82,7 @@ defmodule SchemaElixirNightlyFuzz do
   # ---- the nightly run -----------------------------------------------------
 
   defp run(corpus, seconds, saved, seed_dirs) do
+    started = System.monotonic_time(:millisecond)
     units = read_corpus(corpus)
     if units == [], do: raise("the corpus names no unit")
 
@@ -85,48 +99,173 @@ defmodule SchemaElixirNightlyFuzz do
         %{unit: name, module: module, path: path, tables: tables}
       end
 
-    :rand.seed(:exsss, {seed(), seed() + 369, seed() + 7})
     File.mkdir_p!(saved)
-    deadline = System.monotonic_time(:millisecond) + seconds * 1000
+    deadline = started + seconds * 1000
     count = Enum.sum(Enum.map(titles, &length(&1.tables)))
+    covered = start_cover(titles, seconds)
 
     IO.puts(
       "schema-elixir-nightly-fuzz: #{count} seeds over #{length(titles)} units, " <>
-        "#{length(extra)} extra seed files, #{seconds}s, #{length(@readers)} readers"
+        "#{length(extra)} extra seed files, #{seconds}s, #{length(@readers)} readers, " <>
+        "StreamData + :cover"
     )
 
-    {mutants, findings} = loop(titles, extra, deadline, 0, 0, saved)
-    IO.puts("schema-elixir-nightly-fuzz: #{mutants} mutants, #{findings} findings at seed #{seed()}")
+    state = %{
+      titles: titles,
+      extra: extra,
+      cov: [],
+      saved: saved,
+      mutants: 0,
+      findings: 0,
+      batch_inputs: [],
+      covered: covered
+    }
 
-    if findings > 0 do
+    Process.put(:schema_elixir_fuzz, state)
+    state = stream_loop(deadline, 0)
+    IO.puts("schema-elixir-nightly-fuzz: #{state.mutants} mutants, #{state.findings} findings at seed #{seed()}")
+
+    if state.findings > 0 do
       IO.puts(
         :stderr,
-        "schema-elixir-nightly-fuzz: #{findings} saved input(s) under #{saved}; replay them with the replay target"
+        "schema-elixir-nightly-fuzz: #{state.findings} saved input(s) under #{saved}; replay them with the replay target"
       )
 
       System.halt(1)
     end
   end
 
-  defp loop(titles, extra, deadline, mutants, findings, saved) do
-    if System.monotonic_time(:millisecond) >= deadline or findings >= @max_findings do
-      {mutants, findings}
+  # StreamData is the property runner: each batch is a fresh generator seed and
+  # a bounded run count, and the property checks the wall clock before feeding
+  # one generated mutant. Coverage is sampled after each batch; a batch that
+  # adds a covered source line feeds the next batch's splice corpus.
+  defp stream_loop(deadline, round) do
+    state = Process.get(:schema_elixir_fuzz)
+
+    if System.monotonic_time(:millisecond) >= deadline or state.findings >= @max_findings do
+      state
     else
-      title = Enum.at(titles, :rand.uniform(length(titles)) - 1)
-      seed = Enum.at(title.tables, :rand.uniform(length(title.tables)) - 1)
-      kind = Enum.at(@readers, :rand.uniform(length(@readers)) - 1)
-      input = mutate(kind, seed, extra)
+      Process.put(:schema_elixir_fuzz, %{state | batch_inputs: []})
 
-      case read(kind, title.module, seed.table, input) do
-        :ok ->
-          loop(titles, extra, deadline, mutants + 1, findings, saved)
-
-        {:finding, reason} ->
-          input = minimize(kind, title.module, seed.table, input)
-          path = save(saved, title.unit, seed.table, kind, input)
-          IO.puts(:stderr, "FINDING #{title.unit} #{seed.table} #{kind} #{path}: #{reason}")
-          loop(titles, extra, deadline, mutants + 1, findings + 1, saved)
+      try do
+        StreamData.check_all(
+          mutation_generator(length(state.titles), @readers),
+          [initial_seed: {seed() + round, seed() + 369 + round, seed() + 7 + round}, max_runs: @runs_per_batch, max_run_time: 5_000],
+          fn spec ->
+            if System.monotonic_time(:millisecond) >= deadline, do: throw(:fuzz_done)
+            mutant(spec)
+            {:ok, spec}
+          end
+        )
+      catch
+        :throw, :fuzz_done -> :ok
       end
+
+      Process.put(:schema_elixir_fuzz, apply_coverage(Process.get(:schema_elixir_fuzz)))
+      stream_loop(deadline, round + 1)
+    end
+  end
+
+  # The generator chooses every parameter of one mutant. The fields are read in
+  # mutant/1 in the same order.
+  defp mutation_generator(title_count, readers) do
+    StreamData.tuple({
+      StreamData.integer(0..(title_count - 1)),
+      StreamData.integer(),
+      StreamData.member_of(readers),
+      StreamData.member_of([:bit_flip, :truncate, :splice, :boundary_integer]),
+      StreamData.integer(),
+      StreamData.integer(0..255),
+      StreamData.integer(0..7),
+      StreamData.member_of([0, 1, 0x7F, 0x80, 0xFF, 0x7FFF, 0xFFFF, 0xFFFFFFFF, 0xFFFFFFFFFFFFFFFF]),
+      StreamData.integer()
+    })
+  end
+
+  defp mutant({title_i, seed_i, kind, mutation, source_i, byte, bit, boundary, offset}) do
+    state = Process.get(:schema_elixir_fuzz)
+    title = Enum.at(state.titles, rem(abs(title_i), length(state.titles)))
+    seed = Enum.at(title.tables, rem(abs(seed_i), length(title.tables)))
+    sources = state.extra ++ state.cov
+    input = mutate(kind, seed, sources, {mutation, source_i, byte, bit, boundary, offset})
+
+    state = %{state | mutants: state.mutants + 1, batch_inputs: [%{bytes: input, json: kind == :json} | state.batch_inputs]}
+
+    case read(kind, title.module, seed.table, input) do
+      :ok ->
+        Process.put(:schema_elixir_fuzz, state)
+
+      {:finding, reason} ->
+        input = minimize(kind, title.module, seed.table, input)
+        path = save(state.saved, title.unit, seed.table, kind, input)
+        IO.puts(:stderr, "FINDING #{title.unit} #{seed.table} #{kind} #{path}: #{reason}")
+        Process.put(:schema_elixir_fuzz, %{state | findings: state.findings + 1})
+    end
+  end
+
+  # ---- coverage feedback ---------------------------------------------------
+
+  # Instrumenting a large generated module through :cover costs a few seconds,
+  # so the count is capped by the chosen budget: the harness deadline starts
+  # before this work and the timed pass must still get most of its budget to
+  # mutate. A ten-minute night instruments the whole corpus; a one-minute
+  # dispatch instruments a representative sample and keeps its loop.
+  defp start_cover(titles, seconds) do
+    case :cover.start() do
+      {:ok, _} -> :ok
+      {:error, {:already_started, _}} -> :ok
+      other -> IO.puts(:stderr, "cover: start returned #{inspect(other)}")
+    end
+
+    total = length(titles)
+    instrumented = max(1, min(total, div(seconds, 15)))
+    titles = Enum.take(titles, instrumented)
+    IO.puts(:stderr, "cover: instrumenting #{instrumented}/#{total} unit module(s)")
+
+    for %{module: module} <- titles, into: %{} do
+      case :cover.compile_beam(module) do
+        {:ok, _} ->
+          {module, MapSet.new()}
+
+        other ->
+          IO.puts(:stderr, "cover: #{inspect(module)} is not instrumented: #{inspect(other)}")
+          {module, MapSet.new()}
+      end
+    end
+  end
+
+  defp apply_coverage(state) do
+    {covered, added} =
+      Enum.reduce(state.covered, {state.covered, 0}, fn {module, seen}, {acc, added} ->
+        lines = covered_lines(module)
+        fresh = MapSet.difference(lines, seen)
+
+        if MapSet.size(fresh) > 0 do
+          IO.puts(:stderr, "cover: #{inspect(module)} +#{MapSet.size(fresh)} line(s)")
+        end
+
+        {Map.put(acc, module, MapSet.union(seen, lines)), added + MapSet.size(fresh)}
+      end)
+
+    cov =
+      if added > 0 do
+        (state.cov ++ Enum.reverse(state.batch_inputs))
+        |> Enum.uniq_by(& &1.bytes)
+        |> Enum.take(-@max_cov_corpus)
+      else
+        state.cov
+      end
+
+    %{state | covered: covered, cov: cov, batch_inputs: []}
+  end
+
+  defp covered_lines(module) do
+    case :cover.analyse(module, :coverage, :line) do
+      {:ok, rows} ->
+        for {{^module, line}, {covered, _not}} <- rows, covered > 0, into: MapSet.new(), do: line
+
+      _ ->
+        MapSet.new()
     end
   end
 
@@ -459,72 +598,81 @@ defmodule SchemaElixirNightlyFuzz do
 
   # ---- the four mutations the card names -----------------------------------
 
-  defp mutate(:json, %{json: nil} = seed, extra), do: mutate(:load, seed, extra)
+  # Every choice here comes from the StreamData generator in mutant/1: the
+  # mutation kind, the pool index, the bit, the boundary value and the offset.
+  defp mutate(:json, %{json: nil} = seed, sources, params), do: mutate(:load, seed, sources, params)
 
-  defp mutate(kind, seed, extra) do
-    pool = if kind == :json, do: Enum.filter(extra, & &1.json), else: extra
+  defp mutate(kind, seed, sources, {mutation, source_i, byte, bit, boundary, offset}) do
+    pool = if kind == :json, do: Enum.filter(sources, &Map.get(&1, :json, false)), else: sources
     source = if kind == :json, do: seed.json, else: seed.wire
 
     source =
-      if :rand.uniform(4) == 1 and pool != [] do
-        Enum.random(pool).bytes
+      if rem(abs(source_i), 4) == 0 and pool != [] do
+        Enum.at(pool, rem(abs(source_i), length(pool))).bytes
       else
         source
       end
 
-    mutate_bytes(source, Enum.map(pool, & &1.bytes))
+    mutate_bytes(source, Enum.map(pool, & &1.bytes), {mutation, source_i, byte, bit, boundary, offset})
   end
 
-  defp mutate_bytes(bytes, extra) do
-    size = byte_size(bytes)
+  defp mutate_bytes(bytes, _extra, {_mutation, _, _, _, _, _}) when byte_size(bytes) == 0, do: <<>>
 
-    if size == 0 do
-      <<>>
-    else
-      case :rand.uniform(4) do
-        1 -> bit_flip(bytes, size)
-        2 -> truncate(bytes, size)
-        3 -> splice(bytes, size, extra)
-        4 -> boundary_integer(bytes, size)
-      end
+  defp mutate_bytes(bytes, extra, {mutation, source_i, byte, bit, boundary, offset}) do
+    case mutation do
+      :bit_flip -> bit_flip(bytes, byte, bit, offset)
+      :truncate -> truncate(bytes, offset)
+      :splice -> splice(bytes, extra, source_i, offset)
+      :boundary_integer -> boundary_integer(bytes, boundary, offset)
     end
   end
 
-  # a bit flip at a random offset
-  defp bit_flip(bytes, size) do
-    at = :rand.uniform(size) - 1
+  # a bit flip at a generated offset
+  defp bit_flip(bytes, _byte, bit, offset) do
+    size = byte_size(bytes)
+    at = offset_at(offset, size)
     <<head::binary-size(^at), b, tail::binary>> = bytes
-    <<head::binary, Bitwise.bxor(b, Bitwise.bsl(1, :rand.uniform(8) - 1)), tail::binary>>
+    <<head::binary, Bitwise.bxor(b, Bitwise.bsl(1, rem(abs(bit), 8))), tail::binary>>
   end
 
-  # truncation at a random offset
-  defp truncate(bytes, size), do: binary_part(bytes, 0, :rand.uniform(size))
+  # truncation at a generated offset
+  defp truncate(bytes, offset) do
+    size = byte_size(bytes)
+    binary_part(bytes, 0, offset_at(offset, size))
+  end
 
-  # splice: the head of one seed and the tail of another
-  defp splice(bytes, size, extra) do
-    other = if extra == [], do: bytes, else: Enum.random(extra)
+  # splice: the head of one seed and the tail of another, both offsets generated
+  defp splice(bytes, extra, source_i, offset) do
+    size = byte_size(bytes)
+    other = if extra == [], do: bytes, else: Enum.at(extra, rem(abs(source_i), length(extra)))
 
     if byte_size(other) == 0 do
       bytes
     else
-      at = :rand.uniform(size) - 1
-      from = :rand.uniform(byte_size(other)) - 1
+      at = offset_at(offset, size)
+      from = offset_at(source_i, byte_size(other))
       <<head::binary-size(^at), _::binary>> = bytes
       tail = binary_part(other, from, byte_size(other) - from)
       head <> tail
     end
   end
 
-  # a boundary integer written little-endian at a random offset
-  defp boundary_integer(bytes, size) do
-    values = [0, 1, 0x7F, 0x80, 0xFF, 0x7FFF, 0xFFFF, 0xFFFFFFFF, 0xFFFFFFFFFFFFFFFF]
-    wide = <<Enum.random(values)::little-unsigned-64>>
-    at = :rand.uniform(size) - 1
+  # a generated boundary integer written little-endian at a generated offset
+  defp boundary_integer(bytes, boundary, offset) do
+    size = byte_size(bytes)
+    wide = <<boundary::little-unsigned-64>>
+    at = offset_at(offset, size)
     before = binary_part(bytes, 0, at)
     after_at = min(size, at + 8)
     after_bytes = binary_part(bytes, after_at, size - after_at)
     before <> wide <> after_bytes
   end
+
+  # A negative generated offset means "from the tail": the id trailer is the
+  # last eight bytes, and the generator reaching it must not depend on large
+  # random integers.
+  defp offset_at(offset, size) when offset < 0, do: size - 1 - rem(-offset, size)
+  defp offset_at(offset, size), do: rem(offset, size)
 
   # ---- corpus, seed files, saved inputs ------------------------------------
 
