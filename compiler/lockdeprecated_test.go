@@ -37,7 +37,11 @@ fixed table ShipConfig
 // is byte-identical but for the tags column, so the storage, the offsets, the
 // writer and the reader all still carry the field.
 func TestDeprecatedFieldKeepsItsSlot(t *testing.T) {
-	for _, lang := range []string{"cpp", "c", "go", "cs"} {
+	// Go is absent: a deprecated fixed slot writes its declared default per
+	// §3.4 (schema-go-fixed-deprecated-slot-is-the-declared-default), so its
+	// generated writer and plan change with the marker; that behavior is
+	// verified in internal/codegen/gotable/fixeddeprecatedslot_test.go.
+	for _, lang := range []string{"cpp", "c", "cs"} {
 		t.Run(lang, func(t *testing.T) {
 			live := generateSource(t, deprecatedLive, lang)
 			marked := generateSource(t, deprecatedMarked, lang)
