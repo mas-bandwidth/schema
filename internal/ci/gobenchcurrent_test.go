@@ -50,13 +50,36 @@ func goBenchRecipe(t *testing.T, root, rule string) []goBenchCommand {
 			continue
 		}
 		fields[0] = strings.TrimPrefix(fields[0], "@")
-		if fields[0] != "./bin/schema" || len(fields) < 7 ||
-			fields[1] != "generate" || fields[2] != "--lang" || fields[3] != "go" || fields[4] != "--out" {
+		if fields[0] != "./bin/schema" || len(fields) < 7 || fields[1] != "generate" {
+			continue
+		}
+		out := ""
+		lang := ""
+		schemas := make([]string, 0, len(fields)-3)
+		for i := 2; i < len(fields); i++ {
+			switch fields[i] {
+			case "--lang":
+				i++
+				if i < len(fields) {
+					lang = fields[i]
+				}
+			case "--out":
+				i++
+				if i < len(fields) {
+					out = fields[i]
+				}
+			case "--runtime":
+				i++
+			default:
+				schemas = append(schemas, fields[i])
+			}
+		}
+		if lang != "go" || out == "" {
 			continue
 		}
 		commands = append(commands, goBenchCommand{
-			out:     fields[5],
-			schemas: append([]string(nil), fields[6:]...),
+			out:     out,
+			schemas: schemas,
 		})
 	}
 	if !found {
