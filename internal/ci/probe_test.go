@@ -29,6 +29,16 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// The card's own make fragment is a GATE, not a port: the sanitizer lens's
+	// make/schema-cpp-conformance-*.mk rides the same wildcard include, so it is
+	// kept out of the probe fixture entirely. The registry the probe enumerates
+	// is then the same live-port set the real gate sees, with no non-port file
+	// left to be read as a backend (beside lua's intentional scaffold).
+	for _, frag := range gateFragmentsIn(fixture) {
+		if err := os.Remove(frag); err != nil {
+			t.Fatal(err)
+		}
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)
@@ -121,4 +131,15 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if strings.Contains(out, "schema new-leg skeleton") || !strings.Contains(out, "backend stopped for another reason") {
 		t.Fatalf("unmarked backend did not fail as an ordinary backend:\n%s", out)
 	}
+}
+
+// gateFragmentsIn names the card's own make/*.mk gate fragments in a probe
+// fixture, so TestWideScalarProbeModuleBoundary can keep them out of the port
+// registry it exercises.
+func gateFragmentsIn(fixture string) []string {
+	matches, err := filepath.Glob(filepath.Join(fixture, "make", "schema-cpp-conformance-*.mk"))
+	if err != nil {
+		return nil
+	}
+	return matches
 }
