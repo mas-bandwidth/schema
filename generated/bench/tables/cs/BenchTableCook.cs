@@ -661,7 +661,7 @@ namespace Benchtable
         {
             long delta = *slot;
             if (delta == 0) { return null; }
-            return (TableEntityRow*)((byte*)slot + delta);
+            return (TableEntityRow*)unchecked((byte*)slot + delta);
         }
 
         // The pieces a consumer reads THROUGH rather than at: each is a SPAN over
@@ -861,7 +861,7 @@ namespace Benchtable
         {
             long delta = *slot;
             if (delta == 0) { return null; }
-            return (TableStatRow*)((byte*)slot + delta);
+            return (TableStatRow*)unchecked((byte*)slot + delta);
         }
 
         // The pieces a consumer reads THROUGH rather than at: each is a SPAN over
@@ -1049,7 +1049,7 @@ namespace Benchtable
         {
             long delta = *slot;
             if (delta == 0) { return null; }
-            return (TableMixedRow*)((byte*)slot + delta);
+            return (TableMixedRow*)unchecked((byte*)slot + delta);
         }
 
         // The pieces a consumer reads THROUGH rather than at: each is a SPAN over

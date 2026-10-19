@@ -1,5 +1,7 @@
 package cstable
 
+// Wide 128-bit region scalars split into low and high 64-bit words via unchecked(ulong)
+// truncation (oracle: internal/codegen/gotable/regions.go, internal/codegen/gotable/write.go).
 const tableRegionWriteSource = `
     static bool RegionDefaultElement(NativeValue value, TableFieldInfo f, int i)
     {
@@ -163,7 +165,7 @@ const tableRegionWriteSource = `
         else if (f.GetWide != null)
         {
             UInt128 raw = value.Wide(f, i); int width = Width(f.Kind);
-            w.Fixed((ulong)raw, Math.Min(width, 8)); if (width == 16) { w.Fixed((ulong)(raw >> 64), 8); }
+            w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         }
         else { w.Fixed(f.GetBuffer != null ? value.Buffer(f)[i] : value.Raw(f, i), Width(f.Kind)); }
     }

@@ -1,5 +1,7 @@
 package cstable
 
+// Base64 decoding extracts the low 8-bit lane from the shifted bit accumulator via
+// unchecked(byte) truncation (oracle: internal/codegen/gotable/json.go).
 const tableVariableJsonSource = `
     public sealed class Label
     {
@@ -114,7 +116,7 @@ const tableVariableJsonSource = `
             if (held >= 8)
             {
                 held -= 8;
-                if (count < bytes.Length) { bytes[count++] = (byte)(accumulator >> held); }
+                if (count < bytes.Length) { bytes[count++] = unchecked((byte)(accumulator >> held)); }
             }
         }
         f.SetChild(owner, index, new TableBlob(bytes));

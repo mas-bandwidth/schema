@@ -200,7 +200,7 @@ namespace Bench
         {
             long delta = *slot;
             if (delta == 0) { return null; }
-            return (FixedTableRow*)((byte*)slot + delta);
+            return (FixedTableRow*)unchecked((byte*)slot + delta);
         }
 
         // The pieces a consumer reads THROUGH rather than at: each is a SPAN over

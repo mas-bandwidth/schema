@@ -728,7 +728,7 @@ func (g *cookGen) emitAt(st *ir.Struct) {
 	g.hf("    public static %sRow* At(long* slot)\n    {\n", name)
 	g.hf("        long delta = *slot;\n")
 	g.hf("        if (delta == 0) { return null; }\n")
-	g.hf("        return (%sRow*)((byte*)slot + delta);\n", name)
+	g.hf("        return (%sRow*)unchecked((byte*)slot + delta);\n", name)
 	g.hf("    }\n\n")
 }
 
@@ -756,7 +756,7 @@ func (g *cookGen) emitAccessors(st *ir.Struct, ml *ir.MemberLayout) {
 			if f.IsMap() {
 				elem = f.MapEntry.Name + "Row"
 			}
-			g.hf("    public static ReadOnlySpan<%s> %s(%sRow* row) { return new ReadOnlySpan<%s>((byte*)&row->%s + row->%s.Reference, Math.Max(0, row->%s.Count)); }\n\n", elem, member, name, elem, member, member, member)
+			g.hf("    public static ReadOnlySpan<%s> %s(%sRow* row) { return new ReadOnlySpan<%s>(unchecked((byte*)&row->%s + row->%s.Reference), Math.Max(0, row->%s.Count)); }\n\n", elem, member, name, elem, member, member, member)
 		case f.Type.Pointer && f.Array == ir.ArrayNone:
 			continue
 		case f.Type.Kind == ir.TWString:

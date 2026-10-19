@@ -1,5 +1,7 @@
 package cstable
 
+// MessageReadElement and MessageMapKey narrow 128-bit sign-extended or base-packed bit
+// accumulators to the target field's 64-bit or 8-bit storage word (oracle: internal/codegen/gotable/messageread.go).
 const tableMessageReadSource = `
     struct MessageRead
     {
@@ -281,7 +283,7 @@ const tableMessageReadSource = `
             above = !baseNegative && stored < bits;
             if (kind < 18)
             {
-                ulong raw = (ulong)stored;
+                ulong raw = unchecked((ulong)stored);
                 negative = Signed(kind) && unchecked((long)raw) < 0; above = false;
                 stored = negative ? unchecked((UInt128)(Int128)(long)raw) : raw;
             }
@@ -304,8 +306,8 @@ const tableMessageReadSource = `
         if (keep)
         {
             if (f.SetWide != null) { f.SetWide(value, index, stored); }
-            else if (f.GetBuffer != null) { f.GetBuffer(value)[index] = (byte)stored; }
-            else { f.SetRaw(value, index, (ulong)stored); }
+            else if (f.GetBuffer != null) { f.GetBuffer(value)[index] = unchecked((byte)stored); }
+            else { f.SetRaw(value, index, unchecked((ulong)stored)); }
         }
         return true;
     }
@@ -334,7 +336,7 @@ const tableMessageReadSource = `
                 else if (keyField.Kind >= 2 && keyField.Kind <= 5 && width > 0 && width < 128)
                 { raw = unchecked((UInt128)((Int128)(raw << (128 - width)) >> (128 - width))); }
                 int destination = Width(keyField.Kind) * 8;
-                key.Raw = keyField.Kind >= 2 && keyField.Kind <= 5 ? unchecked((ulong)(long)((Int128)(raw << (128 - destination)) >> (128 - destination))) : (ulong)raw & (destination == 64 ? ulong.MaxValue : (1ul << destination) - 1);
+                key.Raw = keyField.Kind >= 2 && keyField.Kind <= 5 ? unchecked((ulong)(long)((Int128)(raw << (128 - destination)) >> (128 - destination))) : unchecked((ulong)raw) & (destination == 64 ? ulong.MaxValue : (1ul << destination) - 1);
             }
         }
     }

@@ -10,8 +10,8 @@ internal static unsafe class TableListStorage
     internal static byte* At(byte* address, int index, long elementBytes)
     {
         TableCookList* slot = (TableCookList*)address;
-        if (slot->Capacity == 0) { return address + slot->Reference + (long)index * elementBytes; }
-        Head* head = (Head*)(address + slot->Reference); return head->Items[index];
+        if (slot->Capacity == 0) { return unchecked(address + slot->Reference + (long)index * elementBytes); }
+        Head* head = (Head*)unchecked(address + slot->Reference); return head->Items[index];
     }
     internal static bool Reserve(TableWorker worker, TableCookList* slot, TableFieldInfo field, int wanted)
     {
@@ -20,7 +20,7 @@ internal static unsafe class TableListStorage
         int old = slot->Capacity == 0 ? slot->Count : slot->Capacity;
         int capacity = (int)Math.Min(int.MaxValue, Math.Max((long)wanted, Math.Max(64L, (long)old * 2)));
         if (wanted == 0 && old == 0) { return true; }
-        Head* head = slot->Capacity == 0 ? (Head*)worker.Raw(sizeof(Head)) : (Head*)((byte*)slot + slot->Reference);
+        Head* head = slot->Capacity == 0 ? (Head*)worker.Raw(sizeof(Head)) : (Head*)unchecked((byte*)slot + slot->Reference);
         byte** items = (byte**)worker.Raw((long)capacity * sizeof(byte*));
         byte* elements = capacity == old ? null : worker.Raw((long)(capacity - old) * field.NativeElementSize);
         if (head == null || items == null || capacity != old && elements == null) { return false; }
@@ -39,7 +39,7 @@ internal static unsafe class TableListStorage
     internal static bool Erase(TableWorker worker, TableCookList* slot, TableFieldInfo field, int index)
     {
         if (worker.Arena.Closed || index < 0 || index >= slot->Count || !Reserve(worker, slot, field, slot->Count)) { return false; }
-        Head* head = (Head*)((byte*)slot + slot->Reference); byte* removed = head->Items[index];
+        Head* head = (Head*)unchecked((byte*)slot + slot->Reference); byte* removed = head->Items[index];
         for (int i = index; i < slot->Count - 1; i++) { head->Items[i] = head->Items[i + 1]; }
         head->Items[--slot->Count] = removed; return true;
     }
@@ -97,7 +97,7 @@ public readonly unsafe struct TableMap<T> where T : unmanaged
         if (found) { return At(at); }
         byte* entry = TableListStorage.Add(worker, slot, field); if (entry == null) { return null; }
         Schema.TableWire.BuilderKeySet((IntPtr)entry, field.Table.Fields[0], text, raw);
-        TableListStorage.Head* head = (TableListStorage.Head*)((byte*)slot + slot->Reference);
+        TableListStorage.Head* head = (TableListStorage.Head*)unchecked((byte*)slot + slot->Reference);
         for (int i = slot->Count - 1; i > at; i--) { head->Items[i] = head->Items[i - 1]; }
         head->Items[at] = entry; return (T*)entry;
     }

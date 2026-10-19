@@ -32,11 +32,11 @@ func tableRetainRegionSource() string {
         }`)
 	s = tableReplace(s, "public RetainValue Arm(TableFieldInfo f) { return Base == null ? default : new RetainValue(Base, At + f.Arms.NativeArmOffset) { Mutable = Mutable }; }", `public RetainValue Arm(TableFieldInfo f)
         { return Base == null ? default : new RetainValue(Base, At + f.Arms.NativeArmOffset) { Store = Store, Path = Path, IsArm = true, ArmOrdinal = f.Ordinal, ArmIndex = (int)Tag(f) - 1 }; }`)
-	s = tableReplace(s, "public void SetTag(TableFieldInfo f, ulong tag) { if (Base != null) { RetainPut(Base + At, tag, f.Arms.NativeTagSize); } }", `public void SetTag(TableFieldInfo f, ulong tag)
+	s = tableReplace(s, "public void SetTag(TableFieldInfo f, ulong tag) { if (Base != null) { RetainPut(unchecked(Base + At), tag, f.Arms.NativeTagSize); } }", `public void SetTag(TableFieldInfo f, ulong tag)
         {
             if (Base == null) { return; }
 
-            RetainPut(Base + At, tag, f.Arms.NativeTagSize);
+            RetainPut(unchecked(Base + At), tag, f.Arms.NativeTagSize);
         }
         public void DiscardUnion() { if (Store != null && IsUnion) { RetainDiscard(Store, Path, UnionArray ? -1 : UnionOrdinal); } }
         public void DiscardField(TableFieldInfo f)

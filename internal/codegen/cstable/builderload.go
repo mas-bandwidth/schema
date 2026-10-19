@@ -1,9 +1,11 @@
 package cstable
 
+// Directory offsets are stored as 64-bit words where -1 (all-ones) marks an unplaced node;
+// reinterpreting NativeWord as signed long must be unchecked under /checked+ (oracle: internal/codegen/gotable/regions.go).
 const tableBuilderLoadSource = `
     static bool BuilderElement(TableWorker worker, NativeValue value, TableFieldInfo field, int index)
     {
-        TableCookList* slot = (TableCookList*)(value.Base + value.At + field.NativeOffset);
+        TableCookList* slot = (TableCookList*)unchecked(value.Base + value.At + field.NativeOffset);
         if (!TableListStorage.Reserve(worker, slot, field, index + 1)) { return false; }
         ResetNativeElement((IntPtr)TableListStorage.At((byte*)slot, index, field.NativeElementSize), field);
         return true;
@@ -59,7 +61,7 @@ const tableBuilderLoadSource = `
             for (int i = 0; i < count && !state.Refused; i++)
             {
                 scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
-                long offset = (long)NativeWord(directory + (i + 1L) * 16, 8); TableTypeInfo node = type.PointerType(id);
+                long offset = unchecked((long)NativeWord(directory + (i + 1L) * 16, 8)); TableTypeInfo node = type.PointerType(id);
                 if (offset != -1 && node != null) { NativeReadBody(ref state, ref body, new NativeValue(data, offset) { Mutable = true }, node, report, true); }
             }
             bool complete = !state.Refused && NativeReadBody(ref state, ref root, new NativeValue(data, 0) { Mutable = true }, type, report, false);

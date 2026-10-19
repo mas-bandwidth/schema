@@ -11,6 +11,8 @@ func (g *tableGen) emitRegionCookSurface(names []string) {
 	}
 }
 
+// RegionCookWriter.Put extracts each byte lane from a 128-bit raw word by shift and unchecked
+// byte truncation (oracle: internal/codegen/gotable/cook.go).
 const tableRegionCookSource = `
     // Native authoring walks keep values in place. Only the identity map
     // allocates, through the caller's hooks, and it dies before return.
@@ -23,7 +25,7 @@ const tableRegionCookSource = `
         public void Put(long at, UInt128 raw, int width)
         {
             if (Bytes == null) { return; }
-            for (int i = 0; i < width; i++) { Bytes[Base + at + (Big ? width - 1 - i : i)] = (byte)(raw >> (i * 8)); }
+            for (int i = 0; i < width; i++) { Bytes[Base + at + (Big ? width - 1 - i : i)] = unchecked((byte)(raw >> (i * 8))); }
         }
         public void Raw(long at, ReadOnlySpan<byte> bytes)
         { if (Bytes != null) { bytes.CopyTo(new Span<byte>(Bytes + Base + at, bytes.Length)); } }

@@ -1,5 +1,7 @@
 package cstable
 
+// NativeMessageReadElement and NativeMessageMapKey narrow 128-bit sign-extended or base-packed
+// bit accumulators to the region slot's 64-bit or 8-bit word (oracle: internal/codegen/gotable/messageregion.go).
 const tableRegionMessageReadSource = `
     static bool NativeMessageReadBody(ref NativeState state, ref BitReader r, MessageRead d, NativeValue value, TableTypeInfo type)
     {
@@ -156,7 +158,7 @@ const tableRegionMessageReadSource = `
             above = !baseNegative && stored < bits;
             if (kind < 18)
             {
-                ulong raw = (ulong)stored;
+                ulong raw = unchecked((ulong)stored);
                 negative = Signed(kind) && unchecked((long)raw) < 0; above = false;
                 stored = negative ? unchecked((UInt128)(Int128)(long)raw) : raw;
             }
@@ -179,8 +181,8 @@ const tableRegionMessageReadSource = `
         if (keep)
         {
             if (f.SetWide != null) { value.SetWide(f, index, stored); }
-            else if (f.GetBuffer != null) { value.Buffer(f)[index] = (byte)stored; }
-            else { value.SetRaw(f, index, (ulong)stored); }
+            else if (f.GetBuffer != null) { value.Buffer(f)[index] = unchecked((byte)stored); }
+            else { value.SetRaw(f, index, unchecked((ulong)stored)); }
         }
         return true;
     }
@@ -209,7 +211,7 @@ const tableRegionMessageReadSource = `
                 else if (keyField.Kind >= 2 && keyField.Kind <= 5 && width > 0 && width < 128)
                 { raw = unchecked((UInt128)((Int128)(raw << (128 - width)) >> (128 - width))); }
                 int destination = Width(keyField.Kind) * 8;
-                key.Raw = keyField.Kind >= 2 && keyField.Kind <= 5 ? unchecked((ulong)(long)((Int128)(raw << (128 - destination)) >> (128 - destination))) : (ulong)raw & (destination == 64 ? ulong.MaxValue : (1ul << destination) - 1);
+                key.Raw = keyField.Kind >= 2 && keyField.Kind <= 5 ? unchecked((ulong)(long)((Int128)(raw << (128 - destination)) >> (128 - destination))) : unchecked((ulong)raw) & (destination == 64 ? ulong.MaxValue : (1ul << destination) - 1);
             }
         }
     }

@@ -114,6 +114,8 @@ public unsafe struct TableRetain
 }
 `
 
+// Retention words split 64-bit and 32-bit values into little-endian bytes/halves and decode
+// signed directory offsets with -1 sentinel (oracle: internal/codegen/gotable/retain.go).
 const tableRetainSource = `
     const int RetainHeader = 26;
     static readonly ulong[] RetainKnown = new ulong[] { @KNOWN@ };
@@ -134,14 +136,14 @@ const tableRetainSource = `
     }
     static uint Retain32(byte* p) { return (uint)p[0] | (uint)p[1] << 8 | (uint)p[2] << 16 | (uint)p[3] << 24; }
     static ulong Retain64(byte* p) { return Retain32(p) | ((ulong)Retain32(p + 4) << 32); }
-    static void RetainPut32(byte* p, uint v) { for (int i = 0; i < 4; i++) { p[i] = (byte)(v >> (8 * i)); } }
-    static void RetainPut64(byte* p, ulong v) { RetainPut32(p, (uint)v); RetainPut32(p + 4, (uint)(v >> 32)); }
+    static void RetainPut32(byte* p, uint v) { for (int i = 0; i < 4; i++) { p[i] = unchecked((byte)(v >> (8 * i))); } }
+    static void RetainPut64(byte* p, ulong v) { RetainPut32(p, unchecked((uint)v)); RetainPut32(p + 4, unchecked((uint)(v >> 32))); }
     static byte* RetainPayload(byte* record) { return record + RetainHeader + 8L * Retain32(record + 8); }
     static bool RetainReserved(ulong id) { return id >= ulong.MaxValue - 2; }
     static long RetainAt(TableRetain* retain, byte* record)
     {
         uint node = Retain32(record + 4);
-        return retain->Directory == null || node == 0 || node > retain->DirectoryCount ? -1 : (long)NativeWord(retain->Directory + 16L * (node - 1), 8);
+        return retain->Directory == null || node == 0 || node > retain->DirectoryCount ? -1 : unchecked((long)NativeWord(retain->Directory + 16L * (node - 1), 8));
     }
     static bool RetainHere(TableRetain* retain, byte* record, RetainPath path, bool prefix = false, int field = -1)
     {
@@ -174,9 +176,9 @@ const tableRetainSource = `
         public void Raw(ReadOnlySpan<byte> data)
         { if (Output != null) { data.CopyTo(new Span<byte>(Output + At, data.Length)); } At += data.Length; }
         public void Fixed(ulong value, int bytes)
-        { if (Output != null) { for (int i = 0; i < bytes; i++) { Output[At + i] = (byte)(value >> (8 * i)); } } At += bytes; }
+        { if (Output != null) { for (int i = 0; i < bytes; i++) { Output[At + i] = unchecked((byte)(value >> (8 * i))); } } At += bytes; }
         public void Var(ulong value)
-        { while (value >= 128) { Fixed((byte)(value | 128), 1); value >>= 7; } Fixed(value, 1); }
+        { while (value >= 128) { Fixed(unchecked((byte)(value | 128)), 1); value >>= 7; } Fixed(value, 1); }
     }
     static bool RetainInRef(ref RetainIn s, bool zero)
     {
@@ -218,7 +220,7 @@ const tableRetainSource = `
                 {
                     if (kind == 16)
                     {
-                        if (!RetainInRef(ref s, false) || !s.R.Var(out ulong size) || size > (ulong)(end - s.R.Offset) || !RetainInFrame(ref s, element, (int)size, depth + 1)) { return false; }
+                        if (!RetainInRef(ref s, false) || !s.R.Var(out ulong size) || s.R.Offset > end || size > (ulong)(end - s.R.Offset) || !RetainInFrame(ref s, element, (int)size, depth + 1)) { return false; }
                     }
                     else if (!RetainInPayload(ref s, element, depth)) { return false; }
                     if (s.R.Offset > end) { return false; }

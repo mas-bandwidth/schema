@@ -63,6 +63,8 @@ func generateRegion(u *ir.Unit) []byte {
 	return g.assemble()
 }
 
+// Region words, relative pointer deltas, directory offsets (-1 sentinel), and per-byte stores
+// reinterpret bit patterns between unsigned words and signed displacements (oracle: internal/codegen/gotable/regions.go).
 const tableRegionSource = `
 
     unsafe struct NativeValue
@@ -74,35 +76,35 @@ const tableRegionSource = `
         public byte* Slot(TableFieldInfo f, int index = 0)
         {
             if (Base == null) { return null; }
-            byte* slot = Base + At + f.NativeOffset;
-            if (f.Dynamic) { return Mutable ? TableListStorage.At(slot, index, f.NativeElementSize) : slot + (long)NativeWord(slot, 8) + (long)index * f.NativeElementSize; }
+            byte* slot = unchecked(Base + At + f.NativeOffset);
+            if (f.Dynamic) { return Mutable ? TableListStorage.At(slot, index, f.NativeElementSize) : unchecked(slot + unchecked((long)NativeWord(slot, 8)) + (long)index * f.NativeElementSize); }
             return slot + (long)index * f.NativeElementSize;
         }
         public NativeValue Child(TableFieldInfo f, int index) { return Base == null ? default : new NativeValue(Base, Slot(f, index) - Base) { Mutable = Mutable }; }
         public NativeValue Arm(TableFieldInfo f) { return Base == null ? default : new NativeValue(Base, At + f.Arms.NativeArmOffset) { Mutable = Mutable }; }
         public ulong Raw(TableFieldInfo f, int index)
         {
-            ulong raw = (ulong)NativeWord(Slot(f, index), f.NativeElementSize);
+            ulong raw = unchecked((ulong)NativeWord(Slot(f, index), f.NativeElementSize));
             if ((f.Kind >= 2 && f.Kind <= 5 || f.Kind >= 20 && f.Kind <= 23) && f.NativeElementSize < 8) { int shift = 64 - f.NativeElementSize * 8; raw = unchecked((ulong)((long)(raw << shift) >> shift)); }
             return raw;
         }
-        public long Pointer(TableFieldInfo f, int index) { long delta = (long)Raw(f, index); return delta == 0 ? long.MinValue : Slot(f, index) - Base + delta; }
-        public ulong Tag(TableFieldInfo f) { return (ulong)NativeWord(Base + At, f.Arms.NativeTagSize); }
-        public bool Present(TableFieldInfo f) { return Base[At + f.NativePresentOffset] != 0; }
+        public long Pointer(TableFieldInfo f, int index) { long delta = unchecked((long)Raw(f, index)); return delta == 0 ? long.MinValue : unchecked(Slot(f, index) - Base + delta); }
+        public ulong Tag(TableFieldInfo f) { return unchecked((ulong)NativeWord(unchecked(Base + At), f.Arms.NativeTagSize)); }
+        public bool Present(TableFieldInfo f) { return *(unchecked(Base + At + f.NativePresentOffset)) != 0; }
         public bool Guard(TableFieldInfo f)
         {
-            if (f.NativeGuardOffsets != null) { for (int i = 0; i < f.NativeGuardOffsets.Length; i++) { if ((Base[At + f.NativeGuardOffsets[i]] != 0) != f.NativeGuardValues[i]) { return false; } } }
+            if (f.NativeGuardOffsets != null) { for (int i = 0; i < f.NativeGuardOffsets.Length; i++) { if ((*(unchecked(Base + At + f.NativeGuardOffsets[i])) != 0) != f.NativeGuardValues[i]) { return false; } } }
             return true;
         }
-        public int Count(TableFieldInfo f) { return f.NativeCountOffset < 0 ? f.ArrayBound : (int)NativeWord(Base + At + f.NativeCountOffset, 4); }
+        public int Count(TableFieldInfo f) { return f.NativeCountOffset < 0 ? f.ArrayBound : (int)NativeWord(unchecked(Base + At + f.NativeCountOffset), 4); }
         public UInt128 Wide(TableFieldInfo f, int index) { return NativeWord(Slot(f, index), 16); }
         public void SetRaw(TableFieldInfo f, int index, ulong raw) { if (Base != null) { NativePut(Slot(f, index), raw, f.NativeElementSize); } }
         public void SetWide(TableFieldInfo f, int index, UInt128 raw) { if (Base != null) { NativePut(Slot(f, index), raw, 16); } }
         public Span<byte> Buffer(TableFieldInfo f) { return new Span<byte>(Slot(f), f.ArrayBound + (f.Kind == 12 ? 1 : 0)); }
         public Span<char> Chars(TableFieldInfo f) { return new Span<char>(Slot(f), f.ArrayBound + 1); }
-        public void SetCount(TableFieldInfo f, int n) { if (Base != null) { NativePut(Base + At + f.NativeCountOffset, (uint)n, 4); } }
-        public void SetPresent(TableFieldInfo f, bool present) { if (Base != null) { Base[At + f.NativePresentOffset] = present ? (byte)1 : (byte)0; } }
-        public void SetTag(TableFieldInfo f, ulong tag) { if (Base != null) { NativePut(Base + At, tag, f.Arms.NativeTagSize); } }
+        public void SetCount(TableFieldInfo f, int n) { if (Base != null) { NativePut(unchecked(Base + At + f.NativeCountOffset), (uint)n, 4); } }
+        public void SetPresent(TableFieldInfo f, bool present) { if (Base != null) { *(unchecked(Base + At + f.NativePresentOffset)) = present ? (byte)1 : (byte)0; } }
+        public void SetTag(TableFieldInfo f, ulong tag) { if (Base != null) { NativePut(unchecked(Base + At), tag, f.Arms.NativeTagSize); } }
     }
     unsafe struct NativeState
     {
@@ -121,17 +123,17 @@ const tableRegionSource = `
         return value;
     }
     static unsafe void NativePut(byte* p, UInt128 value, int width)
-    { for (int i = 0; i < width; i++) { p[BitConverter.IsLittleEndian ? i : width - 1 - i] = (byte)(value >> (i * 8)); } }
+    { for (int i = 0; i < width; i++) { p[BitConverter.IsLittleEndian ? i : width - 1 - i] = unchecked((byte)(value >> (i * 8))); } }
     static unsafe void NativeReset(NativeValue value, TableTypeInfo type)
     {
         if (value.Base == null) { return; }
-        System.Runtime.InteropServices.NativeMemory.Clear(value.Base + value.At, (nuint)type.StorageSize);
+        System.Runtime.InteropServices.NativeMemory.Clear(unchecked(value.Base + value.At), (nuint)type.StorageSize);
         foreach (TableFieldInfo f in type.Fields) { NativeResetField(value, f, true); }
     }
     static unsafe void NativeResetField(NativeValue value, TableFieldInfo f, bool defaults)
     {
         if (value.Base == null) { return; }
-        if (f.Dynamic) { NativePut(value.Base + value.At + f.NativeOffset, 0, 16); return; }
+        if (f.Dynamic) { NativePut(unchecked(value.Base + value.At + f.NativeOffset), 0, 16); return; }
         if (f.GetBuffer != null)
         {
             value.Buffer(f).Clear(); value.SetCount(f, 0);
@@ -178,7 +180,7 @@ const tableRegionSource = `
         if (count > int.MaxValue || at > state.End || count > (ulong)((state.End - at) / f.StorageSize)) { return Damage(report); }
         long bytes = (long)count * f.StorageSize;
         if (value.Base == null) { state.Next = at + bytes; return true; }
-        byte* slot = value.Base + value.At + f.NativeOffset;
+        byte* slot = unchecked(value.Base + value.At + f.NativeOffset);
         NativePut(slot, count == 0 ? 0 : unchecked((ulong)(at - (slot - value.Base))), 8);
         NativePut(slot + 8, 0, 4); state.Next = at + bytes;
         for (int i = 0; i < (int)count; i++)
@@ -205,7 +207,7 @@ const tableRegionSource = `
             else
             {
                 byte* row = state.Directory + (long)(node - 1) * 16;
-                long offset = (long)NativeWord(row, 8); ulong id = (ulong)NativeWord(row + 8, 8);
+                long offset = unchecked((long)NativeWord(row, 8)); ulong id = unchecked((ulong)NativeWord(row + 8, 8));
                 if (offset != -1)
                 { if (id != f.PointerTypeId) { report.KindMismatch++; } else { target = offset; } }
             }
@@ -576,23 +578,23 @@ const tableRegionSource = `
         int n = f.IsArray ? (f.Counted ? source.Count(f) : f.ArrayBound) : 1;
         if (f.Dynamic) { f.EnsureCount(target, n); }
         if (f.NativeCountOffset >= 0) { f.SetCount(target, source.Count(f)); }
-        if (f.Optional) { f.SetPresent(target, source.Base[source.At + f.NativePresentOffset] != 0); }
+        if (f.Optional) { f.SetPresent(target, *(unchecked(source.Base + source.At + f.NativePresentOffset)) != 0); }
         if (f.GetBuffer != null) { source.Buffer(f).Slice(0, f.GetBuffer(target).Length).CopyTo(f.GetBuffer(target)); return; }
         if (f.GetChars != null) { source.Chars(f).Slice(0, f.GetChars(target).Length).CopyTo(f.GetChars(target)); return; }
         for (int i = 0; i < n; i++)
         {
             if (f.Kind == 17)
             {
-                long delta = (long)source.Raw(f, i); object child = null;
+                long delta = unchecked((long)source.Raw(f, i)); object child = null;
                 if (delta != 0)
                 {
-                    long at = source.Slot(f, i) - source.Base + delta;
+                    long at = unchecked(source.Slot(f, i) - source.Base + delta);
                     if (!nodes.TryGetValue(at, out child))
                     {
                         if (f.BlobKind != 0)
                         {
-                            int length = (int)NativeWord(source.Base + at, 4);
-                            child = new TableBlob(new ReadOnlySpan<byte>(source.Base + at + 8, length).ToArray());
+                            int length = (int)NativeWord(unchecked(source.Base + at), 4);
+                            child = new TableBlob(new ReadOnlySpan<byte>(unchecked(source.Base + at + 8), length).ToArray());
                             nodes.Add(at, child);
                         }
                         else { child = f.Table.Create(); nodes.Add(at, child); NativeCopyBody(new NativeValue(source.Base, at) { Mutable = source.Mutable }, child, f.Table, nodes); }
@@ -603,7 +605,7 @@ const tableRegionSource = `
             else if (f.Kind == 13) { NativeCopyBody(source.Child(f, i), f.GetChild(target, i), f.Table, nodes); }
             else if (f.Kind == 15)
             {
-                NativeValue union = source.Child(f, i); ulong tag = (ulong)NativeWord(union.Base + union.At, f.Arms.NativeTagSize);
+                NativeValue union = source.Child(f, i); ulong tag = unchecked((ulong)NativeWord(unchecked(union.Base + union.At), f.Arms.NativeTagSize));
                 object child = f.GetChild(target, i); f.Arms.SetTag(child, tag);
                 TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
                 if (arm != null) { NativeCopyField(union.Arm(f), child, arm, nodes); }
@@ -686,7 +688,7 @@ const tableRegionSource = `
         for (int i = 0; i < count; i++)
         {
             scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
-            long offset = (long)NativeWord(directory + (i + 1L) * 16, 8); TableTypeInfo node = type.PointerType(id);
+            long offset = unchecked((long)NativeWord(directory + (i + 1L) * 16, 8)); TableTypeInfo node = type.PointerType(id);
             if (offset < 0 || node == null) { continue; }
             long extent = 0; ExtentBody(body, node, ref extent, ref ignored);
             state.Next = offset + Align(node.StorageSize, type.RegionAlign); state.End = state.Next + extent;

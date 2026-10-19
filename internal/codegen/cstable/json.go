@@ -72,6 +72,9 @@ const tableJsonWalkSource = `// ---- json walk: begin ----
 //
 // Everything below is a member of this nested class, so the walk claims not one
 // name at unit scope (docs/SPEC-TABLES.md §11).
+// WriteSigned negates negative long values (including long.MinValue) in unsigned two's-complement
+// arithmetic and WriteScalar reinterprets raw 64-bit words as signed long under /checked+
+// (oracle: internal/codegen/gotable/json.go).
 public static class TableJson
 {
     public const int MaxDepth = 128;
@@ -482,10 +485,10 @@ public static class TableJson
         if (value < 0)
         {
             o.Put((byte)'-');
-            WriteUnsigned(ref o, 0ul - (ulong)value);
+            WriteUnsigned(ref o, unchecked(0ul - (ulong)value));
             return;
         }
-        WriteUnsigned(ref o, (ulong)value);
+        WriteUnsigned(ref o, unchecked((ulong)value));
     }
 
     // C's "%.*g" for a finite double, spelled out into chars: the exponent form
@@ -710,7 +713,7 @@ public static class TableJson
             case 3:
             case 4:
             case 5:
-                WriteSigned(ref o, (long)f.GetRaw(owner, index));
+                WriteSigned(ref o, unchecked((long)f.GetRaw(owner, index)));
                 return true;
             default:
                 WriteUnsigned(ref o, f.GetRaw(owner, index));

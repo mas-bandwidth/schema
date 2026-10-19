@@ -82,7 +82,7 @@ public sealed unsafe class TableArena : IDisposable
     public static void SetReference(ref long slot, void* target)
     { fixed (long* p = &slot) { slot = target == null ? 0 : (byte*)target - (byte*)p; } }
     public static T* At<T>(ref long slot) where T : unmanaged
-    { fixed (long* p = &slot) { return slot == 0 ? null : (T*)((byte*)p + slot); } }
+    { fixed (long* p = &slot) { return slot == 0 ? null : (T*)unchecked((byte*)p + slot); } }
 }
 
 public unsafe struct TableBlobSlot

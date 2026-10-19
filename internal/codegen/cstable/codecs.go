@@ -742,7 +742,12 @@ func csRawGet(expr string, t ir.FieldType) string {
 		return "unchecked((ulong)BitConverter.DoubleToInt64Bits(" + expr + "))"
 	case ir.TInt:
 		if t.Signed {
-			return "(ulong)(long)" + expr
+			// Two's-complement bit-pattern reinterpretation of a signed scalar into the
+			// raw 64-bit descriptor word (oracle: internal/codegen/gotable/codecs.go).
+			// The ulong is the two's-complement BIT PATTERN, not an
+			// arithmetic widening: a negative value must not raise
+			// OverflowException in a /checked+ build.
+			return "unchecked((ulong)(long)" + expr + ")"
 		}
 		return "(ulong)" + expr
 	case ir.TBits:

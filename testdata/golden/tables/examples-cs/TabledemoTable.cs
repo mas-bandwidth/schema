@@ -688,6 +688,9 @@ namespace Tabledemo
         //
         // Everything below is a member of this nested class, so the walk claims not one
         // name at unit scope (docs/SPEC-TABLES.md §11).
+        // WriteSigned negates negative long values (including long.MinValue) in unsigned two's-complement
+        // arithmetic and WriteScalar reinterprets raw 64-bit words as signed long under /checked+
+        // (oracle: internal/codegen/gotable/json.go).
         public static class TableJson
         {
             public const int MaxDepth = 128;
@@ -785,10 +788,10 @@ namespace Tabledemo
                 if (fraction == 0) { o.Put((byte)'0'); return; }
                 while (fraction != 0)
                 {
-                    UInt128 low = (UInt128)(ulong)fraction * 10;
+                    UInt128 low = (UInt128)unchecked((ulong)fraction) * 10;
                     UInt128 high = (fraction >> 64) * 10 + (low >> 64);
                     uint carry = (uint)(high >> 64);
-                    fraction = (high << 64) | (ulong)low;
+                    fraction = (high << 64) | unchecked((ulong)low);
                     ulong digit = (ulong)(fraction >> frac);
                     if (frac > 64) { digit |= (ulong)carry << (128 - frac); }
                     o.Put((byte)('0' + (int)digit)); fraction &= mask;
@@ -1203,10 +1206,10 @@ namespace Tabledemo
                 if (value < 0)
                 {
                     o.Put((byte)'-');
-                    WriteUnsigned(ref o, 0ul - (ulong)value);
+                    WriteUnsigned(ref o, unchecked(0ul - (ulong)value));
                     return;
                 }
-                WriteUnsigned(ref o, (ulong)value);
+                WriteUnsigned(ref o, unchecked((ulong)value));
             }
 
             // C's "%.*g" for a finite double, spelled out into chars: the exponent form
@@ -1431,7 +1434,7 @@ namespace Tabledemo
                     case 3:
                     case 4:
                     case 5:
-                        WriteSigned(ref o, (long)f.GetRaw(owner, index));
+                        WriteSigned(ref o, unchecked((long)f.GetRaw(owner, index)));
                         return true;
                     default:
                         WriteUnsigned(ref o, f.GetRaw(owner, index));
@@ -1667,7 +1670,7 @@ namespace Tabledemo
                     if (held >= 8)
                     {
                         held -= 8;
-                        if (count < bytes.Length) { bytes[count++] = (byte)(accumulator >> held); }
+                        if (count < bytes.Length) { bytes[count++] = unchecked((byte)(accumulator >> held)); }
                     }
                 }
                 f.SetChild(owner, index, new TableBlob(bytes));
@@ -2878,6 +2881,8 @@ namespace Tabledemo
         }
         // ---- json walk: end ----
         // ---- form-1 table wire: begin ----
+        // Writer.Fixed, Writer.Var, and WriteElement truncate multi-byte words and 128-bit wide
+        // scalars into little-endian wire lanes and 7-bit LEB128 groups (oracle: internal/codegen/gotable/wire.go, internal/codegen/gotable/write.go).
         public static partial class TableWire
         {
             public enum Verdict { Ok, Refused, Damaged, BodyStopped }
@@ -3036,12 +3041,12 @@ namespace Tabledemo
                 {
                     switch (n)
                     {
-                        case 1: Byte((byte)v); return;
-                        case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)v); break;
-                        case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), (uint)v); break;
+                        case 1: Byte(unchecked((byte)v)); return;
+                        case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), unchecked((ushort)v)); break;
+                        case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), unchecked((uint)v)); break;
                         case 8: System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(Buffer.Slice(Offset), v); break;
                         default:
-                            for (int i = 0; i < n; i++) { Byte((byte)v); v >>= 8; }
+                            for (int i = 0; i < n; i++) { Byte(unchecked((byte)v)); v >>= 8; }
                             return;
                     }
                     Offset += n;
@@ -3065,9 +3070,9 @@ namespace Tabledemo
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public void Var(ulong v)
                 {
-                    if (v < 128) { Byte((byte)v); return; }
-                    while (v >= 128) { Byte((byte)(v | 128)); v >>= 7; }
-                    Byte((byte)v);
+                    if (v < 128) { Byte(unchecked((byte)v)); return; }
+                    while (v >= 128) { Byte(unchecked((byte)(v | 128))); v >>= 7; }
+                    Byte(unchecked((byte)v));
                 }
             }
 
@@ -4100,7 +4105,7 @@ namespace Tabledemo
                     above = !baseNegative && stored < bits;
                     if (kind < 18)
                     {
-                        ulong raw = (ulong)stored;
+                        ulong raw = unchecked((ulong)stored);
                         negative = Signed(kind) && unchecked((long)raw) < 0; above = false;
                         stored = negative ? unchecked((UInt128)(Int128)(long)raw) : raw;
                     }
@@ -4123,8 +4128,8 @@ namespace Tabledemo
                 if (keep)
                 {
                     if (f.SetWide != null) { f.SetWide(value, index, stored); }
-                    else if (f.GetBuffer != null) { f.GetBuffer(value)[index] = (byte)stored; }
-                    else { f.SetRaw(value, index, (ulong)stored); }
+                    else if (f.GetBuffer != null) { f.GetBuffer(value)[index] = unchecked((byte)stored); }
+                    else { f.SetRaw(value, index, unchecked((ulong)stored)); }
                 }
                 return true;
             }
@@ -4153,7 +4158,7 @@ namespace Tabledemo
                         else if (keyField.Kind >= 2 && keyField.Kind <= 5 && width > 0 && width < 128)
                         { raw = unchecked((UInt128)((Int128)(raw << (128 - width)) >> (128 - width))); }
                         int destination = Width(keyField.Kind) * 8;
-                        key.Raw = keyField.Kind >= 2 && keyField.Kind <= 5 ? unchecked((ulong)(long)((Int128)(raw << (128 - destination)) >> (128 - destination))) : (ulong)raw & (destination == 64 ? ulong.MaxValue : (1ul << destination) - 1);
+                        key.Raw = keyField.Kind >= 2 && keyField.Kind <= 5 ? unchecked((ulong)(long)((Int128)(raw << (128 - destination)) >> (128 - destination))) : unchecked((ulong)raw) & (destination == 64 ? ulong.MaxValue : (1ul << destination) - 1);
                     }
                 }
             }
@@ -4330,7 +4335,7 @@ namespace Tabledemo
                 public void Put(long at, UInt128 raw, int width)
                 {
                     if (Measure) { return; }
-                    for (int i = 0; i < width; i++) { Bytes[checked((int)(Base + at + (Big ? width - 1 - i : i)))] = (byte)(raw >> (i * 8)); }
+                    for (int i = 0; i < width; i++) { Bytes[checked((int)(Base + at + (Big ? width - 1 - i : i)))] = unchecked((byte)(raw >> (i * 8))); }
                 }
                 public void Raw(long at, ReadOnlySpan<byte> bytes)
                 { if (!Measure) { bytes.CopyTo(Bytes.Slice(checked((int)(Base + at)))); } }
@@ -4701,7 +4706,7 @@ namespace Tabledemo
                 else if (f.GetWide != null)
                 {
                     UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
-                    w.Fixed((ulong)raw, Math.Min(width, 8)); if (width == 16) { w.Fixed((ulong)(raw >> 64), 8); }
+                    w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
                 }
                 else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i), Width(f.Kind)); }
             }
@@ -6493,12 +6498,12 @@ namespace Tabledemo
                                     {
                                         int bits = sw * 8;
                                         ulong top = 1UL << (bits - 1);
-                                        if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                        if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                     }
                                     System.Span<byte> cell = wide.Slice(e * dw, dw);
-                                    if (dw == 1) cell[0] = (byte)raw;
-                                    else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                    else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                    if (dw == 1) cell[0] = unchecked((byte)raw);
+                                    else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                    else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                     else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                                 }
                                 slots[(int)p.Dst].SetBytes?.Invoke(dst, wide, need);
@@ -6592,6 +6597,8 @@ namespace Tabledemo
                                 }
                                 break;
                             }
+                        // Sign-extension masks, lane writes, and 128-bit sign checks operate on raw
+                        // two's-complement bit patterns (oracle: internal/codegen/gotable/fixedruntime.go).
                         case Widen:
                             {
                                 ulong raw = 0;
@@ -6605,12 +6612,12 @@ namespace Tabledemo
                                     ulong top = 1UL << (bits - 1);
                                     if ((raw & top) != 0)
                                     {
-                                        raw |= ~((top << 1) - 1UL);
+                                        raw |= unchecked(~((top << 1) - 1UL));
                                     }
                                 }
                                 if (p.DstSize == 16)
                                 {
-                                    UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                    UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                     slots[(int)p.Dst].SetWide?.Invoke(dst, w);
                                 }
                                 else

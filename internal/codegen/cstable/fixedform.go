@@ -617,7 +617,7 @@ func (b *fixedRootBuild) addScalarSlot(f *ir.Field, expr string) {
 		}
 	default:
 		typ := csFieldType(f.Type)
-		if f.Type.Width == 128 {
+		if fixedStorageBytes(f.Type) == 16 {
 			b.slots = append(b.slots, fixedSlot{
 				setWide: fmt.Sprintf("(t, w) => %s = unchecked((%s)w)", expr, typ),
 				setRaw:  fmt.Sprintf("(t, v) => %s = unchecked((%s)v)", expr, typ),
@@ -625,7 +625,7 @@ func (b *fixedRootBuild) addScalarSlot(f *ir.Field, expr string) {
 			})
 		} else {
 			b.slots = append(b.slots, fixedSlot{
-				setRaw: fmt.Sprintf("(t, v) => %s = (%s)v", expr, typ),
+				setRaw: fmt.Sprintf("(t, v) => %s = unchecked((%s)v)", expr, typ),
 				reset:  reset,
 			})
 		}
@@ -1740,41 +1740,71 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 	case ir.TFloat64:
 		g.pf("%sBinaryPrimitives.WriteDoubleLittleEndian(%s, %s);\n", ind, slice, expr)
 	case ir.TInt:
+		// Two's-complement bit-pattern store to little-endian wire bytes (oracle: internal/codegen/gotable/fixedform.go).
 		switch w {
 		case 1:
 			g.pf("%s%s[0] = unchecked((byte)%s);\n", ind, slice, expr)
 		case 2:
-			g.pf("%sBinaryPrimitives.WriteInt16LittleEndian(%s, (short)%s);\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%sBinaryPrimitives.WriteInt16LittleEndian(%s, (short)%s);\n", ind, slice, expr)
+			} else {
+				g.pf("%sBinaryPrimitives.WriteInt16LittleEndian(%s, unchecked((short)%s));\n", ind, slice, expr)
+			}
 		case 4:
-			g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s, (int)%s);\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s, (int)%s);\n", ind, slice, expr)
+			} else {
+				g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s, unchecked((int)%s));\n", ind, slice, expr)
+			}
 		case 8:
-			g.pf("%sBinaryPrimitives.WriteInt64LittleEndian(%s, (long)%s);\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%sBinaryPrimitives.WriteInt64LittleEndian(%s, (long)%s);\n", ind, slice, expr)
+			} else {
+				g.pf("%sBinaryPrimitives.WriteInt64LittleEndian(%s, unchecked((long)%s));\n", ind, slice, expr)
+			}
 		case 16:
 			if f.Type.Signed {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)(unchecked((UInt128)(Int128)%s)));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), (ulong)(unchecked((UInt128)(Int128)%s) >> 64));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(UInt128)(Int128)%s));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((UInt128)(Int128)%s >> 64)));\n", ind, slice, expr)
 			} else {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)(unchecked((UInt128)%s)));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), (ulong)(unchecked((UInt128)%s) >> 64));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(UInt128)%s));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((UInt128)%s >> 64)));\n", ind, slice, expr)
 			}
 		}
 	default:
+		// Two's-complement bit-pattern store for signed/unsigned fixed-point and bits (oracle: internal/codegen/gotable/fixedform.go).
 		switch w {
 		case 1:
-			g.pf("%s%s[0] = (byte)%s;\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%s%s[0] = unchecked((byte)%s);\n", ind, slice, expr)
+			} else {
+				g.pf("%s%s[0] = (byte)%s;\n", ind, slice, expr)
+			}
 		case 2:
-			g.pf("%sBinaryPrimitives.WriteUInt16LittleEndian(%s, (ushort)%s);\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%sBinaryPrimitives.WriteUInt16LittleEndian(%s, unchecked((ushort)%s));\n", ind, slice, expr)
+			} else {
+				g.pf("%sBinaryPrimitives.WriteUInt16LittleEndian(%s, (ushort)%s);\n", ind, slice, expr)
+			}
 		case 4:
-			g.pf("%sBinaryPrimitives.WriteUInt32LittleEndian(%s, (uint)%s);\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%sBinaryPrimitives.WriteUInt32LittleEndian(%s, unchecked((uint)%s));\n", ind, slice, expr)
+			} else {
+				g.pf("%sBinaryPrimitives.WriteUInt32LittleEndian(%s, (uint)%s);\n", ind, slice, expr)
+			}
 		case 8:
-			g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)%s);\n", ind, slice, expr)
+			if f.Type.Signed {
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)%s));\n", ind, slice, expr)
+			} else {
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)%s);\n", ind, slice, expr)
+			}
 		case 16:
 			if f.Type.Signed {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)(unchecked((UInt128)(Int128)%s)));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), (ulong)(unchecked((UInt128)(Int128)%s) >> 64));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(UInt128)(Int128)%s));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((UInt128)(Int128)%s >> 64)));\n", ind, slice, expr)
 			} else {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)(unchecked((UInt128)%s)));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), (ulong)(unchecked((UInt128)%s) >> 64));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(UInt128)%s));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((UInt128)%s >> 64)));\n", ind, slice, expr)
 			}
 		}
 	}
@@ -2331,11 +2361,11 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    if (p.Sign == 1)\n                    {\n")
 	g.pf("                        int bits = sw * 8;\n")
 	g.pf("                        ulong top = 1UL << (bits - 1);\n")
-	g.pf("                        if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }\n                    }\n")
+	g.pf("                        if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }\n                    }\n")
 	g.pf("                    Span<byte> cell = wide.Slice(e * dw, dw);\n")
-	g.pf("                    if (dw == 1) cell[0] = (byte)raw;\n")
-	g.pf("                    else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);\n")
-	g.pf("                    else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);\n")
+	g.pf("                    if (dw == 1) cell[0] = unchecked((byte)raw);\n")
+	g.pf("                    else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));\n")
+	g.pf("                    else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));\n")
 	g.pf("                    else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);\n                }\n")
 	g.pf("                %sFixedSetBytes(dst, p.Dst, wide, need);\n", name)
 	g.pf("                if (report != null) { report.Widened += runs; }\n")
@@ -2388,9 +2418,9 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    int bits = (int)p.Size * 8;\n")
 	g.pf("                    ulong top = 1UL << (bits - 1);\n")
 	g.pf("                    if ((raw & top) != 0)\n                    {\n")
-	g.pf("                        raw |= ~((top << 1) - 1UL);\n                    }\n                }\n")
+	g.pf("                        raw |= unchecked(~((top << 1) - 1UL));\n                    }\n                }\n")
 	g.pf("                if (p.DstSize == 16)\n                {\n")
-	g.pf("                    UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;\n")
+	g.pf("                    UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;\n")
 	g.pf("                    %sFixedSetWide(dst, p.Dst, w);\n", name)
 	g.pf("                }\n")
 	g.pf("                else\n                {\n")

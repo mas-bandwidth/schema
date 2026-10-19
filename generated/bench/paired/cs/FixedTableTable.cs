@@ -374,22 +374,22 @@ namespace Bench
         };
 
         public static readonly TableFixedSlot<FixedTable>[] FixedTableFixedSlots = new TableFixedSlot<FixedTable>[] {
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Sequence = (uint)v, reset: (t) => { t.Value.Sequence = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Sequence = unchecked((uint)v), reset: (t) => { t.Value.Sequence = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AckSequence = unchecked((int)v), reset: (t) => { t.Value.AckSequence = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AckBits = (uint)v, reset: (t) => { t.Value.AckBits = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AckBits = unchecked((uint)v), reset: (t) => { t.Value.AckBits = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.SessionId = unchecked((ulong)v), reset: (t) => { t.Value.SessionId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.ClientId = unchecked((uint)v), reset: (t) => { t.Value.ClientId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Nonce = unchecked((ulong)v), reset: (t) => { t.Value.Nonce = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.WorldTime = unchecked((long)v), reset: (t) => { t.Value.WorldTime = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.FrameTick = (ulong)v, reset: (t) => { t.Value.FrameTick = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.ServerTime = (int)v, reset: (t) => { t.Value.ServerTime = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.FrameTick = unchecked((ulong)v), reset: (t) => { t.Value.FrameTick = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.ServerTime = unchecked((int)v), reset: (t) => { t.Value.ServerTime = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.EntitiesCount = (int)v, reset: (t) => { t.Value.EntitiesCount = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].EntityId = (uint)v, reset: (t) => { t.Value.Entities[0].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].EntityId = unchecked((uint)v), reset: (t) => { t.Value.Entities[0].EntityId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[0].PosX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[0].PosY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[0].PosZ = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Yaw = (uint)v, reset: (t) => { t.Value.Entities[0].Yaw = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Pitch = (uint)v, reset: (t) => { t.Value.Entities[0].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Yaw = unchecked((uint)v), reset: (t) => { t.Value.Entities[0].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Pitch = unchecked((uint)v), reset: (t) => { t.Value.Entities[0].Pitch = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[0].VelX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[0].VelY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[0].VelZ = 0; }),
@@ -398,12 +398,12 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Damage = v, reset: (t) => { t.Value.Entities[0].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Moving = v != 0, reset: (t) => { t.Value.Entities[0].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Firing = v != 0, reset: (t) => { t.Value.Entities[0].Firing = false; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].EntityId = (uint)v, reset: (t) => { t.Value.Entities[1].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].EntityId = unchecked((uint)v), reset: (t) => { t.Value.Entities[1].EntityId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[1].PosX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[1].PosY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[1].PosZ = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Yaw = (uint)v, reset: (t) => { t.Value.Entities[1].Yaw = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Pitch = (uint)v, reset: (t) => { t.Value.Entities[1].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Yaw = unchecked((uint)v), reset: (t) => { t.Value.Entities[1].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Pitch = unchecked((uint)v), reset: (t) => { t.Value.Entities[1].Pitch = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[1].VelX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[1].VelY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[1].VelZ = 0; }),
@@ -412,12 +412,12 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Damage = v, reset: (t) => { t.Value.Entities[1].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Moving = v != 0, reset: (t) => { t.Value.Entities[1].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Firing = v != 0, reset: (t) => { t.Value.Entities[1].Firing = false; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].EntityId = (uint)v, reset: (t) => { t.Value.Entities[2].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].EntityId = unchecked((uint)v), reset: (t) => { t.Value.Entities[2].EntityId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[2].PosX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[2].PosY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[2].PosZ = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Yaw = (uint)v, reset: (t) => { t.Value.Entities[2].Yaw = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Pitch = (uint)v, reset: (t) => { t.Value.Entities[2].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Yaw = unchecked((uint)v), reset: (t) => { t.Value.Entities[2].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Pitch = unchecked((uint)v), reset: (t) => { t.Value.Entities[2].Pitch = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[2].VelX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[2].VelY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[2].VelZ = 0; }),
@@ -426,12 +426,12 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Damage = v, reset: (t) => { t.Value.Entities[2].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Moving = v != 0, reset: (t) => { t.Value.Entities[2].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Firing = v != 0, reset: (t) => { t.Value.Entities[2].Firing = false; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].EntityId = (uint)v, reset: (t) => { t.Value.Entities[3].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].EntityId = unchecked((uint)v), reset: (t) => { t.Value.Entities[3].EntityId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[3].PosX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[3].PosY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[3].PosZ = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Yaw = (uint)v, reset: (t) => { t.Value.Entities[3].Yaw = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Pitch = (uint)v, reset: (t) => { t.Value.Entities[3].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Yaw = unchecked((uint)v), reset: (t) => { t.Value.Entities[3].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Pitch = unchecked((uint)v), reset: (t) => { t.Value.Entities[3].Pitch = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[3].VelX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[3].VelY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[3].VelZ = 0; }),
@@ -440,12 +440,12 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Damage = v, reset: (t) => { t.Value.Entities[3].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Moving = v != 0, reset: (t) => { t.Value.Entities[3].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Firing = v != 0, reset: (t) => { t.Value.Entities[3].Firing = false; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].EntityId = (uint)v, reset: (t) => { t.Value.Entities[4].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].EntityId = unchecked((uint)v), reset: (t) => { t.Value.Entities[4].EntityId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[4].PosX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[4].PosY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[4].PosZ = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Yaw = (uint)v, reset: (t) => { t.Value.Entities[4].Yaw = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Pitch = (uint)v, reset: (t) => { t.Value.Entities[4].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Yaw = unchecked((uint)v), reset: (t) => { t.Value.Entities[4].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Pitch = unchecked((uint)v), reset: (t) => { t.Value.Entities[4].Pitch = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[4].VelX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[4].VelY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[4].VelZ = 0; }),
@@ -454,12 +454,12 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Damage = v, reset: (t) => { t.Value.Entities[4].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Moving = v != 0, reset: (t) => { t.Value.Entities[4].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Firing = v != 0, reset: (t) => { t.Value.Entities[4].Firing = false; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].EntityId = (uint)v, reset: (t) => { t.Value.Entities[5].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].EntityId = unchecked((uint)v), reset: (t) => { t.Value.Entities[5].EntityId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[5].PosX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[5].PosY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[5].PosZ = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Yaw = (uint)v, reset: (t) => { t.Value.Entities[5].Yaw = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Pitch = (uint)v, reset: (t) => { t.Value.Entities[5].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Yaw = unchecked((uint)v), reset: (t) => { t.Value.Entities[5].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Pitch = unchecked((uint)v), reset: (t) => { t.Value.Entities[5].Pitch = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[5].VelX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[5].VelY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[5].VelZ = 0; }),
@@ -468,12 +468,12 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Damage = v, reset: (t) => { t.Value.Entities[5].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Moving = v != 0, reset: (t) => { t.Value.Entities[5].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Firing = v != 0, reset: (t) => { t.Value.Entities[5].Firing = false; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].EntityId = (uint)v, reset: (t) => { t.Value.Entities[6].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].EntityId = unchecked((uint)v), reset: (t) => { t.Value.Entities[6].EntityId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[6].PosX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[6].PosY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[6].PosZ = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Yaw = (uint)v, reset: (t) => { t.Value.Entities[6].Yaw = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Pitch = (uint)v, reset: (t) => { t.Value.Entities[6].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Yaw = unchecked((uint)v), reset: (t) => { t.Value.Entities[6].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Pitch = unchecked((uint)v), reset: (t) => { t.Value.Entities[6].Pitch = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[6].VelX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[6].VelY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[6].VelZ = 0; }),
@@ -482,12 +482,12 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Damage = v, reset: (t) => { t.Value.Entities[6].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Moving = v != 0, reset: (t) => { t.Value.Entities[6].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Firing = v != 0, reset: (t) => { t.Value.Entities[6].Firing = false; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].EntityId = (uint)v, reset: (t) => { t.Value.Entities[7].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].EntityId = unchecked((uint)v), reset: (t) => { t.Value.Entities[7].EntityId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[7].PosX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[7].PosY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[7].PosZ = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Yaw = (uint)v, reset: (t) => { t.Value.Entities[7].Yaw = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Pitch = (uint)v, reset: (t) => { t.Value.Entities[7].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Yaw = unchecked((uint)v), reset: (t) => { t.Value.Entities[7].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Pitch = unchecked((uint)v), reset: (t) => { t.Value.Entities[7].Pitch = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[7].VelX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[7].VelY = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[7].VelZ = 0; }),
@@ -497,174 +497,174 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Moving = v != 0, reset: (t) => { t.Value.Entities[7].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Firing = v != 0, reset: (t) => { t.Value.Entities[7].Firing = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.StatsCount = (int)v, reset: (t) => { t.Value.StatsCount = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[0].StatId = (uint)v, reset: (t) => { t.Value.Stats[0].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[0].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[0].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[0].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[0].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[1].StatId = (uint)v, reset: (t) => { t.Value.Stats[1].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[1].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[1].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[1].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[1].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[2].StatId = (uint)v, reset: (t) => { t.Value.Stats[2].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[2].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[2].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[2].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[2].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[3].StatId = (uint)v, reset: (t) => { t.Value.Stats[3].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[3].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[3].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[3].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[3].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[4].StatId = (uint)v, reset: (t) => { t.Value.Stats[4].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[4].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[4].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[4].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[4].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[5].StatId = (uint)v, reset: (t) => { t.Value.Stats[5].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[5].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[5].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[5].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[5].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[6].StatId = (uint)v, reset: (t) => { t.Value.Stats[6].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[6].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[6].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[6].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[6].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[7].StatId = (uint)v, reset: (t) => { t.Value.Stats[7].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[7].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[7].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[7].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[7].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[8].StatId = (uint)v, reset: (t) => { t.Value.Stats[8].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[8].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[8].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[8].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[8].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[9].StatId = (uint)v, reset: (t) => { t.Value.Stats[9].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[9].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[9].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[9].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[9].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[10].StatId = (uint)v, reset: (t) => { t.Value.Stats[10].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[10].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[10].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[10].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[10].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[11].StatId = (uint)v, reset: (t) => { t.Value.Stats[11].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[11].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[11].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[11].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[11].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[12].StatId = (uint)v, reset: (t) => { t.Value.Stats[12].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[12].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[12].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[12].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[12].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[13].StatId = (uint)v, reset: (t) => { t.Value.Stats[13].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[13].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[13].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[13].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[13].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[14].StatId = (uint)v, reset: (t) => { t.Value.Stats[14].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[14].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[14].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[14].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[14].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[15].StatId = (uint)v, reset: (t) => { t.Value.Stats[15].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[15].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[15].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[15].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[15].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[16].StatId = (uint)v, reset: (t) => { t.Value.Stats[16].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[16].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[16].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[16].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[16].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[17].StatId = (uint)v, reset: (t) => { t.Value.Stats[17].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[17].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[17].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[17].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[17].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[18].StatId = (uint)v, reset: (t) => { t.Value.Stats[18].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[18].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[18].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[18].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[18].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[19].StatId = (uint)v, reset: (t) => { t.Value.Stats[19].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[19].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[19].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[19].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[19].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[20].StatId = (uint)v, reset: (t) => { t.Value.Stats[20].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[20].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[20].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[20].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[20].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[21].StatId = (uint)v, reset: (t) => { t.Value.Stats[21].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[21].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[21].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[21].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[21].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[22].StatId = (uint)v, reset: (t) => { t.Value.Stats[22].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[22].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[22].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[22].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[22].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[23].StatId = (uint)v, reset: (t) => { t.Value.Stats[23].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[23].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[23].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[23].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[23].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[24].StatId = (uint)v, reset: (t) => { t.Value.Stats[24].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[24].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[24].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[24].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[24].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[25].StatId = (uint)v, reset: (t) => { t.Value.Stats[25].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[25].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[25].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[25].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[25].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[26].StatId = (uint)v, reset: (t) => { t.Value.Stats[26].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[26].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[26].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[26].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[26].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[27].StatId = (uint)v, reset: (t) => { t.Value.Stats[27].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[27].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[27].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[27].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[27].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[28].StatId = (uint)v, reset: (t) => { t.Value.Stats[28].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[28].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[28].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[28].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[28].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[29].StatId = (uint)v, reset: (t) => { t.Value.Stats[29].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[29].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[29].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[29].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[29].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[30].StatId = (uint)v, reset: (t) => { t.Value.Stats[30].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[30].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[30].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[30].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[30].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[31].StatId = (uint)v, reset: (t) => { t.Value.Stats[31].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[31].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[31].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[31].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[31].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[32].StatId = (uint)v, reset: (t) => { t.Value.Stats[32].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[32].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[32].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[32].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[32].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[33].StatId = (uint)v, reset: (t) => { t.Value.Stats[33].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[33].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[33].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[33].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[33].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[34].StatId = (uint)v, reset: (t) => { t.Value.Stats[34].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[34].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[34].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[34].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[34].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[35].StatId = (uint)v, reset: (t) => { t.Value.Stats[35].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[35].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[35].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[35].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[35].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[36].StatId = (uint)v, reset: (t) => { t.Value.Stats[36].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[36].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[36].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[36].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[36].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[37].StatId = (uint)v, reset: (t) => { t.Value.Stats[37].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[37].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[37].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[37].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[37].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[38].StatId = (uint)v, reset: (t) => { t.Value.Stats[38].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[38].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[38].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[38].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[38].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[39].StatId = (uint)v, reset: (t) => { t.Value.Stats[39].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[39].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[39].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[39].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[39].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[40].StatId = (uint)v, reset: (t) => { t.Value.Stats[40].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[40].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[40].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[40].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[40].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[41].StatId = (uint)v, reset: (t) => { t.Value.Stats[41].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[41].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[41].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[41].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[41].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[42].StatId = (uint)v, reset: (t) => { t.Value.Stats[42].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[42].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[42].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[42].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[42].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[43].StatId = (uint)v, reset: (t) => { t.Value.Stats[43].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[43].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[43].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[43].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[43].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[44].StatId = (uint)v, reset: (t) => { t.Value.Stats[44].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[44].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[44].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[44].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[44].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[45].StatId = (uint)v, reset: (t) => { t.Value.Stats[45].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[45].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[45].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[45].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[45].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[46].StatId = (uint)v, reset: (t) => { t.Value.Stats[46].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[46].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[46].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[46].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[46].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[47].StatId = (uint)v, reset: (t) => { t.Value.Stats[47].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[47].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[47].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[47].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[47].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[48].StatId = (uint)v, reset: (t) => { t.Value.Stats[48].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[48].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[48].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[48].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[48].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[49].StatId = (uint)v, reset: (t) => { t.Value.Stats[49].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[49].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[49].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[49].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[49].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[50].StatId = (uint)v, reset: (t) => { t.Value.Stats[50].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[50].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[50].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[50].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[50].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[51].StatId = (uint)v, reset: (t) => { t.Value.Stats[51].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[51].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[51].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[51].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[51].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[52].StatId = (uint)v, reset: (t) => { t.Value.Stats[52].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[52].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[52].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[52].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[52].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[53].StatId = (uint)v, reset: (t) => { t.Value.Stats[53].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[53].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[53].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[53].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[53].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[54].StatId = (uint)v, reset: (t) => { t.Value.Stats[54].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[54].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[54].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[54].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[54].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[55].StatId = (uint)v, reset: (t) => { t.Value.Stats[55].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[55].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[55].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[55].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[55].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[56].StatId = (uint)v, reset: (t) => { t.Value.Stats[56].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[56].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[56].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[56].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[56].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[57].StatId = (uint)v, reset: (t) => { t.Value.Stats[57].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[57].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[57].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[57].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[57].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[58].StatId = (uint)v, reset: (t) => { t.Value.Stats[58].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[58].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[58].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[58].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[58].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[59].StatId = (uint)v, reset: (t) => { t.Value.Stats[59].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[59].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[59].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[59].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[59].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[60].StatId = (uint)v, reset: (t) => { t.Value.Stats[60].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[60].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[60].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[60].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[60].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[61].StatId = (uint)v, reset: (t) => { t.Value.Stats[61].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[61].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[61].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[61].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[61].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[62].StatId = (uint)v, reset: (t) => { t.Value.Stats[62].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[62].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[62].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[62].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[62].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[63].StatId = (uint)v, reset: (t) => { t.Value.Stats[63].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[63].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[63].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[63].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[63].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[64].StatId = (uint)v, reset: (t) => { t.Value.Stats[64].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[64].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[64].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[64].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[64].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[65].StatId = (uint)v, reset: (t) => { t.Value.Stats[65].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[65].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[65].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[65].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[65].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[66].StatId = (uint)v, reset: (t) => { t.Value.Stats[66].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[66].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[66].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[66].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[66].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[67].StatId = (uint)v, reset: (t) => { t.Value.Stats[67].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[67].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[67].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[67].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[67].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[68].StatId = (uint)v, reset: (t) => { t.Value.Stats[68].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[68].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[68].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[68].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[68].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[69].StatId = (uint)v, reset: (t) => { t.Value.Stats[69].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[69].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[69].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[69].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[69].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[70].StatId = (uint)v, reset: (t) => { t.Value.Stats[70].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[70].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[70].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[70].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[70].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[71].StatId = (uint)v, reset: (t) => { t.Value.Stats[71].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[71].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[71].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[71].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[71].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[72].StatId = (uint)v, reset: (t) => { t.Value.Stats[72].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[72].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[72].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[72].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[72].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[73].StatId = (uint)v, reset: (t) => { t.Value.Stats[73].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[73].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[73].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[73].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[73].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[74].StatId = (uint)v, reset: (t) => { t.Value.Stats[74].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[74].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[74].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[74].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[74].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[75].StatId = (uint)v, reset: (t) => { t.Value.Stats[75].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[75].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[75].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[75].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[75].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[76].StatId = (uint)v, reset: (t) => { t.Value.Stats[76].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[76].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[76].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[76].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[76].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[77].StatId = (uint)v, reset: (t) => { t.Value.Stats[77].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[77].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[77].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[77].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[77].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[78].StatId = (uint)v, reset: (t) => { t.Value.Stats[78].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[78].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[78].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[78].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[78].Delta = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[79].StatId = (uint)v, reset: (t) => { t.Value.Stats[79].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[79].StatId = unchecked((uint)v), reset: (t) => { t.Value.Stats[79].StatId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[79].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[79].Delta = 0; }),
             new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { t.Value.GameEvent.Type = (MixedEventType)v; }, reset: (t) => { t.Value.GameEvent.Type = MixedEventType.None; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.TargetId = (uint)v, reset: (t) => { t.Value.GameEvent.Hit.TargetId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.TargetId = unchecked((uint)v), reset: (t) => { t.Value.GameEvent.Hit.TargetId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.Damage = unchecked((int)v), reset: (t) => { t.Value.GameEvent.Hit.Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.HitKind = unchecked((int)v), reset: (t) => { t.Value.GameEvent.Hit.HitKind = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.Crit = v != 0, reset: (t) => { t.Value.GameEvent.Hit.Crit = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Chat.Channel = unchecked((int)v), reset: (t) => { t.Value.GameEvent.Chat.Channel = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Chat.Speaker = (uint)v, reset: (t) => { t.Value.GameEvent.Chat.Speaker = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Pickup.ItemId = (uint)v, reset: (t) => { t.Value.GameEvent.Pickup.ItemId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Chat.Speaker = unchecked((uint)v), reset: (t) => { t.Value.GameEvent.Chat.Speaker = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Pickup.ItemId = unchecked((uint)v), reset: (t) => { t.Value.GameEvent.Pickup.ItemId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Pickup.Amount = unchecked((int)v), reset: (t) => { t.Value.GameEvent.Pickup.Amount = 0; }),
             new TableFixedSlot<FixedTable>(setBytes: (t, b, l) => { if (t.Value.Loadout != null) b.Slice(0, Math.Min(b.Length, t.Value.Loadout.Length)).CopyTo(t.Value.Loadout); }, reset: (t) => { if (t.Value.Loadout != null) Array.Clear(t.Value.Loadout, 0, t.Value.Loadout.Length); }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.PlayerNameLength = (int)v, reset: (t) => { t.Value.PlayerNameLength = 0; }),
@@ -678,8 +678,8 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Drift = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Value.Drift = d, reset: (t) => { t.Value.Drift = 0.0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.WideKey = unchecked((System.UInt128)v), setWide: (t, w) => t.Value.WideKey = unchecked((System.UInt128)w), reset: (t) => { t.Value.WideKey = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Flux = unchecked((System.Int128)v), setWide: (t, w) => t.Value.Flux = unchecked((System.Int128)w), reset: (t) => { t.Value.Flux = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Ping = (ushort)v, reset: (t) => { t.Value.Ping = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.CrcHint = (uint)v, reset: (t) => { t.Value.CrcHint = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Ping = unchecked((ushort)v), reset: (t) => { t.Value.Ping = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.CrcHint = unchecked((uint)v), reset: (t) => { t.Value.CrcHint = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.HasExtra = v != 0, reset: (t) => { t.Value.HasExtra = true; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Extra = unchecked((int)v), reset: (t) => { t.Value.Extra = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.IdleTicks = unchecked((int)v), reset: (t) => { t.Value.IdleTicks = 0; }),
@@ -689,22 +689,22 @@ namespace Bench
         {
             switch (slot)
             {
-                case 0: t.Value.Sequence = (uint)v; break;
+                case 0: t.Value.Sequence = unchecked((uint)v); break;
                 case 1: t.Value.AckSequence = unchecked((int)v); break;
-                case 2: t.Value.AckBits = (uint)v; break;
+                case 2: t.Value.AckBits = unchecked((uint)v); break;
                 case 3: t.Value.SessionId = unchecked((ulong)v); break;
                 case 4: t.Value.ClientId = unchecked((uint)v); break;
                 case 5: t.Value.Nonce = unchecked((ulong)v); break;
                 case 6: t.Value.WorldTime = unchecked((long)v); break;
-                case 7: t.Value.FrameTick = (ulong)v; break;
-                case 8: t.Value.ServerTime = (int)v; break;
+                case 7: t.Value.FrameTick = unchecked((ulong)v); break;
+                case 8: t.Value.ServerTime = unchecked((int)v); break;
                 case 9: t.Value.EntitiesCount = (int)v; break;
-                case 10: t.Value.Entities[0].EntityId = (uint)v; break;
+                case 10: t.Value.Entities[0].EntityId = unchecked((uint)v); break;
                 case 11: t.Value.Entities[0].PosX = unchecked((int)v); break;
                 case 12: t.Value.Entities[0].PosY = unchecked((int)v); break;
                 case 13: t.Value.Entities[0].PosZ = unchecked((int)v); break;
-                case 14: t.Value.Entities[0].Yaw = (uint)v; break;
-                case 15: t.Value.Entities[0].Pitch = (uint)v; break;
+                case 14: t.Value.Entities[0].Yaw = unchecked((uint)v); break;
+                case 15: t.Value.Entities[0].Pitch = unchecked((uint)v); break;
                 case 16: t.Value.Entities[0].VelX = unchecked((int)v); break;
                 case 17: t.Value.Entities[0].VelY = unchecked((int)v); break;
                 case 18: t.Value.Entities[0].VelZ = unchecked((int)v); break;
@@ -713,12 +713,12 @@ namespace Bench
                 case 21: t.Value.Entities[0].Damage = v; break;
                 case 22: t.Value.Entities[0].Moving = v != 0; break;
                 case 23: t.Value.Entities[0].Firing = v != 0; break;
-                case 24: t.Value.Entities[1].EntityId = (uint)v; break;
+                case 24: t.Value.Entities[1].EntityId = unchecked((uint)v); break;
                 case 25: t.Value.Entities[1].PosX = unchecked((int)v); break;
                 case 26: t.Value.Entities[1].PosY = unchecked((int)v); break;
                 case 27: t.Value.Entities[1].PosZ = unchecked((int)v); break;
-                case 28: t.Value.Entities[1].Yaw = (uint)v; break;
-                case 29: t.Value.Entities[1].Pitch = (uint)v; break;
+                case 28: t.Value.Entities[1].Yaw = unchecked((uint)v); break;
+                case 29: t.Value.Entities[1].Pitch = unchecked((uint)v); break;
                 case 30: t.Value.Entities[1].VelX = unchecked((int)v); break;
                 case 31: t.Value.Entities[1].VelY = unchecked((int)v); break;
                 case 32: t.Value.Entities[1].VelZ = unchecked((int)v); break;
@@ -727,12 +727,12 @@ namespace Bench
                 case 35: t.Value.Entities[1].Damage = v; break;
                 case 36: t.Value.Entities[1].Moving = v != 0; break;
                 case 37: t.Value.Entities[1].Firing = v != 0; break;
-                case 38: t.Value.Entities[2].EntityId = (uint)v; break;
+                case 38: t.Value.Entities[2].EntityId = unchecked((uint)v); break;
                 case 39: t.Value.Entities[2].PosX = unchecked((int)v); break;
                 case 40: t.Value.Entities[2].PosY = unchecked((int)v); break;
                 case 41: t.Value.Entities[2].PosZ = unchecked((int)v); break;
-                case 42: t.Value.Entities[2].Yaw = (uint)v; break;
-                case 43: t.Value.Entities[2].Pitch = (uint)v; break;
+                case 42: t.Value.Entities[2].Yaw = unchecked((uint)v); break;
+                case 43: t.Value.Entities[2].Pitch = unchecked((uint)v); break;
                 case 44: t.Value.Entities[2].VelX = unchecked((int)v); break;
                 case 45: t.Value.Entities[2].VelY = unchecked((int)v); break;
                 case 46: t.Value.Entities[2].VelZ = unchecked((int)v); break;
@@ -741,12 +741,12 @@ namespace Bench
                 case 49: t.Value.Entities[2].Damage = v; break;
                 case 50: t.Value.Entities[2].Moving = v != 0; break;
                 case 51: t.Value.Entities[2].Firing = v != 0; break;
-                case 52: t.Value.Entities[3].EntityId = (uint)v; break;
+                case 52: t.Value.Entities[3].EntityId = unchecked((uint)v); break;
                 case 53: t.Value.Entities[3].PosX = unchecked((int)v); break;
                 case 54: t.Value.Entities[3].PosY = unchecked((int)v); break;
                 case 55: t.Value.Entities[3].PosZ = unchecked((int)v); break;
-                case 56: t.Value.Entities[3].Yaw = (uint)v; break;
-                case 57: t.Value.Entities[3].Pitch = (uint)v; break;
+                case 56: t.Value.Entities[3].Yaw = unchecked((uint)v); break;
+                case 57: t.Value.Entities[3].Pitch = unchecked((uint)v); break;
                 case 58: t.Value.Entities[3].VelX = unchecked((int)v); break;
                 case 59: t.Value.Entities[3].VelY = unchecked((int)v); break;
                 case 60: t.Value.Entities[3].VelZ = unchecked((int)v); break;
@@ -755,12 +755,12 @@ namespace Bench
                 case 63: t.Value.Entities[3].Damage = v; break;
                 case 64: t.Value.Entities[3].Moving = v != 0; break;
                 case 65: t.Value.Entities[3].Firing = v != 0; break;
-                case 66: t.Value.Entities[4].EntityId = (uint)v; break;
+                case 66: t.Value.Entities[4].EntityId = unchecked((uint)v); break;
                 case 67: t.Value.Entities[4].PosX = unchecked((int)v); break;
                 case 68: t.Value.Entities[4].PosY = unchecked((int)v); break;
                 case 69: t.Value.Entities[4].PosZ = unchecked((int)v); break;
-                case 70: t.Value.Entities[4].Yaw = (uint)v; break;
-                case 71: t.Value.Entities[4].Pitch = (uint)v; break;
+                case 70: t.Value.Entities[4].Yaw = unchecked((uint)v); break;
+                case 71: t.Value.Entities[4].Pitch = unchecked((uint)v); break;
                 case 72: t.Value.Entities[4].VelX = unchecked((int)v); break;
                 case 73: t.Value.Entities[4].VelY = unchecked((int)v); break;
                 case 74: t.Value.Entities[4].VelZ = unchecked((int)v); break;
@@ -769,12 +769,12 @@ namespace Bench
                 case 77: t.Value.Entities[4].Damage = v; break;
                 case 78: t.Value.Entities[4].Moving = v != 0; break;
                 case 79: t.Value.Entities[4].Firing = v != 0; break;
-                case 80: t.Value.Entities[5].EntityId = (uint)v; break;
+                case 80: t.Value.Entities[5].EntityId = unchecked((uint)v); break;
                 case 81: t.Value.Entities[5].PosX = unchecked((int)v); break;
                 case 82: t.Value.Entities[5].PosY = unchecked((int)v); break;
                 case 83: t.Value.Entities[5].PosZ = unchecked((int)v); break;
-                case 84: t.Value.Entities[5].Yaw = (uint)v; break;
-                case 85: t.Value.Entities[5].Pitch = (uint)v; break;
+                case 84: t.Value.Entities[5].Yaw = unchecked((uint)v); break;
+                case 85: t.Value.Entities[5].Pitch = unchecked((uint)v); break;
                 case 86: t.Value.Entities[5].VelX = unchecked((int)v); break;
                 case 87: t.Value.Entities[5].VelY = unchecked((int)v); break;
                 case 88: t.Value.Entities[5].VelZ = unchecked((int)v); break;
@@ -783,12 +783,12 @@ namespace Bench
                 case 91: t.Value.Entities[5].Damage = v; break;
                 case 92: t.Value.Entities[5].Moving = v != 0; break;
                 case 93: t.Value.Entities[5].Firing = v != 0; break;
-                case 94: t.Value.Entities[6].EntityId = (uint)v; break;
+                case 94: t.Value.Entities[6].EntityId = unchecked((uint)v); break;
                 case 95: t.Value.Entities[6].PosX = unchecked((int)v); break;
                 case 96: t.Value.Entities[6].PosY = unchecked((int)v); break;
                 case 97: t.Value.Entities[6].PosZ = unchecked((int)v); break;
-                case 98: t.Value.Entities[6].Yaw = (uint)v; break;
-                case 99: t.Value.Entities[6].Pitch = (uint)v; break;
+                case 98: t.Value.Entities[6].Yaw = unchecked((uint)v); break;
+                case 99: t.Value.Entities[6].Pitch = unchecked((uint)v); break;
                 case 100: t.Value.Entities[6].VelX = unchecked((int)v); break;
                 case 101: t.Value.Entities[6].VelY = unchecked((int)v); break;
                 case 102: t.Value.Entities[6].VelZ = unchecked((int)v); break;
@@ -797,12 +797,12 @@ namespace Bench
                 case 105: t.Value.Entities[6].Damage = v; break;
                 case 106: t.Value.Entities[6].Moving = v != 0; break;
                 case 107: t.Value.Entities[6].Firing = v != 0; break;
-                case 108: t.Value.Entities[7].EntityId = (uint)v; break;
+                case 108: t.Value.Entities[7].EntityId = unchecked((uint)v); break;
                 case 109: t.Value.Entities[7].PosX = unchecked((int)v); break;
                 case 110: t.Value.Entities[7].PosY = unchecked((int)v); break;
                 case 111: t.Value.Entities[7].PosZ = unchecked((int)v); break;
-                case 112: t.Value.Entities[7].Yaw = (uint)v; break;
-                case 113: t.Value.Entities[7].Pitch = (uint)v; break;
+                case 112: t.Value.Entities[7].Yaw = unchecked((uint)v); break;
+                case 113: t.Value.Entities[7].Pitch = unchecked((uint)v); break;
                 case 114: t.Value.Entities[7].VelX = unchecked((int)v); break;
                 case 115: t.Value.Entities[7].VelY = unchecked((int)v); break;
                 case 116: t.Value.Entities[7].VelZ = unchecked((int)v); break;
@@ -812,174 +812,174 @@ namespace Bench
                 case 120: t.Value.Entities[7].Moving = v != 0; break;
                 case 121: t.Value.Entities[7].Firing = v != 0; break;
                 case 122: t.Value.StatsCount = (int)v; break;
-                case 123: t.Value.Stats[0].StatId = (uint)v; break;
+                case 123: t.Value.Stats[0].StatId = unchecked((uint)v); break;
                 case 124: t.Value.Stats[0].Delta = unchecked((int)v); break;
-                case 125: t.Value.Stats[1].StatId = (uint)v; break;
+                case 125: t.Value.Stats[1].StatId = unchecked((uint)v); break;
                 case 126: t.Value.Stats[1].Delta = unchecked((int)v); break;
-                case 127: t.Value.Stats[2].StatId = (uint)v; break;
+                case 127: t.Value.Stats[2].StatId = unchecked((uint)v); break;
                 case 128: t.Value.Stats[2].Delta = unchecked((int)v); break;
-                case 129: t.Value.Stats[3].StatId = (uint)v; break;
+                case 129: t.Value.Stats[3].StatId = unchecked((uint)v); break;
                 case 130: t.Value.Stats[3].Delta = unchecked((int)v); break;
-                case 131: t.Value.Stats[4].StatId = (uint)v; break;
+                case 131: t.Value.Stats[4].StatId = unchecked((uint)v); break;
                 case 132: t.Value.Stats[4].Delta = unchecked((int)v); break;
-                case 133: t.Value.Stats[5].StatId = (uint)v; break;
+                case 133: t.Value.Stats[5].StatId = unchecked((uint)v); break;
                 case 134: t.Value.Stats[5].Delta = unchecked((int)v); break;
-                case 135: t.Value.Stats[6].StatId = (uint)v; break;
+                case 135: t.Value.Stats[6].StatId = unchecked((uint)v); break;
                 case 136: t.Value.Stats[6].Delta = unchecked((int)v); break;
-                case 137: t.Value.Stats[7].StatId = (uint)v; break;
+                case 137: t.Value.Stats[7].StatId = unchecked((uint)v); break;
                 case 138: t.Value.Stats[7].Delta = unchecked((int)v); break;
-                case 139: t.Value.Stats[8].StatId = (uint)v; break;
+                case 139: t.Value.Stats[8].StatId = unchecked((uint)v); break;
                 case 140: t.Value.Stats[8].Delta = unchecked((int)v); break;
-                case 141: t.Value.Stats[9].StatId = (uint)v; break;
+                case 141: t.Value.Stats[9].StatId = unchecked((uint)v); break;
                 case 142: t.Value.Stats[9].Delta = unchecked((int)v); break;
-                case 143: t.Value.Stats[10].StatId = (uint)v; break;
+                case 143: t.Value.Stats[10].StatId = unchecked((uint)v); break;
                 case 144: t.Value.Stats[10].Delta = unchecked((int)v); break;
-                case 145: t.Value.Stats[11].StatId = (uint)v; break;
+                case 145: t.Value.Stats[11].StatId = unchecked((uint)v); break;
                 case 146: t.Value.Stats[11].Delta = unchecked((int)v); break;
-                case 147: t.Value.Stats[12].StatId = (uint)v; break;
+                case 147: t.Value.Stats[12].StatId = unchecked((uint)v); break;
                 case 148: t.Value.Stats[12].Delta = unchecked((int)v); break;
-                case 149: t.Value.Stats[13].StatId = (uint)v; break;
+                case 149: t.Value.Stats[13].StatId = unchecked((uint)v); break;
                 case 150: t.Value.Stats[13].Delta = unchecked((int)v); break;
-                case 151: t.Value.Stats[14].StatId = (uint)v; break;
+                case 151: t.Value.Stats[14].StatId = unchecked((uint)v); break;
                 case 152: t.Value.Stats[14].Delta = unchecked((int)v); break;
-                case 153: t.Value.Stats[15].StatId = (uint)v; break;
+                case 153: t.Value.Stats[15].StatId = unchecked((uint)v); break;
                 case 154: t.Value.Stats[15].Delta = unchecked((int)v); break;
-                case 155: t.Value.Stats[16].StatId = (uint)v; break;
+                case 155: t.Value.Stats[16].StatId = unchecked((uint)v); break;
                 case 156: t.Value.Stats[16].Delta = unchecked((int)v); break;
-                case 157: t.Value.Stats[17].StatId = (uint)v; break;
+                case 157: t.Value.Stats[17].StatId = unchecked((uint)v); break;
                 case 158: t.Value.Stats[17].Delta = unchecked((int)v); break;
-                case 159: t.Value.Stats[18].StatId = (uint)v; break;
+                case 159: t.Value.Stats[18].StatId = unchecked((uint)v); break;
                 case 160: t.Value.Stats[18].Delta = unchecked((int)v); break;
-                case 161: t.Value.Stats[19].StatId = (uint)v; break;
+                case 161: t.Value.Stats[19].StatId = unchecked((uint)v); break;
                 case 162: t.Value.Stats[19].Delta = unchecked((int)v); break;
-                case 163: t.Value.Stats[20].StatId = (uint)v; break;
+                case 163: t.Value.Stats[20].StatId = unchecked((uint)v); break;
                 case 164: t.Value.Stats[20].Delta = unchecked((int)v); break;
-                case 165: t.Value.Stats[21].StatId = (uint)v; break;
+                case 165: t.Value.Stats[21].StatId = unchecked((uint)v); break;
                 case 166: t.Value.Stats[21].Delta = unchecked((int)v); break;
-                case 167: t.Value.Stats[22].StatId = (uint)v; break;
+                case 167: t.Value.Stats[22].StatId = unchecked((uint)v); break;
                 case 168: t.Value.Stats[22].Delta = unchecked((int)v); break;
-                case 169: t.Value.Stats[23].StatId = (uint)v; break;
+                case 169: t.Value.Stats[23].StatId = unchecked((uint)v); break;
                 case 170: t.Value.Stats[23].Delta = unchecked((int)v); break;
-                case 171: t.Value.Stats[24].StatId = (uint)v; break;
+                case 171: t.Value.Stats[24].StatId = unchecked((uint)v); break;
                 case 172: t.Value.Stats[24].Delta = unchecked((int)v); break;
-                case 173: t.Value.Stats[25].StatId = (uint)v; break;
+                case 173: t.Value.Stats[25].StatId = unchecked((uint)v); break;
                 case 174: t.Value.Stats[25].Delta = unchecked((int)v); break;
-                case 175: t.Value.Stats[26].StatId = (uint)v; break;
+                case 175: t.Value.Stats[26].StatId = unchecked((uint)v); break;
                 case 176: t.Value.Stats[26].Delta = unchecked((int)v); break;
-                case 177: t.Value.Stats[27].StatId = (uint)v; break;
+                case 177: t.Value.Stats[27].StatId = unchecked((uint)v); break;
                 case 178: t.Value.Stats[27].Delta = unchecked((int)v); break;
-                case 179: t.Value.Stats[28].StatId = (uint)v; break;
+                case 179: t.Value.Stats[28].StatId = unchecked((uint)v); break;
                 case 180: t.Value.Stats[28].Delta = unchecked((int)v); break;
-                case 181: t.Value.Stats[29].StatId = (uint)v; break;
+                case 181: t.Value.Stats[29].StatId = unchecked((uint)v); break;
                 case 182: t.Value.Stats[29].Delta = unchecked((int)v); break;
-                case 183: t.Value.Stats[30].StatId = (uint)v; break;
+                case 183: t.Value.Stats[30].StatId = unchecked((uint)v); break;
                 case 184: t.Value.Stats[30].Delta = unchecked((int)v); break;
-                case 185: t.Value.Stats[31].StatId = (uint)v; break;
+                case 185: t.Value.Stats[31].StatId = unchecked((uint)v); break;
                 case 186: t.Value.Stats[31].Delta = unchecked((int)v); break;
-                case 187: t.Value.Stats[32].StatId = (uint)v; break;
+                case 187: t.Value.Stats[32].StatId = unchecked((uint)v); break;
                 case 188: t.Value.Stats[32].Delta = unchecked((int)v); break;
-                case 189: t.Value.Stats[33].StatId = (uint)v; break;
+                case 189: t.Value.Stats[33].StatId = unchecked((uint)v); break;
                 case 190: t.Value.Stats[33].Delta = unchecked((int)v); break;
-                case 191: t.Value.Stats[34].StatId = (uint)v; break;
+                case 191: t.Value.Stats[34].StatId = unchecked((uint)v); break;
                 case 192: t.Value.Stats[34].Delta = unchecked((int)v); break;
-                case 193: t.Value.Stats[35].StatId = (uint)v; break;
+                case 193: t.Value.Stats[35].StatId = unchecked((uint)v); break;
                 case 194: t.Value.Stats[35].Delta = unchecked((int)v); break;
-                case 195: t.Value.Stats[36].StatId = (uint)v; break;
+                case 195: t.Value.Stats[36].StatId = unchecked((uint)v); break;
                 case 196: t.Value.Stats[36].Delta = unchecked((int)v); break;
-                case 197: t.Value.Stats[37].StatId = (uint)v; break;
+                case 197: t.Value.Stats[37].StatId = unchecked((uint)v); break;
                 case 198: t.Value.Stats[37].Delta = unchecked((int)v); break;
-                case 199: t.Value.Stats[38].StatId = (uint)v; break;
+                case 199: t.Value.Stats[38].StatId = unchecked((uint)v); break;
                 case 200: t.Value.Stats[38].Delta = unchecked((int)v); break;
-                case 201: t.Value.Stats[39].StatId = (uint)v; break;
+                case 201: t.Value.Stats[39].StatId = unchecked((uint)v); break;
                 case 202: t.Value.Stats[39].Delta = unchecked((int)v); break;
-                case 203: t.Value.Stats[40].StatId = (uint)v; break;
+                case 203: t.Value.Stats[40].StatId = unchecked((uint)v); break;
                 case 204: t.Value.Stats[40].Delta = unchecked((int)v); break;
-                case 205: t.Value.Stats[41].StatId = (uint)v; break;
+                case 205: t.Value.Stats[41].StatId = unchecked((uint)v); break;
                 case 206: t.Value.Stats[41].Delta = unchecked((int)v); break;
-                case 207: t.Value.Stats[42].StatId = (uint)v; break;
+                case 207: t.Value.Stats[42].StatId = unchecked((uint)v); break;
                 case 208: t.Value.Stats[42].Delta = unchecked((int)v); break;
-                case 209: t.Value.Stats[43].StatId = (uint)v; break;
+                case 209: t.Value.Stats[43].StatId = unchecked((uint)v); break;
                 case 210: t.Value.Stats[43].Delta = unchecked((int)v); break;
-                case 211: t.Value.Stats[44].StatId = (uint)v; break;
+                case 211: t.Value.Stats[44].StatId = unchecked((uint)v); break;
                 case 212: t.Value.Stats[44].Delta = unchecked((int)v); break;
-                case 213: t.Value.Stats[45].StatId = (uint)v; break;
+                case 213: t.Value.Stats[45].StatId = unchecked((uint)v); break;
                 case 214: t.Value.Stats[45].Delta = unchecked((int)v); break;
-                case 215: t.Value.Stats[46].StatId = (uint)v; break;
+                case 215: t.Value.Stats[46].StatId = unchecked((uint)v); break;
                 case 216: t.Value.Stats[46].Delta = unchecked((int)v); break;
-                case 217: t.Value.Stats[47].StatId = (uint)v; break;
+                case 217: t.Value.Stats[47].StatId = unchecked((uint)v); break;
                 case 218: t.Value.Stats[47].Delta = unchecked((int)v); break;
-                case 219: t.Value.Stats[48].StatId = (uint)v; break;
+                case 219: t.Value.Stats[48].StatId = unchecked((uint)v); break;
                 case 220: t.Value.Stats[48].Delta = unchecked((int)v); break;
-                case 221: t.Value.Stats[49].StatId = (uint)v; break;
+                case 221: t.Value.Stats[49].StatId = unchecked((uint)v); break;
                 case 222: t.Value.Stats[49].Delta = unchecked((int)v); break;
-                case 223: t.Value.Stats[50].StatId = (uint)v; break;
+                case 223: t.Value.Stats[50].StatId = unchecked((uint)v); break;
                 case 224: t.Value.Stats[50].Delta = unchecked((int)v); break;
-                case 225: t.Value.Stats[51].StatId = (uint)v; break;
+                case 225: t.Value.Stats[51].StatId = unchecked((uint)v); break;
                 case 226: t.Value.Stats[51].Delta = unchecked((int)v); break;
-                case 227: t.Value.Stats[52].StatId = (uint)v; break;
+                case 227: t.Value.Stats[52].StatId = unchecked((uint)v); break;
                 case 228: t.Value.Stats[52].Delta = unchecked((int)v); break;
-                case 229: t.Value.Stats[53].StatId = (uint)v; break;
+                case 229: t.Value.Stats[53].StatId = unchecked((uint)v); break;
                 case 230: t.Value.Stats[53].Delta = unchecked((int)v); break;
-                case 231: t.Value.Stats[54].StatId = (uint)v; break;
+                case 231: t.Value.Stats[54].StatId = unchecked((uint)v); break;
                 case 232: t.Value.Stats[54].Delta = unchecked((int)v); break;
-                case 233: t.Value.Stats[55].StatId = (uint)v; break;
+                case 233: t.Value.Stats[55].StatId = unchecked((uint)v); break;
                 case 234: t.Value.Stats[55].Delta = unchecked((int)v); break;
-                case 235: t.Value.Stats[56].StatId = (uint)v; break;
+                case 235: t.Value.Stats[56].StatId = unchecked((uint)v); break;
                 case 236: t.Value.Stats[56].Delta = unchecked((int)v); break;
-                case 237: t.Value.Stats[57].StatId = (uint)v; break;
+                case 237: t.Value.Stats[57].StatId = unchecked((uint)v); break;
                 case 238: t.Value.Stats[57].Delta = unchecked((int)v); break;
-                case 239: t.Value.Stats[58].StatId = (uint)v; break;
+                case 239: t.Value.Stats[58].StatId = unchecked((uint)v); break;
                 case 240: t.Value.Stats[58].Delta = unchecked((int)v); break;
-                case 241: t.Value.Stats[59].StatId = (uint)v; break;
+                case 241: t.Value.Stats[59].StatId = unchecked((uint)v); break;
                 case 242: t.Value.Stats[59].Delta = unchecked((int)v); break;
-                case 243: t.Value.Stats[60].StatId = (uint)v; break;
+                case 243: t.Value.Stats[60].StatId = unchecked((uint)v); break;
                 case 244: t.Value.Stats[60].Delta = unchecked((int)v); break;
-                case 245: t.Value.Stats[61].StatId = (uint)v; break;
+                case 245: t.Value.Stats[61].StatId = unchecked((uint)v); break;
                 case 246: t.Value.Stats[61].Delta = unchecked((int)v); break;
-                case 247: t.Value.Stats[62].StatId = (uint)v; break;
+                case 247: t.Value.Stats[62].StatId = unchecked((uint)v); break;
                 case 248: t.Value.Stats[62].Delta = unchecked((int)v); break;
-                case 249: t.Value.Stats[63].StatId = (uint)v; break;
+                case 249: t.Value.Stats[63].StatId = unchecked((uint)v); break;
                 case 250: t.Value.Stats[63].Delta = unchecked((int)v); break;
-                case 251: t.Value.Stats[64].StatId = (uint)v; break;
+                case 251: t.Value.Stats[64].StatId = unchecked((uint)v); break;
                 case 252: t.Value.Stats[64].Delta = unchecked((int)v); break;
-                case 253: t.Value.Stats[65].StatId = (uint)v; break;
+                case 253: t.Value.Stats[65].StatId = unchecked((uint)v); break;
                 case 254: t.Value.Stats[65].Delta = unchecked((int)v); break;
-                case 255: t.Value.Stats[66].StatId = (uint)v; break;
+                case 255: t.Value.Stats[66].StatId = unchecked((uint)v); break;
                 case 256: t.Value.Stats[66].Delta = unchecked((int)v); break;
-                case 257: t.Value.Stats[67].StatId = (uint)v; break;
+                case 257: t.Value.Stats[67].StatId = unchecked((uint)v); break;
                 case 258: t.Value.Stats[67].Delta = unchecked((int)v); break;
-                case 259: t.Value.Stats[68].StatId = (uint)v; break;
+                case 259: t.Value.Stats[68].StatId = unchecked((uint)v); break;
                 case 260: t.Value.Stats[68].Delta = unchecked((int)v); break;
-                case 261: t.Value.Stats[69].StatId = (uint)v; break;
+                case 261: t.Value.Stats[69].StatId = unchecked((uint)v); break;
                 case 262: t.Value.Stats[69].Delta = unchecked((int)v); break;
-                case 263: t.Value.Stats[70].StatId = (uint)v; break;
+                case 263: t.Value.Stats[70].StatId = unchecked((uint)v); break;
                 case 264: t.Value.Stats[70].Delta = unchecked((int)v); break;
-                case 265: t.Value.Stats[71].StatId = (uint)v; break;
+                case 265: t.Value.Stats[71].StatId = unchecked((uint)v); break;
                 case 266: t.Value.Stats[71].Delta = unchecked((int)v); break;
-                case 267: t.Value.Stats[72].StatId = (uint)v; break;
+                case 267: t.Value.Stats[72].StatId = unchecked((uint)v); break;
                 case 268: t.Value.Stats[72].Delta = unchecked((int)v); break;
-                case 269: t.Value.Stats[73].StatId = (uint)v; break;
+                case 269: t.Value.Stats[73].StatId = unchecked((uint)v); break;
                 case 270: t.Value.Stats[73].Delta = unchecked((int)v); break;
-                case 271: t.Value.Stats[74].StatId = (uint)v; break;
+                case 271: t.Value.Stats[74].StatId = unchecked((uint)v); break;
                 case 272: t.Value.Stats[74].Delta = unchecked((int)v); break;
-                case 273: t.Value.Stats[75].StatId = (uint)v; break;
+                case 273: t.Value.Stats[75].StatId = unchecked((uint)v); break;
                 case 274: t.Value.Stats[75].Delta = unchecked((int)v); break;
-                case 275: t.Value.Stats[76].StatId = (uint)v; break;
+                case 275: t.Value.Stats[76].StatId = unchecked((uint)v); break;
                 case 276: t.Value.Stats[76].Delta = unchecked((int)v); break;
-                case 277: t.Value.Stats[77].StatId = (uint)v; break;
+                case 277: t.Value.Stats[77].StatId = unchecked((uint)v); break;
                 case 278: t.Value.Stats[77].Delta = unchecked((int)v); break;
-                case 279: t.Value.Stats[78].StatId = (uint)v; break;
+                case 279: t.Value.Stats[78].StatId = unchecked((uint)v); break;
                 case 280: t.Value.Stats[78].Delta = unchecked((int)v); break;
-                case 281: t.Value.Stats[79].StatId = (uint)v; break;
+                case 281: t.Value.Stats[79].StatId = unchecked((uint)v); break;
                 case 282: t.Value.Stats[79].Delta = unchecked((int)v); break;
                 case 283: { t.Value.GameEvent.Type = (MixedEventType)v; } break;
-                case 284: t.Value.GameEvent.Hit.TargetId = (uint)v; break;
+                case 284: t.Value.GameEvent.Hit.TargetId = unchecked((uint)v); break;
                 case 285: t.Value.GameEvent.Hit.Damage = unchecked((int)v); break;
                 case 286: t.Value.GameEvent.Hit.HitKind = unchecked((int)v); break;
                 case 287: t.Value.GameEvent.Hit.Crit = v != 0; break;
                 case 288: t.Value.GameEvent.Chat.Channel = unchecked((int)v); break;
-                case 289: t.Value.GameEvent.Chat.Speaker = (uint)v; break;
-                case 290: t.Value.GameEvent.Pickup.ItemId = (uint)v; break;
+                case 289: t.Value.GameEvent.Chat.Speaker = unchecked((uint)v); break;
+                case 290: t.Value.GameEvent.Pickup.ItemId = unchecked((uint)v); break;
                 case 291: t.Value.GameEvent.Pickup.Amount = unchecked((int)v); break;
                 case 293: t.Value.PlayerNameLength = (int)v; break;
                 case 295: t.Value.PayloadLength = (int)v; break;
@@ -990,8 +990,8 @@ namespace Bench
                 case 301: t.Value.Drift = BitConverter.UInt64BitsToDouble(v); break;
                 case 302: t.Value.WideKey = unchecked((System.UInt128)v); break;
                 case 303: t.Value.Flux = unchecked((System.Int128)v); break;
-                case 304: t.Value.Ping = (ushort)v; break;
-                case 305: t.Value.CrcHint = (uint)v; break;
+                case 304: t.Value.Ping = unchecked((ushort)v); break;
+                case 305: t.Value.CrcHint = unchecked((uint)v); break;
                 case 306: t.Value.HasExtra = v != 0; break;
                 case 307: t.Value.Extra = unchecked((int)v); break;
                 case 308: t.Value.IdleTicks = unchecked((int)v); break;
@@ -1437,12 +1437,12 @@ namespace Bench
                             {
                                 int bits = sw * 8;
                                 ulong top = 1UL << (bits - 1);
-                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                             }
                             Span<byte> cell = wide.Slice(e * dw, dw);
-                            if (dw == 1) cell[0] = (byte)raw;
-                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            if (dw == 1) cell[0] = unchecked((byte)raw);
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                             else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                         }
                         FixedTableFixedSetBytes(dst, p.Dst, wide, need);
@@ -1514,12 +1514,12 @@ namespace Bench
                             ulong top = 1UL << (bits - 1);
                             if ((raw & top) != 0)
                             {
-                                raw |= ~((top << 1) - 1UL);
+                                raw |= unchecked(~((top << 1) - 1UL));
                             }
                         }
                         if (p.DstSize == 16)
                         {
-                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                             FixedTableFixedSetWide(dst, p.Dst, w);
                         }
                         else

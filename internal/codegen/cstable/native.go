@@ -69,6 +69,8 @@ func (g *tableGen) emitNativeSurface(st *ir.Struct) {
 	g.pf("public static bool %sCook(%s value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, %sTableType(), bytes, order, false) >= 0; }\n\n", n, n, n)
 }
 
+// NativeWriter.Put extracts each byte lane from a 128-bit raw word by shift and unchecked
+// byte truncation (oracle: internal/codegen/gotable/cookwrite.go).
 const tableNativeSource = `
     static bool NativeExtent(TableTypeInfo type)
     { foreach (TableFieldInfo f in type.Fields) { if (NativeExtent(f)) { return true; } } return false; }
@@ -91,7 +93,7 @@ const tableNativeSource = `
         public void Put(long at, UInt128 raw, int width)
         {
             if (Measure) { return; }
-            for (int i = 0; i < width; i++) { Bytes[checked((int)(Base + at + (Big ? width - 1 - i : i)))] = (byte)(raw >> (i * 8)); }
+            for (int i = 0; i < width; i++) { Bytes[checked((int)(Base + at + (Big ? width - 1 - i : i)))] = unchecked((byte)(raw >> (i * 8))); }
         }
         public void Raw(long at, ReadOnlySpan<byte> bytes)
         { if (!Measure) { bytes.CopyTo(Bytes.Slice(checked((int)(Base + at)))); } }

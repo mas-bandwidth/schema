@@ -7,7 +7,7 @@ import (
 
 func TestCsharpLebFastPathShape(t *testing.T) {
 	requiredPatterns := []string{
-		"if (v < 128) { Byte((byte)v); return; }",
+		"if (v < 128) { Byte(unchecked((byte)v)); return; }",
 		"if ((uint)Offset < (uint)Buffer.Length)",
 		"byte b0 = Buffer[Offset];",
 		"if (b0 < 128)",
