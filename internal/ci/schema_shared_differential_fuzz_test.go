@@ -28,6 +28,7 @@ type diffReaderSeed struct {
 	wire    []byte
 	message bool
 	form    string
+	saved   bool
 }
 
 const (
@@ -72,6 +73,9 @@ func diffReaderSeeds() ([]diffReaderSeed, error) {
 					form = "json"
 				} else {
 					message = len(fields) > 4 && fields[4] == "message"
+					if message {
+						form = "message"
+					}
 				}
 			}
 			b, err := os.ReadFile(filepath.Join("../..", wire))
@@ -79,7 +83,8 @@ func diffReaderSeeds() ([]diffReaderSeed, error) {
 				_ = f.Close()
 				return nil, fmt.Errorf("seed %s: %w", name, err)
 			}
-			out = append(out, diffReaderSeed{name: name, unit: unit, root: root, wire: b, message: message, form: form})
+			saved := strings.Contains(filepath.ToSlash(wire), "schema-shared-differential-fuzz/")
+			out = append(out, diffReaderSeed{name: name, unit: unit, root: root, wire: b, message: message, form: form, saved: saved})
 			if fields[0] == "instance" && (len(fields) < 6 || fields[5] != "no-text") {
 				jsonPath := filepath.Join("../..", "testdata/conformance/tables/json", name+".json")
 				text, err := os.ReadFile(jsonPath)
@@ -193,7 +198,7 @@ func diffSupportedReaderSeeds(seeds []diffReaderSeed) ([]diffReaderSeed, error) 
 	if err != nil {
 		return nil, fmt.Errorf("list generated Go reader surfaces: %w", err)
 	}
-	available := map[string]map[string]bool{}
+	available := map[string]bool{}
 	for _, line := range strings.Split(string(out), "\n") {
 		fields := strings.Split(line, "\t")
 		if len(fields) != 4 {
@@ -362,7 +367,7 @@ func diffReaderOracle(t *testing.T, seed diffReaderSeed, wire []byte) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		if ctx.Err() == nil && (strings.Contains(stderr.String()+stdout.String(), "FAILED after") || strings.Contains(stderr.String()+stdout.String(), "differential reader mismatch")) {
+		if ctx.Err() == nil && os.Getenv("SCHEMA_DIFF_FUZZ_EXTRA_WIRE") == "" && (strings.Contains(stderr.String()+stdout.String(), "FAILED after") || strings.Contains(stderr.String()+stdout.String(), "differential reader mismatch")) {
 			if saveErr := diffSaveRed(root, seed, wire); saveErr != nil {
 				t.Errorf("could not pin differential finding: %v", saveErr)
 			}
@@ -375,6 +380,9 @@ func diffReaderOracle(t *testing.T, seed diffReaderSeed, wire []byte) {
 }
 
 func FuzzSchemaSharedDifferential(f *testing.F) {
+	if os.Getenv("SCHEMA_DIFF_FUZZ_DRIVER") == "" {
+		f.Skip("SCHEMA_DIFF_FUZZ_DRIVER is set by the Linux fuzz target")
+	}
 	seeds, err := diffReaderSeeds()
 	if err != nil {
 		f.Fatal(err)
@@ -452,6 +460,11 @@ func TestSchemaSharedDifferentialFuzzReplay(t *testing.T) {
 		}
 	}
 	if os.Getenv("SCHEMA_DIFF_FUZZ_EXTRA_WIRE") == "" {
+		for _, seed := range seeds {
+			if seed.saved {
+				replay = append(replay, seed)
+			}
+		}
 		withSaved, err := diffSavedFuzzSeeds(seeds)
 		if err != nil {
 			t.Fatal(err)

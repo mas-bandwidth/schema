@@ -16,7 +16,7 @@ schema-shared-differential-fuzz-toolchain:
 
 schema-shared-differential-fuzz: schema-shared-differential-fuzz-toolchain build/conformance-harness build/conformance-go
 	@set +e; SCHEMA_SLOW=1 GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_DIFF_FUZZ_DRIVER='$(SCHEMA_DIFF_FUZZ_DRIVER)' \
-		go test -parallel=2 ./internal/ci -run '^$$' \
+		go test -parallel=2 ./internal/ci -run '^FuzzSchemaSharedDifferential$$' \
 		-fuzz '^FuzzSchemaSharedDifferential$$' -fuzztime '$(SCHEMA_DIFF_FUZZ_TIME)' \
 		-timeout 600s > '$(SCHEMA_DIFF_FUZZ_LOG)' 2>&1; status=$$?; set -e; \
 	cat '$(SCHEMA_DIFF_FUZZ_LOG)'; exit $$status
@@ -37,7 +37,7 @@ schema-shared-differential-fuzz-negative-control: schema-shared-differential-fuz
 		SCHEMA_DIFF_FUZZ_EXTRA_WIRE=build/go-table-control-leb/failed.bin \
 		SCHEMA_DIFF_FUZZ_EXTRA_UNIT=$$unit SCHEMA_DIFF_FUZZ_EXTRA_ROOT=$$root \
 		SCHEMA_DIFF_FUZZ_EXTRA_FORM=wire \
-		go test -parallel=2 ./internal/ci -run '^$$' \
+		go test -parallel=2 ./internal/ci -run '^FuzzSchemaSharedDifferential$$' \
 		-fuzz '^FuzzSchemaSharedDifferential$$' -fuzztime '$(SCHEMA_DIFF_FUZZ_CONTROL_TIME)' \
 		-timeout 600s > build/schema-shared-differential-fuzz-plant.log 2>&1; status=$$?; set -e; \
 	if [ $$status -eq 0 ] || ! grep -q 'reader oracle mismatch' build/schema-shared-differential-fuzz-plant.log; then \

@@ -459,6 +459,9 @@ func main() {
 				json = "json"
 			}
 			fmt.Printf("%s\t%s\twire\t%s\n", c.unit, c.root, json)
+			if findMessageCodec(c.unit, c.root) != nil {
+				fmt.Printf("%s\t%s\tmessage\t-\n", c.unit, c.root)
+			}
 		}
 		return
 	}

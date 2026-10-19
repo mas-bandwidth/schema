@@ -173,3 +173,4 @@ pointer_arm_trailing streamdemo Feed testdata/wire/tables/fuzz-vectors/pointer_a
 
 # A later map occurrence supersedes retained bodies even after a damaged key cleared its value.
 map_retained_replaced mapdemo Text testdata/wire/tables/fuzz-vectors/map_retained_replaced.bin
+go_diff_24d25c81d6ccb0e5 mapdemo Text testdata/wire/tables/fuzz-vectors/schema-shared-differential-fuzz/go_diff_24d25c81d6ccb0e5.bin json
