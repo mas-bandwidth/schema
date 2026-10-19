@@ -154,11 +154,23 @@ func TestSquirrelWideTextMatchesTheWire(t *testing.T) {
 	odd = append(odd, titleWire[at:at+len(title)]...)
 	odd = append(odd, 0x41)
 	odd = append(odd, titleWire[at+len(title):]...)
+	zeroUnit := append([]byte(nil), titleWire...)
+	copy(zeroUnit[at:], []byte{0x00, 0x00, 0x38, 0x04, 0x40, 0x04})
+	loneLow := append([]byte(nil), titleWire...)
+	copy(loneLow[at:], []byte{0x00, 0xdc, 0x38, 0x04, 0x40, 0x04})
+	trailHigh := append([]byte(nil), titleWire...)
+	copy(trailHigh[at:], []byte{0x3c, 0x04, 0x38, 0x04, 0x00, 0xd8})
 
 	damage := []struct {
 		name string
 		wire []byte
-	}{{"wide_lone_surrogate", lone}, {"wide_odd_length", odd}}
+	}{
+		{"wide_lone_surrogate", lone},
+		{"wide_odd_length", odd},
+		{"wide_zero_unit", zeroUnit},
+		{"wide_lone_low_surrogate", loneLow},
+		{"wide_trailing_unpaired_high", trailHigh},
+	}
 	for _, d := range damage {
 		inputs[d.name] = d.wire
 		rows = append(rows, &wideRow{key: d.name, root: "Caption", unit: "widedemo", mod: mods["widedemo"], wire: d.wire})
@@ -186,7 +198,9 @@ func TestSquirrelWideTextMatchesTheWire(t *testing.T) {
 			t.Errorf("%s: the probe printed no row", r.key)
 			continue
 		}
-		if strings.HasPrefix(r.key, "wide_lone_surrogate") || strings.HasPrefix(r.key, "wide_odd_length") {
+		if strings.HasPrefix(r.key, "wide_lone_surrogate") || strings.HasPrefix(r.key, "wide_odd_length") ||
+			strings.HasPrefix(r.key, "wide_zero_unit") || strings.HasPrefix(r.key, "wide_lone_low_surrogate") ||
+			strings.HasPrefix(r.key, "wide_trailing_unpaired_high") {
 			want := wideOracle(t, models["widedemo"], "Caption", r.wire)
 			if g[1] != want {
 				t.Errorf("%s: the Squirrel load reports %s, internal/tablewire reports %s", r.key, g[1], want)

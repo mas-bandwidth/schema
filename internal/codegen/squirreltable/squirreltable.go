@@ -201,10 +201,6 @@ func closure(u *ir.Unit) (all, roots []*ir.Struct) {
 
 // unmapped names a construct the descriptors do not carry yet, or "".
 func unmapped(f *ir.Field) string {
-	switch {
-	case f.Type.Kind == ir.TMap:
-		return "a map (docs/SPEC-TABLES.md §2.8)"
-	}
 	return ""
 }
 
