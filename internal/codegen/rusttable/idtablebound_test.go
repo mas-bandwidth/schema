@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -57,6 +58,66 @@ func buildUnknownFieldsWire(ids []uint64, refAll bool) []byte {
 	return wire
 }
 
+// goTableOracle runs the generated Go reader (gotable) on wire and answers its
+// one line: PacketLoadMeasure(wire), the report's Malformed, and whether
+// PacketLoad(region, wire, &report) returned a value. gotable's tableOpen is
+// the Go leg that enforces the format-wide 4096-entry id-table bound; the
+// tablewire trailer carries no such cap, so this is the oracle for (a).
+func goTableOracle(t *testing.T, u *ir.Unit, wire []byte) string {
+	t.Helper()
+	mods, err := gotable.Generate(u)
+	if err != nil {
+		t.Fatalf("gotable.Generate: %v", err)
+	}
+	dir := t.TempDir()
+	reader := filepath.Join(dir, "reader")
+	if err := os.Mkdir(reader, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module idtableoracle\n\ngo 1.23\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range mods {
+		if err := os.WriteFile(filepath.Join(reader, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	main := `package main
+
+import (
+	"fmt"
+	"os"
+
+	p "idtableoracle/reader"
+)
+
+func main() {
+	wire, err := os.ReadFile(os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+	var report p.TableReport
+	value := p.PacketLoad(nil, wire, &report)
+	fmt.Printf("measure=%d malformed=%t loaded=%t", p.PacketLoadMeasure(wire), report.Malformed, value != nil)
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(main), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wirePath := filepath.Join(dir, "wire.bin")
+	if err := os.WriteFile(wirePath, wire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "run", ".", wirePath)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("gotable oracle failed: %v\n%s", err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func extractRustFn(src, sig string) (string, error) {
 	start := strings.Index(src, sig)
 	if start < 0 {
@@ -72,9 +133,9 @@ func extractRustFn(src, sig string) (string, error) {
 
 // TestRustIdTableReaderContract pins docs/SPEC-TABLES.md §3 for the Rust
 // variable-form reader (<name>_load_inner and <name>_load_measure):
-//   - an id table with count > 4096 (TABLE_PROBE_BOUND) is refused as
+//   - an id table with count > 4096 (ID_TABLE_PROBE_BOUND) is refused as
 //     malformed before allocating or walking entries;
-//   - distinctness is checked in an 8192-slot (TABLE_PROBE_SLOTS) stack probe
+//   - distinctness is checked in an 8192-slot (ID_TABLE_PROBE_SLOTS) stack probe
 //     array with multiplicative hash (id * 0x9e3779b97f4a7c15) >> 51, with
 //     neither Vec::with_capacity(count) nor O(count^2) ids.contains(&id).
 func TestRustIdTableReaderContract(t *testing.T) {
@@ -92,8 +153,8 @@ func TestRustIdTableReaderContract(t *testing.T) {
 	src := string(tableRS)
 
 	for _, decl := range []string{
-		"const TABLE_PROBE_BOUND: usize = 4096;",
-		"const TABLE_PROBE_SLOTS: usize = 8192;",
+		"const ID_TABLE_PROBE_BOUND: usize = 4096;",
+		"const ID_TABLE_PROBE_SLOTS: usize = 8192;",
 	} {
 		if !strings.Contains(src, decl) {
 			t.Fatalf("probe_table.rs is missing %q", decl)
@@ -113,20 +174,20 @@ func TestRustIdTableReaderContract(t *testing.T) {
 				t.Errorf("%s still contains %q", fnSig, forbidden)
 			}
 		}
-		boundIdx := strings.Index(body, "if count > TABLE_PROBE_BOUND")
+		boundIdx := strings.Index(body, "if count > ID_TABLE_PROBE_BOUND")
 		if boundIdx < 0 {
-			t.Fatalf("%s is missing the TABLE_PROBE_BOUND refusal", fnSig)
+			t.Fatalf("%s is missing the ID_TABLE_PROBE_BOUND refusal", fnSig)
 		}
-		probeIdx := strings.Index(body, "let mut probe_slots = [0u64; TABLE_PROBE_SLOTS];")
+		probeIdx := strings.Index(body, "let mut probe_slots = [0u64; ID_TABLE_PROBE_SLOTS];")
 		if probeIdx < 0 {
-			t.Fatalf("%s is missing the TABLE_PROBE_SLOTS fixed probe array", fnSig)
+			t.Fatalf("%s is missing the ID_TABLE_PROBE_SLOTS fixed probe array", fnSig)
 		}
 		hashIdx := strings.Index(body, "0x9e3779b97f4a7c15")
 		if hashIdx < 0 {
 			t.Fatalf("%s is missing the multiplicative probe hash", fnSig)
 		}
 		if boundIdx > probeIdx || boundIdx > hashIdx {
-			t.Errorf("%s checks TABLE_PROBE_BOUND after the probe walk", fnSig)
+			t.Errorf("%s checks ID_TABLE_PROBE_BOUND after the probe walk", fnSig)
 		}
 	}
 
@@ -200,6 +261,12 @@ func TestRustIdTableReaderContract(t *testing.T) {
 		return bytes
 	}
 
+	// (a) through the Go oracle: gotable's PacketLoadMeasure answers -1 and
+	// PacketLoad answers no value with report.Malformed set (pinned literal).
+	const want4097 = "measure=-1 malformed=true loaded=false"
+	if got := goTableOracle(t, u, wire4097); got != want4097 {
+		t.Fatalf("4097-distinct: gotable oracle = %q, want %q", got, want4097)
+	}
 	measure4096 := checkOracle("4096-unknown", wire4096, true, false, 4096)
 	checkOracle("dup-nonzero", wireDup, false, true, 0)
 	checkOracle("dup-zero", wireZeroDup, false, true, 0)
@@ -247,16 +314,16 @@ func TestRustIdTableReaderContract(t *testing.T) {
 	}
 
 	// Negative control: in a temporary copy inside t.TempDir(), strip the
-	// TABLE_PROBE_BOUND refusal from probe_table.rs and verify the 4097-id
+	// ID_TABLE_PROBE_BOUND refusal from probe_table.rs and verify the 4097-id
 	// check fails as expected.
 	negDir := t.TempDir()
 	sabotaged := strings.ReplaceAll(src,
-		"if count > TABLE_PROBE_BOUND { report.malformed = true; return None; }",
-		"if false && count > TABLE_PROBE_BOUND { report.malformed = true; return None; }",
+		"if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; }",
+		"if false && count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; }",
 	)
 	sabotaged = strings.ReplaceAll(sabotaged,
-		"if count > TABLE_PROBE_BOUND { return -1; }",
-		"if false && count > TABLE_PROBE_BOUND { return -1; }",
+		"if count > ID_TABLE_PROBE_BOUND as u64 { return -1; }",
+		"if false && count > ID_TABLE_PROBE_BOUND as u64 { return -1; }",
 	)
 	if sabotaged == src {
 		t.Fatal("negative control did not modify probe_table.rs")
@@ -285,9 +352,11 @@ func TestRustIdTableReaderContract(t *testing.T) {
 	negRun := exec.Command(negBin)
 	negRun.Dir = negDir
 	if out, err := negRun.CombinedOutput(); err == nil {
-		t.Fatalf("negative control unexpectedly succeeded with TABLE_PROBE_BOUND stripped:\n%s", out)
+		t.Fatalf("negative control unexpectedly succeeded with ID_TABLE_PROBE_BOUND stripped:\n%s", out)
 	} else if !strings.Contains(string(out), "4097-id wire must be refused") {
 		t.Fatalf("negative control failed for unexpected reason:\n%s", out)
+	} else {
+		t.Logf("negative control red: %s", strings.TrimSpace(string(out)))
 	}
 }
 
