@@ -2840,7 +2840,7 @@ func tableJsonReadBlob(in *tableJsonIn, slot *int64, f *TableFieldInfo) bool {
 			in.bad = true
 			return false
 		}
-		shape := TableFieldInfo{TypeName: "bytes", Kind: 6, IsArray: true, Counted: true, ArrayBound: int32(capacity), Offset: 8, CountOffset: 0, ElemSize: 1}
+		shape := TableFieldInfo{Name: f.Name, TypeName: "bytes", Kind: 6, IsArray: true, Counted: true, ArrayBound: int32(capacity), Offset: 8, CountOffset: 0, ElemSize: 1}
 		before := in.report.KindMismatch
 		if !tableJsonReadField(in, p, &shape, 0) {
 			return false

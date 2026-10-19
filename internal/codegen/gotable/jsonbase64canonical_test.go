@@ -164,6 +164,7 @@ func TestFixedJSONBase64(t *testing.T) {
 table V
 {
     data bytes(8)
+    blob *bytes
 }
 `, `package tabledemo
 import("encoding/base64";"errors";"testing")
@@ -182,6 +183,25 @@ func cases(n int) []b64case {
 		{"missing_equals", good[:len(good)-1], false},
 		{"extra_equals", good + "=", false},
 		{"not_base64", "!!!!", true},
+	}
+}
+
+// A *bytes body takes the bytes(N) canonical rule, and its Reason names the
+// field the way tabletext's does (docs/SPEC-TABLES.md §16.2), so a strict
+// refusal and a tolerant report both say which field was not canonical.
+func TestVariableJSONBlobReasonNamesTheField(t *testing.T) {
+	t.Parallel()
+	text := []byte("{\"blob\":\"\\/x==\"}")
+	for _, tolerant := range []bool{false, true} {
+		var b VBuilder
+		if !b.Init() { t.Fatal("init") }
+		var r TableReport
+		var ok bool
+		if tolerant { ok = VFromJsonTolerant(&b, text, &r) } else { ok = VFromJson(&b, text, &r) }
+		b.Shutdown()
+		if ok != tolerant || !errors.Is(r.Err(), TableRefuseBase64NotCanonical) || r.Reason != "base64_not_canonical: blob" {
+			t.Fatalf("tolerant=%v: ok=%v err=%v Reason=%q, want Reason %q", tolerant, ok, r.Err(), r.Reason, "base64_not_canonical: blob")
+		}
 	}
 }
 
