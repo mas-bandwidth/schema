@@ -582,6 +582,14 @@
       ]
     },
     {
+      "name": "schema-cpp-generated-frama-clang-readers",
+      "when": "nightly",
+      "why": "the Frama-C/Frama-Clang lens on the C++ port's generated readers and writers: one Frama-C process per generated unit over the whole corpus, so it is heavy and runs nightly. The planted type error in a scratch copy of generated/cpp proves the gate fires and names the plant.",
+      "targets": [
+        "schema-cpp-generated-frama-clang-readers-negative-control"
+      ]
+    },
+    {
       "name": "go-containers",
       "when": "pull-request",
       "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md §3.4).",

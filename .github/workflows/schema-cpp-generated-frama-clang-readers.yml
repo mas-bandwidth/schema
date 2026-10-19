@@ -1,0 +1,69 @@
+name: schema cpp generated frama-clang readers
+
+# THE FRAMA-C/FRAMA-CLANG LENS on the C++ port's generated readers and writers
+# (ideas roadmap group schema-per-language-lenses). The corpus is the one the
+# Makefile's generate targets read; make/checks/schema-cpp-generated-frama-clang-readers.mk
+# names the target and the subset Frama-Clang accepts.
+#
+# THE FAST LANE (push, pull request, workflow_dispatch) proves the tool is the
+# pinned Frama-C/Frama-Clang and that the C++ serialize sibling is present. It
+# takes seconds. THE WHOLE-CORPUS PARSE IS HEAVY (one Frama-C process per
+# generated unit) and runs on the nightly schedule and on workflow_dispatch,
+# with a time budget; it never runs per push.
+on:
+  push:
+    paths:
+      - make/checks/schema-cpp-generated-frama-clang-readers.mk
+      - .github/workflows/schema-cpp-generated-frama-clang-readers.yml
+      - internal/ci/schema_cpp_generated_frama_clang_readers_test.go
+  pull_request:
+    paths:
+      - make/checks/schema-cpp-generated-frama-clang-readers.mk
+      - .github/workflows/schema-cpp-generated-frama-clang-readers.yml
+      - internal/ci/schema_cpp_generated_frama_clang_readers_test.go
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: schema-cpp-generated-frama-clang-readers-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SERIALIZE_TAG: v1.16.2
+
+jobs:
+  tool-pin:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the C++ serialize runtime the generated units include
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+      - name: Frama-C and Frama-Clang are the pinned tools
+        run: make schema-cpp-generated-frama-clang-readers-tool
+
+  frama-clang:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the C++ serialize runtime the generated units include
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+      - name: the corpus parse
+        run: make schema-cpp-generated-frama-clang-readers
+      - name: the planted-bad-pattern control
+        run: make schema-cpp-generated-frama-clang-readers-negative-control
+      - name: the log
+        if: always()
+        run: cat build/schema-cpp-generated-frama-clang-readers.log

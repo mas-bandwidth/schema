@@ -6484,6 +6484,7 @@ tables-wasrows-negative-control: build/tables-generated/.stamp test/tables/wasro
 	@echo "negative control: stripping was from the variant, the arms and the type's field turns the cross read RED (unknown counted, the value at its default)"
 
 include make/checks/reference-review.mk
+include make/checks/schema-cpp-generated-frama-clang-readers.mk
 
 # ---------------------------------------------------------------------------
 # THE SLOW-GATE SCAN (schema#988, G5) ---------------------------------------
