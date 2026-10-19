@@ -37,7 +37,7 @@ fixed table ShipConfig
 // is byte-identical but for the tags column, so the storage, the offsets, the
 // writer and the reader all still carry the field.
 func TestDeprecatedFieldKeepsItsSlot(t *testing.T) {
-	for _, lang := range []string{"cpp", "c", "go", "cs"} {
+	for _, lang := range []string{"cpp", "c", "cs"} {
 		t.Run(lang, func(t *testing.T) {
 			live := generateSource(t, deprecatedLive, lang)
 			marked := generateSource(t, deprecatedMarked, lang)

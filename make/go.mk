@@ -58,10 +58,8 @@ generated/go/.stamp: bin/schema $(SCHEMAS)
 # walker per unit — Go emits it into <Home>TableJson.go — and the same bytes in
 # every unit of the corpus.
 .PHONY: tables-go-fixedform tables-go-sibling-runtime
-tables-go-sibling-runtime: $(SERIALIZE_GO_RUNTIME)/go.mod
-	@if [ "$(SERIALIZE_GO_RUNTIME)" = "$(SERIALIZE_GO_FETCHED)" ] && [ ! -e "$(CURDIR)/../serialize.go" ]; then \
-		ln -s "$(CURDIR)/build/serialize.go" "$(CURDIR)/../serialize.go"; \
-	fi
+tables-go-sibling-runtime: deps
+	@test -f "$(SERIALIZE_GO)/go.mod" || { echo "tables Go sibling runtime: make deps did not provision $(SERIALIZE_GO)" >&2; exit 1; }
 tables-go-fixedform: tables-fixedform-corpus tables-go-sibling-runtime
 	sh test/slowgate/proof tables-go-fixedform \
 		'TestFixedFormCountAndLengthOverBoundRefuseByName TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestTimestampKindInGo TestFixedLoadAllocatesNothingPerCall TestFixedLoadNamesEveryRefusal TestFixedFormWriteSideRefusesInEveryGoBuild TestGoTableWritersRefuseWhatTheirReadersRefuse TestFixedLoadUnknownHashIsLayoutUnknown' \
@@ -488,7 +486,20 @@ FUZZTIME ?= 10m
 FUZZPARALLEL ?= 4
 .PHONY: fuzz-tables-go
 fuzz-tables-go:
-	go test ./internal/fuzz/ -run '^$$' -fuzz '^FuzzTableFrontEnd$$' -fuzztime $(FUZZTIME) -parallel $(FUZZPARALLEL)
+	go test ./internal/fuzz/ -run '^$$' -fuzz '^FuzzTableFrontEnd$$' -fuzztime $(FUZZTIME) -parallel $(FUZZPARALLEL) -timeout 600s
+
+# FUZZ-GENERATED-READERS-GO: a functional smoke over every generated Go table
+# reader (internal/codegen/gotable/fuzzunit). The targets are listed from the
+# package, so a new reader or entry-point kind joins with no edit here; each
+# runs briefly by hand or on the certify nightly, never in ci-fast or ci-full.
+.PHONY: fuzz-generated-readers-go
+fuzz-generated-readers-go:
+	@targets=$$(nice -n 19 go test -list '^Fuzz' -timeout 600s ./internal/codegen/gotable/fuzzunit/ | grep '^Fuzz'); \
+	if [ -z "$$targets" ]; then echo "FUZZ-GENERATED-READERS-GO: no Fuzz targets"; exit 1; fi; \
+	for name in $$targets; do \
+		echo "fuzz-generated-readers-go: $$name 10s"; \
+		nice -n 19 go test ./internal/codegen/gotable/fuzzunit/ -run '^$$' -fuzz "^$$name$$" -fuzztime 10s -timeout 600s || exit 1; \
+	done
 
 .PHONY: tables-go-fuzz
 tables-go-fuzz: build/tables-generated-go/.stamp build/conformance-harness
@@ -552,22 +563,28 @@ tables-go-fuzz-extent-negative-control: build/tables-generated-go/.stamp
 tables-go-fuzz-maximum-negative-control: build/tables-generated-go/.stamp
 	$(call go_fuzz_sabotage,maximum)
 
+# The runtime the committed Go bench trees are generated with, and the runtime
+# the rules below pass. One source: internal/ci/gobenchcurrent_test.go's
+# goBenchRuntime pins the same spelling, and
+# TestGeneratedCurrentEmitsStandaloneBenchTrees holds the two to it.
+GO_BENCH_RUNTIME := standalone
+
 generated/bench/tables/go/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/go
-	./bin/schema generate --lang go --out generated/bench/tables/go bench/corpus/BenchTable.schema
+	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/tables/go bench/corpus/BenchTable.schema
 	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/tables/go/go.mod
 
 # Keep both compiler-owned source and module wiring in the discovered generation
 # graph. Default wiring is byte-identical to the paired driver's generated unit.
 generated/bench/paired/go/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema make/go.mk
 	@mkdir -p generated/bench/paired/go
-	./bin/schema generate --lang go --out generated/bench/paired/go bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/paired/go bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/paired/go/go.mod
 	@touch $@
 
 generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
-	./bin/schema generate --lang go --out generated/bench/go bench/corpus/Bench.schema
-	./bin/schema generate --lang go --out generated/bench/go/realworld bench/corpus/RealWorld.schema
+	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/go bench/corpus/Bench.schema
+	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/go/realworld bench/corpus/RealWorld.schema
 	@printf 'module bench\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' > generated/bench/go/go.mod
 	@touch $@
 
@@ -998,3 +1015,17 @@ test-go: tables-go-text-differential
 fuzz-tables-diff:
 	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 SCHEMA_TABLE_DIFF_TO=200 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
 	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferentialNegativeControl$$' -v
+
+# The property-based random-schema tests (card schema-go-rapid-property-tests):
+# rapid drives the SAME generator as the differential above, so a failure
+# shrinks to a small schema and value. Each check compiles a generated unit, so
+# the check count is bounded here; nightly in certify.yml, never in ci-fast or
+# ci-full (SCHEMA_RAPID_PROPS=1 opts them in, and a CI process without it skips
+# them).
+.PHONY: fuzz-tables-props
+fuzz-tables-props:
+	SCHEMA_SLOW=1 SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestProp' -rapid.checks=24 -v
+	SCHEMA_SLOW=1 SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRapidPropsNegativeControl$$' -rapid.checks=4 -v
+
+.PHONY: test-go
+test-go: deps

@@ -23,7 +23,9 @@
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-list-walk-negative-controls",
+        "tables-json-map-walk-negative-controls",
         "tables-json-negative-control",
+        "tables-py-packet-negative-control",
         "tables-ref-ordinal-negative-control",
         "tables-ref-ordinal-shared-negative-control",
         "tables-retain-fixed-class-negative-control",
@@ -78,6 +80,14 @@
         "tables-go-wire-fuzz-negative-control",
         "conformance-negative-control-reference-surface",
         "conformance-go-rows-negative-control"
+      ]
+    },
+    {
+      "name": "base-conformance-cpp",
+      "when": "pull-request",
+      "why": "The C++ reference's emitter-side conformance control, alone: it overlay-rebuilds the compiler, regenerates the whole C++ table tree through it and rebuilds the reference driver, which is the compile weight of a complete-driver rebuild. The driver-flip control in base-conformance shares a job with the harness controls; this one is the emitter rebuild they deliberately do not carry.",
+      "targets": [
+        "conformance-negative-control-cpp"
       ]
     },
     {
@@ -468,7 +478,7 @@
     {
       "name": "rust",
       "when": "pull-request",
-      "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 8 s over 3 controls on the author's machine.",
+      "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 8 s over 3 controls on the author's machine. The tables soak's control (one matched alloc/free pair per case per iteration through the soak crate's negative-control feature: the allocator call count must go red while the live-heap drift line stays flat) rides here too: 6 s on the Linux bench, the fixed-form corpus and the generated Rust crates already built.",
       "targets": [
         "cards-rust-conformance-negative-control",
         "cards-rust-conformance-upgrade-negative-control",
@@ -478,7 +488,9 @@
         "packet-utf8-rust-negative-control",
         "packet-wide-rust-negative-control",
         "tables-rust-names-negative-control",
-        "tables-rust-runtime-home-negative-control"
+        "tables-rust-runtime-home-negative-control",
+        "tables-rust-retain-negative-control",
+        "tables-rust-soak-negative-control"
       ],
       "rust": "stable"
     },
@@ -571,10 +583,12 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the controls that do not fit the owner's rule for CI that runs per commit: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120; the squirrel nightly fuzz control patches the emitted load, regenerates every conformance unit and runs the differential, which is the same minutes-long campaign its positive target carries. The message form's four blades run on the pull request, so what moves nightly is this one pass and nothing else. The group stays a group even at a few targets, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries, and schema-squirrel-nightly-fuzz.yml runs the squirrel one on its own nightly schedule.",
+      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120, and the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control). The message form's four blades run on the pull request, so what moves nightly is those passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
       "targets": [
         "tables-message-form-negative-control",
-        "schema-squirrel-nightly-fuzz-negative-control"
+        "schema-squirrel-nightly-fuzz-negative-control",
+        "schema-go-generated-golangci-lint-gate-negative-control",
+        "schema-go-generated-golangci-lint-gate-negative-control-ratchet"
       ]
     },
     {
@@ -617,15 +631,6 @@
       "why": "the compiled Go unit registry and packet descriptor boundary controls",
       "targets": [
         "tables-go-view-negative-controls"
-      ]
-    },
-    {
-      "name": "squirrel",
-      "when": "pull-request",
-      "why": "the Squirrel port's load-sabotage conformance control: it neutralizes the emitted kind-mismatch counter, so the report surface must go red while the wire surface (answered absent) stays green. Rebuilds the tagged compiler under the overlay and regenerates the corpus. Beside it, the all-port differential's planted-bad-pattern control changes one byte of a scratch answer tree and requires the comparison to go red and name wire/Scene; both halves of that control run on a t.TempDir(), with no toolchain, so the Squirrel lens still has a blade on a host carrying none of the other ports. It costs milliseconds.",
-      "targets": [
-        "conformance-negative-control-squirrel",
-        "schema-squirrel-all-port-differential-negative-control"
       ]
     }
   ],

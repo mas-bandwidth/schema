@@ -19,41 +19,20 @@ const TableFixedForm uint8 = 3
 const TableFixedHeaderBytes = 16
 const TableFixedHashAt = 8
 
-// THE FIXED LOAD'S REFUSAL NAMES — EXPORTED (docs/FIXED-FORM-ALGORITHM.md
-// §5.3, docs/SPEC-TABLES.md §3.4). Every refusal of the fixed load has a name,
-// the framing-damage returns included, so an adopter's existing
-// report.Reason == "layout_newer" comparisons keep compiling against these
-// constants; the emitted <T>FixedLoad names every reason constant in place of
-// a string literal.
+// THE FIXED LOAD'S REFUSAL NAMES ARE THE ONE ENUM (docs/SPEC-TABLES.md
+// §6.5, §21.3): every fixed-form refusal is a TableRefuseReason member, and
+// the emitted <T>FixedLoad writes its snake_case name into report.Reason. The
+// fixed form keeps no vocabulary of its own.
 //
-// TableFixedReasonLayoutUnknown is the Reason of a file whose header hash no
-// entry of this build's lineage holds (docs/SPEC-TABLES.md §21.3, algorithm
-// §5.3 step 5). It says what the reader knows and not which way the file lies:
-// a newer writer's layout, an older one nobody locked and a damaged hash byte
+// TableRefuseLayoutUnknown is the Reason of a file whose header hash no entry
+// of this build's lineage holds (docs/SPEC-TABLES.md §21.3, algorithm §5.3
+// step 5). It says what the reader knows and not which way the file lies: a
+// newer writer's layout, an older one nobody locked and a damaged hash byte
 // read the same.
 //
-// TableFixedReasonLayoutNewer ("ship the reader") is RESERVED (SPEC-TABLES
-// §21.3) for a hash the lock lineage proves newer, which nothing on the wire or
-// in the lock does today, so no Go fixed load answers it; it stays exported so
-// an adopter's existing comparisons keep compiling.
-const (
-	TableFixedReasonPreviousForm         = "previous_form"
-	TableFixedReasonMessageFormAsFile    = "message_form_as_file"
-	TableFixedReasonNewerForm            = "newer_form"
-	TableFixedReasonLayoutMalformed      = "layout_malformed"
-	TableFixedReasonLayoutUnknown        = "layout_unknown"
-	TableFixedReasonLayoutNewer          = "layout_newer"
-	TableFixedReasonLayoutUnsupported    = "layout_unsupported"
-	TableFixedReasonLayoutRecordTooLarge = "layout_record_too_large"
-	TableFixedReasonPlanTooLarge         = "plan_too_large"
-	TableFixedReasonBatchTooLarge        = "batch_too_large"
-	TableFixedReasonNoLayout             = "no_layout"
-	TableFixedReasonTextIllFormed        = "text_ill_formed"
-	TableFixedReasonTruncated            = "truncated"
-	TableFixedReasonReservedNotZero      = "reserved_not_zero"
-	TableFixedReasonCountOverBound       = "count_over_bound"
-	TableFixedReasonLengthOverBound      = "length_over_bound"
-)
+// TableRefuseLayoutNewer ("ship the reader") is RESERVED (SPEC-TABLES §21.3)
+// for a hash the lock lineage proves newer, which nothing on the wire or in the
+// lock does today, so no Go fixed load answers it.
 
 const (
 	tableFixedCopy uint8 = iota
@@ -160,6 +139,10 @@ type TableFixedDst struct {
 	Dst, Stride, Aux uint32
 	Counted, Arg, Meta uint8
 }
+
+// Arg's high bit marks a deprecated destination field: every compiled lineage
+// plan leaves it uncovered so the reset-image prefill supplies its default.
+const tableFixedDstDeprecated uint8 = 0x80
 
 type tableFixedPlan struct {
 	Entries []TableFixedEntry
@@ -771,7 +754,7 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
 			if v < 0 || v > int32(p.Size) {
-				return TableFixedReasonCountOverBound
+				return TableRefuseCountOverBound.Error()
 			}
 		case tableFixedText:
 		unit := uint32(1)
@@ -781,10 +764,10 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		capn := p.Size / unit
 		v := int32(tableFixedGet32(src[p.Src:]))
 		if v < 0 || uint32(v) > capn {
-			return TableFixedReasonLengthOverBound
+			return TableRefuseLengthOverBound.Error()
 		}
 		if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-			return TableFixedReasonTextIllFormed
+			return TableRefuseTextIllFormed.Error()
 		}
 		}
 	}
@@ -1298,6 +1281,9 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
+	if d.Arg&tableFixedDstDeprecated != 0 {
+		return
+	}
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
 	if te.Kind != me.Kind && !(me.Kind == 35) {
@@ -1682,7 +1668,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 		if why != "" {
 			// A lineage entry that is not a layout is a bug in the LOCK, not a
 			// wire event; the reader still owes a name rather than a panic.
-			out[i].Why = TableFixedReasonLayoutMalformed
+			out[i].Why = TableRefuseLayoutMalformed.Error()
 			continue
 		}
 		for room := 256; ; room *= 4 {
@@ -1690,16 +1676,16 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 			var census TableReport
 			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
 			if made == -2 {
-				out[i].Why = TableFixedReasonLayoutMalformed
+				out[i].Why = TableRefuseLayoutMalformed.Error()
 				break
 			}
 			if made == -3 {
-				out[i].Why = TableFixedReasonLayoutRecordTooLarge
+				out[i].Why = TableRefuseLayoutRecordTooLarge.Error()
 				break
 			}
 			if made < 0 {
 				if room >= 1<<18 {
-					out[i].Why = TableFixedReasonPlanTooLarge
+					out[i].Why = TableRefusePlanTooLarge.Error()
 					break
 				}
 				continue

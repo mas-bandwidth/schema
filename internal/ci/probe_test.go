@@ -29,56 +29,17 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// make/squirrel-serialize.mk, make/squirrel-conformance.mk,
-	// make/squirrel-fuzz.mk, make/schema-squirrel-nightly-fuzz.mk and
-	// make/schema-squirrel-all-port-differential.mk are not language backends
-	// (docs/PORT-SQUIRREL.md, THE RUNTIME LAYOUT: the type wire's bottom layer;
-	// THE CARD MAP: the conformance leg, the wire fuzzer, the nightly fuzz and
-	// the all-port differential). They carry no compiler/target_*.go and
-	// refuse no unit, so they are not legs of the wide-scalar probe; drop them
-	// from the fixture before the probe runs.
-	for _, mk := range []string{
-		"squirrel-serialize.mk", "squirrel-conformance.mk", "squirrel-fuzz.mk",
-		"schema-squirrel-nightly-fuzz.mk", "schema-squirrel-all-port-differential.mk",
-	} {
-		if err := os.Remove(filepath.Join(fixture, "make", mk)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// THE TREE'S OWN SKELETONS: a `schema new-leg` leg registers make/<lang>.mk
-	// beside a tagged compiler/target_<lang>.go, and the copied make/ carries
-	// its .mk, so the fixture carries its tag line too (docs/CONTRIBUTING.md,
-	// "Adding a language"). Each one is a skip the probe names, like lua's.
-	skeletons := 1 // the planted lua
-	targets, err := filepath.Glob(filepath.Join(root, "compiler", "target_*.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, target := range targets {
-		data, err := os.ReadFile(target)
-		if err != nil {
-			t.Fatal(err)
-		}
-		lang := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(target), "target_"), ".go")
-		tag := "//go:build schema_leg_" + lang
-		if lang == "lua" || !strings.HasPrefix(string(data), tag+"\n") {
-			continue
-		}
-		if err := os.WriteFile(filepath.Join(fixture, "compiler", filepath.Base(target)), []byte(tag+"\n\npackage compiler\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		skeletons++
-	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for path, data := range map[string][]byte{
-		"Makefile":               makefile,
-		"go.mod":                 []byte("module probefixture\n\ngo 1.26\n"),
-		"root.go":                []byte("package probefixture\n"),
-		"make/lua.mk":            {},
-		"compiler/target_lua.go": []byte("//go:build schema_leg_lua\n\npackage compiler\n"),
+		"Makefile":                       makefile,
+		"go.mod":                         []byte("module probefixture\n\ngo 1.26\n"),
+		"root.go":                        []byte("package probefixture\n"),
+		"make/lua.mk":                    {},
+		"make/schema-go-example-gate.mk": []byte(".PHONY: schema-go-example-gate\nschema-go-example-gate:\n\t@true\n"),
+		"compiler/target_lua.go":         []byte("//go:build schema_leg_lua\n\npackage compiler\n"),
 	} {
 		if err := os.WriteFile(filepath.Join(fixture, path), data, 0o644); err != nil {
 			t.Fatal(err)
@@ -112,11 +73,18 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	legs, err := filepath.Glob(filepath.Join(fixture, "make", "*.mk"))
+	mkFiles, err := filepath.Glob(filepath.Join(fixture, "make", "*.mk"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(legs) == 0 || refused+carried != len(legs)-skeletons {
+	var legs []string
+	for _, mk := range mkFiles {
+		stem := strings.TrimSuffix(filepath.Base(mk), ".mk")
+		if !strings.Contains(stem, "-") {
+			legs = append(legs, mk)
+		}
+	}
+	if len(legs) == 0 || refused+carried != len(legs)-1 {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {

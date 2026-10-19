@@ -23,25 +23,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// cfRuntime is the one thing outside the repository this suite needs: the Go
-// runtime as a SIBLING checkout, the path runVersionProbeRetired compiles
-// against. Without it no probe builds at all, so the suite says so and skips —
-// unless SCHEMA_REQUIRE_CORPUS promised the build, where a skip would report
-// green over a suite that never ran.
+// cfRuntime resolves the shared Go runtime before a generated probe runs.
 func cfRuntime(t *testing.T) {
 	t.Helper()
-	path, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(path); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the Go runtime is not a sibling checkout at %s: %v", path, err)
-		}
-		t.Skipf("the Go runtime is not a sibling checkout at %s", path)
-	}
+	_ = slowtest.SerializeGo(t, "../../../")
 }
 
 // cfWrite generates `schema` alone and runs `body` in its package, which must

@@ -10,9 +10,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/ir"
-
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestFixedFormEmitsSurface(t *testing.T) {
@@ -35,11 +34,11 @@ fixed table Point {
 		"func PointFixedSave(",
 		"func PointFixedLoadTolerant(",
 		"func PointFixedMeasure(",
-		"TableFixedReasonLayoutMalformed",
-		"TableFixedReasonNoLayout",
-		"TableFixedReasonPlanTooLarge",
-		"TableFixedReasonNewerForm",
-		"TableFixedReasonPreviousForm",
+		"TableRefuseLayoutMalformed.Error()",
+		"TableRefuseNoLayout.Error()",
+		"TableRefusePlanTooLarge.Error()",
+		"TableRefuseNewerForm.Error()",
+		"TableRefusePreviousForm.Error()",
 		"tableFixedParseLayout",
 		"tableFixedHoles",
 		"PointFixedLayout",
@@ -73,7 +72,7 @@ fixed table Point {
 	// SELECT BY HASH, never parse a stranger (docs/FIXED-FORM-ALGORITHM.md §5.3):
 	// the lineage and the floor are static data, and the two answers an
 	// unmatched hash owes are distinct.
-	for _, want := range []string{"tableFixedSelect(PointFixedKnown", "TableFixedReasonLayoutUnknown", "PointFixedFloor", "TableFixedReasonLayoutUnsupported"} {
+	for _, want := range []string{"tableFixedSelect(PointFixedKnown", "TableRefuseLayoutUnknown.Error()", "PointFixedFloor", "TableRefuseLayoutUnsupported.Error()"} {
 		if !strings.Contains(fixedLoad, want) {
 			t.Errorf("FixedLoad does not select by hash: missing %q", want)
 		}
@@ -125,11 +124,14 @@ fixed table Point {
 	if !strings.Contains(load, "PointLoadBody") {
 		t.Error("PointLoad of a DECLARED fixed table must still walk form 1")
 	}
-	if strings.Contains(load, "previous_form") {
+	// The only `previous_form` this entry point names is the unassigned byte
+	// 0, which is OLDER than the form 1 it reads (docs/SPEC-TABLES.md §3,
+	// §6.5); form 1 itself is still walked by PointLoadBody above.
+	if strings.Contains(load, "previous_form") && !strings.Contains(load, "data[0] == 0") {
 		t.Error("PointLoad, the form-1 entry point, refuses form 1")
 	}
 	fixedLoad := funcSource(body, "func PointFixedLoadTolerant(")
-	if !strings.Contains(fixedLoad, "TableFixedReasonPreviousForm") || !strings.Contains(fixedLoad, "tableFixedRefuse") {
+	if !strings.Contains(fixedLoad, "TableRefusePreviousForm.Error()") || !strings.Contains(fixedLoad, "tableFixedRefuse") {
 		t.Error("PointFixedLoad does not name a form-1 file previous_form")
 	}
 }
@@ -538,10 +540,7 @@ func TestFixedFormPlanPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	writeUnit(t, filepath.Join(dir, "fx1"), "tblfx1", string(fx1), runtime)
 	writeUnit(t, filepath.Join(dir, "fx2"), "tblfx2", string(fx2), runtime)
 	testDir := filepath.Join(dir, "test")
@@ -1330,10 +1329,7 @@ func TestHostileByteSweep(t *testing.T) {
 func TestFixedFormArgLaneTextUnderSecondArm(t *testing.T) {
 	t.Skip("retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness")
 	dir := t.TempDir()
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	writer := `package tblw
 type ArmA { n int32 }
 type ArmB { s string(8) }
@@ -3203,7 +3199,7 @@ func TestWriteSideRefusesByName(t *testing.T) {
 		fgot[0].Name[i] = 0x5A
 	}
 	before := fgot[0]
-	if n := HostFixedLoadTolerant(fgot, forged, plan, &fr); n >= 0 || fr.Reason != TableFixedReasonCountOverBound {
+	if n := HostFixedLoadTolerant(fgot, forged, plan, &fr); n >= 0 || fr.Reason != TableRefuseCountOverBound.Error() {
 		t.Fatalf("forged load %d reason=%q, want count_over_bound", n, fr.Reason)
 	}
 	if fr.Unknown != 0 || fr.KindMismatch != 0 || fr.Widened != 0 || fr.Clamped != 0 || fr.Duplicate != 0 || fr.Retained != 0 || fr.RetainLost != 0 || fr.Malformed {
