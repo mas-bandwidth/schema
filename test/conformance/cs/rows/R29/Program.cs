@@ -85,8 +85,9 @@ unsafe class Program
         VnewReport r = new VnewReport();
 
         byte[] scratch = System.Array.Empty<byte>();
+        int forgedOrdinal = 0;
         Vnew_uint_widen.Schema.TableFixedWire.Run(plan, vnewSlots, voldBody, vnewValue, r,
-            MemoryMarshal.AsBytes<VnewEntry>(plan), ref scratch);
+            MemoryMarshal.AsBytes<VnewEntry>(plan), ref scratch, ref forgedOrdinal);
 
         if (vnewValue.Lead != 0xAAAAAAAAu)
         {
@@ -158,8 +159,9 @@ unsafe class Program
         r.Clamped = 99;
 
         byte[] scratch = System.Array.Empty<byte>();
+        int forgedOrdinal = 0;
         Vnew_uint_widen.Schema.TableFixedWire.Run(signedPlan, vnewSlots, source, v, r,
-            MemoryMarshal.AsBytes<VnewEntry>(signedPlan), ref scratch);
+            MemoryMarshal.AsBytes<VnewEntry>(signedPlan), ref scratch, ref forgedOrdinal);
 
         if (v.V != 0xFFFFFFFFu)
         {

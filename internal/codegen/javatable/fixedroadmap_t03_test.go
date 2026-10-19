@@ -57,8 +57,8 @@ func t03Method(src, sig string) string {
 		return ""
 	}
 	rest := src[i:]
-	if j := strings.Index(rest, "\n    }\n"); j >= 0 {
-		return rest[:j]
+	if before, _, ok := strings.Cut(rest, "\n    }\n"); ok {
+		return before
 	}
 	return rest
 }
@@ -946,10 +946,10 @@ fixed table T
 	}
 	// The skip itself: behind a false flag the bytes are FILLED with zero
 	// and the payload's store is inside the taken branch only.
-	if !strings.Contains(body, "if (v.linkPresent) {") {
+	i := strings.Index(body, "if (v.linkPresent) {")
+	if i < 0 {
 		t.Fatal("W2: the writer has no present branch to skip the store in")
 	}
-	i := strings.Index(body, "if (v.linkPresent) {")
 	rest := body[i:]
 	j := strings.Index(rest, "} else {")
 	if j < 0 {

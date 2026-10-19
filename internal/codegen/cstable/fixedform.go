@@ -1,7 +1,9 @@
 package cstable
 
 import (
+	"encoding/binary"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -81,6 +83,9 @@ func fixedElementBytes(f *ir.Field) int64 {
 		case *ir.Union:
 			widest := int64(0)
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm names no type (§2.6)
+				}
 				if n := fixedFieldBytes(v.F); n > widest {
 					widest = n
 				}
@@ -178,6 +183,9 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 			fixedCollectTypes(r, seen, order)
 		case *ir.Union:
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm names no type (§2.6)
+				}
 				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
 					fixedCollectTypes(s, seen, order)
 				}
@@ -303,6 +311,56 @@ type fixedPlanEntry struct {
 	guard2 int64
 	arg2   uint64
 	argw2  byte
+	// links is THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md §4.1), one link per
+	// enclosing union, recorded INNERMOST FIRST as stampGuard runs inner unions
+	// before the outer one; fixedGuardPool turns it OUTERMOST FIRST and lays a
+	// chain past the two lanes into the pool as offset+count (guardIndex, a byte
+	// offset into the pool, and guardCount).
+	links      []fixedGuardLink
+	guardIndex int
+	guardCount int
+}
+
+// fixedGuardLink is ONE LINK of a guard chain: the tag's byte offset, the
+// ordinal it must hold and the width it is compared at (§4.1).
+type fixedGuardLink struct {
+	guard int64
+	arg   uint64
+	argw  byte
+}
+
+// fixedGuardPool is THE GUARD CHAIN laid down (docs/FIXED-FORM-ALGORITHM.md
+// §4.1): every entry whose chain runs past the two lanes gets offset+count into
+// one pool of links, OUTERMOST FIRST, deduped by content so two entries under
+// one chain share one slice. A chain of one or two is the two-lane special case
+// and carries nothing else. The only bound is the layout's 64, which the build's
+// own depth bound already holds the type to.
+func fixedGuardPool(plan []fixedPlanEntry) []byte {
+	var pool []byte
+	index := map[string]int{}
+	for i := range plan {
+		links := plan[i].links
+		if len(links) <= 2 {
+			continue
+		}
+		var key strings.Builder
+		var laid []byte
+		for _, l := range slices.Backward(links) {
+			fmt.Fprintf(&key, "%d:%d:%d;", l.guard, l.arg, l.argw)
+			laid = binary.LittleEndian.AppendUint32(laid, uint32(l.guard))
+			laid = binary.LittleEndian.AppendUint64(laid, l.arg)
+			laid = append(laid, l.argw)
+		}
+		at, ok := index[key.String()]
+		if !ok {
+			at = len(pool)
+			index[key.String()] = at
+			pool = append(pool, laid...)
+		}
+		plan[i].guardIndex = at
+		plan[i].guardCount = len(links)
+	}
+	return pool
 }
 
 // fixedPartitionPlan stable-partitions the built plan into every UNGUARDED
@@ -325,7 +383,7 @@ type fixedPlanEntry struct {
 func fixedPartitionPlan(plan []fixedPlanEntry) ([]fixedPlanEntry, int) {
 	out := make([]fixedPlanEntry, 0, len(plan))
 	split := 0
-	for pass := 0; pass < 2; pass++ {
+	for pass := range 2 {
 		for _, e := range plan {
 			if (e.guard != kFixedNoGuard) != (pass == 1) {
 				continue
@@ -335,6 +393,8 @@ func fixedPartitionPlan(plan []fixedPlanEntry) ([]fixedPlanEntry, int) {
 				if last.op == e.op && e.op == 0 &&
 					last.guard == e.guard && last.arg == e.arg &&
 					last.argw == e.argw && last.meta == e.meta &&
+					last.guard2 == e.guard2 && last.arg2 == e.arg2 && last.argw2 == e.argw2 &&
+					len(last.links) == len(e.links) &&
 					last.src+last.size == e.src && last.dst == e.dst {
 					last.size += e.size
 					continue
@@ -384,6 +444,9 @@ func (b *fixedRootBuild) countElementSlots(f *ir.Field) int {
 		case *ir.Union:
 			n := 1
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm names no type (§2.6)
+				}
 				n += b.countFieldSlots(v.F)
 			}
 			return n
@@ -451,15 +514,21 @@ func (b *fixedRootBuild) addPlan(e fixedPlanEntry) {
 // hold (§4.1 "the entry runs when BOTH tags hold their ordinal").
 func (b *fixedRootBuild) stampGuard(at int, guard int64, arg uint64, argw byte) {
 	for q := at; q < len(b.plan); q++ {
+		// ONE MORE LINK OF THE GUARD CHAIN (§4.1): an arm three unions deep keeps
+		// all three, and the two lanes hold the innermost two, never a lane
+		// written over another.
+		b.plan[q].links = append(b.plan[q].links, fixedGuardLink{guard: guard, arg: arg, argw: argw})
 		if b.plan[q].guard == kFixedNoGuard {
 			b.plan[q].guard = guard
 			b.plan[q].arg = arg
 			b.plan[q].argw = argw
 			continue
 		}
-		b.plan[q].guard2 = guard
-		b.plan[q].arg2 = arg
-		b.plan[q].argw2 = argw
+		if b.plan[q].guard2 == kFixedNoGuard {
+			b.plan[q].guard2 = guard
+			b.plan[q].arg2 = arg
+			b.plan[q].argw2 = argw
+		}
 	}
 }
 
@@ -585,7 +654,14 @@ func (b *fixedRootBuild) pushElementBlockOnly(f *ir.Field, id uint64, note strin
 			})
 			b.dstRows = append(b.dstRows, "new TableFixedDst(0, 0, 0, 0, 0)")
 			for _, v := range r.Variants {
-				b.pushElementBlockOnly(v.F, ir.TableWireId(v.WireName()), v.Name)
+				if v.F == nil {
+					b.pushNoPayloadArm(v)
+					continue
+				}
+				// AN ARM IS A FIELD LINE (§2.6): an array, string or bytes arm
+				// is laid out the way the same line in a struct is, under the
+				// arm's id (ir.tableFixedWalkArm, the reference's layout).
+				b.pushPayloadBlockOnly(v.F, r.Name, ir.TableWireId(v.WireName()), fixedFieldBytes(v.F))
 			}
 			return
 		case *ir.Enum:
@@ -599,6 +675,22 @@ func (b *fixedRootBuild) pushElementBlockOnly(f *ir.Field, id uint64, note strin
 		size:     elemSize,
 		children: 0,
 		note:     note,
+	})
+	b.dstRows = append(b.dstRows, "new TableFixedDst(0, 0, 0, 0, 0)")
+}
+
+// pushNoPayloadArm is a payload-free arm's layout entry: an entry and no bytes
+// (kind 32), the tag alone is its whole storage (§2.6). It is an entry rather
+// than nothing because the layout is what the arm list is compared by, so an
+// arm appended after a payload-free one must move the hash
+// (ir.tableFixedWalkArm).
+func (b *fixedRootBuild) pushNoPayloadArm(v ir.UnionVariant) {
+	b.entries = append(b.entries, fixedBlockEntry{
+		id:       ir.TableWireId(v.WireName()),
+		kind:     ir.TableKindNoPayload,
+		size:     0,
+		children: 0,
+		note:     v.Name,
 	})
 	b.dstRows = append(b.dstRows, "new TableFixedDst(0, 0, 0, 0, 0)")
 }
@@ -983,13 +1075,18 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 			savedArgw := b.argw
 			b.argw = fixedGuardWidth(tagBytes)
 			armWireOffset := wireBase + tagBytes
+			owner := unionOwner(r)
 			for j, v := range r.Variants {
-				armID := ir.TableWireId(v.WireName())
-				armProp := ir.GoExportName(v.Name)
-				armExpr := fmt.Sprintf("%s.%s", expr, armProp)
 				*wireOff = armWireOffset
+				if v.F == nil {
+					b.pushNoPayloadArm(v)
+					continue
+				}
 				at := len(b.plan)
-				b.buildElement(v.F, armExpr, armBase, armID, v.Name, kFixedNoGuard, 0, wireOff)
+				// AN ARM IS A FIELD LINE (§2.6): its value and companion
+				// (Length, Count) are members of the union object, so the arm
+				// walks as a payload, never as a bare element.
+				b.buildPayload(owner, v.F, expr, armBase, wireOff, ir.TableWireId(v.WireName()), fixedFieldBytes(v.F), kFixedNoGuard, 0)
 				b.stampGuard(at, wireBase, uint64(j+1), b.argw)
 			}
 			b.argw = savedArgw
@@ -1119,12 +1216,14 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 			savedArgw := b.argw
 			b.argw = fixedGuardWidth(tagBytes)
 			armWireOffset := wireBase + tagBytes
+			owner := unionOwner(r)
 			for j, v := range r.Variants {
-				armProp := ir.GoExportName(v.Name)
-				armExpr := fmt.Sprintf("%s.%s", expr, armProp)
+				if v.F == nil {
+					continue // a payload-free arm: no slot, no plan entry (§2.6)
+				}
 				*wireOff = armWireOffset
 				at := len(b.plan)
-				b.buildElementSlotsAndPlan(v.F, armExpr, baseSlot, kFixedNoGuard, 0, wireOff)
+				b.buildPayloadSlotsAndPlan(owner, v.F, expr, baseSlot, wireOff, fixedFieldBytes(v.F), kFixedNoGuard, 0)
 				b.stampGuard(at, wireBase, uint64(j+1), b.argw)
 			}
 			b.argw = savedArgw
@@ -1442,6 +1541,15 @@ func (g *tableGen) emitFixedWriteField(owner *ir.Struct, f *ir.Field, off int64,
 }
 
 func (g *tableGen) emitFixedWritePayload(owner *ir.Struct, f *ir.Field, base int64, buf, val string, indent int) {
+	g.emitFixedWritePayloadAs(owner, f, base, buf, val, f.Name, indent)
+}
+
+// emitFixedWritePayloadAs is [emitFixedWritePayload] with the stem its locals
+// (count_<stem>, len_<stem>) take. A struct's own fields use the field name; a
+// union arm, written inline inside an enclosing body, uses <Union>_<arm>, so an
+// arm's local never collides with a field of the same name in the body it rides
+// in (C# refuses a local that shadows one in an enclosing scope, CS0136).
+func (g *tableGen) emitFixedWritePayloadAs(owner *ir.Struct, f *ir.Field, base int64, buf, val, stem string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	prop := member(f)
 	switch {
@@ -1453,29 +1561,49 @@ func (g *tableGen) emitFixedWritePayload(owner *ir.Struct, f *ir.Field, base int
 		// THE COUNT IS THE LOOP AND THE SLACK STAYS THE TEMPLATE'S ZEROS
 		// (docs/SPEC-TABLES.md §3.4). Writing all Max elements put the unused
 		// slots' STORAGE on the wire.
-		g.pf("%sint count_%s = %s.%sCount;\n", ind, f.Name, val, prop)
-		g.pf("%sSystem.Diagnostics.Debug.Assert(count_%s >= 0 && count_%s <= %d); // the declared count is the bound (§3.4)\n", ind, f.Name, f.Name, f.ArrayBound)
-		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), count_%s);\n", ind, buf, base, f.Name)
-		g.emitFixedWriteLoop(f, base+fixedCountBytes, f.ArrayBound, "count_"+f.Name, buf, val+"."+prop, indent)
+		g.pf("%sint count_%s = %s.%sCount;\n", ind, stem, val, prop)
+		g.pf("%sSystem.Diagnostics.Debug.Assert(count_%s >= 0 && count_%s <= %d); // the declared count is the bound (§3.4)\n", ind, stem, stem, f.ArrayBound)
+		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), count_%s);\n", ind, buf, base, stem)
+		g.emitFixedWriteLoop(f, base+fixedCountBytes, f.ArrayBound, "count_"+stem, buf, val+"."+prop, indent)
 	case f.Type.Kind == ir.TString:
-		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, f.Name, val, prop, val, prop)
-		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, f.Name, f.Type.Size)
-		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, f.Name)
-		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, f.Name, val, prop, f.Name, buf, base+4)
+		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
+		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
+		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
+		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
 	case f.Type.Kind == ir.TWString:
-		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, f.Name, val, prop, val, prop)
-		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, f.Name, f.Type.Size)
-		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, f.Name)
-		g.pf("%sif (len_%s > 0) { MemoryMarshal.AsBytes(%s.%s.AsSpan(0, len_%s)).CopyTo(%s.Slice(%d)); }\n", ind, f.Name, val, prop, f.Name, buf, base+4)
+		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
+		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
+		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
+		g.pf("%sif (len_%s > 0) { MemoryMarshal.AsBytes(%s.%s.AsSpan(0, len_%s)).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, f.Name, val, prop, val, prop)
-		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, f.Name, f.Type.Size)
-		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, f.Name)
-		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, f.Name, val, prop, f.Name, buf, base+4)
+		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
+		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
+		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
+		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
 	default:
 		g.emitFixedWriteElement(f, base, buf, val+"."+prop, indent)
 	}
 }
+
+// fixedLoopVar names a fixed-form element loop's counter at the current
+// nesting, and enterLoop/leaveLoop bracket the loop's body. A loop nests when an
+// array arm rides inside an array of unions, and reusing `i` would shadow the
+// outer counter, which C# refuses (CS0136). The outermost loop keeps `i`, so a
+// body with no nesting is spelled as it always was.
+func (g *tableGen) fixedLoopVar() string {
+	if g.loopDepth == 0 {
+		return "i"
+	}
+	return fmt.Sprintf("i%d", g.loopDepth)
+}
+
+func (g *tableGen) enterLoop() string {
+	v := g.fixedLoopVar()
+	g.loopDepth++
+	return v
+}
+
+func (g *tableGen) leaveLoop() { g.loopDepth-- }
 
 func (g *tableGen) emitFixedWriteKeyedLoop(owner *ir.Struct, f *ir.Field, base, count int64, buf, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
@@ -1497,10 +1625,12 @@ func (g *tableGen) emitFixedWriteKeyedLoop(owner *ir.Struct, f *ir.Field, base, 
 		}
 		return
 	}
+	i := g.enterLoop()
 	g.pf("%sif (%s != null)\n%s{\n", ind, slotsExpr, ind)
-	g.pf("%s    for (int i = 0; i < %d && i < %s.Length; ++i)\n%s    {\n", ind, count, slotsExpr, ind)
-	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s.Slice(%d + i * %d)", buf, base, elem), fmt.Sprintf("%s[i]", slotsExpr), indent+8)
+	g.pf("%s    for (int %s = 0; %s < %d && %s < %s.Length; ++%s)\n%s    {\n", ind, i, i, count, i, slotsExpr, i, ind)
+	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s.Slice(%d + %s * %d)", buf, base, i, elem), fmt.Sprintf("%s[%s]", slotsExpr, i), indent+8)
 	g.pf("%s    }\n%s}\n", ind, ind)
+	g.leaveLoop()
 }
 
 func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, bound int64, live, buf, expr string, indent int) {
@@ -1523,10 +1653,12 @@ func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, bound int64, live, buf,
 		}
 		return
 	}
+	i := g.enterLoop()
 	g.pf("%sif (%s != null)\n%s{\n", ind, expr, ind)
-	g.pf("%s    for (int i = 0; i < %s && i < %s.Length; ++i)\n%s    {\n", ind, nExpr, expr, ind)
-	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s.Slice(%d + i * %d)", buf, base, elem), fmt.Sprintf("%s[i]", expr), indent+8)
+	g.pf("%s    for (int %s = 0; %s < %s && %s < %s.Length; ++%s)\n%s    {\n", ind, i, i, nExpr, i, expr, i, ind)
+	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s.Slice(%d + %s * %d)", buf, base, i, elem), fmt.Sprintf("%s[%s]", expr, i), indent+8)
 	g.pf("%s    }\n%s}\n", ind, ind)
+	g.leaveLoop()
 }
 
 func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr string, indent int) {
@@ -1553,11 +1685,18 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 				g.pf("%s    BinaryPrimitives.WriteUInt32LittleEndian(%s, (uint)%s.Type);\n", ind, slice, expr)
 			}
 			g.pf("%s    switch (%s.Type)\n%s    {\n", ind, expr, ind)
+			owner := unionOwner(r)
 			for _, v := range r.Variants {
 				armProp := ir.GoExportName(v.Name)
 				g.pf("%s        case %s.%s:\n", ind, tagType, armProp)
-				armSlice := fmt.Sprintf("%s.Slice(%d)", slice, tagBytes)
-				g.emitFixedWriteElement(v.F, 0, armSlice, fmt.Sprintf("%s.%s", expr, armProp), indent+12)
+				if v.F != nil {
+					// AN ARM IS A FIELD LINE (§2.6): an array arm writes its
+					// count and its elements, a text or bytes arm its used
+					// length and its units, from the union object's members.
+					// A payload-free arm's tag is its whole storage: the case
+					// carries no store, only the break.
+					g.emitFixedWritePayloadAs(owner, v.F, tagBytes, slice, expr, f.Type.Name+"_"+v.F.Name, indent+12)
+				}
 				g.pf("%s            break;\n", ind)
 			}
 			g.pf("%s        default: break;\n%s    }\n%s}\n", ind, ind, ind)
@@ -1648,6 +1787,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// of unguarded entries, carried beside the plan as metadata and never
 	// consulted by the run loop, which tests the guard per entry (allowed).
 	plan, planSplit := fixedPartitionPlan(b.plan)
+	guardPool := fixedGuardPool(plan)
 	b.plan = plan
 
 	block := fixedBlockBytes(b.entries)
@@ -1715,6 +1855,18 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// it, but the partition it names is what a plan-execution test holds this
 	// leg to.
 	g.pf("public const int %sFixedPlanSplit = %d;\n\n", name, planSplit)
+	// THE GUARD CHAIN'S POOL (docs/FIXED-FORM-ALGORITHM.md §4.1): the links of
+	// every chain past the two lanes, OUTERMOST FIRST, thirteen bytes a link. An
+	// entry carries offset+count into it; the identity read hands it to the run
+	// loop as the plan's bytes.
+	g.pf("public static readonly byte[] %sFixedGuardPool = new byte[] {", name)
+	for i, by := range guardPool {
+		if i%16 == 0 {
+			g.pf("\n   ")
+		}
+		g.pf(" 0x%02x,", by)
+	}
+	g.pf("\n};\n\n")
 	g.pf("public static readonly TableFixedPlan %sFixedPlan = new TableFixedPlan(new TableFixedEntry[] {\n", name)
 	for _, p := range b.plan {
 		guardStr := "TableFixedWire.NoGuard"
@@ -1734,7 +1886,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if argw == 0 {
 			argw = 1
 		}
-		if p.guard2 == kFixedNoGuard {
+		if p.guard2 == kFixedNoGuard && p.guardCount == 0 {
 			g.pf("    new TableFixedEntry(%du, %du, %du, %du, %s, %s, %d, 0, 0, %d, %d),\n",
 				p.src, p.dst, p.size, p.aux, guardStr, opName, p.arg, p.meta, argw)
 			continue
@@ -1746,8 +1898,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if argw2 == 0 {
 			argw2 = 1
 		}
-		g.pf("    new TableFixedEntry(%du, %du, %du, %du, %s, %s, %d, 0, 0, %d, %d, %du, %d, %d),\n",
-			p.src, p.dst, p.size, p.aux, guardStr, opName, p.arg, p.meta, argw, p.guard2, p.arg2, argw2)
+		if p.guardCount == 0 {
+			g.pf("    new TableFixedEntry(%du, %du, %du, %du, %s, %s, %d, 0, 0, %d, %d, %du, %d, %d),\n",
+				p.src, p.dst, p.size, p.aux, guardStr, opName, p.arg, p.meta, argw, p.guard2, p.arg2, argw2)
+			continue
+		}
+		// AND A CHAIN PAST THE TWO LANES (§4.1): offset+count into the pool.
+		g.pf("    new TableFixedEntry(%du, %du, %du, %du, %s, %s, %d, 0, 0, %d, %d, %du, %d, %d, %du, %du),\n",
+			p.src, p.dst, p.size, p.aux, guardStr, opName, p.arg, p.meta, argw, p.guard2, p.arg2, argw2, p.guardIndex, p.guardCount)
 	}
 	g.pf("});\n\n")
 
@@ -1877,7 +2035,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;\n")
 	g.pf("    ReadOnlySpan<TableFixedEntry> entries = %sFixedPlan;\n", name)
 	g.pf("    long record_bytes = known.RecordBytes;\n")
-	g.pf("    ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;\n")
+	// THE IDENTITY PLAN'S BYTES ARE ITS GUARD POOL (§4.1): it carries no remap
+	// table, and a chain past the two lanes is read out of the pool here.
+	g.pf("    ReadOnlySpan<byte> planBytes = %sFixedGuardPool;\n", name)
 	g.pf("    TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();\n")
 	g.pf("    int fillCount = 0;\n")
 	g.pf("    int census_unknown = 0;\n")

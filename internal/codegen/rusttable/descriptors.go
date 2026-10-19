@@ -28,13 +28,14 @@ const VariableDescriptorModule = "card_descriptors"
 // across every source file of the unit.
 func cardDescriptorTables(u *ir.Unit) []*ir.Struct {
 	variable := ir.VariableTables(u)
+	vc := newVariableClass(u)
 	seen := map[string]bool{}
 	names := make([]string, 0)
 	for _, st := range u.Tables {
 		if !variable[st.Name] || seen[st.Name] {
 			continue
 		}
-		if refuseCardUnsupportedFields(st) != nil {
+		if !vc.carried(st.Name) {
 			continue
 		}
 		seen[st.Name] = true

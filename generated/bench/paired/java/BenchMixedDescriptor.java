@@ -16,40 +16,43 @@ public final class BenchMixedDescriptor {
         static final TableTypeInfo TABLE = build();
 
         private static TableTypeInfo build() {
-        TableTypeInfo t = new TableTypeInfo();
-        t.name = "BenchMixed";
-        t.fields = new TableFieldInfo[] {
-            TableFieldInfo.of("sequence", 7, "value", 0L),
-            TableFieldInfo.of("ack_sequence", 4, "value", 0L),
-            TableFieldInfo.of("ack_bits", 8, "value", 0L),
-            TableFieldInfo.of("session_id", 9, "value", 0L),
-            TableFieldInfo.of("client_id", 8, "value", 0L),
-            TableFieldInfo.of("nonce", 9, "value", 0L),
-            TableFieldInfo.of("world_time", 5, "value", 0L),
-            TableFieldInfo.of("frame_tick", 9, "value", 0L),
-            TableFieldInfo.of("server_time", 22, "value", 0L),
-            TableFieldInfo.of("entities", 14, "list", 0L),
-            TableFieldInfo.of("stats", 14, "list", 0L),
-            TableFieldInfo.of("game_event", 15, "value", 0L),
-            TableFieldInfo.of("loadout", 14, "list", 0L),
-            TableFieldInfo.of("player_name", 12, "value", 15L),
-            TableFieldInfo.of("payload", 14, "value", 0L),
-            TableFieldInfo.of("aim_x", 10, "value", 0L),
-            TableFieldInfo.of("aim_y", 10, "value", 0L),
-            TableFieldInfo.of("aim_z", 10, "value", 0L),
-            TableFieldInfo.of("recoil", 10, "value", 0L),
-            TableFieldInfo.of("drift", 11, "value", 0L),
-            TableFieldInfo.of("wide_key", 19, "value", 0L),
-            TableFieldInfo.of("flux", 18, "value", 0L),
-            TableFieldInfo.of("ping", 26, "value", 0L),
-            TableFieldInfo.of("crc_hint", 8, "value", 0L),
-            TableFieldInfo.of("has_extra", 1, "value", 0L),
-            TableFieldInfo.of("extra", 4, "value", 0L),
-            TableFieldInfo.of("idle_ticks", 4, "value", 0L),
-        };
-        return t;
+            TableTypeInfo t = new TableTypeInfo();
+            t.name = "BenchMixed";
+            t.fields =
+                    new TableFieldInfo[] {
+                        TableFieldInfo.of("sequence", 7, "value", 0L),
+                        TableFieldInfo.of("ack_sequence", 4, "value", 0L),
+                        TableFieldInfo.of("ack_bits", 8, "value", 0L),
+                        TableFieldInfo.of("session_id", 9, "value", 0L),
+                        TableFieldInfo.of("client_id", 8, "value", 0L),
+                        TableFieldInfo.of("nonce", 9, "value", 0L),
+                        TableFieldInfo.of("world_time", 5, "value", 0L),
+                        TableFieldInfo.of("frame_tick", 9, "value", 0L),
+                        TableFieldInfo.of("server_time", 22, "value", 0L),
+                        TableFieldInfo.of("entities", 14, "list", 0L),
+                        TableFieldInfo.of("stats", 14, "list", 0L),
+                        TableFieldInfo.of("game_event", 15, "value", 0L),
+                        TableFieldInfo.of("loadout", 14, "list", 0L),
+                        TableFieldInfo.of("player_name", 12, "value", 15L),
+                        TableFieldInfo.of("payload", 14, "value", 0L),
+                        TableFieldInfo.of("aim_x", 10, "value", 0L),
+                        TableFieldInfo.of("aim_y", 10, "value", 0L),
+                        TableFieldInfo.of("aim_z", 10, "value", 0L),
+                        TableFieldInfo.of("recoil", 10, "value", 0L),
+                        TableFieldInfo.of("drift", 11, "value", 0L),
+                        TableFieldInfo.of("wide_key", 19, "value", 0L),
+                        TableFieldInfo.of("flux", 18, "value", 0L),
+                        TableFieldInfo.of("ping", 26, "value", 0L),
+                        TableFieldInfo.of("crc_hint", 8, "value", 0L),
+                        TableFieldInfo.of("has_extra", 1, "value", 0L),
+                        TableFieldInfo.of("extra", 4, "value", 0L),
+                        TableFieldInfo.of("idle_ticks", 4, "value", 0L),
+                    };
+            return t;
         }
     }
 
-    public static TableTypeInfo tableType() { return Holder.TABLE; }
+    public static TableTypeInfo tableType() {
+        return Holder.TABLE;
+    }
 }

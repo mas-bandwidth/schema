@@ -354,8 +354,10 @@ table Root { n int32 }
 	if !strings.Contains(src, "const TableFixedLaneArgW = 8;") {
 		t.Error("the plan omits the ArgW lane")
 	}
-	if !strings.Contains(src, "export const TableFixedLanes = 9;") {
-		t.Error("a plan entry is nine int32 lanes, not eight")
+	// NINE LANES AND THE GUARD CHAIN'S TWO (docs/FIXED-FORM-ALGORITHM.md §4.1):
+	// offset+count into the plan's pool for an entry under more than one union.
+	if !strings.Contains(src, "export const TableFixedLanes = 11;") {
+		t.Error("a plan entry is eleven int32 lanes: the nine and the guard chain's offset+count")
 	}
 	if strings.Contains(src, "src[srcAt + guard] !== e[b + TableFixedLaneArg]") {
 		t.Error("the run loop still compares the union guard as one byte")

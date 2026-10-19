@@ -85,11 +85,6 @@ func csT18Write(t *testing.T, dir string, files map[string][]byte) {
 	}
 }
 
-// csT18Head is the C# preamble each probe shares: read `buffer` as bytes, the
-// OLD and NEW generation's `Schema` classes at hand.
-const csT18Head = `            byte[] data = System.IO.File.ReadAllBytes(System.IO.Path.Combine(corpus, @FILE@));
-`
-
 // TestFixedRoadmapCSharpT18ExactCounters is cs/R16.
 func TestFixedRoadmapCSharpT18ExactCounters(t *testing.T) {
 	t.Parallel()

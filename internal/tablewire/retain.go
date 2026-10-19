@@ -289,7 +289,20 @@ type resolver struct {
 	ids []uint64
 	out []byte
 	bad bool
+	// outCap is the byte cap for a MESSAGE-FORM capture (docs/SPEC-TABLES.md
+	// §3.3, §6.6): `out` may never take an append that carries it past this,
+	// and the walk sets `bad` instead. A count over an element that rides no
+	// bits is thus bounded by what the caller's store could hold rather than
+	// by the announced count. It is [noOutCap] for the FILE walk, whose
+	// lengths are the file's own and already walked by the plain read; only
+	// `captureMessage` states a budget.
+	outCap int
 }
+
+// noOutCap is the resolver's uncapped spelling: the file's resolving walk
+// measures nothing against the store because the store's own `keep` is the
+// only ceiling it needs, and the plain read has already bounded its lengths.
+const noOutCap = -1
 
 // id resolves one reference against the FILE's id table and answers the
 // sixty-four-bit id it names. THE WALK IS AN INTERPRETATION AND ITS VERDICT IS
@@ -572,7 +585,7 @@ func (rt *retainState) capture(inst *tabletext.Instance, id uint64, kind uint8, 
 		rt.lost(report)
 		return
 	}
-	rs := &resolver{ids: ids}
+	rs := &resolver{ids: ids, outCap: noOutCap}
 	c := &cursor{buf: payload}
 	// THE CAP COUNTS NESTED BODIES, AND THE FIELD'S OWN PAYLOAD IS NOT ONE
 	// (§6.6): the walk starts at zero, `framed` is the one step that takes a

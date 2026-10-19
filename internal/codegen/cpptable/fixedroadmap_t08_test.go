@@ -20,6 +20,7 @@ package cpptable
 import (
 	"bufio"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -137,11 +138,11 @@ func t08EntryStruct(t *testing.T) string {
 		t.Fatalf("the emitted runtime carries no %q", open)
 	}
 	rest := tableFixedRuntime[i:]
-	j := strings.Index(rest, "};")
-	if j < 0 {
+	before, _, ok := strings.Cut(rest, "};")
+	if !ok {
 		t.Fatalf("the emitted %q struct is not closed", open)
 	}
-	return rest[:j]
+	return before
 }
 
 func TestFixedRoadmapCppT08WritesConformance(t *testing.T) {
@@ -382,9 +383,7 @@ func t08Probe(t *testing.T, units []*ir.Unit, probe string, asan bool) string {
 		if err != nil {
 			t.Fatalf("Generate: %v", err)
 		}
-		for name, data := range tables {
-			files[name] = data
-		}
+		maps.Copy(files, tables)
 		for name, data := range files {
 			if strings.Contains(name, "/") {
 				continue
@@ -545,7 +544,7 @@ func t08R27(t *testing.T) {
 			continue
 		}
 		found = true
-		for _, kv := range strings.Split(line[strings.Index(line, "values=")+len("values="):], ",") {
+		for kv := range strings.SplitSeq(line[strings.Index(line, "values=")+len("values="):], ",") {
 			eq := strings.Index(kv, "=")
 			if eq <= 0 {
 				continue
@@ -599,7 +598,7 @@ int main( void )
 `, file)
 	out := t08Probe(t, []*ir.Unit{u}, probe, false)
 	got := map[string]int64{}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		eq := strings.Index(line, "=")
 		if eq <= 0 {
 			continue

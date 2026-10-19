@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math/big"
 	"os"
 	"os/exec"
@@ -36,7 +37,6 @@ func TestMessageFormBatchJavaScript(t *testing.T) {
 		t.Parallel()
 		node := jsNode(t)
 		for _, row := range rows {
-			row := row
 			t.Run(row.name, func(t *testing.T) {
 				t.Parallel()
 				conn, ok := connections[row.connection]
@@ -175,7 +175,7 @@ func parseMessageManifest(t *testing.T) (map[string][]string, map[string]message
 	units := map[string][]string{}
 	connections := map[string]messageConn{}
 	var rows []messageRow
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
 			continue
@@ -283,7 +283,7 @@ func loadSchemaString(t *testing.T, name, content string) *ir.Unit {
 func messageRoundTripProbe(u *ir.Unit, st *ir.Struct, rowName, announcement, batch string) string {
 	var b strings.Builder
 	b.WriteString(messageProbeHeader(u, st, announcement))
-	b.WriteString(fmt.Sprintf(`
+	fmt.Fprintf(&b, `
 // LoadMessages reads one buffer into the caller's storage and allocates
 // nothing; SaveMessages takes an array of bodies of one root and writes one
 // buffer; MeasureMessages sizes the buffer (docs/SPEC-TABLES.md §3.3).
@@ -308,7 +308,7 @@ if (saved.length !== batch.length || !bytesEq(saved, batch)) {
 const measureReport = {};
 const m = %[1]sMeasureMessages([storage[0]], measureReport);
 if (m !== batch.length || measureReport.Verdict !== 0) { fail("MeasureMessages: " + m + " != " + batch.length); }
-`, st.Name, 65536))
+`, st.Name, 65536)
 	b.WriteString("\n")
 	emitJSONChecks(&b, u, st, rowName, "storage[0]", "  ")
 	b.WriteString(probeTail())
@@ -318,7 +318,7 @@ if (m !== batch.length || measureReport.Verdict !== 0) { fail("MeasureMessages: 
 func messageRefusalProbe(u *ir.Unit, st *ir.Struct, announcement string) string {
 	var b strings.Builder
 	b.WriteString(messageProbeHeader(u, st, announcement))
-	b.WriteString(fmt.Sprintf(`
+	fmt.Fprintf(&b, `
 // "`+"`M`"+` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME" (§3.3): Measure
 // and Save both refuse and return -1, with the reason on the report.
 const many = Array.from({ length: 257 }, () => new %[1]s());
@@ -352,7 +352,7 @@ const noCount = %[1]sLoadMessages(shortStorage, unannounced, threeBatch, noRepor
 if (noCount !== -1 || noReport.Verdict !== 1 || noReport.Reason !== "no_vocabulary") {
   fail("LoadMessages with no vocabulary: " + JSON.stringify(noReport));
 }
-`, st.Name, len(ir.TableVocabulary(u))))
+`, st.Name, len(ir.TableVocabulary(u)))
 	b.WriteString(probeTail())
 	return b.String()
 }
@@ -360,7 +360,7 @@ if (noCount !== -1 || noReport.Verdict !== 1 || noReport.Reason !== "no_vocabula
 func messageDamageProbe(u *ir.Unit, st *ir.Struct, announcement string) string {
 	var b strings.Builder
 	b.WriteString(messageProbeHeader(u, st, announcement))
-	b.WriteString(fmt.Sprintf(`
+	fmt.Fprintf(&b, `
 const storage = Array.from({ length: 256 }, () => new %[1]s());
 // "DAMAGE INSIDE BODY `+"`k`"+` DELIVERS BODIES 1 TO `+"`k - 1`"+`" (§3.3): one
 // malformed counts and nothing at or after body k is read. Body 1 is an empty
@@ -393,7 +393,7 @@ const fCount = %[1]sFixedLoad([new %[1]s()], 1, new Uint8Array([2, 0, 0]), 3, pl
 if (fCount !== -1 || fReport.refused !== 2 || TableFixedRefusalName(fReport.refused) !== "message_form_as_file") {
   fail("message form as file: " + JSON.stringify(fReport));
 }
-`, st.Name))
+`, st.Name)
 	b.WriteString(probeTail())
 	return b.String()
 }
@@ -406,7 +406,7 @@ if (fCount !== -1 || fReport.refused !== 2 || TableFixedRefusalName(fReport.refu
 func messageCompressedFloatProbe(u *ir.Unit, st *ir.Struct) string {
 	var b strings.Builder
 	b.WriteString(messageProbeHeader(u, st, ""))
-	b.WriteString(fmt.Sprintf(`
+	fmt.Fprintf(&b, `
 // "the message form quantizes and reads floats by the packet wire's rule bit
 // for bit and there is one rule for both wires" (§3.3): a compressed float on
 // the announced grid comes back the same float, so one message saved then
@@ -441,7 +441,7 @@ if (Math.abs(storage[0].AimX - 0.5) > 0.02) { fail("AimX " + storage[0].AimX); }
 if (Math.abs(storage[0].AimY + 0.25) > 0.02) { fail("AimY " + storage[0].AimY); }
 if (Math.abs(storage[0].AimZ - 0.75) > 0.02) { fail("AimZ " + storage[0].AimZ); }
 if (Math.abs(storage[0].Ping - 37.5) > 0.02) { fail("Ping " + storage[0].Ping); }
-`, st.Name))
+`, st.Name)
 	b.WriteString(probeTail())
 	return b.String()
 }
@@ -455,7 +455,7 @@ if (Math.abs(storage[0].Ping - 37.5) > 0.02) { fail("Ping " + storage[0].Ping); 
 func messageKeyedArrayProbe(u *ir.Unit, st *ir.Struct) string {
 	var b strings.Builder
 	b.WriteString(messageProbeHeader(u, st, ""))
-	b.WriteString(fmt.Sprintf(`
+	fmt.Fprintf(&b, `
 // "`+"`N`"+` is the number of SLOTS PRESENT, not the array's extent"
 // (docs/SPEC-TABLES.md §3.2): the two set slots ride under their variant's
 // name, the default slot does not, and save/load round-trips byte for byte.
@@ -480,7 +480,7 @@ const n2 = %[1]sSaveMessages([storage[0]], buf2, {});
 if (n2 !== n || !bytesEq(buf.subarray(0, n), buf2.subarray(0, n2))) {
   fail("keyed round trip bytes differ");
 }
-`, st.Name))
+`, st.Name)
 	b.WriteString(probeTail())
 	return b.String()
 }
@@ -493,7 +493,7 @@ if (n2 !== n || !bytesEq(buf.subarray(0, n), buf2.subarray(0, n2))) {
 func messageByValueTypeProbe(u *ir.Unit, st *ir.Struct) string {
 	var b strings.Builder
 	b.WriteString(messageProbeHeader(u, st, ""))
-	b.WriteString(fmt.Sprintf(`
+	fmt.Fprintf(&b, `
 const value = new %[1]s();
 value.Scores.Points = 42;
 const buf = new Uint8Array(65536);
@@ -507,7 +507,7 @@ if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Malformed) {
   fail("LoadMessages: count=" + count + " " + JSON.stringify(loadReport));
 }
 if (storage[0].Scores.Points !== 42) { fail("by-value type: " + storage[0].Scores.Points); }
-`, st.Name))
+`, st.Name)
 	b.WriteString(probeTail())
 	return b.String()
 }
@@ -572,9 +572,7 @@ func generatedTree(u *ir.Unit) map[string][]byte {
 	if err != nil {
 		panic(err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	return files
 }
 
@@ -644,20 +642,20 @@ func emitFieldCheck(b *strings.Builder, f *ir.Field, val any, member, ind string
 	case f.Type.Kind == ir.TString:
 		s, _ := val.(string)
 		raw := []byte(s)
-		b.WriteString(fmt.Sprintf("%sif (%sLength !== %d) { fail(%q); }\n", ind, member, len(raw), member+".Length"))
-		b.WriteString(fmt.Sprintf("%sif (!bytesEq(%s.subarray(0, %sLength), [%s])) { fail(%q); }\n", ind, member, member, byteList(raw), member))
+		fmt.Fprintf(b, "%sif (%sLength !== %d) { fail(%q); }\n", ind, member, len(raw), member+".Length")
+		fmt.Fprintf(b, "%sif (!bytesEq(%s.subarray(0, %sLength), [%s])) { fail(%q); }\n", ind, member, member, byteList(raw), member)
 	case f.Type.Kind == ir.TBytes:
 		s, _ := val.(string)
 		raw, _ := base64.StdEncoding.DecodeString(s)
-		b.WriteString(fmt.Sprintf("%sif (%sLength !== %d) { fail(%q); }\n", ind, member, len(raw), member+".Length"))
-		b.WriteString(fmt.Sprintf("%sif (!bytesEq(%s.subarray(0, %sLength), [%s])) { fail(%q); }\n", ind, member, member, byteList(raw), member))
+		fmt.Fprintf(b, "%sif (%sLength !== %d) { fail(%q); }\n", ind, member, len(raw), member+".Length")
+		fmt.Fprintf(b, "%sif (!bytesEq(%s.subarray(0, %sLength), [%s])) { fail(%q); }\n", ind, member, member, byteList(raw), member)
 	case f.Type.Kind == ir.TWString:
 		s, _ := val.(string)
 		var units []uint16
-		for _, r := range []rune(s) {
+		for _, r := range s {
 			units = append(units, uint16(r))
 		}
-		b.WriteString(fmt.Sprintf("%sif (%sLength !== %d) { fail(%q); }\n", ind, member, len(units), member+".Length"))
+		fmt.Fprintf(b, "%sif (%sLength !== %d) { fail(%q); }\n", ind, member, len(units), member+".Length")
 	case enumRefOf(f) != nil:
 		e := enumRefOf(f)
 		s, _ := val.(string)
@@ -669,7 +667,7 @@ func emitFieldCheck(b *strings.Builder, f *ir.Field, val any, member, ind string
 				}
 			}
 		}
-		b.WriteString(fmt.Sprintf("%sif (%s !== %d) { fail(%q + \" = \" + %s); }\n", ind, member, ord, member, member))
+		fmt.Fprintf(b, "%sif (%s !== %d) { fail(%q + \" = \" + %s); }\n", ind, member, ord, member, member)
 	case isStructRef(f.Type):
 		emitStructChecks(b, f.Type.Ref.(*ir.Struct), val, member, ind)
 	case f.Array != ir.ArrayNone:
@@ -680,7 +678,7 @@ func emitFieldCheck(b *strings.Builder, f *ir.Field, val any, member, ind string
 	default:
 		lit := jsonScalarLit(f, val)
 		if lit != "" {
-			b.WriteString(fmt.Sprintf("%sif (%s !== %s) { fail(%q + \" = \" + %s); }\n", ind, member, lit, member, member))
+			fmt.Fprintf(b, "%sif (%s !== %s) { fail(%q + \" = \" + %s); }\n", ind, member, lit, member, member)
 		}
 	}
 }

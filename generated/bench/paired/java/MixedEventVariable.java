@@ -6,176 +6,531 @@
 
 package bench;
 
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-public final class MixedEventVariable {private MixedEventVariable(){}
-    public static final class Value {public int tag;
-        public MixedHitEventVariable.Value hit=new MixedHitEventVariable.Value();
-        public MixedChatEventVariable.Value chat=new MixedChatEventVariable.Value();
-        public MixedPickupEventVariable.Value pickup=new MixedPickupEventVariable.Value();
+public final class MixedEventVariable {
+    private MixedEventVariable() {}
+
+    public static final class Value {
+        public int tag;
+        public MixedHitEventVariable.Value hit = new MixedHitEventVariable.Value();
+        public MixedChatEventVariable.Value chat = new MixedChatEventVariable.Value();
+        public MixedPickupEventVariable.Value pickup = new MixedPickupEventVariable.Value();
     }
-    static boolean buildGraph(TableVariable.NodeGraph g,Value v){if(v==null)return false;switch(v.tag){case 0:return true;
-        case 1:{
-        if (v.hit != null) { if (!MixedHitEventVariable.buildGraph(g, v.hit)) return false; }
-        return true;}
-        case 2:{
-        if (v.chat != null) { if (!MixedChatEventVariable.buildGraph(g, v.chat)) return false; }
-        return true;}
-        case 3:{
-        if (v.pickup != null) { if (!MixedPickupEventVariable.buildGraph(g, v.pickup)) return false; }
-        return true;}
-        default:return false;}}
-    static void resolveNodes(Value v,TableVariable.NodeTable nt,Object root,long rootTypeId,TableVariable.Report report){if(v==null)return;switch(v.tag){
-        case 1:{
-        if (v.hit != null) { MixedHitEventVariable.resolveNodes(v.hit, nt, root, rootTypeId, report); }
-        break;}
-        case 2:{
-        if (v.chat != null) { MixedChatEventVariable.resolveNodes(v.chat, nt, root, rootTypeId, report); }
-        break;}
-        case 3:{
-        if (v.pickup != null) { MixedPickupEventVariable.resolveNodes(v.pickup, nt, root, rootTypeId, report); }
-        break;}
-        default:break;}}
-    static void writePayload(TableVariable.Writer w,TableVariable.NodeGraph graph,Value v){switch(v.tag){case 0:w.putLeb(0);return;
-        case 1:{w.putLeb(w.ref(0x33732819300680aaL));w.put8(13);
-        int body=w.off;
-        {int payload0=w.off;MixedHitEventVariable.writeFields(w,graph,v.hit);w.put8(0);w.frame(payload0);}
-        w.frameBody(body,TableVariable.lebEnd(w.buf,body,w.off)-body);return;}
-        case 2:{w.putLeb(w.ref(0xf2a38d910b5b348bL));w.put8(13);
-        int body=w.off;
-        {int payload0=w.off;MixedChatEventVariable.writeFields(w,graph,v.chat);w.put8(0);w.frame(payload0);}
-        w.frameBody(body,TableVariable.lebEnd(w.buf,body,w.off)-body);return;}
-        case 3:{w.putLeb(w.ref(0x9fa3a41c86ecb765L));w.put8(13);
-        int body=w.off;
-        {int payload0=w.off;MixedPickupEventVariable.writeFields(w,graph,v.pickup);w.put8(0);w.frame(payload0);}
-        w.frameBody(body,TableVariable.lebEnd(w.buf,body,w.off)-body);return;}
-        default:return;}}
-    static void writePayloadRetain(TableVariable.Writer w,TableVariable.NodeGraph graph,Value v,TableRetain retain,TableVariable.Report report,int[] path,int depth){switch(v.tag){case 0:w.putLeb(0);return;
-        case 1:{w.putLeb(w.ref(0x33732819300680aaL));w.put8(13);
-        int body=w.off;
-path[2*depth]=0;path[2*depth+1]=0;
-{TableVariable.Writer retainedBody0=w.sub(new byte[1<<20]);MixedHitEventRetain.writeBodyRetain(retainedBody0,graph,v.hit,retain,report,path,depth+1);w.putLeb(retainedBody0.off);w.putBytes(retainedBody0.buf,0,retainedBody0.off); }
-        w.frameBody(body,TableVariable.lebEnd(w.buf,body,w.off)-body);return;}
-        case 2:{w.putLeb(w.ref(0xf2a38d910b5b348bL));w.put8(13);
-        int body=w.off;
-path[2*depth]=1;path[2*depth+1]=0;
-{TableVariable.Writer retainedBody0=w.sub(new byte[1<<20]);MixedChatEventRetain.writeBodyRetain(retainedBody0,graph,v.chat,retain,report,path,depth+1);w.putLeb(retainedBody0.off);w.putBytes(retainedBody0.buf,0,retainedBody0.off); }
-        w.frameBody(body,TableVariable.lebEnd(w.buf,body,w.off)-body);return;}
-        case 3:{w.putLeb(w.ref(0x9fa3a41c86ecb765L));w.put8(13);
-        int body=w.off;
-path[2*depth]=2;path[2*depth+1]=0;
-{TableVariable.Writer retainedBody0=w.sub(new byte[1<<20]);MixedPickupEventRetain.writeBodyRetain(retainedBody0,graph,v.pickup,retain,report,path,depth+1);w.putLeb(retainedBody0.off);w.putBytes(retainedBody0.buf,0,retainedBody0.off); }
-        w.frameBody(body,TableVariable.lebEnd(w.buf,body,w.off)-body);return;}
-        default:return;}}
-    static Value readPayload(TableVariable.Reader input,TableVariable.NodeTable nt,TableVariable.Report report){Value v=new Value();long ref=input.leb();if(input.fail||ref==0)return v;long id=input.resolve(ref);if(input.fail||!input.has(1)){report.malformed=true;return v;}int kind=input.get8();TableVariable.Reader body=input.body();if(body==null)return v;
-        if(id==0x33732819300680aaL){
-        if(!(kind==13)){report.kindMismatch++;return v;}TableVariable.Reader r=TableVariable.fieldPayload(body,kind);
-                if (kind == 13) {
-                    TableVariable.Reader br = r.body();
-                    if (br != null) {
+
+    static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
+        if (v == null) return false;
+        switch (v.tag) {
+            case 0:
+                return true;
+            case 1:
+                {
+                    if (v.hit != null) {
+                        if (!MixedHitEventVariable.buildGraph(g, v.hit)) return false;
+                    }
+                    return true;
+                }
+            case 2:
+                {
+                    if (v.chat != null) {
+                        if (!MixedChatEventVariable.buildGraph(g, v.chat)) return false;
+                    }
+                    return true;
+                }
+            case 3:
+                {
+                    if (v.pickup != null) {
+                        if (!MixedPickupEventVariable.buildGraph(g, v.pickup)) return false;
+                    }
+                    return true;
+                }
+            default:
+                return false;
+        }
+    }
+
+    static void resolveNodes(
+            Value v,
+            TableVariable.NodeTable nt,
+            Object root,
+            long rootTypeId,
+            TableVariable.Report report) {
+        if (v == null) return;
+        switch (v.tag) {
+            case 1:
+                {
+                    if (v.hit != null) {
+                        MixedHitEventVariable.resolveNodes(v.hit, nt, root, rootTypeId, report);
+                    }
+                    break;
+                }
+            case 2:
+                {
+                    if (v.chat != null) {
+                        MixedChatEventVariable.resolveNodes(v.chat, nt, root, rootTypeId, report);
+                    }
+                    break;
+                }
+            case 3:
+                {
+                    if (v.pickup != null) {
+                        MixedPickupEventVariable.resolveNodes(
+                                v.pickup, nt, root, rootTypeId, report);
+                    }
+                    break;
+                }
+            default:
+                break;
+        }
+    }
+
+    static void writePayload(TableVariable.Writer w, TableVariable.NodeGraph graph, Value v) {
+        switch (v.tag) {
+            case 0:
+                w.putLeb(0);
+                return;
+            case 1:
+                {
+                    w.putLeb(w.ref(0x33732819300680aaL));
+                    w.put8(13);
+                    int body = w.off;
+                    {
+                        int payload0 = w.off;
+                        MixedHitEventVariable.writeFields(w, graph, v.hit);
+                        w.put8(0);
+                        w.frame(payload0);
+                    }
+                    w.frameBody(body, TableVariable.lebEnd(w.buf, body, w.off) - body);
+                    return;
+                }
+            case 2:
+                {
+                    w.putLeb(w.ref(0xf2a38d910b5b348bL));
+                    w.put8(13);
+                    int body = w.off;
+                    {
+                        int payload0 = w.off;
+                        MixedChatEventVariable.writeFields(w, graph, v.chat);
+                        w.put8(0);
+                        w.frame(payload0);
+                    }
+                    w.frameBody(body, TableVariable.lebEnd(w.buf, body, w.off) - body);
+                    return;
+                }
+            case 3:
+                {
+                    w.putLeb(w.ref(0x9fa3a41c86ecb765L));
+                    w.put8(13);
+                    int body = w.off;
+                    {
+                        int payload0 = w.off;
+                        MixedPickupEventVariable.writeFields(w, graph, v.pickup);
+                        w.put8(0);
+                        w.frame(payload0);
+                    }
+                    w.frameBody(body, TableVariable.lebEnd(w.buf, body, w.off) - body);
+                    return;
+                }
+            default:
+                return;
+        }
+    }
+
+    static void writePayloadRetain(
+            TableVariable.Writer w,
+            TableVariable.NodeGraph graph,
+            Value v,
+            TableRetain retain,
+            TableVariable.Report report,
+            int[] path,
+            int depth) {
+        switch (v.tag) {
+            case 0:
+                w.putLeb(0);
+                return;
+            case 1:
+                {
+                    w.putLeb(w.ref(0x33732819300680aaL));
+                    w.put8(13);
+                    int body = w.off;
+                    path[2 * depth] = 0;
+                    path[2 * depth + 1] = 0;
+                    {
+                        TableVariable.Writer retainedBody0 = w.sub(new byte[1 << 20]);
+                        MixedHitEventRetain.writeBodyRetain(
+                                retainedBody0, graph, v.hit, retain, report, path, depth + 1);
+                        w.putLeb(retainedBody0.off);
+                        w.putBytes(retainedBody0.buf, 0, retainedBody0.off);
+                    }
+                    w.frameBody(body, TableVariable.lebEnd(w.buf, body, w.off) - body);
+                    return;
+                }
+            case 2:
+                {
+                    w.putLeb(w.ref(0xf2a38d910b5b348bL));
+                    w.put8(13);
+                    int body = w.off;
+                    path[2 * depth] = 1;
+                    path[2 * depth + 1] = 0;
+                    {
+                        TableVariable.Writer retainedBody0 = w.sub(new byte[1 << 20]);
+                        MixedChatEventRetain.writeBodyRetain(
+                                retainedBody0, graph, v.chat, retain, report, path, depth + 1);
+                        w.putLeb(retainedBody0.off);
+                        w.putBytes(retainedBody0.buf, 0, retainedBody0.off);
+                    }
+                    w.frameBody(body, TableVariable.lebEnd(w.buf, body, w.off) - body);
+                    return;
+                }
+            case 3:
+                {
+                    w.putLeb(w.ref(0x9fa3a41c86ecb765L));
+                    w.put8(13);
+                    int body = w.off;
+                    path[2 * depth] = 2;
+                    path[2 * depth + 1] = 0;
+                    {
+                        TableVariable.Writer retainedBody0 = w.sub(new byte[1 << 20]);
+                        MixedPickupEventRetain.writeBodyRetain(
+                                retainedBody0, graph, v.pickup, retain, report, path, depth + 1);
+                        w.putLeb(retainedBody0.off);
+                        w.putBytes(retainedBody0.buf, 0, retainedBody0.off);
+                    }
+                    w.frameBody(body, TableVariable.lebEnd(w.buf, body, w.off) - body);
+                    return;
+                }
+            default:
+                return;
+        }
+    }
+
+    static Value readPayload(
+            TableVariable.Reader input, TableVariable.NodeTable nt, TableVariable.Report report) {
+        Value v = new Value();
+        long ref = input.leb();
+        if (input.fail || ref == 0) return v;
+        long id = input.resolve(ref);
+        if (input.fail || !input.has(1)) {
+            report.malformed = true;
+            return v;
+        }
+        int kind = input.get8();
+        TableVariable.Reader body = input.body();
+        if (body == null) return v;
+        if (id == 0x33732819300680aaL) {
+            if (!(kind == 13)) {
+                report.kindMismatch++;
+                return v;
+            }
+            TableVariable.Reader r = TableVariable.fieldPayload(body, kind);
+            if (kind == 13) {
+                TableVariable.Reader br = r.body();
+                if (br != null) {
+                    v.hit = new MixedHitEventVariable.Value();
+                    MixedHitEventVariable.readFields(br, v.hit, nt, report);
+                    if (br.off != br.limit) {
+                        report.malformed = true;
                         v.hit = new MixedHitEventVariable.Value();
-                        MixedHitEventVariable.readFields(br, v.hit, nt, report);
-                        if (br.off != br.limit) { report.malformed = true; v.hit = new MixedHitEventVariable.Value(); } // §4: reset a nested body that did not fill its length.
-                    }
-                } else { r.skip(kind); report.kindMismatch++; }
-        if(r.fail||r.off!=r.limit){report.malformed=true;return new Value();}v.tag=1;return v;}
-        if(id==0xf2a38d910b5b348bL){
-        if(!(kind==13)){report.kindMismatch++;return v;}TableVariable.Reader r=TableVariable.fieldPayload(body,kind);
-                if (kind == 13) {
-                    TableVariable.Reader br = r.body();
-                    if (br != null) {
+                    } // §4: reset a nested body that did not fill its length.
+                }
+            } else {
+                r.skip(kind);
+                report.kindMismatch++;
+            }
+            if (r.fail || r.off != r.limit) {
+                report.malformed = true;
+                return new Value();
+            }
+            v.tag = 1;
+            return v;
+        }
+        if (id == 0xf2a38d910b5b348bL) {
+            if (!(kind == 13)) {
+                report.kindMismatch++;
+                return v;
+            }
+            TableVariable.Reader r = TableVariable.fieldPayload(body, kind);
+            if (kind == 13) {
+                TableVariable.Reader br = r.body();
+                if (br != null) {
+                    v.chat = new MixedChatEventVariable.Value();
+                    MixedChatEventVariable.readFields(br, v.chat, nt, report);
+                    if (br.off != br.limit) {
+                        report.malformed = true;
                         v.chat = new MixedChatEventVariable.Value();
-                        MixedChatEventVariable.readFields(br, v.chat, nt, report);
-                        if (br.off != br.limit) { report.malformed = true; v.chat = new MixedChatEventVariable.Value(); } // §4: reset a nested body that did not fill its length.
-                    }
-                } else { r.skip(kind); report.kindMismatch++; }
-        if(r.fail||r.off!=r.limit){report.malformed=true;return new Value();}v.tag=2;return v;}
-        if(id==0x9fa3a41c86ecb765L){
-        if(!(kind==13)){report.kindMismatch++;return v;}TableVariable.Reader r=TableVariable.fieldPayload(body,kind);
-                if (kind == 13) {
-                    TableVariable.Reader br = r.body();
-                    if (br != null) {
+                    } // §4: reset a nested body that did not fill its length.
+                }
+            } else {
+                r.skip(kind);
+                report.kindMismatch++;
+            }
+            if (r.fail || r.off != r.limit) {
+                report.malformed = true;
+                return new Value();
+            }
+            v.tag = 2;
+            return v;
+        }
+        if (id == 0x9fa3a41c86ecb765L) {
+            if (!(kind == 13)) {
+                report.kindMismatch++;
+                return v;
+            }
+            TableVariable.Reader r = TableVariable.fieldPayload(body, kind);
+            if (kind == 13) {
+                TableVariable.Reader br = r.body();
+                if (br != null) {
+                    v.pickup = new MixedPickupEventVariable.Value();
+                    MixedPickupEventVariable.readFields(br, v.pickup, nt, report);
+                    if (br.off != br.limit) {
+                        report.malformed = true;
                         v.pickup = new MixedPickupEventVariable.Value();
-                        MixedPickupEventVariable.readFields(br, v.pickup, nt, report);
-                        if (br.off != br.limit) { report.malformed = true; v.pickup = new MixedPickupEventVariable.Value(); } // §4: reset a nested body that did not fill its length.
-                    }
-                } else { r.skip(kind); report.kindMismatch++; }
-        if(r.fail||r.off!=r.limit){report.malformed=true;return new Value();}v.tag=3;return v;}
-        report.unknown++;return v;}
-    static Value readPayloadRetain(TableVariable.Reader input,TableVariable.NodeTable nt,TableVariable.Report report,TableRetain retain,int[] path,int depth){Value v=new Value();long ref=input.leb();if(input.fail||ref==0)return v;long id=input.resolve(ref);if(input.fail||!input.has(1)){report.malformed=true;return v;}int kind=input.get8();TableVariable.Reader body=input.body();if(body==null)return v;
-        if(id==0x33732819300680aaL){
-        if(!(kind==13)){report.kindMismatch++;return v;}TableVariable.Reader r=TableVariable.fieldPayload(body,kind);
-                if (kind == 13) {
-                    TableVariable.Reader br = r.body();
-                    if (br != null) {
+                    } // §4: reset a nested body that did not fill its length.
+                }
+            } else {
+                r.skip(kind);
+                report.kindMismatch++;
+            }
+            if (r.fail || r.off != r.limit) {
+                report.malformed = true;
+                return new Value();
+            }
+            v.tag = 3;
+            return v;
+        }
+        report.unknown++;
+        return v;
+    }
+
+    static Value readPayloadRetain(
+            TableVariable.Reader input,
+            TableVariable.NodeTable nt,
+            TableVariable.Report report,
+            TableRetain retain,
+            int[] path,
+            int depth) {
+        Value v = new Value();
+        long ref = input.leb();
+        if (input.fail || ref == 0) return v;
+        long id = input.resolve(ref);
+        if (input.fail || !input.has(1)) {
+            report.malformed = true;
+            return v;
+        }
+        int kind = input.get8();
+        TableVariable.Reader body = input.body();
+        if (body == null) return v;
+        if (id == 0x33732819300680aaL) {
+            if (!(kind == 13)) {
+                report.kindMismatch++;
+                return v;
+            }
+            TableVariable.Reader r = TableVariable.fieldPayload(body, kind);
+            if (kind == 13) {
+                TableVariable.Reader br = r.body();
+                if (br != null) {
+                    v.hit = new MixedHitEventVariable.Value();
+                    retain.discardField(path, depth, 0);
+                    path[2 * depth] = 0;
+                    path[2 * depth + 1] = 0;
+                    MixedHitEventRetain.readFieldsRetain(
+                            br, v.hit, nt, retain, report, path, depth + 1);
+                    if (br.off != br.limit) {
+                        report.malformed = true;
                         v.hit = new MixedHitEventVariable.Value();
-                        retain.discardField(path, depth, 0); path[2 * depth] = 0; path[2 * depth + 1] = 0;
-                        MixedHitEventRetain.readFieldsRetain(br, v.hit, nt, retain, report, path, depth + 1);
-                        if (br.off != br.limit) { report.malformed = true; v.hit = new MixedHitEventVariable.Value(); } // §4: reset a nested body that did not fill its length.
-                    }
-                } else { r.skip(kind); report.kindMismatch++; }
-        if(r.fail||r.off!=r.limit){report.malformed=true;return new Value();}v.tag=1;return v;}
-        if(id==0xf2a38d910b5b348bL){
-        if(!(kind==13)){report.kindMismatch++;return v;}TableVariable.Reader r=TableVariable.fieldPayload(body,kind);
-                if (kind == 13) {
-                    TableVariable.Reader br = r.body();
-                    if (br != null) {
+                    } // §4: reset a nested body that did not fill its length.
+                }
+            } else {
+                r.skip(kind);
+                report.kindMismatch++;
+            }
+            if (r.fail || r.off != r.limit) {
+                report.malformed = true;
+                return new Value();
+            }
+            v.tag = 1;
+            return v;
+        }
+        if (id == 0xf2a38d910b5b348bL) {
+            if (!(kind == 13)) {
+                report.kindMismatch++;
+                return v;
+            }
+            TableVariable.Reader r = TableVariable.fieldPayload(body, kind);
+            if (kind == 13) {
+                TableVariable.Reader br = r.body();
+                if (br != null) {
+                    v.chat = new MixedChatEventVariable.Value();
+                    retain.discardField(path, depth, 1);
+                    path[2 * depth] = 1;
+                    path[2 * depth + 1] = 0;
+                    MixedChatEventRetain.readFieldsRetain(
+                            br, v.chat, nt, retain, report, path, depth + 1);
+                    if (br.off != br.limit) {
+                        report.malformed = true;
                         v.chat = new MixedChatEventVariable.Value();
-                        retain.discardField(path, depth, 1); path[2 * depth] = 1; path[2 * depth + 1] = 0;
-                        MixedChatEventRetain.readFieldsRetain(br, v.chat, nt, retain, report, path, depth + 1);
-                        if (br.off != br.limit) { report.malformed = true; v.chat = new MixedChatEventVariable.Value(); } // §4: reset a nested body that did not fill its length.
-                    }
-                } else { r.skip(kind); report.kindMismatch++; }
-        if(r.fail||r.off!=r.limit){report.malformed=true;return new Value();}v.tag=2;return v;}
-        if(id==0x9fa3a41c86ecb765L){
-        if(!(kind==13)){report.kindMismatch++;return v;}TableVariable.Reader r=TableVariable.fieldPayload(body,kind);
-                if (kind == 13) {
-                    TableVariable.Reader br = r.body();
-                    if (br != null) {
+                    } // §4: reset a nested body that did not fill its length.
+                }
+            } else {
+                r.skip(kind);
+                report.kindMismatch++;
+            }
+            if (r.fail || r.off != r.limit) {
+                report.malformed = true;
+                return new Value();
+            }
+            v.tag = 2;
+            return v;
+        }
+        if (id == 0x9fa3a41c86ecb765L) {
+            if (!(kind == 13)) {
+                report.kindMismatch++;
+                return v;
+            }
+            TableVariable.Reader r = TableVariable.fieldPayload(body, kind);
+            if (kind == 13) {
+                TableVariable.Reader br = r.body();
+                if (br != null) {
+                    v.pickup = new MixedPickupEventVariable.Value();
+                    retain.discardField(path, depth, 2);
+                    path[2 * depth] = 2;
+                    path[2 * depth + 1] = 0;
+                    MixedPickupEventRetain.readFieldsRetain(
+                            br, v.pickup, nt, retain, report, path, depth + 1);
+                    if (br.off != br.limit) {
+                        report.malformed = true;
                         v.pickup = new MixedPickupEventVariable.Value();
-                        retain.discardField(path, depth, 2); path[2 * depth] = 2; path[2 * depth + 1] = 0;
-                        MixedPickupEventRetain.readFieldsRetain(br, v.pickup, nt, retain, report, path, depth + 1);
-                        if (br.off != br.limit) { report.malformed = true; v.pickup = new MixedPickupEventVariable.Value(); } // §4: reset a nested body that did not fill its length.
+                    } // §4: reset a nested body that did not fill its length.
+                }
+            } else {
+                r.skip(kind);
+                report.kindMismatch++;
+            }
+            if (r.fail || r.off != r.limit) {
+                report.malformed = true;
+                return new Value();
+            }
+            v.tag = 3;
+            return v;
+        }
+        report.unknown++;
+        report.retainLost++;
+        return v;
+    }
+
+    static void jsonFields(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+        b.append('{');
+        switch (v.tag) {
+            case 0:
+                b.append('}');
+                return;
+            case 1:
+                {
+                    TableJson.indent(b, depth + 1);
+                    TableJson.esc(b, "hit");
+                    b.append(": ");
+                    {
+                        int nestedDepth = depth + 1;
+                        MixedHitEventVariable.jsonFields(b, graph, v.hit, nestedDepth);
                     }
-                } else { r.skip(kind); report.kindMismatch++; }
-        if(r.fail||r.off!=r.limit){report.malformed=true;return new Value();}v.tag=3;return v;}
-        report.unknown++;report.retainLost++;return v;}
-    static void jsonFields(StringBuilder b,TableVariable.NodeGraph graph,Value v,int depth){b.append('{');switch(v.tag){case 0:b.append('}');return;
-        case 1:{TableJson.indent(b,depth+1);TableJson.esc(b,"hit");b.append(": ");
-        {int nestedDepth=depth+1;
-        MixedHitEventVariable.jsonFields(b, graph, v.hit, nestedDepth);
+                    break;
+                }
+            case 2:
+                {
+                    TableJson.indent(b, depth + 1);
+                    TableJson.esc(b, "chat");
+                    b.append(": ");
+                    {
+                        int nestedDepth = depth + 1;
+                        MixedChatEventVariable.jsonFields(b, graph, v.chat, nestedDepth);
+                    }
+                    break;
+                }
+            case 3:
+                {
+                    TableJson.indent(b, depth + 1);
+                    TableJson.esc(b, "pickup");
+                    b.append(": ");
+                    {
+                        int nestedDepth = depth + 1;
+                        MixedPickupEventVariable.jsonFields(b, graph, v.pickup, nestedDepth);
+                    }
+                    break;
+                }
+            default:
+                break;
         }
-        break;}
-        case 2:{TableJson.indent(b,depth+1);TableJson.esc(b,"chat");b.append(": ");
-        {int nestedDepth=depth+1;
-        MixedChatEventVariable.jsonFields(b, graph, v.chat, nestedDepth);
+        TableJson.indent(b, depth);
+        b.append('}');
+    }
+
+    static Value readJson(TableJson.In in) {
+        Value v = new Value();
+        if (in.peek() != '{') {
+            in.bad = true;
+            return v;
         }
-        break;}
-        case 3:{TableJson.indent(b,depth+1);TableJson.esc(b,"pickup");b.append(": ");
-        {int nestedDepth=depth+1;
-        MixedPickupEventVariable.jsonFields(b, graph, v.pickup, nestedDepth);
+        in.p++;
+        if (in.peek() == '}') {
+            in.p++;
+            return v;
         }
-        break;}
-        default:break;}TableJson.indent(b,depth);b.append('}');}
-    static Value readJson(TableJson.In in){Value v=new Value();if(in.peek()!='{'){in.bad=true;return v;}in.p++;if(in.peek()=='}'){in.p++;return v;}String armName=in.scanString();if(in.bad)return v;if(in.peek()!=':'){in.bad=true;return v;}in.p++;
-        if("hit".equals(armName)){
-        if(in.peek()=='{'){
-                if (in.peek() == '{' ) {
+        String armName = in.scanString();
+        if (in.bad) return v;
+        if (in.peek() != ':') {
+            in.bad = true;
+            return v;
+        }
+        in.p++;
+        if ("hit".equals(armName)) {
+            if (in.peek() == '{') {
+                if (in.peek() == '{') {
                     MixedHitEventVariable.jsonReadFields(in, v.hit);
-                } else { in.skipValue(); in.rep.kindMismatch++; }
-        if(!in.bad)v.tag=1;}else{in.skipValue();in.rep.kindMismatch++;}
-        }else         if("chat".equals(armName)){
-        if(in.peek()=='{'){
-                if (in.peek() == '{' ) {
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+                if (!in.bad) v.tag = 1;
+            } else {
+                in.skipValue();
+                in.rep.kindMismatch++;
+            }
+        } else if ("chat".equals(armName)) {
+            if (in.peek() == '{') {
+                if (in.peek() == '{') {
                     MixedChatEventVariable.jsonReadFields(in, v.chat);
-                } else { in.skipValue(); in.rep.kindMismatch++; }
-        if(!in.bad)v.tag=2;}else{in.skipValue();in.rep.kindMismatch++;}
-        }else         if("pickup".equals(armName)){
-        if(in.peek()=='{'){
-                if (in.peek() == '{' ) {
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+                if (!in.bad) v.tag = 2;
+            } else {
+                in.skipValue();
+                in.rep.kindMismatch++;
+            }
+        } else if ("pickup".equals(armName)) {
+            if (in.peek() == '{') {
+                if (in.peek() == '{') {
                     MixedPickupEventVariable.jsonReadFields(in, v.pickup);
-                } else { in.skipValue(); in.rep.kindMismatch++; }
-        if(!in.bad)v.tag=3;}else{in.skipValue();in.rep.kindMismatch++;}
-        }else {in.rep.unknown++;in.skipValue();}if(in.peek()==','){in.p++;}if(in.peek()!='}'){in.bad=true;return v;}in.p++;return v;}
+                } else {
+                    in.skipValue();
+                    in.rep.kindMismatch++;
+                }
+                if (!in.bad) v.tag = 3;
+            } else {
+                in.skipValue();
+                in.rep.kindMismatch++;
+            }
+        } else {
+            in.rep.unknown++;
+            in.skipValue();
+        }
+        if (in.peek() == ',') {
+            in.p++;
+        }
+        if (in.peek() != '}') {
+            in.bad = true;
+            return v;
+        }
+        in.p++;
+        return v;
+    }
 }

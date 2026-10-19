@@ -170,7 +170,10 @@ public final class Ludicrous {
             scratch = v >>> (32 - scratchBits);
         }
         {
-            final UInt128 off = value.reach.subtract(new Int128(0xffffffffffffffffL, 0xfffffff0bdc00000L)).toUnsigned();
+            final UInt128 off =
+                    value.reach
+                            .subtract(new Int128(0xffffffffffffffffL, 0xfffffff0bdc00000L))
+                            .toUnsigned();
             v = off.lo & 0xffffffffL;
             scratch |= v << scratchBits;
             scratchBits += 32;
@@ -292,7 +295,10 @@ public final class Ludicrous {
         if (lo > 131072000000L) {
             return false; // a smuggled offset is refused
         }
-        value.reach = new UInt128(0xffffffffffffffffL, 0xfffffff0bdc00000L).add(new UInt128(0, lo)).toSigned();
+        value.reach =
+                new UInt128(0xffffffffffffffffL, 0xfffffff0bdc00000L)
+                        .add(new UInt128(0, lo))
+                        .toSigned();
         if (bitsRead >>> 3 < tailBase) {
             window = (long) LONG_LE.get(data, bitsRead >>> 3);
             shift = bitsRead & 7;
@@ -735,7 +741,10 @@ public final class Ludicrous {
             scratch = v >>> (32 - scratchBits);
         }
         {
-            final UInt128 off = value.energy.subtract(new Int128(0xffffffffffffffffL, 0xfffffffed5fa0e00L)).toUnsigned();
+            final UInt128 off =
+                    value.energy
+                            .subtract(new Int128(0xffffffffffffffffL, 0xfffffffed5fa0e00L))
+                            .toUnsigned();
             v = off.lo & 0xffffffffL;
             scratch |= v << scratchBits;
             scratchBits += 32;
@@ -756,7 +765,8 @@ public final class Ludicrous {
             }
         }
         {
-            final UInt128 off = value.flux.subtract(new Int128(0xfffffff000000000L, 0)).toUnsigned();
+            final UInt128 off =
+                    value.flux.subtract(new Int128(0xfffffff000000000L, 0)).toUnsigned();
             v = off.lo & 0xffffffffL;
             scratch |= v << scratchBits;
             scratchBits += 32;
@@ -795,7 +805,10 @@ public final class Ludicrous {
             }
         }
         {
-            final UInt128 off = value.bias.subtract(new Int128(0xffffffffffffffffL, 0xfffffffffffffc18L)).toUnsigned();
+            final UInt128 off =
+                    value.bias
+                            .subtract(new Int128(0xffffffffffffffffL, 0xfffffffffffffc18L))
+                            .toUnsigned();
             v = off.lo & 0x7ffL;
             scratch |= v << scratchBits;
             scratchBits += 11;
@@ -940,7 +953,10 @@ public final class Ludicrous {
         if (lo > 10000000000L) {
             return false; // a smuggled offset is refused
         }
-        value.energy = new UInt128(0xffffffffffffffffL, 0xfffffffed5fa0e00L).add(new UInt128(0, lo)).toSigned();
+        value.energy =
+                new UInt128(0xffffffffffffffffL, 0xfffffffed5fa0e00L)
+                        .add(new UInt128(0, lo))
+                        .toSigned();
         if (bitsRead >>> 3 < tailBase) {
             window = (long) LONG_LE.get(data, bitsRead >>> 3);
             shift = bitsRead & 7;
@@ -997,7 +1013,10 @@ public final class Ludicrous {
         if (v > 2000) {
             return false; // a smuggled offset is refused
         }
-        value.bias = new UInt128(0xffffffffffffffffL, 0xfffffffffffffc18L).add(new UInt128(0, v)).toSigned();
+        value.bias =
+                new UInt128(0xffffffffffffffffL, 0xfffffffffffffc18L)
+                        .add(new UInt128(0, v))
+                        .toSigned();
         if (bitsRead >>> 3 < tailBase) {
             window = (long) LONG_LE.get(data, bitsRead >>> 3);
             shift = bitsRead & 7;
@@ -1181,7 +1200,11 @@ public final class Ludicrous {
             scratch = v >>> (32 - scratchBits);
         }
         {
-            final UInt128 off = value.probe.reach.subtract(new Int128(0xffffffffffffffffL, 0xfffffff0bdc00000L)).toUnsigned();
+            final UInt128 off =
+                    value.probe
+                            .reach
+                            .subtract(new Int128(0xffffffffffffffffL, 0xfffffff0bdc00000L))
+                            .toUnsigned();
             v = off.lo & 0xffffffffL;
             scratch |= v << scratchBits;
             scratchBits += 32;
@@ -1258,7 +1281,11 @@ public final class Ludicrous {
             scratch = v >>> (32 - scratchBits);
         }
         {
-            final UInt128 off = value.wide.energy.subtract(new Int128(0xffffffffffffffffL, 0xfffffffed5fa0e00L)).toUnsigned();
+            final UInt128 off =
+                    value.wide
+                            .energy
+                            .subtract(new Int128(0xffffffffffffffffL, 0xfffffffed5fa0e00L))
+                            .toUnsigned();
             v = off.lo & 0xffffffffL;
             scratch |= v << scratchBits;
             scratchBits += 32;
@@ -1279,7 +1306,8 @@ public final class Ludicrous {
             }
         }
         {
-            final UInt128 off = value.wide.flux.subtract(new Int128(0xfffffff000000000L, 0)).toUnsigned();
+            final UInt128 off =
+                    value.wide.flux.subtract(new Int128(0xfffffff000000000L, 0)).toUnsigned();
             v = off.lo & 0xffffffffL;
             scratch |= v << scratchBits;
             scratchBits += 32;
@@ -1318,7 +1346,11 @@ public final class Ludicrous {
             }
         }
         {
-            final UInt128 off = value.wide.bias.subtract(new Int128(0xffffffffffffffffL, 0xfffffffffffffc18L)).toUnsigned();
+            final UInt128 off =
+                    value.wide
+                            .bias
+                            .subtract(new Int128(0xffffffffffffffffL, 0xfffffffffffffc18L))
+                            .toUnsigned();
             v = off.lo & 0x7ffL;
             scratch |= v << scratchBits;
             scratchBits += 11;
@@ -1552,7 +1584,10 @@ public final class Ludicrous {
         if (lo > 131072000000L) {
             return false; // a smuggled offset is refused
         }
-        value.probe.reach = new UInt128(0xffffffffffffffffL, 0xfffffff0bdc00000L).add(new UInt128(0, lo)).toSigned();
+        value.probe.reach =
+                new UInt128(0xffffffffffffffffL, 0xfffffff0bdc00000L)
+                        .add(new UInt128(0, lo))
+                        .toSigned();
         if (bitsRead >>> 3 < tailBase) {
             window = (long) LONG_LE.get(data, bitsRead >>> 3);
             shift = bitsRead & 7;
@@ -1645,7 +1680,10 @@ public final class Ludicrous {
         if (lo > 10000000000L) {
             return false; // a smuggled offset is refused
         }
-        value.wide.energy = new UInt128(0xffffffffffffffffL, 0xfffffffed5fa0e00L).add(new UInt128(0, lo)).toSigned();
+        value.wide.energy =
+                new UInt128(0xffffffffffffffffL, 0xfffffffed5fa0e00L)
+                        .add(new UInt128(0, lo))
+                        .toSigned();
         if (bitsRead >>> 3 < tailBase) {
             window = (long) LONG_LE.get(data, bitsRead >>> 3);
             shift = bitsRead & 7;
@@ -1702,7 +1740,10 @@ public final class Ludicrous {
         if (v > 2000) {
             return false; // a smuggled offset is refused
         }
-        value.wide.bias = new UInt128(0xffffffffffffffffL, 0xfffffffffffffc18L).add(new UInt128(0, v)).toSigned();
+        value.wide.bias =
+                new UInt128(0xffffffffffffffffL, 0xfffffffffffffc18L)
+                        .add(new UInt128(0, v))
+                        .toSigned();
         if (bitsRead >>> 3 < tailBase) {
             window = (long) LONG_LE.get(data, bitsRead >>> 3);
             shift = bitsRead & 7;
@@ -1889,7 +1930,8 @@ public final class Ludicrous {
         public int lockedFixed = -196608;
         // specified default at construction; zero* gives the §5 zero form; wire [7, 7]
         public int lockedInt = 7;
-        // specified default at construction; zero* gives the §5 zero form; wire [-12345678901234, -12345678901234]
+        // specified default at construction; zero* gives the §5 zero form; wire [-12345678901234,
+        // -12345678901234]
         public Int128 lockedWide = new Int128(0xffffffffffffffffL, 0xfffff4c58c31d00eL);
         public byte tail;
     }
@@ -1916,7 +1958,8 @@ public final class Ludicrous {
         value.tail = 0;
     }
 
-    // checkWriteDegenerateProbe is writeDegenerateProbe's contract walk, called once through assert —
+    // checkWriteDegenerateProbe is writeDegenerateProbe's contract walk, called once through assert
+    // —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).

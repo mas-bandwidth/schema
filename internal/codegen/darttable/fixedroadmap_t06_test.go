@@ -36,18 +36,6 @@ func t06Generated(t *testing.T, base string) string {
 	return t02Source(t, files)
 }
 
-// t06GeneratedUnit is t06Generated for an inline schema, so a fixture that is
-// not a corpus file can still be read off the emitter's own bytes.
-func t06GeneratedUnit(t *testing.T, src string) string {
-	t.Helper()
-	u := unitFrom(t, src)
-	files, err := Generate(u)
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
-	return t02Source(t, files)
-}
-
 func TestFixedRoadmapDartT06Bounds(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
