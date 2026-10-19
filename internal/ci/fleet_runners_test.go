@@ -98,7 +98,6 @@ var globalInstall = []*regexp.Regexp{
 
 var pipInstall = regexp.MustCompile(`\b(?:pip|pip3)\s+install\b`)
 var localVenvActivation = regexp.MustCompile(`(?:^|&&\s*)(?:source|\.)\s+([^\s;&|]+)/bin/activate(?:\s|$)`)
-var localVenvPip = regexp.MustCompile(`(?:^|&&\s*)([^\s;&|]+)/bin/pip(?:3)?\s+install\b`)
 var pipCommandSeparator = regexp.MustCompile(`&&`)
 var shellCommandSeparator = regexp.MustCompile(`(?:&&|\|\||[;|])`)
 
@@ -242,19 +241,17 @@ func pipInstallUsesJobLocalVenv(text string) bool {
 	for _, command := range pipCommandSeparator.Split(text, -1) {
 		command = strings.TrimSpace(command)
 		if pipInstall.MatchString(command) {
-			if activated {
-				return true
+			fields := strings.Fields(command)
+			if len(fields) < 2 || fields[1] != "install" || fields[0] == "sudo" {
+				return false
 			}
-			if match := localVenvPip.FindStringSubmatch(command); len(match) == 2 {
-				pipPath := strings.Trim(match[1], "\"'`)")
-				if strings.HasSuffix(pipPath, "/bin/pip3") {
-					pipPath = strings.TrimSuffix(pipPath, "/pip3")
-				} else {
-					pipPath = strings.TrimSuffix(pipPath, "/pip")
-				}
+			executable := strings.Trim(fields[0], "\"'`)")
+			if strings.HasSuffix(executable, "/bin/pip") || strings.HasSuffix(executable, "/bin/pip3") {
+				pipPath := strings.TrimSuffix(executable, "/pip")
+				pipPath = strings.TrimSuffix(pipPath, "/pip3")
 				return jobLocalPath(strings.TrimSuffix(pipPath, "/bin"))
 			}
-			return false
+			return activated && (executable == "pip" || executable == "pip3")
 		}
 		if match := localVenvActivation.FindStringSubmatch(command); len(match) == 2 {
 			activation := strings.Trim(match[1], "\"'`)")
@@ -471,6 +468,8 @@ func TestGlobalInstallInRequiresJobLocalVenvForPip(t *testing.T) {
 		{line: "run: source .venv/bin/activate || pip install tool", want: "pip install"},
 		{line: "run: source .venv/bin/activate; pip install tool", want: "pip install"},
 		{line: "run: source .venv/bin/activate && pip install tool", want: ""},
+		{line: "run: source .venv/bin/activate && /usr/local/bin/pip install tool", want: "pip install"},
+		{line: "run: source .venv/bin/activate && sudo pip install tool", want: "pip install"},
 		{line: "run: ./.venv/bin/pip install tool", want: ""},
 		{line: "run: ./.venv/bin/pip install local && pip install shared", want: "pip install"},
 		{line: "run: source /usr/local/venv/bin/activate && pip install tool", want: "pip install"},
