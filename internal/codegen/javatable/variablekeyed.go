@@ -62,10 +62,10 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		}
 		fmt.Fprintf(b, "    static final class Slot_%s { %s %s=%s;long %sIdx; }\n", m, typ, m, variableDefault(one), m)
 		fmt.Fprintf(b, "    static void readSlot_%s(TableVariable.Reader r,Slot_%s v,int kind,TableVariable.NodeTable nt,TableVariable.Report report){\n", m, m)
-		writeFieldRead(b, u, st, one, false, 0)
+		writeFieldRead(b, u, st, one, false, 0, false)
 		b.WriteString("    }\n")
 		fmt.Fprintf(b, "    static void readSlotRetain_%s(TableVariable.Reader r,Slot_%s v,int kind,TableVariable.NodeTable nt,TableVariable.Report report,TableRetain retain,int[] path,int depth){\n", m, m)
-		writeFieldRead(b, u, st, one, true, 0)
+		writeFieldRead(b, u, st, one, true, 0, false)
 		b.WriteString("    }\n")
 		fmt.Fprintf(b, "    static void jsonSlot_%s(StringBuilder b,TableVariable.NodeGraph graph,Slot_%s v,int depth){\n", m, m)
 		writeJsonFieldValue(b, u, st, one)
