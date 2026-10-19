@@ -7,6 +7,7 @@
 //
 //	driver <manifest> list
 //	driver <manifest> <surface> <outdir>
+//	driver reader-fuzz <unit> <root> <wire|json>
 //
 // Exit 0 means the surface ran. Exit 2 means this backend does not implement
 // it, which the matrix prints as ABSENT rather than as a failure: a backend
@@ -451,6 +452,26 @@ func surfaceJsonHostile(lines []line, out string) error {
 }
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "reader-fuzz" && os.Args[2] == "list" {
+		for _, c := range codecTable {
+			json := "-"
+			if c.fromJson != nil {
+				json = "json"
+			}
+			fmt.Printf("%s\t%s\twire\t%s\n", c.unit, c.root, json)
+			if findMessageCodec(c.unit, c.root) != nil {
+				fmt.Printf("%s\t%s\tmessage\t-\n", c.unit, c.root)
+			}
+		}
+		return
+	}
+	if len(os.Args) == 5 && os.Args[1] == "reader-fuzz" {
+		if err := readerFuzz(os.Args[2], os.Args[3], os.Args[4]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) == 2 && (os.Args[1] == "wire-fuzz" || os.Args[1] == "wire-fuzz-builder") {
 		if err := wireFuzz(os.Args[1] == "wire-fuzz-builder"); err != nil {
 			fmt.Fprintln(os.Stderr, err)
