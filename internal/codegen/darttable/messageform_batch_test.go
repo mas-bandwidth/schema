@@ -424,7 +424,7 @@ fixed table T
 		"w.put(TableBitWriter._float32Words[0], 32);",
 		"setFloat64(0, value.d, Endian.little)).getUint64(0, Endian.little), 64)",
 		"value.b = TableBitWriter._float32Cell[0];",
-		"setUint64(0, r.bits.get(64), Endian.little)).getFloat64(0, Endian.little)",
+		"setUint64(0, b, Endian.little)).getFloat64(0, Endian.little)",
 	}
 	for _, w := range want {
 		if !strings.Contains(src, w) {
