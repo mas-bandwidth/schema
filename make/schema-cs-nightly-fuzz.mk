@@ -34,6 +34,12 @@ CS_FUZZ_SEED ?= 24845619678
 CS_FUZZ_MEMORY ?= none
 CS_FUZZ_TIMEOUT ?= 5000
 CS_FUZZ_KIND ?= load text
+CS_FUZZ_PLANT_TIME ?= 2m
+# SharpFuzz.CommandLine ships SharpFuzz.dll and its Common runtime beside the
+# tool assembly; the harness needs them at run time (the instrumented assembly
+# references SharpFuzz.Common). A host install leaves them in the dotnet-tool
+# store; an explicit path wins so a bench can point at its fleet copy.
+CS_FUZZ_SHARPFUZZ_LIB ?= $(firstword $(wildcard $(HOME)/.dotnet/tools/.store/sharpfuzz.commandline/*/sharpfuzz.commandline/*/tools/net*/any) $(wildcard $(HOME)/.dotnet/tools/.store/sharpfuzz.commandline/*/tools/net*/any))
 
 CS_FUZZ_BUILD := build/schema-cs-nightly-fuzz
 CS_FUZZ_READERS := $(CS_FUZZ_BUILD)/readers
@@ -101,12 +107,12 @@ schema-cs-nightly-fuzz-readers: bin/schema schema-cs-nightly-fuzz-corpus
 	@if [ "$(CS_FUZZ_PLANT)" = 1 ]; then \
 		found=0; \
 		for f in $$(find $(CS_FUZZ_READERS) -name '*Table.cs'); do \
-			if grep -q 'if (n > buffer.Length) { return -1; }' "$$f"; then \
-				sed 's|if (n > buffer.Length) { return -1; }|/* SABOTAGED: dropped bounds check */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f"; \
+			if grep -q 'public bool Has(int n) { return n >= 0 && n <= Buffer.Length - Offset; }' "$$f"; then \
+				sed 's|public bool Has(int n) { return n >= 0 && n <= Buffer.Length - Offset; }|public bool Has(int n) { /* SABOTAGED: dropped bounds check */ return n >= 0; }|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f"; \
 				found=1; \
 			fi; \
 		done; \
-		test $$found -eq 1 || { echo 'schema-cs-nightly-fuzz: the plant found no bounds check to drop'; exit 1; }; \
+		test $$found -eq 1 || { echo 'schema-cs-nightly-fuzz: the plant found no reader bounds check to drop'; exit 1; }; \
 	fi
 	@set -e; : > $(CS_FUZZ_BUILD)/roots.txt; \
 	for f in $$(find $(CS_FUZZ_READERS) -name '*Table.cs' | sort); do \
@@ -123,15 +129,19 @@ schema-cs-nightly-fuzz-readers: bin/schema schema-cs-nightly-fuzz-corpus
 
 # THE HARNESS. One process, one reader kind named on argv, every generated
 # root called with the same input. `load` drives the strict wire read
-# (<Root>LoadVerdict), `text` drives <Root>FromJson. An exception propagates
-# out of Main, so AFL sees a crash and minimises it. The harness is generated
-# from the manifest above, so a new corpus schema joins with no edit here.
+# (<Root>LoadVerdict), `text` drives <Root>FromJson. In fuzz mode the harness
+# hands stdin to SharpFuzz's AFL fork server; an exception escaping a reader
+# is reported to AFL as a crash. In replay mode (`harness <kind> <file>`) the
+# same dispatch runs on a saved input, so the fast test needs no fuzzer and no
+# clock. The harness is generated from the manifest above, so a new corpus
+# schema joins with no edit here.
 .PHONY: schema-cs-nightly-fuzz-harness
 schema-cs-nightly-fuzz-harness: schema-cs-nightly-fuzz-readers
 	@mkdir -p $(CS_FUZZ_BUILD)/harness
 	@printf '%s\n' \
 		'using System;' \
 		'using System.IO;' \
+		'using System.Reflection;' \
 		'static class FuzzHarness' \
 		'{' > $(CS_FUZZ_BUILD)/harness/Program.cs
 	@while IFS=$$(printf '\t') read -r dir ns root; do \
@@ -140,12 +150,9 @@ schema-cs-nightly-fuzz-harness: schema-cs-nightly-fuzz-readers
 		printf '    static void Text_%s(byte[] data) { var v = new %s.%s(); %s.Schema.%sFromJson(v, new ReadOnlySpan<byte>(data), new %s.TableReport()); }\n' "$$id" "$$ns" "$$root" "$$ns" "$$root" "$$ns" >> $(CS_FUZZ_BUILD)/harness/Program.cs; \
 	done < $(CS_FUZZ_BUILD)/roots.txt
 	@printf '%s\n' \
-		'    static int Main(string[] args)' \
+		'    static void Dispatch(string kind, byte[] data)' \
 		'    {' \
-		'        if (args.Length != 2) { Console.Error.WriteLine("usage: harness load|text <file>"); return 2; }' \
-		'        byte[] data = File.ReadAllBytes(args[1]);' \
-		'        if (data.Length > (1 << 20)) return 0;' \
-		'        if (args[0] == "load")' \
+		'        if (kind == "load")' \
 		'        {' >> $(CS_FUZZ_BUILD)/harness/Program.cs
 	@while IFS=$$(printf '\t') read -r dir ns root; do \
 		id=$$(printf '%s_%s' "$$ns" "$$root" | tr -c 'A-Za-z0-9_' '_'); \
@@ -153,7 +160,7 @@ schema-cs-nightly-fuzz-harness: schema-cs-nightly-fuzz-readers
 	done < $(CS_FUZZ_BUILD)/roots.txt
 	@printf '%s\n' \
 		'        }' \
-		'        else if (args[0] == "text")' \
+		'        else if (kind == "text")' \
 		'        {' >> $(CS_FUZZ_BUILD)/harness/Program.cs
 	@while IFS=$$(printf '\t') read -r dir ns root; do \
 		id=$$(printf '%s_%s' "$$ns" "$$root" | tr -c 'A-Za-z0-9_' '_'); \
@@ -161,7 +168,17 @@ schema-cs-nightly-fuzz-harness: schema-cs-nightly-fuzz-readers
 	done < $(CS_FUZZ_BUILD)/roots.txt
 	@printf '%s\n' \
 		'        }' \
-		'        else { Console.Error.WriteLine("unknown reader kind"); return 2; }' \
+		'        else { throw new ArgumentException("unknown reader kind: " + kind); }' \
+		'    }' \
+		'    static int Main(string[] args)' \
+		'    {' \
+		'        if (args.Length == 2) { byte[] saved = File.ReadAllBytes(args[1]); if (saved.Length <= (1 << 20)) Dispatch(args[0], saved); return 0; }' \
+		'        if (args.Length != 1) { Console.Error.WriteLine("usage: harness load|text [file]"); return 2; }' \
+		'        string kind = args[0];' \
+		'        var asm = Assembly.LoadFrom(Path.Combine(AppContext.BaseDirectory, "SharpFuzz.dll"));' \
+		'        var type = asm.GetType("SharpFuzz.Fuzzer+OutOfProcess", true);' \
+		'        var run = type.GetMethod("Run", new Type[] { typeof(Action<Stream>) });' \
+		'        run.Invoke(null, new object[] { new Action<Stream>(stream => { using (var memory = new MemoryStream()) { stream.CopyTo(memory); Dispatch(kind, memory.ToArray()); } }) });' \
 		'        return 0;' \
 		'    }' \
 		'}' >> $(CS_FUZZ_BUILD)/harness/Program.cs
@@ -179,6 +196,9 @@ schema-cs-nightly-fuzz-harness: schema-cs-nightly-fuzz-readers
 .PHONY: schema-cs-nightly-fuzz-build
 schema-cs-nightly-fuzz-build: schema-cs-nightly-fuzz-harness
 	@mkdir -p $(CS_FUZZ_BUILD)/bin
+	@if [ -n "$(CS_FUZZ_SHARPFUZZ_LIB)" ] && [ -f "$(CS_FUZZ_SHARPFUZZ_LIB)/SharpFuzz.dll" ]; then \
+		cp "$(CS_FUZZ_SHARPFUZZ_LIB)/SharpFuzz.dll" "$(CS_FUZZ_SHARPFUZZ_LIB)/SharpFuzz.Common.dll" $(CS_FUZZ_BUILD)/bin/; \
+	fi
 	@dotnet=$$(command -v $(DOTNET)); root=$$(dirname $$(readlink -f $$dotnet)); \
 	csc=$$(ls $$root/sdk/*/Roslyn/bincore/csc.dll | head -1); \
 	ref=$$(ls -d $$root/packs/Microsoft.NETCore.App.Ref/*/ref/net10.0 | head -1); \
@@ -238,8 +258,10 @@ schema-cs-nightly-fuzz-build: schema-cs-nightly-fuzz-harness
 			> $(CS_FUZZ_BUILD)/harness/Runtime.cs; \
 		runtime=$(CS_FUZZ_BUILD)/harness/Runtime.cs; \
 	fi; \
+	$(DOTNET) exec "$$csc" -nologo -langversion:latest -unsafe -target:library -out:$(CS_FUZZ_BUILD)/bin/Readers.dll "$$@" \
+		"$$runtime" $$(find $(CS_FUZZ_READERS) -name '*.cs' | sort) || exit 1; \
 	$(DOTNET) exec "$$csc" -nologo -langversion:latest -unsafe -out:$(CS_FUZZ_BUILD)/bin/Harness.dll "$$@" \
-		$(CS_FUZZ_BUILD)/harness/Program.cs "$$runtime" $$(find $(CS_FUZZ_READERS) -name '*.cs' | sort) || exit 1; \
+		-r:$(CS_FUZZ_BUILD)/bin/Readers.dll $(CS_FUZZ_BUILD)/harness/Program.cs || exit 1; \
 	printf '{\n  "runtimeOptions": {\n    "tfm": "net10.0",\n    "framework": { "name": "Microsoft.NETCore.App", "version": %s }\n  }\n}\n' "\"$$refv\"" > $(CS_FUZZ_BUILD)/bin/Harness.runtimeconfig.json
 
 # THE TOOL PROBE. Never installs; names the missing tool and the machine.
@@ -258,27 +280,62 @@ schema-cs-nightly-fuzz-tools:
 # testdata/schema-cs-nightly-fuzz/corpus/<kind>/.
 .PHONY: schema-cs-nightly-fuzz
 schema-cs-nightly-fuzz: schema-cs-nightly-fuzz-tools schema-cs-nightly-fuzz-build
-	@sharpfuzz $(CS_FUZZ_BUILD)/bin/Harness.dll 2>/dev/null || dotnet-sharpfuzz $(CS_FUZZ_BUILD)/bin/Harness.dll
+	@sharpfuzz $(CS_FUZZ_BUILD)/bin/Readers.dll 2>/dev/null || dotnet-sharpfuzz $(CS_FUZZ_BUILD)/bin/Readers.dll
 	@mkdir -p $(CS_FUZZ_SEEDS)/load $(CS_FUZZ_SEEDS)/text $(CS_FUZZ_OUT)
-	@find internal/fuzz/testdata testdata/conformance -type f -size -1M 2>/dev/null | while read -r f; do \
+	@find internal/fuzz/testdata testdata/conformance -type f -size -1048576c 2>/dev/null | while read -r f; do \
 		cp "$$f" "$(CS_FUZZ_SEEDS)/load/$$(basename $$f)"; \
 		cp "$$f" "$(CS_FUZZ_SEEDS)/text/$$(basename $$f)"; \
 	done
 	@set -e; for kind in $(CS_FUZZ_KIND); do \
 		mkdir -p $(CS_FUZZ_OUT)/$$kind; \
-		AFL_SKIP_CPUFREQ=1 AFL_NO_AFFINITY=1 timeout $(CS_FUZZ_TIME) \
+		AFL_SKIP_CPUFREQ=1 AFL_NO_AFFINITY=1 AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 AFL_SKIP_BIN_CHECK=1 timeout $(CS_FUZZ_TIME) \
 			afl-fuzz -i $(CS_FUZZ_SEEDS)/$$kind -o $(CS_FUZZ_OUT)/$$kind \
 			-m $(CS_FUZZ_MEMORY) -t $(CS_FUZZ_TIMEOUT) -V $(CS_FUZZ_TIME) \
-			-- $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind @@ > $(CS_FUZZ_BUILD)/afl-$$kind.log 2>&1 || true; \
+			-- $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind > $(CS_FUZZ_BUILD)/afl-$$kind.log 2>&1 || true; \
 		mkdir -p $(CS_FUZZ_CORPUS_COMMITTED)/$$kind; \
 		for crash in $(CS_FUZZ_OUT)/$$kind/default/crashes/id:*; do \
 			[ -e "$$crash" ] || continue; \
 			afl-tmin -i "$$crash" -o $(CS_FUZZ_CORPUS_COMMITTED)/$$kind/$$(basename $$crash) \
-				-- $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind @@ >/dev/null 2>&1 || \
+				-- $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind >/dev/null 2>&1 || \
 				cp "$$crash" $(CS_FUZZ_CORPUS_COMMITTED)/$$kind/; \
 		done; \
 	done
 	@echo "schema-cs-nightly-fuzz: campaigns complete; crashes (if any) under $(CS_FUZZ_CORPUS_COMMITTED)"
+
+# THE DYNAMIC NEGATIVE CONTROL. Build a SCRATCH PLANTED copy of the readers
+# (CS_FUZZ_PLANT=1 drops the reader's central Has() bounds check), instrument
+# it, and let AFL find the crash inside CS_FUZZ_PLANT_TIME. The saved input is
+# then replayed against the planted build (must fail) and against a clean
+# rebuild (must be a typed refusal, exit 0). This is the proof the nightly
+# campaign's oracle can see a dropped reader check, not just the static marker.
+.PHONY: schema-cs-nightly-fuzz-planted-campaign
+schema-cs-nightly-fuzz-planted-campaign: schema-cs-nightly-fuzz-tools
+	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-build CS_FUZZ_PLANT=1
+	@mkdir -p $(CS_FUZZ_SEEDS)/load $(CS_FUZZ_SEEDS)/text $(CS_FUZZ_BUILD)/afl-planted
+	@find internal/fuzz/testdata testdata/conformance -type f -size -1048576c 2>/dev/null | while read -r f; do \
+		cp "$$f" "$(CS_FUZZ_SEEDS)/load/$$(basename $$f)"; \
+		cp "$$f" "$(CS_FUZZ_SEEDS)/text/$$(basename $$f)"; \
+	done
+	@sharpfuzz $(CS_FUZZ_BUILD)/bin/Readers.dll 2>/dev/null || dotnet-sharpfuzz $(CS_FUZZ_BUILD)/bin/Readers.dll
+	@rm -rf $(CS_FUZZ_BUILD)/afl-planted $(CS_FUZZ_BUILD)/planted-crash*; \
+	found=0; \
+	for kind in $(CS_FUZZ_KIND); do \
+		mkdir -p $(CS_FUZZ_BUILD)/afl-planted/$$kind; \
+		AFL_SKIP_CPUFREQ=1 AFL_NO_AFFINITY=1 AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 AFL_SKIP_BIN_CHECK=1 timeout $(CS_FUZZ_PLANT_TIME) \
+			afl-fuzz -i $(CS_FUZZ_SEEDS)/$$kind -o $(CS_FUZZ_BUILD)/afl-planted/$$kind \
+			-m $(CS_FUZZ_MEMORY) -t $(CS_FUZZ_TIMEOUT) -V $(CS_FUZZ_PLANT_TIME) \
+			-- $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind > $(CS_FUZZ_BUILD)/afl-planted-$$kind.log 2>&1 || true; \
+		crash=$$(ls $(CS_FUZZ_BUILD)/afl-planted/$$kind/default/crashes/id:* 2>/dev/null | head -1); \
+		if [ -n "$$crash" ]; then cp "$$crash" $(CS_FUZZ_BUILD)/planted-crash-$$kind; echo $$kind > $(CS_FUZZ_BUILD)/planted-crash-kind; found=1; break; fi; \
+	done; \
+	test $$found -eq 1 || { echo 'NEGATIVE CONTROL FAILED: AFL found no crash from the planted reader inside $(CS_FUZZ_PLANT_TIME)'; exit 1; }
+	@kind=$$(cat $(CS_FUZZ_BUILD)/planted-crash-kind); \
+	crashed=0; $(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind $(CS_FUZZ_BUILD)/planted-crash-$$kind >/dev/null 2>&1 || crashed=1; \
+	test $$crashed -eq 1 || { echo 'NEGATIVE CONTROL FAILED: the planted build accepted the crash input'; exit 1; }
+	@$(MAKE) --no-print-directory schema-cs-nightly-fuzz-build CS_FUZZ_PLANT=0
+	@kind=$$(cat $(CS_FUZZ_BUILD)/planted-crash-kind); \
+	$(DOTNET) $(CS_FUZZ_BUILD)/bin/Harness.dll $$kind $(CS_FUZZ_BUILD)/planted-crash-$$kind >/dev/null 2>&1 || { echo "NEGATIVE CONTROL FAILED: the clean reader refused (non-zero) the saved input"; exit 1; }
+	@echo "schema-cs-nightly-fuzz dynamic control: AFL found the planted reader bug inside $(CS_FUZZ_PLANT_TIME); the planted build crashes on the saved input and the clean build refuses it cleanly"
 
 # THE FAST REPLAY. No fuzzer, no clock: every saved input is replayed through
 # the same harness on every push. A missing saved corpus is not a skip — the

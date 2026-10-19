@@ -69,7 +69,9 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq afl++
-          dotnet tool install --global SharpFuzz --version 2.2.0
+          dotnet tool install --global SharpFuzz.CommandLine --version 2.2.0
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
       - name: fuzz one reader kind
         run: make schema-cs-nightly-fuzz CS_FUZZ_TIME=10m CS_FUZZ_KIND=${{ matrix.kind }}
+      - name: the planted reader must be found and replayed red
+        run: make schema-cs-nightly-fuzz-planted-campaign CS_FUZZ_KIND=load CS_FUZZ_PLANT_TIME=2m
