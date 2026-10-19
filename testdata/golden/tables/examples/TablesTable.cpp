@@ -54,7 +54,7 @@ inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32
 // exists in a unit that declares neither construct. Same shape as the
 // pointer's three: declared here, defined after the walk by whichever half
 // the unit carries. Both are OUT-OF-LINE ARRAYS to the descriptors (§8.1):
-// array_bound = 0 is the tell, and the type name says which of the two.
+// unbounded_container is the ONE TELL, and the type name says which of the two.
 
 // a map field: an out-of-line array whose type name spells the map
 inline bool TableJsonIsMap( const TableFieldInfo * f );

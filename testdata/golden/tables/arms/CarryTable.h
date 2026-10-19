@@ -206,7 +206,18 @@ enum TableRefuseReason
     count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
     count_over_extent_cap, // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
     blob_over_size_cap,    // a blob whose length is past the derived-size cap (§3.1, §11)
-    data_cycle             // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
+    data_cycle,            // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
+    invalid_value,         // a writer handed a value outside the declaration: a count, a value or an ordinal past its bound, or ill-formed text (§3.1, §11)
+    allocation_failed,     // an allocation the codec asked for was refused (§7.6)
+    wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
+    malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
+    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
+    kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
+    base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
+    base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
+    integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
+    non_finite,            // a plain float the read landed as a NaN or an infinity (§3.3); the report's reason is non_finite: <field>
+    blob_shared            // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
 };
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
@@ -356,6 +367,15 @@ struct TableFieldInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // A CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1, §2.9):
+    // true on every map and []T, with array_bound 0 beside it, and false on
+    // every other field. It is the ONE TELL, apart from the §2.13.1
+    // Unbounded (unbounded text) column, so a walker reads the container
+    // from here and never infers it from array_bound — zero is a plain
+    // scalar's bound too. It sits last so every emitted row stays a
+    // positional aggregate initializer, and emitFieldInfo fills it from the
+    // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
+    bool unbounded_container;
 };
 
 struct TableTypeInfo
@@ -744,7 +764,11 @@ struct TableReader
             case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
             case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
-            case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
+            // 36 is the TIMESTAMP: its payload is the i64's eight bytes even
+            // though its kind is its own (docs/SPEC-TABLES.md §2.11, §3), so
+            // an unnamed or kind-mismatched timestamp skips cleanly, exactly
+            // as internal/tablewire/timestamp_skip_test.go pins for Go.
+            case 5: case 9: case 11: case 23: case 28: case 36: return has( 8 ) ? ( offset += 8, true ) : false;
             case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
             case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
@@ -808,7 +832,7 @@ inline int64_t TableKindWidth( uint8_t kind )
         case 1: case 2: case 6: case 20: case 25: return 1;
         case 3: case 7: case 21: case 26: return 2;
         case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: return 8;
+        case 5: case 9: case 11: case 23: case 28: case 36: return 8; // 36 is the timestamp, the i64 payload (§2.11)
         case 18: case 19: case 24: case 29: return 16;
     }
     return 0;
@@ -1331,7 +1355,7 @@ inline int64_t TableMessageKindBits( uint8_t kind )
         case 2: case 6: case 20: case 25: return 8;
         case 3: case 7: case 21: case 26: return 16;
         case 4: case 8: case 22: case 27: return 32;
-        case 5: case 9: case 23: case 28: return 64;
+        case 5: case 9: case 23: case 28: case 36: return 64; // 36 is the timestamp, the i64's width (§2.11)
         default: return 128;
     }
 }
@@ -1397,7 +1421,9 @@ inline bool TableMessageFixedKind( uint8_t kind ) { return kind >= 20 && kind <=
 
 inline bool TableMessageKnownKind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+    // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
+    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -1572,6 +1598,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 {
     if ( kind == 1 ) { return 1; }
     if ( kind == 11 ) { return 64; }
+    if ( kind == 36 ) { return 64; } // the timestamp's count is sixty-four raw bits (§2.11, §3.3)
     if ( kind == 10 ) { return packing == 2 ? value_bits : 32; }
     if ( TableMessageIntegerKind( kind ) || TableMessageFixedKind( kind ) )
     {
@@ -18877,28 +18904,28 @@ extern const TableTypeInfo HandTableInfo;
 extern const TableTypeInfo ChainTableInfo;
 
 inline const TableFieldInfo LeafTableFields[] = {
-    { "items", "items", "int32", 0x3e7884bf4f412c6full, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Leaf, items ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Leaf, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL },
+    { "items", "items", "int32", 0x3e7884bf4f412c6full, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Leaf, items ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Leaf, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true },
 };
 inline const TableTypeInfo LeafTableInfo = { "Leaf", (uint32_t) sizeof( Leaf ), 1, LeafTableFields, +[]( void * p ) { LeafReset( *(Leaf *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * LeafTableType() { return &LeafTableInfo; }
 
 inline const TableFieldInfo HolderTableFields[] = {
-    { "carry", "carry", "Carry", 0xafcd9a3b099f8ef0ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Holder, carry ), (uint32_t) sizeof( Holder::carry ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const char * const Carry_plain_tags[] = { "overlay" }; static const TableFieldInfo arm_fields_Carry[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Carry, plain ), (uint32_t) sizeof( Carry::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", "The arm that names no record: a scalar in the union's own overlay.", 1, Carry_plain_tags }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Carry, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Carry, plain ), NULL, &arm_fields_Carry[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Carry, type ), (uint32_t) sizeof( Carry::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL },
-    { "tail", "tail", "int32", 0xd94c56ef0798d723ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Holder, tail ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Holder, tail.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL },
+    { "carry", "carry", "Carry", 0xafcd9a3b099f8ef0ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Holder, carry ), (uint32_t) sizeof( Holder::carry ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const char * const Carry_plain_tags[] = { "overlay" }; static const TableFieldInfo arm_fields_Carry[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Carry, plain ), (uint32_t) sizeof( Carry::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", "The arm that names no record: a scalar in the union's own overlay.", 1, Carry_plain_tags, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Carry, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Carry, plain ), NULL, &arm_fields_Carry[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Carry, type ), (uint32_t) sizeof( Carry::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false },
+    { "tail", "tail", "int32", 0xd94c56ef0798d723ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Holder, tail ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Holder, tail.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true },
 };
 inline const TableTypeInfo HolderTableInfo = { "Holder", (uint32_t) sizeof( Holder ), 2, HolderTableFields, +[]( void * p ) { HolderReset( *(Holder *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * HolderTableType() { return &HolderTableInfo; }
 
 inline const TableFieldInfo HandTableFields[] = {
-    { "entries", "entries", "Carry", 0xc5b2a72c0845a253ull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( Hand, entries ), (uint32_t) sizeof( Hand::entries[0] ), (uint32_t) offsetof( Hand, entries_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const char * const Carry_plain_tags[] = { "overlay" }; static const TableFieldInfo arm_fields_Carry[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Carry, plain ), (uint32_t) sizeof( Carry::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", "The arm that names no record: a scalar in the union's own overlay.", 1, Carry_plain_tags }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Carry, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Carry, plain ), NULL, &arm_fields_Carry[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Carry, type ), (uint32_t) sizeof( Carry::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Hand, after ), (uint32_t) sizeof( Hand::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "entries", "entries", "Carry", 0xc5b2a72c0845a253ull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( Hand, entries ), (uint32_t) sizeof( Hand::entries[0] ), (uint32_t) offsetof( Hand, entries_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const char * const Carry_plain_tags[] = { "overlay" }; static const TableFieldInfo arm_fields_Carry[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Carry, plain ), (uint32_t) sizeof( Carry::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", "The arm that names no record: a scalar in the union's own overlay.", 1, Carry_plain_tags, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Carry, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Carry, plain ), NULL, &arm_fields_Carry[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Carry, type ), (uint32_t) sizeof( Carry::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false },
+    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Hand, after ), (uint32_t) sizeof( Hand::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
 inline const TableTypeInfo HandTableInfo = { "Hand", (uint32_t) sizeof( Hand ), 2, HandTableFields, +[]( void * p ) { HandReset( *(Hand *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * HandTableType() { return &HandTableInfo; }
 
 inline const TableFieldInfo ChainTableFields[] = {
-    { "links", "links", "Carry", 0x5cc201a9f1b8274eull, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Chain, links ), (uint32_t) sizeof( Carry ), (uint32_t) offsetof( Chain, links.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const char * const Carry_plain_tags[] = { "overlay" }; static const TableFieldInfo arm_fields_Carry[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Carry, plain ), (uint32_t) sizeof( Carry::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", "The arm that names no record: a scalar in the union's own overlay.", 1, Carry_plain_tags }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Carry, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Carry, plain ), NULL, &arm_fields_Carry[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Carry, type ), (uint32_t) sizeof( Carry::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Carry> *) slot ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Chain, after ), (uint32_t) sizeof( Chain::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "links", "links", "Carry", 0x5cc201a9f1b8274eull, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Chain, links ), (uint32_t) sizeof( Carry ), (uint32_t) offsetof( Chain, links.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const char * const Carry_plain_tags[] = { "overlay" }; static const TableFieldInfo arm_fields_Carry[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Carry, plain ), (uint32_t) sizeof( Carry::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", "The arm that names no record: a scalar in the union's own overlay.", 1, Carry_plain_tags, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Carry, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Carry, plain ), NULL, &arm_fields_Carry[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Carry, type ), (uint32_t) sizeof( Carry::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Carry> *) slot ); }, "", TableDocNone, 0, NULL, true },
+    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Chain, after ), (uint32_t) sizeof( Chain::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
 inline const TableTypeInfo ChainTableInfo = { "Chain", (uint32_t) sizeof( Chain ), 2, ChainTableFields, +[]( void * p ) { ChainReset( *(Chain *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * ChainTableType() { return &ChainTableInfo; }
