@@ -50,6 +50,14 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 		g.pf("  // %s has no fixed-root cook writer here: a direct array of text, which v1 refuses (wrap the element in a type).\n", st.Name)
 		return
 	}
+	// A UNION in the closure (§2.6, §7.2): the fixed class holds it as its
+	// own value class, which this writer's scalar slots do not write, so the
+	// root's cook is the form-1 writer's (<Root>CookWire, cookwrite_form1.go)
+	// and never a scalar store of the union's class.
+	if name := fixedCookUnion(g.unit, st); name != "" {
+		g.pf("  // %s has no fixed-root cook writer here: %s is a union, which this writer does not carry; %s cooks the form-1 value (docs/SPEC-TABLES.md §2.6, §7.6).\n", st.Name, name, form1CookClass(st))
+		return
+	}
 	ml := ir.RecordLayout(g.unit, st)
 	align := ir.RegionAlignOf(ml.Align)
 	data := (ml.Size + align - 1) & -align
@@ -90,6 +98,20 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 		g.pf("    return true;\n  }\n\n")
 	})
 	g.trimBlank()
+}
+
+// fixedCookUnion names the first field of st's closure that holds a union
+// (§2.6), or "" when the closure holds none.
+func fixedCookUnion(u *ir.Unit, st *ir.Struct) string {
+	name := ""
+	cookWalk(u, st.Name, func(record string, ml *ir.MemberLayout) {
+		for _, fl := range ml.Fields {
+			if _, ok := fl.Field.Type.Ref.(*ir.Union); ok && name == "" {
+				name = record + "." + fl.Field.Name
+			}
+		}
+	})
+	return name
 }
 
 // needCookStorage names the existing caller-owned value class (§6.1).
@@ -365,9 +387,9 @@ func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 				break
 			}
 			if un := unionRef(f); un != nil {
-				if why := variableCookUnion(un); why != "" {
-					why = fmt.Sprintf("%s.%s's union (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, why)
-					return
+				if arm := variableCookUnion(un); arm != "" {
+					why = fmt.Sprintf("%s.%s's union (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, arm)
+					break
 				}
 				continue
 			}
