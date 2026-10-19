@@ -263,7 +263,7 @@ func plainScalar(f *ir.Field) bool {
 // scalars: the element kind sits above a ladder's bottom and the element is a
 // number rather than a table, a union, an enum, a pointer or a byte.
 func widenableElement(f *ir.Field) bool {
-	if f.Type.Pointer || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString {
+	if f.Type.Pointer || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.IsTextList() {
 		return false
 	}
 	// Flags are named declarations but ride as kind 9. The kind pair alone

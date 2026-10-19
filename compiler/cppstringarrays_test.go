@@ -30,12 +30,11 @@ table Lists
 }
 `
 
-// cppStringArraysDriver builds the two bounded text lists, pins the wire in
-// hex, round-trips them through the binary wire and the JSON text, and checks
-// the write-side and read-side bounds (§2.13): the element past M and the
-// element past N are refused at the append; a count past N reads the first N
-// elements and counts clamped; an element past M clamps at a code point
-// boundary and counts clamped.
+// cppStringArraysDriver builds the two bounded text lists, pins the wire and
+// the JSON in the Go oracle's own bytes, round-trips them, and checks the
+// write-side and read-side bounds (§2.13): the element past M and the element
+// past N are refused at the append; a count past N reads the first N elements
+// and counts clamped; an element past M clamps at a code point boundary.
 const cppStringArraysDriver = `#include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -44,12 +43,22 @@ const cppStringArraysDriver = `#include <stdio.h>
 using namespace probe;
 
 static int failures = 0;
-static uint8_t buffer[ 1 << 14 ];
-static uint8_t twin[ 1 << 14 ];
 
 static void check( int cond, const char * what )
 {
     if ( !cond ) { printf( "FAIL %s\n", what ); failures++; }
+}
+
+static void compact( const char * in, char * out )
+{
+    int j = 0;
+    for ( int i = 0; in[i] != 0; i++ )
+    {
+        const char c = in[i];
+        if ( c == ' ' || c == '\t' || c == '\n' || c == '\r' ) { continue; }
+        out[j++] = c;
+    }
+    out[j] = 0;
 }
 
 int main()
@@ -64,44 +73,103 @@ int main()
 
     // THE WRITE-SIDE BOUNDS (§2.13): element past M and element past N refused
     check( !ListsRulesAppend( value, "123456789" ), "nine-byte element refused" );
-    check( value.RulesCount == 2, "rules count" );
-    check( value.FirstCount == 2, "first count" );
+    check( value.rules_count == 2, "rules count" );
+    check( value.first_count == 2, "first count" );
 
     // element reads
-    uint8_t rbuf[16];
-    int32_t rlen;
-    bool rpresent;
-    assert( ListsRulesTextAt( value, 0, rbuf, sizeof( rbuf ), &rlen, &rpresent ) );
+    char rbuf[16];
+    int32_t rlen = 0;
+    bool rpresent = false;
+    check( ListsRulesTextAt( value, 0, rbuf, sizeof( rbuf ), &rlen, &rpresent ), "rules text at 0" );
     check( rpresent && rlen == 1 && rbuf[0] == 'a', "rules[0]=a" );
+    check( !ListsFirstTextAt( value, 1, rbuf, sizeof( rbuf ), &rlen, &rpresent ), "first[1] absent" );
 
-    // save: measure == save length
-    const int64_t wrote = ListsSave( value, buffer, (int64_t) sizeof( buffer ) );
+    // THE PINNED WIRE: the Go oracle's listsGolden for rules ["a","b"] and
+    // first ["x",null] (internal/codegen/gotable/stringarrays_test.go).
+    const char * golden = "01010e060c0201610162020e0a0d0205030c017800010000c05351286a4f1267411d6f997fedd789ea0ce83094fde47c0300000000000000";
+    uint8_t buffer[ 1 << 14 ];
+    const int64_t wrote = ListsSave( &value, buffer, (int64_t) sizeof( buffer ) );
     check( wrote > 0, "save" );
-    check( ListsMeasure( value ) == wrote, "measure == save" );
+    check( ListsMeasure( &value ) == wrote, "measure == save" );
+    char hex[ 1 << 10 ];
+    int at = 0;
+    for ( int64_t i = 0; i < wrote; i++ ) { at += snprintf( hex + at, sizeof( hex ) - (size_t) at, "%02x", buffer[i] ); }
+    check( strcmp( hex, golden ) == 0, "wire is the Go oracle's" );
 
-    // load and re-save reproduce the bytes
-    Lists back;
+    // THE PLAIN JSON SHAPE (§16.2): the Go oracle's compacted ToJson.
+    char json[ 1 << 10 ];
+    const int64_t jn = ListsToJson( &value, json, (int64_t) sizeof( json ) );
+    check( jn > 0, "json" );
+    char packed[ 1 << 10 ];
+    compact( json, packed );
+    check( strcmp( packed, "{\"rules\":[\"a\",\"b\"],\"first\":[\"x\",null]}" ) == 0, "json is the Go oracle's" );
+
+    // ROUND TRIPS: binary and JSON
+    uint8_t region[ 1 << 16 ];
     TableReport report;
-    check( ListsLoad( back, buffer, wrote, &report ), "load" );
-    check( !report.malformed && report.clamped == 0 && report.kind_mismatch == 0, "clean load report" );
-    const int64_t again = ListsSave( back, twin, (int64_t) sizeof( twin ) );
-    check( again == wrote && memcmp( twin, buffer, (size_t) wrote ) == 0, "wire round trip" );
+    const Lists * back = ListsLoad( region, (int64_t) sizeof( region ), buffer, wrote, &report );
+    check( back != NULL && !report.malformed && report.clamped == 0 && report.kind_mismatch == 0, "wire round trip" );
+    if ( back != NULL )
+    {
+        uint8_t twin[ 1 << 14 ];
+        const int64_t again = ListsSave( back, twin, (int64_t) sizeof( twin ) );
+        check( again == wrote && memcmp( twin, buffer, (size_t) wrote ) == 0, "re-save reproduces the bytes" );
+    }
+    ListsBuilder jb;
+    TableReport jr;
+    check( ListsFromJson( jb, json, jn, &jr ), "json read" );
+    check( !jr.malformed && jr.clamped == 0 && jr.kind_mismatch == 0, "clean json report" );
+    check( jb.GetRoot() != NULL && jb.GetRoot()->rules_count == 2 && jb.GetRoot()->first_count == 2, "json round trip counts" );
 
-    // THE READ-SIDE BOUNDS: a count past N and an element past M clamp and count
-    // (built by hand, the Go oracle's file() shape: kind 14 over element kind 12)
-    // rules id ordinal 1, kind 14, body L, element kind 12, count, elements
-    // five elements against [..4] -> clamped, count 4
-    static uint8_t overcount[] = {
-        0x01, 0x01, 0x0e, 0x0b, 0x0c, 0x05,
-        0x01, 0x61, 0x01, 0x62, 0x01, 0x63, 0x01, 0x64, 0x01, 0x65,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-    };
-    Lists oc;
+    // THE READ-SIDE BOUND: five elements against [..4] keep the first four and
+    // count one clamp (built by hand: form, id ref, kind 14, body, id table).
+    uint8_t over[ 128 ];
+    int o = 0;
+    over[o++] = 1; over[o++] = 1; over[o++] = 14;
+    uint8_t body[ 32 ];
+    int b = 0;
+    body[b++] = 12; body[b++] = 5;
+    const char * five[5] = { "a", "b", "c", "d", "e" };
+    for ( int i = 0; i < 5; i++ ) { body[b++] = 1; body[b++] = (uint8_t) five[i][0]; }
+    over[o++] = (uint8_t) b;
+    memcpy( over + o, body, (size_t) b ); o += b;
+    over[o++] = 0;
+    const uint64_t id = ListsTableType()->fields[0].id;
+    memcpy( over + o, &id, 8 ); o += 8;
+    const uint64_t one = 1;
+    memcpy( over + o, &one, 8 ); o += 8;
+    uint8_t region2[ 1 << 16 ];
     TableReport ocr;
-    check( ListsLoad( oc, overcount, (int64_t) sizeof( overcount ), &ocr ), "overcount load" );
-    check( ocr.clamped == 1 && oc.RulesCount == 4, "overcount clamped to 4" );
+    const Lists * oc = ListsLoad( region2, (int64_t) sizeof( region2 ), over, o, &ocr );
+    check( oc != NULL && ocr.clamped == 1 && ocr.malformed == 0 && oc->rules_count == 4, "overcount clamps to 4" );
 
-    printf( "wrote=%lld bytes=%s\n", (long long) wrote, "" );
+    // THE READ-SIDE BOUND of an element: nine bytes against string(8) clamp at
+    // the bound and count (the Go oracle's length row).
+    uint8_t longwire[ 128 ];
+    int w = 0;
+    longwire[w++] = 1; longwire[w++] = 1; longwire[w++] = 14;
+    uint8_t lbody[ 32 ];
+    int lb = 0;
+    lbody[lb++] = 12; lbody[lb++] = 1; lbody[lb++] = 9;
+    memcpy( lbody + lb, "123456789", 9 ); lb += 9;
+    longwire[w++] = (uint8_t) lb;
+    memcpy( longwire + w, lbody, (size_t) lb ); w += lb;
+    longwire[w++] = 0;
+    memcpy( longwire + w, &id, 8 ); w += 8;
+    memcpy( longwire + w, &one, 8 ); w += 8;
+    uint8_t region3[ 1 << 16 ];
+    TableReport lr;
+    const Lists * lw = ListsLoad( region3, (int64_t) sizeof( region3 ), longwire, w, &lr );
+    check( lw != NULL && lr.clamped == 1 && lr.malformed == 0 && lw->rules_count == 1, "length clamp counts" );
+    if ( lw != NULL )
+    {
+        char tbuf[ 16 ];
+        int32_t tlen = 0;
+        bool tpresent = false;
+        check( ListsRulesTextAt( *lw, 0, tbuf, sizeof( tbuf ), &tlen, &tpresent ), "clamped element read" );
+        check( tpresent && tlen == 8 && memcmp( tbuf, "12345678", 8 ) == 0, "clamped element is 12345678" );
+    }
+
     return failures == 0 ? 0 : 1;
 }
 `
@@ -132,6 +200,7 @@ func TestCPPTableStringArrays(t *testing.T) {
 	for _, want := range []string{
 		"ListsRulesTextAt",
 		"ListsFirstAppendAbsent",
+		"text_list",
 	} {
 		if !strings.Contains(header, want) {
 			t.Fatalf("the generated C++ does not carry the bounded text-list surface %q — this test would prove nothing", want)
@@ -144,7 +213,9 @@ func TestCPPTableStringArrays(t *testing.T) {
 	bin := filepath.Join(dir, "stringarrays")
 	args := []string{
 		"-std=c++17", "-O2", "-DNDEBUG", "-Wall", "-Wextra", "-Werror", "-Wshadow",
-		"-ffp-contract=off", "-I", dir, main, "-o", bin,
+		"-ffp-contract=off", "-I", dir, main,
+		filepath.Join(dir, "ProbeTable.cpp"), filepath.Join(dir, "ProbeView.cpp"),
+		"-o", bin,
 	}
 	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)

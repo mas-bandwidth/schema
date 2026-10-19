@@ -821,6 +821,18 @@ func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, acce
 	g.elemIndex = i
 	defer func() { g.elemIndex = was }()
 	g.pf("%s%s += 1 + TableLebBytes( (uint64_t) ( %s ) ); // the element kind byte and the count\n", ind, into, n)
+	if f.IsTextList() && ir.TextListPlain(f) {
+		// A PLAIN TEXT LIST's element is a kind 12 payload of its own (§2.13, §3):
+		// its own L and its bytes, held to M and to well-formed UTF-8, as Go holds it.
+		m := ir.TextListValue(f).Type.Size
+		elem := fmt.Sprintf(access, i)
+		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
+		g.pf("%s    const %s & text_elem%s = %s;\n", ind, f.Type.Name, sfx, elem)
+		g.pf("%s    const int32_t text_len%s = text_elem%s.value_length;\n", ind, sfx, sfx)
+		g.pf("%s    if ( text_len%s < 0 || text_len%s > %d || !TableUtf8Valid( (const uint8_t *) text_elem%s.value, (uint64_t) text_len%s ) ) { %s }\n", ind, sfx, sfx, m, sfx, sfx, onBad)
+		g.pf("%s    %s += TableLebBytes( (uint64_t) text_len%s ) + text_len%s;\n%s}\n", ind, into, sfx, sfx, ind)
+		return
+	}
 	switch elemKind {
 	case tkTable:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
@@ -885,6 +897,14 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		// is entirely default, exactly as a pointer's pointee does — otherwise
 		// absent and present-at-default would be one value on the wire
 		g.pf("    if ( value.%s_present ) // ?%s: presence decides, not content\n    {\n", f.Name, tableFieldTypeName(f))
+		if f.Type.Kind == ir.TString {
+			// A TEXT LIST'S ?string(M) ELEMENT (docs/SPEC-TABLES.md §2.13): the
+			// present payload is the string field's own length and bytes.
+			g.pf("        if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+			g.pf("        bytes += %s + %s; // %s\n", g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
+			g.pf("    }\n")
+			break
+		}
 		switch {
 		case f.Array != ir.ArrayNone:
 			// an OPTIONAL ARRAY rides whole when present (docs/SPEC-TABLES.md
@@ -1273,6 +1293,20 @@ func (g *tableGen) emitArrayBodyWrite(f *ir.Field, elemKind int, n, access, ind,
 	was := g.elemIndex
 	g.elemIndex = i
 	defer func() { g.elemIndex = was }()
+	if f.IsTextList() && ir.TextListPlain(f) {
+		// A PLAIN TEXT LIST's element carries its own L and its bytes (§2.13, §3).
+		m := ir.TextListValue(f).Type.Size
+		elem := fmt.Sprintf(access, i)
+		g.pf("%sw.put8( %d ); w.putleb( (uint64_t) ( %s ) );\n", ind, elemKind, n)
+		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
+		g.pf("%s    const %s & text_elem%s = %s;\n", ind, f.Type.Name, sfx, elem)
+		g.pf("%s    const int32_t text_len%s = text_elem%s.value_length;\n", ind, sfx, sfx)
+		g.pf("%s    if ( text_len%s < 0 || text_len%s > %d || !TableUtf8Valid( (const uint8_t *) text_elem%s.value, (uint64_t) text_len%s ) ) { return false; }\n", ind, sfx, sfx, m, sfx, sfx)
+		g.pf("%s    w.putleb( (uint64_t) text_len%s );\n", ind, sfx)
+		g.pf("%s    w.raw( text_elem%s.value, text_len%s );\n", ind, sfx, sfx)
+		g.pf("%s}\n", ind)
+		return
+	}
 	g.pf("%sw.put8( %d ); w.putleb( (uint64_t) ( %s ) );\n", ind, elemKind, n)
 	g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 	g.emitTableWriteElement(f, elemKind, fmt.Sprintf(access, i), ind+"    ", sfx)
@@ -1350,6 +1384,15 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		// pointer's rule, and what makes ?T, *T and a plain nesting
 		// wire-identical (docs/SPEC-TABLES.md §2.3, §3.1)
 		g.pf("    if ( value.%s_present ) // ?%s\n    {\n", f.Name, tableFieldTypeName(f))
+		if f.Type.Kind == ir.TString {
+			// A TEXT LIST'S ?string(M) ELEMENT (docs/SPEC-TABLES.md §2.13).
+			g.pf("        if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+			g.pf("        w.header( %s, %d ); // %s\n", g.wireRef(id), tkString, f.Name)
+			g.pf("        w.putleb( (uint64_t) value.%s_length );\n", f.Name)
+			g.pf("        w.raw( value.%s, value.%s_length );\n", f.Name, f.Name)
+			g.pf("    }\n")
+			break
+		}
 		switch {
 		case f.Array != ir.ArrayNone:
 			count := strconv.FormatInt(f.ArrayBound, 10)
@@ -2125,6 +2168,23 @@ func (g *tableGen) emitTableReadElement(f *ir.Field, kind int, ind string) {
 // an ARRAY ARM needs: the elements live in the union overlay rather than in a
 // field of the enclosing table (docs/SPEC-TABLES.md §2.6).
 func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr, sfx string) {
+	if f.IsTextList() && ir.TextListPlain(f) {
+		// A PLAIN TEXT LIST's element is kind 12's payload: its own L and
+		// its bytes, ill-formed text malformed, a length past M clamped at a
+		// code point boundary and counted (§2.13, §3, §4).
+		m := ir.TextListValue(f).Type.Size
+		g.pf("%suint64_t text_len%s = 0;\n", ind, sfx)
+		g.pf("%sif ( !%s.getleb( text_len%s ) || !%s.room( text_len%s ) ) { r.report->malformed = true; break; }\n", ind, rdr, sfx, rdr, sfx)
+		g.pf("%sif ( !TableUtf8Valid( %s.buffer + %s.offset, text_len%s ) ) { r.report->malformed = true; %sReset( %s ); %s.offset += (int64_t) text_len%s; break; }\n", ind, rdr, rdr, sfx, f.Type.Name, dst, rdr, sfx)
+		g.pf("%sint64_t text_keep%s = (int64_t) text_len%s;\n", ind, sfx, sfx)
+		g.pf("%sif ( text_keep%s > %d ) { text_keep%s = TableUtf8Clamp( %s.buffer + %s.offset, text_len%s, %d ); r.report->clamped++; }\n", ind, sfx, m, sfx, rdr, rdr, sfx, m)
+		g.pf("%smemset( %s.value, 0, sizeof( %s.value ) );\n", ind, dst, dst)
+		g.pf("%smemcpy( %s.value, %s.buffer + %s.offset, (size_t) text_keep%s );\n", ind, dst, rdr, rdr, sfx)
+		g.pf("%s%s.value[text_keep%s] = 0;\n", ind, dst, sfx)
+		g.pf("%s%s.value_length = (int32_t) text_keep%s;\n", ind, dst, sfx)
+		g.pf("%s%s.offset += (int64_t) text_len%s;\n", ind, rdr, sfx)
+		return
+	}
 	switch kind {
 	case tkUnion:
 		// AN ELEMENT OF AN ARRAY OF UNIONS IS AN ARM HEADER and carries its own
@@ -2780,8 +2840,15 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	if _, _, ok := ir.TableRawRange(f); ok && ir.TableKindWide(tableScalarKind(f)) {
 		wide = "&" + sp.wideName(f)
 	}
-	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s },\n",
-		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
+	textList := 0
+	if f.IsTextList() {
+		textList = 1
+		if ir.TextListOptional(f) {
+			textList = 2
+		}
+	}
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s },\n",
+		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, textList, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, fracBits, wide, enumMax, enumName, variantId,
 		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)))

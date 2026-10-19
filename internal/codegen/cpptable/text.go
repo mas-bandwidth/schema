@@ -148,3 +148,63 @@ func (g *tableGen) rootReachesStringBlob(root *ir.Struct) bool {
 	}
 	return false
 }
+
+// emitTextListSurfaces emits the bounded text list's accessors (§2.13): TextAt,
+// Append, and for the ? spelling AppendAbsent. The storage is the element
+// record array the list is, so TextAt is a view into it and Append refuses the
+// element past M and the element past N, as Go's does. Bounded lists only;
+// the unbounded spellings are §2.13.1's other card.
+func (g *tableGen) emitTextListSurfaces(members []*ir.Struct) {
+	for _, st := range members {
+		if st.TextElem || !st.IsTable {
+			continue
+		}
+		for _, f := range st.Fields {
+			if !f.IsTextList() || ir.TextListUnbounded(f) {
+				continue
+			}
+			name := st.Name + ir.GoExportName(f.Name)
+			elem := f.Type.Name
+			m := ir.TextListValue(f).Type.Size
+			optional := ir.TextListOptional(f)
+			absent := ""
+			if optional {
+				absent = " || !element.value_present"
+			}
+			g.pf("// %sTextAt is element i of %s.%s (docs/SPEC-TABLES.md §2.13): a view into the\n", name, st.Name, f.Name)
+			g.pf("// storage that allocates nothing, and false past the count%s.\n", map[bool]string{true: " or for an absent element", false: ""}[optional])
+			g.pf("inline bool %sTextAt( const %s & value, int32_t i, char * text, int32_t capacity, int32_t * length, bool * present )\n{\n", name, st.Name)
+			g.pf("    if ( i < 0 || i >= value.%s_count || value.%s_count > %d ) { return false; }\n", f.Name, f.Name, f.ArrayBound)
+			g.pf("    const %s & element = value.%s[i];\n", elem, f.Name)
+			g.pf("    if ( element.value_length < 0 || element.value_length > %d%s ) { return false; }\n", m, absent)
+			g.pf("    if ( capacity < element.value_length ) { return false; }\n")
+			g.pf("    if ( element.value_length > 0 ) { memcpy( text, element.value, (size_t) element.value_length ); }\n")
+			g.pf("    if ( length != NULL ) { *length = element.value_length; }\n")
+			g.pf("    if ( present != NULL ) { *present = %s; }\n", map[bool]string{true: "element.value_present", false: "true"}[optional])
+			g.pf("    return true;\n}\n\n")
+			g.pf("// %sAppend appends one element to %s.%s, false past either bound (docs/SPEC-TABLES.md §2.13).\n", name, st.Name, f.Name)
+			g.pf("inline bool %sAppend( %s & value, const char * text )\n{\n", name, st.Name)
+			g.pf("    const int32_t length = text != NULL ? (int32_t) strlen( text ) : 0;\n")
+			g.pf("    if ( length < 0 || length > %d || !TableUtf8Valid( (const uint8_t *) text, (uint64_t) length ) ) { return false; }\n", m)
+			g.pf("    if ( value.%s_count < 0 || value.%s_count >= %d ) { return false; }\n", f.Name, f.Name, f.ArrayBound)
+			g.pf("    %s & element = value.%s[value.%s_count];\n", elem, f.Name, f.Name)
+			g.pf("    %sReset( element );\n", elem)
+			g.pf("    if ( length > 0 ) { memcpy( element.value, text, (size_t) length ); }\n")
+			g.pf("    element.value[length] = 0;\n")
+			g.pf("    element.value_length = length;\n")
+			if optional {
+				g.pf("    element.value_present = true;\n")
+			}
+			g.pf("    value.%s_count++;\n", f.Name)
+			g.pf("    return true;\n}\n\n")
+			if optional {
+				g.pf("// %sAppendAbsent appends one absent element to %s.%s.\n", name, st.Name, f.Name)
+				g.pf("inline bool %sAppendAbsent( %s & value )\n{\n", name, st.Name)
+				g.pf("    if ( value.%s_count < 0 || value.%s_count >= %d ) { return false; }\n", f.Name, f.Name, f.ArrayBound)
+				g.pf("    %sReset( value.%s[value.%s_count] );\n", elem, f.Name, f.Name)
+				g.pf("    value.%s_count++;\n", f.Name)
+				g.pf("    return true;\n}\n\n")
+			}
+		}
+	}
+}

@@ -842,6 +842,7 @@ inline const char TableDocNone[1] = "";
     const char * type_name; // schema type name, e.g. "float32", "Grade"
     uint64_t id;            // table-wire field id: fnv1a64 of the name, of the was alias after a rename (§5)
     uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
+    uint8_t text_list;      // a TEXT LIST (docs/SPEC-TABLES.md §2.13): 1 string(M) elements, 2 ?string(M); 0 otherwise
     bool is_array;          // fixed or counted array (bytes included)` + pointerFieldMember + `
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
@@ -1592,6 +1593,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			g.emitMessageBodyDeclarations(members)
 			g.emitCodecDeclarations(members)
 			g.emitMapSurfaces(members)
+			g.emitTextListSurfaces(members)
 			if anyVariable {
 				g.emitRetainDeclarations(members)
 			}

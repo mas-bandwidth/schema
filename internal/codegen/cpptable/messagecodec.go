@@ -265,8 +265,16 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 		// PRESENCE is the payload: a present optional always rides, all-default
 		// included (docs/SPEC-TABLES.md §2.3)
 		g.pf("    if ( value.%s_present ) // ?%s\n    {\n", name, tableFieldTypeName(f))
-		g.emitMessageHeader(entry, pass, "        ")
-		g.emitMessagePayload(f, entry, "value."+name, "        ", pass)
+		if f.Type.Kind == ir.TString {
+			// A TEXT LIST'S ?string(M) ELEMENT (docs/SPEC-TABLES.md §2.13): the
+			// present payload is the string field's own length and bytes.
+			g.pf("        if ( value.%s_length < 0 || value.%s_length > %d ) { return %s; } // storage invariant\n", name, name, f.Type.Size, messageBad(pass))
+			g.emitMessageHeader(entry, pass, "        ")
+			g.emitMessageTextPayload(f, entry, "value."+name, fmt.Sprintf("value.%s_length", name), "        ", pass)
+		} else {
+			g.emitMessageHeader(entry, pass, "        ")
+			g.emitMessagePayload(f, entry, "value."+name, "        ", pass)
+		}
 		g.pf("    }\n")
 
 	case f.KeyEnum != "":
@@ -436,6 +444,26 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 		inner = *shape.Inner
 	}
 	loop := fmt.Sprintf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, idx, idx, count, idx, ind)
+	if f.IsTextList() && ir.TextListPlain(f) {
+		// A PLAIN TEXT LIST's elements are kind 12 payloads (docs/SPEC-TABLES.md
+		// §2.13, §3.3): each its own length, align and bytes.
+		m := ir.TextListValue(f).Type.Size
+		width := ir.TableMessageBitsRequired(0, m)
+		if pass == messagePassMeasure {
+			g.pf("%s", loop)
+			g.pf("%s    const int32_t text_len%s = %s.value_length;\n", ind, sfx, elem)
+			g.pf("%s    if ( text_len%s < 0 || text_len%s > %d ) { return -1; }\n", ind, sfx, sfx, m)
+			g.pf("%s    bits += %d;\n%s    bits += TableAlignBits( at + bits );\n%s    bits += (int64_t) text_len%s * 8;\n", ind, width, ind, ind, sfx)
+			g.pf("%s}\n", ind)
+			return
+		}
+		g.pf("%s", loop)
+		g.pf("%s    const int32_t text_len%s = %s.value_length;\n", ind, sfx, elem)
+		g.pf("%s    if ( text_len%s < 0 || text_len%s > %d ) { return false; }\n", ind, sfx, sfx, m)
+		g.pf("%s    w.put( (uint64_t) text_len%s, %d );\n%s    w.align();\n%s    w.putbytes( (const uint8_t *) %s.value, text_len%s );\n", ind, sfx, width, ind, ind, elem, sfx)
+		g.pf("%s}\n", ind)
+		return
+	}
 	switch int(shape.Elem) {
 	case tkNodeIndex:
 		// every element is a node index, null as 0, at the body's index width

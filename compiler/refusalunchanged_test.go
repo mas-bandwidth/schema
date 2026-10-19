@@ -104,6 +104,12 @@ func checkRefusalUnchanged(gen generateFunc, targets []string, p unchangedProbe)
 			continue
 		}
 		if len(b) == 0 {
+			// THE DIFFERENTIAL IS GO'S (§2.13's central refusal, before any
+			// C++ emitter runs): a non-Go carrier has no Go declarations to cut,
+			// so its using unit generating is the whole check.
+			if lang != "go" {
+				continue
+			}
 			errs = append(errs, fmt.Sprintf("%s: target %s: no declaration of %s found in the output", p.construct, lang, strings.Join(p.keep, ", ")))
 		}
 		keys := map[string]bool{}

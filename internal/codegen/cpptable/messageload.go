@@ -172,6 +172,10 @@ func (g *tableGen) emitMessageReadField(f *ir.Field) {
 
 func (g *tableGen) emitMessageReadPayload(f *ir.Field, expr, ind string) {
 	switch {
+	case f.Type.Kind == ir.TString:
+		// A TEXT LIST'S ?string(M) ELEMENT (docs/SPEC-TABLES.md §2.13): the
+		// present payload is the string field's own length and bytes.
+		g.emitMessageReadTextFrom(f, expr, fmt.Sprintf("value.%s_length", f.Name), ind, "entry")
 	case f.Array != ir.ArrayNone:
 		g.emitMessageReadArrayFrom(f, expr, fmt.Sprintf("value.%s_count", f.Name), ind, "entry", false)
 	case tableScalarKind(f) == tkTable:
@@ -302,6 +306,31 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 	defer g.msgLeave()
 	idx := "i" + sfx
 	kind := tableScalarKind(f)
+	if f.IsTextList() && ir.TextListPlain(f) {
+		// A PLAIN TEXT LIST in the message form (docs/SPEC-TABLES.md §2.13,
+		// §3.3): each element is a length, an align and its bytes, held to M
+		// on a code point boundary and to well-formed UTF-8 as the wire holds it.
+		m := ir.TextListValue(f).Type.Size
+		width := fmt.Sprintf("TableBitsRequired( 0, %s.max )", from)
+		g.pf("%s{\n%s    uint64_t n%s = (uint64_t) %s.min;\n", ind, ind, sfx, from)
+		g.pf("%s    const int64_t count_bits%s = TableBitsRequired( %s.min, %s.max );\n", ind, sfx, from, from)
+		g.pf("%s    if ( count_bits%s > 0 )\n%s    {\n", ind, sfx, ind)
+		g.pf("%s        uint64_t raw%s = 0;\n%s        if ( !r.get( raw%s, count_bits%s ) ) { report->malformed = true; return false; }\n", ind, sfx, ind, sfx, sfx)
+		g.pf("%s        n%s = raw%s + (uint64_t) %s.min;\n%s    }\n", ind, sfx, sfx, from, ind)
+		g.pf("%s    int32_t kept%s = 0;\n", ind, sfx)
+		g.pf("%s    if ( n%s > (uint64_t) %d ) { kept%s = %d; report->clamped++; } else { kept%s = (int32_t) n%s; }\n", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)
+		g.pf("%s    for ( uint64_t %s = 0; %s < n%s; %s++ )\n%s    {\n", ind, idx, idx, sfx, idx, ind)
+		g.pf("%s        uint64_t len%s = 0;\n", ind, sfx)
+		g.pf("%s        if ( !r.get( len%s, %s ) || !r.align() || !r.has( (int64_t) len%s * 8 ) ) { report->malformed = true; return false; }\n", ind, sfx, width, sfx)
+		g.pf("%s        const uint8_t * text%s = r.buffer + ( r.offset >> 3 );\n", ind, sfx)
+		g.pf("%s        if ( !TableUtf8Valid( text%s, len%s ) ) { report->malformed = true; return false; }\n", ind, sfx, sfx)
+		g.pf("%s        int32_t take%s = (int32_t) TableUtf8Clamp( text%s, len%s, %d );\n", ind, sfx, sfx, sfx, m)
+		g.pf("%s        if ( (uint64_t) take%s < len%s ) { report->clamped++; }\n", ind, sfx, sfx)
+		g.pf("%s        if ( (int32_t) %s < kept%s ) { memcpy( %s[%s].value, text%s, (size_t) take%s ); %s[%s].value[take%s] = 0; %s[%s].value_length = take%s; }\n", ind, idx, sfx, base, idx, sfx, sfx, base, idx, sfx, base, idx, sfx)
+		g.pf("%s        r.offset += (int64_t) len%s * 8;\n%s    }\n", ind, sfx, ind)
+		g.pf("%s    %s = kept%s;\n%s}\n", ind, count, sfx, ind)
+		return
+	}
 	fixedSurplus := !f.Type.Pointer && kind != tkTable && kind != tkEnum && kind != tkUnion
 	g.pf("%s{\n%s    uint64_t n%s = (uint64_t) %s.min;\n", ind, ind, sfx, from)
 	g.pf("%s    const int64_t count_bits%s = TableBitsRequired( %s.min, %s.max );\n", ind, sfx, from, from)
