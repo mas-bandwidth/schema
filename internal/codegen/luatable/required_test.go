@@ -14,10 +14,11 @@ import (
 // required field, so it rides even at its default; the tolerant reader counts
 // a missing required field as MissingRequired and names it in the reason, and
 // refuses the whole record at any depth; a required field inside an `if`
-// guard is demanded only while the guard holds; and a required field whose
-// range excludes zero takes no default, so an older record that never carried
-// it is missing_required on read. Each expectation matches the generated Go
-// (internal/codegen/gotable/required*.go) for the same unit.
+// guard or a union arm is demanded only while the guard holds or the arm is on;
+// and a required field whose range excludes zero takes no default, so an older
+// record that never carried it is missing_required on read. Every expectation
+// and every resave matches the generated Go (internal/codegen/gotable/
+// required*.go) for the same unit.
 func TestLuaRequiredBinaryReadAndSave(t *testing.T) {
 	t.Parallel()
 	const schema = `package probe
@@ -77,6 +78,24 @@ table Other
 {
     ver uint8
 }
+union Pick
+{
+    kid Kid
+}
+union OldPick
+{
+    kid OldKid
+}
+table HasPick
+{
+    pid int32
+    pick Pick
+}
+table OldHasPick
+{
+    pid int32
+    pick OldPick
+}
 `
 	dir := t.TempDir()
 	sf := filepath.Join(dir, "req.schema")
@@ -96,6 +115,13 @@ local function rep() return { malformed = false, refused = 0, unknown = 0, kindM
 local function line(label, r, v)
   print(string.format("%s %d|%s|%s", label, r.missingRequired or 0, r.reason or "-", v == nil and "nil" or "read"))
 end
+-- resave pins the round trip (§16.2): a clean load re-saved equals the wire
+-- it came from, because a required field always rides.
+local function resave(label, target, w, v)
+  if v == nil then return end
+  local w2 = save.Save(T, target, v)
+  print(string.format("resave_%s %s", label, tostring(w2 == w)))
+end
 -- A: an older record (before b was required) lacks b: refused, naming b.
 do
   local lg = T.NewLegacy(); lg.a = 5
@@ -103,7 +129,8 @@ do
   local r = rep(); local v = load.Load(T, "Cur", w, r)
   line("root_missing", r, v)
 end
--- B: a required field rides at its default, and a clean record reads back.
+-- B: a required field rides at its default, and a clean record reads back and
+-- resaves byte-for-byte.
 do
   local c = T.NewCur(); c.a = 5
   local w = save.Save(T, "Cur", c)
@@ -111,6 +138,7 @@ do
   local wl = save.Save(T, "Legacy", lg)
   local r = rep(); local v = load.Load(T, "Cur", w, r)
   print(string.format("rides %d|%s|%s|%s", r.missingRequired or 0, tostring(#w > #wl), tostring(v ~= nil), tostring(v ~= nil and v.b == 0)))
+  resave("rides", "Cur", w, v)
 end
 -- C: a required field in an off guard is not demanded; on and missing is.
 do
@@ -118,6 +146,7 @@ do
   local w = save.Save(T, "G", g)
   local r = rep(); local v = load.Load(T, "G", w, r)
   line("off_guard", r, v)
+  resave("off_guard", "G", w, v)
 end
 do
   local gl = T.NewGLegacy(); gl.active = true; gl.x = 5
@@ -146,6 +175,21 @@ do
   local w = save.Save(T, "Other", oh)
   local r = rep(); local v = load.Load(T, "Other", w, r)
   line("other_clean", r, v)
+  resave("other_clean", "Other", w, v)
+end
+-- F: a required field inside a union arm is demanded only while the arm is on.
+do
+  local hp = T.NewHasPick(); hp.pid = 1; hp.pick = { tag = 0 }
+  local w = save.Save(T, "HasPick", hp)
+  local r = rep(); local v = load.Load(T, "HasPick", w, r)
+  line("union_arm_off", r, v)
+  resave("union_arm_off", "HasPick", w, v)
+end
+do
+  local oh = T.NewOldHasPick(); oh.pid = 1; oh.pick = { tag = 1, kid = { y = 2 } }
+  local w = save.Save(T, "OldHasPick", oh)
+  local r = rep(); local v = load.Load(T, "HasPick", w, r)
+  line("union_arm_on_missing", r, v)
 end
 `
 	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(main), 0o644); err != nil {
@@ -154,11 +198,17 @@ end
 	got := strings.TrimRight(string(luarun.Run(t, dir, "main.lua", nil)), "\n")
 	want := `root_missing 1|missing_required: b|nil
 rides 0|true|true|true
+resave_rides true
 off_guard 0|-|read
+resave_off_guard true
 on_guard_missing 1|missing_required: req|nil
 nested_missing 1|missing_required: x|nil
 nodefault_missing 1|missing_required: ver|nil
-other_clean 0|-|read`
+other_clean 0|-|read
+resave_other_clean true
+union_arm_off 0|-|read
+resave_union_arm_off true
+union_arm_on_missing 1|missing_required: x|nil`
 	if got != want {
 		t.Errorf("lua required behavior:\ngot:\n%s\nwant:\n%s", got, want)
 	}

@@ -463,10 +463,12 @@ write_field = function(T, ids, nodes, fd, v, w)
   elseif s == "string_blob" or s == "bytes_blob" then
     -- A BLOB SLOT NAMES ITS NODE (§3.1, §6.3): the index the numbering gave the
     -- node's own box, never its content and never the slot that names it.
-    if x ~= nil and x ~= false then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x] or 0) end
+    -- A required blob rides even at nil, as the null node (§2.3, gotable
+    -- write.go's pointer case).
+    if (x ~= nil and x ~= false) or fd.required then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x] or 0) end
   elseif s == "union" then
     local tag = x and x.tag or 0
-    if tag ~= 0 then
+    if tag ~= 0 or fd.required then
       local u = T.Unions[fd.target]
       if u == nil then return false end
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, 15)
@@ -503,7 +505,7 @@ write_field = function(T, ids, nodes, fd, v, w)
           id_rollback(ids, emark)
         end
       end
-      if count == 0 and not fd.optional then id_rollback(ids, mark); return true end
+      if count == 0 and not fd.optional and not fd.required then id_rollback(ids, mark); return true end
       w_leb(outer, count); w_raw(outer, table.concat(entries.parts))
       w_leb(w, ref); w_u8(w, fd.kind); w_leb(w, outer.n); w_raw(w, table.concat(outer.parts))
     else
@@ -555,7 +557,7 @@ write_field = function(T, ids, nodes, fd, v, w)
   elseif s == "map" then
     local n = 0
     for _ in pairs(x or {}) do n = n + 1 end
-    if n == 0 and not fd.optional then return true end
+    if n == 0 and not fd.optional and not fd.required then return true end
     w_leb(w, id_ref(ids, fd.id)); w_u8(w, 14)
     local body = W()
     w_u8(body, fd.elem_kind or 13); w_leb(body, n)
