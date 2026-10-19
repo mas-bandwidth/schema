@@ -605,6 +605,25 @@ Four spellings are Dart's own and the reason is at each site.
   region, and the read after an escaping delta would be a RangeError. A reader
   that RAISES on hostile bytes is not one that REFUSES them, so a delta leaving
   the region answers `TableCookRef.outside`.
+- **THE WEB TARGET: EXACT TO 2^53 - 1, REFUSED PAST IT, NEVER ROUNDED.** Under
+  dart2js an `int` is an IEEE 754 double, exact only on
+  `[-(2^53 - 1), 2^53 - 1]`, and `<<`, `>>`, `>>>`, `&` and `|` are 32-bit
+  operators: a shift of 32 or more, or a bit operation on a value past 2^32,
+  silently loses the high bits. So every 64-bit integer the variable form
+  (form 1) reads or writes is assembled from its two 32-bit words by exact
+  arithmetic (multiplication and division by 2^32, a LEB128 group added at its
+  power of 128), never by a shift of 32 or more, and the Dart VM's bytes and
+  values are unchanged by that spelling. A value outside the exact range is
+  REFUSED on the web, never rounded: a union arm or arm element of 8 bytes sets
+  the reader report's `refused` and keeps its default, and a LEB128 count or a
+  retained id or length past it is framing the web reader cannot read (the
+  VM keeps all 64 bits). The fixed form's float32 widening lays its f64 as two
+  32-bit words for the same reason. The fixed, block, cook and packet forms
+  still read and write through `getUint64`/`setUint64` and `Uint64List`, which
+  dart2js refuses at run time by name (`UnsupportedError`); they are VM forms
+  until each is carried, and no value is silently corrupted on the way. Pinned
+  by `TestDartEmittedSitesAreWebExact` and the runtime lane of
+  `make tables-dart-vm-dart2js-differential`.
 
 Its LAYOUT CONTRACT has no second model to check against: C# asserts its
 blittable struct against the CLR's layout because two models must agree, and
