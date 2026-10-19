@@ -1731,6 +1731,10 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			for _, st := range members {
 				g.emitJsonDeclarations(st)
 			}
+			g.pf("// ---- the §16.8 text carrier: canonical standard-alphabet text ----\n\n")
+			for _, st := range members {
+				g.emitBase64TextDeclarations(st)
+			}
 			g.pf("// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----\n\n")
 			for _, st := range members {
 				g.emitTextFormDeclarations(st)
@@ -1891,6 +1895,9 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 				includes: map[string]bool{}, nativeIncludes: map[string]bool{}, idOrdinal: idOrdinal}
 			for _, st := range members {
 				cg.emitJsonDefinitions(st)
+			}
+			for _, st := range members {
+				cg.emitBase64TextDefinitions(st)
 			}
 			for _, st := range members {
 				cg.emitTextFormDefinitions(st)

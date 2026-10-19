@@ -13009,6 +13009,74 @@ bool TablePickupEventFromJson( TablePickupEvent & value, const char * text, int6
 int64_t TablePickupEventToJsonMeasure( const TablePickupEvent & value );
 int64_t TablePickupEventToJson( const TablePickupEvent & value, char * buffer, int64_t capacity );
 
+// ---- the §16.8 text carrier: canonical standard-alphabet text ----
+
+// TableEntitySaveText writes the canonical standard-alphabet encoding of TableEntity's binary wire
+// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first, so the text
+// keeps the form byte, the framing check and every versioning guarantee.
+int64_t TableEntitySaveText( const TableEntity & value, char * text, int64_t capacity );
+// TableEntityLoadText fills one TableEntity from a canonical standard-alphabet wire text
+// (docs/SPEC-TABLES.md §16.8). It is the STRICT read (§6.5): it refuses a
+// malformed, clamped or kind-mismatched read, and a supplied report receives
+// THIS read's report. A refusal names itself in *refusal: base64_damaged,
+// base64_not_canonical, or the binary read's own refusal.
+bool TableEntityLoadText( const char * text, int64_t bytes, TableEntity & value, TableReport * report = NULL, const char ** refusal = NULL );
+
+// TableStatSaveText writes the canonical standard-alphabet encoding of TableStat's binary wire
+// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first, so the text
+// keeps the form byte, the framing check and every versioning guarantee.
+int64_t TableStatSaveText( const TableStat & value, char * text, int64_t capacity );
+// TableStatLoadText fills one TableStat from a canonical standard-alphabet wire text
+// (docs/SPEC-TABLES.md §16.8). It is the STRICT read (§6.5): it refuses a
+// malformed, clamped or kind-mismatched read, and a supplied report receives
+// THIS read's report. A refusal names itself in *refusal: base64_damaged,
+// base64_not_canonical, or the binary read's own refusal.
+bool TableStatLoadText( const char * text, int64_t bytes, TableStat & value, TableReport * report = NULL, const char ** refusal = NULL );
+
+// TableMixedSaveText writes the canonical standard-alphabet encoding of TableMixed's binary wire
+// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first, so the text
+// keeps the form byte, the framing check and every versioning guarantee.
+int64_t TableMixedSaveText( const TableMixed & value, char * text, int64_t capacity );
+// TableMixedLoadText fills one TableMixed from a canonical standard-alphabet wire text
+// (docs/SPEC-TABLES.md §16.8). It is the STRICT read (§6.5): it refuses a
+// malformed, clamped or kind-mismatched read, and a supplied report receives
+// THIS read's report. A refusal names itself in *refusal: base64_damaged,
+// base64_not_canonical, or the binary read's own refusal.
+bool TableMixedLoadText( const char * text, int64_t bytes, TableMixed & value, TableReport * report = NULL, const char ** refusal = NULL );
+
+// TableHitEventSaveText writes the canonical standard-alphabet encoding of TableHitEvent's binary wire
+// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first, so the text
+// keeps the form byte, the framing check and every versioning guarantee.
+int64_t TableHitEventSaveText( const TableHitEvent & value, char * text, int64_t capacity );
+// TableHitEventLoadText fills one TableHitEvent from a canonical standard-alphabet wire text
+// (docs/SPEC-TABLES.md §16.8). It is the STRICT read (§6.5): it refuses a
+// malformed, clamped or kind-mismatched read, and a supplied report receives
+// THIS read's report. A refusal names itself in *refusal: base64_damaged,
+// base64_not_canonical, or the binary read's own refusal.
+bool TableHitEventLoadText( const char * text, int64_t bytes, TableHitEvent & value, TableReport * report = NULL, const char ** refusal = NULL );
+
+// TableChatEventSaveText writes the canonical standard-alphabet encoding of TableChatEvent's binary wire
+// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first, so the text
+// keeps the form byte, the framing check and every versioning guarantee.
+int64_t TableChatEventSaveText( const TableChatEvent & value, char * text, int64_t capacity );
+// TableChatEventLoadText fills one TableChatEvent from a canonical standard-alphabet wire text
+// (docs/SPEC-TABLES.md §16.8). It is the STRICT read (§6.5): it refuses a
+// malformed, clamped or kind-mismatched read, and a supplied report receives
+// THIS read's report. A refusal names itself in *refusal: base64_damaged,
+// base64_not_canonical, or the binary read's own refusal.
+bool TableChatEventLoadText( const char * text, int64_t bytes, TableChatEvent & value, TableReport * report = NULL, const char ** refusal = NULL );
+
+// TablePickupEventSaveText writes the canonical standard-alphabet encoding of TablePickupEvent's binary wire
+// (docs/SPEC-TABLES.md §16.8): the whole file, form byte first, so the text
+// keeps the form byte, the framing check and every versioning guarantee.
+int64_t TablePickupEventSaveText( const TablePickupEvent & value, char * text, int64_t capacity );
+// TablePickupEventLoadText fills one TablePickupEvent from a canonical standard-alphabet wire text
+// (docs/SPEC-TABLES.md §16.8). It is the STRICT read (§6.5): it refuses a
+// malformed, clamped or kind-mismatched read, and a supplied report receives
+// THIS read's report. A refusal names itself in *refusal: base64_damaged,
+// base64_not_canonical, or the binary read's own refusal.
+bool TablePickupEventLoadText( const char * text, int64_t bytes, TablePickupEvent & value, TableReport * report = NULL, const char ** refusal = NULL );
+
 // ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----
 
 // TableEntityLoadTextForm reads one TableEntity from the hand-editable text form
