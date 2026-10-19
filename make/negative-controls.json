@@ -648,6 +648,10 @@
     {
       "target": "tables-c-big-endian-negative-control",
       "reason": "the C twin of tables-big-endian-negative-control: ci.yml's big-endian job runs it on every pull request already, after the C++ put16 control. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. Issue #684 owns the job's budget, so the control is named here rather than placed in a group."
+    },
+    {
+      "target": "schema-lua-fuzz-negative-control",
+      "reason": "the planted-bad-pattern control for the Lua port's nightly fuzz lane. It runs on the lane's own fast job (push and pull request) in .github/workflows/schema-lua-nightly-fuzz.yml (make schema-lua-fuzz-negative-control), and that job builds the port's pinned Lua 5.4.8 with make dist-lua from www.lua.org at the sha256 make/lua.mk names; the shared negative-control leg has no Lua toolchain to run it. The friction target's oracle needs the generated Lua readers and the seeded mutation run, so it stays on the lane's own bench rather than the base row."
     }
   ]
 }
