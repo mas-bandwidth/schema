@@ -293,6 +293,17 @@ func (g *tableGen) emitCookWriteField(st *ir.Struct, f *ir.Field, offset int64) 
 // in a member of the record (docs/SPEC-TABLES.md §2.6), and its pieces sit at
 // the arms' shared offset.
 func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64, name, base, sfx string) {
+	pieces := ir.FieldPieces(g.unit, f, offset)
+	if len(pieces) == 0 {
+		return
+	}
+	value := pieces[0]
+	if f.Type.Optional {
+		// the presence companion is the LAST piece, and it is a slot the other
+		// side reads (§20.2's `optional=true`)
+		p := pieces[len(pieces)-1]
+		g.pf("    table_cook_put( %s + %d, (uint64_t) ( %s_present ? 1 : 0 ), 1, order ); // ?T's presence companion\n", base, p.Offset, name)
+	}
 	if f.IsMap() || f.IsList() {
 		// THE SLOT IS THE EXTENT WRITER'S (docs/SPEC-TABLES.md §2.8, §2.9): the
 		// reference is a delta to an array this record's own extent holds, and
@@ -304,16 +315,9 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 		g.pf("    table_cook_put( %s + %d, 0, 4, order ); // and its count\n", base, offset+8)
 		return
 	}
-	pieces := ir.FieldPieces(g.unit, f, offset)
-	if len(pieces) == 0 {
-		return
-	}
-	value := pieces[0]
 	if f.Type.Optional {
-		// the presence companion is the LAST piece, and it is a slot the other
-		// side reads (§20.2's `optional=true`)
-		p := pieces[len(pieces)-1]
-		g.pf("    table_cook_put( %s + %d, (uint64_t) ( %s_present ? 1 : 0 ), 1, order ); // ?T's presence companion\n", base, p.Offset, name)
+		g.pf("    if ( %s_present )\n    {\n", name)
+		defer func() { g.pf("    }\n") }()
 	}
 	switch {
 	case f.Type.Blob():

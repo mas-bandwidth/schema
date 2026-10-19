@@ -206,28 +206,33 @@ func (g *tableGen) emitExtentWalk(st *ir.Struct, base edgeVisitor, v extentVisit
 	ev := base
 	ev.owner = st
 	for _, f := range st.Fields {
-		if f.IsMap() {
-			v.mapField(f, g.fieldExpr(ev, f), "    ")
+		edge := g.edgeOf(f)
+		ref, _ := f.Type.Ref.(*ir.Struct)
+		walk := f.IsMap() || f.IsList() ||
+			edge == edgeNested && ref != nil && g.hasExtent(ref) ||
+			edge == edgeArm && g.unionHasExtent(f.Type.Ref.(*ir.Union), map[*ir.Union]bool{})
+		if !walk {
 			continue
 		}
-		if f.IsList() {
-			v.listField(f, g.fieldExpr(ev, f), "    ")
-			continue
+		ind := "    "
+		if f.Type.Optional {
+			g.pf("    if ( %s.%s_present )\n    {\n", ev.read, f.Name)
+			ind = "        "
 		}
-		switch g.edgeOf(f) {
-		case edgeNested:
-			ref, _ := f.Type.Ref.(*ir.Struct)
-			if ref == nil || !g.hasExtent(ref) {
-				continue
-			}
+		switch {
+		case f.IsMap():
+			v.mapField(f, g.fieldExpr(ev, f), ind)
+		case f.IsList():
+			v.listField(f, g.fieldExpr(ev, f), ind)
+		case edge == edgeNested:
 			g.emitVariableByValueWalk(f, ev, func(expr edgeExpr) { v.descend(f.Type.Name, expr, "        ") })
 			g.emitUnreachedExtentRefusal(f, ref, ev.read)
-		case edgeArm:
-			if !g.unionHasExtent(f.Type.Ref.(*ir.Union), map[*ir.Union]bool{}) {
-				continue
-			}
+		case edge == edgeArm:
 			g.emitVariableUnionWalk(f, g.extentArmVisitor(ev, v))
 			g.emitUnreachedUnionExtentRefusal(f, ev)
+		}
+		if f.Type.Optional {
+			g.pf("    }\n")
 		}
 	}
 }

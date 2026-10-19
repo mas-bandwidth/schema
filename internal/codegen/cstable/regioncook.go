@@ -32,6 +32,7 @@ const tableRegionCookSource = `
     { foreach(TableFieldInfo f in type.Fields) { if(!RegionExtentSize(value,f,ref at)) { return false; } } return true; }
     static bool RegionExtentSize(NativeValue value,TableFieldInfo f,ref long at)
     {
+        if(f.Optional&&!value.Present(f)) { return true; }
         int n=f.IsArray?RegionCount(value,f):1;
         if(n<0 || f.IsArray && n>f.ArrayBound) { return false; }
         if(f.Dynamic) { at=checked(Align(at,f.StorageAlign)+(long)n*f.NativeElementSize); }
@@ -54,6 +55,7 @@ const tableRegionCookSource = `
     {
         long at=record+f.NativeOffset;
         if(f.Optional) { w.Put(record+f.NativePresentOffset,value.Present(f)?1u:0u,1); }
+        if(f.Optional&&!value.Present(f)) { return true; }
         int live=f.Counted?value.Count(f):f.IsArray?f.ArrayBound:1;
         if(live<0 || f.Counted && live>f.ArrayBound) { return false; }
         if(f.NativeCountOffset>=0) { w.Put(record+f.NativeCountOffset,(uint)live,4); }

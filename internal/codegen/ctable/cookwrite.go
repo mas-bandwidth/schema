@@ -173,15 +173,21 @@ func (g *tableGen) emitCookWriteSurface(members []*ir.Struct) {
 }
 
 func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind string, step *int) {
-	if f.IsMap() || f.IsList() {
-		return
-	} // zero until the extent writer places the array
 	pieces := ir.FieldPieces(g.unit, f, offset)
 	if len(pieces) == 0 {
 		return
 	}
 	if f.Type.Optional {
 		g.pf("%stable_cook_put(%s+%d,%s_present ? 1 : 0,1,order);\n", ind, at, pieces[len(pieces)-1].Offset-offset, src)
+	}
+	if f.IsMap() || f.IsList() {
+		return
+	} // zero until the extent writer places the array
+	if f.Type.Optional {
+		outer := ind
+		g.pf("%sif(%s_present) {\n", ind, src)
+		ind += "    "
+		defer func() { g.pf("%s}\n", outer) }()
 	}
 	if f.Array != ir.ArrayNone {
 		*step++
@@ -254,6 +260,12 @@ func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind stri
 func (g *tableGen) cookExtentField(f *ir.Field, src, dst, ind string, step *int) {
 	if !g.cookFieldExtent(f) {
 		return
+	}
+	if f.Type.Optional {
+		outer := ind
+		g.pf("%sif(%s_present) {\n", ind, src)
+		ind += "    "
+		defer func() { g.pf("%s}\n", outer) }()
 	}
 	*step++
 	label := fmt.Sprintf("cook_extent%d", *step)
