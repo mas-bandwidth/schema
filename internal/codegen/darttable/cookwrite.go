@@ -406,7 +406,7 @@ func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 		// refused by name.
 		for _, f := range rs.Fields {
 			if f.Guard != "" && !guardedCookField(f) {
-				why = fmt.Sprintf("%s.%s is guarded and holds a reference or a record, whose numbering under a false guard this writer does not carry yet (docs/SPEC-TABLES.md §3.1, §7.6)", name, f.Name)
+				why = fmt.Sprintf("%s.%s is guarded and holds a blob, whose numbering under a false guard this writer does not carry yet (docs/SPEC-TABLES.md §3.1, §7.6)", name, f.Name)
 				break
 			}
 			if un := unionRef(f); un != nil {
@@ -562,7 +562,7 @@ func (g *cookGen) emitCookVariableRecord(name string) {
 	// a guarded reference field can check whether its guard holds (§2, §3.1).
 	guardMember := map[string]string{}
 	for _, fl := range ml.Fields {
-		if fl.Field.Type.Kind == ir.TBool && fl.Field.Guard == "" && fl.Field.Array == ir.ArrayNone {
+		if fl.Field.Type.Kind == ir.TBool && fl.Field.Array == ir.ArrayNone {
 			guardMember[fl.Field.Name] = "value." + fieldMember(fl.Field)
 		}
 	}

@@ -13,6 +13,7 @@ package darttable
 // The driver and cookEveryFamilies registry live in cookwrite_every_test.go;
 // this card only appends its families here, never another card's.
 import (
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -50,6 +51,8 @@ import 'ProbeCook.dart' as c;
 String hex(Uint8List b,int length)=>b.take(length).map((v)=>v.toRadixString(16).padLeft(2,'0')).join();
 void main(){
  final target=w.RefTarget()..v=5;
+ final bad=w.Root()..on=true..off=false..live=target..dead=w.RefTarget();
+ if(c.RootCook.cook(bad,Uint8List(64),Endian.little)) throw StateError('expected clear-guard ref refusal');
  final value=w.Root()..on=true..off=false..live=target;
  final size=c.RootCook.cookMeasure(value);
  for(final order in [Endian.little,Endian.big]){
@@ -128,4 +131,20 @@ func cookEveryGuardedRecordMutate(t *testing.T, m *tabletext.Model, v *tabletext
 	dead := guardedField(t, v, "dead").Cell.Tab
 	guardedField(t, dead, "id").Cell.U = 9
 	guardedText(guardedField(t, dead, "tag"), "xx")
+}
+
+// TestCookWriteGuardedNestedRefusalEmit pins that a nested guard term naming a
+// guarded bool field is included in guardedRefCheck's refusal condition (§2, §3.1).
+func TestCookWriteGuardedNestedRefusalEmit(t *testing.T) {
+	t.Parallel()
+	fu := unitFrom(t, "package probe\ntable Node { v int32 }\ntable Root {\n  atRest bool\n  if atRest {\n    mid bool\n    if mid { live *Node }\n  }\n}\n")
+	tables, err := Generate(fu)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookSrc := string(tables["ProbeCook.dart"])
+	want := "if (value.live != null && !(value.atRest==true && value.mid==true)) return false;"
+	if !strings.Contains(cookSrc, want) {
+		t.Fatalf("ProbeCook.dart missing nested guard refusal %q in:\n%s", want, cookSrc)
+	}
 }
