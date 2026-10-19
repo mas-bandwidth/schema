@@ -97,10 +97,19 @@ func TestSchemaElixirRunsHostileCorpusWiring(t *testing.T) {
 		t.Fatalf("the card's workflow is missing: %v", err)
 	}
 	workflowText := string(workflow)
-	for _, want := range []string{"push:", "pull_request:", "schedule:", "workflow_dispatch:"} {
+	for _, want := range []string{
+		"push:",
+		"pull_request:",
+		"schedule:",
+		"workflow_dispatch:",
+		"runs-on: [self-hosted, linux, x64, schema]",
+	} {
 		if !strings.Contains(workflowText, want) {
 			t.Errorf("the workflow does not carry %q", want)
 		}
+	}
+	if strings.Contains(workflowText, "runs-on: ubuntu-latest") {
+		t.Error("the workflow runs on a GitHub-hosted runner; every CI job is on the fleet")
 	}
 	if !strings.Contains(workflowText, "schema-elixir-runs-hostile-corpus-negative-control") {
 		t.Error("the workflow does not run the planted-bad-pattern control")
