@@ -184,15 +184,21 @@ local function scan_unit(inp)
   return unit, false, true
 end
 
--- ONE JSON string into bytes, clamped at cap bytes (cap < 0 unbounded)
+-- ONE JSON string into bytes, clamped at cap bytes (cap < 0 unbounded). A
+-- fourth truth is returned when a BOUNDED body carried a U+0000 unit — the
+-- \u0000 escape into text storage §16.3 refuses as text_holds_zero — so the
+-- caller that places the value can name the field; callers that only scan
+-- (keys, skipped values) ignore it, because a zero that never lands in a
+-- bounded text field is not the event.
 local function scan_string(inp, cap)
   if peek(inp) ~= '"' then inp.bad = true; return nil, false, false end
   inp.p = inp.p + 1
-  local out, n, clamped = {}, 0, false
+  local out, n, clamped, nul = {}, 0, false, false
   while true do
     local unit, done, ok = scan_unit(inp)
-    if not ok then return nil, false, false end
+    if not ok then return nil, false, false, false end
     if done then break end
+    if cap >= 0 and unit == "\0" then nul = true end
     if clamped or (cap >= 0 and n + #unit > cap) then
       clamped = true
     else
@@ -200,7 +206,7 @@ local function scan_string(inp, cap)
       n = n + #unit
     end
   end
-  return table.concat(out), clamped, true
+  return table.concat(out), clamped, true, nul
 end
 
 -- ONE JSON string into UTF-16 code units, clamped at cap units (§16.2)
@@ -948,8 +954,15 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
   if s == "pointer" then
     return read_pointer(T, d, inp, holder, key, depth, graph, report)
   elseif s == "string" then
-    local out, clamped, ok = scan_string(inp, d.bound)
+    local out, clamped, ok, nul = scan_string(inp, d.bound)
     if not ok then return false end
+    if nul then
+      -- §16.3: a JSON text that lands U+0000 in bounded text storage is
+      -- refused as text_holds_zero, naming the innermost field.
+      report.Reason = "text_holds_zero: " .. d.name
+      inp.bad = true
+      return false
+    end
     if clamped then report.clamped = report.clamped + 1 end
     holder[key] = out
     return true
