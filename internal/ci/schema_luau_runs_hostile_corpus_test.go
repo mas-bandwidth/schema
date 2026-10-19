@@ -230,8 +230,10 @@ local T = setmetatable({}, { __index = function(_, k) error("no module declares 
 	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 end
 local function nn(x: any): string
+	-- the engine's damaged is a read that reports a malformed or wire-damaged
+	-- event without naming a refusal (docs/HOSTILE-CORPUS.md, "Reasons").
 	if x == nil or x == "" then return "damaged" end
-	if x == "wire_damaged" then return "damaged" end
+	if x == "wire_damaged" or x == "malformed" then return "damaged" end
 	return tostring(x)
 end
 local function hexstr(buf: buffer): string
@@ -315,15 +317,16 @@ for _, c in CASES do
 		elseif n ~= 1 then
 			verdict, reason = "refuse", "damaged"
 		else
-			-- message.luau hands back bodies, not a decoded instance; a
-			-- consumer's body decode is a later card, so name the gap rather
-			-- than forge a digest.
+			-- message.luau hands back the bodies as bit ranges with no id
+			-- table or framing, so it cannot hand one back as an instance the
+			-- canonical writer takes (a later card). Name the gap rather than
+			-- forge a digest.
 			dig = "message-body-undecoded"
 		end
 	else
 		error("unknown carrier " .. c.carrier)
 	end
-	if verdict == "accept" and c.carrier ~= "message" and c.carrier ~= "message_novocab" then
+	if verdict == "accept" and v ~= nil then
 		dig = digest(c.root, v)
 	end
 	return verdict, reason, dig

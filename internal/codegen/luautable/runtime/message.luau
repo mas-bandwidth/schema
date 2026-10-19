@@ -262,7 +262,7 @@ end
 -- TWO STRICT CHECKS"; a refusal is terminal and a second is
 -- `second_announcement`).
 function M.NewVocabulary(): any
-	return { entries = {}, count = 0, refBits = 1, buildVersion = 0i, announced = false, refused = false, maxBytes = 65536 }
+	return { entries = {}, count = 0, refBits = 1, buildVersion = 0i, announced = false, refused = false, maxBytes = 65536, maxEntries = 0 }
 end
 
 local function refuse(report: any, why: string): boolean
@@ -338,6 +338,12 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 		if w.bad then report.malformed = true; return false end
 		n = n + 1
 		entries[n] = e
+	end
+	-- the entry bound is the receiver's second declared bound (§3.3): an
+	-- announcement past it is refused by name before the vocabulary is set,
+	-- exactly as the byte bound above is. Zero is the conforming default.
+	if (v.maxEntries or 0) > 0 and n > v.maxEntries then
+		return refuse(report, "vocabulary_too_large")
 	end
 	v.entries = entries
 	v.count = n
