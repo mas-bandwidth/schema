@@ -112,12 +112,21 @@ local function r_f64(r: any): number
 	return v
 end
 
--- a float32 rides by its bits and never through a conversion (§4.3, M21)
+-- a float32 rides by its bits and never through a conversion (§4.3, M21):
+-- a NaN is widened by bit surgery, so a signalling one keeps its payload and
+-- clear quiet bit instead of being quieted by the hardware conversion
+-- (docs/SPEC-TABLES.md §3.3, a plain float's special values)
 local function r_f32bits(r: any): number
 	if r.at + 4 > r.e then r.bad = true; return 0.0 end
 	local bits = buffer.readu32(r.b, r.at)
 	r.at = r.at + 4
-	local f = buffer.create(4)
+	local f = buffer.create(8)
+	if bit32.band(bits, 0x7F800000) == 0x7F800000 and bit32.band(bits, 0x007FFFFF) ~= 0 then
+		local payload = bit32.band(bits, 0x007FFFFF)
+		buffer.writeu32(f, 0, bit32.lshift(bit32.band(payload, 7), 29))
+		buffer.writeu32(f, 4, bit32.bor(bit32.band(bits, 0x80000000), 0x7FF00000, bit32.rshift(payload, 3)))
+		return buffer.readf64(f, 0)
+	end
 	buffer.writeu32(f, 0, bits)
 	return buffer.readf32(f, 0)
 end
@@ -397,6 +406,12 @@ local function scalar_at(r: any, fd: any, kind: number, report: any): any
 			x = r_int128(r)
 		end
 	else report.malformed = true; return nil end
+	-- A PLAIN FLOAT'S NaN or infinity lands as its pattern and moves no
+	-- counter; the read NAMES it so the strict read refuses it as non_finite
+	-- (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL VALUES"; §6.5).
+	if fd.s == "float" and fd.lo == nil and (x ~= x or x - x ~= 0) then
+		report.nonFinite = (report.nonFinite or 0) + 1
+	end
 	-- §4: a narrower value widens into this declaration's domain
 	if fd.dom == "integer" and typeof(x) == "number" then x = integer.create(x) end
 	local lo, hi = fd.lo, fd.hi
