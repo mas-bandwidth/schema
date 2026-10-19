@@ -10,6 +10,8 @@ import { MaxBlockSize, MaxChatLength } from "./Constants.js";
 // realm, always consumed in the same call that fills them.
 /** @type {{value: number}} */
 const NUMBER_SCRATCH = { value: 0 };
+/** @returns {number} */
+function numberScratchValue() { return NUMBER_SCRATCH.value; }
 /** @type {{value: bigint}} */
 const BIGINT_SCRATCH = { value: 0n };
 /** @type {{value: boolean}} */
@@ -188,7 +190,7 @@ export function ReadProbeHeader(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (NUMBER_SCRATCH.value !== 0) { // reserved(5): a read rejects nonzero (SPEC §4.3)
+  if (numberScratchValue() !== 0) { // reserved(5): a read rejects nonzero (SPEC §4.3)
     return false;
   }
   if (!stream.serializeAlign()) { // rejects nonzero padding (SPEC §4.3)
