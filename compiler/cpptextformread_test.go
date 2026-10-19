@@ -1,9 +1,11 @@
 package compiler
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -12,11 +14,9 @@ import (
 // DOCUMENT read (docs/SPEC-TABLES.md §16.9.1 grammar and identity, §16.9.2
 // mapping field kind by field kind). The schema is the conformance corpus's
 // own contract (test/conformance/textform/contract.json) declared (§16.4 for
-// the aliased names), with exactly the rows this C++ build cannot yet carry
-// removed: timestamp (the cpp target refuses the kind until its own card,
-// cpp-carries-timestamp-on-the-binary-forms) and the int128/uint128/fixed
-// rows (their generated storage is serialize.h's sibling, not staged here).
-// Every expected value is the one Go pins in
+// the aliased names), with only the timestamp row removed: the cpp target
+// still refuses that kind at compiler/generate.go:101, until its own card
+// cpp-carries-timestamp-on-the-binary-forms. Every expected value is the one Go pins in
 // internal/codegen/gotable/textform_test.go TestDocumentVectors for the same
 // schema text and the same input bytes (kinds.value.json). This port computes
 // no expectation of its own; the refusals assert §16.9.4's stable names
@@ -72,28 +72,102 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 		return main, strings.TrimSuffix(main, ".cpp")
 	}
 
-	text, err := os.ReadFile(filepath.Join("..", "test", "conformance", "textform", "kinds.input.sexp"))
+	// A STUB OR THE SIBLING serialize HEADER. A fixed-point field or a 128-bit
+	// integer makes the generated header name serialize::int128_t/uint128_t
+	// (internal/codegen/cpptable/cpptable.go unitHas128) and nothing else of
+	// serialize. When the sibling checkout is staged we compile against it; when
+	// it is not, these two aliases are the whole surface this unit names, so the
+	// conformance rows still run rather than vanish behind an absent checkout.
+	if _, err := os.Stat(filepath.Join("..", "serialize", "serialize.h")); err != nil {
+		stub := "#pragma once\n#include <stdint.h>\nnamespace serialize { using int128_t = __int128; using uint128_t = unsigned __int128; }\n"
+		if err := os.WriteFile(filepath.Join(dir, "serialize.h"), []byte(stub), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	jsonRun := func(t *testing.T, input string) map[string]any {
+		t.Helper()
+		main, bin := writeDriver(t, input, cppJSONDriver)
+		compile(t, main, bin)
+		dec := json.NewDecoder(strings.NewReader(run(t, bin)))
+		dec.UseNumber()
+		var got any
+		if err := dec.Decode(&got); err != nil {
+			t.Fatalf("the document read did not write JSON: %v", err)
+		}
+		m, ok := got.(map[string]any)
+		if !ok {
+			t.Fatalf("the document read wrote %T, not an object", got)
+		}
+		return m
+	}
+	same := func(t *testing.T, stem string, got, want map[string]any) {
+		t.Helper()
+		if !reflect.DeepEqual(got, want) {
+			g, _ := json.Marshal(got)
+			w, _ := json.Marshal(want)
+			t.Fatalf("%s value:\n got %s\nwant %s", stem, g, w)
+		}
+	}
+
+	// The three positive vectors' typed values, transcribed from
+	// test/conformance/textform/*.value.json with the contract defaults Go's
+	// internal/codegen/gotable/textform_test.go expect() lays under them. Every
+	// value here is the one Go's TestDocumentVectors pins for the same bytes.
+	kindsText, err := os.ReadFile(filepath.Join("..", "test", "conformance", "textform", "kinds.input.sexp"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	drop := []string{
-		` :signed -170141183460469231731687303715884105728`,
-		` :unsigned 340282366920938463463374607431768211455`,
-		` :fraction 0.0000152587890625`,
-		` :time "2026-10-15T08:34:05-04:00"`,
+	stripped := strings.ReplaceAll(string(kindsText), ` :time "2026-10-15T08:34:05-04:00"`, "")
+	kinds := cppDocumentDefaults()
+	kinds["schema"] = json.Number("2")
+	kinds["state"] = "done"
+	kinds["pairs"] = []any{json.Number("1"), json.Number("-2")}
+	kinds["optional"] = []any{}
+	kinds["wide"] = "\U0001F600é"
+	kinds["bytes"] = "AP8="
+	kinds["signed"] = json.Number("-170141183460469231731687303715884105728")
+	kinds["unsigned"] = json.Number("340282366920938463463374607431768211455")
+	kinds["fraction"] = json.Number("0.0000152587890625")
+	kinds["float"] = json.Number("-0")
+	kinds["flags"] = []any{"Fast", "Safe"}
+	kinds["keyed"] = map[string]any{"unknown": json.Number("4"), "done": json.Number("7")}
+	kinds["choice"] = map[string]any{"ping": nil}
+
+	roadmap := cppDocumentDefaults()
+	roadmap["schema"] = json.Number("1")
+	roadmap["root"] = "schema/goal"
+	roadmap["title"] = "Schema roadmap"
+	roadmap["count"] = json.Number("2")
+	roadmap["text"] = []any{
+		map[string]any{"line": "a ; semicolon is data"},
+		map[string]any{"line": "line\nwith escape"},
 	}
-	stripped := string(text)
-	for _, d := range drop {
-		stripped = strings.ReplaceAll(stripped, d, "")
+	roadmap["nodes"] = []any{
+		map[string]any{"id": "one", "title": "First", "state": "unknown"},
+		map[string]any{"id": "two", "title": "Second", "state": "done"},
 	}
-	t.Run("kinds", func(t *testing.T) {
-		t.Parallel()
-		main, bin := writeDriver(t, stripped, cppKindsDriver)
-		compile(t, main, bin)
-		if got, want := run(t, bin), "2 2 1 -2 😀é AP8= 3 2 4 7"; got != want {
-			t.Fatalf("got %q, want %q", got, want)
-		}
-	})
+
+	layout := cppDocumentDefaults()
+	layout["title"] = "A B"
+	layout["count"] = json.Number("2")
+	layout["enabled"] = true
+
+	for _, tc := range []struct {
+		stem  string
+		input string
+		want  map[string]any
+	}{
+		{"kinds", stripped, kinds},
+		{"roadmap", string(cppMustRead(t, "roadmap.input.sexp")), roadmap},
+		{"layout", string(cppMustRead(t, "layout.input.sexp")), layout},
+	} {
+		tc := tc
+		t.Run(tc.stem, func(t *testing.T) {
+			t.Parallel()
+			same(t, tc.stem, jsonRun(t, tc.input), tc.want)
+		})
+	}
 
 	reason := func(stem string) string {
 		b, err := os.ReadFile(filepath.Join("..", "test", "conformance", "textform", "refusals", stem+".reason"))
@@ -107,10 +181,6 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 		t.Fatalf("no refusal vectors: %v", err)
 	}
 	ran := 0
-	skip := map[string]string{
-		"timestamp": "timestamp is the cpp-carries-timestamp-on-the-binary-forms card",
-		"fraction":  "the fixed(16,16) field is not staged in this C++ build (its storage is serialize.h's sibling)",
-	}
 	for _, name := range names {
 		stem := strings.TrimSuffix(filepath.Base(name), ".sexp")
 		if stem == "duplicate-map" || stem == "forward-reference" {
@@ -120,10 +190,10 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if why, ok := skip[stem]; ok {
+		if stem == "timestamp" {
 			t.Run(stem, func(t *testing.T) {
 				t.Parallel()
-				t.Skip(why)
+				t.Skip("the cpp target refuses the timestamp kind at compiler/generate.go:101 until cpp-carries-timestamp-on-the-binary-forms lands")
 			})
 			continue
 		}
@@ -137,14 +207,51 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 		})
 		ran++
 	}
-	if ran < 20 {
+	if ran < 21 {
 		t.Fatalf("only %d Document refusal vectors ran", ran)
+	}
+}
+
+func cppMustRead(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "test", "conformance", "textform", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// cppDocumentDefaults is the empty Document's JSON, the contract defaults
+// internal/codegen/gotable/textform_test.go expect() starts from, in the
+// generated C++ walk's own spelling (state None, count 0, fraction 0.0).
+func cppDocumentDefaults() map[string]any {
+	return map[string]any{
+		"schema":   json.Number("0"),
+		"root":     "",
+		"title":    "",
+		"state":    "None",
+		"count":    json.Number("0"),
+		"enabled":  false,
+		"text":     []any{},
+		"nodes":    []any{},
+		"pairs":    []any{json.Number("0"), json.Number("0")},
+		"wide":     "",
+		"bytes":    "",
+		"signed":   json.Number("0"),
+		"unsigned": json.Number("0"),
+		"fraction": json.Number("0.0"),
+		"float":    json.Number("0"),
+		"flags":    []any{},
+		"keyed":    map[string]any{"unknown": json.Number("0"), "done": json.Number("0")},
+		"choice":   map[string]any{},
 	}
 }
 
 func cppEscape(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, "\r", "\\r")
+	s = strings.ReplaceAll(s, "\t", "\\t")
 	s = strings.ReplaceAll(s, "\n", "\\n")
 	return s
 }
@@ -152,8 +259,8 @@ func cppEscape(s string) string {
 func cppTextFormKindsSchema() string {
 	// test/conformance/textform/contract.json declared (§16.4 for the aliased
 	// names). The timestamp field is omitted: the cpp target refuses the kind
-	// until cpp-carries-timestamp lands; the int128/uint128/fixed fields are
-	// omitted because their storage is serialize.h's sibling, not staged here.
+	// at compiler/generate.go:101 until cpp-carries-timestamp lands. The
+	// 128-bit and fixed-point rows are carried; see the serialize stub above.
 	return `package probe
 
 enum State { unknown, done }
@@ -187,6 +294,9 @@ fixed table Document
     optional ?[..4]int32
     wide     wstring(4)
     blob     bytes(4) | json = "bytes"
+    low      int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727, json = "signed"
+    high     uint128 | json = "unsigned"
+    fraction fixed(16,16) | min = -32768, max = 32767
     real     float32 | json = "float"
     flags    Features
     keyed    [State]int32
@@ -194,6 +304,34 @@ fixed table Document
 }
 `
 }
+
+// cppJSONDriver prints the value the document read landed as the generated
+// walk's canonical JSON. The Go oracle's docJSON (internal/codegen/gotable/
+// textform_test.go) compares the same walk's JSON, so a field-by-field value
+// comparison is the oracle's own comparison and not a digest of this port.
+const cppJSONDriver = `#include <stdio.h>
+#include <string.h>
+#include <vector>
+#include "ProbeTable.h"
+
+using namespace probe;
+
+int main( void )
+{
+    static const char text[] = "DOCUMENT";
+    Document value;
+    const char * refusal = NULL;
+    if ( !DocumentLoadTextForm( text, (int64_t) strlen( text ), value, &refusal ) )
+    {
+        printf( "refused %s\n", refusal == NULL ? "?" : refusal );
+        return 1;
+    }
+    std::vector<char> buffer( (size_t) DocumentToJsonMeasure( value ) + 1 );
+    const int64_t n = DocumentToJson( value, buffer.data(), (int64_t) buffer.size() );
+    fwrite( buffer.data(), 1, (size_t) n, stdout );
+    return 0;
+}
+`
 
 // cppKindsDriver prints the typed value as a single line; the expected line is
 // transcribed from internal/codegen/gotable/textform_test.go TestDocumentVectors

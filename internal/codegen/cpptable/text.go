@@ -476,6 +476,10 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             for ( int64_t t = 1; t <= f->enum_max; t++ ) { if ( strcmp( f->enum_name( (uint64_t) t ), key.text.c_str() ) == 0 ) { tag = t; break; } }
             if ( tag == 0 ) { *why = "text_unknown_key"; return false; }
             for ( size_t k = 0; k < seen.size(); k++ ) { if ( seen[k] == tag ) { *why = "text_duplicate_key"; return false; } }
+            // A UNION HOLDS ONE ARM (docs/SPEC-TABLES.md §16.9.2, Go
+            // internal/codegen/gotable/textform.go union): two different arms
+            // is the wrong shape, and the same arm twice is a duplicate.
+            if ( !seen.empty() ) { *why = "text_kind_mismatch"; return false; }
             seen.push_back( tag );
             TableTextFormJsonString( out, key.text );
             out += ':';
@@ -546,10 +550,18 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         return false;
     }
     if ( n.kind != '0' ) { *why = "text_kind_mismatch"; return false; }
+    double d = strtod( n.text.c_str(), NULL );
     if ( f->has_range )
     {
-        double d = strtod( n.text.c_str(), NULL );
         if ( d < f->range_min || d > f->range_max ) { *why = "text_bound"; return false; }
+    }
+    // A FIXED-POINT TOKEN IS EXACT (docs/SPEC-TABLES.md §16.9.2, Go
+    // internal/codegen/gotable/textform.go integer): scaled by 2^F it must be
+    // an integer, so 0.1 is text_kind_mismatch and never a clamped raw unit.
+    if ( f->frac_bits != 0 )
+    {
+        const double scaled = d * (double) ( (uint64_t) 1 << f->frac_bits );
+        if ( scaled != (double) (int64_t) scaled ) { *why = "text_kind_mismatch"; return false; }
     }
     out += n.text;
     return true;
