@@ -56,6 +56,14 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      # The rust lens is cargo-clippy. Pin the same toolchain the Makefile
+      # pins (SCHEMA_SHARED_ANALYZER_CARGO_PIN) and install clippy with it; a
+      # host whose cargo does not match the pin reports tool missing rather
+      # than analyzing with another clippy.
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: '1.99.0'
+          components: clippy
       - name: analyzer gate over the full corpus
         run: make --no-print-directory schema-shared-analyzer-ci-gate-corpus
       - name: the gate's planted-analyzer negative control
