@@ -675,6 +675,9 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		// float32 to float64 conversion would set the quiet bit (§4)
 		g.pf("%s        %s = TableWidenF32( (uint32_t) raw%s );\n%s    }\n", ind, lvalue, sfx, ind)
 		g.pf("%s}\n", ind)
+		if !f.HasFloatRange {
+			g.pf("%sif ( %s != %s || %s - %s != 0 ) { if ( report->refuse_reason == ok ) { report->refuse_reason = non_finite; report->refused = true; } } // §3.3: a plain float's NaN or infinity rides and is named\n", ind, lvalue, lvalue, lvalue, lvalue)
+		}
 		return
 	}
 	switch kind {
@@ -683,6 +686,9 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		return
 	case tkF64:
 		g.pf("%s{ uint64_t raw%s = 0; if ( !r.get( raw%s, 64 ) ) { report->malformed = true; return false; } %s = table_bits_to_double( raw%s ); }\n", ind, sfx, sfx, lvalue, sfx)
+		if !f.HasFloatRange {
+			g.pf("%sif ( %s != %s || %s - %s != 0 ) { if ( report->refuse_reason == ok ) { report->refuse_reason = non_finite; report->refused = true; } } // §3.3: a plain float's NaN or infinity rides and is named\n", ind, lvalue, lvalue, lvalue, lvalue)
+		}
 		return
 	case tkF32:
 		g.pf("%s{\n%s    float decoded_f%s = 0.0f;\n", ind, ind, sfx)
@@ -704,6 +710,9 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 			g.pf("%s    else if ( decoded_f%s > %s ) { decoded_f%s = %s; report->clamped++; }\n", ind, sfx, formatFloat(f.FMax, true), sfx, formatFloat(f.FMax, true))
 		}
 		g.pf("%s    %s = decoded_f%s;\n%s}\n", ind, lvalue, sfx, ind)
+		if !f.HasFloatRange {
+			g.pf("%sif ( %s != %s || %s - %s != 0 ) { if ( report->refuse_reason == ok ) { report->refuse_reason = non_finite; report->refused = true; } } // §3.3: a plain float's NaN or infinity rides and is named\n", ind, lvalue, lvalue, lvalue, lvalue)
+		}
 		return
 	}
 	// A TIMESTAMP IS A SIGNED INT64 COUNT under its own kind 36
@@ -908,6 +917,12 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }\n")
 	g.pf("    for ( int64_t i = 0; i < bodies; i++ )\n    {\n")
 	g.pf("        if ( !%sLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width\n", n)
+	g.pf("        if ( to->refuse_reason == non_finite ) // THE PLAIN NAME IS STRICT (docs/SPEC-TABLES.md §6.5, §3.3): a non-finite plain float refuses, and a refused batch keeps no value\n")
+	g.pf("        {\n")
+	g.pf("            for ( int64_t j = 0; j <= i; j++ ) { %sReset( values[j] ); }\n", n)
+	g.pf("            *count = 0;\n")
+	g.pf("            return false;\n")
+	g.pf("        }\n")
 	g.pf("        br.remaining--;\n    }\n")
 	g.pf("    *count = bodies;\n")
 	g.pf("    return TableMessageBatchClose( br );\n}\n\n")

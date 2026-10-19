@@ -351,7 +351,7 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 		g.pf("    }\n")
 
 	default:
-		g.pf("    if ( value.%s != %s )\n    {\n", name, g.fieldDefaultExpr(f))
+		g.pf("    if ( %s )\n    {\n", g.elideDiffers(f, "value."+name))
 		g.emitMessageHeader(entry, pass, "        ")
 		g.emitMessageScalar(f, entry.Kind, shape, "value."+name, "        ", pass)
 		g.pf("    }\n")
@@ -776,7 +776,7 @@ func (g *tableGen) emitMessageKeyedRides(f *ir.Field, kind int, idx, ind string,
 		g.pf("%sif ( %s == %s ) { continue; } // a default slot elides\n", ind, elem, g.fieldDefaultExpr(f))
 		g.pf("%sif ( !TableEnumNamed( %s ) ) { return %s; }\n", ind, elem, messageBad(pass))
 	default:
-		g.pf("%sif ( %s == %s ) { continue; } // a default slot elides\n", ind, elem, g.fieldDefaultExpr(f))
+		g.pf("%sif ( !( %s ) ) { continue; } // a default slot elides\n", ind, g.elideDiffers(f, elem))
 	}
 }
 
@@ -803,8 +803,8 @@ func (g *tableGen) emitMessageArrayRides(f *ir.Field, ind string) {
 			ind, f.ArrayBound, f.Name, f.Type.Name, f.Name)
 	default:
 		g.pf("%sbool rides_%s = false;\n", ind, f.Name)
-		g.pf("%sfor ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i] != %s ) { rides_%s = true; break; } }\n",
-			ind, f.ArrayBound, f.Name, g.fieldDefaultExpr(f), f.Name)
+		g.pf("%sfor ( int32_t i = 0; i < %d; i++ ) { if ( %s ) { rides_%s = true; break; } }\n",
+			ind, f.ArrayBound, g.elideDiffers(f, "value."+f.Name+"[i]"), f.Name)
 	}
 }
 
