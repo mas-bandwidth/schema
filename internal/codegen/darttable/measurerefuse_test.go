@@ -97,9 +97,13 @@ import '%sWire.dart';
 void main(List<String> args) {
   final f = File(args[0]);
   final b = f.readAsBytesSync();
-  print(%sWireMeasure(Uint8List.fromList(b)));
+  final wire = Uint8List.fromList(b);
+  print(%sWireMeasure(wire));
+  final rep = TableWireReport();
+  %sWireLoad(wire, rep);
+  print(rep.refused ? "refused" : "loaded");
 }
-`, home, strings.ToLower(tc.root))
+`, home, strings.ToLower(tc.root), strings.ToLower(tc.root))
 			if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -113,16 +117,23 @@ void main(List<String> args) {
 			if err != nil {
 				t.Fatalf("dart measure probe: %v\n%s", err, out)
 			}
-			line := strings.TrimSpace(string(out))
-			if line == "" {
-				t.Fatalf("dart measure probe printed nothing: %s", out)
+			lines := strings.Fields(strings.TrimSpace(string(out)))
+			if len(lines) != 2 {
+				t.Fatalf("dart measure probe printed %d lines, want measure and load verdict: %s", len(lines), out)
 			}
+			line := lines[0]
 			var dartMeasure int64
 			if _, err := fmt.Sscanf(line, "%d", &dartMeasure); err != nil {
 				t.Fatalf("dart measure probe output not an int: %q", line)
 			}
 			if dartMeasure != got {
 				t.Fatalf("Dart WireMeasure=%d, Go FileRegionMeasure=%d: a clean Go read must not be refused and must measure the same bytes", dartMeasure, got)
+			}
+			// The oracle reads the mutant cleanly, so the Dart load must too:
+			// the fuzz driver loads only when the measure is not -1 (§6.2),
+			// and the load itself must not refuse.
+			if lines[1] != "loaded" {
+				t.Fatalf("Dart WireLoad %s the mutant the oracle reads cleanly", lines[1])
 			}
 		})
 	}
