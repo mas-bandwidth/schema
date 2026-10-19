@@ -66,6 +66,8 @@ func TestVoidArmInTypeBodyIsCheckedAndCarried(t *testing.T) {
 	carried := map[string]bool{
 		"c": true, "cpp": true, "cs": true, "dart": true, "elixir": true, "go": true,
 		"java": true, "js": true, "rust": true,
+		// the type surface: a payload-free arm has no storage (docs/PORT-LOBSTER.md)
+		"lobster": true,
 	}
 	for _, target := range c.Targets() {
 		_, err := c.Generate(u, target, Options{})
