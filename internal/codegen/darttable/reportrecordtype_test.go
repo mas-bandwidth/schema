@@ -154,3 +154,15 @@ void main(List<String> args) {
 		t.Errorf("Dart save differs from the oracle: got %d bytes, want %d bytes", len(dartSaved), len(goSaved))
 	}
 }
+
+// catalogBlobSlotTableMutant is the same run's index pass #12 mutant (191
+// bytes, blob_small): a blob slot of blobdemo.Catalog names a table record.
+// resolveCell counts one kind_mismatch for a *bytes or *string slot naming a
+// node whose Blob is nil (docs/SPEC-TABLES.md §3.1); the Dart blob read
+// counted none, the mirror of the *Table case above.
+const catalogBlobSlotTableMutant = "01010c03617274021102031102041107050c43060618010c05627269636b0708070000000811030911040a1105000b030102030c036361700608010c047461696c000b05deadbeef7f0c0b68656c6c6f20626c6f627300861b638ebaadbcc4030c9a5fcc128f0a03b2f40f72193b61dd7c58d1bafbf83bfffffffffffffffffb645ffecc6d4e8e43326721d7969cef054aa33067555b85a5024c86eb28aa5d28f025a0ba6c31e5e44f1c4f47c02e2f58fcaffad8e04b700c00000000000000"
+
+func TestWireReportCatalogBlobSlotTableDart(t *testing.T) {
+	t.Parallel()
+	checkRecordTypeMutantDart(t, "blobs", "Catalog", "Blobdemo", "catalog", catalogBlobSlotTableMutant, 1)
+}
