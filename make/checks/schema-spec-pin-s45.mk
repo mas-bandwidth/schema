@@ -1,4 +1,4 @@
-# make/schema-spec-pin-s45.mk — THE SPEC-PINS GUARD, SECTIONS 4 AND 5
+# make/checks/schema-spec-pin-s45.mk — THE SPEC-PINS GUARD, SECTIONS 4 AND 5
 # (docs/SPEC-TABLES.md, "Row ids and pins"): every MUST, MUST NOT and refusal
 # sentence of the versioning and identity sections carries a row id, every row
 # is pinned in every port that carries its feature, and every pin resolves to a
