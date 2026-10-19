@@ -3497,7 +3497,7 @@ static void test_golden_wire()
         for ( int i = 0; i < 3; ++i )
         {
             scalardemo::SimState s;
-            memset( &s, 0, sizeof( s ) );
+            scalardemo::SimStateReset( s );
             s.flux = serialize::int128_t( wide_values[i] );
             int64_t wrote = scalardemo::SimStateSave( s, buffer, sizeof( buffer ) );
             CHECK( wrote > 0 && wrote == scalardemo::SimStateMeasure( s ) );

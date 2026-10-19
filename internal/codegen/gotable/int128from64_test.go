@@ -1,7 +1,9 @@
 package gotable
 
 import (
+	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"math"
@@ -23,6 +25,16 @@ import (
 // docs/SPEC-TABLES.md §3: an int128 is two 64-bit words, low then high, two's
 // complement, so every negative int64 widened to int128 has Hi all ones.
 var int128From64Values = []int64{-1, math.MinInt64, -4294967301}
+
+// int128From64Lanes is the two's-complement wire form those values must land
+// in: a negative int64 widens with Hi all ones, a non-negative one with Hi 0,
+// and Lo is always the int64's own bits (docs/SPEC-TABLES.md §3).
+func int128From64Lanes(v int64) (hi, lo uint64) {
+	if v < 0 {
+		return ^uint64(0), uint64(v)
+	}
+	return 0, uint64(v)
+}
 
 // int128From64Fixture is one committed C++ wire and the narrow i64 wire that
 // the same schema's later build must widen into its int128 field.
@@ -250,6 +262,73 @@ func TestGoInt128From64SignExtends(t *testing.T) {
 		bytes := tabletext.WideBytes(raw, ir.TableKindI128)
 		if hi := binary.LittleEndian.Uint64(bytes[8:16]); hi != 0 {
 			t.Fatalf("tabletext reading %q: Hi=%#x, want 0", token, hi)
+		}
+	}
+
+	// THE SAME VALUES THROUGH THE PRODUCTION TEXT WALK: Model.Read places a
+	// decimal token into an int128 FIELD via reader.placeWide, and Model.Write
+	// spells that field back (docs/SPEC-TABLES.md §16.2). The helper calls
+	// above cannot catch a reader that fails to route or place the field.
+	tm := tabletext.NewModel(u)
+	st := tm.Lookup("SimState")
+	if st == nil {
+		t.Fatal("the scalars unit names no SimState table")
+	}
+	textRows := append(append([]int64{}, int128From64Values...), 0, 1, math.MaxInt64)
+	for _, v := range textRows {
+		token := strconv.FormatInt(v, 10)
+		inst := tm.New(st)
+		var report tabletext.Report
+		text := []byte(`{"flux": ` + token + `}`)
+		if !tm.Read(inst, text, &report) || report.Malformed {
+			t.Fatalf("the text reader refused the int128 field %q: %+v", token, report)
+		}
+		fv, ok := inst.FieldByKey("flux")
+		if !ok {
+			t.Fatal("the SimState instance has no flux field")
+		}
+		hi, lo := int128From64Lanes(v)
+		if fv.Cell.Wide == nil {
+			t.Fatalf("the text reader left the int128 field %q unset", token)
+		}
+		wide := tabletext.WideBytes(fv.Cell.Wide, ir.TableKindI128)
+		gotHi := binary.LittleEndian.Uint64(wide[8:16])
+		gotLo := binary.LittleEndian.Uint64(wide[0:8])
+		if gotHi != hi || gotLo != lo {
+			t.Fatalf("the text reader of the int128 field %q placed Hi=%#x Lo=%#x, want Hi=%#x Lo=%#x", token, gotHi, gotLo, hi, lo)
+		}
+		if v >= 0 && gotHi != 0 {
+			t.Fatalf("the text reader of the positive int128 field %q set Hi=%#x, want 0", token, gotHi)
+		}
+		out, err := tm.Write(inst)
+		if err != nil {
+			t.Fatalf("the text writer refused the int128 field %q: %v", token, err)
+		}
+		dec := json.NewDecoder(bytes.NewReader(out))
+		dec.UseNumber()
+		var doc map[string]any
+		if err := dec.Decode(&doc); err != nil {
+			t.Fatalf("the text writer's output for %q is not JSON: %v\n%s", token, err, out)
+		}
+		number, ok := doc["flux"].(json.Number)
+		if !ok || number.String() != token {
+			t.Fatalf("the text writer printed the int128 field %q as %v, want the same decimal", token, doc["flux"])
+		}
+		back := tm.New(st)
+		var backReport tabletext.Report
+		if !tm.Read(back, out, &backReport) || backReport.Malformed {
+			t.Fatalf("the writer's text for %q did not read back: %+v\n%s", token, backReport, out)
+		}
+		backField, ok := back.FieldByKey("flux")
+		if !ok || backField.Cell.Wide == nil {
+			t.Fatalf("the writer's text for %q lost the int128 field", token)
+		}
+		backWide := tabletext.WideBytes(backField.Cell.Wide, ir.TableKindI128)
+		if got := binary.LittleEndian.Uint64(backWide[8:16]); got != hi {
+			t.Fatalf("the writer's text for %q read back Hi=%#x, want %#x", token, got, hi)
+		}
+		if got := binary.LittleEndian.Uint64(backWide[0:8]); got != lo {
+			t.Fatalf("the writer's text for %q read back Lo=%#x, want %#x", token, got, lo)
 		}
 	}
 
