@@ -88,6 +88,12 @@ static const uint64_t kTableNodeTableFieldSlot = %d;
 
 	b.WriteString(cppMessageRuntime)
 
+	if len(ir.TableIntegrityTables(u)) > 0 {
+		// §2.14's CRC-32C trailer is a runtime the unit's closure needs only
+		// when a table in it declares integrity.
+		b.WriteString(cppIntegrityRuntime)
+	}
+
 	fmt.Fprintf(&b, `// THE UNIT'S ANNOUNCEMENT, byte for byte: %d entries and %d bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
@@ -656,6 +662,63 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
     return -1;
 }
 
+`
+
+// cppIntegrityRuntime is §2.14's CRC-32C (Castagnoli) batch trailer
+// (docs/SPEC-TABLES.md §2.14, §3.3), emitted into a unit whose closure
+// declares integrity. It is BITWISE and table-free so the generated header
+// takes no dependency, and the reflected polynomial 0x82F63B78 with
+// init/final xor 0xFFFFFFFF is the one hash/crc32's Castagnoli table computes
+// (internal/codegen/gotable/integrity.go). The message batch carries one
+// trailer per batch, after the padded bit stream.
+const cppIntegrityRuntime = `// THE CRC-32C OF EVERY BYTE BEFORE A BATCH'S TRAILER (docs/SPEC-TABLES.md
+// §2.14, §3.3): the Go oracle is hash/crc32.Checksum with crc32.Castagnoli,
+// and the trailer bytes this unit's tests expect are that function's answers.
+inline uint32_t schema_crc32c( const uint8_t * data, int64_t bytes )
+{
+    uint32_t crc = 0xFFFFFFFFu;
+    for ( int64_t i = 0; i < bytes; ++i )
+    {
+        crc ^= (uint32_t) data[i];
+        for ( int k = 0; k < 8; ++k )
+        {
+            const uint32_t mask = (uint32_t) ( -(int32_t) ( crc & 1u ) );
+            crc = ( crc >> 1 ) ^ ( 0x82F63B78u & mask );
+        }
+    }
+    return crc ^ 0xFFFFFFFFu;
+}
+
+// TableMessageBatchSeal is the WRITE side (§2.14, §3.3): four trailer bytes,
+// little-endian, equal to the CRC-32C of the whole batch before them, appended
+// to the n bytes a batch already wrote. It answers the batch's longer length,
+// or -1 when the buffer cannot hold the trailer.
+inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
+{
+    if ( buffer == NULL || n < 0 || n + 4 > capacity ) { return -1; }
+    const uint32_t crc = schema_crc32c( buffer, n );
+    buffer[n]     = uint8_t( crc );
+    buffer[n + 1] = uint8_t( crc >> 8 );
+    buffer[n + 2] = uint8_t( crc >> 16 );
+    buffer[n + 3] = uint8_t( crc >> 24 );
+    return n + 4;
+}
+
+// TableMessageBatchCheckIntegrity is the READ side (§2.14, §3.3): the batch
+// carries four trailer bytes equal to the CRC-32C of the whole batch before
+// them, and the check runs before the first body decodes, so no single-bit
+// flip of a saved batch decodes as a value. A batch too short to hold the
+// trailer does not hold one either, and answers false.
+inline bool TableMessageBatchCheckIntegrity( const uint8_t * buffer, int64_t bytes )
+{
+    if ( buffer == NULL || bytes < 5 ) { return false; }
+    const int64_t n = bytes - 4;
+    const uint32_t crc = (uint32_t) buffer[n]
+                       | ( (uint32_t) buffer[n + 1] << 8 )
+                       | ( (uint32_t) buffer[n + 2] << 16 )
+                       | ( (uint32_t) buffer[n + 3] << 24 );
+    return crc == schema_crc32c( buffer, n );
+}
 `
 
 // cppMessageAnnounce is the vocabulary a receiver reads an announcement into,

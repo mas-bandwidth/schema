@@ -871,7 +871,13 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("        const int64_t body = %sMeasureMessageBody( bits, values[i] );\n", n)
 	g.pf("        if ( body < 0 ) { return -1; }\n")
 	g.pf("        bits += body;\n    }\n")
-	g.pf("    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte\n}\n\n")
+	if st.Integrity != "" {
+		// §2.14, §3.3: the declaring batch carries four CRC-32C trailer bytes
+		// after the padded bit stream (the Go oracle's integrityMessageLedgerGolden).
+		g.pf("    return 1 + ( bits + 7 ) / 8 + 4; // the form byte, then the stream padded to a byte, plus the integrity trailer (§2.14)\n}\n\n")
+	} else {
+		g.pf("    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte\n}\n\n")
+	}
 
 	g.pf("inline int64_t %sSaveMessages( const %s * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )\n{\n", n, n)
 	g.pf("    if ( values == NULL || count < 1 ) { return -1; }\n")
@@ -881,7 +887,15 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("    for ( int64_t i = 0; i < count; i++ )\n    {\n")
 	g.pf("        if ( !%sSaveMessageBody( batch.w, values[i] ) ) { return -1; }\n", n)
 	g.pf("        batch.written++;\n    }\n")
-	g.pf("    return TableMessageBatchEnd( batch ); // == %sMeasureMessages( values, count, report )\n}\n\n", n)
+	if st.Integrity != "" {
+		// THE SEAL (docs/SPEC-TABLES.md §2.14, §3.3): after the batch is padded
+		// to a byte, the CRC-32C of every byte before the trailer is appended.
+		g.pf("    const int64_t end = TableMessageBatchEnd( batch );\n")
+		g.pf("    if ( end < 0 ) { return -1; }\n")
+		g.pf("    return TableMessageBatchSeal( buffer, end, capacity ); // == %sMeasureMessages( values, count, report )\n}\n\n", n)
+	} else {
+		g.pf("    return TableMessageBatchEnd( batch ); // == %sMeasureMessages( values, count, report )\n}\n\n", n)
+	}
 
 	g.pf("// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:\n")
 	g.pf("// nothing is decoded, the reader says it holds no vocabulary, no counter\n")
@@ -903,8 +917,28 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("    const int64_t capacity = *count;\n")
 	g.pf("    *count = 0;\n")
 	g.pf("    TableMessageBatchReader br;\n")
-	g.pf("    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );\n")
-	g.pf("    if ( bodies < 0 ) { return false; }\n")
+	if st.Integrity != "" {
+		// THE TRAILER'S FOUR BYTES ARE NOT PART OF THE BATCH STREAM, so the
+		// reader is opened over the bytes before them and the check runs over
+		// the whole batch (docs/SPEC-TABLES.md §2.14, §3.3).
+		g.pf("    if ( bytes < 5 ) { to->refused = true; to->malformed = true; to->refuse_reason = integrity_mismatch; return false; }\n")
+		g.pf("    const int64_t wire_bytes = bytes - 4;\n")
+		g.pf("    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, wire_bytes, to );\n")
+		g.pf("    if ( bodies < 0 ) { return false; }\n")
+		// THE CHECK RUNS BEFORE THE FIRST BODY DECODES (docs/SPEC-TABLES.md
+		// §2.14, §3.3): a missing or mismatched trailer refuses the batch by
+		// name, and nothing is decoded. The form byte was read first, so a
+		// flipped form byte is §3.3's newer_form; every other flip is this
+		// integrity_mismatch.
+		g.pf("    if ( !TableMessageBatchCheckIntegrity( buffer, bytes ) )\n    {\n")
+		g.pf("        to->refused = true;\n")
+		g.pf("        to->malformed = true;\n")
+		g.pf("        to->refuse_reason = integrity_mismatch;\n")
+		g.pf("        return false;\n    }\n")
+	} else {
+		g.pf("    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );\n")
+		g.pf("    if ( bodies < 0 ) { return false; }\n")
+	}
 	g.pf("    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }\n")
 	g.pf("    for ( int64_t i = 0; i < bodies; i++ )\n    {\n")
 	g.pf("        if ( !%sLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width\n", n)
