@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x71823314049f01f9)
-const _ = uint64(0x71823314049f01f9 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xf29d2162b6fb2613)
+const _ = uint64(0xf29d2162b6fb2613 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -69,16 +69,32 @@ const TableRefuseBase64NotCanonical = goruntime.TableRefuseBase64NotCanonical
 const TableRefuseIntegrityMismatch = goruntime.TableRefuseIntegrityMismatch
 const TableRefuseNonFinite = goruntime.TableRefuseNonFinite
 const TableRefuseBlobShared = goruntime.TableRefuseBlobShared
+const TableRefusePreviousForm = goruntime.TableRefusePreviousForm
+const TableRefuseNewerForm = goruntime.TableRefuseNewerForm
+const TableRefuseMessageFormAsFile = goruntime.TableRefuseMessageFormAsFile
+const TableRefuseLayoutUnknown = goruntime.TableRefuseLayoutUnknown
+const TableRefuseLayoutUnsupported = goruntime.TableRefuseLayoutUnsupported
+const TableRefuseLayoutNewer = goruntime.TableRefuseLayoutNewer
+const TableRefuseLayoutMalformed = goruntime.TableRefuseLayoutMalformed
+const TableRefuseLayoutCountMismatch = goruntime.TableRefuseLayoutCountMismatch
+const TableRefuseLayoutKindUnknown = goruntime.TableRefuseLayoutKindUnknown
+const TableRefuseLayoutKindInvalid = goruntime.TableRefuseLayoutKindInvalid
+const TableRefuseLayoutSizeMismatch = goruntime.TableRefuseLayoutSizeMismatch
+const TableRefuseLayoutTreeUnclosed = goruntime.TableRefuseLayoutTreeUnclosed
+const TableRefuseLayoutTooDeep = goruntime.TableRefuseLayoutTooDeep
+const TableRefuseLayoutRecordTooLarge = goruntime.TableRefuseLayoutRecordTooLarge
+const TableRefusePlanTooLarge = goruntime.TableRefusePlanTooLarge
+const TableRefuseNoLayout = goruntime.TableRefuseNoLayout
+const TableRefuseBatchTooLarge = goruntime.TableRefuseBatchTooLarge
+const TableRefuseTextIllFormed = goruntime.TableRefuseTextIllFormed
+const TableRefuseCountOverBound = goruntime.TableRefuseCountOverBound
+const TableRefuseLengthOverBound = goruntime.TableRefuseLengthOverBound
 
 func tableRefuseError(a0 TableRefuseReason) error { return goruntime.TableRefuseError(a0) }
 
 type TableBuildVersionMismatch = goruntime.TableBuildVersionMismatch
 
 type TableMissingRequired = goruntime.TableMissingRequired
-
-type TableFixedRefusal = goruntime.TableFixedRefusal
-
-func tableFixedReasonNamed(a0 string) bool { return goruntime.TableFixedReasonNamed(a0) }
 
 func tableNonFinite(a0 *string, a1 string) { goruntime.TableNonFinite(a0, a1) }
 
@@ -120,23 +136,6 @@ const TableFixedForm = goruntime.TableFixedForm
 const TableFixedHeaderBytes = goruntime.TableFixedHeaderBytes
 
 const TableFixedHashAt = goruntime.TableFixedHashAt
-
-const TableFixedReasonPreviousForm = goruntime.TableFixedReasonPreviousForm
-const TableFixedReasonMessageFormAsFile = goruntime.TableFixedReasonMessageFormAsFile
-const TableFixedReasonNewerForm = goruntime.TableFixedReasonNewerForm
-const TableFixedReasonLayoutMalformed = goruntime.TableFixedReasonLayoutMalformed
-const TableFixedReasonLayoutUnknown = goruntime.TableFixedReasonLayoutUnknown
-const TableFixedReasonLayoutNewer = goruntime.TableFixedReasonLayoutNewer
-const TableFixedReasonLayoutUnsupported = goruntime.TableFixedReasonLayoutUnsupported
-const TableFixedReasonLayoutRecordTooLarge = goruntime.TableFixedReasonLayoutRecordTooLarge
-const TableFixedReasonPlanTooLarge = goruntime.TableFixedReasonPlanTooLarge
-const TableFixedReasonBatchTooLarge = goruntime.TableFixedReasonBatchTooLarge
-const TableFixedReasonNoLayout = goruntime.TableFixedReasonNoLayout
-const TableFixedReasonTextIllFormed = goruntime.TableFixedReasonTextIllFormed
-const TableFixedReasonTruncated = goruntime.TableFixedReasonTruncated
-const TableFixedReasonReservedNotZero = goruntime.TableFixedReasonReservedNotZero
-const TableFixedReasonCountOverBound = goruntime.TableFixedReasonCountOverBound
-const TableFixedReasonLengthOverBound = goruntime.TableFixedReasonLengthOverBound
 
 const tableFixedCopy = goruntime.TableFixedCopy
 const tableFixedCount = goruntime.TableFixedCount
@@ -1437,6 +1436,21 @@ type TableMessageWriter struct {
 	numbering TableNumbering
 }
 
+// THE FIXED LOAD'S REFUSAL NAMES ARE THE ONE ENUM (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §6.5, §21.3): every fixed-form refusal is a TableRefuseReason member, and
+// the emitted <T>FixedLoad writes its snake_case name into report.Reason. The
+// fixed form keeps no vocabulary of its own.
+//
+// TableRefuseLayoutUnknown is the Reason of a file whose header hash no entry
+// of this build's lineage holds (mas-bandwidth/schema docs/SPEC-TABLES.md §21.3, algorithm §5.3
+// step 5). It says what the reader knows and not which way the file lies: a
+// newer writer's layout, an older one nobody locked and a damaged hash byte
+// read the same.
+//
+// TableRefuseLayoutNewer ("ship the reader") is RESERVED (SPEC-TABLES §21.3)
+// for a hash the lock lineage proves newer, which nothing on the wire or in the
+// lock does today, so no Go fixed load answers it.
+
 type tableFixedCompiler struct {
 	plan                  []TableFixedEntry
 	capacity, count, pool int32
@@ -1858,7 +1872,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 		if why != "" {
 			// A lineage entry that is not a layout is a bug in the LOCK, not a
 			// wire event; the reader still owes a name rather than a panic.
-			out[i].Why = TableFixedReasonLayoutMalformed
+			out[i].Why = TableRefuseLayoutMalformed.Error()
 			continue
 		}
 		for room := 256; ; room *= 4 {
@@ -1866,16 +1880,16 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 			var census TableReport
 			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
 			if made == -2 {
-				out[i].Why = TableFixedReasonLayoutMalformed
+				out[i].Why = TableRefuseLayoutMalformed.Error()
 				break
 			}
 			if made == -3 {
-				out[i].Why = TableFixedReasonLayoutRecordTooLarge
+				out[i].Why = TableRefuseLayoutRecordTooLarge.Error()
 				break
 			}
 			if made < 0 {
 				if room >= 1<<18 {
-					out[i].Why = TableFixedReasonPlanTooLarge
+					out[i].Why = TableRefusePlanTooLarge.Error()
 					break
 				}
 				continue
@@ -2676,6 +2690,27 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 	if strict && !s.whole() {
 		return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
 	}
+	if strict {
+		w := TableReader{Buffer: r.Buffer, Ids: r.Ids}
+		at := int64(0)
+		nodes := int64(s.records)
+		scan := tableNodeScanBegin(w)
+		for {
+			id, body, ok := scan.next()
+			if !ok {
+				break
+			}
+			if id == tableStringTypeId && blobs&2 != 0 && !tableUtf8Valid(body.Buffer) {
+				return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
+			}
+			if t := nodeType(id); t != nil && tableWireExtent(&body, t, &at, nodes) != TableRefuseOk {
+				return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
+			}
+		}
+		if tableWireExtent(&w, root, &at, nodes) != TableRefuseOk {
+			return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
+		}
+	}
 	attribution := int64(s.records+1) * 16
 	return data + attribution, attribution, TableOpenOk, TableRefuseOk
 }
@@ -3034,6 +3069,354 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	r.Nested = false
 	ok := root.LoadBody(r, p)
 	return ok && !worker.refused
+}
+
+func tableWireExtent(r *TableReader, t *TableTypeInfo, at *int64, nodes int64) TableRefuseReason {
+	bad := TableRefuseOk
+	if nodes >= 0 {
+		bad = TableRefuseWireDamaged
+	}
+	for {
+		ref, ok := r.Leb()
+		if !ok {
+			return bad
+		}
+		if ref == 0 {
+			return TableRefuseOk
+		}
+		id, ok := r.Resolve(ref)
+		if !ok || !r.Has(1) {
+			return bad
+		}
+		kind := r.Get8()
+		if nodes >= 0 && (id == 0xfffffffffffffffe || id == 0xfffffffffffffffd || r.Nested && id == 0xffffffffffffffff) {
+			return bad
+		}
+		var f *TableFieldInfo
+		for i := range t.Fields {
+			if t.Fields[i].Id == id {
+				f = &t.Fields[i]
+				break
+			}
+		}
+		if f == nil {
+			if !r.Skip(kind) {
+				return bad
+			}
+			continue
+		}
+		if nodes >= 0 && kind == f.Kind && !f.IsArray && kind != 15 {
+			if reason := r.wireValueExtent(f, kind, at, nodes); reason != TableRefuseOk {
+				return reason
+			}
+			continue
+		}
+		if kind == 15 && f.Kind == 15 && !f.IsArray {
+			if reason := tableWireUnionExtent(r, f, at, nodes); reason != TableRefuseOk {
+				return reason
+			}
+			continue
+		}
+		if kind == 13 && f.Kind == 13 && !f.IsArray && !f.Pointer {
+			if reason := r.wireValueExtent(f, kind, at, nodes); reason != TableRefuseOk {
+				return reason
+			}
+			continue
+		}
+		if (kind == 14 && f.KeyName == nil || kind == 16 && f.KeyName != nil) && f.IsArray {
+			body, ok := r.Body()
+			if !ok {
+				return bad
+			}
+			if nodes >= 0 && len(body.Buffer) >= 2 {
+				h := *r
+				h.Offset -= int64(len(body.Buffer)) - 1
+				if _, ok := h.Leb(); ok && h.Offset > r.Offset {
+					if body.Buffer[0] != f.Kind && !tableKindWidens(body.Buffer[0], f.Kind) {
+						continue
+					}
+					return bad
+				}
+			}
+			if reason := tableWireArrayExtent(body, f, kind == 16, false, at, nodes); reason != TableRefuseOk {
+				return reason
+			}
+			continue
+		}
+		if !r.Skip(kind) {
+			return bad
+		}
+	}
+}
+func (r *TableReader) wireValueExtent(f *TableFieldInfo, kind uint8, at *int64, nodes int64) TableRefuseReason {
+	bad := TableRefuseOk
+	if nodes >= 0 {
+		bad = TableRefuseWireDamaged
+	}
+	switch kind {
+	case 13:
+		body, ok := r.Body()
+		if !ok {
+			return bad
+		}
+		if reason := tableWireExtent(&body, f.Table(), at, nodes); reason != TableRefuseOk {
+			return reason
+		}
+		if nodes >= 0 && body.Offset != int64(len(body.Buffer)) {
+			return bad
+		}
+	case 15:
+		return tableWireUnionExtent(r, f, at, nodes)
+	case 12:
+		body, ok := r.Body()
+		if !ok || nodes >= 0 && !tableUtf8Valid(body.Buffer) {
+			return bad
+		}
+	case 17:
+		index, ok := r.Leb()
+		if !ok || nodes >= 0 && index > uint64(nodes)+1 {
+			return bad
+		}
+	case 30:
+		ref, ok := r.Leb()
+		if !ok {
+			return bad
+		}
+		if ref != 0 {
+			if _, ok = r.Resolve(ref); !ok {
+				return bad
+			}
+		}
+	case 1:
+		if !r.Has(1) {
+			return bad
+		}
+		if r.Get8() > 1 && nodes >= 0 {
+			return bad
+		}
+	default:
+		if !r.Skip(kind) {
+			return bad
+		}
+	}
+	return TableRefuseOk
+}
+func tableWireArrayExtent(r TableReader, f *TableFieldInfo, keyed, arm bool, at *int64, nodes int64) TableRefuseReason {
+	bad := TableRefuseOk
+	if nodes >= 0 {
+		bad = TableRefuseWireDamaged
+	}
+	if len(r.Buffer) < 2 {
+		return TableRefuseOk
+	}
+	kind := r.Get8()
+	count, ok := r.Leb()
+	if !ok {
+		return bad
+	}
+	if kind != f.Kind && !tableKindWidens(kind, f.Kind) {
+		return TableRefuseOk
+	}
+	if f.List || f.Map {
+		if count > math.MaxInt32 {
+			return TableRefuseCountOverExtentCap
+		}
+		floor := tableKindBytes(kind)
+		if kind == 13 {
+			floor = 2
+		}
+		if floor < 1 {
+			floor = 1
+		}
+		if count > uint64((int64(len(r.Buffer))-r.Offset)/floor) {
+			return TableRefuseCountOverLength
+		}
+		*at = (*at + int64(f.ElemAlign) - 1) & -int64(f.ElemAlign)
+		*at += int64(count) * int64(f.ElemSize)
+	}
+	if nodes >= 0 && f.Map {
+		return TableRefuseOk
+	} // map arm
+	if nodes >= 0 {
+		n := count
+		if !f.List && !keyed && f.ArrayBound > 0 && n > uint64(f.ArrayBound) {
+			n = uint64(f.ArrayBound)
+		}
+		for i := uint64(0); i < n; i++ {
+			e := &r
+			if keyed {
+				key, ok := r.Leb()
+				if !ok {
+					return bad
+				}
+				id, ok := r.Resolve(key)
+				if !ok {
+					return bad
+				}
+				known := false
+				for v := uint64(1); f.KeyId != nil && v <= uint64(f.ArrayBound); v++ {
+					if f.KeyId(v) == id {
+						known = true
+						break
+					}
+				}
+				elem, ok := r.Body()
+				if !ok {
+					return bad
+				}
+				if !known {
+					continue
+				}
+				if kind != 13 {
+					e = &elem
+				} else {
+					body := elem
+					if reason := tableWireExtent(&body, f.Table(), at, nodes); reason != TableRefuseOk {
+						return reason
+					}
+					if body.Offset != int64(len(body.Buffer)) {
+						return bad
+					}
+					continue
+				}
+			}
+			if arm && kind == 13 {
+				body, ok := r.Body()
+				if !ok {
+					return bad
+				}
+				if reason := tableWireExtent(&body, f.Table(), at, nodes); reason != TableRefuseOk {
+					return reason
+				}
+				continue
+			}
+			if reason := e.wireValueExtent(f, kind, at, nodes); reason != TableRefuseOk {
+				return reason
+			}
+		}
+		return TableRefuseOk
+	}
+	if kind != 13 && kind != 15 {
+		return TableRefuseOk
+	}
+	for i := uint64(0); i < count && r.Has(1); i++ {
+		if keyed {
+			if _, ok := r.Leb(); !ok {
+				return TableRefuseOk
+			}
+		}
+		if kind == 13 {
+			body, ok := r.Body()
+			if !ok {
+				return TableRefuseOk
+			}
+			if reason := tableWireExtent(&body, f.Table(), at, nodes); reason != TableRefuseOk {
+				return reason
+			}
+		} else if reason := tableWireUnionExtent(&r, f, at, nodes); reason != TableRefuseOk {
+			return reason
+		}
+	}
+	return TableRefuseOk
+}
+func tableWireUnionExtent(r *TableReader, f *TableFieldInfo, at *int64, nodes int64) TableRefuseReason {
+	bad := TableRefuseOk
+	if nodes >= 0 {
+		bad = TableRefuseWireDamaged
+	}
+	ref, ok := r.Leb()
+	if !ok {
+		r.Offset = int64(len(r.Buffer))
+		return bad
+	}
+	if ref == 0 {
+		return TableRefuseOk
+	}
+	id, ok := r.Resolve(ref)
+	if !ok || !r.Has(1) {
+		r.Offset = int64(len(r.Buffer))
+		return bad
+	}
+	armKind := r.Get8()
+	body, ok := r.Body()
+	if !ok {
+		r.Offset = int64(len(r.Buffer))
+		return bad
+	}
+	u := f.Arms()
+	for i := 1; i < len(u.Arms); i++ {
+		if f.VariantId(uint64(i)) != id {
+			continue
+		}
+		arm := &u.Arms[i]
+		af := &arm.Field
+		if nodes >= 0 {
+			if arm.Void {
+				if armKind == 32 && len(body.Buffer) != 0 {
+					return bad
+				}
+				return TableRefuseOk
+			}
+			want := af.Kind
+			if af.IsArray {
+				want = 14
+				if af.KeyName != nil {
+					want = 16
+				}
+			}
+			if armKind != want {
+				if !af.IsArray && tableKindWidens(armKind, want) && int64(len(body.Buffer)) != tableKindBytes(armKind) {
+					return bad
+				}
+				return TableRefuseOk
+			}
+			switch {
+			case af.IsArray:
+				return tableWireArrayExtent(body, af, false, true, at, nodes)
+			case want == 13 && !af.Pointer:
+				if reason := tableWireExtent(&body, af.Table(), at, nodes); reason != TableRefuseOk {
+					return reason
+				}
+				if body.Offset != int64(len(body.Buffer)) {
+					return bad
+				}
+				return TableRefuseOk
+			case want == 17 || want == 30:
+				framing := body
+				if _, ok := framing.Leb(); !ok || framing.Offset != int64(len(framing.Buffer)) {
+					return bad
+				}
+				return body.wireValueExtent(af, want, at, nodes)
+			case want == 12:
+				if !tableUtf8Valid(body.Buffer) {
+					return bad
+				}
+				return TableRefuseOk
+			case want == 15:
+				return tableWireUnionExtent(&body, af, at, nodes)
+			}
+			if n := tableKindBytes(want); n > 0 && int64(len(body.Buffer)) != n {
+				return bad
+			}
+			if want == 1 && body.Buffer[0] > 1 {
+				return bad
+			}
+			return TableRefuseOk
+		}
+		if arm.Void || arm.Field.Pointer {
+			return TableRefuseOk
+		}
+		if af.IsArray {
+			return tableWireArrayExtent(body, af, af.KeyName != nil, false, at, nodes)
+		}
+		if af.Kind == 13 && af.Table != nil {
+			return tableWireExtent(&body, af.Table(), at, nodes)
+		}
+		if af.Kind == 15 {
+			return tableWireUnionExtent(&body, af, at, nodes)
+		}
+	}
+	return TableRefuseOk
 }
 
 const tableRetainPathDepth = 7
