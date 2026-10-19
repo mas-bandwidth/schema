@@ -110,10 +110,20 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
   reset(report);
   if (v == null || typeof v != "table") return refuse(report, "vocabulary_storage_required");
   if (("Announced" in v) && v.Announced || ("Refused" in v) && v.Refused) return refuse(report, "second_announcement");
-  if (bytes == null || bytes.len()<9) { if(report!=null)report.malformed=true; if("Refused" in v)v.Refused=true;else setSlot(v,"Refused",true); return false; }
+  // THE FORM IS READ BEFORE THE LENGTH, as the engine does: a form byte this
+  // reader does not carry is newer_form even when the file is too short to
+  // hold the rest of an announcement (docs/SPEC-TABLES.md §3.3).
+  if (bytes == null || bytes.len()<1) { if(report!=null)report.malformed=true; if("Refused" in v)v.Refused=true;else setSlot(v,"Refused",true); return false; }
   if ((bytes[0]&0xff)!=1) return refuseAnnouncement(v,report,(bytes[0]&0xff)==2 ? "message_form_as_file" : "newer_form");
+  if (bytes.len()<9) { if(report!=null)report.malformed=true; if("Refused" in v)v.Refused=true;else setSlot(v,"Refused",true); return false; }
+  // THE RECEIVER'S TWO BOUNDS (docs/SPEC-TABLES.md §3.3): MaxEntries caps the
+  // entry count, MaxBytes the vocabulary field's own byte length, and zero
+  // means the conforming default in each case.
+  local maxEntries = (("MaxEntries" in v) && v.MaxEntries > 0) ? v.MaxEntries : 4096;
+  local maxBytes = (("MaxBytes" in v) && v.MaxBytes > 0) ? v.MaxBytes : 65536;
   local total=bytes.len(), trailer=total-8, entries=readU64(bytes,trailer);
-  if(entries>4096 || entries>(trailer-1)/8){if(report!=null)report.malformed=true;setSlot(v,"Refused",true);return false;}
+  if(entries>maxEntries)return refuseAnnouncement(v,report,"vocabulary_too_large");
+  if(entries>(trailer-1)/8){if(report!=null)report.malformed=true;setSlot(v,"Refused",true);return false;}
   local bodyEnd=trailer-entries*8, ids=[];
   for(local i=0;i<entries;i++)ids.append(readU64(bytes,bodyEnd+i*8));
   local state={b=bytes,at=1,end=bodyEnd,bad=false}, versionCount=0, wordsCount=0, words=null, build=0;
@@ -128,7 +138,7 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
       local fieldEnd=state.at+n;
       if(state.at>=fieldEnd||(bytes[state.at]&0xff)!=6){state.bad=true;break;}state.at++;
       local wn=readLeb(bytes,state);if(state.bad||wn>fieldEnd-state.at||state.at+wn!=fieldEnd){state.bad=true;break;}
-      if(wn>65536)return refuseAnnouncement(v,report,"vocabulary_too_large");
+      if(wn>maxBytes)return refuseAnnouncement(v,report,"vocabulary_too_large");
       words=blob(wn);for(local j=0;j<wn;j++)words[j]=bytes[state.at+j]&0xff;
       state.at=fieldEnd;wordsCount++;
     } else {
@@ -153,7 +163,10 @@ _M.BuildVersion <- function(bytes) {
 };
 
 local newWriter = function(buffer, measuring) {
-  return { b = buffer, bits = 0, measuring = measuring, bad = false };
+  // owner and field name the refusal a deprecated variant makes
+  // (docs/SPEC-TABLES.md §2.15)
+  return { b = buffer, bits = 0, measuring = measuring, bad = false,
+    owner = null, field = null, reason = null };
 };
 local put = function(w, value, n) {
   if (n < 0 || n > 64) { w.bad = true; return; }
@@ -288,7 +301,19 @@ local writeScalar = function(T, w, fd, value) {
   if (kind == 1) { put(w, value ? 1 : 0, 1); return; }
   if (fd.shape == "enum") {
     local ref = 0;
-    if (value != null) foreach (p in fd.variants) if (p[0] == value) ref = findSlot(T, p[1]);
+    if (value != null) foreach (p in fd.variants) {
+      if (p[0] == value) {
+        if (p.len() > 2 && p[2]) {
+          // A STRICT WRITE REFUSES A VALUE HOLDING A DEPRECATED VARIANT
+          // (docs/SPEC-TABLES.md §2.15): the value is the caller's.
+          local where = (w.owner == null ? "" : w.owner + ".") + (w.field == null ? "" : w.field);
+          w.reason = "invalid_value: " + where + " names the deprecated variant " + value;
+          w.bad = true; return;
+        }
+        ref = findSlot(T, p[1]);
+        break;
+      }
+    }
     put(w, ref, T.TableMessageRefBitsHere); return;
   }
   if (fd.shape == "float") {
@@ -316,8 +341,15 @@ local readScalar = function(r, T, v, fd, shape) {
     if (id == null) { r.bad = true; return null; }
     local entry=v.Entries[ref-1];
     if(entry.Shape.Kind!=0||(entry.Id==0xfffffffffffffffd||entry.Id==0xfffffffffffffffe||entry.Id==0xffffffffffffffff)){r.bad=true;return null;}
-    foreach (p in fd.variants) if (p[1] == id) return p[0];
-    r.unknown++; return null;
+    local name = null, dep = false;
+    foreach (p in fd.variants) {
+      if (p[1] == id) { name = p[0]; dep = p.len() > 2 && p[2]; break; }
+    }
+    if (name == null) { r.unknown++; return null; }
+    // a DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, never
+    // unknown (docs/SPEC-TABLES.md §2.15); an element's fd is its element
+    // descriptor, whose default is the element default
+    return dep ? fd.def : name;
   }
   if (fd.shape == "float") {
     if (shape.Kind==10 && shape.Packing==2) {local index=get(r,shape.Bits);if(index>shape.QCount)index=shape.QCount;local ratio=messageWidenF32(messageNarrowF32(index.tofloat()/shape.QCount));local scaled=messageWidenF32(messageNarrowF32(ratio*shape.QDelta));return messageWidenF32(messageNarrowF32(scaled+shape.QMin));}
@@ -451,12 +483,14 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
 
 writeBody = function(T, w, d, value, depth) {
   if(depth>128){w.bad=true;return;}
+  w.owner = d.name;
   foreach(fd in d.fields){
     if(!(fd.member in value))continue;
     local val=value[fd.member];
     if(defaultValue(fd,val,value))continue;
     local ref=findSlot(T,fd.id);if(ref==0){w.bad=true;return;}
     put(w,ref,T.TableMessageRefBitsHere);
+    w.field = fd.name;
     writePayload(T,w,fd,val,depth+1);
     if(w.bad)return;
   }
@@ -495,9 +529,9 @@ local writeBatch = function(T, root, values, out, measuring, report) {
   if(d==null||!d.fixed)return refuse(report,"message_form_plain_table:"+root);
   local w=newWriter(out,measuring);put(w,2,8);put(w,values.len()-1,8);
 
-  foreach(v in values){writeBody(T,w,d,v,0);if(w.bad){if(report!=null)report.malformed<-true;return -1;}}
+  foreach(v in values){writeBody(T,w,d,v,0);if(w.bad){if(report!=null){report.malformed<-true;report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}}
   local pad=(-w.bits)&7;put(w,0,pad);
-  if(w.bad){if(report!=null)report.refused<-true;return -1;}
+  if(w.bad){if(report!=null){report.refused<-true;if(w.reason!=null)report.reason<-w.reason;}return -1;}
   return (w.bits+7)/8;
 };
 

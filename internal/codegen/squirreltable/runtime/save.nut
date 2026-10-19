@@ -13,6 +13,8 @@ local _M = vargv[0];
 local NODE_TABLE_ID = 0xffffffffffffffff;
 local STRING_BLOB_ID = 0x704be0d8faaffc58;
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4;
+local MAP_KEY_ID = 0x3dc94a19365b10ec;
+local MAP_VALUE_ID = 0x7ce4fd9430e80cea;
 
 local FORM_VARIABLE = 1;
 
@@ -31,7 +33,11 @@ local guardHolds = function(fd, v) {
   return true;
 };
 
-local newWriter = function() { return { b = [] }; };
+local newWriter = function() {
+  // owner and field name the refusal a deprecated variant makes
+  // (docs/SPEC-TABLES.md §2.15)
+  return { b = [], owner = null, field = null, reason = null };
+};
 local wu8 = function(w, v) { w.b.append(v & 0xff); };
 
 // canonical unsigned LEB128 (docs/SPEC-TABLES.md §3)
@@ -51,7 +57,7 @@ local appendWriter = function(w, sub) {
 
 // the id table interns ids in FIRST-USE order, so the write order is the bytes
 // (docs/SPEC-TABLES.md §3)
-local newIds = function() { return { list = [], index = {} }; };
+local newIds = function() { return { list = [], index = {}, ref = null, retain = null }; };
 local idsRef = function(ids, id) {
   if (id in ids.index) return ids.index[id];
   ids.list.append(id);
@@ -170,9 +176,10 @@ local blobKey = function(kind, val) {
 // pre-order walk from the root over POINTER EDGES, descending through every
 // by-value edge. Node 1 is the root; record k is index k + 1.
 local edgesOf;
+local shapeEdges;
 local armEdges;
 
-local shapeEdges = function(T, d, val, out) {
+shapeEdges = function(T, d, val, out) {
   if (d.shape == "ptr") {
     if (val != null) out.append({ kind = "t", d = tableDesc(T, d.table), v = val });
     return;
@@ -187,6 +194,19 @@ local shapeEdges = function(T, d, val, out) {
   }
   if (d.shape == "union") {
     armEdges(T, unionDesc(T, d.table), val, out);
+    return;
+  }
+  if (d.shape == "map") {
+    // a map reaches its entry values BY VALUE, in the order it writes them
+    // (docs/SPEC-TABLES.md §2.8, §3.1)
+    local kd = d.mapkey;
+    local vd = d.mapvalue;
+    local n = val.len();
+    for (local i = 0; i < n; i++) {
+      local ent = val[i];
+      shapeEdges(T, kd, ent[kd.member], out);
+      shapeEdges(T, vd, ent[vd.member], out);
+    }
     return;
   }
   if (d.shape == "arr") {
@@ -236,6 +256,7 @@ armEdges = function(T, u, inst, out) {
 
 local number = function(T, c, root) {
   local nodes = [];
+  local seenBlobs = { s = {}, b = {} };
   local open = [root];
   local rootVisible = true;
   local stack = [];
@@ -251,12 +272,17 @@ local number = function(T, c, root) {
     local e = top.edges[top.i];
     top.i = top.i + 1;
     if (e.kind == "s" || e.kind == "b") {
-      local key = blobKey(e.kind, e.v);
-      local found = -1;
-      for (local i = 0; i < nodes.len(); i++) {
-        if (nodes[i].key == key) { found = i; break; }
+      // A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): a second slot
+      // naming one blob is refused by name, a record the writer never shares.
+      // A *bytes blob is keyed by its object, and a *string by its value (a
+      // Squirrel string has no storage identity), so both spot the second
+      // naming of one blob.
+      if (e.v in seenBlobs[e.kind]) {
+        _M.SaveReason <- "blob_shared";
+        return null;
       }
-      if (found < 0) nodes.append({ kind = e.kind, v = e.v, key = key });
+      seenBlobs[e.kind][e.v] <- true;
+      nodes.append({ kind = e.kind, v = e.v });
       continue;
     }
     local target = e.v;
@@ -285,15 +311,15 @@ local indexOfTable = function(nodes, root, val) {
   return -1;
 };
 local indexOfBlob = function(nodes, kind, val) {
-  local key = blobKey(kind, val);
+  if (val == null) return 0;
   for (local i = 0; i < nodes.len(); i++) {
-    if (nodes[i].kind == kind && nodes[i].key == key) return i + 2;
+    if (nodes[i].kind == kind && nodes[i].v == val) return i + 2;
   }
   return -1;
 };
 
 // one field's value inside an array body or an arm payload (no id, no kind)
-local writePrim, writeElement, writeValue, writeUnionValue, writeTabBody, writeBare;
+local writePrim, writeElement, writeValue, writeUnionValue, writeTabBody, writeBare, writeMapField;
 
 // ONE SCALAR VALUE (docs/SPEC-TABLES.md §3): a bool one byte, an integer or
 // flags little-endian at its width, a float32 narrowed and a float64 whole,
@@ -307,7 +333,16 @@ writePrim = function(w, d, val, ids) {
   if (d.shape == "enum") {
     if (val == null) { wleb(w, 0); return true; }
     foreach (pair in d.variants) {
-      if (pair[0] == val) { wleb(w, idsRef(ids, pair[1])); return true; }
+      if (pair[0] == val) {
+        if (pair.len() > 2 && pair[2]) {
+          // A STRICT WRITE REFUSES A VALUE HOLDING A DEPRECATED VARIANT
+          // (docs/SPEC-TABLES.md §2.15): the value is the caller's.
+          local where = (w.owner == null ? "" : w.owner + ".") + (w.field == null ? "" : w.field);
+          w.reason = "invalid_value: " + where + " names the deprecated variant " + val;
+          return false;
+        }
+        wleb(w, idsRef(ids, pair[1])); return true;
+      }
     }
     return false;
   }
@@ -334,8 +369,16 @@ local writeFields = function(T, c, v, w, ids, nodes, root) {
     local present = !fd.optional || v[fd.member + "Present"];
     if (!present) continue;
     local val = v[fd.member];
-    if (!writeValue(T, fd, val, w, ids, nodes, root, true)) return false;
+    local prevOwner = w.owner, prevField = w.field;
+    w.owner = c.name; w.field = fd.name;
+    local ok = writeValue(T, fd, val, w, ids, nodes, root, true);
+    w.owner = prevOwner; w.field = prevField;
+    if (!ok) return false;
   }
+  // THE RETAINED TAIL: at the end of their own body, in the order retained,
+  // before the terminator and (for the root) before the node table
+  // (docs/SPEC-TABLES.md §6.6)
+  if (ids.retain != null) ids.retain.emit(v, w, ids, nodes, root);
   return true;
 };
 
@@ -343,6 +386,18 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
   local e = d.elem;
   wu8(w, e.kind == 0 ? 6 : e.kind);
   local n = val.len();
+  if (e.shape == "tab" && e.kind == 12) {
+    // A PLAIN TEXT LIST's element is kind 12 (docs/SPEC-TABLES.md §2.13, §3):
+    // its storage is the generated element record, but the wire carries the
+    // record's one `value` string as its own L and bytes.
+    wleb(w, n);
+    for (local i = 0; i < n; i++) {
+      local s = val[i].Value;
+      wleb(w, s.len());
+      for (local j = 0; j < s.len(); j++) wu8(w, s[j]);
+    }
+    return n;
+  }
   if (d.kind == 16) {
     // AN ENUM-KEYED ARRAY (docs/SPEC-TABLES.md §2.4, §3.2): only the slots that
     // are not their element's default ride, each as key reference, L, payload.
@@ -364,6 +419,9 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
       } else {
         rides = !scalarDefault(val[i], e.def);
       }
+      // a slot whose only content is a retained field is not its default
+      // (§6.6): it rides on the retained tail like any declared field would
+      if (!rides && ids.retain != null && ids.retain.has(val[i])) rides = true;
       if (!rides) continue;
       local keyRef = idsRef(ids, d.keyvariants[i][1]);
       local payload = newWriter();
@@ -418,7 +476,7 @@ local arrayRides = function(fd, val) {
     for (local i = 0; i < n; i++) { if (val[i] != null && val[i].Type != null && val[i].Type != 0) return true; }
     return false;
   }
-  if (e.shape == "ptr") {
+  if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob") {
     for (local i = 0; i < n; i++) { if (val[i] != null) return true; }
     return false;
   }
@@ -483,6 +541,59 @@ writeBare = function(T, d, val, w, ids, nodes, root) {
   }
   if (shape == "arr") return writeArrayBody(T, d, val, w, ids, nodes, root) >= 0;
   return writePrim(w, d, val, ids);
+};
+
+local mapKeyCmp = function(a, b) {
+  if (a == null && b == null) return 0;
+  if (a == null) return -1;
+  if (b == null) return 1;
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+};
+
+// A MAP FIELD (docs/SPEC-TABLES.md §2.8): the entries ride in ASCENDING KEY
+// ORDER with no key twice — a writer's rule, byte-identical output requires
+// it — as kind 14 over element kind 13, each entry an L-framed `{ key, value }`
+// body written through the generated entry's own descriptor. An EMPTY plain
+// map elides (the by-value rule, §3); an OPTIONAL map is present when
+// writeFields reaches it, and a present empty map is WRITTEN (§2.8): absent
+// and present-empty are distinct, so only absence elides. An entry ALWAYS
+// rides, because identity here is the key.
+writeMapField = function(T, d, val, w, ids, nodes, root) {
+  local n = val.len();
+  // a present empty optional map writes its field header and `0d 00` (§2.8)
+  if (n == 0 && !d.optional) return true;
+  local keyMember = d.mapkey.member;
+  local order = [];
+  for (local i = 0; i < n; i++) order.append(i);
+  order.sort(function(x, y) { return mapKeyCmp(val[x][keyMember], val[y][keyMember]); });
+  local idx = [];
+  local haveLast = false;
+  local last = null;
+  foreach (e in order) {
+    local key = val[e][keyMember];
+    if (haveLast && mapKeyCmp(last, key) == 0) { idx[idx.len() - 1] = e; }
+    else { idx.append(e); haveLast = true; last = key; }
+  }
+  local mark = idsMark(ids);
+  local field = newWriter();
+  wleb(field, idsRef(ids, d.id)); wu8(field, 14);
+  local body = newWriter();
+  wu8(body, 13);
+  wleb(body, idx.len());
+  local ed = tableDesc(T, d.entry);
+  foreach (e in idx) {
+    local entry = newWriter();
+    if (!writeFields(T, ed, val[e], entry, ids, nodes, root)) { idsRollback(ids, mark); return false; }
+    wu8(entry, 0);
+    wleb(body, entry.b.len());
+    appendWriter(body, entry);
+  }
+  wleb(field, body.b.len());
+  appendWriter(field, body);
+  appendWriter(w, field);
+  return true;
 };
 
 // ONE FIELD (docs/SPEC-TABLES.md §3): elided at its declared default, a
@@ -572,6 +683,9 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed) {
     appendWriter(w, body);
     return true;
   }
+  if (shape == "map") {
+    return writeMapField(T, d, val, w, ids, nodes, root);
+  }
   // a scalar: bool, int, flags, float or enum
   if (!always) {
     if (shape == "float" && d.f32) {
@@ -587,15 +701,21 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed) {
 // THE SAVE (docs/SPEC-TABLES.md §3, §3.1): the form byte, the root's fields,
 // the node table LAST in the root body under the reserved id at kind 12, the
 // terminator, then the id table and its count.
-_M.save <- function(T, rootName, value) {
+_M.save <- function(T, rootName, value, retain = null) {
+  _M.SaveReason <- null;
   local c = tableDesc(T, rootName);
   local numbered = number(T, c, value);
   if (numbered == null) return null;
   local nodes = numbered.nodes;
   local ids = newIds();
+  ids.ref = function(id) { return idsRef(ids, id); };
+  ids.retain = retain;
   local w = newWriter();
   wu8(w, FORM_VARIABLE);
-  if (!writeFields(T, c, value, w, ids, nodes, value)) return null;
+  if (!writeFields(T, c, value, w, ids, nodes, value)) {
+    _M.SaveReason <- w.reason;
+    return null;
+  }
   if (nodes.len() > 0) {
     wleb(w, idsRef(ids, NODE_TABLE_ID)); wu8(w, 12);
     local sub = newWriter();
@@ -633,8 +753,8 @@ _M.save <- function(T, rootName, value) {
 
 // THE MEASURE (docs/SPEC-TABLES.md §3.1): it derives the same numbering and
 // the same bytes, so measure == save holds across a pointer graph.
-_M.measure <- function(T, rootName, value) {
-  local b = _M.save(T, rootName, value);
+_M.measure <- function(T, rootName, value, retain = null) {
+  local b = _M.save(T, rootName, value, retain);
   if (b == null) return -1;
   return b.len();
 };

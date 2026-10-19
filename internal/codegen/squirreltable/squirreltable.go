@@ -119,6 +119,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		emitClass(m, st)
 		emitDescriptor(m, st)
 		for _, s := range surfaces {
+			if !tableCarriesSurface(u, st, s.Name) {
+				continue
+			}
 			if s.Table != nil {
 				s.Table(m, st)
 			}
@@ -139,6 +142,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	m.Printf("_M.Roots <- [%s];\n", strings.Join(roots, ", "))
 	m.Printf("%s.link(_M);\n\n", desc)
 	for _, s := range surfaces {
+		if !unitCarriesSurface(u, s.Name) {
+			continue
+		}
 		if s.Module != nil {
 			s.Module(m)
 		}
@@ -202,8 +208,6 @@ func closure(u *ir.Unit) (all, roots []*ir.Struct) {
 // unmapped names a construct the descriptors do not carry yet, or "".
 func unmapped(f *ir.Field) string {
 	switch {
-	case f.Type.Kind == ir.TMap:
-		return "a map (docs/SPEC-TABLES.md §2.8)"
 	case f.Type.Kind == ir.TWString:
 		return "wide text (SPEC §4.12; table kind 33)"
 	}
@@ -259,6 +263,11 @@ func emitInit(m *Module, f *ir.Field, target string) {
 		m.Printf("    %s = array(%d);\n", target, n)
 		m.Printf("    for (local i = 0; i < %d; i++) %s[i] = %s;\n", n, target, elemZero(f))
 	default:
+		if f.IsMap() {
+			// a map is born empty (docs/SPEC-TABLES.md §2.8)
+			m.Printf("    %s = [];\n", target)
+			break
+		}
 		m.Printf("    %s = %s;\n", target, valueDefault(f))
 	}
 	if f.Type.Optional {
@@ -418,6 +427,9 @@ func emitDescriptor(m *Module, st *ir.Struct) {
 	m.Printf("  table = %v,\n", st.IsTable)
 	m.Printf("  fixed = %v,\n", st.FixedDeclared)
 	m.Printf("  variable = %v,\n", variable)
+	// a map's generated entry counts its key's widening ONCE for the map
+	// (docs/SPEC-TABLES.md §2.8), so its own body skips the per-field event
+	m.Printf("  mapentry = %v,\n", st.IsMapEntry())
 	m.Printf("  make = function() { return _M.%s(); },\n", st.Name)
 	m.Printf("  fields = [\n")
 	for i, f := range st.Fields {
@@ -444,7 +456,44 @@ func emitDescriptor(m *Module, st *ir.Struct) {
 //	                  enum's [name, id] pairs
 //	elem              an array's element descriptor (the same keys), else null
 //	optional required deprecated   the field's markers (§2.3, §2.10)
+//
+// mapDesc renders a map field's descriptor (docs/SPEC-TABLES.md §2.8): shape
+// "map", the key and value each at their own sub-descriptor, the value
+// null (an empty map elides, §3).
+func mapDesc(f *ir.Field, ordinal int) string {
+	d := map[string]string{
+		"name":       squirrel.StringLit([]byte(f.Name)),
+		"member":     squirrel.StringLit([]byte(squirrel.Member(f))),
+		"key":        squirrel.StringLit([]byte(ir.TableFieldJsonKey(f))),
+		"id":         squirrel.HexLit(ir.TableFieldWireId(f)),
+		"ordinal":    fmt.Sprint(ordinal),
+		"kind":       fmt.Sprint(ir.TableWireFieldKind(f)),
+		"optional":   fmt.Sprint(f.Type.Optional),
+		"required":   fmt.Sprint(f.Required),
+		"deprecated": fmt.Sprint(f.Deprecated),
+		"shape":      `"map"`,
+		"bound":      "0", "min": "0", "list": "false", "counted": "false",
+		"signed": "false", "width": "0", "bits": "0", "lo": "null", "hi": "null", "f32": "false",
+		"def": "null", "table": "null", "variants": "null", "keyvariants": "null", "elem": "null",
+		"entry": "null",
+	}
+	// the GENERATED entry is an ordinary table of the closure (§2.8): the
+	// runtime decodes and writes an entry through its descriptor, so the key
+	// and value take the ordinary field codecs and the entry rides whole.
+	d["entry"] = squirrel.StringLit([]byte(f.MapEntry.Name))
+	d["mapkey"] = fieldDesc(ir.MapKeyField(f), 0)
+	d["mapvalue"] = fieldDesc(ir.MapValueField(f), 1)
+	return render(d, mapKeys)
+}
+
+var mapKeys = []string{"name", "member", "key", "id", "ordinal", "kind", "shape", "bound", "min", "list", "counted",
+	"signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "keyvariants", "elem",
+	"entry", "mapkey", "mapvalue", "optional", "required", "deprecated"}
+
 func fieldDesc(f *ir.Field, ordinal int) string {
+	if f.IsMap() {
+		return mapDesc(f, ordinal)
+	}
 	d := baseDesc(f)
 	d["name"] = squirrel.StringLit([]byte(f.Name))
 	d["member"] = squirrel.StringLit([]byte(squirrel.Member(f)))
@@ -490,6 +539,7 @@ func baseDesc(f *ir.Field) map[string]string {
 		"kind": fmt.Sprint(ir.TableWireScalarKind(f)), "bound": "0", "min": "0", "list": "false", "counted": "false",
 		"signed": "false", "width": "0", "bits": "0", "lo": "null", "hi": "null", "f32": "false",
 		"def": "null", "table": "null", "variants": "null", "keyvariants": "null", "elem": "null",
+		"entry": "null",
 	}
 	switch {
 	case f.Type.Blob() && f.Type.Kind == ir.TString:
@@ -508,13 +558,7 @@ func baseDesc(f *ir.Field) map[string]string {
 	case enumOf(f) != nil:
 		d["shape"] = `"enum"`
 		d["def"] = enumDefault(f)
-		e := enumOf(f)
-		pairs := make([]string, len(e.Variants))
-		for i := range e.Variants {
-			pairs[i] = fmt.Sprintf("[%s, %s]", squirrel.StringLit([]byte(e.Variants[i])),
-				squirrel.HexLit(ir.TableWireId(e.VariantWireName(i))))
-		}
-		d["variants"] = "[" + strings.Join(pairs, ", ") + "]"
+		d["variants"] = enumVariantPairs(enumOf(f))
 	case isFlags(f):
 		d["shape"] = `"flags"`
 		d["width"] = "8"
@@ -547,6 +591,20 @@ func baseDesc(f *ir.Field) map[string]string {
 		d["def"] = scalarDefault(f)
 	}
 	return d
+}
+
+// enumVariantPairs renders an enum's [name, wire id, deprecated] triples in
+// declaration order. The third slot is the variant's `| deprecated` marker
+// (docs/SPEC-TABLES.md §2.15): a reader meeting a marked id yields the field's
+// declared default, and a writer refuses it, both without changing the id.
+func enumVariantPairs(e *ir.Enum) string {
+	pairs := make([]string, len(e.Variants))
+	for i := range e.Variants {
+		deprecated := i < len(e.VariantDeprecated) && e.VariantDeprecated[i]
+		pairs[i] = fmt.Sprintf("[%s, %s, %v]", squirrel.StringLit([]byte(e.Variants[i])),
+			squirrel.HexLit(ir.TableWireId(e.VariantWireName(i))), deprecated)
+	}
+	return "[" + strings.Join(pairs, ", ") + "]"
 }
 
 func render(d map[string]string, keys []string) string {
@@ -629,4 +687,100 @@ func emitUnion(m *Module, un *ir.Union) {
 	}
 	m.Printf("  ],\n")
 	m.Printf("};\n\n")
+}
+
+func init() {
+	RegisterSurface(Surface{Name: "wire", Table: wireTable})
+	RegisterSurface(Surface{Name: "json", Table: jsonEntries})
+}
+
+// surfaceForm maps a registered surface to the form a table must carry to
+// emit it (docs/SPEC-TABLES.md §2.12). The cookwrite surface is the write half
+// of the `cook` form (§7.6: "CookMeasure and Cook write the cooked file"), so
+// it is gated by `cook`; every other form surface shares its name.
+func surfaceForm(surface string) string {
+	if surface == "cookwrite" {
+		return "cook"
+	}
+	return surface
+}
+
+// tableCarriesSurface reports whether st carries the named surface
+// (docs/SPEC-TABLES.md §2.12, §7.6). A surface outside the forms vocabulary
+// (fixed, view, message) is always carried; a form surface (wire, json, block,
+// cook) is skipped when st.DeclaredForms() leaves it out.
+func tableCarriesSurface(u *ir.Unit, st *ir.Struct, surface string) bool {
+	form := surfaceForm(surface)
+	if !ir.TableForms[form] {
+		return true
+	}
+	if st.IsTable {
+		if !st.DeclaredForms() {
+			return true
+		}
+		return st.CarriesForm(form)
+	}
+	return unitCarriesSurface(u, surface)
+}
+
+// unitCarriesSurface reports whether any declared table in u carries the named
+// surface (docs/SPEC-TABLES.md §2.12, §7.6). With no `forms` declaration every
+// surface is emitted; when any table declares `forms`, a form surface no table
+// carries is omitted.
+func unitCarriesSurface(u *ir.Unit, surface string) bool {
+	form := surfaceForm(surface)
+	if !ir.TableForms[form] {
+		return true
+	}
+	declared := false
+	for _, t := range u.Tables {
+		if !t.IsMapEntry() && t.DeclaredForms() {
+			declared = true
+		}
+	}
+	if !declared {
+		return true
+	}
+	for _, t := range u.Tables {
+		if !t.IsMapEntry() && t.CarriesForm(form) {
+			return true
+		}
+	}
+	return false
+}
+
+// wireTable emits the per-table wire entry points (<T>Measure, <T>Save,
+// <T>Load) for a declared table that carries the `wire` form
+// (docs/SPEC-TABLES.md §2.12, §3, §3.1).
+func wireTable(m *Module, st *ir.Struct) {
+	if !st.IsTable {
+		return
+	}
+	save := m.Runtime("save")
+	load := m.Runtime("load")
+	l := squirrel.StringLit([]byte(st.Name))
+	m.Printf("_M.%sMeasure <- function(v) { return %s.measure(_M, %s, v); };\n", st.Name, save, l)
+	m.Printf("_M.%sSave <- function(v) { return %s.save(_M, %s, v); };\n", st.Name, save, l)
+	m.Printf("_M.%sLoad <- function(bytes, report = null) {\n", st.Name)
+	m.Printf("  if (report == null) report = {};\n")
+	m.Printf("  foreach (k in [\"unknown\", \"kindMismatch\", \"widened\", \"clamped\", \"duplicate\", \"nonFinite\"]) if (!(k in report)) report[k] <- 0;\n")
+	m.Printf("  if (!(\"malformed\" in report)) report.malformed <- false;\n")
+	m.Printf("  if (!(\"refused\" in report)) report.refused <- false;\n")
+	m.Printf("  return %s.load(_M, %s, bytes, report);\n};\n", load, l)
+}
+
+// jsonEntries emits the per-table JSON entry points (<T>ToJson,
+// <T>ToJsonMeasure, <T>FromJson) for a declared table that carries the `json`
+// form (docs/SPEC-TABLES.md §2.12, §16).
+func jsonEntries(m *Module, st *ir.Struct) {
+	if !st.IsTable {
+		return
+	}
+	js := m.Runtime("json")
+	l := squirrel.StringLit([]byte(st.Name))
+	m.Printf("_M.%sToJson <- function(v) { return %s.ToJson(_M, %s, v); };\n", st.Name, js, l)
+	m.Printf("_M.%sToJsonMeasure <- function(v) { return %s.ToJsonMeasure(_M, %s, v); };\n", st.Name, js, l)
+	m.Printf("_M.%sFromJson <- function(text, report = null) {\n", st.Name)
+	m.Printf("  if (report == null) report = {};\n")
+	m.Printf("  return %s.FromJson(_M, %s, text, report);\n};\n", js, l)
 }

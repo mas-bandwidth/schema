@@ -31,7 +31,7 @@ slow-gate-coverage	./...	it MUST run plain: the accounting reads which tests ski
 # --- lines whose selected tests are NOT gated (measured, not assumed)
 #
 # The scan is package-granular on purpose: it cannot know which tests a -run
-# pattern selects without running them. These three lines name tests that reach
+# pattern selects without running them. These lines name tests that reach
 # no slowtest.Gate at all — measured on darwin at this head with a plain
 # `go test -v -run <the same pattern>`: 0 lines of slowtest's skip message.
 # `make slow-gate-coverage` is the check that keeps that true.
@@ -42,3 +42,5 @@ tables-dart-names-negative-control	./compiler	TestDartTableRuntimeNamesAreClaime
 
 cards-test	./internal/ci	the card gate runs the fast half of internal/ci; its one gated test, TestSerializeFetchTriesTheMirrorFirst, runs make and git (a functional test) and is run with SCHEMA_SLOW=1 by the ci-full.yml go-test lane (measured 2026-10-14: 1 gate skip, nothing else skipped)
 tables-java-cards-refusal-bites	./internal/codegen/javatable	a negative control that runs one named test, TestOtherVariableConstructsAreRefusedByName, which reaches no slowtest.Gate (measured 2026-10-14: 0 gate skips, PASS 0.00s under a plain go test); it must go red under the overlay
+schema-squirrel-all-port-differential-negative-control	./internal/ci	TestSquirrelAllPortDifferentialDetectsADivergence reaches no slowtest.Gate (measured 2026-10-20 at 9a2b1be6e6: 0 gate skips, PASS 0.00s under a plain go test); it compares in-process answer trees, no toolchain and no corpus
+schema-squirrel-resource-bounds-fast	./internal/ci	TestSquirrelResourceBoundsGate, TestSquirrelResourceBoundsStemIsNotAPort and TestSquirrelResourceBoundsAllocationCounter reach no slowtest.Gate (measured 2026-10-20 at 9a2b1be6e6: 0 gate skips each, PASS 0.00s/0.00s/0.05s under a plain go test); the gate reads the target text and the counter uses runtime memstats, no toolchain and no corpus
