@@ -184,7 +184,7 @@ func TestLuauTableSaveNegativeControl(t *testing.T) {
 		}
 	}
 	sort.Strings(keys)
-	const anchor = "\tif at_default(fd, val) then return true end\n"
+	const anchor = "\tif not required and at_default(fd, val) then return true end\n"
 	for _, key := range keys {
 		g := generateUnit(t, units, key)
 		if g.err != nil {
