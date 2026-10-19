@@ -170,3 +170,107 @@ func TestFixedDeprecatedSlotIsTheDeclaredDefault(t *testing.T) {
 }
 `)
 }
+
+// A DEPRECATED NAMED-SHAPE FIELD (enum, flags, keyed array) is the same rule
+// (§3.4 DEPRECATED SLOT): FixedSave writes the declared default, FixedLoad
+// ignores peer bytes and yields the declared default. The other scalar and
+// container shapes are covered by TestFixedDeprecatedSlotIsTheDeclaredDefault
+// above; these are the named-shape leaves the const op cannot land.
+func TestFixedDeprecatedSlotEnumFlagsKeyed(t *testing.T) {
+	t.Parallel()
+	runGenerated(t, `package probe
+
+enum Color { Red, Green, Blue }
+flags Bits { One, Two }
+fixed table U
+{
+    e Color = Green | deprecated
+    f Bits | deprecated
+    keys [Color]uint16 | deprecated
+    g int32
+    h uint8 | deprecated
+}
+`, `package probe
+
+import (
+	"bytes"
+	"encoding/binary"
+	"testing"
+)
+
+// Body offsets follow declaration order; the Go struct's own padding does not
+// map to the packed record body, so these are the record's bytes.
+const (
+	uEPos   = 0
+	uESize  = 1
+	uFPos   = 1
+	uFSize  = 8
+	uKeysPos = 9
+	uKeysSize = 6
+	uGPos   = 15
+	uHPos   = 19
+)
+
+func uBody(buf []byte) []byte {
+	return buf[len(buf)-int(UFixedRecordBytes)+8:]
+}
+
+func TestFixedDeprecatedSlotEnumFlagsKeyed(t *testing.T) {
+	t.Parallel()
+	var p, q U
+	UReset(&p)
+	UReset(&q)
+	p.E, p.F, p.H = ColorRed, BitsOne, 0x77
+	q.E, q.F, q.H = ColorBlue, BitsTwo, 0x99
+	p.Keys[0], q.Keys[0] = 0xaaaa, 0xbbbb
+	p.G, q.G = 3, 5
+	bufP := make([]byte, UFixedMeasure(1))
+	bufQ := make([]byte, UFixedMeasure(1))
+	if n := UFixedSave([]U{p}, bufP); n != int64(len(bufP)) {
+		t.Fatalf("save p: %d", n)
+	}
+	if n := UFixedSave([]U{q}, bufQ); n != int64(len(bufQ)) {
+		t.Fatalf("save q: %d", n)
+	}
+	bp, bq := uBody(bufP), uBody(bufQ)
+	if !bytes.Equal(bp[uEPos:uEPos+uESize], bq[uEPos:uEPos+uESize]) {
+		t.Fatalf("writer leaked enum live value")
+	}
+	if !bytes.Equal(bp[uFPos:uFPos+uFSize], bq[uFPos:uFPos+uFSize]) {
+		t.Fatalf("writer leaked flags live value")
+	}
+	if !bytes.Equal(bp[uKeysPos:uKeysPos+uKeysSize], bq[uKeysPos:uKeysPos+uKeysSize]) {
+		t.Fatalf("writer leaked keyed-array live value")
+	}
+	if bp[uHPos] != 0 || bq[uHPos] != 0 {
+		t.Fatalf("writer leaked deprecated uint8: %d %d", bp[uHPos], bq[uHPos])
+	}
+	if int32(binary.LittleEndian.Uint32(bp[uGPos:])) != 3 || int32(binary.LittleEndian.Uint32(bq[uGPos:])) != 5 {
+		t.Fatalf("live field corrupted")
+	}
+
+	copy(bp[uEPos:uEPos+uESize], []byte{7})
+	binary.LittleEndian.PutUint64(bp[uFPos:uFPos+uFSize], 0x5555555555555555)
+	binary.LittleEndian.PutUint16(bp[uKeysPos:], 0x1234)
+	bp[uHPos] = 0xee
+	back := make([]U, 1)
+	plan := make([]TableFixedEntry, UFixedPlanMax)
+	var r TableReport
+	if n := UFixedLoad(back, bufP, plan, &r); n != 1 || r != (TableReport{}) {
+		t.Fatalf("load %d, report %+v", n, r)
+	}
+	got := back[0]
+	if got.E != ColorGreen || got.F != 0 || got.H != 0 {
+		t.Fatalf("named-shape defaults: e=%v f=%v h=%d", got.E, got.F, got.H)
+	}
+	for i := range got.Keys {
+		if got.Keys[i] != 0 {
+			t.Fatalf("keyed-array default: %v", got.Keys)
+		}
+	}
+	if got.G != 3 {
+		t.Fatalf("live field changed: %d", got.G)
+	}
+}
+`)
+}
