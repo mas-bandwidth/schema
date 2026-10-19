@@ -1,5 +1,10 @@
 name: Squirrel all-port differential
 
+# FORKS: this repository is PUBLIC, so a pull request from a fork must never run
+# on fleet hardware. Every fleet job here carries the fork guard; a fork's pull
+# request gets no CI run, and a maintainer reruns it by workflow_dispatch after
+# reading the diff.
+#
 # THE SQUIRREL LENS (ROADMAP.md, docs/roadmap.sexp, group
 # schema-per-language-lenses). Squirrel has no static checker of its own over
 # the generated output, so its lens is a differential against every other port:
@@ -43,15 +48,19 @@ concurrency:
 jobs:
   fast:
     name: fast (comparison and planted control)
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26'
-          cache: false
+      - name: Tool presence check: go
+        run: |
+          want="$(sed -nE 's/^go ([0-9]+\.[0-9]+)$/\1/p' go.mod)"
+          got="$(go version | sed -nE 's/.*go([0-9]+\.[0-9]+).*/\1/p')"
+          if [ -z "$got" ] || [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got ($RUNNER_NAME)"
+            exit 1
+          fi
       - name: The differential's fast half
         run: |
           export GOFLAGS=-mod=readonly
@@ -64,10 +73,14 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26'
-          cache: false
+      - name: Tool presence check: go
+        run: |
+          want="$(sed -nE 's/^go ([0-9]+\.[0-9]+)$/\1/p' go.mod)"
+          got="$(go version | sed -nE 's/.*go([0-9]+\.[0-9]+).*/\1/p')"
+          if [ -z "$got" ] || [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got ($RUNNER_NAME)"
+            exit 1
+          fi
       - name: The pinned Squirrel interpreter
         run: |
           export GOFLAGS=-mod=readonly
