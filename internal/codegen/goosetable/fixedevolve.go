@@ -245,7 +245,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	}
 	e.p("    }\n")
 	e.p("    if pick < 0 {\n        report.hash = h;\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseLayoutUnknown, false);\n    }\n")
-	e.p("    if pick < %sFixedEvolveFloor {\n        report.hash = h;\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseLayoutUnsupported, false);\n    }\n", n)
+	e.p("    if pick > 0 && pick < %sFixedEvolveFloor {\n        report.hash = h;\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseLayoutUnsupported, false);\n    }\n", n)
 	e.p("    if !supported {\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseLayoutMalformed, false);\n    }\n")
 	e.p("    if !schema_rt::fixed_evolve_layout_ok(data, layout_length, known) {\n        return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseLayoutMalformed, false);\n    }\n")
 	e.p("    let rest = data.len - schema_rt::FixedHeaderBytes - 4 - layout_length;\n")
@@ -377,6 +377,44 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 			if n.widened {
 				e.p("            report.widened += 1;\n")
 			}
+		case nodeCountGuard:
+			// A COUNTED ARRAY NEVER LANDS THE WRITER'S COUNT WORD UNCHECKED
+			// (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8 row 4; docs/SPEC-
+			// TABLES.md §3.4): a word below zero or past the plan's bound — the
+			// writer's min(their_n, my_n) — refuses count_over_bound before the
+			// count word or any destination byte lands, as gotable's
+			// tableFixedTextRefusal does.
+			v := *seq
+			*seq = *seq + 1
+			e.p("            let cg%d: i64 = schema_rt::fixed_i32(data, %s) as i64;\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)))
+			e.p("            if cg%d < 0 || cg%d > %d {\n                return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseCountOverBound, false);\n            }\n", v, v, n.count)
+		case nodeOrdinal:
+			// A SAME-WIDTH ORDINAL IS REMAPPED THROUGH THE WRITER'S VARIANT SET
+			// (docs/FIXED-FORM-ALGORITHM.md §5.2 EMIT kind 30; §5.4, §5.8 row
+			// 12): a raw past the writer's count lands None, and the bounds pass
+			// counts it once per field per record, exactly as gotable's
+			// tableFixedOrdinal and tableFixedForgedBounds do.
+			v := *seq
+			*seq = *seq + 1
+			e.p("            let or%d: u64 = schema_rt::fixed_evolve_read_u(data, %s, %d);\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.size)
+			e.p("            var ov%d: u64 = 0;\n", v)
+			for raw := int64(1); raw <= n.count; raw++ {
+				if raw < int64(len(n.remap)) && n.remap[raw] != 0 {
+					e.p("            if or%d == %d { ov%d = %d; }\n", v, raw, v, n.remap[raw])
+				}
+			}
+			e.p("            if or%d > %d { report.clamped += 1; }\n", v, n.count)
+			for b := int64(0); b < n.size; b++ {
+				e.p("            img[%s] = ((ov%d >> %d) & 255) as! u8;\n", addExpr(curBase, fmt.Sprintf("%d", n.curOff+b)), v, 8*b)
+			}
+		case nodeForgedTag:
+			// A FORGED UNION TAG PAST THE WRITER'S ARM SET LANDS NONE AND IS
+			// COUNTED ONCE (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12),
+			// matching gotable's unguarded None const and tableFixedForgedBounds.
+			v := *seq
+			*seq = *seq + 1
+			e.p("            let ft%d: u64 = schema_rt::fixed_evolve_read_u(data, %s, %d);\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.tagWidth)
+			e.p("            if ft%d > %d { report.clamped += 1; }\n", v, n.count)
 		case nodeLoop:
 			v := *seq
 			*seq = *seq + 1
@@ -429,6 +467,7 @@ type evolveNode struct {
 	arg                        uint64
 	tagWidth                   int64
 	defaultType                string
+	remap                      []uint64
 	signed, float, widened     bool
 	body                       []evolveNode
 }
@@ -440,6 +479,9 @@ const (
 	nodeLoop
 	nodeIf
 	nodeDefault
+	nodeCountGuard
+	nodeOrdinal
+	nodeForgedTag
 )
 
 // evolvePlan is one older entry's compiled plan. The old bytes are laid over
@@ -583,7 +625,21 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 			c.plan.kindMismatch++
 			return nil
 		}
-		return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: te.size}}
+		// THE WRITER'S VARIANT TABLE (gotable tableFixedCompileEntry, kind 30):
+		// each old variant names the reader ordinal by wire id, so a variant the
+		// old writer could not have written never lands a name only this reader
+		// has. A raw past the writer's count lands zero (None).
+		remap := make([]uint64, int(te.children)+1)
+		for j := 0; j < te.children && oi+1+j < len(c.oldAll); j++ {
+			vid := c.oldAll[oi+1+j].id
+			for k := 0; k < me.children && ci+1+k < len(c.curAll); k++ {
+				if c.curAll[ci+1+k].id == vid {
+					remap[j+1] = uint64(k + 1)
+					break
+				}
+			}
+		}
+		return []evolveNode{{op: nodeOrdinal, oldOff: oldOff, curOff: curOff, size: te.size, count: int64(te.children), remap: remap}}
 	default:
 		if te.size == me.size {
 			return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: te.size}}
@@ -656,6 +712,11 @@ func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, census bool, de
 	}
 	var out []evolveNode
 	if head == 4 {
+		// THE COUNT WORD IS HELD TO THE PLAN'S BOUND, NEVER COPIED FIRST
+		// (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8 row 4; docs/SPEC-TABLES.md
+		// §3.4): a forged word refuses count_over_bound before any destination
+		// byte. Only a lawful count lands, and it lands verbatim.
+		out = append(out, evolveNode{op: nodeCountGuard, oldOff: oldOff, count: n})
 		out = append(out, evolveNode{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: 4})
 	}
 	body := c.match(oi+1, ci+1, head, head, census, depth+1)
@@ -682,7 +743,15 @@ func (c *evolveCompiler) union(oi, ci int, oldOff, curOff int64, census bool, de
 		c.plan.kindMismatch++
 		return nil
 	}
-	var out []evolveNode
+	// THE NONE TAG LANDS FIRST AND UNGUARDED (gotable's none const,
+	// docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12): a tag past the writer's
+	// arm set selects no arm, leaves the tag at None and is counted once by the
+	// bounds node below. The default image wrote the union at the reader's
+	// default, so the None tag is stamped over it before any arm can answer.
+	out := []evolveNode{{op: nodeSet, curOff: curOff, arg: 0, size: curTag}}
+	if te.children > 0 {
+		out = append(out, evolveNode{op: nodeForgedTag, oldOff: oldOff, tagWidth: oldTag, count: int64(te.children)})
+	}
 	oa := oi + 1
 	for j := 0; j < te.children && oa < len(c.oldAll); j++ {
 		oe := c.oldAll[oa]

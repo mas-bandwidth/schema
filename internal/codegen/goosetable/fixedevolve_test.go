@@ -11,6 +11,7 @@ package goosetable
 // GenerateLineage, the lock played in one line.
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -302,6 +303,157 @@ func TestGooseFixedFormEvolution(t *testing.T) {
 			compared.Add(1)
 		})
 	}
+	// floor_retired_own: the retirement floor is below the identity entry, so a
+	// build with an OLDER retired entry still reads its OWN current file; the
+	// retired OLD file is below the floor and refuses layout_unsupported
+	// (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.3; gotable's fixedLineage numbers
+	// older-first with the own entry last).
+	t.Run("floor_retired_own", func(t *testing.T) {
+		t.Parallel()
+		old := evolutionLoad(t, "test/tables/VOLD_field_append.schema")
+		entry, ok := FixedEvolutionOf(old, "Lineage")
+		if !ok {
+			t.Fatal("no fixed root Lineage in the old schema")
+		}
+		entry.Retired = true
+		entry.Reason = "the test retires the older layout"
+		newer := evolutionLoad(t, "test/tables/VNEW_field_append.schema")
+		u := evolutionUnit{unit: newer, lineage: map[string][]FixedEvolutionEntry{"Lineage": {entry}}}
+		oldData, err := os.ReadFile(filepath.Join(corpus, "old_field_append.bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		newData, err := os.ReadFile(filepath.Join(corpus, "new_field_append.bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fields := []string{"values[0].X", "values[0].Y", "values[0].Z", "values[0].W"}
+		oldDir := t.TempDir()
+		oldMain := evolutionProgram(t, &u, "Lineage", oldDir, 1, []string{"old.bin"}, fields)
+		oldLine := joinedProbe(t, gooserun.Run(t, oldDir, oldMain, map[string][]byte{"old.bin": oldData}))
+		if oldLine != "-1 layout_unsupported 0 0 0" {
+			t.Fatalf("floor_retired_own: the retired OLD file answered %q, want layout_unsupported", oldLine)
+		}
+		newDir := t.TempDir()
+		newMain := evolutionProgram(t, &u, "Lineage", newDir, 1, []string{"new.bin"}, fields)
+		newLine := joinedProbe(t, gooserun.Run(t, newDir, newMain, map[string][]byte{"new.bin": newData}))
+		if newLine != "1 ok 0 0 0 44 55 66 777" {
+			t.Fatalf("floor_retired_own: the build's OWN file answered %q, want 1 ok 44 55 66 777", newLine)
+		}
+		compared.Add(1)
+	})
+
+	// forged_ordinal: §5.8 row 12 (forged_ordinal_both_plans). r0.tier is
+	// forged from the OLD writer's Gold (3) to 4, a name only the NEW reader
+	// has; the compiled plan carries the WRITER's three variants, so 4 lands
+	// None and the bounds pass counts clamped == 1 exactly.
+	t.Run("forged_ordinal", func(t *testing.T) {
+		t.Parallel()
+		old := evolutionLoad(t, "test/tables/VOLD_enum_append.schema")
+		entry, ok := FixedEvolutionOf(old, "Lineage")
+		if !ok {
+			t.Fatal("no fixed root Lineage in the old schema")
+		}
+		newer := evolutionLoad(t, "test/tables/VNEW_enum_append.schema")
+		u := evolutionUnit{unit: newer, lineage: map[string][]FixedEvolutionEntry{"Lineage": {entry}}}
+		data, err := os.ReadFile(filepath.Join(corpus, "old_enum_append.bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		needle := []byte{0x03, 0x09, 0x00, 0x00, 0x00}
+		at := bytes.Index(data, needle)
+		if at < 0 || at != len(data)-len(needle) {
+			t.Fatalf("forged_ordinal: the record body (tier=Gold, seq=9) is not the tail of the file: at=%d len=%d", at, len(data))
+		}
+		if bytes.Index(data[at+1:], needle) >= 0 {
+			t.Fatal("forged_ordinal: the record body occurs more than once in the file")
+		}
+		data[at] = 4
+		dir := t.TempDir()
+		main := evolutionProgram(t, &u, "Lineage", dir, 1, []string{"old.bin"}, []string{
+			"values[0].Tier as i64", "values[0].Seq",
+		})
+		got := joinedProbe(t, gooserun.Run(t, dir, main, map[string][]byte{"old.bin": data}))
+		const want = "1 ok 1 0 0 0 9"
+		if got != want {
+			t.Fatalf("forged_ordinal: the NEW reader answered %q, want %q", got, want)
+		}
+		compared.Add(1)
+	})
+
+	// forged_union_tag: §5.8 row 12 / union_append_hostile. The OLD writer has
+	// two arms; tag 3 is past them, so it selects no arm, lands None and counts
+	// clamped == 1.
+	t.Run("forged_union_tag", func(t *testing.T) {
+		t.Parallel()
+		old := evolutionLoad(t, "test/tables/VOLD_union_append.schema")
+		entry, ok := FixedEvolutionOf(old, "Lineage")
+		if !ok {
+			t.Fatal("no fixed root Lineage in the old schema")
+		}
+		newer := evolutionLoad(t, "test/tables/VNEW_union_append.schema")
+		u := evolutionUnit{unit: newer, lineage: map[string][]FixedEvolutionEntry{"Lineage": {entry}}}
+		data, err := os.ReadFile(filepath.Join(corpus, "old_union_append.bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		needle := []byte{0x01, 0x07, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00}
+		at := bytes.Index(data, needle)
+		if at < 0 || at != len(data)-len(needle) {
+			t.Fatalf("forged_union_tag: the record body (pick.alpha.m=7, seq=15) is not the tail of the file: at=%d len=%d", at, len(data))
+		}
+		if bytes.Index(data[at+1:], needle) >= 0 {
+			t.Fatal("forged_union_tag: the record body occurs more than once in the file")
+		}
+		data[at] = 3
+		dir := t.TempDir()
+		main := evolutionProgram(t, &u, "Lineage", dir, 1, []string{"old.bin"}, []string{
+			"values[0].Pick.Type as i64", "values[0].Seq",
+		})
+		got := joinedProbe(t, gooserun.Run(t, dir, main, map[string][]byte{"old.bin": data}))
+		const want = "1 ok 1 0 0 0 15"
+		if got != want {
+			t.Fatalf("forged_union_tag: the NEW reader answered %q, want %q", got, want)
+		}
+		compared.Add(1)
+	})
+
+	// writer_bound_count: §5.8 row 4. The OLD writer bounded vals at 4 and the
+	// NEW reader grew it to 8; the forged count 7 is past min(their_n, my_n),
+	// so it refuses count_over_bound before the count word or any destination
+	// byte lands (docs/SPEC-TABLES.md §3.4; gotable fixedversioning_test.go).
+	t.Run("forged_array_count", func(t *testing.T) {
+		t.Parallel()
+		old := evolutionLoad(t, "test/tables/VOLD_array_bounded_grow.schema")
+		entry, ok := FixedEvolutionOf(old, "ArrayBoundedGrow")
+		if !ok {
+			t.Fatal("no fixed root ArrayBoundedGrow in the old schema")
+		}
+		newer := evolutionLoad(t, "test/tables/VNEW_array_bounded_grow.schema")
+		u := evolutionUnit{unit: newer, lineage: map[string][]FixedEvolutionEntry{"ArrayBoundedGrow": {entry}}}
+		data, err := os.ReadFile(filepath.Join(corpus, "old_array_bounded_grow.bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		needle := []byte{0xAA, 0xAA, 0xAA, 0xAA, 0x04, 0x00, 0x00, 0x00}
+		at := bytes.Index(data, needle)
+		if at < 0 {
+			t.Fatal("forged_array_count: the lead 0xAAAAAAAA followed by vals_count 4 is not in the file")
+		}
+		if bytes.Index(data[at+1:], needle) >= 0 {
+			t.Fatal("forged_array_count: the forged-count needle occurs more than once, so the search is not a locator")
+		}
+		data[at+4] = 7
+		dir := t.TempDir()
+		main := evolutionProgram(t, &u, "ArrayBoundedGrow", dir, 1, []string{"old.bin"}, nil)
+		got := joinedProbe(t, gooserun.Run(t, dir, main, map[string][]byte{"old.bin": data}))
+		const want = "-1 count_over_bound 0 0 0"
+		if got != want {
+			t.Fatalf("forged_array_count: the NEW reader answered %q, want %q", got, want)
+		}
+		compared.Add(1)
+	})
+
 	t.Cleanup(func() {
 		t.Logf("%d evolution rows read the reference's OLD file", compared.Load())
 	})
