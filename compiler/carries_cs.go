@@ -1,5 +1,5 @@
 package compiler
 
 func init() {
-	registerCarries("cs")
+	registerCarries("cs", carryOptionalVariableClosure)
 }
