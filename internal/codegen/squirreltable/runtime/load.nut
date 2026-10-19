@@ -578,6 +578,10 @@ local mapKeyScan = function(es, table, kd) {
 };
 
 readMapField = function(fd, r, T, table, v, report, st) {
+  // PRESENCE OF THE FIELD IS PRESENCE (docs/SPEC-TABLES.md §2.8, §16.2): an
+  // optional map's body, even an empty one, is the present value; only an
+  // absent field elides.
+  if (fd.optional) v[fd.member + "Present"] = true;
   local L = leb(r);
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
   local end = r.at + L;
