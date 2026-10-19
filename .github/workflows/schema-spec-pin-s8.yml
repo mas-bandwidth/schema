@@ -27,7 +27,7 @@ jobs:
           go-version: '1.26'
           cache: false
       - name: the section 8 spec-pin gate
-        # make/checks/schema-spec-pin-s8.mk, included by the Makefile's
+        # make/schema-spec-pin-s8.mk, included by the Makefile's
         # wildcard line after the design card's include (make/*.mk is the
         # discovered-port registry, so a check fragment does not live there)
         run: make schema-spec-pin-s8
