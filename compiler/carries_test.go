@@ -7,12 +7,14 @@ import (
 )
 
 // nonGoCarriers lists the constructs the non-Go targets carry: C, C# and C++
-// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3), and
-// every other target carries none at this stage.
+// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3), Lua
+// carries the timestamp kind (§2.11), and every other target carries none at
+// this stage.
 var nonGoCarriers = map[string][]string{
 	"c":   {carryOptionalVariableClosure},
 	"cs":  {carryOptionalVariableClosure},
 	"cpp": {carryOptionalVariableClosure},
+	"lua": {carryTimestamp},
 }
 
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
