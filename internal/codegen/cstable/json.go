@@ -1520,10 +1520,18 @@ public static class TableJson
             }
         }
         if (saturated) { input.Report.Clamped++; }
+        // An unsigned magnitude past long.MaxValue rides as a negative long,
+        // which is the storage's bit pattern and NOT a negative number. Its
+        // range comparison uses the magnitude; the width bound below turns it
+        // into the storage edge rather than clamping it to zero.
+        bool overUnsigned = !isSigned && value2 < 0;
         if (f.HasRange)
         {
-            if ((double)value2 < f.RangeMin) { value2 = (long)f.RangeMin; input.Report.Clamped++; }
-            else if ((double)value2 > f.RangeMax) { value2 = (long)f.RangeMax; input.Report.Clamped++; }
+            double scale = overUnsigned
+                ? (saturated ? 18446744073709551616.0 : (double)unchecked((ulong)value2))
+                : (double)value2;
+            if (scale < f.RangeMin) { value2 = (long)f.RangeMin; overUnsigned = false; input.Report.Clamped++; }
+            else if (scale > f.RangeMax) { value2 = (long)f.RangeMax; overUnsigned = false; input.Report.Clamped++; }
         }
         // the field's own storage width is the last bound: a value past it
         // clamps rather than wrapping, which is what the wire does too
@@ -1539,7 +1547,8 @@ public static class TableJson
             else
             {
                 ulong high = (1ul << (f.ElemWidth * 8)) - 1;
-                if (value2 < 0) { value2 = 0; input.Report.Clamped++; }
+                if (overUnsigned) { value2 = (long)high; input.Report.Clamped++; }
+                else if (value2 < 0) { value2 = 0; input.Report.Clamped++; }
                 else if ((ulong)value2 > high) { value2 = (long)high; input.Report.Clamped++; }
             }
         }
