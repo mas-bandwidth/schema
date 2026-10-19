@@ -648,6 +648,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    const int64_t need = %s( count );\n", g.api(st.Name, "fixed_measure"))
 	g.pf("    uint8_t * at;\n    int64_t k;\n")
 	g.pf("    if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }\n")
+	if g.holdsDeprecated(st) {
+		// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md
+		// §2.15), before a byte of the buffer is touched.
+		g.pf("    for ( k = 0; k < count; ++k ) { if ( %s( &values[k] ) ) { return -1; } } /* §2.15 */\n", g.sym(st.Name, "holds_deprecated"))
+	}
 	g.pf("    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); /* the seven reserved bytes, and the rest of the header */\n")
 	g.pf("    buffer[0] = kTableFixedForm;\n")
 	g.pf("    table_fixed_put64( buffer + kTableFixedHashAt, %s_fixed_hash );\n", n)
@@ -1035,6 +1040,12 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		case *ir.Enum:
 			g.pf("%sif ( (uint64_t) %s > %du ) { %s = %s; (*clamped)++; }\n",
 				ind, expr, r.Max, expr, enumNoneConst(f.Type.Name))
+			// A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, and as the
+			// ELEMENT default for an element, and counts nothing
+			// (docs/SPEC-TABLES.md §2.15).
+			if test := deprecatedTest(r, expr); test != "" {
+				g.pf("%sif ( %s ) { %s = %s; }\n", ind, test, expr, g.deprecatedLand(f))
+			}
 			return
 		}
 		return

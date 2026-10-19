@@ -49,6 +49,19 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 	g.pf("   %sTable.c; compile it to use them. */\n", g.file.Base)
 	g.pf("int %s( %s * value, const char * text, int64_t bytes, TableReport * report );\n", g.sym(st.Name, "from_json"), st.Name)
 	g.pf("int64_t %s( const %s * value, char * buffer, int64_t capacity );\n", g.sym(st.Name, "to_json"), st.Name)
+	if g.holdsDeprecated(st) {
+		// A DEPRECATED VARIANT READ BY NAME LANDS THE DEFAULT, and a writer
+		// refuses one (docs/SPEC-TABLES.md §2.15): the text walk stores the
+		// variant it names and counts nothing, so the landing follows it, and
+		// the refusal comes before a byte is written.
+		holds, landing := g.sym(st.Name, "holds_deprecated"), g.sym(st.Name, "land_deprecated")
+		g.pf("static SCHEMA_UNUSED int %s( %s * value, const char * text, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "from_json"), st.Name)
+		g.pf("    const int ok = %s( value, text, bytes, report );\n    if ( value != NULL ) { %s( value ); } /* §2.15 */\n    return ok;\n}\n", g.sym(st.Name, "from_json"), landing)
+		g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value ) { if ( value != NULL && %s( value ) ) { return -1; } return %s( value, NULL, 0 ); }\n", g.api(st.Name, "to_json_measure"), st.Name, holds, g.sym(st.Name, "to_json"))
+		g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value, char * buffer, int64_t capacity )\n{\n", g.api(st.Name, "to_json"), st.Name)
+		g.pf("    if ( value != NULL && %s( value ) ) { return -1; } /* §2.15 */\n    return %s( value, buffer, capacity );\n}\n\n", holds, g.sym(st.Name, "to_json"))
+		return
+	}
 	g.pf("static SCHEMA_UNUSED int %s( %s * value, const char * text, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "from_json"), st.Name)
 	g.pf("    return %s( value, text, bytes, report );\n}\n", g.sym(st.Name, "from_json"))
 	g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value ) { return %s( value, NULL, 0 ); }\n", g.api(st.Name, "to_json_measure"), st.Name, g.sym(st.Name, "to_json"))

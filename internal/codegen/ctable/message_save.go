@@ -22,8 +22,18 @@ func (g *tableGen) messageHeader(e ir.TableVocabularyEntry, ind string) {
 }
 
 func (g *tableGen) messageEnum(e *ir.Enum, expr, ind string) {
+	g.messageEnumAs(e, expr, ind, true)
+}
+
+// messageEnumAs writes one variant's slot. A VALUE refuses a deprecated variant
+// (docs/SPEC-TABLES.md §2.15); a keyed array's KEY is written as named.
+func (g *tableGen) messageEnumAs(e *ir.Enum, expr, ind string, refuse bool) {
 	g.pf("%sswitch(%s) {\n%s case %s: table_bit_put(w,0,kTableMessageRefBitsHere); break;\n", ind, expr, ind, enumNoneConst(e.Name))
 	for i, v := range e.Variants {
+		if refuse && variantDeprecated(e, i) {
+			g.pf("%s case %s: return 0; /* a deprecated variant is refused (docs/SPEC-TABLES.md §2.15) */\n", ind, enumConst(e.Name, v))
+			continue
+		}
 		entry := ir.TableVocabularyEntry{Id: ir.TableWireId(e.VariantWireName(i))}
 		g.pf("%s case %s: table_bit_put(w,%d,kTableMessageRefBitsHere); break;\n", ind, enumConst(e.Name, v), g.messageSlot(entry))
 	}
@@ -106,7 +116,7 @@ func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, co
 		g.pf("%s  count++; }\n%s table_bit_put(w,count,%d);\n", ind, ind, ir.TableMessageCountBits(e.Shape))
 		g.pf("%s for(i=0;i<%d;i++) {\n", ind, f.ArrayBound)
 		g.messageKeyedRides(f, expr+"[i]", ind+"  ")
-		g.messageEnum(f.KeyEnumRef, "i+1", ind+"  ")
+		g.messageEnumAs(f.KeyEnumRef, "i+1", ind+"  ", false)
 		g.messageElement(f, e.Shape.Elem, e.Shape.Inner, expr+"[i]", ind+"  ")
 		g.pf("%s } }\n", ind)
 	case f.Array != ir.ArrayNone:

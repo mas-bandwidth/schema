@@ -319,7 +319,11 @@ func (g *tableGen) emitCookFixedRoot(st *ir.Struct) {
 	bytes := cookAlignUp(ml.Size, align)
 	need := 64 + bytes + 16
 	g.pf("static SCHEMA_UNUSED int64_t %s(const %s * value) { (void)value; return %d; }\n", g.api(st.Name, "cook_measure"), st.Name, need)
-	g.pf("static SCHEMA_UNUSED int %s(const %s * value,void * output,uint64_t capacity,TableByteOrder order)\n{\n    uint8_t * raw=(uint8_t *)output;\n    if(value==NULL || raw==NULL || capacity<%d) { return 0; }\n    memset(raw,0,%d);\n    if(!%s(NULL,raw+64,value,order)) { return 0; }\n", g.api(st.Name, "cook"), st.Name, need, need, g.sym(st.Name, "cook_body"))
+	refuse := ""
+	if g.holdsDeprecated(st) {
+		refuse = "    if(" + g.sym(st.Name, "holds_deprecated") + "(value)) { return 0; } /* a deprecated variant is refused (docs/SPEC-TABLES.md §2.15) */\n"
+	}
+	g.pf("static SCHEMA_UNUSED int %s(const %s * value,void * output,uint64_t capacity,TableByteOrder order)\n{\n    uint8_t * raw=(uint8_t *)output;\n    if(value==NULL || raw==NULL || capacity<%d) { return 0; }\n%s    memset(raw,0,%d);\n    if(!%s(NULL,raw+64,value,order)) { return 0; }\n", g.api(st.Name, "cook"), st.Name, need, refuse, need, g.sym(st.Name, "cook_body"))
 	g.pf("    table_cook_put(raw+%d,UINT64_C(0x%016x),8,order);\n    table_cook_header(raw,%s,%d,1,%d,order); return 1;\n}\n", 64+bytes+8, ir.TableWireId(st.WireName()), buildVersionName(g.unit.Package), bytes, align)
 }
 func (g *tableGen) emitCookVariableRoot(st *ir.Struct) {

@@ -90,11 +90,14 @@ type tableGen struct {
 	fixedOwner *ir.Struct
 	// fixedCheck makes the clamp walk emit <T>FixedInRange — each clamp's
 	// count expression or'd into `bad`, and no store — instead of the body.
-	fixedCheck  bool
-	unit        *ir.Unit
-	file        *ir.File
-	anyVariable bool // the unit declares at least one variable-length table
-	anyKeyed    bool // the unit declares at least one enum-keyed array
+	fixedCheck bool
+	// deprecatedMembers is the set of structs this file emits codecs for, which
+	// the by-value walks of deprecated variants recurse through (§2.15).
+	deprecatedMembers map[*ir.Struct]bool
+	unit              *ir.Unit
+	file              *ir.File
+	anyVariable       bool // the unit declares at least one variable-length table
+	anyKeyed          bool // the unit declares at least one enum-keyed array
 	// anyMap is the unit declaring at least one `map[K]V` (docs/SPEC-TABLES.md
 	// §2.8). It gates the map runtime and every map-shaped walk, so not one
 	// symbol of the machinery reaches a map-free unit's header (§2.2).
@@ -1589,6 +1592,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			for _, st := range members {
 				g.emitTableReset(st)
 			}
+			g.emitDeprecatedWalks(members)
 			g.emitMessageBodyDeclarations(members)
 			g.emitCodecDeclarations(members)
 			g.emitMapSurfaces(members)

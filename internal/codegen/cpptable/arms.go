@@ -178,6 +178,7 @@ func (g *tableGen) emitArmMeasure(v ir.UnionVariant, base, into, ind, onBad, sfx
 	case kind == tkEnum:
 		ref := "arm_variant" + sfx
 		g.pf("%s{\n%s    uint64_t %s = 0;\n", ind, ind, ref)
+		g.emitDeprecatedRefuse(enumRef(f), value, ind+"    ", onBad)
 		g.pf("%s    if ( !TableEnumRef( ids, %s, %s ) ) { %s } // no variant names this value\n", ind, value, ref, onBad)
 		g.pf("%s    %s += TableLebBytes( %s ); // the variant's reference\n%s}\n", ind, into, ref, ind)
 	case kind == tkUnion:
