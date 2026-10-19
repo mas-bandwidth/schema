@@ -38,7 +38,16 @@ func TestLuaFixedFormAgreesWithTheByteOracle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	newFiles, err := Generate(newUnit)
+	// the NEWER reader reads the OLDER writer's records under ITS layout
+	// (docs/FIXED-FORM-ALGORITHM.md §5.2), so the newer unit is generated with
+	// the older entry in its lineage.
+	lineage := map[string][]FixedLineageEntry{}
+	oldEntry, ok := FixedLineageOf(oldUnit, "Lineage")
+	if !ok {
+		t.Fatal("no lineage entry for Lineage")
+	}
+	lineage["Lineage"] = []FixedLineageEntry{oldEntry}
+	newFiles, err := GenerateLineage(newUnit, lineage)
 	if err != nil {
 		t.Fatal(err)
 	}
