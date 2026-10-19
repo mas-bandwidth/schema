@@ -286,6 +286,20 @@ func compilerGenerate(c *Compiler) generateFunc {
 // carrier and one refusing target.
 var unchangedTargets = []string{"go", "cpp"}
 
+// unchangedProbeTargets drops a target that CARRIES the probe's construct
+// from the differential: its keep-declaration cut is the Go backend's, so a
+// non-Go carrier's own compile-and-run test pins its surface instead.
+func unchangedProbeTargets(p unchangedProbe) []string {
+	out := make([]string, 0, len(unchangedTargets))
+	for _, target := range unchangedTargets {
+		if target != "go" && carries(target, p.carryKey) {
+			continue
+		}
+		out = append(out, target)
+	}
+	return out
+}
+
 func allUnchangedProbes() []unchangedProbe {
 	return append(append(append([]unchangedProbe(nil), stringArraysProbes...), unboundedTextProbes...), plainMapProbes...)
 }
@@ -311,7 +325,7 @@ func TestRefusalUnchangedIgnoresTrivialEmitterChange(t *testing.T) {
 		return out, nil
 	}
 	for _, p := range allUnchangedProbes() {
-		if err := checkRefusalUnchanged(planted, unchangedTargets, p); err != nil {
+		if err := checkRefusalUnchanged(planted, unchangedProbeTargets(p), p); err != nil {
 			t.Errorf("a trivial emitter change on every unit tripped the check:\n%v", err)
 		}
 	}
@@ -342,7 +356,7 @@ func TestRefusalUnchangedCatchesConstructKeyedLeak(t *testing.T) {
 				}
 				return out, nil
 			}
-			err := checkRefusalUnchanged(planted, unchangedTargets, p)
+			err := checkRefusalUnchanged(planted, unchangedProbeTargets(p), p)
 			if err == nil {
 				t.Errorf("%s: a construct-keyed leak into %s passed the check", p.construct, k)
 				continue
@@ -369,7 +383,7 @@ func TestRefusalUnchangedCatchesConstructKeyedLeak(t *testing.T) {
 			}
 			return out, nil
 		}
-		err := checkRefusalUnchanged(planted, unchangedTargets, p)
+		err := checkRefusalUnchanged(planted, unchangedProbeTargets(p), p)
 		if err == nil {
 			t.Errorf("%s: a construct-keyed number leak into %s passed the check", p.construct, fn)
 			continue
