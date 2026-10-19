@@ -201,8 +201,11 @@ SCHEMA_CPP_CTW_WARNINGS := \
 #   The `T **` to `void *` conversions are memcpy/memset of pointer arrays in the
 #   node-entry tables, where the bytes are copied, not dereferenced.
 # bugprone-reserved-identifier, cert-dcl37-c, cert-dcl51-cpp (70)
-#   `cursor__new` and kin join a prefix and a schema field name; they are
-#   function-local, never ABI-visible (the same verdict as -Wreserved-identifier).
+#   `cursor__new` and kin join a prefix and a schema field name. A double
+#   underscore is reserved in every scope, so this is a real naming-standard
+#   breach, but a benign one: the names are function-local locals no standard
+#   library or compiler defines, so no collision is possible in practice (the
+#   same verdict as -Wreserved-identifier); renaming is generator work.
 # bugprone-sizeof-expression (46)
 #   `sizeof( segment->dead ) / sizeof( segment->dead[0] )` is the array element
 #   count idiom over a fixed C array member, not sizeof of a pointer.
@@ -310,6 +313,7 @@ schema-cpp-generated-clang-tidy-weverything-gate-check:
 		echo "  want: $(SCHEMA_CPP_CTW_CLANG_PIN)"; exit 1; fi
 	@test -d "$(SCHEMA_CPP_CTW_CORPUS)" || { echo "no cpp gate corpus at $(SCHEMA_CPP_CTW_CORPUS)"; exit 1; }
 	@rm -rf "$(SCHEMA_CPP_CTW_WORK)"; mkdir -p "$(SCHEMA_CPP_CTW_WORK)/tu"
+	@ls -d "$(SCHEMA_CPP_CTW_CORPUS)"/*/ >/dev/null 2>&1 || { echo "cpp clang gate FAILED: the corpus at $(SCHEMA_CPP_CTW_CORPUS) has no units"; exit 1; }
 	@set -e; for unit in "$(SCHEMA_CPP_CTW_CORPUS)"/*/; do \
 		name=$$(basename "$$unit"); \
 		{ echo '#include <cstddef>'; \
