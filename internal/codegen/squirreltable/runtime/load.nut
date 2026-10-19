@@ -801,8 +801,13 @@ local resolve = function(st, root, report) {
             if (n.kind == "s") value = n.s;
             else report.kindMismatch = report.kindMismatch + 1;
           } else if (p.fd.shape == "bblob") {
-            if (n.kind == "b") value = blobOfRange(n.b, n.at, n.end - n.at);
-            else report.kindMismatch = report.kindMismatch + 1;
+            if (n.kind == "b") {
+              // A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): the
+              // tolerant read keeps the ONE node and hands every slot naming it
+              // the same blob, so a later save sees the sharing and refuses.
+              if (n.val == null) n.val = blobOfRange(n.b, n.at, n.end - n.at);
+              value = n.val;
+            } else report.kindMismatch = report.kindMismatch + 1;
           } else if (n.kind == "t" && n.d == p.target) {
             value = n.v;
           } else {
@@ -877,7 +882,7 @@ _M.load <- function(T, rootName, bytes, report) {
         continue;
       }
       if (rec.tid == BYTES_BLOB_ID) {
-        st.nodes.append({ kind = "b", b = rec.b, at = rec.at, end = rec.end });
+        st.nodes.append({ kind = "b", b = rec.b, at = rec.at, end = rec.end, val = null });
         continue;
       }
       if (!(rec.tid in byType)) {

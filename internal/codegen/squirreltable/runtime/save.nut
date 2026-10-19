@@ -251,12 +251,15 @@ local number = function(T, c, root) {
     local e = top.edges[top.i];
     top.i = top.i + 1;
     if (e.kind == "s" || e.kind == "b") {
-      local key = blobKey(e.kind, e.v);
-      local found = -1;
+      // A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): a second slot
+      // naming one blob is refused by name, a record the writer never shares.
+      // A *bytes blob is keyed by its object, and a *string by its value (a
+      // Squirrel string has no storage identity), so both spot the second
+      // naming of one blob.
       for (local i = 0; i < nodes.len(); i++) {
-        if (nodes[i].key == key) { found = i; break; }
+        if (nodes[i].kind == e.kind && nodes[i].v == e.v) return null;
       }
-      if (found < 0) nodes.append({ kind = e.kind, v = e.v, key = key });
+      nodes.append({ kind = e.kind, v = e.v, key = blobKey(e.kind, e.v) });
       continue;
     }
     local target = e.v;

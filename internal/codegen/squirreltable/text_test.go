@@ -107,6 +107,9 @@ func TestSquirrelBase64TextRoundTripsEveryInstance(t *testing.T) {
 			if in.unit != key {
 				continue
 			}
+			if in.goRefusal != "" {
+				continue
+			}
 			data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(in.wire)))
 			if err != nil {
 				t.Fatal(err)
@@ -146,6 +149,9 @@ func TestSquirrelBase64TextRoundTripsEveryInstance(t *testing.T) {
 	count := 0
 	for _, in := range instances {
 		if refusedSet[in.unit] {
+			continue
+		}
+		if in.goRefusal != "" {
 			continue
 		}
 		count++
