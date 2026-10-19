@@ -193,6 +193,18 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	// and is damage, which is terminal for the batch.
 	g.pf("        if (ref > r.vocabulary.count) {\n")
 	g.pf("          r.report.Damage();\n          return false;\n        }\n")
+	// A RESERVED ID IN A BODY IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3),
+	// and the rule outranks the unknown-slot rule: the Go reference body walk
+	// (internal/tablewire/messagedecode.go body, the `case
+	// ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId,
+	// ir.TableNodeWireId` arm) sets `Malformed` and stops BEFORE it counts an
+	// unknown, so a reference naming the node table (or either trailer id) is
+	// damage here and counts nothing.
+	g.pf("        final named = r.vocabulary.entries[ref - 1].id;\n")
+	g.pf("        if (named == TableVocabulary.buildVersionWireId ||\n")
+	g.pf("            named == TableVocabulary.vocabularyWireId ||\n")
+	g.pf("            named == TableVocabulary.nodeWireId) {\n")
+	g.pf("          r.report.Damage();\n          return false;\n        }\n")
 	g.pf("        r.report.unknown++;\n")
 	g.pf("        if (!_tableMessageSkipEntry(r, r.vocabulary.entries[ref - 1])) {\n")
 	g.pf("          r.report.Damage();\n          return false;\n        }\n")
