@@ -346,11 +346,14 @@ local function is128(x: any): boolean
 	return typeof(x) == "table" and x.lo ~= nil and x.hi ~= nil
 end
 
--- an Int128 compares as a signed two's-complement value: the high half first
+-- an Int128 compares as a signed two's-complement value: the high half first,
+-- and the LOW HALF UNSIGNED once the high halves agree — the sign lives in the
+-- high half, so the low half is a magnitude, never a signed quantity
+-- (docs/SPEC-TABLES.md §4: a bounded 128-bit integer clamps on the raw scale)
 local function cmp_lt(a: any, b: any): boolean
 	if is128(a) and is128(b) then
 		if a.hi ~= b.hi then return integer.lt(a.hi, b.hi) end
-		return integer.lt(a.lo, b.lo)
+		return integer.ult(a.lo, b.lo)
 	end
 	if typeof(a) == "integer" and typeof(b) == "integer" then return integer.lt(a, b) end
 	return a < b
@@ -377,7 +380,7 @@ end
 local function cmp_gt(a: any, b: any): boolean
 	if is128(a) and is128(b) then
 		if a.hi ~= b.hi then return integer.lt(b.hi, a.hi) end
-		return integer.lt(b.lo, a.lo)
+		return integer.ult(b.lo, a.lo)
 	end
 	if typeof(a) == "integer" and typeof(b) == "integer" then return integer.lt(b, a) end
 	return a > b
