@@ -1186,8 +1186,8 @@ is not this rule's: the extent walk that `PackMeasure`, `CookMeasure` and
 also holds a list or a map, cleared after that container was filled, is
 refused by those three (`Measure` and `Save` write it as absent) until the
 container is emptied; an absent T's pointer edges never meet that walk.
-Go carries the construct
-first; every other target refuses a unit holding one, by name, until its
+Go, C, C# and C++ carry the construct;
+every other target refuses a unit holding one, by name, until its
 own turn (§11).
 
 `?` applies to a nested table, a nested `type`, an enum, a `flags` mask,
@@ -1211,14 +1211,16 @@ the optional map: absent apart from empty). It is refused, by name, on:
 - **an enum-keyed array** — `?[E]T` elides slots BY NAME (§3.2), so its
   empty end wants stating before a presence bit sits beside it — the
   reason `[E]*T` and `[E]Body` wait (§15);
-- **an array of pointers, an array of unions, and an optional ARRAY of a
-  value whose closure is variable-length** — `?[N]*T`, `?[N]Body`, and
-  `?[N]T` or `?[..N]T` of such a T — a named follow-on (§15): the gated
-  walks above are stated and corpus-held for the scalar `?T` only, and the
-  array forms wait for their own change, walks and corpus together. The
-  bounded arrays of pointers and of unions serve today without the `?`
-  (§2.1, §2.6), and a table wrapping the field serves with it. The SCALAR
-  `?T` over a variable closure is allowed, by the rule above.
+- **an array of pointers, an array of unions, and an optional COUNTED array
+  of a value whose closure is variable-length** — `?[N]*T`, `?[N]Union`,
+  and `?[..N]T` of such a T — a named follow-on (§15): the gated walks
+  above are stated: corpus-held for the scalar `?T` and held by the compiler
+  tests for the by-value `?[N]T`, and the counted and pointer forms wait for
+  their own
+  change, walks and corpus together. The bounded arrays of pointers and of
+  unions serve today without the `?` (§2.1, §2.6), and a table wrapping the
+  field serves with it. The SCALAR `?T` and the BY-VALUE `?[N]T` over a
+  variable closure are allowed, by the rule above.
 - **a specified default** — presence is the only default an optional has.
 
 #### The `| required` marker
@@ -13322,11 +13324,12 @@ in build version (§20.5).
   keyed body elides slots by name, §3.2), and `?[..E]T`/`?[A..E]T` under
   §2.4's own refusal, which stands with the `?` and without it; `?` on an
   array of pointers, on
-  an array of unions, and on an optional ARRAY or a MAP VALUE over a
+  an array of unions, and on an optional COUNTED array or a MAP VALUE over a
   variable closure (one named follow-on, §15 — an absent field is not an
   edge, and the authoring walks gate on presence when it lands). **A scalar
-  `?T` over a variable closure is legal on Go**, and every other target
-  refuses it centrally by name (§2.3, §15). The bounded arrays `?[..N]T` and
+  `?T` and a by-value `?[N]T` over a variable closure are legal on Go, C,
+  C# and C++**, and every other target refuses them centrally by name
+  (§2.3, §15). The bounded arrays `?[..N]T` and
   `?[N]T` of everything else are legal (§2.3). Also refused: a specified
   default on an optional; and a field whose name collides with an
   optional's `<field>_present` companion.
@@ -15072,14 +15075,17 @@ inspects everything in the schema built:
   field in a table and make that optional today; `?[..N]T` and `?[N]T` landed
   and are not part of this entry, and `?wstring(N)` is refused under this same
   follow-on.
-- **An OPTIONAL ARRAY whose elements hold POINTER EDGES** (§2.3):
-  `?[N]T` and `?[..N]T` of a T whose closure is variable, `?[N]*T`, and
-  `?[N]Body`. §3.1's law — a field the writer does not write is not an
-  edge — obliges every walk that follows pointer edges to gate on the
-  presence companion; §2.3 states that gate for the scalar `?T` over a
-  variable closure, which landed (Go first) and is not part of this entry.
-  The array forms wait for the same gate held over each element, walks and
-  corpus together.
+- **An OPTIONAL ARRAY of POINTERS or of UNIONS** (§2.3): `?[N]*T`, `?[N]Body`
+  and `?[..N]T`. A field the writer does not write is not an edge (§3.1),
+  and the numbering, the pack measure and the pack gate on the presence
+  companion now, but the element is already optional — a null slot, or an
+  arm's `None` — so what a second presence bit means beside that wants
+  stating before it is wire. **`?T` and the by-value `?[N]T` of a
+  variable-length value LANDED** with that gate, on go, c, cs and cpp: an
+  absent optional is not descended; `test/tables/G1.schema`'s optional
+  half is the corpus schema and the wire pin for the scalar `?T` case, and
+  `compiler/optionalvariable_refusal_test.go` checks the fixed-array `?[N]T`
+  generation across the carriers.
 - **An array of `?T`** — a different question one level down: an element's
   presence bit beside the array's own count. The text-list forms
   `[..N]?string(M)` and `[]?string(M)` are the exception and are accepted
@@ -15940,12 +15946,14 @@ authoring input: it is the form's answer to every value it cannot place by
 name rather than by range (a timestamp that names no instant, a reserved `&`
 key, §16.2, §16.7), and a read that dropped the field quietly would turn a
 person's typing into a silent loss. A string the read only SKIPS — the value
-of an unknown key, an object key naming a field — stores nothing and is not
-this event. A map key the read DROPS for its length (over a string
-key's bound, or too long to be any integer) is not skipped: it is still a key
-bound for text storage, so a zero in it refuses the read the same way, and in
-every Go reader alike. **The other answer, the wire and every writer carrying the zero,
-was considered and refused**: it would reverse the long-standing content rule
+of an unknown key, an object key, whether it names a field or none —
+stores nothing and is not this event, and a `\u0001` escape, or any escape
+but `\u0000`, is not affected. A map key the read DROPS for its length
+(over a string key's bound, or too long to be any integer) is not skipped:
+it is still a key bound for text storage, so a zero in it refuses the read
+the same way, and in every Go reader alike. **The other answer, the wire
+and every writer carrying the zero, was considered and refused**: it would
+reverse the long-standing content rule
 every table reader and the packet wire already hold, and break `string(N)`'s
 C and C++ storage, which is a valid C string after every read (USAGE.md), to
 admit a value only one form could produce. With this rule an instance any read
@@ -19462,9 +19470,7 @@ widening.
 
 ### 21.2 What a newer reader does with an older file
 
-A field the reader added: its declared default. A field the reader deprecated: read into its slot by every
-plan, identity included, and ignored by the application; no counter moves for it. A narrower integer or
-float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
+A field the reader added: its declared default. In the VARIABLE FORM, a field the reader deprecated is read into its slot by every plan, identity included, and ignored by the application; no counter moves for it. In the FIXED FORM, §3.4 takes precedence: the writer emits the deprecated field’s declared default into its retained slot and the reader yields that default whatever the record carries. A narrower integer or float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
 take the ELEMENT DEFAULT, which is what a fresh value holds there. A shorter `[..N]`: the writer's elements
 and count land, and the slack past the count is zeros, as is a text field's slack past its length — nobody
 wrote those bytes and nothing reads them. An older enum: its ordinals are the reader's, the list being a
