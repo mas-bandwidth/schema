@@ -73,7 +73,7 @@ func TestNightlyFuzzRegressionCorpusIsPresent(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	for _, kind := range []string{"Load", "ReadStrict", "TextJson", "FromJson"} {
-		dir := filepath.Join(root, "internal", "ci", "nightly-fuzz-corpus", kind)
+		dir := filepath.Join(root, "internal", "ci", "testdata", "nightly-fuzz-corpus", kind)
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			t.Fatalf("the committed %s regression corpus is absent: %v", kind, err)
@@ -305,5 +305,42 @@ func patchGeneratedReader(t *testing.T, pkg string) {
 	}
 	if patched == 0 {
 		t.Fatal("the generated reader has no Room(n) check in TableReader.Body to drop")
+	}
+}
+
+// TestNightlyFuzzRulesLiveInOwnMakeFragment pins the card's file layout: the
+// campaign's rules are in make/schema-go-nightly-fuzz.mk, which the Makefile's
+// make/*.mk wildcard includes, and make/go.mk carries none of them. The
+// regression fixtures live under internal/ci/testdata, not beside the test.
+func TestNightlyFuzzRulesLiveInOwnMakeFragment(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	fragmentPath := filepath.Join(root, "make", "schema-go-nightly-fuzz.mk")
+	fragment, err := os.ReadFile(fragmentPath)
+	if err != nil {
+		t.Fatalf("the campaign's make fragment is not at %s: %v", fragmentPath, err)
+	}
+	for _, want := range []string{
+		"schema-go-nightly-fuzz:",
+		"schema-go-nightly-fuzz-generate:",
+		"schema-go-nightly-fuzz-replay:",
+		"schema-go-nightly-fuzz-negative-control:",
+		"SCHEMA_GO_NIGHTLY_FUZZ_FUZZTIME ?= 10m",
+		"internal/ci/testdata/nightly-fuzz-corpus",
+		"tool missing: go",
+	} {
+		if !strings.Contains(string(fragment), want) {
+			t.Errorf("make/schema-go-nightly-fuzz.mk does not carry %q", want)
+		}
+	}
+	goMake, err := os.ReadFile(filepath.Join(root, "make", "go.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(goMake), "schema-go-nightly-fuzz") {
+		t.Error("make/go.mk still carries the campaign's rules; they belong in make/schema-go-nightly-fuzz.mk")
+	}
+	if _, err := os.Stat(filepath.Join(root, "tools", "schema-go-nightly-fuzz", "nightly.mk")); !os.IsNotExist(err) {
+		t.Errorf("tools/schema-go-nightly-fuzz/nightly.mk still exists: %v", err)
 	}
 }

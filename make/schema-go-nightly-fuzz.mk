@@ -1,9 +1,10 @@
-# tools/schema-go-nightly-fuzz/nightly.mk — the Go port's nightly table-reader fuzzing.
+# make/schema-go-nightly-fuzz.mk — the Go port's nightly table-reader fuzzing.
 #
-# Included by make/go.mk (itself included by the Makefile's make/*.mk wildcard),
-# not from make/ directly: make/*.mk is the language-port registry and the
-# wide-scalar refusal gate runs `schema generate --lang <file name>` for every
-# one, so a non-port fragment there would be read as a backend.
+# The Makefile's `include $(wildcard make/*.mk)` picks this fragment up; no
+# root Makefile edit is needed, exactly as the other ports' nightly fragments
+# land. This file is a gate fragment, not a --lang: it builds and drives the
+# fuzz harness and defines no compiler backend. All the campaign's rules live
+# here, none in make/go.mk.
 #
 # The corpus set is make/schema-go-nightly-fuzz-corpus.txt: every directory is
 # one a Go generate target in make/go.mk reads, chosen to cover every table
@@ -29,8 +30,8 @@ SCHEMA_GO_NIGHTLY_FUZZ_CORPUS ?= make/schema-go-nightly-fuzz-corpus.txt
 SCHEMA_GO_NIGHTLY_FUZZ_WORK ?= build/schema-go-nightly-fuzz
 SCHEMA_GO_NIGHTLY_FUZZ_FUZZTIME ?= 10m
 SCHEMA_GO_NIGHTLY_FUZZ_PARALLEL ?= 4
-SCHEMA_GO_NIGHTLY_FUZZ_REGRESSIONS ?= internal/ci/nightly-fuzz-corpus
-SCHEMA_GO_NIGHTLY_FUZZ_SEEDS ?= internal/ci/nightly-fuzz-corpus:tables/cards/conformance/expected:tables/cards/fuzz
+SCHEMA_GO_NIGHTLY_FUZZ_REGRESSIONS ?= internal/ci/testdata/nightly-fuzz-corpus
+SCHEMA_GO_NIGHTLY_FUZZ_SEEDS ?= internal/ci/testdata/nightly-fuzz-corpus:tables/cards/conformance/expected:tables/cards/fuzz
 
 SCHEMA_GO_NIGHTLY_FUZZ_MODULE := $(SCHEMA_GO_NIGHTLY_FUZZ_WORK)/corpus
 
@@ -111,3 +112,14 @@ schema-go-nightly-fuzz-replay: schema-go-nightly-fuzz-generate
 		SCHEMA_GO_FUZZ_SEEDS="$(SCHEMA_GO_NIGHTLY_FUZZ_SEEDPATHS)" \
 		SCHEMA_GO_FUZZ_REGRESSIONS="$(abspath $(SCHEMA_GO_NIGHTLY_FUZZ_REGRESSIONS))" \
 		go test -run 'TestSavedInputsReplay|TestSeedsRun|Fuzz' -count=1 -timeout 600s
+
+# The planted-pattern proof: a scratch copy of the REAL generated examples
+# reader has Room(n) dropped from TableReader.Body, the fuzzer finds it inside
+# the nightly budget, the saved input fails replay with the plant in and passes
+# with it out, and the same reader without the plant goes green. It runs through
+# test/slowgate/proof, so a skip or a missing --- PASS is a red.
+.PHONY: schema-go-nightly-fuzz-negative-control
+schema-go-nightly-fuzz-negative-control:
+	sh test/slowgate/proof schema-go-nightly-fuzz-negative-control \
+		'TestNightlyFuzzPlantedReaderIsCaught' \
+		./internal/ci -run '^TestNightlyFuzzPlantedReaderIsCaught$$' -count=1 -timeout 600s
