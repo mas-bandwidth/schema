@@ -988,6 +988,10 @@ end
 -- numbering is malformed, and a numbering that could not be read resolves
 -- nothing.
 local function resolve(report: any)
+	-- a blob node is owned by its record: every slot past the first that names
+	-- it counts one blob_shared and keeps the one node, never a copy
+	-- (docs/SPEC-TABLES.md §2.5, §3.1)
+	local landed: { [any]: boolean } = {}
 	for _, p in _pending do
 		local value: any = nil
 		if p.index ~= 0 then
@@ -1000,9 +1004,17 @@ local function resolve(report: any)
 				local n = _nodes[p.index - 1]
 				if n ~= nil then
 					if p.d.s == "sblob" then
-						if n.kind == "s" then value = n.blob else report.kindMismatch = report.kindMismatch + 1 end
+						if n.kind == "s" then
+							if landed[n] then report.blobShared = (report.blobShared or 0) + 1 end
+							landed[n] = true
+							value = n.blob
+						else report.kindMismatch = report.kindMismatch + 1 end
 					elseif p.d.s == "bblob" then
-						if n.kind == "b" then value = n.blob else report.kindMismatch = report.kindMismatch + 1 end
+						if n.kind == "b" then
+							if landed[n] then report.blobShared = (report.blobShared or 0) + 1 end
+							landed[n] = true
+							value = n.blob
+						else report.kindMismatch = report.kindMismatch + 1 end
 					elseif n.kind == "t" and n.desc.name == p.d.t then
 						value = n.v
 					else

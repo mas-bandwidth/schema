@@ -35,17 +35,21 @@ local StringBlobId: integer = 0x704be0d8faaffc58i -- FNV-1a 64 of "string"
 local BytesBlobId: integer = 0x2f2ec0474f1c4fe4i  -- FNV-1a 64 of "bytes"
 
 -- the counters that refuse, in TableReport.Err()'s order (docs/SPEC-TABLES.md
--- §6.5), each with its §11 name; load.luau spells kind_mismatch kindMismatch
-local REFUSING = { "malformed", "clamped", "kindMismatch" }
+-- §6.5), each with its §11 name; load.luau spells kind_mismatch kindMismatch.
+-- blob_shared is appended LAST, after kind_mismatch (and after the sibling's
+-- non_finite where this file carries it): a wire naming one blob from two
+-- slots is one owned record, not a copy (§2.5).
+local REFUSING = { "malformed", "clamped", "kindMismatch", "blobShared" }
 local NAMES: { [string]: string } = {
 	malformed = "malformed",
 	clamped = "clamped",
 	kindMismatch = "kind_mismatch",
+	blobShared = "blob_shared",
 }
 
 -- a report at rest, in load.luau's shape (docs/SPEC-TABLES.md §4)
 local function fresh(): any
-	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, blobShared = 0 }
 end
 
 local function moved(report: any, k: string): boolean
@@ -323,6 +327,13 @@ local function witness(root: string, b: buffer, k: string): string?
 					parts[#parts + 1] = lebBytes(rec.tref) .. lebBytes(#body) .. body
 				end
 				local payload = table.concat(parts)
+				-- blob_shared belongs to the fields that name the blob, and the
+				-- root's own fields are probed below: keep only the node records
+				-- here, so a share at the root cannot mask one inside a record
+				-- (nor the reverse) when the first witness is chosen (§2.5)
+				if k == "blobShared" then
+					return "\1" .. head .. lebBytes(#payload) .. payload .. "\0" .. fr.tail
+				end
 				return wireOf(head .. lebBytes(#payload) .. payload .. "\0")
 			end
 			local placed: { [integer]: any } = {}
@@ -418,6 +429,7 @@ local function reset(report: any)
 	report.clamped = 0
 	report.widened = 0
 	report.duplicate = 0
+	report.blobShared = 0
 	report.reason = nil
 	report.field = nil
 	report.unknownField = nil
@@ -528,7 +540,7 @@ end
 R.ReadStrictNames = table.freeze({
 	message_form_as_file = true, newer_form = true, previous_form = true, unknown_form = true,
 	integrity_mismatch = true, wire_damaged = true,
-	malformed = true, clamped = true, kind_mismatch = true,
+	malformed = true, clamped = true, kind_mismatch = true, blob_shared = true,
 	-- the fixed reader's own, answered through fixed.luau for a form-3 file
 	-- (§3.4, §6.5)
 	layout_malformed = true, layout_record_too_large = true, layout_newer = true,

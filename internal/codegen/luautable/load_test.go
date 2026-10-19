@@ -79,6 +79,9 @@ type generatedUnit struct {
 	files  map[string][]byte
 	loaded bool
 	err    error
+	// u is the compiled unit, so a test can hold the emitted runtime to the
+	// reference engine's own answers (docs/SPEC-TABLES.md §2.5).
+	u *ir.Unit
 	// flags maps "<Descriptor>.<field or arm>" to the flags declaration's
 	// variant names, bit i first (docs/SPEC-TABLES.md §16.2, the flags row):
 	// the descriptor names no flags type, so the round-trip writer reads
@@ -98,7 +101,7 @@ func generateUnit(t *testing.T, units map[string][]string, key string) *generate
 		t.Fatalf("unit %s does not load: %v", key, err)
 	}
 	files, err := luau.Generate(u)
-	g := &generatedUnit{err: err}
+	g := &generatedUnit{err: err, u: u}
 	if err == nil {
 		var tables map[string][]byte
 		tables, err = luautable.Generate(u)
@@ -346,7 +349,7 @@ func generateFiles(t *testing.T, files map[string]string) *generatedUnit {
 		t.Fatal(err)
 	}
 	maps.Copy(out, tables)
-	g := &generatedUnit{dir: t.TempDir(), files: out, loaded: true}
+	g := &generatedUnit{dir: t.TempDir(), files: out, loaded: true, u: u}
 	for name, data := range out {
 		if err := os.WriteFile(filepath.Join(g.dir, name), data, 0o644); err != nil {
 			t.Fatal(err)
