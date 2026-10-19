@@ -10,9 +10,10 @@ import (
 
 // TestElixirStreamDataPropertyGateIsWired guards the card's own gate: the make
 // target exists and runs the property script over the generated table corpus,
-// the planted corruption is the negative control's blade, the control is
-// registered in make/negative-controls.json, and the nightly trigger carries
-// the heavy pass while push and pull_request carry the fast one.
+// the planted corruption, lossy int_bytes, and lax LEB128 reader are the
+// negative control's blades, the control is registered in
+// make/negative-controls.json, and the nightly trigger carries the heavy pass
+// while push and pull_request carry the fast one.
 func TestElixirStreamDataPropertyGateIsWired(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -27,6 +28,8 @@ func TestElixirStreamDataPropertyGateIsWired(t *testing.T) {
 		"property_main.exs",
 		"build/tables-generated-elixir/.stamp",
 		"SCHEMA_ELIXIR_STREAMDATA_PLANT=roundtrip",
+		"min(v, 100)",
+		"failed to refuse non-canonical LEB128",
 		"stream_data $(ELIXIR_STREAMDATA_PIN)",
 		"MIX_OS_CONCURRENCY_LOCK=0",
 	} {
@@ -80,13 +83,19 @@ func TestElixirStreamDataPropertyGateIsWired(t *testing.T) {
 	}
 }
 
-// TestElixirStreamDataHarnessStaysInDeclaredRange pins the two harness fixes
-// that made the round-trip property honest: a generated value is drawn inside
-// the field's declared width and signedness, and a nested table is resolved in
-// the unit that declares it. Both were red at the attempt's base head: the
-// first let a uint8 be -543, the second let Graphdemo's Stamp resolve to a
-// same-named table in another unit, and either way Album re-saved to different
-// bytes. This test is the BASE-red guard for those lines.
+// TestElixirStreamDataHarnessStaysInDeclaredRange pins the harness invariants
+// that make the round-trip and clean-refusal properties honest:
+//   - generated values stay inside the declared width and signedness;
+//   - nested tables and unions resolve inside the declaring unit;
+//   - roundtrip compares `spec_normalize(desc, loaded, mod, unions)` against
+//     `spec_normalize(desc, value, mod, unions)` and checks `@clean_report`
+//     in addition to `again == bytes`;
+//   - mutations construct non-canonical LEB128 wires (`0x80 0x00`) and require
+//     strict `{:error, :malformed, _}` refusal;
+//   - generators cover fixed-form tables as well as variable-form tables, and
+//     exercise unions, pointers, blobs, and maps with non-trivial values;
+//   - failure output reports both the seed and the shrunk counterexample, and
+//     only emits the `PLANT:` prefix when a plant is active.
 func TestElixirStreamDataHarnessStaysInDeclaredRange(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -104,10 +113,19 @@ func TestElixirStreamDataHarnessStaysInDeclaredRange(t *testing.T) {
 		"Task.async_stream",
 		":shrunk_failure",
 		":rand.seed(:exsss",
+		"defp spec_normalize(",
+		"norm_loaded != norm_value",
+		"defp check_non_canonical_leb(",
+		"defp gen_union(",
+		"StreamData.map_of(",
+		"(seed=#{seed})",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("property script does not carry %q", want)
 		}
+	}
+	if strings.Contains(text, "Map.get(desc, :variable, false)") {
+		t.Error("property script still filters descriptors to variable: true only")
 	}
 	if strings.Contains(text, ":persistent_term.get({__MODULE__, :tables}") {
 		t.Error("property script still resolves tables through a global name index")

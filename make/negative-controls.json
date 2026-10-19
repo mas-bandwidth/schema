@@ -583,6 +583,7 @@
         "tables-elixir-runtime-pin-negative-control",
         "tables-elixir-slot-negative-control",
         "tables-elixir-versioning-negative-control",
+        "schema-elixir-runs-hostile-corpus-negative-control",
         "schema-elixir-streamdata-property-tests-negative-control"
       ],
       "otp": "29.0.5",
