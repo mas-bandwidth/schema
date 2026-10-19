@@ -19,6 +19,7 @@
 package ci
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"os"
@@ -57,29 +58,30 @@ func luauResourceBoundsDocs() map[string]string {
 	return map[string]string{
 		// deep nesting (also the recursion shape): the parser descends one
 		// frame per paren, so 300 levels must trip the depth cap of 128
-		// before any resolve runs.
-		"deep": "(H " + strings.Repeat("(", 300) + strings.Repeat(")", 301),
-		// huge count: 6000 elements in one declared array; 6000 value nodes
-		// pass the declared bound (200000) but blow the 4096-node default
-		// limit, so the read must refuse as text_limit rather than allocate a
-		// 6000-element table.
-		"hugecount": "(H big " + strings.Repeat("1 ", 6000) + ")",
+		// before any resolve runs. The nesting is over the declared `big`
+		// array, so a well-formed document reaches the cap rather than a
+		// syntax refusal.
+		"deep": "(:big " + strings.Repeat("(", 300) + strings.Repeat(")", 301),
+		// huge count: 9000 elements in one declared array. They pass the
+		// declared bound (200000) but every element is a token, and 9000
+		// elements blow the 8192-token default limit, so the read must refuse
+		// as text_limit rather than parse and allocate the whole list.
+		"hugecount": "(:big " + strings.Repeat("1 ", 9000) + ")",
 		// giant string (and over-long document): the byte limit fires before
-		// any parse, so a 70 000-byte document refuses as text_limit.
-		"giantstring": strings.Repeat("x", 70000),
+		// any parse, so a 70 002-byte quoted string refuses as text_limit.
+		"giantstring": `"` + strings.Repeat("x", 70000) + `"`,
 		// many unknown fields: 2000 undeclared keys; the first one must refuse
 		// as text_unknown_key instead of being buffered.
-		"unknownfields": "(H " + strings.Repeat("x 0 ", 2000) + ")",
+		"unknownfields": "(:n 0 " + strings.Repeat(":x 0 ", 2000) + ")",
 	}
 }
 
 // luauResourceBoundsMain builds main.luau for the hostile-shape probe: it
 // registers the table module, wraps every document in a guarded read under
-// the default limits (or the relaxed plant when relaxed is true), and prints
-// one tab-separated line per document: name, the verdict (OK or
-// REFUSED <name> or CRASH), and the KB the read allocated, measured with the
-// port's GC memstat.
-func luauResourceBoundsMain(relaxed bool) []byte {
+// the default limits, and prints one tab-separated line per document: name,
+// the verdict (OK or REFUSED <name> or CRASH), and the KB the read allocated,
+// measured with the port's GC memstat.
+func luauResourceBoundsMain() []byte {
 	var b strings.Builder
 	b.WriteString("require(\"./HTable\")\n")
 	b.WriteString("local SCHEMA_JSON_FLAGS = {}\n")
@@ -91,11 +93,7 @@ func luauResourceBoundsMain(relaxed bool) []byte {
 		b.WriteString(fmt.Sprintf("\t{ name = %q, text = %q },\n", name, luauResourceBoundsDocs()[name]))
 	}
 	b.WriteString("}\n")
-	if relaxed {
-		b.WriteString("local limits = { bytes = 1e9, tokens = 1e9, nodes = 1e9, allocation = 1e9, depth = 100000 }\n")
-	} else {
-		b.WriteString("local limits = nil\n")
-	}
+	b.WriteString("local limits = nil\n")
 	b.WriteString(`for _, d in docs do
 	collectgarbage("collect")
 	local kb0 = collectgarbage("count")
@@ -114,9 +112,9 @@ end
 	return []byte(b.String())
 }
 
-func runLuauResourceBounds(t *testing.T, dir string, relaxed bool) map[string][]string {
+func runLuauResourceBounds(t *testing.T, dir string) map[string][]string {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, "main.luau"), luauResourceBoundsMain(relaxed), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "main.luau"), luauResourceBoundsMain(), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out := luaurun.Run(t, dir, "main.luau", nil)
@@ -182,7 +180,7 @@ func TestLuauResourceBoundsHostileShapes(t *testing.T) {
 	slowtest.Gate(t, "luau (the pinned release)")
 	root := repoRoot(t)
 	dir := luauResourceBoundsUnit(t, root)
-	got := runLuauResourceBounds(t, dir, false)
+	got := runLuauResourceBounds(t, dir)
 
 	want := map[string]string{
 		"deep":          "text_limit",
@@ -213,23 +211,53 @@ func TestLuauResourceBoundsHostileShapes(t *testing.T) {
 
 // TestLuauResourceBoundsPlantedPattern is the planted-bad-pattern control. It
 // proves the deep-nesting assertion has a blade: with the depth guard in place
-// (default limits) the deep shape refuses as text_limit, and when the guard is
-// relaxed — the plant — the same shape parses, so the test is red when the
-// plant is in and green when it is out.
+// the deep shape refuses as text_limit, and when the guard is removed — the
+// plant, written only into the scratch copy — the same shape is no longer
+// refused as text_limit, so the positive test is red when the plant is in and
+// green when it is out. The plant edits the generated runtime rather than the
+// limits: §16.9.4 clamps a caller's Depth to 128, so no limit argument can
+// relax the guard.
 func TestLuauResourceBoundsPlantedPattern(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "luau (the pinned release)")
 	root := repoRoot(t)
 	dir := luauResourceBoundsUnit(t, root)
 
-	guarded := runLuauResourceBounds(t, dir, false)
+	guarded := runLuauResourceBounds(t, dir)
 	if f := guarded["deep"]; f[1] != "REFUSED" || f[2] != "text_limit" {
 		t.Fatalf("with the depth guard in place the deep shape must refuse text_limit, got %s (%s)", f[1], f[2])
 	}
 
-	planted := runLuauResourceBounds(t, dir, true)
-	if f := planted["deep"]; f[1] == "REFUSED" && f[2] == "text_limit" {
-		t.Fatalf("the planted pattern (relaxed depth limit) did not change the verdict: the harness cannot see the guard")
+	plantLuauDepthGuard(t, dir)
+	planted := runLuauResourceBounds(t, dir)
+	f := planted["deep"]
+	if f[1] == "CRASH" {
+		t.Fatalf("the planted pattern (depth guard removed) crashed instead of parsing: %s", f[2])
+	}
+	if f[1] == "REFUSED" && f[2] == "text_limit" {
+		t.Fatalf("the planted pattern (depth guard removed) did not change the verdict: the harness cannot see the guard")
+	}
+}
+
+// luauDepthGuard is the generated textform reader's depth check; the plant
+// below removes it, the defect the control above proves the positive test sees.
+const luauDepthGuard = "depth + 1 > self.limits.depth"
+
+// plantLuauDepthGuard rewrites the generated textform reader in the scratch
+// unit so the depth guard of §16.9.4 no longer fires.
+func plantLuauDepthGuard(t *testing.T, dir string) {
+	t.Helper()
+	target := filepath.Join(dir, "textform.luau")
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(data, []byte(luauDepthGuard)) {
+		t.Fatalf("%s carries no depth guard %q to plant against", target, luauDepthGuard)
+	}
+	data = bytes.Replace(data, []byte(luauDepthGuard), []byte("depth + 1 > 100000"), 1)
+	if err := os.WriteFile(target, data, 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
