@@ -1308,6 +1308,7 @@ func resolveHarnessPin(fsys fs.FS, file, sym string) []string {
 type repoIndex struct {
 	fsys   fs.FS
 	files  []string
+	words  map[string]bool
 	walked bool
 }
 
@@ -1324,6 +1325,7 @@ func (ix *repoIndex) walk() {
 		return
 	}
 	ix.walked = true
+	ix.words = map[string]bool{}
 	fsys := ix.fsys
 	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -1341,10 +1343,27 @@ func (ix *repoIndex) walk() {
 		}
 		return nil
 	})
+	// A row group with every port owed asks for over a thousand absent test
+	// names. Read each source file once and remember its identifier words, so
+	// an absent name costs one map lookup instead of a walk of every file.
+	for _, f := range ix.files {
+		b, err := fs.ReadFile(fsys, f)
+		if err != nil {
+			continue
+		}
+		for _, w := range specWord.FindAllString(string(b), -1) {
+			ix.words[w] = true
+		}
+	}
 }
+
+var specWord = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 
 func (ix *repoIndex) defines(name string) string {
 	ix.walk()
+	if !ix.words[name] {
+		return ""
+	}
 	q := regexp.QuoteMeta(name)
 	def := regexp.MustCompile(`\b(func|fn|def|defp|function|void|static|public|private|async|local function)\s+(\([^)]*\)\s*)?` + q + `\b|^\s*` + q + `\s*==|\b(test|it)\(\s*["']` + q + `["']|^\s*(?:[A-Za-z_][\w<>:]*[\s*&]+)+` + q + `\s*\([^;]*$`)
 	for _, f := range ix.files {

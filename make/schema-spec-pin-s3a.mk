@@ -16,4 +16,4 @@
 schema-spec-pin-s3a:
 	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 sh test/slowgate/proof schema-spec-pin-s3a \
 		'TestSpecPinsHoldOnTheSpec TestSpecPinsS3ARealSpecPlant' \
-		./internal/ci/ -run '^TestSpecPins' -count=1 -timeout 600s
+		./internal/ci/ -run '^(TestSpecPinsHoldOnTheSpec|TestSpecPinsS3ARealSpecPlant)$$' -count=1 -timeout 600s
