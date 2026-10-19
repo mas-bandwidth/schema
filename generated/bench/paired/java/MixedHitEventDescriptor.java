@@ -16,17 +16,20 @@ public final class MixedHitEventDescriptor {
         static final TableTypeInfo TABLE = build();
 
         private static TableTypeInfo build() {
-        TableTypeInfo t = new TableTypeInfo();
-        t.name = "MixedHitEvent";
-        t.fields = new TableFieldInfo[] {
-            TableFieldInfo.of("target_id", 7, "value", 0L),
-            TableFieldInfo.of("damage", 4, "value", 0L),
-            TableFieldInfo.of("hit_kind", 4, "value", 0L),
-            TableFieldInfo.of("crit", 1, "value", 0L),
-        };
-        return t;
+            TableTypeInfo t = new TableTypeInfo();
+            t.name = "MixedHitEvent";
+            t.fields =
+                    new TableFieldInfo[] {
+                        TableFieldInfo.of("target_id", 7, "value", 0L),
+                        TableFieldInfo.of("damage", 4, "value", 0L),
+                        TableFieldInfo.of("hit_kind", 4, "value", 0L),
+                        TableFieldInfo.of("crit", 1, "value", 0L),
+                    };
+            return t;
         }
     }
 
-    public static TableTypeInfo tableType() { return Holder.TABLE; }
+    public static TableTypeInfo tableType() {
+        return Holder.TABLE;
+    }
 }

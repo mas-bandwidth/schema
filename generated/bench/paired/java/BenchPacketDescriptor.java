@@ -16,25 +16,28 @@ public final class BenchPacketDescriptor {
         static final TableTypeInfo TABLE = build();
 
         private static TableTypeInfo build() {
-        TableTypeInfo t = new TableTypeInfo();
-        t.name = "BenchPacket";
-        t.fields = new TableFieldInfo[] {
-            TableFieldInfo.of("a", 4, "value", 0L),
-            TableFieldInfo.of("b", 4, "value", 0L),
-            TableFieldInfo.of("c", 4, "value", 0L),
-            TableFieldInfo.of("bits7", 6, "value", 0L),
-            TableFieldInfo.of("bits13", 7, "value", 0L),
-            TableFieldInfo.of("bits23", 8, "value", 0L),
-            TableFieldInfo.of("flag", 1, "value", 0L),
-            TableFieldInfo.of("x", 10, "value", 0L),
-            TableFieldInfo.of("y", 10, "value", 0L),
-            TableFieldInfo.of("z", 10, "value", 0L),
-            TableFieldInfo.of("big", 9, "value", 0L),
-            TableFieldInfo.of("blob", 14, "list", 0L),
-        };
-        return t;
+            TableTypeInfo t = new TableTypeInfo();
+            t.name = "BenchPacket";
+            t.fields =
+                    new TableFieldInfo[] {
+                        TableFieldInfo.of("a", 4, "value", 0L),
+                        TableFieldInfo.of("b", 4, "value", 0L),
+                        TableFieldInfo.of("c", 4, "value", 0L),
+                        TableFieldInfo.of("bits7", 6, "value", 0L),
+                        TableFieldInfo.of("bits13", 7, "value", 0L),
+                        TableFieldInfo.of("bits23", 8, "value", 0L),
+                        TableFieldInfo.of("flag", 1, "value", 0L),
+                        TableFieldInfo.of("x", 10, "value", 0L),
+                        TableFieldInfo.of("y", 10, "value", 0L),
+                        TableFieldInfo.of("z", 10, "value", 0L),
+                        TableFieldInfo.of("big", 9, "value", 0L),
+                        TableFieldInfo.of("blob", 14, "list", 0L),
+                    };
+            return t;
         }
     }
 
-    public static TableTypeInfo tableType() { return Holder.TABLE; }
+    public static TableTypeInfo tableType() {
+        return Holder.TABLE;
+    }
 }

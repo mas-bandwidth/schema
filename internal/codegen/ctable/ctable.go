@@ -106,6 +106,9 @@ func tableGet(width int) string { return fmt.Sprintf("table_reader_get%d", width
 
 type tableGen struct {
 	retain bool // emit the opt-in parallel body family
+	// fixedLoopDepth is how many fixed-form element loops enclose the store
+	// being emitted, which names the next loop's counter (fixedLoopVar).
+	fixedLoopDepth int
 
 	messageSlots     map[string]uint64
 	descriptorUnions map[string]bool

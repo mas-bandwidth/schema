@@ -51,7 +51,7 @@ func t05Has(t *testing.T, files map[string]string, file, want, what string) {
 	if !ok {
 		t.Fatalf("%s: the emitter wrote no %s", what, file)
 	}
-	if !strings.Contains(src, want) {
+	if !javaCarries(src, want) {
 		t.Errorf("%s: %s does not carry %q", what, file, want)
 	}
 }
@@ -347,7 +347,7 @@ func t05R31(t *testing.T) {
 		"public long arg2;",
 		"public byte argw2;",
 	} {
-		if !strings.Contains(src, want) {
+		if !javaCarries(src, want) {
 			t.Errorf("R31: the plan's lanes are not full width — %q is not emitted", want)
 		}
 	}
@@ -360,23 +360,27 @@ func t05R31(t *testing.T) {
 		"final int gw2 = guardWidth(p.argw2);",
 		"if (tagAt(src, srcAt + p.guard2, gw2) != p.arg2) { continue; }",
 	} {
-		if !strings.Contains(src, want) {
+		if !javaCarries(src, want) {
 			t.Errorf("R31: the guard compare is not at the tag's own width — %q is not emitted", want)
 		}
 	}
 	// THE CONJOINED LANE IS STAMPED ON THE COMPILED WALK: a nested union's arm
-	// entries answer to the OUTER tag on the second lane, and a third nested
-	// union refuses by name rather than drop a condition (§4.1, §5.8 row 6).
+	// entries answer to the OUTER tag on the second lane, laid from the guard
+	// chain's innermost two, and a third nested union rides the chain's pool
+	// rather than drop a condition (§4.1, the guard chain; §5.8 row 6).
 	for _, want := range []string{
-		"final int restampFrom = c.count;",
-		"if (c.plan[q].guard2 != noGuard) { c.recordTooLarge = true; break; }",
-		"c.plan[q].guard2 = guard;",
-		"c.plan[q].arg2 = arg;",
-		"c.plan[q].argw2 = outerW;",
+		"e.guard2 = chainGuard[chainLen - 2];",
+		"e.arg2 = chainArg[chainLen - 2];",
+		"e.argw2 = chainArgw[chainLen - 2];",
+		"if (chainAt < 0) { chainAt = layGuards(); }",
+		"if (p.gcount > 2 && !chainHolds(p, src, srcAt, srcLength, report)) {",
 	} {
-		if !strings.Contains(src, want) {
+		if !javaCarries(src, want) {
 			t.Errorf("R31: the outer tag is not conjoined on a second guard lane — %q is not emitted", want)
 		}
+	}
+	if strings.Contains(src, "c.recordTooLarge = true; break; }") {
+		t.Error("R31: a third nested union is still refused instead of riding the guard chain")
 	}
 	// A 64-BIT ORDINAL TEMPORARY (ALGORITHM §4.5: "through a 64-bit temporary").
 	if !strings.Contains(src, "final long raw = getUint(src, srcAt + p.src, p.size);") {
@@ -392,7 +396,7 @@ func t05R31(t *testing.T) {
 		"remap[at] = (short) n;",
 		"if (n < 0 || n > 65535) { overflow = true; return 0; }",
 	} {
-		if !strings.Contains(src, want) {
+		if !javaCarries(src, want) {
 			t.Errorf("R31: the remap table's length word is not emitted — %q is not present", want)
 		}
 	}

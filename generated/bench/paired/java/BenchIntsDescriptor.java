@@ -16,23 +16,26 @@ public final class BenchIntsDescriptor {
         static final TableTypeInfo TABLE = build();
 
         private static TableTypeInfo build() {
-        TableTypeInfo t = new TableTypeInfo();
-        t.name = "BenchInts";
-        t.fields = new TableFieldInfo[] {
-            TableFieldInfo.of("f0", 4, "value", 0L),
-            TableFieldInfo.of("f1", 4, "value", 0L),
-            TableFieldInfo.of("f2", 4, "value", 0L),
-            TableFieldInfo.of("f3", 4, "value", 0L),
-            TableFieldInfo.of("f4", 4, "value", 0L),
-            TableFieldInfo.of("f5", 4, "value", 0L),
-            TableFieldInfo.of("f6", 4, "value", 0L),
-            TableFieldInfo.of("f7", 4, "value", 0L),
-            TableFieldInfo.of("f8", 4, "value", 0L),
-            TableFieldInfo.of("f9", 4, "value", 0L),
-        };
-        return t;
+            TableTypeInfo t = new TableTypeInfo();
+            t.name = "BenchInts";
+            t.fields =
+                    new TableFieldInfo[] {
+                        TableFieldInfo.of("f0", 4, "value", 0L),
+                        TableFieldInfo.of("f1", 4, "value", 0L),
+                        TableFieldInfo.of("f2", 4, "value", 0L),
+                        TableFieldInfo.of("f3", 4, "value", 0L),
+                        TableFieldInfo.of("f4", 4, "value", 0L),
+                        TableFieldInfo.of("f5", 4, "value", 0L),
+                        TableFieldInfo.of("f6", 4, "value", 0L),
+                        TableFieldInfo.of("f7", 4, "value", 0L),
+                        TableFieldInfo.of("f8", 4, "value", 0L),
+                        TableFieldInfo.of("f9", 4, "value", 0L),
+                    };
+            return t;
         }
     }
 
-    public static TableTypeInfo tableType() { return Holder.TABLE; }
+    public static TableTypeInfo tableType() {
+        return Holder.TABLE;
+    }
 }

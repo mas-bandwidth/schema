@@ -46,10 +46,12 @@ func init() {
 		Name{Name: "TableFieldInfo", What: "a table field's reflection descriptor (docs/SPEC-TABLES.md §8)"},
 		Name{Name: "TableTypeInfo", What: "a table type's reflection descriptor (docs/SPEC-TABLES.md §8)"},
 		Name{Name: "TableRegistry", What: "the unit's registry of table descriptors (docs/SPEC-TABLES.md §8.3)"},
-		// THE MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3),
-		// form byte 2: one public type holding the announcement, its reader and
-		// the resolved vocabulary.
+		// THE MESSAGE FORM's announcement and batch surface (docs/SPEC-TABLES.md
+		// §3.3), form byte 2: TableVocabulary holds the announcement, its reader
+		// and the resolved vocabulary, and TableMessage holds the batch bit
+		// stream and vocabulary walk.
 		Name{Name: "TableVocabulary", What: "the message form's announcement surface (docs/SPEC-TABLES.md §3.3)"},
+		Name{Name: "TableMessage", What: "the message-form batch bit stream and vocabulary walk (docs/SPEC-TABLES.md §3.3)"},
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
 	)
 }

@@ -1710,8 +1710,62 @@ const tableFixedMaxDepth int32 = 64
 // tag 0x0101 is not arm 1. Arg is the arm ordinal and carries NO BYTE LANE
 // (§5.8 row 5): a 256-arm union's ordinal does not fit a byte.
 type TableFixedEntry struct {
-	Src, Dst, Size, Aux, Guard, Arg uint32
-	Op, ArgW, DstSize, Sign, Meta   uint8
+	Src, Dst, Size, Aux, Guard uint32
+	// Arg IS THE GUARD'S ORDINAL AT FULL WIDTH (docs/FIXED-FORM-ALGORITHM.md
+	// §4.1: arg : u64, "no byte lane anywhere"): a union past 255 arms or an
+	// enum past 65535 variants holds its ordinal whole in this lane, and the
+	// compare is made against the 64-bit tag load, never a truncation of it.
+	Arg uint64
+	// Guard2 / Arg2 / ArgW2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO ANSWERS
+	// TO (docs/FIXED-FORM-ALGORITHM.md §4.1): the entry runs only when BOTH tags
+	// hold their ordinal. ArgW2 of zero is "no outer tag", so a plan that never
+	// nests a union leaves the lane unset and the read is unchanged.
+	Guard2 uint32
+	Arg2   uint64
+	// GuardIndex / GuardCount ARE THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md
+	// §4.1): offset+count into a pool of (guard, arg, argw) links, OUTERMOST
+	// FIRST. GuardIndex is a BYTE OFFSET from the plan's own base, where the pool
+	// is laid behind the entries the way the ordinal remap tables are, so the
+	// plan stays one slice and the read loop one signature. Every guarded entry
+	// carries its whole chain; the two lanes above stay its innermost two, the
+	// special case, so the loop walks the pool only for a chain past two. The
+	// only bound on a chain is the layout's 64 (tableFixedMaxDepth).
+	GuardIndex, GuardCount               uint32
+	Op, ArgW, DstSize, Sign, Meta, ArgW2 uint8
+}
+
+// TableFixedGuardLink is ONE LINK of a guard chain (docs/FIXED-FORM-ALGORITHM.md
+// §4.1): the offset of the tag it reads, the ordinal the tag must hold, and the
+// width it is compared at. A chain is a CONJUNCTION — every link must hold.
+type TableFixedGuardLink struct {
+	Guard uint32
+	Arg   uint64
+	ArgW  uint8
+}
+
+// guardLink is link j of e's chain, read out of the pool laid behind the plan's
+// entries (§4.1: offset+count into the pool). A method, so the unit's package
+// scope gains no name a schema could collide with.
+func (e TableFixedEntry) guardLink(plan []TableFixedEntry, j uint32) TableFixedGuardLink {
+	at := uintptr(e.GuardIndex) + uintptr(j)*unsafe.Sizeof(TableFixedGuardLink{})
+	return *(*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&plan[0]), at))
+}
+
+// chainHolds is whether every link of a chain PAST TWO holds: an arm inside an
+// arm inside an arm answers to EVERY enclosing tag, the outermost first
+// (docs/FIXED-FORM-ALGORITHM.md §4.1). A chain of one or two is the two-lane
+// special case, already tested on Guard and Guard2.
+func (p TableFixedEntry) chainHolds(plan []TableFixedEntry, src []byte) bool {
+	if p.GuardCount <= 2 {
+		return true
+	}
+	for j := uint32(0); j < p.GuardCount; j++ {
+		l := p.guardLink(plan, j)
+		if tableFixedTagAt(src, l.Guard, l.ArgW) != l.Arg {
+			return false
+		}
+	}
+	return true
 }
 
 type TableFixedDst struct {
@@ -1722,6 +1776,9 @@ type TableFixedDst struct {
 type tableFixedPlan struct {
 	Entries []TableFixedEntry
 	Count   int32
+	// Split is the number of UNGUARDED entries (docs/FIXED-FORM-ALGORITHM.md
+	// §4.1): the index the guarded half starts at, stated by the plan itself.
+	Split int32
 }
 
 func tableFixedWidens(from, to uint8) bool {
@@ -1868,14 +1925,73 @@ func tableFixedPartition(plan []TableFixedEntry, n int32) int32 {
 	return split
 }
 
-func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int) tableFixedPlan {
-	raw := make([]TableFixedEntry, n)
-	written := emit(raw, 0, 0)
+// tableFixedBuildPlan runs the emitted leaf walk and lays THE GUARD CHAIN
+// (docs/FIXED-FORM-ALGORITHM.md §4.1). The walk records each entry's links
+// INNERMOST FIRST, because an inner union stamps before the outer one that
+// holds it; here they are turned OUTERMOST FIRST, the innermost two are laid on
+// the Guard and Guard2 lanes (the two-lane special case), and the whole chain is
+// laid ONCE into a pool behind the entries, deduped by content, so an entry
+// carries offset+count into it. Two entries under one chain share one slice of
+// the pool, so the coalescer compares GuardIndex and GuardCount alone.
+func tableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, uint32, uint32) int, n int) tableFixedPlan {
+	scratch := make([]TableFixedEntry, n)
+	links := make([][]TableFixedGuardLink, n)
+	written := emit(scratch, links, 0, 0)
+	var pool []TableFixedGuardLink
+	index := map[string]uint32{}
+	for i := 0; i < written; i++ {
+		chain := links[i]
+		k := len(chain)
+		if k == 0 {
+			continue
+		}
+		for a, b := 0, k-1; a < b; a, b = a+1, b-1 {
+			chain[a], chain[b] = chain[b], chain[a]
+		}
+		e := &scratch[i]
+		e.Guard, e.Arg, e.ArgW = chain[k-1].Guard, chain[k-1].Arg, chain[k-1].ArgW
+		if k >= 2 {
+			e.Guard2, e.Arg2, e.ArgW2 = chain[k-2].Guard, chain[k-2].Arg, chain[k-2].ArgW
+		}
+		kb := make([]byte, 0, k*13)
+		for _, l := range chain {
+			kb = binary.LittleEndian.AppendUint32(kb, l.Guard)
+			kb = binary.LittleEndian.AppendUint64(kb, l.Arg)
+			kb = append(kb, l.ArgW)
+		}
+		key := string(kb)
+		at, ok := index[key]
+		if !ok {
+			at = uint32(len(pool))
+			index[key] = at
+			pool = append(pool, chain...)
+		}
+		e.GuardIndex = at
+		e.GuardCount = uint32(k)
+	}
+	// THE POOL RIDES BEHIND THE ENTRIES, in the plan's own allocation, and
+	// GuardIndex becomes its byte offset from the plan's base.
+	entryBytes := int(unsafe.Sizeof(TableFixedEntry{}))
+	linkBytes := int(unsafe.Sizeof(TableFixedGuardLink{}))
+	raw := make([]TableFixedEntry, n+(len(pool)*linkBytes+entryBytes-1)/entryBytes)
+	copy(raw, scratch[:written])
+	if len(pool) > 0 {
+		base := uintptr(n * entryBytes)
+		copy(unsafe.Slice((*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&raw[0]), base)), len(pool)), pool)
+		for i := 0; i < written; i++ {
+			if raw[i].GuardCount != 0 {
+				raw[i].GuardIndex = uint32(base) + raw[i].GuardIndex*uint32(linkBytes)
+			}
+		}
+	}
 	out := 0
 	for i := 0; i < written; i++ {
 		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
 			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
 			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
+			raw[out-1].Guard2 == raw[i].Guard2 && raw[out-1].Arg2 == raw[i].Arg2 &&
+			raw[out-1].ArgW2 == raw[i].ArgW2 &&
+			raw[out-1].GuardIndex == raw[i].GuardIndex && raw[out-1].GuardCount == raw[i].GuardCount &&
 			raw[out-1].Src+raw[out-1].Size == raw[i].Src &&
 			raw[out-1].Dst+raw[out-1].Size == raw[i].Dst {
 			raw[out-1].Size += raw[i].Size
@@ -1885,8 +2001,10 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int
 		out++
 	}
 	n = out
-	tableFixedPartition(raw, int32(n))
-	return tableFixedPlan{Entries: raw[:n], Count: int32(n)}
+	// The split is KEPT, not discarded (docs/FIXED-FORM-ALGORITHM.md §4.1):
+	// the plan states where its guarded half starts.
+	split := tableFixedPartition(raw, int32(n))
+	return tableFixedPlan{Entries: raw[:n], Count: int32(n), Split: split}
 }
 
 func tableFixedPut8(b []byte, v uint8)         { b[0] = v }
@@ -1924,11 +2042,32 @@ func tableFixedCopyRun(d, s []byte, n uint32) {
 	copy(d[:n], s[:n])
 }
 
-func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) {
+func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) string {
+	// READ(plan, split, ...) (docs/FIXED-FORM-ALGORITHM.md §4.4): the plan is
+	// partitioned unguarded-first (§4.1), so the split is the first guarded
+	// index; entries below it run WITHOUT a guard test and only the guarded
+	// half from split on tests one.
+	split := count
+	for i := int32(0); i < count; i++ {
+		if plan[i].Guard != tableFixedNoGuard {
+			split = i
+			break
+		}
+	}
 	for i := int32(0); i < count; i++ {
 		p := plan[i]
-		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2).
-		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2). Below the
+		// split there is no guard to test (§4.4).
+		if i >= split && p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+			continue
+		}
+		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): the entry
+		// runs only when the second lane's tag holds its ordinal as well.
+		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+			continue
+		}
+		// AND EVERY TAG FURTHER OUT, the guard chain past the two lanes (§4.1).
+		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
 			continue
 		}
 		switch p.Op {
@@ -1989,6 +2128,14 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 				v = int32(capn)
 				report.Clamped++
 			}
+			// THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE, and a
+			// violation REFUSES BY NAME, the verdict the packet reader gives
+			// (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8): the
+			// length above CLAMPS and counts; the bytes it kept are checked now,
+			// over v units and never over the span.
+			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
+				return "text_ill_formed"
+			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 			tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
 			if p.Meta != tableFixedTextBytes && uint32(v) < capn {
@@ -2002,18 +2149,17 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// SIXTY-FOUR BITS. An ordinal rides at 1, 2, 4 or 8 bytes (§1.2);
 			// read through a 32-bit temporary an eight-byte ordinal loses its
 			// top four bytes, so a forged 0x1_0000_0001 would land as 1.
+			// THE OP MOVES NOTHING (§5.4): a raw past the writer's set lands
+			// None here, and tableFixedForgedBounds counts it once in the
+			// BOUNDS pass, on the compiled plan as the storage clamp counts the
+			// identity plan's own forged tag (docs/FIXED-FORM-ALGORITHM.md §5.4,
+			// §5.8 row 12, fix 27).
 			raw := tableFixedTagAt(src, p.Src, uint8(p.Size))
 			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
 			table := unsafe.Slice(p16, int(*p16)+1)
 			var v uint32
 			if raw != 0 && raw <= uint64(table[0]) {
 				v = uint32(table[raw])
-			} else if raw != 0 {
-				// AN ORDINAL PAST THE WRITER'S SET LANDS None AND COUNTS
-				// CLAMPED (§5.4): the compiled plan counts it exactly as the
-				// identity plan's bounds pass does, which tests the READER's
-				// top value and so a remapped 0 never trips it.
-				report.Clamped++
 			}
 			switch p.DstSize {
 			case 1:
@@ -2042,25 +2188,77 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 			report.Widened++
 		case tableFixedWidenF:
-			f := math.Float32frombits(tableFixedGet32(src[p.Src:]))
-			tableFixedPutF64(dst[p.Dst:], float64(f))
+			bits := tableFixedGet32(src[p.Src:])
+			var widened uint64
+			if bits&0x7f800000 == 0x7f800000 {
+				// THE ALL-ONES EXPONENT IS ASSEMBLED BY HAND (docs/SPEC-TABLES.md
+				// §3.4, §21.2; the variable form's own float rung): the hardware
+				// f32->f64 conversion QUIETS a signalling NaN and can drop a
+				// payload bit, so the sign, the all-ones exponent and the 23-bit
+				// mantissa shifted left by 29 are carried exactly and the quiet
+				// bit stays as the writer wrote it.
+				widened = uint64(bits>>31)<<63 | 0x7ff0000000000000 | uint64(bits&0x7fffff)<<29
+			} else {
+				widened = math.Float64bits(float64(math.Float32frombits(bits)))
+			}
+			tableFixedPut64(dst[p.Dst:], widened)
 			report.Widened++
 		case tableFixedConst:
 			aux := p.Aux
 			for i := uint32(0); i < p.Size; i++ {
 				dst[p.Dst+i] = byte(aux >> (8 * i))
 			}
-			// AN UNGUARDED None CONST WITH DstSize = THE WRITER'S ARM COUNT:
-			// a tag past that set lands None (already written just above) and
-			// COUNTS, so the compiled plan counts it exactly as the identity
-			// plan's decode bound does and the SAME forged bytes land the SAME
-			// Clamped == 1 on either plan (schema#1254, §5.4, §5.8 row 12).
+			// THE OP MOVES NOTHING (§5.4): the unguarded None const lands None,
+			// and a raw tag past the writer's arm count (this entry's DstSize) is
+			// counted once by tableFixedForgedBounds, the BOUNDS pass, on the
+			// compiled plan as the storage clamp counts the identity plan's own
+			// forged tag (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12, fix 27).
 			// tableFixedSrcEnd gives this one entry a source reach, so the
 			// record bound has already refused a plan that would read past it.
+		}
+	}
+	return ""
+}
+
+// tableFixedForgedBounds is the BOUNDS pass's count of a forged ordinal or union
+// tag (§5.4, fix 27): a raw ordinal past the writer's variant count, or a raw
+// union tag past the writer's arm count, is landed None by the ordinal/const
+// op — which moves nothing — and counted HERE, once per field, on the compiled
+// plan exactly as the identity plan's storage clamp counts its own forged tag.
+// The identity plan carries no ordinal or unguarded const entry (its union
+// tag and leaves are copy), so this pass is silent for it, and the writer's
+// count the storage clamp cannot see — the remap table's length word, or the
+// entry's DstSize — is why the count lives in the plan-aware pass here and not
+// in the op (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12).
+func tableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, report *TableReport) {
+	for i := int32(0); i < count; i++ {
+		p := plan[i]
+		// THE GUARD AT ITS FULL WIDTH, matching tableFixedRun (§5.2): an entry
+		// whose guard does not match never lands, so it never counts.
+		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+			continue
+		}
+		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): an entry
+		// whose second lane does not hold never lands, so it never counts.
+		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+			continue
+		}
+		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
+			continue
+		}
+		switch p.Op {
+		case tableFixedOrdinal:
+			raw := tableFixedTagAt(src, p.Src, uint8(p.Size))
+			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
+			table := unsafe.Slice(p16, int(*p16)+1)
+			if raw != 0 && raw > uint64(table[0]) {
+				report.Clamped++
+			}
+		case tableFixedConst:
 			if p.Aux == 0 && p.DstSize != 0 && p.Guard == tableFixedNoGuard {
 				var raw uint64
-				for i := uint32(0); i < p.Size; i++ {
-					raw |= uint64(src[p.Src+i]) << (8 * i)
+				for k := uint32(0); k < p.Size; k++ {
+					raw |= uint64(src[p.Src+k]) << (8 * k)
 				}
 				if raw > uint64(p.DstSize) {
 					report.Clamped++
@@ -2068,6 +2266,96 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 		}
 	}
+}
+
+// tableFixedTextIllFormed reports whether a text payload's USED units are the
+// text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
+// with no zero byte for string, paired non-zero UTF-16 code units for wstring.
+// bytes(N) carries no text rule at all, and slack past the used units is
+// unspecified and never a refusal (docs/SPEC-TABLES.md §3.4). The used argument
+// is the clamped length in the flavour's own units. THE STRING RULE IS THE
+// PACKET READER'S EXACTLY: unicode/utf8.Valid over the used bytes, then no
+// interior zero (internal/codegen/golang/functions.go, the TString arm), so
+// every ill-formed sequence utf8 refuses — overlong, surrogate, past U+10FFFF,
+// an invalid lead — refuses here too and not only structural truncation.
+func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
+	switch meta {
+	case tableFixedTextUtf8:
+		if !utf8.Valid(p[:used]) {
+			return true
+		}
+		for _, c := range p[:used] {
+			if c == 0 {
+				return true
+			}
+		}
+	case tableFixedTextWide:
+		for i := uint32(0); i < used; i++ {
+			u := uint16(p[i*2]) | uint16(p[i*2+1])<<8
+			switch {
+			case u == 0:
+				return true
+			case u >= 0xD800 && u <= 0xDBFF:
+				if i+1 >= used {
+					return true
+				}
+				lo := uint16(p[(i+1)*2]) | uint16(p[(i+1)*2+1])<<8
+				if lo < 0xDC00 || lo > 0xDFFF {
+					return true
+				}
+				i++
+			case u >= 0xDC00 && u <= 0xDFFF:
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// tableFixedTextRefusal is the text CONTENT refusal as a PRE-SCAN of the plan's
+// text entries, run before the caller's storage is touched. It walks each text
+// entry under its own guard, clamps its length exactly as the scatter will, and
+// answers the one name an ill-formed payload refuses with
+// (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8). §5.8: "REFUSE
+// is total: no counter moves, nothing is decoded, and not one destination byte
+// is written — the prefill included", so the check lives here rather than only
+// inside the scatter, where an earlier entry's write would already have landed.
+// It writes nothing and moves no counter.
+func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
+	for i := int32(0); i < count; i++ {
+		p := plan[i]
+		if p.Op != tableFixedText {
+			continue
+		}
+		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
+		// entry runs only under its own tag, and one that does not run cannot
+		// refuse.
+		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
+			continue
+		}
+		// AND THE OUTER TAGS (§4.1): the second lane, then the chain past it.
+		if p.ArgW2 != 0 && tableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
+			continue
+		}
+		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
+			continue
+		}
+		unit := uint32(1)
+		if p.Meta == tableFixedTextWide {
+			unit = 2
+		}
+		capn := p.Size / unit
+		v := int32(tableFixedGet32(src[p.Src:]))
+		if v < 0 {
+			v = 0
+		} else if uint32(v) > capn {
+			v = int32(capn)
+		}
+		if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
+			return "text_ill_formed"
+		}
+	}
+	return ""
 }
 
 type tableFixedLayoutEntry struct {
@@ -2398,8 +2686,33 @@ type tableFixedCompiler struct {
 	// source extent is held to.
 	record uint32
 	// argW is the CURRENT union's tag width, stamped onto every guarded push.
-	argW   uint8
-	report *TableReport
+	argW uint8
+	// chain is THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST
+	// (docs/FIXED-FORM-ALGORITHM.md §4.1): one link per enclosing union, pushed
+	// on the way into an arm and popped on the way out. chainAt is its byte
+	// offset in the pool once laid, and chainLaid whether it has been: a chain is
+	// laid once per arm, and only when an entry beneath it is pushed.
+	chain     []TableFixedGuardLink
+	chainAt   uint32
+	chainLaid bool
+	report    *TableReport
+}
+
+// layGuards lays one guard chain into the plan's pool, behind the entries and
+// 8-aligned, and answers its byte offset from the plan's base
+// (docs/FIXED-FORM-ALGORITHM.md §4.1: offset+count into a pool of links). Pool
+// storage that meets the entries is plan_too_large, as for a remap table.
+func (c *tableFixedCompiler) layGuards(links []TableFixedGuardLink) uint32 {
+	bytes := int32(unsafe.Sizeof(TableFixedGuardLink{})) * int32(len(links))
+	total := int32(unsafe.Sizeof(TableFixedEntry{})) * c.capacity
+	c.pool = (c.pool + bytes + 7) &^ 7
+	if total-c.pool < c.count*int32(unsafe.Sizeof(TableFixedEntry{})) {
+		c.overflow = true
+		return 0
+	}
+	at := uint32(total - c.pool)
+	copy(unsafe.Slice((*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&c.plan[0]), uintptr(at))), len(links)), links)
+	return at
 }
 
 // tableFixedSrcEnd is the last source byte, exclusive, an entry reads — the
@@ -2429,12 +2742,48 @@ func tableFixedSrcEnd(e TableFixedEntry) uint64 {
 			end = g
 		}
 	}
+	// THE OUTER TAG IS READ BEFORE THE ENTRY TOO (§4.1), so its bytes are part
+	// of the entry's source reach.
+	if e.ArgW2 != 0 {
+		if g := uint64(e.Guard2) + uint64(tableFixedArgWidth(e.ArgW2)); g > end {
+			end = g
+		}
+	}
 	return end
 }
 
 func tableFixedPush(c *tableFixedCompiler, e TableFixedEntry) {
 	if e.Guard != tableFixedNoGuard {
 		e.ArgW = uint8(tableFixedArgWidth(c.argW))
+	}
+	// THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md §4.1): an entry pushed
+	// beneath a union answers to EVERY enclosing tag, outermost first, so it
+	// carries the arm's whole chain as offset+count into the pool, and its two
+	// lanes are the chain's innermost two. Each link's tag is part of the
+	// entry's source reach, so a link past the writer's record refuses the plan
+	// whole like any other read past it.
+	if k := len(c.chain); k > 0 && e.Guard != tableFixedNoGuard {
+		in := c.chain[k-1]
+		e.Guard, e.Arg, e.ArgW = in.Guard, in.Arg, in.ArgW
+		if k >= 2 {
+			out := c.chain[k-2]
+			e.Guard2, e.Arg2, e.ArgW2 = out.Guard, out.Arg, out.ArgW
+		}
+		for _, l := range c.chain {
+			if c.record != 0 && uint64(l.Guard)+uint64(tableFixedArgWidth(l.ArgW)) > uint64(c.record) {
+				c.tooLarge = true
+				return
+			}
+		}
+		if !c.chainLaid {
+			c.chainAt = c.layGuards(c.chain)
+			c.chainLaid = true
+			if c.overflow {
+				return
+			}
+		}
+		e.GuardIndex = c.chainAt
+		e.GuardCount = uint32(k)
 	}
 	// ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE (§5.2). The
 	// bound is the writer's declared root size and not this reader's: an entry
@@ -2474,7 +2823,7 @@ func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 
 // census is whether THIS entry is the first time the peer's field is seen:
 // an array's element subtree is compiled once per element and the unknown
 // count is ONCE PER FIELD PER PEER (§5.4), so only element 0 censuses.
-func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint32, census bool) {
+func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	myChild := mi + 1
@@ -2512,7 +2861,7 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 	}
 }
 
-func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint32, census bool) {
+func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
@@ -2633,8 +2982,18 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			for j := uint32(0); j < te.Children; j++ {
 				ta := tableFixedEntryAt(theirs, theirArm)
 				if ta.Id == ma.Id {
-					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: j + 1})
-					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, j+1, census)
+					// THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT
+					// (docs/FIXED-FORM-ALGORITHM.md §4.1): one link is pushed
+					// on the way into the arm, the arm's own tag const included,
+					// and popped on the way out. The bound is the layout's 64:
+					// the walk that reaches here is already held to it.
+					savedAt, savedLaid := c.chainAt, c.chainLaid
+					c.chain = append(c.chain, TableFixedGuardLink{Guard: theirAt, Arg: uint64(j + 1), ArgW: c.argW})
+					c.chainLaid = false
+					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: uint64(j + 1)})
+					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, uint64(j+1), census)
+					c.chain = c.chain[:len(c.chain)-1]
+					c.chainAt, c.chainLaid = savedAt, savedLaid
 					break
 				}
 				theirArm += tableFixedSubtree(theirs, theirArm)
@@ -2653,10 +3012,12 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 		// THE TABLE IS AS LONG AS THE WRITER'S VARIANT COUNT (§5.2), not 255:
 		// capped at 255 a 300-variant writer's variant 299 read as out of the
-		// set and landed None.
+		// set and landed None. Past the uint16 length word the plan refuses
+		// by name as plan_too_large (§5.8 row 14): the plan-storage overflow,
+		// never the record-bound refusal an entry past the record earns.
 		n := te.Children
 		if n > tableFixedRemapMax {
-			c.tooLarge = true
+			c.overflow = true
 			return
 		}
 		m := make([]uint16, n)
@@ -2729,6 +3090,9 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 		if out > 0 && plan[out-1].Op == plan[i].Op && tableFixedRuns(plan[i].Op) &&
 			plan[out-1].Guard == plan[i].Guard && plan[out-1].Arg == plan[i].Arg &&
 			plan[out-1].ArgW == plan[i].ArgW && plan[out-1].Meta == plan[i].Meta &&
+			plan[out-1].Guard2 == plan[i].Guard2 && plan[out-1].Arg2 == plan[i].Arg2 &&
+			plan[out-1].ArgW2 == plan[i].ArgW2 &&
+			plan[out-1].GuardIndex == plan[i].GuardIndex && plan[out-1].GuardCount == plan[i].GuardCount &&
 			plan[out-1].Src+plan[out-1].Size == plan[i].Src &&
 			plan[out-1].Dst+plan[out-1].Size == plan[i].Dst {
 			plan[out-1].Size += plan[i].Size
@@ -2741,7 +3105,9 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	// guarded and unguarded entries in field order, and a field past a union
 	// would land behind a guarded one. §5.9 item 42 owes the order on this
 	// path too, and the lineage plans below are compiled here, so they are
-	// partitioned by construction.
+	// partitioned by construction. The returned count's plan states its split
+	// at the first guarded index (docs/FIXED-FORM-ALGORITHM.md §4.1), which
+	// tableFixedRun derives once (§4.4).
 	tableFixedPartition(plan, out)
 	return out
 }
@@ -4114,6 +4480,7 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 
 const TableEntityLoadRetainBuilder = "TableEntity: retention requires a region round trip through the VARIABLE form"
 const TableEntitySaveRetainMessages = "TableEntity: retention requires a region round trip through the VARIABLE form"
+const TableEntityLoadRetainMessages = "TableEntity: retention requires a region round trip through the VARIABLE form"
 const TableEntityLoadRetain = "TableEntity: retention requires a variable root and its region directory"
 const TableEntityMeasureRetain = "TableEntity: retention requires a variable root and its region directory"
 const TableEntitySaveRetain = "TableEntity: retention requires a variable root and its region directory"
@@ -5106,6 +5473,7 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 
 const TableStatLoadRetainBuilder = "TableStat: retention requires a region round trip through the VARIABLE form"
 const TableStatSaveRetainMessages = "TableStat: retention requires a region round trip through the VARIABLE form"
+const TableStatLoadRetainMessages = "TableStat: retention requires a region round trip through the VARIABLE form"
 const TableStatLoadRetain = "TableStat: retention requires a variable root and its region directory"
 const TableStatMeasureRetain = "TableStat: retention requires a variable root and its region directory"
 const TableStatSaveRetain = "TableStat: retention requires a variable root and its region directory"
@@ -6977,6 +7345,7 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 
 const TableMixedLoadRetainBuilder = "TableMixed: retention requires a region round trip through the VARIABLE form"
 const TableMixedSaveRetainMessages = "TableMixed: retention requires a region round trip through the VARIABLE form"
+const TableMixedLoadRetainMessages = "TableMixed: retention requires a region round trip through the VARIABLE form"
 const TableMixedLoadRetain = "TableMixed: retention requires a variable root and its region directory"
 const TableMixedMeasureRetain = "TableMixed: retention requires a variable root and its region directory"
 const TableMixedSaveRetain = "TableMixed: retention requires a variable root and its region directory"
@@ -8949,49 +9318,6 @@ func TableHitEventSaveMessageBody(w *TableMessageWriter, value *TableHitEvent) b
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func TableHitEventMeasureMessages(values []*TableHitEvent, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
-	for _, value := range values {
-		if value == nil || !TableHitEventSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
-func TableHitEventSaveMessages(values []*TableHitEvent, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
-		return -1
-	}
-	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
-	for _, value := range values {
-		if value == nil || !TableHitEventSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
 func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) bool {
 	TableHitEventReset(value)
 	for {
@@ -9172,26 +9498,6 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 			}
 		}
 	}
-}
-func TableHitEventLoadMessages(values []TableHitEvent, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
-	if count < 0 {
-		return 0, false
-	}
-	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
-	}
-	for i := int64(0); i < count; i++ {
-		if !TableHitEventLoadMessageBody(&r, &values[i]) {
-			return i, false
-		}
-	}
-	return count, tableMessageBatchClose(&r)
 }
 
 // TableChatEventReset restores TableChatEvent's declared defaults in place, reusing the storage
@@ -9455,49 +9761,6 @@ func TableChatEventSaveMessageBody(w *TableMessageWriter, value *TableChatEvent)
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func TableChatEventMeasureMessages(values []*TableChatEvent, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
-	for _, value := range values {
-		if value == nil || !TableChatEventSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
-func TableChatEventSaveMessages(values []*TableChatEvent, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
-		return -1
-	}
-	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
-	for _, value := range values {
-		if value == nil || !TableChatEventSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
 func TableChatEventLoadMessageBody(r *TableMessageReader, value *TableChatEvent) bool {
 	TableChatEventReset(value)
 	for {
@@ -9604,26 +9867,6 @@ func TableChatEventLoadMessageBody(r *TableMessageReader, value *TableChatEvent)
 			}
 		}
 	}
-}
-func TableChatEventLoadMessages(values []TableChatEvent, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
-	if count < 0 {
-		return 0, false
-	}
-	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
-	}
-	for i := int64(0); i < count; i++ {
-		if !TableChatEventLoadMessageBody(&r, &values[i]) {
-			return i, false
-		}
-	}
-	return count, tableMessageBatchClose(&r)
 }
 
 // TablePickupEventReset restores TablePickupEvent's declared defaults in place, reusing the storage
@@ -9887,49 +10130,6 @@ func TablePickupEventSaveMessageBody(w *TableMessageWriter, value *TablePickupEv
 	w.Put(0, TableMessageRefBitsHere)
 	return !w.Overflow
 }
-func TablePickupEventMeasureMessages(values []*TablePickupEvent, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
-	for _, value := range values {
-		if value == nil || !TablePickupEventSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
-func TablePickupEventSaveMessages(values []*TablePickupEvent, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
-		return -1
-	}
-	buffer[0] = 2
-	buffer[1] = byte(len(values) - 1)
-	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
-	for _, value := range values {
-		if value == nil || !TablePickupEventSaveMessageBody(&w, value) {
-			return -1
-		}
-	}
-	w.Align()
-	if w.Overflow {
-		return -1
-	}
-	return 2 + w.Bits/8
-}
 func TablePickupEventLoadMessageBody(r *TableMessageReader, value *TablePickupEvent) bool {
 	TablePickupEventReset(value)
 	for {
@@ -10037,26 +10237,6 @@ func TablePickupEventLoadMessageBody(r *TableMessageReader, value *TablePickupEv
 		}
 	}
 }
-func TablePickupEventLoadMessages(values []TablePickupEvent, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
-	if count < 0 {
-		return 0, false
-	}
-	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
-	}
-	for i := int64(0); i < count; i++ {
-		if !TablePickupEventLoadMessageBody(&r, &values[i]) {
-			return i, false
-		}
-	}
-	return count, tableMessageBatchClose(&r)
-}
 
 // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
 //
@@ -10064,7 +10244,7 @@ func TablePickupEventLoadMessages(values []TablePickupEvent, vocabulary *TableVo
 // in declared order, every field at its declared storage width. The writer is
 // constant-offset stores; the reader is ONE loop over ONE plan.
 
-func TableEntityFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func TableEntityFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -10182,7 +10362,7 @@ func TableEntityFixedWriteBody(b []byte, value *TableEntity) {
 	}
 }
 
-func TableStatFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func TableStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -10204,7 +10384,7 @@ func TableStatFixedWriteBody(b []byte, value *TableStat) {
 	tableFixedPut32(b[4:], uint32(value.Delta))
 }
 
-func TableHitEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func TableHitEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -10246,7 +10426,7 @@ func TableHitEventFixedWriteBody(b []byte, value *TableHitEvent) {
 	}
 }
 
-func TableChatEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func TableChatEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -10268,7 +10448,7 @@ func TableChatEventFixedWriteBody(b []byte, value *TableChatEvent) {
 	tableFixedPut32(b[4:], uint32(value.Speaker))
 }
 
-func TablePickupEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func TablePickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -10290,7 +10470,7 @@ func TablePickupEventFixedWriteBody(b []byte, value *TablePickupEvent) {
 	tableFixedPut32(b[4:], uint32(value.Amount))
 }
 
-func TableMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+func TableMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
 	{
 		es := src + 0
@@ -10357,14 +10537,14 @@ func TableMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	for i := uint32(0); i < 8; i++ {
 		es := src + 58 + i*51
 		ed := dst + uint32(unsafe.Offsetof(TableMixed{}.Entities)) + i*uint32(unsafe.Sizeof(TableEntity{}))
-		n += TableEntityFixedLeaves(out[n:], es, ed)
+		n += TableEntityFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	out[n] = TableFixedEntry{Src: src + 466, Dst: dst + uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), Size: 80, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
 	n++
 	for i := uint32(0); i < 80; i++ {
 		es := src + 470 + i*8
 		ed := dst + uint32(unsafe.Offsetof(TableMixed{}.Stats)) + i*uint32(unsafe.Sizeof(TableStat{}))
-		n += TableStatFixedLeaves(out[n:], es, ed)
+		n += TableStatFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	{
 		es := src + 1110
@@ -10373,29 +10553,23 @@ func TableMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 		n++
 		{ // arm hit, ordinal 1
 			guardAt := n
-			n += TableHitEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(TableEvent{}.Hit)))
+			n += TableHitEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(TableEvent{}.Hit)))
 			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 1
-				out[q].ArgW = 1
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 1, ArgW: 1})
 			}
 		}
 		{ // arm chat, ordinal 2
 			guardAt := n
-			n += TableChatEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(TableEvent{}.Chat)))
+			n += TableChatEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(TableEvent{}.Chat)))
 			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 2
-				out[q].ArgW = 1
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 2, ArgW: 1})
 			}
 		}
 		{ // arm pickup, ordinal 3
 			guardAt := n
-			n += TablePickupEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(TableEvent{}.Pickup)))
+			n += TablePickupEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(TableEvent{}.Pickup)))
 			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 3
-				out[q].ArgW = 1
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 3, ArgW: 1})
 			}
 		}
 	}
@@ -11050,12 +11224,18 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		if tableFixedGet64(at) != hash {
 			return tableFixedRefuse(report, "no_layout")
 		}
+		if why := tableFixedTextRefusal(entries, entryCount, at[8:recordBytes]); why != "" {
+			return tableFixedRefuse(report, why)
+		}
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
 		}
-		tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report)
+		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4).
 		TableEntityFixedClamp(&values[k], report)
@@ -11239,12 +11419,18 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		if tableFixedGet64(at) != hash {
 			return tableFixedRefuse(report, "no_layout")
 		}
+		if why := tableFixedTextRefusal(entries, entryCount, at[8:recordBytes]); why != "" {
+			return tableFixedRefuse(report, why)
+		}
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
 		}
-		tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report)
+		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4).
 		TableStatFixedClamp(&values[k], report)
@@ -11652,12 +11838,18 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		if tableFixedGet64(at) != hash {
 			return tableFixedRefuse(report, "no_layout")
 		}
+		if why := tableFixedTextRefusal(entries, entryCount, at[8:recordBytes]); why != "" {
+			return tableFixedRefuse(report, why)
+		}
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
 		}
-		tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report)
+		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4).
 		TableMixedFixedClamp(&values[k], report)

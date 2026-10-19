@@ -68,7 +68,7 @@ func t02CheckErrs(t *testing.T, src string) []error {
 // t02Has is a required substring of the emitted source, named by rule.
 func t02Has(t *testing.T, src, want, what string) {
 	t.Helper()
-	if !strings.Contains(src, want) {
+	if !javaCarries(src, want) {
 		t.Errorf("%s: the generated source does not carry %q", what, want)
 	}
 }
@@ -189,7 +189,7 @@ func t02R23(t *testing.T) {
 
 	report := t02Block(t, src, "public static final class Report {", "\n    }")
 	last := ""
-	for _, line := range strings.Split(report, "\n") {
+	for line := range strings.SplitSeq(report, "\n") {
 		s := strings.TrimSpace(line)
 		if strings.HasPrefix(s, "public ") && strings.HasSuffix(s, ";") {
 			last = s

@@ -56,6 +56,7 @@ package javatable
 
 import (
 	"fmt"
+	javapkt "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"maps"
 	"sort"
 	"strings"
@@ -199,6 +200,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // `lockfile.Floor` are the caller's three calls, so the disk is read in one place
 // and a test can play the lock in one line.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return generateLineage(u, lineage, javapkt.Canonical)
+}
+
+// generateLineage is GenerateLineage with the last pass named: canon puts each
+// file in the formatter's shape (java.Canonical), and a test passes the
+// identity to hold that the pass moves layout and never a token.
+func generateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry, canon func([]byte) []byte) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -255,7 +263,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 	maps.Copy(out, fixed)
 	// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2: the announcement
-	// surface, emitted for a unit with a `fixed table` root.
+	// and batch surface, emitted for a unit with a `fixed table` root.
 	message, err := generateMessageFiles(u)
 	if err != nil {
 		return nil, err
@@ -282,6 +290,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, retain)
+	// every file in the formatter's shape (java.Canonical, docs/JAVA-DIALECT.md).
+	for name, src := range out {
+		out[name] = canon(src)
+	}
 	return out, nil
 }
 
@@ -341,6 +353,7 @@ func runtimeFileNames() []string {
 		"TableBlockRows", "TableBlockInfo", "TableBlockFieldInfo", "TableBlockLayout",
 		"TableCookInfo", "TableCookFieldInfo", "TableCookStorage", "TableCookLayout", "TableCookWrite",
 		"TableFieldInfo", "TableTypeInfo", "TableRegistry",
+		"TableVocabulary", "TableMessage",
 		"BuildVersion",
 	}
 }
@@ -354,11 +367,15 @@ func checkNames(u *ir.Unit) error {
 	for _, name := range runtimeFileNames() {
 		runtime[name] = true
 	}
-	// and every class the FIXED FORM claims for this unit (docs/SPEC-TABLES.md
-	// §3.4): TableFixed, and `<Type>Fixed` per type of a fixed root's closure.
+	// and every class the FIXED FORM and MESSAGE FORM claim for this unit
+	// (docs/SPEC-TABLES.md §3.3, §3.4): TableFixed, `<Type>Fixed`, TableMessage,
+	// and `<Type>Message` per type of a fixed root's closure.
 	// Java allows one public class per file, so a schema file that spells one
 	// of them is a collision and is refused by name rather than overwritten.
 	for _, name := range fixedNames(u) {
+		runtime[name] = true
+	}
+	for _, name := range messageNames(u) {
 		runtime[name] = true
 	}
 	for _, f := range u.Files {

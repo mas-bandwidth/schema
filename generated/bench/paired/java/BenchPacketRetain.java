@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — the retained load, measure and save for table BenchPacket (docs/SPEC-TABLES.md §6.6)
+// package bench — the retained load, measure and save for table BenchPacket (docs/SPEC-TABLES.md
+// §6.6)
 
 package bench;
-
-import java.nio.charset.StandardCharsets;
 
 public final class BenchPacketRetain {
     private BenchPacketRetain() {}
@@ -15,129 +14,442 @@ public final class BenchPacketRetain {
     // (§6.6): a field this reader cannot name is resolved and copied into
     // the caller's retain storage, and an excluded class is reported as
     // loss, never retained silently.
-    public static BenchPacketVariable.Value loadRetain(byte[] data, TableRetain retain, TableVariable.Report report) {
-        if (retain == null) { return BenchPacketVariable.load(data, report); }
+    public static BenchPacketVariable.Value loadRetain(
+            byte[] data, TableRetain retain, TableVariable.Report report) {
+        if (retain == null) {
+            return BenchPacketVariable.load(data, report);
+        }
         int[] path = new int[128];
         TableVariable.Reader r = TableVariable.open(data, report);
-        if (r == null) { return null; }
-        retain.used = 0; retain.idUsed = 0;
+        if (r == null) {
+            return null;
+        }
+        retain.used = 0;
+        retain.idUsed = 0;
         BenchPacketVariable.Value v = new BenchPacketVariable.Value();
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
         if (nt.recs != null && !nt.bad) {
             for (TableVariable.NodeRecord rec : nt.recs) {
-                if (!rec.textMalformed && rec.typeId != TableVariable.STRING_ID && rec.typeId != TableVariable.BYTES_ID) {
+                if (!rec.textMalformed
+                        && rec.typeId != TableVariable.STRING_ID
+                        && rec.typeId != TableVariable.BYTES_ID) {
                     rec.table = BenchPacketVariable.createNode(rec.typeId);
-                    if (rec.table == null) { report.unknown++; report.retainLost++; rec.typeId = 0; }
+                    if (rec.table == null) {
+                        report.unknown++;
+                        report.retainLost++;
+                        rec.typeId = 0;
+                    }
                 }
             }
             for (TableVariable.NodeRecord rec : nt.recs) {
-                if (rec.table != null) { BenchPacketVariable.decodeNodeBody(new TableVariable.Reader(rec.body, r.ids, report), rec.table, rec.typeId, report); }
+                if (rec.table != null) {
+                    BenchPacketVariable.decodeNodeBody(
+                            new TableVariable.Reader(rec.body, r.ids, report),
+                            rec.table,
+                            rec.typeId,
+                            report);
+                }
             }
         }
         readFieldsRetain(r, v, nt, retain, report, path, 0);
-        if (report.refused) { return null; }
+        if (report.refused) {
+            return null;
+        }
         BenchPacketVariable.resolveNodes(v, nt, report);
         if (nt.recs != null && !nt.bad) {
-            for (TableVariable.NodeRecord rec : nt.recs) { if (rec.table != null) BenchPacketVariable.resolveNodePointers(rec.table, rec.typeId, nt, v, BenchPacketVariable.TYPE_ID, report); }
+            for (TableVariable.NodeRecord rec : nt.recs) {
+                if (rec.table != null)
+                    BenchPacketVariable.resolveNodePointers(
+                            rec.table, rec.typeId, nt, v, BenchPacketVariable.TYPE_ID, report);
+            }
         }
         return v;
     }
 
-    static void readFieldsRetain(TableVariable.Reader r, BenchPacketVariable.Value v, TableVariable.NodeTable nt, TableRetain retain, TableVariable.Report report, int[] path, int depth) {
+    static void readFieldsRetain(
+            TableVariable.Reader r,
+            BenchPacketVariable.Value v,
+            TableVariable.NodeTable nt,
+            TableRetain retain,
+            TableVariable.Report report,
+            int[] path,
+            int depth) {
         while (true) {
             long ref = r.leb();
-            if (r.fail) { return; }
-            if (ref == 0) { return; }
+            if (r.fail) {
+                return;
+            }
+            if (ref == 0) {
+                return;
+            }
             long id = r.resolve(ref);
-            if (r.fail) { return; }
-            if (!r.has(1)) { report.malformed = true; return; }
+            if (r.fail) {
+                return;
+            }
+            if (!r.has(1)) {
+                report.malformed = true;
+                return;
+            }
             int kind = r.get8();
             if (id == BenchPacketVariable.F_a) {
                 if (kind == 4 || kind == 2 || kind == 3) {
-                    if (kind == 4) { if (r.has(4)) { v.a = r.get32(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 2) { if (r.has(1)) { v.a = (byte) r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 3) { if (r.has(2)) { v.a = (short) r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    if (!r.fail && (v.a < -100 || v.a > 100)) { if (v.a < -100) { v.a = -100; } else { v.a = 100; } report.clamped++; }
-                } else { r.skip(kind); report.kindMismatch++; }
+                    if (kind == 4) {
+                        if (r.has(4)) {
+                            v.a = r.get32();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 2) {
+                        if (r.has(1)) {
+                            v.a = (byte) r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 3) {
+                        if (r.has(2)) {
+                            v.a = (short) r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                    if (!r.fail && (v.a < -100 || v.a > 100)) {
+                        if (v.a < -100) {
+                            v.a = -100;
+                        } else {
+                            v.a = 100;
+                        }
+                        report.clamped++;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
             } else if (id == BenchPacketVariable.F_b) {
                 if (kind == 4 || kind == 2 || kind == 3) {
-                    if (kind == 4) { if (r.has(4)) { v.b = r.get32(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 2) { if (r.has(1)) { v.b = (byte) r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 3) { if (r.has(2)) { v.b = (short) r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    if (!r.fail && (v.b < 0 || v.b > 65535)) { if (v.b < 0) { v.b = 0; } else { v.b = 65535; } report.clamped++; }
-                } else { r.skip(kind); report.kindMismatch++; }
+                    if (kind == 4) {
+                        if (r.has(4)) {
+                            v.b = r.get32();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 2) {
+                        if (r.has(1)) {
+                            v.b = (byte) r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 3) {
+                        if (r.has(2)) {
+                            v.b = (short) r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                    if (!r.fail && (v.b < 0 || v.b > 65535)) {
+                        if (v.b < 0) {
+                            v.b = 0;
+                        } else {
+                            v.b = 65535;
+                        }
+                        report.clamped++;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
             } else if (id == BenchPacketVariable.F_c) {
                 if (kind == 4 || kind == 2 || kind == 3) {
-                    if (kind == 4) { if (r.has(4)) { v.c = r.get32(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 2) { if (r.has(1)) { v.c = (byte) r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 3) { if (r.has(2)) { v.c = (short) r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    if (!r.fail && (v.c < -1000000 || v.c > 1000000)) { if (v.c < -1000000) { v.c = -1000000; } else { v.c = 1000000; } report.clamped++; }
-                } else { r.skip(kind); report.kindMismatch++; }
+                    if (kind == 4) {
+                        if (r.has(4)) {
+                            v.c = r.get32();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 2) {
+                        if (r.has(1)) {
+                            v.c = (byte) r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 3) {
+                        if (r.has(2)) {
+                            v.c = (short) r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                    if (!r.fail && (v.c < -1000000 || v.c > 1000000)) {
+                        if (v.c < -1000000) {
+                            v.c = -1000000;
+                        } else {
+                            v.c = 1000000;
+                        }
+                        report.clamped++;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
             } else if (id == BenchPacketVariable.F_bits7) {
                 if (kind == 6) {
-                    if (kind == 6) { if (r.has(1)) { v.bits7 = r.get8(); } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
+                    if (kind == 6) {
+                        if (r.has(1)) {
+                            v.bits7 = r.get8();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
             } else if (id == BenchPacketVariable.F_bits13) {
                 if (kind == 7 || kind == 6) {
-                    if (kind == 7) { if (r.has(2)) { v.bits13 = r.get16(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 6) { if (r.has(1)) { v.bits13 = r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
+                    if (kind == 7) {
+                        if (r.has(2)) {
+                            v.bits13 = r.get16();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 6) {
+                        if (r.has(1)) {
+                            v.bits13 = r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
             } else if (id == BenchPacketVariable.F_bits23) {
                 if (kind == 8 || kind == 6 || kind == 7) {
-                    if (kind == 8) { if (r.has(4)) { v.bits23 = r.get32(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 6) { if (r.has(1)) { v.bits23 = r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 7) { if (r.has(2)) { v.bits23 = r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
+                    if (kind == 8) {
+                        if (r.has(4)) {
+                            v.bits23 = r.get32();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 6) {
+                        if (r.has(1)) {
+                            v.bits23 = r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 7) {
+                        if (r.has(2)) {
+                            v.bits23 = r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
             } else if (id == BenchPacketVariable.F_flag) {
-                if (kind == 1) { if (r.has(1)) { v.flag = r.get8() != 0; } else { report.malformed = true; r.fail = true; } }
-                else { r.skip(kind); report.kindMismatch++; }
+                if (kind == 1) {
+                    if (r.has(1)) {
+                        v.flag = r.get8() != 0;
+                    } else {
+                        report.malformed = true;
+                        r.fail = true;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
             } else if (id == BenchPacketVariable.F_x) {
-                if (kind == 10) { if (r.has(4)) { v.x = Float.intBitsToFloat(r.get32()); } else { report.malformed = true; r.fail = true; } }
-                else { r.skip(kind); report.kindMismatch++; }
+                if (kind == 10) {
+                    if (r.has(4)) {
+                        v.x = Float.intBitsToFloat(r.get32());
+                    } else {
+                        report.malformed = true;
+                        r.fail = true;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
             } else if (id == BenchPacketVariable.F_y) {
-                if (kind == 10) { if (r.has(4)) { v.y = Float.intBitsToFloat(r.get32()); } else { report.malformed = true; r.fail = true; } }
-                else { r.skip(kind); report.kindMismatch++; }
+                if (kind == 10) {
+                    if (r.has(4)) {
+                        v.y = Float.intBitsToFloat(r.get32());
+                    } else {
+                        report.malformed = true;
+                        r.fail = true;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
             } else if (id == BenchPacketVariable.F_z) {
-                if (kind == 10) { if (r.has(4)) { v.z = Float.intBitsToFloat(r.get32()); } else { report.malformed = true; r.fail = true; } }
-                else { r.skip(kind); report.kindMismatch++; }
+                if (kind == 10) {
+                    if (r.has(4)) {
+                        v.z = Float.intBitsToFloat(r.get32());
+                    } else {
+                        report.malformed = true;
+                        r.fail = true;
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
             } else if (id == BenchPacketVariable.F_big) {
                 if (kind == 9 || kind == 6 || kind == 7 || kind == 8) {
-                    if (kind == 9) { if (r.has(8)) { v.big = r.get64(); } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 6) { if (r.has(1)) { v.big = r.get8(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 7) { if (r.has(2)) { v.big = r.get16(); report.widened++; } else { report.malformed = true; r.fail = true; } }
-                    else if (kind == 8) { if (r.has(4)) { v.big = ((long) r.get32()) & 0xffffffffL; report.widened++; } else { report.malformed = true; r.fail = true; } }
-                } else { r.skip(kind); report.kindMismatch++; }
+                    if (kind == 9) {
+                        if (r.has(8)) {
+                            v.big = r.get64();
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 6) {
+                        if (r.has(1)) {
+                            v.big = r.get8();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 7) {
+                        if (r.has(2)) {
+                            v.big = r.get16();
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    } else if (kind == 8) {
+                        if (r.has(4)) {
+                            v.big = ((long) r.get32()) & 0xffffffffL;
+                            report.widened++;
+                        } else {
+                            report.malformed = true;
+                            r.fail = true;
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
             } else if (id == BenchPacketVariable.F_blob) {
-                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (ek==6) { long n = ar.leb(); if (ar.fail) { } else { if (n < 0 || n > 17) { n = 17; report.clamped++; } if (ek != 6) { report.widened++; } v.blob.clear(); { for (long i = 0; i < n; i++) { java.math.BigInteger raw = TableVariable.readInteger(ar, ek); if (raw == null) break; v.blob.add(raw.intValue()); } } } } else { report.kindMismatch++; } } } }
-                else { r.skip(kind); report.kindMismatch++; }
+                if (kind == 14) {
+                    TableVariable.Reader ar = r.body();
+                    if (ar != null) {
+                        if (ar.has(2)) {
+                            int ek = ar.get8();
+                            if (ek == 6) {
+                                long n = ar.leb();
+                                if (ar.fail) {
+                                } else {
+                                    if (n < 0 || n > 17) {
+                                        n = 17;
+                                        report.clamped++;
+                                    }
+                                    if (ek != 6) {
+                                        report.widened++;
+                                    }
+                                    v.blob.clear();
+                                    {
+                                        for (long i = 0; i < n; i++) {
+                                            java.math.BigInteger raw =
+                                                    TableVariable.readInteger(ar, ek);
+                                            if (raw == null) break;
+                                            v.blob.add(raw.intValue());
+                                        }
+                                    }
+                                }
+                            } else {
+                                report.kindMismatch++;
+                            }
+                        }
+                    }
+                } else {
+                    r.skip(kind);
+                    report.kindMismatch++;
+                }
             } else if (id == TableVariable.NODE_ID) {
-                if (nt != null && r.rootBody) { r.skip(kind); }
-                else { report.malformed = true; return; }
+                if (nt != null && r.rootBody) {
+                    r.skip(kind);
+                } else {
+                    report.malformed = true;
+                    return;
+                }
             } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {
-                report.malformed = true; return;
+                report.malformed = true;
+                return;
             } else {
                 captureUnknown(r, id, kind, retain, report, path, depth);
             }
-            if (r.fail) { return; }
+            if (r.fail) {
+                return;
+            }
         }
     }
 
-    static void captureUnknown(TableVariable.Reader r, long id, int kind, TableRetain retain, TableVariable.Report report, int[] path, int depth) {
+    static void captureUnknown(
+            TableVariable.Reader r,
+            long id,
+            int kind,
+            TableRetain retain,
+            TableVariable.Report report,
+            int[] path,
+            int depth) {
         int pStart = r.off;
         r.skip(kind);
         report.unknown++;
-        if (r.fail) { return; }
+        if (r.fail) {
+            return;
+        }
         int pEnd = r.off;
         byte[] resolved = TableRetain.resolve(r.buf, r.ids, pStart, pEnd, kind);
-        if (resolved == null) { report.retainLost++; return; }
+        if (resolved == null) {
+            report.retainLost++;
+            return;
+        }
         int total = 14 + 8 * depth + resolved.length;
-        if (retain.used + total > retain.capacity) { report.retainLost++; return; }
+        if (retain.used + total > retain.capacity) {
+            report.retainLost++;
+            return;
+        }
         byte[] b = retain.bytes;
         int at = retain.used;
-        put32(b, at, total); at += 4;
+        put32(b, at, total);
+        at += 4;
         b[at++] = (byte) depth;
-        for (int k = 0; k < depth; k++) { put32(b, at, path[2 * k]); at += 4; put32(b, at, path[2 * k + 1]); at += 4; }
-        put64(b, at, id); at += 8;
+        for (int k = 0; k < depth; k++) {
+            put32(b, at, path[2 * k]);
+            at += 4;
+            put32(b, at, path[2 * k + 1]);
+            at += 4;
+        }
+        put64(b, at, id);
+        at += 8;
         b[at++] = (byte) kind;
         System.arraycopy(resolved, 0, b, at, resolved.length);
         retain.used += total;
@@ -150,20 +462,31 @@ public final class BenchPacketRetain {
         return n < 0 ? -1 : n;
     }
 
-    public static byte[] saveRetain(BenchPacketVariable.Value v, TableRetain retain, TableVariable.Report report) {
-        if (report == null) { return null; }
+    public static byte[] saveRetain(
+            BenchPacketVariable.Value v, TableRetain retain, TableVariable.Report report) {
+        if (report == null) {
+            return null;
+        }
         byte[] buf = new byte[1 << 20];
         int n = saveInto(v, retain, buf, report);
-        if (n < 0) { return null; }
+        if (n < 0) {
+            return null;
+        }
         return java.util.Arrays.copyOf(buf, n);
     }
 
-    static int saveInto(BenchPacketVariable.Value v, TableRetain retain, byte[] buf, TableVariable.Report report) {
+    static int saveInto(
+            BenchPacketVariable.Value v,
+            TableRetain retain,
+            byte[] buf,
+            TableVariable.Report report) {
         int[] path = new int[128];
         TableVariable.Ids ids = new TableVariable.Ids(64);
         TableVariable.Writer w = new TableVariable.Writer(buf, ids);
         TableVariable.NodeGraph nodes = new TableVariable.NodeGraph();
-        nodes.setOpen(v,true);if(!BenchPacketVariable.buildGraph(nodes,v))return -1;nodes.setOpen(v,false);
+        nodes.setOpen(v, true);
+        if (!BenchPacketVariable.buildGraph(nodes, v)) return -1;
+        nodes.setOpen(v, false);
         w.put8(1);
         writeFieldsRetain(w, nodes, v, retain, report, path, 0);
         emitTail(w, retain, report, path, 0);
@@ -198,43 +521,118 @@ public final class BenchPacketRetain {
         return w.overflow ? -1 : w.off;
     }
 
-    static void writeFieldsRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, BenchPacketVariable.Value v, TableRetain retain, TableVariable.Report report, int[] path, int depth) {
-        TableVariable.NodeGraph graph=nodes;
-        if (v.a != 0) { w.putLeb(w.ref(BenchPacketVariable.F_a)); w.put8(4); w.put32(v.a); }
-        if (v.b != 0) { w.putLeb(w.ref(BenchPacketVariable.F_b)); w.put8(4); w.put32(v.b); }
-        if (v.c != 0) { w.putLeb(w.ref(BenchPacketVariable.F_c)); w.put8(4); w.put32(v.c); }
-        if (v.bits7 != 0) { w.putLeb(w.ref(BenchPacketVariable.F_bits7)); w.put8(6); w.put8(v.bits7); }
-        if (v.bits13 != 0) { w.putLeb(w.ref(BenchPacketVariable.F_bits13)); w.put8(7); w.put16(v.bits13); }
-        if (v.bits23 != 0) { w.putLeb(w.ref(BenchPacketVariable.F_bits23)); w.put8(8); w.put32(v.bits23); }
-        if (v.flag) { w.putLeb(w.ref(BenchPacketVariable.F_flag)); w.put8(1); w.put8(1); }
-        if (v.x != 0.0f) { w.putLeb(w.ref(BenchPacketVariable.F_x)); w.put8(10); w.put32(Float.floatToIntBits(v.x)); }
-        if (v.y != 0.0f) { w.putLeb(w.ref(BenchPacketVariable.F_y)); w.put8(10); w.put32(Float.floatToIntBits(v.y)); }
-        if (v.z != 0.0f) { w.putLeb(w.ref(BenchPacketVariable.F_z)); w.put8(10); w.put32(Float.floatToIntBits(v.z)); }
-        if (v.big != 0L) { w.putLeb(w.ref(BenchPacketVariable.F_big)); w.put8(9); w.put64(v.big); }
+    static void writeFieldsRetain(
+            TableVariable.Writer w,
+            TableVariable.NodeGraph nodes,
+            BenchPacketVariable.Value v,
+            TableRetain retain,
+            TableVariable.Report report,
+            int[] path,
+            int depth) {
+        TableVariable.NodeGraph graph = nodes;
+        if (v.a != 0) {
+            w.putLeb(w.ref(BenchPacketVariable.F_a));
+            w.put8(4);
+            w.put32(v.a);
+        }
+        if (v.b != 0) {
+            w.putLeb(w.ref(BenchPacketVariable.F_b));
+            w.put8(4);
+            w.put32(v.b);
+        }
+        if (v.c != 0) {
+            w.putLeb(w.ref(BenchPacketVariable.F_c));
+            w.put8(4);
+            w.put32(v.c);
+        }
+        if (v.bits7 != 0) {
+            w.putLeb(w.ref(BenchPacketVariable.F_bits7));
+            w.put8(6);
+            w.put8(v.bits7);
+        }
+        if (v.bits13 != 0) {
+            w.putLeb(w.ref(BenchPacketVariable.F_bits13));
+            w.put8(7);
+            w.put16(v.bits13);
+        }
+        if (v.bits23 != 0) {
+            w.putLeb(w.ref(BenchPacketVariable.F_bits23));
+            w.put8(8);
+            w.put32(v.bits23);
+        }
+        if (v.flag) {
+            w.putLeb(w.ref(BenchPacketVariable.F_flag));
+            w.put8(1);
+            w.put8(1);
+        }
+        if (v.x != 0.0f) {
+            w.putLeb(w.ref(BenchPacketVariable.F_x));
+            w.put8(10);
+            w.put32(Float.floatToIntBits(v.x));
+        }
+        if (v.y != 0.0f) {
+            w.putLeb(w.ref(BenchPacketVariable.F_y));
+            w.put8(10);
+            w.put32(Float.floatToIntBits(v.y));
+        }
+        if (v.z != 0.0f) {
+            w.putLeb(w.ref(BenchPacketVariable.F_z));
+            w.put8(10);
+            w.put32(Float.floatToIntBits(v.z));
+        }
+        if (v.big != 0L) {
+            w.putLeb(w.ref(BenchPacketVariable.F_big));
+            w.put8(9);
+            w.put64(v.big);
+        }
         if (!v.blob.isEmpty()) {
-            w.putLeb(w.ref(BenchPacketVariable.F_blob)); w.put8(14);
+            w.putLeb(w.ref(BenchPacketVariable.F_blob));
+            w.put8(14);
             int list = w.off;
-            w.put8(6); w.putLeb(v.blob.size());
-            for (int i = 0, n = v.blob.size(); i < n; i++) { Integer e = v.blob.get(i); w.put8(e); }
+            w.put8(6);
+            w.putLeb(v.blob.size());
+            for (int i = 0, n = v.blob.size(); i < n; i++) {
+                Integer e = v.blob.get(i);
+                w.put8(e);
+            }
             w.frame(list);
         }
     }
 
-    static void writeBodyRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, BenchPacketVariable.Value v, TableRetain retain, TableVariable.Report report, int[] path, int depth) {
+    static void writeBodyRetain(
+            TableVariable.Writer w,
+            TableVariable.NodeGraph nodes,
+            BenchPacketVariable.Value v,
+            TableRetain retain,
+            TableVariable.Report report,
+            int[] path,
+            int depth) {
         writeFieldsRetain(w, nodes, v, retain, report, path, depth);
         emitTail(w, retain, report, path, depth);
         w.put8(0);
     }
 
-    static void emitTail(TableVariable.Writer w, TableRetain retain, TableVariable.Report report, int[] path, int depth) {
-        if (retain == null) { return; }
+    static void emitTail(
+            TableVariable.Writer w,
+            TableRetain retain,
+            TableVariable.Report report,
+            int[] path,
+            int depth) {
+        if (retain == null) {
+            return;
+        }
         retain.idUsed = 0;
         int at = 0;
         while (at < retain.used) {
             int len = get32(retain.bytes, at);
             int d = retain.bytes[at + 4] & 0xff;
             boolean match = d == depth;
-            for (int k = 0; match && k < d; k++) { if (get32(retain.bytes, at + 5 + 8 * k) != path[2 * k] || get32(retain.bytes, at + 9 + 8 * k) != path[2 * k + 1]) { match = false; } }
+            for (int k = 0; match && k < d; k++) {
+                if (get32(retain.bytes, at + 5 + 8 * k) != path[2 * k]
+                        || get32(retain.bytes, at + 9 + 8 * k) != path[2 * k + 1]) {
+                    match = false;
+                }
+            }
             if (match) {
                 int hdr = 14 + 8 * d;
                 long id = get64(retain.bytes, at + 5 + 8 * d);
@@ -242,7 +640,7 @@ public final class BenchPacketRetain {
                 int idsMark = w.ids.count;
                 int listMark = retain.idUsed;
                 TableVariable.Writer rec = w.sub(new byte[1 << 20]);
-                int[] pat = new int[]{at + hdr};
+                int[] pat = new int[] {at + hdr};
                 long ref = TableRetain.ref(rec, retain, id, report);
                 boolean ok = ref != 0;
                 if (ok) {
@@ -250,21 +648,45 @@ public final class BenchPacketRetain {
                     rec.put8(kind);
                     ok = TableRetain.emit(rec, retain, report, retain.bytes, pat, kind);
                 }
-                if (ok) { w.putBytes(rec.buf, 0, rec.off); }
-                else {
+                if (ok) {
+                    w.putBytes(rec.buf, 0, rec.off);
+                } else {
                     w.ids.count = idsMark;
                     w.ids.overflow = false;
                     retain.idUsed = listMark;
-                    if (report != null) { report.retainLost++; }
+                    if (report != null) {
+                        report.retainLost++;
+                    }
                 }
             }
             at += len;
         }
     }
 
-    static void put32(byte[] b, int at, int v) { for (int i = 0; i < 4; i++) { b[at + i] = (byte) (v >>> (8 * i)); } }
-    static void put64(byte[] b, int at, long v) { for (int i = 0; i < 8; i++) { b[at + i] = (byte) (v >>> (8 * i)); } }
-    static int get32(byte[] b, int at) { return (b[at] & 0xff) | (b[at + 1] & 0xff) << 8 | (b[at + 2] & 0xff) << 16 | (b[at + 3] & 0xff) << 24; }
-    static long get64(byte[] b, int at) { long v = 0; for (int i = 0; i < 8; i++) { v |= (long) (b[at + i] & 0xff) << (8 * i); } return v; }
+    static void put32(byte[] b, int at, int v) {
+        for (int i = 0; i < 4; i++) {
+            b[at + i] = (byte) (v >>> (8 * i));
+        }
+    }
 
+    static void put64(byte[] b, int at, long v) {
+        for (int i = 0; i < 8; i++) {
+            b[at + i] = (byte) (v >>> (8 * i));
+        }
+    }
+
+    static int get32(byte[] b, int at) {
+        return (b[at] & 0xff)
+                | (b[at + 1] & 0xff) << 8
+                | (b[at + 2] & 0xff) << 16
+                | (b[at + 3] & 0xff) << 24;
+    }
+
+    static long get64(byte[] b, int at) {
+        long v = 0;
+        for (int i = 0; i < 8; i++) {
+            v |= (long) (b[at + i] & 0xff) << (8 * i);
+        }
+        return v;
+    }
 }

@@ -163,6 +163,9 @@ type gen struct {
 	// lineage is the LOCK'S, per fixed table, OLDEST FIRST (§5.2); nil for a
 	// unit that was never locked, whose lineage is its own layout alone.
 	lineage map[string][]FixedLineageEntry
+	// vc is the unit's carried variable class (variablerefusal.go), shared by
+	// every file of one emission so the set is decided once.
+	vc *variableClass
 
 	body strings.Builder
 }

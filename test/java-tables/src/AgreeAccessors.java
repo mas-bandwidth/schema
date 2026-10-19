@@ -147,6 +147,126 @@ public final class AgreeAccessors {
         return out.toArray(new String[0]);
     }
 
+    // THE KEY FORM'S ALIASES (docs/SPEC-TABLES.md §2.4, docs/PORTING.md M5;
+    // internal/codegen/javatable/rows.go emitRowKeyForm). A keyed array's row
+    // carries <name>ByKey (a scalar slot by key) or <name>AtKey (a class-ref
+    // element's offset by key) beside the slot form's <name> and <name>At. They
+    // are not new fields, so the descriptor names none of them; an alias is
+    // accepted into the reverse check only when it VERIFIES against the
+    // descriptor's own array and the slot accessor it spells: the exact
+    // signature, the same return type, key k answering exactly what slot k-1
+    // answers for every slot of the descriptor's bound, and key 0 (None) and key
+    // bound+1 refused. Any other method stays an accessor with no descriptor.
+
+    /** One descriptor array a key alias may stand beside: its accessor stem and bound. */
+    private static final class Keyed {
+        final String stem;
+        final int bound;
+
+        Keyed(String stem, int bound) {
+            this.stem = stem;
+            this.bound = bound;
+        }
+    }
+
+    private static java.util.Map<String, Keyed> blockKeyedFields(blockdemo.TableBlockFieldInfo[] fields) {
+        java.util.Map<String, Keyed> out = new java.util.HashMap<>();
+        for (blockdemo.TableBlockFieldInfo f : fields) {
+            if (f.isArray && !f.outOfLine && f.arrayBound > 0) {
+                out.put(camel(f.name), new Keyed(camel(f.name), f.arrayBound));
+            }
+        }
+        return out;
+    }
+
+    private static java.util.Map<String, Keyed> cookKeyedFields(graphdemo.TableCookFieldInfo[] fields) {
+        java.util.Map<String, Keyed> out = new java.util.HashMap<>();
+        for (graphdemo.TableCookFieldInfo f : fields) {
+            if (f.isArray && !f.isPointer && f.arrayBound > 0) {
+                out.put(camel(f.name), new Keyed(camel(f.name), f.arrayBound));
+            }
+        }
+        return out;
+    }
+
+    private static java.lang.reflect.Method staticMethod(Class<?> cls, String name, Class<?>... sig) {
+        try {
+            java.lang.reflect.Method m = cls.getMethod(name, sig);
+            return java.lang.reflect.Modifier.isStatic(m.getModifiers()) ? m : null;
+        } catch (NoSuchMethodException e) {
+            return null;
+        }
+    }
+
+    private static final Object REFUSED = new Object();
+
+    // a key alias's answer, or REFUSED when it refuses the key by name
+    private static Object invokeKey(java.lang.reflect.Method m, Object... args) throws Exception {
+        try {
+            return m.invoke(null, args);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            if (e.getCause() instanceof IllegalArgumentException) {
+                return REFUSED;
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * The descriptor-derived names, plus every key alias on rowClass that
+     * verifies against its descriptor array at this row. An alias that fails
+     * to verify fails the gate by name; a ByKey/AtKey method with no keyed
+     * array under it is left out, so the reverse check refuses it.
+     */
+    private static String[] withKeyAliases(Class<?> rowClass, byte[] data, int at, String[] names,
+                                           java.util.Map<String, Keyed> keyed) throws Exception {
+        java.util.List<String> out = new java.util.ArrayList<>(java.util.Arrays.asList(names));
+        String row = rowClass.getSimpleName();
+        for (java.lang.reflect.Method m : rowClass.getMethods()) {
+            if (!java.lang.reflect.Modifier.isStatic(m.getModifiers())) { continue; }
+            String mn = m.getName();
+            boolean byKey = mn.endsWith("ByKey");
+            boolean atKey = mn.endsWith("AtKey");
+            if (!byKey && !atKey) { continue; }
+            Keyed k = keyed.get(mn.substring(0, mn.length() - "ByKey".length()));
+            if (k == null) { continue; }
+            java.lang.reflect.Method alias;
+            java.lang.reflect.Method slot;
+            if (byKey) {
+                alias = staticMethod(rowClass, mn, byte[].class, int.class, int.class);
+                slot = staticMethod(rowClass, k.stem, byte[].class, int.class, int.class);
+            } else {
+                alias = staticMethod(rowClass, mn, int.class, int.class);
+                slot = staticMethod(rowClass, k.stem + "At", int.class, int.class);
+            }
+            if (alias == null || !alias.equals(m)) {
+                fail(row + "." + mn + ": a key alias does not have the key form's signature");
+            }
+            if (slot == null) {
+                fail(row + "." + mn + ": a key alias has no slot accessor under it: " + k.stem);
+            }
+            if (alias.getReturnType() != slot.getReturnType()) {
+                fail(row + "." + mn + ": the key alias and its slot accessor return different types");
+            }
+            for (int key = 1; key <= k.bound; key++) {
+                Object a = byKey ? invokeKey(alias, data, at, key) : invokeKey(alias, at, key);
+                Object b = byKey ? slot.invoke(null, data, at, key - 1) : slot.invoke(null, at, key - 1);
+                if (a == REFUSED || !a.equals(b)) {
+                    fail(row + "." + mn + ": key " + key + " does not answer what slot " + (key - 1) + " answers");
+                }
+            }
+            for (int key : new int[] { 0, k.bound + 1 }) {
+                Object a = byKey ? invokeKey(alias, data, at, key) : invokeKey(alias, at, key);
+                if (a != REFUSED) {
+                    fail(row + "." + mn + ": key " + key + " is outside the descriptor's " + k.bound
+                            + " slots and was not refused");
+                }
+            }
+            out.add(mn);
+        }
+        return out.toArray(new String[0]);
+    }
+
     private static String[] cookFieldAccessorNames(graphdemo.TableCookFieldInfo[] fields) {
         java.util.List<String> out = new java.util.ArrayList<>();
         out.add("blockInfo");
@@ -225,7 +345,8 @@ public final class AgreeAccessors {
         // which carries the prologue accessors (magic, buildVersion, byteOrder)
         // that are not descriptor fields.
         if (rowClass.getSimpleName().endsWith("Row")) {
-            checkNoAccessorOnly(rowClass.getSimpleName(), rowClass, blockFieldAccessorNames(info.fields));
+            checkNoAccessorOnly(rowClass.getSimpleName(), rowClass,
+                    withKeyAliases(rowClass, data, at, blockFieldAccessorNames(info.fields), blockKeyedFields(info.fields)));
         }
         for (blockdemo.TableBlockFieldInfo f : info.fields) {
             if (f.outOfLine) { continue; }
@@ -322,7 +443,8 @@ public final class AgreeAccessors {
     private static void agreeCookRecord(byte[] data, int at, graphdemo.TableCookInfo info, Class<?> rowClass)
             throws Exception {
         rows++;
-        checkNoAccessorOnly(rowClass.getSimpleName(), rowClass, cookFieldAccessorNames(info.fields));
+        checkNoAccessorOnly(rowClass.getSimpleName(), rowClass,
+                withKeyAliases(rowClass, data, at, cookFieldAccessorNames(info.fields), cookKeyedFields(info.fields)));
         for (graphdemo.TableCookFieldInfo f : info.fields) {
             fields++;
             String where = rowClass.getSimpleName().replace("Row", "") + "." + f.name;
