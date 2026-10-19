@@ -209,7 +209,7 @@ func TestSpecPinTiersAndNestedModules(t *testing.T) {
 	t.Run("a runtime row with only a structure pin is refused naming the row", func(t *testing.T) {
 		t.Parallel()
 		fx := tiersFixture()
-		pins := tiersPin(specFixturePins(), 2, specPin{Row: "T1-2", Port: "compiler", Test: "pkg/a_test.go:TestStructure", Tier: "structure", Digest: "0a00fe170c1b2c5d"})
+		pins := tiersPin(specFixturePins(), 2, specPin{Row: "T1-2", Port: "compiler", Test: "pkg/a_test.go:TestStructure", Tier: "structure", Digest: "ae19772652c55406"})
 		wantFinding(t, runSpecFixture(fx, pins), "row T1-2")
 	})
 
@@ -218,7 +218,7 @@ func TestSpecPinTiersAndNestedModules(t *testing.T) {
 		fx := tiersFixture()
 		s := string(fx["docs/SPEC.md"].Data)
 		fx["docs/SPEC.md"] = &fstest.MapFile{Data: []byte(replaceOnce(s, "<!-- row T1-2 feature=compiler -->", "<!-- row T1-2 feature=compiler kind=structure -->"))}
-		pins := tiersPin(specFixturePins(), 2, specPin{Row: "T1-2", Port: "compiler", Test: "pkg/a_test.go:TestStructure", Tier: "structure", Digest: "0a00fe170c1b2c5d"})
+		pins := tiersPin(specFixturePins(), 2, specPin{Row: "T1-2", Port: "compiler", Test: "pkg/a_test.go:TestStructure", Tier: "structure", Digest: "ae19772652c55406"})
 		if f := runSpecFixture(fx, pins); len(f) != 0 {
 			t.Fatalf("a kind=structure row with a structure pin was refused:\n%v", f)
 		}

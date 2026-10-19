@@ -105,7 +105,7 @@ func registerSpecPins(origin string, pins ...specPin) bool {
 //
 // The section is pinned fully: no entry here is Owed.
 var _ = registerSpecPins("internal/ci/schema_spec_pin_design_row_ids_test.go",
-	specPin{Row: "T2.7-1", Port: "compiler", Test: "ir/blocklayout_test.go:TestBlockLayoutMatchesTheWorkedTable", Digest: "de000392ae1e6bda"},
+	specPin{Row: "T2.7-1", Port: "compiler", Test: "ir/blocklayout_test.go:TestBlockLayoutMatchesTheWorkedTable", Digest: "8de171c7fb5293c6"},
 	specPin{Row: "T2.7-2", Port: "compiler", Test: "internal/check/blockprologue_test.go:TestFixedTableFieldNamedAfterTheBlockPrologueIsRefused", Digest: "bf97ea2fb4572d0b"},
 )
 
@@ -1867,7 +1867,7 @@ func TestSpecPinsRealSpecPlants(t *testing.T) {
 	}
 	// T2.7-1 reversed with its marker kept: the r3 read's plant, on which
 	// the guard stayed green before pins carried a digest
-	const t271 = "**Nothing in a declaration selects it, and nothing is refused for asking.**<!-- row T2.7-1 feature=compiler -->"
+	const t271 = "**By default nothing in a declaration selects it, and nothing is refused for asking.**<!-- row T2.7-1 feature=compiler -->"
 	const t271Reversed = "**A declaration must select it with a `block` marker, and an unmarked fixed table is refused.**<!-- row T2.7-1 feature=compiler -->"
 	const heading27 = "### 2.7 The block form is not declared\n"
 	for _, s := range []string{t271, heading27} {

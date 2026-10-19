@@ -1406,7 +1406,7 @@ the optional map: absent apart from empty). It is refused, by name, on:
 #### The `| required` marker
 
 A variable table cannot say a field must be present: a zero field is not
-written, so absence and a written default are indistinguishable. `| required`
+written, so absence and a written default are indistinguishable.<!-- row T2.3-1 feature=compiler --> `| required`
 closes that gap. It is a TAG — a valueless qualifier in the open half of the
 qualification section (SPEC §4.2) — read exactly the way `| deprecated` is.
 What it means:
@@ -1422,20 +1422,20 @@ table Player
 - **The writer ALWAYS writes it.** A required field never elides at its
   default: it rides on every record, and a variable table's writer emits it
   even when it holds zero. Absence is no longer expressible for the field.
-- **The reader REFUSES a record missing it.** An older record written before
+- **The reader REFUSES a record missing it.**<!-- row T2.3-2 feature=compiler --> An older record written before
   the field was required lacks it; reading it is refused with the event
-  `missing_required`, naming the field. The record does not silently fall
+  `missing_required`, naming the field.<!-- row T2.3-3 feature=compiler --> The record does not silently fall
   back to a default — the field was declared mandatory and is not there. The
   TEXT form (§16) refuses the same absence: a JSON object that omits the key
-  is refused, naming the field, exactly as the binary and base64 forms do.
+  is refused, naming the field, exactly as the binary and base64 forms do.<!-- row T2.3-4 feature=compiler -->
 - **It is TABLE fields only.** `| required` is refused, by name, on a packet
   `type` field — a type's wire is positional and every field always rides, so
   there is no absence for a required marker to cure — and on an optional
   `?T` — an optional is absent or present by definition, and `required`
-  would forbid the absence that makes it optional.
+  would forbid the absence that makes it optional.<!-- row T2.3-5 feature=compiler -->
 - **A FIXED table REFUSES `required` at compile time**, by name: every fixed
   field is always written, so there is no elision to suppress and no absence
-  to refuse, and the marker would promise nothing. The check names the table
+  to refuse, and the marker would promise nothing.<!-- row T2.3-6 feature=compiler --> The check names the table
   and the field.
 - **The attribute is part of the tables baseline row**, as a `required`
   token in the field's row (§18), and that row is the table projection the
@@ -1445,32 +1445,32 @@ table Player
   projection, where a required field is laid out, cooked and blocked exactly
   as it is without the marker.
 - **The refusal names only the fields that are missing**, in declaration
-  order, e.g. `missing_required: b`.
-- **The refusal is the RECORD's, at any depth.** A nested table, an array
+  order, e.g.<!-- row T2.3-7 feature=compiler --> `missing_required: b`.
+- **The refusal is the RECORD's, at any depth.**<!-- row T2.3-8 feature=compiler --> A nested table, an array
   element, a map entry or a pointer node whose body lacks a required field
   refuses every body above it: the record is refused, never read as a parent
   holding a defaulted child, and the reason names the missing field of the
-  body that lacked it. A strict caller gets it by name — `ReadStrict` and
+  body that lacked it.<!-- row T2.3-9 feature=compiler --> A strict caller gets it by name — `ReadStrict` and
   `TableReport.Err()` answer the typed `TableMissingRequired`, whose text is
   the report's reason (§6.5), never a bare `wire_damaged`.
 - **A `| required` field whose range excludes zero takes NO default.**
   A fresh record's field is the storage zero, which is outside the range, so
   the writer refuses the record until the field is set; a stored record
-  lacking it is `missing_required` on read (SPEC §4.6). A declared default on
+  lacking it is `missing_required` on read (SPEC §4.6).<!-- row T2.3-10 feature=compiler --> A declared default on
   such a field stays legal.
 - **A `| required` field inside an `if` guard applies only while the guard
   holds.** With the branch off the field is absent from the wire and from
   defaults — the guard's own rule, §3 — and a read does not demand it, so a
-  record from a branch that was off never refuses `missing_required` for it.
+  record from a branch that was off never refuses `missing_required` for it.<!-- row T2.3-11 feature=compiler -->
   With the branch on, the required rule above applies in full: the field must
-  ride and a read demands it.
+  ride and a read demands it.<!-- row T2.3-12 feature=compiler -->
 
 **Evolution** (§4). Adding `required` to a shipped field is a BREAK the
 tables baseline refuses: old records were written without it and a newer
-reader would refuse them. Removing `required` is free — the writer simply
+reader would refuse them.<!-- row T2.3-13 feature=compiler --> Removing `required` is free — the writer simply
 starts eliding again. Adding a NEW field marked `| required` to an
 existing table is the same break, and the baseline refuses it too (every
-stored record lacks the field); a new field that is not required is free.
+stored record lacks the field); a new field that is not required is free.<!-- row T2.3-14 feature=compiler -->
 
 ### 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig`
 <!-- spec-pins owed schema-spec-pin-s2 -->
@@ -4073,20 +4073,20 @@ It is a FIELD TYPE in a table body, BARE, and it belongs to both classes: a
 holds one under its own wire kind `36` (§3). Bare means a plain field: an
 array of timestamps, an optional one, a map value, a union arm payload and a
 specified default are each a named follow-on and each is refused BY NAME by
-the checker. It is NOT a packet construct in this major — a `timestamp` in a
+the checker.<!-- row T2.11-1 feature=compiler --> It is NOT a packet construct in this major — a `timestamp` in a
 packet `type` is refused by name, the diagnostic saying the table wire
 carries it and the packet wire does not yet (SPEC.md §4.13) — and it is not a
-`const` type either. `timestamp` is a CONTEXTUAL type word and not a reserved
+`const` type either.<!-- row T2.11-2 feature=compiler --> `timestamp` is a CONTEXTUAL type word and not a reserved
 one: a field may still be named `timestamp`, and a declaration of that name
 still wins.
 
 **Its kind is its own and it widens into nothing.** On the variable wire a
 field respelled between `int64` and `timestamp` is a kind mismatch, skipped
 and counted in both directions (§4), and the widening family is closed to the
-pair: refused, by name, until it is ruled. What the kind buys over the bare
+pair: refused, by name, until it is ruled.<!-- row T2.11-3 feature=compiler --> What the kind buys over the bare
 `int64` is exactly that refusal, plus the value a target holds — `time.Time`
 in Go, UTC on read, with a time outside `Time.UnixNano`'s domain refused by
-name rather than wrapped — and its text form, an RFC 3339 string (§16.2).
+name rather than wrapped — and its text form, an RFC 3339 string (§16.2).<!-- row T2.11-4 feature=compiler -->
 
 **THE FIXED FORM DOES NOT TELL THE TWO APART, AND SAYS SO.** Kind `36` is a
 WIRE kind of the variable form. The fixed form's layout names its kinds from
@@ -4099,7 +4099,7 @@ the identity plan — a `copy` — and not a kind mismatch on the wire. The
 declaration still tells them apart where it is recorded: `schema.lock` writes
 the field's declared kind, `36` for a timestamp, so an edit that respells a
 locked field between the two is refused as a kind change (§21.1) and the
-field is deprecated and a new one appended. The kind distinction the standard
+field is deprecated and a new one appended.<!-- row T2.11-5 feature=compiler --> The kind distinction the standard
 promises is the variable wire's, the text form's and the lock's; widening the
 fixed layout's kind set is a follow-on that takes the form byte with it.
 
@@ -4110,10 +4110,10 @@ declared widths (§19, §20), and a `time.Time` holds a pointer — and the
 count as a `time.Time` in UTC, and `Set<Field>Time(t time.Time) error` stores
 one. **The setter is where a time is refused**: a `t` outside
 `Time.UnixNano`'s domain, the years 1678 through 2262, has no count, so the <!-- limit name=timestamp_min_year value=1678 --> <!-- limit name=timestamp_max_year value=2262 -->
-setter stores nothing and returns a `TableTimestampError` naming the field.
+setter stores nothing and returns a `TableTimestampError` naming the field.<!-- row T2.11-6 feature=compiler -->
 Go's own zero `time.Time{}` is the zero time and stores `0`. Every `int64` the
 field can hold is a time, so nothing after the setter can refuse: the variable
-wire, the fixed form and the text form write any count.
+wire, the fixed form and the text form write any count.<!-- row T2.11-7 feature=compiler -->
 
 **ITS TEXT IS RFC 3339 SECTION 5.6, STRICTLY.** The text form is exactly the
 `date-time` production of RFC 3339 §5.6 and nothing else, and every reader
@@ -4122,15 +4122,15 @@ valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`;
 second `00`–`59`; a fraction of one or more digits after a dot, truncated to
 nanoseconds; and `Z`, `z`, or a numeric offset whose hours are `00`–`23` and
 minutes `00`–`59`; nothing before it and nothing after it. A comma is not a
-fraction separator. **A leap second is refused: second `60` is not accepted.**
+fraction separator. **A leap second is refused: second `60` is not accepted.**<!-- row T2.11-8 feature=compiler -->
 This kind counts UTC seconds from the epoch, and an instant in a second that a
 leap repeats has no distinct nanosecond count in that model, so no spelling of
 one lands a value. A text outside `Time.UnixNano`'s domain — the years 1678
-through 2262 — names no count and is refused with it.
+through 2262 — names no count and is refused with it.<!-- row T2.11-9 feature=compiler -->
 
 **GO CARRIES IT FIRST.** Every other target refuses the construct by name,
 naming the construct, the target and that Go carries it first (§11); no other
-emitter is edited until its own card. Go's other storage forms — the cook and
+emitter is edited until its own card.<!-- row T2.11-10 feature=compiler --> Go's other storage forms — the cook and
 the block — hold the field as its `int64` count and are not yet tested with
 it; the message form's entry is §3.3's kind-`36` row. **A kind-`36` field a
 reader does not name skips by §3's first skip row, a fixed width of eight:**
@@ -4157,10 +4157,10 @@ list inside the string names several forms without a parser change. The forms
 are the closed vocabulary `wire` (the id-table wire, its storage and codecs),
 `json` (the text form, §16), `block` (the block accelerator, §2.7, §19) and
 `cook` (the cooked-form accelerator, §7). `wire` is the foundational form and is
-always carried: every declaration of `forms` must include `wire`. A name outside
+always carried: every declaration of `forms` must include `wire`.<!-- row T2.12-1 feature=compiler --> A name outside
 the closed vocabulary is refused by name, as is an empty form element, a
 repeated form name, a declaration that leaves `wire` out, a bare `forms` (a tag
-is a different thing) and a non-string value.
+is a different thing) and a non-string value.<!-- row T2.12-2 feature=compiler -->
 
 **The default is every form — today's behaviour.** A table with no `forms`
 line carries each form its backend emits, exactly as before; the declaration
@@ -4171,7 +4171,7 @@ removing a `forms` line costs no redeploy of the bytes. It is part of the
 table's declaration, not of one generate call: every build of the unit agrees on
 what the table carries.
 
-**A backend either honours the declaration or refuses the construct by name.**
+**A backend either honours the declaration or refuses the construct by name.**<!-- row T2.12-3 feature=compiler -->
 Go honours it per table: a table that declares `forms` gets only the surfaces of
 the forms it carries (`<Base>Table.go` for `wire`, `<Home>TableJson.go` entries
 for `json`, `<Base>Block.go` for `block` and `<Base>Cook.go` for `cook`), and a
@@ -4189,12 +4189,12 @@ list alone. So with `table Pong | forms = "wire,json"` beside an undeclared
 refused by name — the error names the table (the first declaring table in
 sorted name order; a synthesized map entry is never named), the surface and
 the table's `forms` value — so `--surface wire,cook` on the unit above is
-refused naming Pong, `cook` and `"wire,json"`. Only an explicit list refuses:
+refused naming Pong, `cook` and `"wire,json"`.<!-- row T2.12-4 feature=compiler --> Only an explicit list refuses:
 the default full set, which a list naming all eight surfaces is byte-identical
 to (§8.8), refuses nothing, since a table's declaration has already narrowed
-it. Every other target refuses the whole
+it.<!-- row T2.12-5 feature=compiler --> Every other target refuses the whole
 construct by name, centrally, at generation, and no other emitter is edited; the
-other languages carry `forms` when their turn comes.
+other languages carry `forms` when their turn comes.<!-- row T2.12-6 feature=compiler -->
 
 ### 2.13 Text lists: `rules [..16]string(64)`
 
@@ -4225,7 +4225,7 @@ word table, whose text is `[{"s":"a"}]` where every existing reader expects
 `["a"]`. A text list is spelled as what it is, and its text is the plain array.
 
 **Refused, each by name** (§11), with the diagnostic naming the variable-table
-spelling as the route where one exists:
+spelling as the route where one exists:<!-- row T2.13-1 feature=compiler -->
 
 - the four spellings in a `fixed table` (§2.2), in a `type` body or a packet
   (SPEC.md §4.6 is unchanged: the type wire carries no array of text), in a
@@ -4247,12 +4247,12 @@ spelling as the route where one exists:
 - `| total = N` (below) on any field that is not a text list, and `N` below 1
   or not an integer. A text list in a `fixed table`, a `type` body, a packet,
   a union arm or a map value is already refused as the construct, so its
-  total is refused with it, naming the variable-table route.
+  total is refused with it, naming the variable-table route.<!-- row T2.13-2 feature=compiler -->
 - `| total = N` on a list of UNBOUNDED elements, `[]string`, `[]?string`,
   `[..N]string` and `[..N]?string` (§2.13.1): its elements live in the
   builder's arena, and no Go writer or reader path holds a total there yet, so
   it is a named follow-on, refused naming the bounded `string(M)` element as
-  the route.
+  the route.<!-- row T2.13-3 feature=compiler -->
 
 **THE ELEMENT RECORD.** Each text list GENERATES one element record, as a map
 generates its entry (§2.8): `<Table><Field>Text`, one field named `value`
@@ -4267,7 +4267,7 @@ list with no rule of their own: each walks it as the array of records it is
 stored as. The fixed, block (§19) and message forms apply only to fixed tables,
 so for a text list, which lives only in a variable table, they are inapplicable
 and emit nothing for its table (not a refusal), as for an equal variable table
-holding an array of records. The element record's `?string(M)` value is the one
+holding an array of records.<!-- row T2.13-4 feature=compiler --> The element record's `?string(M)` value is the one
 place a `?` on a string is legal, and only the generator writes it: in a
 declaration `?string(N)` stays the follow-on §15 names.
 
@@ -4296,17 +4296,17 @@ element length is past `M`, or whose element is not well-formed UTF-8 or holds
 a zero byte, returning `-1` with nothing written
 (internal/codegen/gotable/write.go `emitStorageCheck` and the text rule in
 `emitWireValue`), and the generated `Append` refuses the element that would
-break either bound, returning false.
+break either bound, returning false.<!-- row T2.13-5 feature=compiler -->
 
 **BOUNDS, on the read side, are the variable wire's tolerance, unchanged** (§4):
 a count past the reader's `N` reads the first `N` elements and counts
 `clamped`; an element past `M` clamps at a code point boundary and counts
 `clamped`; ill-formed UTF-8 or a zero byte in an element is `malformed`. The
 JSON text holds the same rule at its own entry: an element or a map key whose
-string decodes to `U+0000` refuses the read (§16.3). A read
+string decodes to `U+0000` refuses the read (§16.3).<!-- row T2.13-6 feature=compiler --> A read
 that clamped an element of a text list records the field in the report's
 `Reason` as `clamped: <Table>.<field>`, so `ReadStrict` refuses it with
-`TableRefuseReason` `clamped` (`errors.Is`) and an error text naming the field.
+`TableRefuseReason` `clamped` (`errors.Is`) and an error text naming the field.<!-- row T2.13-7 feature=compiler -->
 
 **THE TOTAL: `| total = N`.** A list of `[..N]` elements of `M` bytes each
 bounds every element and the count, and nothing bounds their SUM, so what one
@@ -4334,22 +4334,22 @@ read each other's bytes under §4.
   regional or retaining write reaches, REFUSE a value whose sum is past `N`,
   returning `-1` with nothing written; the generated `Append` REFUSES the
   element that would carry the sum past `N`, returning false, and the stored
-  value does not move. `ToJson` and `ToJsonMeasure` refuse the value too,
+  value does not move.<!-- row T2.13-8 feature=compiler --> `ToJson` and `ToJsonMeasure` refuse the value too,
   returning `-1`, so no Go writer emits a wire or a text the declaration
-  forbids.
+  forbids.<!-- row T2.13-9 feature=compiler -->
 - **On the read side it is the variable wire's tolerance** (§4): the reader
   keeps the longest PREFIX of the list whose sum is within `N`, each element
   first clamped at `M` as above, and DROPS the first element that would carry
   the sum past `N` and every element after it, counting `clamped` ONCE for the
   field and recording `clamped: <Table>.<field>` in the report's `Reason`, so
   `ReadStrict` refuses it with `TableRefuseReason` `clamped` (`errors.Is`) and
-  an error text naming the field. It is a prefix, as the count's clamp is, so
+  an error text naming the field.<!-- row T2.13-10 feature=compiler --> It is a prefix, as the count's clamp is, so
   a short element after a long one is dropped too and the kept elements are
   always the first ones. A count past `[..N]` is clamped first, and both are
   counted.
 - **JSON TEXT follows the same rule**, element for element (§16.2): the read
   keeps the prefix within `N` and drops the rest, counted once and named; the
-  write refuses past it. BASE64 TEXT is the binary wire and reads by it.
+  write refuses past it.<!-- row T2.13-11 feature=compiler --> BASE64 TEXT is the binary wire and reads by it.
 - **The cooked form's check (§7.4) does not read it**, as it does not read a
   declared range: every element stays bounded by `M` and the count by its
   array, so no total can steer a walker, and a cook is the storage a load or a
@@ -4376,7 +4376,7 @@ emits, beside the storage above:
   presence (false past the count, and false for an absent `?string(M)` element);
 - `HandoverRulesAppend(value *Handover, text string) bool` for a bounded list
   and `HandoverRulesAppend(worker *TableWorker, value *Handover, text string) bool`
-  for an unbounded one, refusing on the bounds above;
+  for an unbounded one, refusing on the bounds above;<!-- row T2.13-12 feature=compiler -->
 - `HandoverRulesAppendAbsent(...)` with the same leading parameters and no
   text, for the `?` spelling only;
 - the count is the list's own: `RulesCount` for `[..N]`, `Rules.Count` for `[]`,
@@ -4386,11 +4386,11 @@ emits, beside the storage above:
 **A TEXT LIST CLAIMS FOUR NAMES AGAINST ITS FIELD**, on the map's own rule
 (§2.8, §2.9): `<Table>` followed by the PascalCase of the field's name, and then
 `Text`, `TextAt`, `Append` or `AppendAbsent`; an unbounded one claims §2.9's
-four as well. A declaration under any of them is refused naming the field.
+four as well. A declaration under any of them is refused naming the field.<!-- row T2.13-13 feature=compiler -->
 
 **Go carries the construct first, and every other target refuses it by name,
 centrally, at generation** (§2.12's rule), naming the construct, the field and
-the target, so no other emitter is edited.
+the target, so no other emitter is edited.<!-- row T2.13-14 feature=compiler -->
 
 #### 2.13.1 Unbounded text: `[]string` and `map[string]V`
 
@@ -4426,7 +4426,7 @@ the leading `?`, or write it after the bound); a `type` body or a packet
 (SPEC.md §4.6: the type wire carries no unbounded text); a union arm (§2.6); a
 map VALUE (`map[K]string`: hold `string(N)` or `*string`, or wrap the text in
 a table); `map[?string]V` (a key is an identity and has no absence); and a
-`fixed table` (§2.2), naming the variable-table spelling. Unbounded `wstring`,
+`fixed table` (§2.2), naming the variable-table spelling.<!-- row T2.13.1-1 feature=compiler --> Unbounded `wstring`,
 `bytes` and `bits` elements, and arrays of `*string` or `*bytes`, stay named
 follow-ons (§15).
 
@@ -4450,7 +4450,7 @@ unbounded value renders with no `size=` and the unbounded key with
 different line from any `string(M)`'s.
 
 **NO CAP IS INVENTED.** The only limits on an unbounded element or key are the
-wire's own, each with its own named refusal, and none is a silent clamp:
+wire's own, each with its own named refusal, and none is a silent clamp:<!-- row T2.13.1-2 feature=compiler -->
 
 - **the reader's framing**: an `L` past its body's remaining bytes is
   `malformed` (§4's framing-damage rule), checked before anything is copied,
@@ -4458,15 +4458,15 @@ wire's own, each with its own named refusal, and none is a silent clamp:
   more elements than its body's bytes can hold is refused `count_over_length`
   (`TableRefuseCountOverLength`) at measure time, before any allocation, for a
   `[]` list exactly as for any other §2.9 list, and a `[..N]` count past its
-  bytes reads what the bytes hold and is `malformed`;
+  bytes reads what the bytes hold and is `malformed`;<!-- row T2.13.1-3 feature=compiler -->
 - **int32 count storage** (§2.9, §6.1): a `[]` count past `2^31 - 1` is
   `count_over_extent_cap` (`TableRefuseCountOverExtentCap`);
 - **the blob record's u32 length** (§2.5, below): an element or key whose
   length does not fit `2^32 - 1` is `blob_over_size_cap`
-  (`TableRefuseBlobOverSizeCap`), the refusal every blob already meets;
+  (`TableRefuseBlobOverSizeCap`), the refusal every blob already meets;<!-- row T2.13.1-4 feature=compiler -->
 - **§6.5's caller-owned allocation**: `LoadMeasure` answers the region size
   from the framing before any allocation, and the caller refuses a number it did
-  not expect; the builder's arena refuses past its segments.
+  not expect; the builder's arena refuses past its segments.<!-- row T2.13.1-5 feature=compiler -->
 
 An unbounded element never counts `clamped` for its length. A `[..N]` list's
 COUNT still clamps at `N` and counts `clamped`, naming the field (§2.13).
@@ -4474,7 +4474,7 @@ COUNT still clamps at `N` and counts `clamped`, naming the field (§2.13).
 **THE WRITE SIDE** holds the count to `N` and refuses an element or key that is
 ill-formed UTF-8 or holds a zero byte at `Append` / `Insert` (false) and at
 `Save` and `Measure` (`-1`, nothing written), as §2.13 states for the bounded
-element. There is no length bound beyond what the storage holds, the blob
+element.<!-- row T2.13.1-6 feature=compiler --> There is no length bound beyond what the storage holds, the blob
 record's u32 length.
 
 **THE TEXT FORM (§16.2)** is the plain shape: an array of strings (with `null`
@@ -4482,7 +4482,7 @@ for an absent `?` element) and an object with plain keys. An unbounded element
 is never clamped and an unbounded key never dropped for its length; a repeated
 key is last-wins and counted `duplicate`, as for every map. The text form reads
 and writes these elements and keys as §16.9.2 states. An element or key
-whose string decodes to `U+0000` refuses the read (§16.3).
+whose string decodes to `U+0000` refuses the read (§16.3).<!-- row T2.13.1-7 feature=compiler -->
 
 **STORAGE: the blob record of §2.5, reached by a slot in the element record.**
 A bounded element is `[M+1]byte` and an `int32` length, which an unbounded one
@@ -4509,7 +4509,7 @@ a builder load takes them from the arena as it takes a list's elements.
 in a variable table, so they are inapplicable and emit nothing for its table,
 unbounded text included. The message form is fixed-only (§3.3), and a fixed
 table cannot hold unbounded text (§2.2, the refusals above), so a table whose
-closure holds it never meets the form.
+closure holds it never meets the form.<!-- row T2.13.1-8 feature=compiler -->
 
 **MAP KEYS compare by BYTES, unsigned, a shorter prefix first, at any length**
 (§2.8): `Find`, `Insert` (replace included), `Erase`, `Each` and the index hash
@@ -4526,13 +4526,13 @@ list, the bounded `[..N]` count included, because the bytes are allocated;
 the map's `Insert(worker, holder, key string)`, `Find(arena, holder, key)`,
 `Erase(arena, holder, key)`, `Each(holder, visit func(string, *V) bool, arena...)` keep their spellings. The runtime adds `TableMalformedField`, a
 strict read's `malformed` refusal naming the text list or map
-(`<Table>.<field>`) whose element or key it refused (`errors.Is(err, TableRefuseMalformed)` holds), beside §2.13's `TableClampedField`. The claimed
+(`<Table>.<field>`) whose element or key it refused (`errors.Is(err, TableRefuseMalformed)` holds), beside §2.13's `TableClampedField`.<!-- row T2.13.1-9 feature=compiler --> The claimed
 names are §2.13's and §2.8's, unchanged; an unbounded text list claims its
 element record and its accessors on the same rule.
 
 **Go carries the construct first; every other target refuses it by name,
 centrally, at generation** (§2.12's rule), naming the construct, the field and
-the target. A unit that uses neither spelling generates byte-identical output
+the target.<!-- row T2.13.1-10 feature=compiler --> A unit that uses neither spelling generates byte-identical output
 to what it did before this section, for every target.
 
 ### 2.14 The integrity check: `integrity`
@@ -4559,7 +4559,7 @@ and ext4 use, chosen because it is hardware-accelerated on amd64 and arm64 and
 in every language's standard library or one table away. A later value is
 appended to the vocabulary and never replaces one. A value outside it is
 refused by name, as is an empty value, a non-string value and a bare
-`integrity` (a tag is a different thing).
+`integrity` (a tag is a different thing).<!-- row T2.14-1 feature=compiler -->
 
 **WHAT IT DECLARES: the FILE whose ROOT is this table carries the INTEGRITY
 TRAILER**, the variable form's (§3) and, for a `fixed table`, the fixed
@@ -4580,17 +4580,17 @@ THE FIRST BYTE's rule kept:
 1. **The form byte is read first.** An empty file is framing damage and a form
    byte other than `1` is §3's refusal (or the form's own reader), exactly as
    for an undeclared table, so a file that is both a newer form and damaged
-   is a refusal.
+   is a refusal.<!-- row T2.14-2 feature=compiler -->
 2. **A form-`1` file shorter than five bytes cannot hold the trailer**, and a
    file whose last four bytes are not the CRC-32C of the bytes before them is
-   refused, **`integrity_mismatch`**. Nothing is decoded: the id table is not
+   refused, **`integrity_mismatch`**.<!-- row T2.14-3 feature=compiler --> Nothing is decoded: the id table is not
    resolved and no body is walked.
 3. **The trailer is then removed** and the rest is read as §3's file, form
    byte, root body and id table, with every rule of §3 and §4 unchanged.
 
 **THE NAME, ON EACH READ.** The STRICT read (§6.5) and the base64 text
 read (`LoadText`, §16.8) refuse a mismatch with the typed reason
-`integrity_mismatch`. The TOLERANT read counts it as the whole-file damage
+`integrity_mismatch`.<!-- row T2.14-4 feature=compiler --> The TOLERANT read counts it as the whole-file damage
 of §3's first malformed rule: the report's `malformed` is set, its reason
 names `integrity_mismatch`, the verdict is damage, nothing is decoded and one
 event is counted. A measure of a load (`LoadMeasure`) answers `-1` and its
@@ -4599,7 +4599,7 @@ reason form `integrity_mismatch`.
 **WHAT IT DETECTS, stated as arithmetic.** A CRC of degree 32 detects every
 error confined to one burst of 32 bits or fewer, so every single-bit flip and
 every damaged single byte, whatever the XOR, is refused; any other damage
-pattern passes with probability `2^-32`. It is a check against ACCIDENT and
+pattern passes with probability `2^-32`.<!-- row T2.14-5 feature=compiler --> It is a check against ACCIDENT and
 nothing else: anyone who can write the file can write a matching trailer, so
 it says nothing about who wrote it. **Where integrity against a hostile writer
 is wanted it is still a SIGNATURE over the whole file** (§7, §13.4), and this
@@ -4619,7 +4619,7 @@ key does not replace one.
 - **A reader of a table WITH the key, given a file WITHOUT the trailer**,
   compares the last four bytes, the high half of the real entry count and so
   zero, with the CRC-32C of the bytes before them, and refuses
-  `integrity_mismatch` unless that CRC is zero, one file in `2^32`. Then the
+  `integrity_mismatch` unless that CRC is zero, one file in `2^32`.<!-- row T2.14-6 feature=compiler --> Then the
   four stripped bytes leave the real count's low half as the HIGH half of the
   count the reader reads, at least `2^32` whenever the file names an id, which
   runs past the front of the file; and a file that names no id is ten bytes,
@@ -4634,13 +4634,13 @@ and **not** in the tables baseline (§18). Those four record identity and
 layout, the names, ids, kinds and offsets a reader resolves, and the trailer
 is none of them: it is framing at the end of one file. Moving it moves no
 byte of any undeclared table's file, and every Go unit without the key emits
-what it emitted before, save the one new refusal name the runtime carries.
+what it emitted before, save the one new refusal name the runtime carries.<!-- row T2.14-7 feature=compiler -->
 
 **THE EVOLUTION RULE: adding or removing `integrity` is a framing change to
 that table's files, and it is LOUD in both directions.** A file written
 before the key was added is refused by the new reader (`integrity_mismatch`),
 and a file written after is `malformed` to the old one (above); neither ever
-reads as a value. So a deployment that adds the key, or drops it, rewrites
+reads as a value.<!-- row T2.14-8 feature=compiler --> So a deployment that adds the key, or drops it, rewrites
 its stored files across the change: load each under the build that wrote it
 and save it under the new one. Because the change cannot go unnoticed, the
 baseline does not have to catch it, which is why it is not recorded there.
@@ -4657,15 +4657,15 @@ of the file. One file has one trailer, as above.
 reader refuses a damaged record BEFORE it decodes one, and a fixed-form reader
 already holds the whole file before it decodes anything: the record count is
 arithmetic over the file's length (§3.4, "THE RECORDS FILL THE REST OF THE
-FILE"), so the last four bytes are where the reader is standing anyway. One
+FILE"), so the last four bytes are where the reader is standing anyway.<!-- row T2.14-9 feature=compiler --> One
 trailer over the file refuses a damaged record before ANY record is touched,
 and before the layout every record is read under is compared or selected; and
 it is the only placement that covers the header and the layout too, which a
 per-record check would leave bare while paying four bytes on every record of
-the form whose design is that a record carries nothing a reader does not need.
+the form whose design is that a record carries nothing a reader does not need.<!-- row T2.14-10 feature=compiler -->
 A per-record check would buy one thing, landing the undamaged records of a
 damaged file, and §3.4's read is total over the batch (a refusal at record
-`k` lands none), so that is a thing this form never does.
+`k` lands none), so that is a thing this form never does.<!-- row T2.14-11 feature=compiler -->
 
 **A FIXED READER CHECKS IT IN §2.14's ORDER, the form byte's rule kept:**
 
@@ -4674,7 +4674,7 @@ damaged file, and §3.4's read is total over the batch (a refusal at record
    `newer_form`), exactly as for an undeclared table.
 2. **A form-`3` file shorter than five bytes cannot hold the trailer**, and a
    file whose last four bytes are not the CRC-32C of the bytes before them is
-   refused **`integrity_mismatch`**, the variable form's name and no new one.
+   refused **`integrity_mismatch`**, the variable form's name and no new one.<!-- row T2.14-12 feature=compiler -->
    Nothing is decoded: the header's hash is not selected, the layout is not
    compared, no record is touched and no counter moves. The report is the
    whole-file damage of the variable form's tolerant read: `malformed` set,
@@ -4693,7 +4693,7 @@ record: `truncated`. A reader WITH the key given a file without the trailer
 refuses `integrity_mismatch` unless the last four bytes happen to be the
 CRC-32C of the rest, one file in `2^32`; and then the stripped file is four
 bytes short of a whole record, `truncated`, or, with no record at all, four
-bytes short of its own layout, `layout_malformed`. Neither reads as data.
+bytes short of its own layout, `layout_malformed`.<!-- row T2.14-13 feature=compiler --> Neither reads as data.
 
 **THE MESSAGE FORM CARRIES THE TRAILER PER BATCH.** Form `2` (§3.3) is a
 batch of bodies under one announced vocabulary, and the batch is the unit the
@@ -4704,7 +4704,7 @@ last four bytes of the batch buffer. **Per batch and not per message**, because
 a body's end is known only after its bits are decoded: a trailer inside the bit
 stream cannot be checked before the body it names is decoded, while the batch's
 trailer sits at a fixed offset from the end, so a reader refuses a damaged batch
-before it decodes its first body, which is the property §2.14 gives the file. A
+before it decodes its first body, which is the property §2.14 gives the file.<!-- row T2.14-14 feature=compiler --> A
 per-message trailer would also need a byte boundary per message, undoing §3.3's
 "no alignment inside a message or between messages".
 
@@ -4715,7 +4715,7 @@ many. **A READER CHECKS IT BEFORE IT DECODES ANY BODY.** Order, with §3.3's
 framing kept: the form byte is read first; a batch shorter than six bytes cannot
 hold the trailer, and a batch whose last four bytes are not the CRC-32C of the
 bytes before them is refused, **`integrity_mismatch`**, and nothing is decoded;
-the trailer is then removed and the batch is read as §3.3's. The name is the
+the trailer is then removed and the batch is read as §3.3's.<!-- row T2.14-15 feature=compiler --> The name is the
 variable form's, `integrity_mismatch`, and a batch of a table without the key is
 read and written byte for byte as before.
 
@@ -4725,11 +4725,11 @@ integrity answer is a signature, and the key does not touch them.
 **BASE64 TEXT carries the trailer with no rule of its own**: it is the base64
 of the binary file (§16.8), trailer included, and `LoadText` decodes it and
 reads the binary file, so a flipped character that still decodes is a flipped
-byte and is refused `integrity_mismatch`.
+byte and is refused `integrity_mismatch`.<!-- row T2.14-16 feature=compiler -->
 
 **Go carries the construct first, and every other target refuses it by name,
 centrally, at generation** (§2.12's rule), naming the construct, the table and
-the target, so no other emitter is edited.
+the target, so no other emitter is edited.<!-- row T2.14-17 feature=compiler -->
 
 ### 2.15 Enum variants: `| deprecated` in place
 
@@ -4753,16 +4753,16 @@ the list is one variant per line.
 **IDENTITY.** A variant keeps its name hash id and its ordinal for life; the
 slot is never reused, and a new variant never takes its name or ordinal. A
 removal, a reorder or a renumbering is refused, exactly as it is for any other
-variant in a fixed table's closure (§21.1). Deprecation changes what a slot
+variant in a fixed table's closure (§21.1).<!-- row T2.15-1 feature=compiler --> Deprecation changes what a slot
 MEANS, never where it is.
 
 **THE LOCK.** Deprecating a variant widens: on a locked enum, adding
 `| deprecated` to a variant is allowed. Removing or renumbering a variant stays
-refused. And undeprecating — taking `| deprecated` off again — is refused by
-the lock and by §21.1's monotone check, naming the enum and the variant. A
+refused.<!-- row T2.15-2 feature=compiler --> And undeprecating — taking `| deprecated` off again — is refused by
+the lock and by §21.1's monotone check, naming the enum and the variant.<!-- row T2.15-3 feature=compiler --> A
 deprecated field keeps this same one-way rule today; the field's own refusal is
 stated once, in `internal/lockfile/monotone.go:465` and pinned by
-TestLockFieldUndeprecateRefuses and TestUnDepRecateRefused. The variant is the
+TestLockFieldUndeprecateRefuses and TestUnDepRecateRefused.<!-- row T2.15-4 feature=compiler --> The variant is the
 same rule one level in, not a second one.
 
 **READ.** A reader that meets a deprecated variant's id — on any form — yields
@@ -4771,30 +4771,30 @@ or map element whose value is a deprecated variant yields the ELEMENT's default
 by the same rule. A map entry whose KEY is a deprecated variant is read for the
 key as for any value — the entry is kept, not counted as unknown, and the key
 reads as the field's declared default — but the WRITE rule still refuses the
-entry, `invalid_value` as for a value. Deprecated-slot defaulting therefore
+entry, `invalid_value` as for a value.<!-- row T2.15-5 feature=compiler --> Deprecated-slot defaulting therefore
 covers the SCALAR enum field, and the ARRAY and MAP forms whose elements — or,
 for a map, whose keys — are enum values. It does NOT cover a keyed `[Enum]T`:
 a deprecated variant's slot does not apply there. A text-list spelling
-(`[Enum]string(M)`) follows §2.13's existing text-list refusal instead.
+(`[Enum]string(M)`) follows §2.13's existing text-list refusal instead.<!-- row T2.15-6 feature=compiler -->
 
 **WRITE.** A strict write refuses a value holding a deprecated variant with
-`invalid_value`, the Reason naming `<Table>.<field>` and the variant. A
+`invalid_value`, the Reason naming `<Table>.<field>` and the variant.<!-- row T2.15-7 feature=compiler --> A
 deprecated field is never refused because its value is the writer's own
 default, while a variant value is the caller's, so the two features differ here
-on purpose.
+on purpose.<!-- row T2.15-8 feature=compiler -->
 
 **COMPILE TIME.** A field default or a `const` that names a deprecated variant
-is refused by name. An enum-keyed array such as `[Enum]int32` whose enum has
+is refused by name.<!-- row T2.15-9 feature=compiler --> An enum-keyed array such as `[Enum]int32` whose enum has
 ANY deprecated variant is refused at check time, for every target, by the
 shared checker (`internal/check`, `resolveKeyBound`), whose message opens
 `` field <field>:
 the key bound [<Enum>] names variant <variant>, which is marked `| deprecated` ``
 — a keyed array numbers a slot by every variant, so a deprecated variant is no
-longer a key a new use may take.
+longer a key a new use may take.<!-- row T2.15-10 feature=compiler -->
 
 **TEXT / JSON.** The variant keeps its name: the reader reads it as the READ
 rule above does, never as unknown, and a writer never emits it, because the
-WRITE rule refuses it. (§16.2's enum row is the text form's cell.)
+WRITE rule refuses it.<!-- row T2.15-11 feature=compiler --> (§16.2's enum row is the text form's cell.)
 
 **GENERATED CODE.** Every target keeps the variant's constant and marks it
 deprecated in that language's idiom — in Go, a `// Deprecated:` comment above
@@ -8114,7 +8114,7 @@ validation nobody ever watched fail is a validation nobody has.
   | **A KIND IS USED AS ITS DEFINITION ALLOWS** — the ROOT is a table; an optional wrapper has exactly one child; an array exactly one; an enum-keyed array exactly two, the first an enum; an enum's children are variants; a leaf has none | `layout_kind_invalid` | a kind and a child count that disagree is a tree the child-walk table (above) does not describe, and there is no reading of it to fall back on |
   | **THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES** — starting at entry `0` and following each entry's `child count`, the walk ends on the last entry and not before or after it | `layout_tree_unclosed` | the walk is the whole structure; a tree that runs out of layout is truncated and a layout that outlasts its tree has entries no walk reaches |
   | **THE TOTAL RECORD SIZE DOES NOT OVERFLOW AND IS WITHIN 65536** — no partial sum of a parent's children exceeds it, and neither does the root's own size | `layout_record_too_large` | sizes are `u32` and a record is a value copied whole, so a sum that wraps is a buffer this reader would then read past; and 65536 is what §3.4's size bound below fixes, so a record past it is one this build does not decode however honest the layout is <!-- limit name=fixed_record_bound value=65536 --> |
-  | **NOTHING NESTED PAST THE READER'S WALK BOUND** | `layout_too_deep` | **A BOUND ON THE WALK AND NOT ON THE WIRE.** The validation is recursive, so a layout of three thousand entries each claiming one child would spend a reader's stack before any other rule could fire. **Go's reader states 64 nested bodies on the fixed walk**, and the compiler holds the same 64 at compile time (`ir.TableFixedMaxDepth`), so a writer never emits a layout a conforming reader refuses <!-- limit name=fixed_max_depth value=64 --> |
+  | **NOTHING NESTED PAST THE READER'S WALK BOUND** | `layout_too_deep` | **A BOUND ON THE WALK AND NOT ON THE WIRE.** The validation is recursive, so a layout of three thousand entries each claiming one child would spend a reader's stack before any other rule could fire. **Go's reader states 64 nested bodies on the fixed walk**, and the compiler holds the same 64 at compile time (`ir.TableFixedMaxDepth`), so a writer never emits a layout a conforming reader refuses <!-- limit name=fixed_max_depth value=64 --> <!-- row T3.4-48 feature=compiler -->|
 
 **THERE IS NO CYCLE RULE, AND THERE CANNOT BE A CYCLE.** A pre-order walk cannot
 express one: **an entry's children ARE THE ENTRIES THAT FOLLOW IT**, so a child's
@@ -8255,7 +8255,7 @@ so the used extent is always stated before the bytes are reached.
   count or length past the field's own bound is a different thing entirely: it
   is a NAMED REFUSAL — `count_over_bound` for a count, `length_over_bound` for
   a length — checked before any destination byte is written, because that is
-  the count or length lying about the wire and not about the slack.
+  the count or length lying about the wire and not about the slack.<!-- row T3.4-49 feature=compiler -->
 
 This is §3's "nothing is aligned and nothing is padded" holding for ALIGNMENT
 and departing for SLACK, and the departure is the whole form: slack at a
@@ -8347,7 +8347,7 @@ exists to prevent.
   A table that DECLARED itself fixed is a refusal by name and the compile fails,
   on the keyword's own rule that a fixed table never silently falls back to form
   `1` (`ir.TableFixedLeafCapRefusals`); a table merely DERIVED into the fixed
-  mode asked for nothing, gets a warning naming it, and keeps form `1`.
+  mode asked for nothing, gets a warning naming it, and keeps form `1`.<!-- row T3.4-50 feature=compiler -->
 - **THE SELECTION IS `ir.Struct.FixedDeclared`, WHICH THE PARSER SETS FROM THE
   KEYWORD.** `ir.VariableTables` is its complement and `ir.TableFixedRoots` is
   the declared set, so every emitter switches on one flag with one origin.
@@ -8364,7 +8364,7 @@ its fixed tables carry the same six form-`3` entry points over that storage
 the `<T>FixedLeaves` and `<T>FixedWriteBody` the plan and the template are made
 of) and write THE SAME BYTES, record for record, that the same declarations
 write in a unit with no variable table. Every refusal this form names answers
-the same in both units. The layout is the declaration's and the storage is the
+the same in both units.<!-- row T3.4-51 feature=compiler --> The layout is the declaration's and the storage is the
 port's, so a port whose storage differs between the two units (a `string(N)`
 held in an `N+1` buffer, padding the Row lays down) takes its destinations from
 its own compiler's `offsetof` and `sizeof` over the storage it actually holds,
@@ -8399,7 +8399,7 @@ holds for that hash, compiled at initialization from the lock's own layout bytes
 (§21.5). **A reader never parses a stranger's layout**: a hash outside the
 build's lineage is refused `layout_unknown` before any record (§21.3), and a
 known hash whose file layout bytes are not the lock's bytes for that hash is
-`layout_malformed`. The identity plan carries `copy`, `count`, `text` and
+`layout_malformed`.<!-- row T3.4-52 feature=compiler --> The identity plan carries `copy`, `count`, `text` and
 `bool`; a lineage plan adds only the ops an older layout needs — `ordinal`,
 `widen`, `widenF`, `const` and `tag` — and **no plan op clamps**. Neither plan is
 a shorter or a longer road than the other: one path, one set of cases to test.
@@ -8419,8 +8419,8 @@ the bounds pass that runs after the loop, over storage, for either plan:
   | op | what the loop does |
   |---|---|
   | `copy` | move `size` bytes from `src` to `dst` |
-  | `count` | read the count; a value past the PLAN's bound (`size`) refuses `count_over_bound`, before any destination byte is written |
-  | `text` | read the length; a value past the plan's cap refuses `length_over_bound`; then the units, then terminate at the used length; the content rules of §3 apply and a violation refuses `text_ill_formed` |
+  | `count` | read the count; a value past the PLAN's bound (`size`) refuses `count_over_bound`, before any destination byte is written <!-- row T3.4-53 feature=compiler -->|
+  | `text` | read the length; a value past the plan's cap refuses `length_over_bound`; then the units, then terminate at the used length; the content rules of §3 apply and a violation refuses `text_ill_formed` <!-- row T3.4-54 feature=compiler -->|
   | `ordinal` | resolve a variant ordinal through the plan's own remap table at `aux`; the pool's `u16` length word bounds a writer's enum variant count in a compiled remap table to `0xFFFF` (`tableFixedRemapMax`) <!-- limit name=fixed_remap_max value=0xFFFF --> |
   | `widen` | decode a narrower integer source at its own width into a wider destination, `widened` counts |
   | `widenF` | widen an `f32` source to `f64`, carrying a NaN's payload bit for bit, `widened` counts |
@@ -8548,7 +8548,7 @@ seven reserved bytes, `malformed` — named `reserved_not_zero` — if any is
 nonzero; and only then the layout's length and the hash. **EVERY REFUSAL OF THE
 FIXED LOAD HAS A NAME**, and the framing-damage returns are named too, so a
 caller that switches on the reason sees them by name instead of a silent empty
-reason (§5.3's joint table).
+reason (§5.3's joint table).<!-- row T3.4-55 feature=compiler -->
 
 - **THE HEADER NAMES THE LAYOUT ONCE; A RECORD NAMES IT AGAIN.** The eight bytes
   at `8` are the hash of the layout behind them, and every record still carries
@@ -8576,7 +8576,7 @@ reason (§5.3's joint table).
     LEFT OVER ARE `malformed`**, named `truncated`, which is §3's rule for the
     same reason, that the two ends of the file have met. **A LOAD OF MORE
     RECORDS THAN THE CALLER'S VALUES SLICE IS `batch_too_large`**, refused
-    before any record lands, on the batch count's own reason.
+    before any record lands, on the batch count's own reason.<!-- row T3.4-56 feature=compiler -->
 - **THE INTEGRITY TRAILER, only when the root declares `integrity`** (§2.14):
   four bytes, the little-endian CRC-32C of every byte before them, after the
   last record and so the last four bytes of the file. A reader checks it after
@@ -8584,7 +8584,7 @@ reason (§5.3's joint table).
   `integrity_mismatch` with nothing decoded, and then reads the file without
   it, so every rule of this section speaks of the file with the trailer
   removed; "the records fill the rest of the file" is the rest before the
-  trailer.
+  trailer.<!-- row T3.4-57 feature=compiler -->
 - **A ONE-RECORD FILE PAYS FOR THE WHOLE LAYOUT**, and that is stated rather
   than hidden: this form is for many records of one small type, which is what
   the owner said it was for — *"effectively, fixed tables should only be used
@@ -8599,7 +8599,7 @@ hash and the body with no form byte in front of it, because the stream framed it
   (§15), AND GO DOES NOT CARRY IT.** The shape would depart from §3.3's "NO
   RE-ANNOUNCEMENT, EVER" because a layout is NAMED BY ITS HASH, so a second
   layout for a second hash would amend nothing and a second for a hash already
-  held would be refused by name. Until a leg carries it, the stream carrier
+  held would be refused by name.<!-- row T3.4-58 feature=compiler --> Until a leg carries it, the stream carrier
   holds ONE layout a connection, exactly as form `2` holds one announcement.<!-- row T3.4-35 feature=fixed-tables/file-envelope -->
 - **A RECORD WHOSE HASH NAMES NO HELD LAYOUT IS `no_layout`**, a refusal by
   name.<!-- row T3.4-36 feature=fixed-tables/plan-selection --> The reader states the hash so the application can ask for that layout.
@@ -8623,7 +8623,7 @@ reader refuses it by name.<!-- row T3.4-37 feature=fixed-tables/file-envelope --
 |---|---|---|
 | `0` | **never assigned**; a reader refuses it by name, so a zero-filled buffer is a refusal and never a decode | §3 <!-- row T3.4-38 feature=fixed-tables/file-envelope --> |
 | `1` | **the VARIABLE form** — form byte, root body, id table. The one arm whose header is the form byte alone | §3 |
-| `2` | **the MESSAGE form** — a batch of bitpacked bodies under an announced vocabulary. **FIXED-ONLY: the root must be a `fixed table`** | §3.3 |
+| `2` | **the MESSAGE form** — a batch of bitpacked bodies under an announced vocabulary. **FIXED-ONLY: the root must be a `fixed table`** | §3.3 <!-- row T3.4-59 feature=compiler -->|
 | `3` | **the FIXED form** — the header's layout hash, then a record of values under that LAYOUT | this section |
 | `4` | **the COOK** — PLANNED; the header's hash is over the BUILD | §7 |
 | `5` | **the BLOCK form** — PLANNED; the header's hash is over the BUILD | §19 |
@@ -8661,8 +8661,8 @@ added moves it without anyone remembering to.
   reader has defaulted, a renamed field arriving under `was =`, and a widened
   field counting `widened`), a FIXED TABLE's hash outside the lineage refused
   `layout_unknown` before any record, and a known hash whose layout bytes are
-  not the lock's refused `layout_malformed`. Every clean read carries exactly
-  the counters §4 and §21 name, and every refusal moves none.
+  not the lock's refused `layout_malformed`.<!-- row T3.4-60 feature=compiler --> Every clean read carries exactly
+  the counters §4 and §21 name, and every refusal moves none.<!-- row T3.4-61 feature=compiler -->
 - **THE NEGATIVE CONTROL: A READER GIVEN THE WRONG PLAN FOR A RECORD GOES RED.**
   The plan is the whole of this form's safety, so a test that never watched a
   wrong plan fail is a test that never checked the right one worked.
@@ -8930,7 +8930,7 @@ Every event lands in the **read report**. The wire-tolerance counters are
 `unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` and the
 `malformed` flag; the report also carries `missing_required` (§2.3) and
 `blob_shared` (§2.5), and its `Reason` names the strict read's typed refusal,
-`non_finite` included (§6.5).
+`non_finite` included (§6.5).<!-- row T4-4 feature=compiler -->
 `unknown` counts every id this reader cannot name: a field id, an enum
 variant id, a union arm id, a keyed slot's key. Silence (all zero) means
 the data matched this reader's schema exactly. Tools surface the report;
@@ -9258,7 +9258,7 @@ has:
   read on past `L` (§3, §4). <!-- row T4.2-4 feature=variable-tables/wstring --> **A leg that stores any of them fails the value
   requirement below**, which is what makes this a gate and not a wish. The
   JSON text meets the same zero by refusing the read (§16.3), so no form stores
-  what this one counts;
+  what this one counts;<!-- row T4.2-16 feature=compiler -->
 - **the FORM BYTE** set to `0`, to `6`, and to `0xFF`, which must be a named
   refusal and never damage (§3). <!-- row T4.2-5 feature=variable-tables/wire-fuzzer --> It is `6` and none of `2`, `3`, `4` or `5`,
   because `2` and `3` are KNOWN forms with rules of their own (§3.3, §3.4) and
@@ -9427,13 +9427,13 @@ spelling IS the two-sided declaration — the same projection, build version,
 lock line, tables baseline row, wire and generated code, byte for byte. A
 one-sided range is still refused by name on a float, a fixed-point, `int128`
 or `uint128` field, a timestamp or a named type, beside `resolution`, and on
-a field of a `type` body or a packet (SPEC §4.6). A one-sided range whose
+a field of a `type` body or a packet (SPEC §4.6).<!-- row T4.3-1 feature=compiler --> A one-sided range whose
 given side excludes zero needs a default in range exactly as a two-sided one
 does (SPEC §4.6). The compiler fills the missing side from the type's limit
 before the two-sided path runs and carries the field a `RangeOneSided`
 flag that is not in the projection. Go carries the construct first: every
 other target refuses a unit with any such field by name at generation
-(SPEC §4.6).
+(SPEC §4.6).<!-- row T4.3-2 feature=compiler -->
 
 ## 5. Identity: the name hash, `was`, and the collision refusal
 
@@ -9705,7 +9705,7 @@ const Scene * scene = builder.AsConst();       // CONST: one packed region
   the node plus its terminating zero unit — the argument is a unit count
   because `wstring`'s every other number on this page is a unit count, and an
   allocator that took bytes here would be the one call in the family a caller
-  has to double at the call site. The Dart spellings are `allocBytes`,
+  has to double at the call site.<!-- row T6.2-1 feature=compiler --> The Dart spellings are `allocBytes`,
   `allocString` and `allocWString`. Each hands back `data` to write
   through, `length` in that call's own unit, and the reference to store in a
   `*bytes`, `*string` or `*wstring`
@@ -9882,7 +9882,7 @@ carries and the reason a region hands back a C string with no copy. **A
 the byte length, always EVEN, its data is `length / 2` code units two bytes
 each, and the terminating ZERO UNIT is what `wstring(N)`'s `char16_t[N + 1]`
 storage carries for the same reason (§7.2). **The blob is specified ahead of
-its implementation (§2.5), and the checker refuses `*wstring` by name.** The
+its implementation (§2.5), and the checker refuses `*wstring` by name.**<!-- row T6.3-1 feature=compiler --> The
 units begin at offset eight,
 so they are two-aligned by construction and a region hands back a terminated
 `char16_t` string with no copy. Its
@@ -9962,16 +9962,16 @@ The builder is designed to go wide, lock-free by ownership:
 
 **A `1` BOOL byte that is neither `0` nor `1` is MALFORMED on this read**: the
 TOLERANT read keeps the value (`true`) and counts the field `malformed` by name;
-the STRICT read refuses it as `malformed` (§3). The FIXED form carries its own
+the STRICT read refuses it as `malformed` (§3).<!-- row T6.5-1 feature=compiler --> The FIXED form carries its own
 rule (§3.4), unchanged.
 
 **Strict error identity.** A strict read of a fixed-form file returns the
 fixed refusal's own section 3.4 reason by name: `layout_unknown` remains
-`layout_unknown`, `count_over_bound` remains `count_over_bound`, and so on.
+`layout_unknown`, `count_over_bound` remains `count_over_bound`, and so on.<!-- row T6.5-2 feature=compiler -->
 Only a form-byte refusal (`previous_form`, `newer_form`,
-`message_form_as_file` or `unsupported wire form`) answers `unknown_form`.
+`message_form_as_file` or `unsupported wire form`) answers `unknown_form`.<!-- row T6.5-3 feature=compiler -->
 `TableReport.Err()` preserves this distinction; a Go fixed refusal is a typed
-`TableFixedRefusal` whose `Error()` is the reason name.
+`TableFixedRefusal` whose `Error()` is the reason name.<!-- row T6.5-4 feature=compiler -->
 
 - **Into a region** — the game's path, for `Config.bin` and
   `Assets.bin`. `<Name>LoadMeasure( wire, size )` computes the EXACT
@@ -10021,7 +10021,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
 - **The plain `LoadMeasure` and `LoadMeasureReason` PURPOSELY DISAGREE on a
   damaged wire.** `LoadMeasure` sizes the tolerant `Load`, so it keeps the
   decoded prefix and answers a size; `LoadMeasureReason` refuses that same
-  wire `wire_damaged`, because the reason path is the strict read's. A caller
+  wire `wire_damaged`, because the reason path is the strict read's.<!-- row T6.5-5 feature=compiler --> A caller
   that knows it will run the tolerant read takes the first, and one that needs
   the reason takes the second.
 - **A `-1` CARRIES A REASON, and it is the SAME ENUM the accelerators'
@@ -10040,8 +10040,8 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   |---|---|
   | `not_a_cook` | the bytes are not a cook at all: neither this build's magic nor its byte reversal (§7, §7.1) |
   | `foreign_order` | the magic is this build's constant byte-reversed: a cook of the other byte order (§7.1, §15) |
-  | `wrong_build_version` | the cook's `build_version` word is not this build's (§20). The announcement's own strict refusal is the typed `build_version_mismatch` below |
-  | `reserved_not_zero` | a reserved word or byte that must be zero is not (§3, §7, §21.3) |
+  | `wrong_build_version` | the cook's `build_version` word is not this build's (§20). The announcement's own strict refusal is the typed `build_version_mismatch` below <!-- row T6.5-6 feature=compiler -->|
+  | `reserved_not_zero` | a reserved word or byte that must be zero is not (§3, §7, §21.3) <!-- row T6.5-7 feature=compiler -->|
   | `bad_alignment` | the `alignment` word is not a power of two, is outside 8 through 64, or is not a multiple of the root's own `alignof` (§7) |
   | `truncated` | a file or buffer shorter than its framing, or a fixed record whose inputs run past the bytes given (§3, §7) |
   | `unaligned_base` | the caller's base pointer is null, or not aligned for the region the header names (§7) |
@@ -10052,8 +10052,8 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `blob_over_size_cap` | a blob whose length is past the derived-size cap (§3.1, §11) |
   | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
   | `invalid_value` | a writer handed a value outside the declaration: a count past its maximum, a value off min or max, an ordinal past its set, ill-formed text. The fixed writer answers it as its save reason (§3.1, §11) |
-  | `allocation_failed` | an allocation the codec asked for was refused (§7.6) |
-  | `wire_damaged` | a read that reached damage rather than a refusal: the report's verdict is damage (§4) |
+  | `allocation_failed` | an allocation the codec asked for was refused (§7.6) <!-- row T6.5-8 feature=compiler -->|
+  | `wire_damaged` | a read that reached damage rather than a refusal: the report's verdict is damage (§4) <!-- row T6.5-9 feature=compiler -->|
   | `malformed` | a tolerant read that saw a malformed body; the report counts it (§4) |
   | `clamped` | a tolerant read that clamped a value to its declared bound; the report counts it (§4) |
   | `kind_mismatch` | a wire field whose kind does not match the declaration; the report counts it (§4) |
@@ -10061,8 +10061,8 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `base64_not_canonical` | base64 text that decodes but is not the canonical spelling of its bytes (§16.8) |
   | `integrity_mismatch` | the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19) |
   | `non_finite` | a plain float the read landed as a NaN or an infinity (§3.3). The report's reason is `non_finite: <field>` |
-  | `blob_shared` | one blob record named from two slots (§2.5): every writer refuses to emit it, the tolerant read keeps the one node and counts it, and the strict read refuses it |
-  | `build_version_mismatch` | the strict announcement read's typed refusal: the peer's build version and the reader's own do not match, carried as `TableBuildVersionMismatch` (§3.3) |
+  | `blob_shared` | one blob record named from two slots (§2.5): every writer refuses to emit it, the tolerant read keeps the one node and counts it, and the strict read refuses it <!-- row T6.5-10 feature=compiler -->|
+  | `build_version_mismatch` | the strict announcement read's typed refusal: the peer's build version and the reader's own do not match, carried as `TableBuildVersionMismatch` (§3.3) <!-- row T6.5-11 feature=compiler -->|
   | `missing_required` | a record lacks a field declared required (§2.3). The reason is `missing_required: <fields>` and the typed `TableMissingRequired` names them |
   | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs  <!-- row T6-13 informative="names a value of section 7's enum, defined there" -->|
   | `newer_form` | a form byte this reader does not carry and is not older than its own (§3, §3.4, §21.3): the fixed load's answer for a byte it does not carry, and the file `Load`'s answer where the byte is not `2` |
@@ -10085,7 +10085,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `count_over_bound` | a fixed record's count past the count bound its plan declares (§3.4) |
   | `length_over_bound` | a fixed text or blob length past the length bound its plan declares (§3.4) |
   | `no_vocabulary` | a message batch read before any vocabulary was announced (§3.3) |
-  | `second_announcement` | a second announcement on a vocabulary that already has one, or after a refusal (§3.3) |
+  | `second_announcement` | a second announcement on a vocabulary that already has one, or after a refusal (§3.3) <!-- row T6.5-12 feature=compiler -->|
   | `vocabulary_too_large` | an announced vocabulary past the reader's declared byte or entry storage (§3.3); the fixed plan's `plan_too_large` is the same rule on the same codec |
   | `text_unknown_key` | a record key, enum-keyed slot or union arm not declared here (§16.9.4) |
   | `text_duplicate_key` | a second decoded field, map key, keyed slot, union arm or flags name in the same container (§16.9.4) |
@@ -10170,26 +10170,26 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   what the decode had written before the refusal, which is stated where the
   construct that can raise one is (§2.9). <!-- row T6-23 feature=variable-tables/variable-class -->
 - **The STRICT read** — one call, `<Name>ReadStrict( wire )`, that answers
-  the root or refuses. It refuses, with ONE typed reason, a read that is
+  the root or refuses.<!-- row T6.5-13 feature=compiler --> It refuses, with ONE typed reason, a read that is
   malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
   build-version-mismatched, missing a required field (§2.3), holding a
   non-finite plain float (`non_finite`, §3.3, a plain float's special values) or
-  naming one blob from two slots (`blob_shared`, §2.5). The clamped refusal
+  naming one blob from two slots (`blob_shared`, §2.5).<!-- row T6.5-14 feature=compiler --> The clamped refusal
   NAMES the clamped field, `<Table>.<field>`, as the other refusals name
   theirs: a strict read of a past-bound wire answers the clamped refusal with
   the field's name (`clamped: <Table>.<field>`, `TableClampedField`), so a
-  strict caller can say which field was clamped. It does NOT refuse `unknown`, `widened` or
+  strict caller can say which field was clamped.<!-- row T6.5-15 feature=compiler --> It does NOT refuse `unknown`, `widened` or
   `retained` alone: `unknown` is evolution, `widened` decoded exactly, and
   `retained` reports on retention rather than on a loss (the cards facade's
   `ReadStrict`, docs/CARDS.md: `Unknown`, `Retained` and `Widened` alone are
-  not loss). The reason is `TableRefuseReason`, the same enum a measure's
+  not loss).<!-- row T6.5-16 feature=compiler --> The reason is `TableRefuseReason`, the same enum a measure's
   `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
   refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
-  in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
+  in Go).<!-- row T6.5-17 feature=compiler --> Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
   (and `non_finite`, then `blob_shared`) are appended to that enum and never renumbered. `TableReport.Err()`
   answers the same reason for every counter this read refuses, and nil on a
   clean read and on a read whose only counters are `unknown`, `widened` or
-  `retained`. The call owns its builder: the caller does not measure, does
+  `retained`.<!-- row T6.5-18 feature=compiler --> The call owns its builder: the caller does not measure, does
   not `Init`, and does not check the counters by hand. Go emits it for each
   root; the citation on the emitter is this section.
 - **THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
@@ -10199,7 +10199,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   kind-mismatched, of an unknown form, wire-damaged, build-version-mismatched,
   `integrity_mismatch` and `missing_required` — and hands back no recovered value (save the
   message read's records ahead of a body the tolerant read itself stopped on,
-  below). The plain names
+  below).<!-- row T6.5-19 feature=compiler --> The plain names
   are `<Name>Load` (both shapes: the value read of a fixed-class root and the
   region read of a variable root), `<Name>LoadBuilder`, `<Name>FromJson` (both
   shapes), `<Name>FixedLoad` and the message read `<Name>LoadMessages`;
@@ -10211,12 +10211,12 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   `false` on it too, with the count, as the builder read
   `LoadBuilderTolerant` does (§2.3 refuses the absence in the text form as
   in the binary walk); the region read `LoadTolerant` alone still hands back
-  its root with `missing_required` counted, as it did before this rule.
+  its root with `missing_required` counted, as it did before this rule.<!-- row T6.5-20 feature=compiler -->
   **Each keeps its signature and answers its own refusal value**: `false` for
   `Load` into a value, `LoadBuilder` and `FromJson`, a nil root for the region
   `Load`, `-1` for `FixedLoad`, and `ok == false` for `LoadMessages`, whose count is
   `0` when the strict rule alone refused and what the tolerant read answered
-  otherwise. **The
+  otherwise.<!-- row T6.5-21 feature=compiler --> **The
   typed reason reaches the caller through the report it passes**: the plain
   name decides on THIS read alone, so a supplied report is overwritten with
   this read's report (every counter counted, as the tolerant read counts it),
@@ -10224,9 +10224,9 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   `ReadStrict` returns, so `errors.Is` and `errors.As` match it; the one
   exception is a builder already locked, which the builder `FromJson` and
   `FromJsonWith` answer `false` on before they read, leaving the report
-  empty. A nil report
+  empty.<!-- row T6.5-22 feature=compiler --> A nil report
   is allowed and refuses the same way; a caller who wants the reason in one
-  call uses `ReadStrict` or `LoadText`. The measure stays where the two paths
+  call uses `ReadStrict` or `LoadText`.<!-- row T6.5-23 feature=compiler --> The measure stays where the two paths
   above put it: the region read's caller measures with `LoadMeasure` and owns
   the region, and the builder, text and fixed reads walk the framing before
   they decode. On a refusal the value read and the value `FromJson` reset the
@@ -10235,7 +10235,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   rule alone refused (when the tolerant read itself stopped on a body, the
   records ahead of it keep what they decoded, and the count says how many),
   the region read hands back no root, and a builder
-  read leaves a builder whose root the caller does not use and shuts down.
+  read leaves a builder whose root the caller does not use and shuts down.<!-- row T6.5-24 feature=compiler -->
   **The tolerant read keeps the recovered value and its report, and exists
   only under an explicit name**: `<Name>LoadTolerant`,
   `<Name>LoadBuilderTolerant`, `<Name>FromJsonTolerant`,
@@ -10249,7 +10249,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   framing damage, a form it does not carry, and a body the binary walk stops
   on (a missing required field, §2.3, answers `false` from
   `LoadBuilderTolerant` and `FromJsonTolerant`; the region `LoadTolerant`
-  returns its root with the count). A tool that re-walks a damaged file or
+  returns its root with the count).<!-- row T6.5-25 feature=compiler --> A tool that re-walks a damaged file or
   reports on a fleet's mixed builds calls it by that name. The retain family
   (`LoadRetain`, `LoadRetainBuilder`, `LoadRetainMessages`, §6.6) and the
   cook's and block's `Open` are outside this rule today and keep their
@@ -10893,7 +10893,7 @@ negative controls, one per engine, stand beside the fuzzer's (§4.2).
 **Backend status: the C++ REFERENCE, the ORACLE and GO carry it.** Go emits
 `TableRetain`, `LoadRetain`, `MeasureRetain` and `SaveRetain` on every
 variable-class root, the named refusals on every fixed-class one, and it runs
-the conformance `retain` and `retain-message` rows. The reference emits
+the conformance `retain` and `retain-message` rows.<!-- row T6.6-1 feature=compiler --> The reference emits
 `TableRetain`, the three verbs on every variable-class root, the refusal on
 every fixed-class one, the MESSAGE form's own `LoadRetainMessages` beside them
 (§3.3), and a second family of body functions beside the three the wire
@@ -11669,7 +11669,7 @@ fields would get wrong:
   terms (§3), so its units are two-aligned at the header plus eight and the
   terminator is the two bytes after them. **The `*wstring` blob node is
   specified ahead of its implementation, as §2.5 says**: the checker refuses
-  `*wstring`, and no backend emits it yet.
+  `*wstring`, and no backend emits it yet.<!-- row T7.2-2 feature=compiler -->
 - **A MAP's ENTRIES are BY-VALUE RECORDS INSIDE THE HOLDER'S NODE EXTENT**
   (§2.8): after the record's own storage, `count × sizeof( Entry )` at the
   entry's alignment, in ASCENDING KEY ORDER, one array per map the record
@@ -11683,8 +11683,8 @@ fields would get wrong:
   map-bearing unit BY NAME**, because the tool's engine does not lay out the
   entry arrays yet (§15); a generated runtime writer is not held to that
   absence, and Go's map cook is held by an independent layout test,
-  `TestCookWriterMapExtentLayout`. The refusal is the tool's and not the
-  format's: a map is laid out above exactly as any value is.
+  `TestCookWriterMapExtentLayout`.<!-- row T7.2-3 feature=compiler --> The refusal is the tool's and not the
+  format's: a map is laid out above exactly as any value is.<!-- row T7.2-4 feature=compiler -->
 - **AN UNBOUNDED ARRAY's ELEMENTS are laid the same way** (§2.9): after the
   record's own storage, `count × sizeof( T )` at the element's alignment, in
   INDEX order, zero slack. Lists and maps are ONE POPULATION in that extent,
@@ -12152,10 +12152,10 @@ instead, and the context names the builder's arena or the allocator the
 numbering runs through; a fixed root's takes the value, the buffer and the
 order and nothing else. The reason form's error is the `TableRefuseReason`
 value of §7's vocabulary; for refusals it reports, `CookFrom` answers
-`false`. Fixed-root `CookMeasure` is a layout constant even for a nil or
+`false`.<!-- row T7.6-5 feature=compiler --> Fixed-root `CookMeasure` is a layout constant even for a nil or
 invalid value, and fixed-root `CookMeasureReason` returns that constant with
 no error. Its `CookFrom` still validates the value and buffer, so its refusal
-does not imply a non-`ok` measurement reason.
+does not imply a non-`ok` measurement reason.<!-- row T7.6-6 feature=compiler -->
 
 - **IT IS A MEASURE/WRITE SPLIT, exactly as the wire's is** (§6.1).
   `CookMeasure` answers the whole file's length — the header, the data part and
@@ -12242,7 +12242,7 @@ bool    SceneCook( const SceneBuilder & builder, void * out, uint64_t capacity, 
   the same input. A region `Load` produced holds null in every such slot, so a
   cook of a loaded wire never meets the case; a built structure that does has a
   pointer in storage its own count says is dead.
-- **THE GO WRITER NAMES ITS REFUSALS.** For pointered roots, an invalid
+- **THE GO WRITER NAMES ITS REFUSALS.**<!-- row T7.6-7 feature=compiler --> For pointered roots, an invalid
   value (including a nil root, a counted used count below zero or above `N`,
   a union tag past the arms, or a negative count or non-empty container in dead
   storage) makes `CookMeasure` answer `-1` and `CookMeasureReason` return
@@ -12251,10 +12251,10 @@ bool    SceneCook( const SceneBuilder & builder, void * out, uint64_t capacity, 
   `CookFrom` answers `false` for invalid order, value or short buffer. For fixed roots,
   `CookMeasure` remains the structural constant and `CookMeasureReason`
   returns it with no error even for invalid values; `CookFrom` validates the
-  value, buffer and order and answers `false` on refusal. A map-bearing root is
+  value, buffer and order and answers `false` on refusal.<!-- row T7.6-8 feature=compiler --> A map-bearing root is
   the TOOL's refusal and not the runtime writer's (§7.2): the Go writer lays
   out the entry arrays, and §7.2 names the independent layout test that holds
-  them.
+  them.<!-- row T7.6-9 feature=compiler -->
 - **WHAT ALLOCATES, AND THROUGH WHAT.** The caller still owns the OUTPUT
   buffer and nothing is allocated toward it. What the pointered writer
   allocates is the NUMBERING — the identity map, the entry array, and one
@@ -13080,7 +13080,7 @@ generator option `runtime: standalone` the unit instead carries the
 table-independent runtime in its home file, and that output is byte-identical
 to every build before the option existed. `shared` and `standalone` keep
 their meanings; any other value is refused by name, and the refusal names
-shared as the default.
+shared as the default.<!-- row T8.4-1 feature=compiler -->
 
 **One source.** A declaration is SHARED when the emitter writes it
 byte-identically for every unit shape (fixed-only, variable, wide text, every
@@ -13109,7 +13109,7 @@ Mixing is not a supported state and nothing is negotiated.
 declarations the emitter writes byte-identically for every unit shape: the
 refusal reasons and the report, the bit and byte codecs, the message
 vocabulary types, and the whole fixed-form runtime (plan, run, guard chain,
-layout parse, lineage select). The VARIABLE form's machinery (the
+layout parse, lineage select).<!-- row T8.4-2 feature=compiler --> The VARIABLE form's machinery (the
 `TableAllocator`, `TableArena` and `TableWorker` that author a variable table,
 the containers, the region reader and writer) is NOT in the package yet, and
 a unit keeps its own copy of it. The reason is the emitter's, not the
@@ -13121,7 +13121,7 @@ exported spelling is the one every unit emits. A declaration with two
 spellings, and everything that names it, is left in the unit by the
 derivation, never merged. Sharing the variable form is a change to the
 emitter first (one spelling per core type), and standalone output must stay
-byte-identical while it is made.
+byte-identical while it is made.<!-- row T8.4-3 feature=compiler -->
 
 ### 8.5 On the side
 
@@ -13418,9 +13418,9 @@ of them implies `wire`. No other surface implies another.
 The emitter emits exactly the named surfaces plus whatever the named ones
 imply, intersected with each table's `forms` declaration (§2.12); the one list
 it refuses is one naming `json`, `cook` or `block` for a table whose `forms`
-declaration leaves that form out, and the default full set refuses nothing.
+declaration leaves that form out, and the default full set refuses nothing.<!-- row T8.8-1 feature=compiler -->
 
-Only the Go target honors the flag; any other `--lang` refuses it by name.
+Only the Go target honors the flag; any other `--lang` refuses it by name.<!-- row T8.8-2 feature=compiler -->
 
 **A default generate removes stale surface files.** A `generate --lang go`
 without `--surface` removes from the output directory every `.go` file whose
@@ -16676,14 +16676,14 @@ choice is what this section is about. **EVERY TABLE HAS BOTH**: a `fixed table` 
 - **The JSON text form** (`FromJson` / `ToJson`, §16.1): the text is for a
   human to read, diff or edit. It carries exactly what §16 says it carries —
   the fields, by key, pretty-printed, with the mapping, clamping, counting
-  and refusal rules of §16.2 and §16.3. Use it when a person must inspect or
-  change the value in transit.
+  and refusal rules of §16.2 and §16.3.<!-- row T16.8-1 feature=compiler --> Use it when a person must inspect or
+  change the value in transit.<!-- row T16.8-2 feature=compiler -->
 
-Both readers refuse damaged or newer input BY NAME. The rule is mechanical. A
+Both readers refuse damaged or newer input BY NAME.<!-- row T16.8-3 feature=compiler --> The rule is mechanical. A
 text is `base64_not_canonical` when dropping its CR and LF bytes leaves padded
 standard base64 that decodes, but the text is not exactly the canonical
 encoding of those bytes — a pad bit set, or a CR or LF present — and the
-STRICT read (`LoadText`, which is the strict read) refuses it by that name.
+STRICT read (`LoadText`, which is the strict read) refuses it by that name.<!-- row T16.8-4 feature=compiler -->
 Every other failure is `base64_damaged`: a byte that is neither in the
 standard alphabet nor `=`, a missing, extra or misplaced `=`, and any text
 that does not decode. A tolerant read of the carrier, where one exists,
@@ -16692,7 +16692,7 @@ carrier exists today. A decoded wire the binary
 reader refuses is the
 wire reader's own refusal — a form byte this build does not carry, `unknown_form`
 (§3, THE FIRST BYTE), and framing damage, `wire_damaged` or `truncated`
-(§3); a JSON document the JSON reader refuses is `malformed` (§16.2). A
+(§3); a JSON document the JSON reader refuses is `malformed` (§16.2).<!-- row T16.8-5 feature=compiler --> A
 reader never guesses at an unnameable byte.
 
 **The shape follows the class's own binary pair.** For a fixed table,
@@ -16705,11 +16705,11 @@ does (§6.5) — a variable value lives in a region, and the carrier hands back
 one. **`LoadText` IS THE STRICT READ (§6.5) for both classes**: it refuses
 whenever the read's report holds an error — `TableReport.Err()`'s reason,
 `malformed`, `clamped`, `kind_mismatch`, `missing_required` and the rest —
-WHATEVER the tolerant load answered. A tolerant load can recover a value and
+WHATEVER the tolerant load answered.<!-- row T16.8-6 feature=compiler --> A tolerant load can recover a value and
 still report damage (a declared list count past its payload is read as the
 prefix it carries and reported `malformed`); the carrier never hands that
 value back with a nil error. `unknown`, `widened` and `retained` alone do not
-refuse, exactly as for `ReadStrict`. `report` is optional, nil allowed; a
+refuse, exactly as for `ReadStrict`.<!-- row T16.8-7 feature=compiler --> `report` is optional, nil allowed; a
 supplied one receives THIS read's report, so counts already in it neither
 decide the verdict nor survive the call. Either way the carrier is byte for byte: the value
 `LoadText` returns saves to exactly the wire bytes `SaveText` encoded, and
@@ -16717,7 +16717,7 @@ the value `FromJson` reads from `ToJson`'s text saves to the same bytes too.
 
 `SaveText` and `LoadText` are generated name-first as `<Name>SaveText` and
 `<Name>LoadText`, and both suffixes are in §11's claimed list: a declaration
-spelling one beside a table `<Name>` is refused naming the collision.
+spelling one beside a table `<Name>` is refused naming the collision.<!-- row T16.8-8 feature=compiler -->
 
 ### 16.9 The hand-editable text form: a table with its document
 
@@ -16726,7 +16726,7 @@ It is not JSON, not a new binary form byte, and not a third carrier accepted
 implicitly by `LoadText` (§16.8). The caller selects this form and supplies the
 root table declaration. The binary wire, JSON mapping and their tolerant reads
 are unchanged. This section specifies the format; implementation availability
-must be stated separately. The Go implementation follows this standard first.
+must be stated separately.<!-- row T16.9-1 feature=compiler --> The Go implementation follows this standard first.
 
 The surface borrows the restricted s-expression data grammar already used by
 `docs/roadmap.sexp`: parentheses, keyword/value pairs, sequences, quoted strings
@@ -16759,7 +16759,7 @@ A list's interpretation is supplied by its expected kind: a record, sequence,
 map or union, never guessed from its first item. Thus `()` is an empty array
 at an array site, an empty record at a record site, and None at a union site.
 Strings use JSON escapes; raw newlines, invalid UTF-8 and unpaired surrogate
-escapes are refused. A semicolon inside a string is data. A comment ends at
+escapes are refused.<!-- row T16.9.1-1 feature=compiler --> A semicolon inside a string is data. A comment ends at
 LF, CRLF or EOF; a final comment needs no newline. Bare CR, BOMs, commas,
 unquoted symbols other than the three literals, and extra top-level forms
 are `text_syntax`. There is no evaluation or include mechanism.
@@ -16772,7 +16772,7 @@ always be quoted. A keyword used as a value denotes an enum variant, never a
 string or a null. The expected kind disambiguates keys from enum values.
 
 There is exactly one root record. An absent ordinary field receives its schema
-default, an absent optional is absent, and a missing required field is refused.
+default, an absent optional is absent, and a missing required field is refused.<!-- row T16.9.1-2 feature=compiler -->
 Defaults are semantic: the rewrite does not insert omitted keys. Present fields
 under a false guard are `text_inactive_field`; guards are evaluated after the
 whole record is read, so field order has no effect. This strict form never
@@ -16809,8 +16809,8 @@ The rules below replace §16.2's tolerant behavior for this form only.
 
 Sharing uses §16.7's construct as the QUOTED key `"&node"`: a definition is
 `("&node" 1 :id 6)`, a reference `("&node" 1)`. The label must be the first
-pair. Label syntax, document-order definitions, completed-definition-only references,
-type matching, and cycle refusal follow §16.7; failure is `text_reference`.
+pair.<!-- row T16.9.2-1 feature=compiler --> Label syntax, document-order definitions, completed-definition-only references,
+type matching, and cycle refusal follow §16.7; failure is `text_reference`.<!-- row T16.9.2-2 feature=compiler -->
 All other `&`-prefixed record keys are `text_reference`, including use of the
 construct at a fixed or by-value site. A map's string key is ordinary data,
 so `"&node"` there has no reserved meaning. Blob identity is as in §16.7.
@@ -16844,34 +16844,34 @@ presence never changes the rules above. A standalone comment before a closing
 parenthesis belongs to that container; nested container comments belong to
 that nested value, not automatically to the root.
 
-**Read then write with no edit MUST reproduce the input byte for byte.** This
+**Read then write with no edit MUST reproduce the input byte for byte.**<!-- row T16.9.3-1 feature=compiler --> This
 includes comments, blank lines, field/map order, numeric and escape spellings,
 indentation, mixed LF/CRLF, trailing spaces and the presence or absence of the
 last newline. A rewrite is not a canonical serialization. An unchanged value
-must not be detected merely by comparing normalized output text.
+must not be detected merely by comparing normalized output text.<!-- row T16.9.3-2 feature=compiler -->
 
 **Replacing one existing scalar value MUST replace only that value's token
-span.** Every byte before and after it stays identical, including its key,
+span.**<!-- row T16.9.3-3 feature=compiler --> Every byte before and after it stays identical, including its key,
 neighboring values on the same line and attached comments. Consequently only
 lines containing that value change. A multiline layout with the value on a
 line after its key remains multiline. Strings use escaped newlines, so a
 scalar replacement never inserts a physical newline. A semantic no-op edit
 retains the old spelling. Array-element and nested-field edits obey the same
 rule at their own spans. Multiple disjoint edits are applied by original byte
-span; offsets must not drift after an earlier replacement changes length.
+span; offsets must not drift after an earlier replacement changes length.<!-- row T16.9.3-4 feature=compiler -->
 
 A compound value is edited through its children to preserve internal comments.
 An explicit whole-compound replacement may replace that value's span (only
 its lines), including its interior comments; the API must distinguish that
-operation from a leaf edit. Insert/delete/reorder are explicit structural
+operation from a leaf edit.<!-- row T16.9.3-5 feature=compiler --> Insert/delete/reorder are explicit structural
 operations, never inferred by regenerating a whole record from a table value.
 They require an explicit disposition for comments belonging to removed nodes;
-without one, refuse `text_edit_conflict`. This section does not prescribe a
+without one, refuse `text_edit_conflict`.<!-- row T16.9.3-6 feature=compiler --> This section does not prescribe a
 pretty-printer or a new-document layout. Structural editing and construction
 are not prerequisites for a conforming read/no-op/leaf-edit implementation.
 
 An edit is validated against the same schema and document limits before any
-new document/value is returned; a refusal leaves the old pair untouched.
+new document/value is returned; a refusal leaves the old pair untouched.<!-- row T16.9.3-7 feature=compiler -->
 Unchanged shared nodes keep their labels; editing a shared node's field edits
 its definition once, so every reference observes the same value. Replacing a
 pointer reference itself is a different edit. If an edit requires label
@@ -16880,8 +16880,8 @@ renumbering or changes graph structure, it is a structural operation.
 #### 16.9.4 Named refusals and conformance
 
 Reads are transactional: any refusal yields no usable table/document pair,
-never a partial value. Every refusal reports the stable name below, a zero-based
-byte offset (EOF may equal input length), and a field/element path where known.
+never a partial value.<!-- row T16.9.4-1 feature=compiler --> Every refusal reports the stable name below, a zero-based
+byte offset (EOF may equal input length), and a field/element path where known.<!-- row T16.9.4-2 feature=compiler -->
 Names are separate from §4's tolerant counters; they do not increment a clamp
 and continue. Implementations may append human-readable context.
 
@@ -16913,12 +16913,12 @@ negative limit takes the contract defaults — 65536 bytes, 8192 tokens, 4096 <!
 nodes and 65536 decoded-allocation bytes — and `Depth` is clamped to 128, so a <!-- limit name=text_default_max_alloc value=65536 -->
 caller that supplies nothing or a nonsense value still reads a bounded
 document. An explicit limit that is exceeded refuses as `text_limit`, and no
-limit failure is accepted as a prefix read.
+limit failure is accepted as a prefix read.<!-- row T16.9.4-3 feature=compiler -->
 
 `test/conformance/textform/` pins the source documents, typed expectations,
-byte-identical rewrites, localized edits and named refusals. These are standard
+byte-identical rewrites, localized edits and named refusals.<!-- row T16.9.4-4 feature=compiler --> These are standard
 vectors, not a claim that a reader is implemented. Implementations must compare
-bytes, not parsed equality, for rewrite and edit assertions. Use the same
+bytes, not parsed equality, for rewrite and edit assertions.<!-- row T16.9.4-5 feature=compiler --> Use the same
 vectors for fixed and variable declarations wherever their kinds permit it.
 
 **The Go implementation** is the `textform` surface (§8.8). Per table and
@@ -16930,8 +16930,8 @@ edits, each a path and the new token, by original span, keeping a semantic
 no-op's spelling and reading the edited document back before returning it.
 The reader resolves the document strictly against the descriptors (§8), then
 lands the value through the JSON walk (§16) from the canonical JSON of the
-same value; any count in that walk's report is refused rather than trusted.
-Structural edits are not implemented: they refuse as `text_edit_conflict`.
+same value; any count in that walk's report is refused rather than trusted.<!-- row T16.9.4-6 feature=compiler -->
+Structural edits are not implemented: they refuse as `text_edit_conflict`.<!-- row T16.9.4-7 feature=compiler -->
 One ordering is weaker than the rule above: whether a list is a record is
 known only from its kind, so a record's pairing (an odd item count, a key that
 is not a keyword or a string) is checked while resolving, and a semantic
@@ -16953,35 +16953,35 @@ table GoalList | json = "array"
 `GoalList`'s text is `[{...},{...}]`: the elements of its one field, written and
 read as that field's own §16.2 row, with no object around them and no key. The
 key takes a closed value, `"array"` here or `"value"` (§16.13); any other value, a bare `json` tag and a
-non-string value are refused by name.
+non-string value are refused by name.<!-- row T16.10-1 feature=compiler -->
 
 **The table must be a VARIABLE table with exactly ONE field, and that field
 must be `[..N]T` or `[]T`**, for any `T` those arrays carry, §2.13's text lists
-included. Refused by name (§11): zero, two or more fields; a field that is not
+included.<!-- row T16.10-2 feature=compiler --> Refused by name (§11): zero, two or more fields; a field that is not
 an array; `?[..N]T`, `[N]T` and `[E]T`; a guarded (`if`) field; a `json` key on
 the one field, which has no key to carry; a `fixed table`; and a table that is
 the TARGET OF ANY POINTER (`*T`, `[]*T`, `[..N]*T`, a pointer arm), naming the
 pointer field, because a shared node is defined under `&node` (§16.7) and an
-array has no object for that key to live in.
+array has no object for that key to live in.<!-- row T16.10-3 feature=compiler -->
 
 **Wherever such a table appears in JSON its text is the array**: as the root, as
 a by-value field, as a map value, as a union arm, as a list element. **Reading:**
 a top-level array fills the field by its row; any other top-level value (an
 object, `null`, a scalar) is REFUSED BY NAME, `json_root_not_array`: the read
 returns false, the report is `Malformed`, and its `Reason` is
-`json_root_not_array: <Table>`. Nested, the shape mismatch is §16.2's ordinary
+`json_root_not_array: <Table>`.<!-- row T16.10-4 feature=compiler --> Nested, the shape mismatch is §16.2's ordinary
 `kind_mismatch`, skipped and counted.
 
 **The key changes no wire byte.** It is the text's business, as a field's `json`
 key is (§16.4): it is not in the projection, the build version (§20), the lock
 or the tables baseline (§18), and adding or removing it costs a stored file
 nothing. Go carries it first; every other target refuses a unit that uses it,
-centrally, by name.
+centrally, by name.<!-- row T16.10-5 feature=compiler -->
 
 ### 16.11 Generated round-trip and damage tests: `schema testgen`
 
 **Every adopter wrote the same tests by hand, per table: a value through the
-three forms and back, and a damaged input refused by name.** `schema testgen`
+three forms and back, and a damaged input refused by name.**<!-- row T16.11-1 feature=compiler --> `schema testgen`
 writes them from the declaration, so the guarantees §3, §6.5, §16.2 and §16.8
 make are held for a unit's own tables by tests nobody typed.
 
@@ -17000,7 +17000,7 @@ assumes the unit was generated with the default surface (§8.8): it calls the
 binary, base64 and JSON carriers. A table whose `forms` declaration (§2.12)
 leaves out `wire` or `json` is REFUSED BY NAME at testgen, naming the table and
 the form, because its sample is spelled in the JSON form and its round trip
-crosses the wire.
+crosses the wire.<!-- row T16.11-2 feature=compiler -->
 
 **The samples.** For each root table the file carries a fixed list of SAMPLE
 values, each spelled as a JSON text (§16.2) that the generator builds from the
@@ -17009,7 +17009,7 @@ no randomness, no clock, no seed. Each sample is named:
 
 - `defaults`: `{}`, so every field at its declared default, every optional
   ABSENT, every union `None`, every pointer null. A `| required` field (§2.3),
-  which a text must carry, is written at its `low` value.
+  which a text must carry, is written at its `low` value.<!-- row T16.11-3 feature=compiler -->
 - `low`: every bounded field AT ITS LOW BOUND — an integer, `bits(N)`, fixed
   point or compressed float at its declared or implied minimum, a string or a
   byte buffer empty, a counted array at its minimum count, an enum at its first
@@ -17033,7 +17033,7 @@ A text-list element that may be absent (`?string(M)`) is written absent once in
 `high`; an optional map value present. A pointer to a table already on the
 path is null, so a recursive declaration has finite samples. A deprecated field
 (§2.10) is never written. A field kind the generator does not spell is REFUSED
-BY NAME at testgen, naming the field, never skipped.
+BY NAME at testgen, naming the field, never skipped.<!-- row T16.11-4 feature=compiler -->
 
 **The round trip.** For each sample, the test reads the text with `FromJson`
 and requires a SILENT report (§4): the sample matches the schema exactly, so a
@@ -17052,17 +17052,17 @@ the wire bytes the original saved to, and writes exactly the JSON text the
 original wrote. Equality is the wire's and the text's, not the storage's, so
 it holds for both classes and over the arena of a variable table.
 
-**The damage refusals.** For each root table, the `high` sample's wire and
+**The damage refusals.**<!-- row T16.11-5 feature=compiler --> For each root table, the `high` sample's wire and
 texts are damaged and each damage is refused BY ITS NAMED REASON through the
-strict read, never by a bare failure:
+strict read, never by a bare failure:<!-- row T16.11-6 feature=compiler -->
 
 - a TRUNCATED wire (the form byte alone, and the wire less its last byte),
   through `ReadStrict`: refused, `wire_damaged` or `truncated` (§3, the framing
-  check), and nothing returned;
+  check), and nothing returned;<!-- row T16.11-7 feature=compiler -->
 - a FLIPPED FORM BYTE (`2`, `9` and `255` in place of the first byte), through
-  `ReadStrict`: refused, `unknown_form` (§3, THE FIRST BYTE);
+  `ReadStrict`: refused, `unknown_form` (§3, THE FIRST BYTE);<!-- row T16.11-8 feature=compiler -->
 - BASE64 DAMAGE (a character outside the alphabet, and the text less its last
-  character), through `LoadText`: refused, `base64_damaged` (§16.8);
+  character), through `LoadText`: refused, `base64_damaged` (§16.8);<!-- row T16.11-9 feature=compiler -->
 - JSON OF THE WRONG SHAPE (a document cut off inside its object), through
   `FromJson`: false, the report `Malformed`, `Err()` `malformed` (§16.2).
 
@@ -17105,7 +17105,7 @@ with the bools of every `if` branch on its path set to select it, every
 FILLER is a value inside every bound: an integer at its `min`, a `bits(N)` or
 `bool` at zero, a float at zero or at the `min` of its range, a string or byte
 buffer empty, an enum at its first variant, a table or `type` body with every
-field absent; a required field of any other kind is REFUSED BY NAME at testgen.
+field absent; a required field of any other kind is REFUSED BY NAME at testgen.<!-- row T16.11-10 feature=compiler -->
 An array whose element is probed carries one element, its minimum count where
 that is larger, and all `N` of a fixed `[N]T`, the first the probed one and the
 rest fillers.
@@ -17120,7 +17120,7 @@ For each probe, `Test<Name>GenBoundProbes` requires:
    JSON text reads to — the field at the bound it went past, `max` or `min`,
    `N` units, `N` elements — with a silent report;
 3. the STRICT read, `<Name>ReadStrict`, refuses it `clamped`
-   (`TableRefuseClamped`, `errors.Is`), returning nothing. The subtest is
+   (`TableRefuseClamped`, `errors.Is`), returning nothing.<!-- row T16.11-11 feature=compiler --> The subtest is
    named by the probe, so a failure names the field and the bound.
 
 **What the file is.** Every test opens with `t.Parallel()`; it uses no time,
@@ -17129,20 +17129,20 @@ under the house rule. The file is GENERATED, so a schema edit is followed by
 `testgen` as it is by `generate`, and the file is never edited by hand.
 
 Go carries `testgen` first; every other `--lang` is refused by name, in the
-compiler, until its own turn.
+compiler, until its own turn.<!-- row T16.11-12 feature=compiler -->
 
 **A SAME-LENGTH VARIANT SWAP IS OUTSIDE THE TARGET'S ASSERTION.** A fuzz
 target can require a refused read, a re-encoding equal to its input, or — when
 the re-encoding is SHORTER — a respelling that reads back silently, because
-those are the outcomes a reader can distinguish. It cannot require anything of
+those are the outcomes a reader can distinguish.<!-- row T16.11-13 feature=compiler --> It cannot require anything of
 a mutant that moves an enum's variant reference to an entry naming another
 declared variant, or to reference `0` (`None`): that is a valid spelling of a
 DIFFERENT value, no reader can tell it from a writer's own bytes, and the
 re-encoding differs only in the id table's first-use order (§3). The class is
-refused only by a table that declares `integrity` (§2.14). A target's
+refused only by a table that declares `integrity` (§2.14).<!-- row T16.11-14 feature=compiler --> A target's
 assertion therefore lives with the declaration: where the table carries the
 integrity check, the check refuses the swap; where it does not, the swap is
-accepted silently and the target allows it. Without that carve-out the target
+accepted silently and the target allows it.<!-- row T16.11-15 feature=compiler --> Without that carve-out the target
 reports a faithful reader as a defect. The two LoadoutConfig crashers record
 the case: the enum field's reference is the id table's first entry, so its
 reference byte sits at offset 3 (reference 1, payload kind 30), and entry 3 is
@@ -17159,7 +17159,7 @@ exactly the class above.
 JSONTestSuite (github.com/nst/JSONTestSuite, MIT) is vendored byte for byte at
 commit `1ef36fa01286` under `testdata/jsontestsuite/test_parsing/`: 318 files,
 each named for what RFC 8259 asks of a parser. A `y_` file must be accepted, an
-`n_` file must be refused, and an `i_` file is left to the parser.
+`n_` file must be refused, and an `i_` file is left to the parser.<!-- row T16.12-1 feature=compiler -->
 `testdata/jsontestsuite/SHA256SUMS` pins every byte, and `SOURCE` says where
 they came from.
 
@@ -17170,7 +17170,7 @@ under RFC 8259's grammar, then whitespace, then the end of the input, under the
 three caps both walks carry: depth 128, a key of 255 bytes, a number token of
 511 bytes. **The table walk above it is not ruled here**: clamps,
 `kind_mismatch` and duplicate counts (§16.2) decide what an accepted value
-means for a field, and they never turn a refusal into an acceptance.
+means for a field, and they never turn a refusal into an acceptance.<!-- row T16.12-2 feature=compiler -->
 
 **The rule under every row: write strictly; read forgivingly only where that
 is nearly free; never lose a bound; security trumps.**
@@ -17179,7 +17179,7 @@ is nearly free; never lose a bound; security trumps.**
   this layer; §16.2's last-wins-and-counted is the walk's rule, not the
   layer's.
 - **`n_`: every file is refused** (false, `Malformed`), and a mismatch names
-  the file, except the rows below marked `accept (dialect)`.
+  the file, except the rows below marked `accept (dialect)`.<!-- row T16.12-3 feature=compiler -->
 - **`i_`: every file has a row**, with its verdict and its reason. A file the
   corpus adds without a row is an error that names it, and so is a row that
   names no file.
@@ -17199,7 +17199,7 @@ emits one.
 
 **ILL-FORMED TEXT IS REFUSED BY NAME** (§16.3): `string_not_utf8` for bytes
 that are not well-formed UTF-8, `string_lone_surrogate` for a lone or
-out-of-order surrogate escape, at every string site. A silent `U+FFFD` would
+out-of-order surrogate escape, at every string site.<!-- row T16.12-4 feature=compiler --> A silent `U+FFFD` would
 make two texts one value; this is the security rule, and it is not traded for
 leniency.
 
@@ -17225,30 +17225,30 @@ verdict.
 | `i_number_too_big_neg_int.json` | accept | the 511-byte token cap bounds the work; the walk clamps or counts `kind_mismatch`, and no infinity is stored (§16.2) |
 | `i_number_too_big_pos_int.json` | accept | the 511-byte token cap bounds the work; the walk clamps or counts `kind_mismatch`, and no infinity is stored (§16.2) |
 | `i_number_very_big_negative_int.json` | accept | the 511-byte token cap bounds the work; the walk clamps or counts `kind_mismatch`, and no infinity is stored (§16.2) |
-| `i_string_UTF-8_invalid_sequence.json` | refuse | `string_not_utf8`: bytes that are not well-formed UTF-8 (§16.3) |
-| `i_string_UTF8_surrogate_U+D800.json` | refuse | `string_not_utf8`: a surrogate encoded as UTF-8 bytes is not well-formed UTF-8 (§16.3) |
-| `i_string_invalid_utf-8.json` | refuse | `string_not_utf8`: bytes that are not well-formed UTF-8 (§16.3) |
-| `i_string_iso_latin_1.json` | refuse | `string_not_utf8`: a Latin-1 byte is not well-formed UTF-8 (§16.3) |
-| `i_string_lone_utf8_continuation_byte.json` | refuse | `string_not_utf8`: a continuation byte with no lead (§16.3) |
-| `i_string_not_in_unicode_range.json` | refuse | `string_not_utf8`: a sequence past U+10FFFF (§16.3) |
-| `i_string_overlong_sequence_2_bytes.json` | refuse | `string_not_utf8`: an overlong encoding (§16.3) |
-| `i_string_overlong_sequence_6_bytes.json` | refuse | `string_not_utf8`: an overlong encoding (§16.3) |
-| `i_string_overlong_sequence_6_bytes_null.json` | refuse | `string_not_utf8`: an overlong encoding of zero (§16.3) |
-| `i_string_truncated-utf-8.json` | refuse | `string_not_utf8`: a sequence cut short (§16.3) |
-| `i_object_key_lone_2nd_surrogate.json` | refuse | `string_lone_surrogate`: a low surrogate escape alone, in a key (§16.3) |
-| `i_string_1st_surrogate_but_2nd_missing.json` | refuse | `string_lone_surrogate`: a high surrogate escape with no low half (§16.3) |
-| `i_string_1st_valid_surrogate_2nd_invalid.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by a non-surrogate escape (§16.3) |
-| `i_string_incomplete_surrogate_and_escape_valid.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by another escape (§16.3) |
-| `i_string_incomplete_surrogate_pair.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by plain text (§16.3) |
-| `i_string_incomplete_surrogates_escape_valid.json` | refuse | `string_lone_surrogate`: two high surrogate escapes (§16.3) |
-| `i_string_invalid_lonely_surrogate.json` | refuse | `string_lone_surrogate`: a high surrogate escape alone (§16.3) |
-| `i_string_invalid_surrogate.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by plain text (§16.3) |
-| `i_string_inverted_surrogates_U+1D11E.json` | refuse | `string_lone_surrogate`: the low half escaped before the high (§16.3) |
-| `i_string_lone_second_surrogate.json` | refuse | `string_lone_surrogate`: a low surrogate escape alone (§16.3) |
-| `i_string_UTF-16LE_with_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a UTF-16 mark starts no value |
-| `i_string_utf16BE_no_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a zero byte starts no value |
-| `i_string_utf16LE_no_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a zero byte inside an array is not JSON |
-| `i_structure_500_nested_arrays.json` | refuse | past the depth cap of 128, which is a bound and not a preference |
+| `i_string_UTF-8_invalid_sequence.json` | refuse | `string_not_utf8`: bytes that are not well-formed UTF-8 (§16.3) <!-- row T16.12-5 feature=compiler -->|
+| `i_string_UTF8_surrogate_U+D800.json` | refuse | `string_not_utf8`: a surrogate encoded as UTF-8 bytes is not well-formed UTF-8 (§16.3) <!-- row T16.12-6 feature=compiler -->|
+| `i_string_invalid_utf-8.json` | refuse | `string_not_utf8`: bytes that are not well-formed UTF-8 (§16.3) <!-- row T16.12-7 feature=compiler -->|
+| `i_string_iso_latin_1.json` | refuse | `string_not_utf8`: a Latin-1 byte is not well-formed UTF-8 (§16.3) <!-- row T16.12-8 feature=compiler -->|
+| `i_string_lone_utf8_continuation_byte.json` | refuse | `string_not_utf8`: a continuation byte with no lead (§16.3) <!-- row T16.12-9 feature=compiler -->|
+| `i_string_not_in_unicode_range.json` | refuse | `string_not_utf8`: a sequence past U+10FFFF (§16.3) <!-- row T16.12-10 feature=compiler -->|
+| `i_string_overlong_sequence_2_bytes.json` | refuse | `string_not_utf8`: an overlong encoding (§16.3) <!-- row T16.12-11 feature=compiler -->|
+| `i_string_overlong_sequence_6_bytes.json` | refuse | `string_not_utf8`: an overlong encoding (§16.3) <!-- row T16.12-12 feature=compiler -->|
+| `i_string_overlong_sequence_6_bytes_null.json` | refuse | `string_not_utf8`: an overlong encoding of zero (§16.3) <!-- row T16.12-13 feature=compiler -->|
+| `i_string_truncated-utf-8.json` | refuse | `string_not_utf8`: a sequence cut short (§16.3) <!-- row T16.12-14 feature=compiler -->|
+| `i_object_key_lone_2nd_surrogate.json` | refuse | `string_lone_surrogate`: a low surrogate escape alone, in a key (§16.3) <!-- row T16.12-15 feature=compiler -->|
+| `i_string_1st_surrogate_but_2nd_missing.json` | refuse | `string_lone_surrogate`: a high surrogate escape with no low half (§16.3) <!-- row T16.12-16 feature=compiler -->|
+| `i_string_1st_valid_surrogate_2nd_invalid.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by a non-surrogate escape (§16.3) <!-- row T16.12-17 feature=compiler -->|
+| `i_string_incomplete_surrogate_and_escape_valid.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by another escape (§16.3) <!-- row T16.12-18 feature=compiler -->|
+| `i_string_incomplete_surrogate_pair.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by plain text (§16.3) <!-- row T16.12-19 feature=compiler -->|
+| `i_string_incomplete_surrogates_escape_valid.json` | refuse | `string_lone_surrogate`: two high surrogate escapes (§16.3) <!-- row T16.12-20 feature=compiler -->|
+| `i_string_invalid_lonely_surrogate.json` | refuse | `string_lone_surrogate`: a high surrogate escape alone (§16.3) <!-- row T16.12-21 feature=compiler -->|
+| `i_string_invalid_surrogate.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by plain text (§16.3) <!-- row T16.12-22 feature=compiler -->|
+| `i_string_inverted_surrogates_U+1D11E.json` | refuse | `string_lone_surrogate`: the low half escaped before the high (§16.3) <!-- row T16.12-23 feature=compiler -->|
+| `i_string_lone_second_surrogate.json` | refuse | `string_lone_surrogate`: a low surrogate escape alone (§16.3) <!-- row T16.12-24 feature=compiler -->|
+| `i_string_UTF-16LE_with_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a UTF-16 mark starts no value <!-- row T16.12-25 feature=compiler -->|
+| `i_string_utf16BE_no_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a zero byte starts no value <!-- row T16.12-26 feature=compiler -->|
+| `i_string_utf16LE_no_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a zero byte inside an array is not JSON <!-- row T16.12-27 feature=compiler -->|
+| `i_structure_500_nested_arrays.json` | refuse | past the depth cap of 128, which is a bound and not a preference <!-- row T16.12-28 feature=compiler -->|
 | `i_structure_UTF-8_BOM_empty_object.json` | accept | a leading UTF-8 byte-order mark is skipped (RFC 8259 §8.1): one comparison, and no value changes |
 
 **PENDING.** `testdata/jsontestsuite/PENDING.tsv` names each file a reader at
@@ -17314,7 +17314,7 @@ union of seven arms whose Array and Object arms hold `[]*JsonValue` and
 `[]*JsonMember`. It needs a pointer per child and a node record per child. A
 ported reader would have to carry pointered units (§3.1) to read it. It can
 share a node or form a cycle, which a JSON text cannot express, so every read
-would have to refuse both. And depth would come back onto a load path that is
+would have to refuse both.<!-- row T16.13-1 feature=compiler --> And depth would come back onto a load path that is
 a scan and has no traversal bound (§3.1). The tape has one variable edge of
 each kind. It has no pointer to a table. It cannot share a node or form a
 cycle, because nothing in it names a node. Its depth is counted by the same
@@ -17338,7 +17338,7 @@ Like `"array"`, it changes no wire byte. A reader that has never heard of it
 reads the file as the ordinary variable table it is. The key is not in the
 projection, the build version (§20), the lock or the tables baseline (§18).
 The declaration is checked by its SHAPE, and every mismatch is refused by
-name, `json_value_shape: <Table>: <the first difference>`:
+name, `json_value_shape: <Table>: <the first difference>`:<!-- row T16.13-2 feature=compiler -->
 
 - exactly the two fields above, in that order, with those names, kinds and
   no attributes;
@@ -17348,7 +17348,7 @@ name, `json_value_shape: <Table>: <the first difference>`:
 
 Type names are free. A table declared `json = "value"` must not be the
 target of any pointer: `*T`, `[]*T`, `[..N]*T` and a pointer arm are all
-refused, naming the pointer field. The reason is §16.10's: a shared node is
+refused, naming the pointer field.<!-- row T16.13-3 feature=compiler --> The reason is §16.10's: a shared node is
 defined under `&node` (§16.7), and a raw value has no object for that key.
 By value, the table may appear anywhere a table may appear: as the root, as
 a field, as a map value, as a union arm or as a list element. Wherever it
@@ -17356,7 +17356,7 @@ appears, its text is the raw value. Inside a raw value the `&` prefix is
 ordinary data, as it is in a map's keys. Go carries the key first. Every
 other target refuses a unit that uses it, centrally in the compiler, by name,
 in the sentence it gives `"array"` (§16.10): `target "<target>" refuses the construct json = "value" on table <Table>`, until its port lands and the
-refusal is removed for that target alone.
+refusal is removed for that target alone.<!-- row T16.13-4 feature=compiler -->
 
 **EXACTNESS: what is kept, and what EQUAL means.** The tape keeps every
 number's TOKEN, byte for byte as the text spelled it, and nothing else about
@@ -17372,8 +17372,8 @@ costs its eleven bytes at every step.
 **EQUAL, stated as a rule a stranger can code.** `Equal(a, b)` takes two
 texts. It reads each with this construct's own JSON step (below), which is
 §16.12's layer plus the construct's refusals, so a key past 255 decoded bytes
-is refused and never compared clamped. If either text is refused, Equal
-refuses too and gives no answer. Otherwise the two values are equal when
+is refused and never compared clamped.<!-- row T16.13-5 feature=compiler --> If either text is refused, Equal
+refuses too and gives no answer.<!-- row T16.13-6 feature=compiler --> Otherwise the two values are equal when
 all of these hold:
 
 - they are the same kind;
@@ -17416,22 +17416,22 @@ stack of open containers and their remaining counts, and a cursor into
 `text`. Both steps refuse with the names in the table below, and the JSON
 step sets each `Reason` itself where the layer would only mark the read bad
 (the depth and token caps, the number grammar): the read returns false, the
-report is `Malformed`, and its `Reason` is the name. A lone or out-of-order
+report is `Malformed`, and its `Reason` is the name.<!-- row T16.13-7 feature=compiler --> A lone or out-of-order
 surrogate escape exists only in a text, so the JSON step names
 `string_lone_surrogate` and the binary step, which holds decoded UTF-8, has
 only `string_not_utf8` to name. A refusal returns no
-partial value. Nothing on this construct is clamped or counted, because a
+partial value.<!-- row T16.13-8 feature=compiler --> Nothing on this construct is clamped or counted, because a
 clamped key or a dropped member would make the value unequal without saying
-so. A read either places the whole value, or it refuses.
+so. A read either places the whole value, or it refuses.<!-- row T16.13-9 feature=compiler -->
 
 | bound | JSON step | binary step | name |
 |---|---|---|---|
 | the integrity trailer (§2.14), which only a file's ROOT carries: it covers this table when the table is the root, and a nested value only through the trailer of the root that holds it, when that root declares `integrity` | not applicable (no trailer in a text) | the CRC-32C is checked before anything is decoded | `integrity_mismatch` |
-| the depth cap, 128, counted from the FILE's root as §16.12's layer counts it: the document's root container sits at depth 0, and a container whose depth is past 128 is refused, so a value as the root may nest 129 containers and a value sitting at depth d may nest 129 − d | the layer's own check, the walk passing the depth at which the value sits | the scan's stack, started at the depth the table walk passes in (0 for the root), so the binary step and the writer's cap (§16.3) agree with the text | `json_value_too_deep` |
-| a key of at most 255 DECODED bytes | the key is refused, never clamped | a `key_len` past 255 | `json_value_key_too_long` |
+| the depth cap, 128, counted from the FILE's root as §16.12's layer counts it: the document's root container sits at depth 0, and a container whose depth is past 128 is refused, so a value as the root may nest 129 containers and a value sitting at depth d may nest 129 − d | the layer's own check, the walk passing the depth at which the value sits | the scan's stack, started at the depth the table walk passes in (0 for the root), so the binary step and the writer's cap (§16.3) agree with the text | `json_value_too_deep` <!-- row T16.13-10 feature=compiler -->|
+| a key of at most 255 DECODED bytes | the key is refused, never clamped | a `key_len` past 255 | `json_value_key_too_long` <!-- row T16.13-11 feature=compiler -->|
 | a number token of at most 511 bytes | the layer's token cap | a Number's `text_len` past 511 | `json_value_number_too_long` |
 | a number token is RFC 8259's `number` production | the layer's grammar (a breach is `malformed`) | the Number's bytes, an empty token included, are checked against the same production | `json_value_number_grammar` |
-| strings and keys are well-formed UTF-8 | §16.3's refusals, `string_not_utf8` and `string_lone_surrogate` | the bytes of a String or a key are checked for well-formed UTF-8 | `string_not_utf8` |
+| strings and keys are well-formed UTF-8 | §16.3's refusals, `string_not_utf8` and `string_lone_surrogate` | the bytes of a String or a key are checked for well-formed UTF-8 | `string_not_utf8` <!-- row T16.13-12 feature=compiler -->|
 | a count or a length fits `uint32` | a container with more than 2^32 − 1 children, or a string or key past 2^32 − 1 bytes | not applicable (the field cannot hold more) | `json_value_too_large` |
 | exactly one value | the layer's "one whole value" | the root's subtree ends with nodes still to scan | `json_value_trailing` |
 | every container's children are present | not applicable (the text closes it) | a `count` runs past the last node | `json_value_truncated` |
@@ -17464,14 +17464,14 @@ field of this table can tell an absent key from a `null`, and that is stated
 here, not hidden.
 
 **THE POLICY BOUNDARY.** The JSON step runs §16.12's layer FIRST and builds
-nothing from a text the layer refuses. So an `n_` file the policy refuses,
+nothing from a text the layer refuses.<!-- row T16.13-13 feature=compiler --> So an `n_` file the policy refuses,
 and an `i_` file whose row says `refuse`, never produces a tape and never
-reaches the binary step. The `n_` files marked `accept (dialect)` reach it as
+reaches the binary step.<!-- row T16.13-14 feature=compiler --> The `n_` files marked `accept (dialect)` reach it as
 the values they spell, without their comments or trailing commas. The carrier
 is stricter than the layer in one place, and it is stated here: the layer
 CLAMPS a key past 255 decoded bytes and compares it, while this construct
 REFUSES it (`json_value_key_too_long`), because a clamped key is a different
-value. No accepted file of the vendored corpus has a key longer than 7 bytes.
+value.<!-- row T16.13-15 feature=compiler --> No accepted file of the vendored corpus has a key longer than 7 bytes.
 The binary
 step never assumes that its input came through the JSON step. A wire is
 input, and the scan above re-checks every bound a hostile writer could break.
@@ -17480,11 +17480,11 @@ input, and the scan above re-checks every bound a hostile writer could break.
 `FromJson` are proposed, not yet built). Every accepted file of the corpus
 goes JSON → tape → binary (with the trailer) → strict read → JSON, and the
 result is `Equal` to the file. The reversed witnesses: one flipped byte in a
-saved file is refused `integrity_mismatch`. For each row of the table above,
+saved file is refused `integrity_mismatch`.<!-- row T16.13-16 feature=compiler --> For each row of the table above,
 a file one past the bound is refused by its name at the JSON step, and a
-hand-built wire one past it is refused by its name at the binary step. Depth
+hand-built wire one past it is refused by its name at the binary step.<!-- row T16.13-17 feature=compiler --> Depth
 is pinned at 129 nested containers, which passes, and 130, which is refused, for the value as the root and again for a value one level down (128 passes, 129 is refused),
-at both steps.
+at both steps.<!-- row T16.13-18 feature=compiler -->
 
 ## 17. Packing: a directory tree that mirrors a root table
 
