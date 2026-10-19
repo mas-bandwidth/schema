@@ -60,30 +60,3 @@ func TestOptionalOverVariableClosureIsLegal(t *testing.T) {
 		}
 	}
 }
-
-// TestOptionalArrayOverVariableClosureIsLegal preserves the shared-base #526
-// half that the Go-tip registry must not narrow: a by-value optional array
-// uses the same presence-gated declaration-order walk as scalar ?T.
-func TestOptionalArrayOverVariableClosureIsLegal(t *testing.T) {
-	t.Parallel()
-	const src = `package probe
-
-table Node
-{
-    value int32
-    next  *Node
-}
-
-table Holder
-{
-    held ?[2]Node
-}
-`
-	u := unitFromSource(t, src)
-	c := New()
-	for _, target := range []string{"cpp", "c", "cs", "go"} {
-		if _, err := c.Generate(u, target, Options{}); err != nil {
-			t.Errorf("--lang %s refused optional by-value array over variable closure: %v", target, err)
-		}
-	}
-}

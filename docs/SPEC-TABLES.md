@@ -1211,15 +1211,14 @@ the optional map: absent apart from empty). It is refused, by name, on:
 - **an enum-keyed array** — `?[E]T` elides slots BY NAME (§3.2), so its
   empty end wants stating before a presence bit sits beside it — the
   reason `[E]*T` and `[E]Body` wait (§15);
-- **an array of pointers and an array of unions** — `?[N]*T` and
-  `?[N]Body` are named follow-ons (§15). The bounded arrays of pointers and
-  unions serve today without the `?` (§2.1, §2.6), and a table wrapping the
-  field serves with it. An optional BY-VALUE array whose element closure is
-  variable-length, `?[N]T` or `?[..N]T`, is legal: the same
-  declaration-order walk gates each element's edges on the array's presence
-  companion, so an absent array descends nothing. C, C++, C# and Go carry
-  that walk together with scalar `?T`; targets without it refuse the
-  construct centrally by name (§15).
+- **an array of pointers, an array of unions, and an optional ARRAY of a
+  value whose closure is variable-length** — `?[N]*T`, `?[N]Body`, and
+  `?[N]T` or `?[..N]T` of such a T — a named follow-on (§15): the gated
+  walks above are stated and corpus-held for the scalar `?T` only, and the
+  array forms wait for their own change, walks and corpus together. The
+  bounded arrays of pointers and of unions serve today without the `?`
+  (§2.1, §2.6), and a table wrapping the field serves with it. The SCALAR
+  `?T` over a variable closure is allowed, by the rule above.
 - **a specified default** — presence is the only default an optional has.
 
 #### The `| required` marker
@@ -13339,14 +13338,12 @@ in build version (§20.5).
   keyed body elides slots by name, §3.2), and `?[..E]T`/`?[A..E]T` under
   §2.4's own refusal, which stands with the `?` and without it; `?` on an
   array of pointers, on
-  an array of unions, and on an optional MAP VALUE over a variable closure
-  (one named follow-on, §15 — an absent field is not an edge, and the
-  authoring walks gate on presence when it lands). **A scalar `?T` and a
-  by-value array `?[N]T` or `?[..N]T` over a variable closure are legal
-  on C, C++, C# and Go**: their declaration-order walkers gate the held edges
-  on the presence companion. Every other target refuses that construct
-  centrally by name (§2.3, §15). The bounded optional arrays of everything
-  else are legal too (§2.3). Also refused: a specified
+  an array of unions, and on an optional ARRAY or a MAP VALUE over a
+  variable closure (one named follow-on, §15 — an absent field is not an
+  edge, and the authoring walks gate on presence when it lands). **A scalar
+  `?T` over a variable closure is legal on Go**, and every other target
+  refuses it centrally by name (§2.3, §15). The bounded arrays `?[..N]T` and
+  `?[N]T` of everything else are legal (§2.3). Also refused: a specified
   default on an optional; and a field whose name collides with an
   optional's `<field>_present` companion.
 - **Enum-keyed arrays** (§2.4): **a POSITIONAL array whose bound folds from

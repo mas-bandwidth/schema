@@ -24,8 +24,9 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 			t.Errorf("Go does not carry %q", construct)
 		}
 		for _, target := range targets {
-			if target != "go" && carries(target, construct) {
-				t.Errorf("target %q unexpectedly carries %q", target, construct)
+			want := target == "go" || construct == carryOptionalVariableClosure && (target == "c" || target == "cpp" || target == "cs")
+			if got := carries(target, construct); got != want {
+				t.Errorf("target %q carries %q = %v, want %v", target, construct, got, want)
 			}
 		}
 	}
@@ -38,8 +39,9 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 			if !known[construct] {
 				t.Errorf("target %q registers unknown construct %q", target, construct)
 			}
-			if target != "go" {
-				t.Errorf("target %q carries %q; only Go carries constructs at this stage", target, construct)
+			want := target == "go" || construct == carryOptionalVariableClosure && (target == "c" || target == "cpp" || target == "cs")
+			if !want {
+				t.Errorf("target %q unexpectedly carries %q", target, construct)
 			}
 		}
 	}

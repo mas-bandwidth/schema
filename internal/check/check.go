@@ -2968,13 +2968,17 @@ func (c *checker) checkOptionalVariableClosures(names []string) {
 			if !ok || !variable[ref.Name] {
 				continue
 			}
-			// scalar ?T and its by-value array forms use §2.3's gated walk; only
-			// a synthetic map-entry value remains the named follow-on here
-			if st.MapEntryOf == "" {
+			// §2.3's presence-gated authoring walk is held only for scalar ?T.
+			// Optional arrays and synthetic map-entry values remain named follow-ons.
+			if st.MapEntryOf == "" && f.Array == ir.ArrayNone {
 				continue
 			}
-			c.errf(pos, "%s.%s: ? on a value whose closure is variable-length is a named follow-on — %s holds a pointer, and §2.3's presence gate is held for fields and their by-value arrays, not for a map value; drop the ?, or wrap the field in a table and make that optional (docs/SPEC-TABLES.md §2.3, §15)",
-				name, f.Name, ref.Name)
+			shape := "an optional array"
+			if st.MapEntryOf != "" {
+				shape = "a map value"
+			}
+			c.errf(pos, "%s.%s: ? on a value whose closure is variable-length is a named follow-on — %s holds a pointer, and §2.3's presence gate is held for scalar fields, not for %s; drop the ?, or wrap the field in a table and make that optional (docs/SPEC-TABLES.md §2.3, §15)",
+				name, f.Name, ref.Name, shape)
 		}
 	}
 }
