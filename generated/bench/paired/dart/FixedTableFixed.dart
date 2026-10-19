@@ -36,6 +36,7 @@ import 'BenchFixed.dart'
         TableFixedPlan,
         TableFixedRefusal,
         TableFixedReport,
+        TableFixedView,
         TableMessageReader,
         TableReport,
         TableVocabulary,
@@ -597,15 +598,7 @@ int fixedTableFixedMeasure(int count) {
   return fixedTableFixedHeaderBytes + count * fixedTableFixedRecordBytes;
 }
 
-ByteData? _fixedTableFixedSaveView;
-Uint8List? _fixedTableFixedSaveBytes;
-ByteData _fixedTableFixedSaveViewOf(Uint8List bytes) {
-  if (_fixedTableFixedSaveBytes != bytes) {
-    _fixedTableFixedSaveView = ByteData.sublistView(bytes);
-    _fixedTableFixedSaveBytes = bytes;
-  }
-  return _fixedTableFixedSaveView!;
-}
+final fixedTableFixedSaveView = TableFixedView();
 
 /// THE WRITE IS A TEMPLATE: the hash and zeros laid down first — which is
 /// also what zero-fills every byte of declared slack — and then value stores
@@ -616,7 +609,7 @@ int fixedTableFixedSave(List<FixedTable> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
-  final view = _fixedTableFixedSaveViewOf(bytes);
+  final view = fixedTableFixedSaveView.of(bytes);
   // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven
   // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.
   bytes.fillRange(0, TableFixedLimits.headerBytes, 0);
@@ -643,15 +636,7 @@ int fixedTableFixedSave(List<FixedTable> values, int count, Uint8List bytes) {
   return need;
 }
 
-ByteData? _fixedTableFixedLoadView;
-Uint8List? _fixedTableFixedLoadBytes;
-ByteData _fixedTableFixedLoadViewOf(Uint8List bytes) {
-  if (_fixedTableFixedLoadBytes != bytes) {
-    _fixedTableFixedLoadView = ByteData.sublistView(bytes);
-    _fixedTableFixedLoadBytes = bytes;
-  }
-  return _fixedTableFixedLoadView!;
-}
+final fixedTableFixedLoadView = TableFixedView();
 
 /// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 /// the layout's hash is this build's own, and a plan compiled once from the
@@ -679,7 +664,7 @@ int fixedTableFixedLoad(
     report.malformed = true;
     return -1;
   }
-  final view = _fixedTableFixedLoadViewOf(bytes);
+  final view = fixedTableFixedLoadView.of(bytes);
   // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
   // the registry is ordered, so a byte this reader does not carry is named
   // by where it sits relative to this form and never by one word for both.

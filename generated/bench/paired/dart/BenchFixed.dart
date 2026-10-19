@@ -860,6 +860,23 @@ final class TableFixedPlanCache {
   }
 }
 
+/// THE CALLER'S CACHED VIEW, one per table and direction: a browse passes the
+/// same buffer every iteration, so the ByteData view over it is built once in
+/// the warmup and the steady phase allocates nothing. A different buffer
+/// rebuilds it.
+final class TableFixedView {
+  ByteData? _view;
+  Uint8List? _bytes;
+
+  ByteData of(Uint8List bytes) {
+    if (!identical(_bytes, bytes)) {
+      _view = ByteData.sublistView(bytes);
+      _bytes = bytes;
+    }
+    return _view!;
+  }
+}
+
 /// ONE LOCKED LAYOUT (docs/FIXED-FORM-ALGORITHM.md §5.2's static data, the four
 /// members of §5.9 #19 in that order): the WIRE HASH a file is matched on, the
 /// layout BYTES verbatim, that run's BYTE LENGTH riding beside them, and the
