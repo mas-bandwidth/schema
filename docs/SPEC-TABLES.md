@@ -5150,7 +5150,7 @@ distinct ids is about `8.6 × 10⁹`. So the id table has a MAXIMUM: the C++, Go
 C and Rust readers refuse as MALFORMED, on the first rule's terms, any table whose entry count
 exceeds **4096** (`kTableProbeBound` in the generated C++, `n > 4096` in the
 generated Go, `count > 4096` in the generated C, `count > ID_TABLE_PROBE_BOUND`
-in the generated Rust, in both its load and its measure), whatever the buffer
+in the generated Rust, in both its variable-form load and its measure), whatever the buffer
 would hold. At or below it each of those readers proves the entries distinct with an
 open-addressing probe over a fixed stack table of **8192** slots — twice the
 bound, so it is never more than half full — and the walk is allocation-free
@@ -5162,7 +5162,12 @@ the slot table. Duplicate ids stay refused, and ids this reader cannot name stay
 legal: they are counted `unknown` exactly where a body names them, never at
 resolve time. Every table this schema's own writer emits is far under the
 bound, so the refusal is a reader's defense against a hostile file and no
-writer this schema can drive ever meets it.
+writer this schema can drive ever meets it. **THE RUST ANNOUNCEMENT READER DOES
+NOT YET CARRY THIS BOUND** (its own schema-rust card): `announce_read_once`
+refuses a trailer count only past the buffer's `(len - 9) / 8` and proves the
+trailer ids distinct by a pairwise scan, so neither the cap nor the absence of
+a large pairwise scan holds of that one Rust path until that card lands; the
+Rust variable-form load and measure carry the whole bound.
 
 **THIS FORM IS THE TOLERANT WIRE'S AND NOTHING ELSE'S.** No id, no kind
 byte, no reference and no length of this section appears in the other four
