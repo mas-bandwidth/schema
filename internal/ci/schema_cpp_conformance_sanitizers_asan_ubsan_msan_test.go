@@ -47,6 +47,7 @@ func TestCppSanitizerLensWiring(t *testing.T) {
 		"CPP_SAN_SOURCES = $(CONFORMANCE_SOURCES)",
 		"build/schema_test_cook_msan",
 		"msan-check",
+		"msan-libcxx-check",
 	} {
 		if !strings.Contains(mk, want) {
 			t.Errorf("%s does not carry %q: the lens target, its pin, its planted pattern or its honest MSan refusal is missing", sanitizerMakeFile, want)
@@ -161,5 +162,51 @@ func TestCppSanitizerAbsentIsNotAPass(t *testing.T) {
 	}
 	if !strings.Contains(out, "CASE") {
 		t.Errorf("the absent-case refusal does not name the grain:\n%s", out)
+	}
+}
+
+// The probe executable is itself MSan-instrumented, so its symbols cannot
+// establish whether a statically linked libc++ was instrumented. The check
+// must inspect the archive selected by the linker trace and refuse a fake
+// uninstrumented archive even when nm reports __msan_ on the probe.
+func TestCppSanitizerMSanLibcxxArchiveProvenance(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	const target = "build/cpp-sanitizers/msan-libcxx-check"
+	build := exec.Command("make", "--no-print-directory", target)
+	build.Dir = root
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building %s: %v\n%s", target, err, out)
+	}
+	dir := t.TempDir()
+	probe := filepath.Join(dir, "probe")
+	archive := filepath.Join(dir, "libc++.a")
+	trace := filepath.Join(dir, "link.log")
+	for _, name := range []string{probe, archive} {
+		if err := os.WriteFile(name, nil, 0o644); err != nil { t.Fatal(err) }
+	}
+	if err := os.WriteFile(trace, []byte(archive+"\n"), 0o644); err != nil { t.Fatal(err) }
+	bin := filepath.Join(dir, "bin")
+	if err := os.Mkdir(bin, 0o755); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(filepath.Join(bin, "ldd"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil { t.Fatal(err) }
+	nm := `#!/bin/sh
+for arg do last=$arg; done
+case "$last" in
+  *libc++.a) if [ "$FAKE_INSTRUMENTED" = 1 ]; then echo ' U __msan_warning'; fi ;;
+  *) echo ' U __msan_warning' ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "nm"), []byte(nm), 0o755); err != nil { t.Fatal(err) }
+	run := func(instrumented string) (string, error) {
+		cmd := exec.Command(filepath.Join(root, target), probe, trace)
+		cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "FAKE_INSTRUMENTED="+instrumented)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	if out, err := run("0"); err == nil || !strings.Contains(out, "selected archive") {
+		t.Fatalf("uninstrumented selected archive passed because probe itself has MSan: %v\n%s", err, out)
+	}
+	if out, err := run("1"); err != nil || !strings.Contains(out, "MSan libc++ verified") {
+		t.Fatalf("instrumented selected archive was refused: %v\n%s", err, out)
 	}
 }

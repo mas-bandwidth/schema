@@ -181,14 +181,31 @@ cpp-conformance-sanitizers-asan-ubsan-negative-control: cpp-conformance-sanitize
 		  cat build/cpp-sanitizers-plant/run.log; exit 1; }
 	@echo 'cpp sanitizer negative control: a planted one-past-the-end write is caught by ASan and named in the report'
 
-# MSAN (nightly). The probe is the gate: clang with -fsanitize=memory needs an
-# instrumented libc++/libc++abi; without one every std::string read is a false
-# positive, so this target refuses BY NAME rather than report noise as a
-# finding. The probe has two halves because a trivial std::string that merely
-# RUNS proves neither: (1) MSan must report a known uninitialised heap read,
-# which proves the runtime is active, and (2) the libc++ the probe linked must
-# carry __msan_ references itself, which is what "instrumented libc++" means.
-build/conformance-cpp-msan: $(CPP_SAN_BASE_PREREQS)
+# MSAN (nightly). The probe proves the runtime catches an uninitialised heap
+# read. A separate check inspects the libc++ actually selected by the link:
+# ldd names a shared object, while -Wl,-t names a static archive. Looking at
+# the probe executable is not evidence about libc++: its own main is compiled
+# with -fsanitize=memory and already contains __msan_ references.
+CPP_SAN_LIBCXX_CHECK := build/cpp-sanitizers/msan-libcxx-check
+$(CPP_SAN_LIBCXX_CHECK): make/schema-cpp-conformance-sanitizers-asan-ubsan-msan.mk
+	@mkdir -p $(dir $@)
+	@{ \
+		echo '#!/bin/sh'; \
+		echo 'set -eu'; \
+		echo 'probe=$$1; trace=$$2'; \
+		echo 'lib=$$(ldd "$$probe" 2>/dev/null | awk '\''/libc\+\+/{print $$3; exit}'\'')'; \
+		echo 'if test -n "$$lib"; then'; \
+		echo '  test -f "$$lib" && nm -D --undefined-only "$$lib" 2>/dev/null | grep -q "__msan_" || { echo "tool missing: msan-instrumented-libc++ (shared libc++ at $$lib carries no MSan instrumentation)" >&2; exit 1; }'; \
+		echo '  echo "MSan libc++ verified: $$lib"; exit 0'; \
+		echo 'fi'; \
+		echo 'lib=$$(awk '\''/(^|\/)libc\+\+\.a([[:space:]]|$$)/{print $$1; exit}'\'' "$$trace")'; \
+		echo 'test -n "$$lib" && test -f "$$lib" || { echo "tool missing: msan-instrumented-libc++ (selected static libc++ archive not identified)" >&2; exit 1; }'; \
+		echo 'nm --undefined-only "$$lib" 2>/dev/null | grep -q "__msan_" || { echo "tool missing: msan-instrumented-libc++ (selected archive $$lib carries no MSan instrumentation)" >&2; exit 1; }'; \
+		echo 'echo "MSan libc++ verified: $$lib"'; \
+	} > $@
+	@chmod +x $@
+
+build/conformance-cpp-msan: $(CPP_SAN_BASE_PREREQS) $(CPP_SAN_LIBCXX_CHECK)
 	@mkdir -p build
 	@printf '%s\n' \
 		'#include <cstdlib>' \
@@ -202,7 +219,7 @@ build/conformance-cpp-msan: $(CPP_SAN_BASE_PREREQS)
 		'    std::free(p);' \
 		'    return (c == 0 && s.size() == 19) ? 0 : 1;' \
 		'}' > build/cpp-msan-probe.cpp
-	@if ! $(CPP_SAN_CXX) -std=c++17 $(CPP_SAN_MSAN) -stdlib=libc++ build/cpp-msan-probe.cpp \
+	@if ! $(CPP_SAN_CXX) -std=c++17 $(CPP_SAN_MSAN) -stdlib=libc++ -Wl,-t build/cpp-msan-probe.cpp \
 			-o build/cpp-msan-probe > build/cpp-msan-probe.log 2>&1; then \
 		echo 'tool missing: msan-instrumented-libc++ (clang++ -fsanitize=memory -stdlib=libc++ does not build)'; \
 		cat build/cpp-msan-probe.log; exit 1; \
@@ -214,14 +231,7 @@ build/conformance-cpp-msan: $(CPP_SAN_BASE_PREREQS)
 	@grep -q 'use-of-uninitialized-value' build/cpp-msan-probe-run.log || \
 		{ echo 'tool missing: msan-instrumented-libc++ (the probe went red, but not on an MSan uninitialised read)'; \
 		  cat build/cpp-msan-probe-run.log; exit 1; }
-	@lib=$$(ldd build/cpp-msan-probe 2>/dev/null | awk '/libc\+\+/{print $$3; exit}'); \
-	 if test -n "$$lib"; then \
-		nm -D --undefined-only "$$lib" 2>/dev/null | grep -q '__msan_' || { \
-			echo "tool missing: msan-instrumented-libc++ (libc++ at $$lib carries no MSan instrumentation)"; exit 1; }; \
-	 else \
-		nm build/cpp-msan-probe 2>/dev/null | grep -q '__msan_' || { \
-			echo 'tool missing: msan-instrumented-libc++ (the probe links no instrumented libc++ and references no MSan runtime)'; exit 1; }; \
-	 fi
+	@$(CPP_SAN_LIBCXX_CHECK) build/cpp-msan-probe build/cpp-msan-probe.log
 	$(CPP_SAN_CXX) -std=c++17 $(CPP_SAN_OPT) $(CPP_SAN_MSAN) -stdlib=libc++ $(CPP_SAN_INCLUDES) \
 		test/conformance/cpp/main.cpp $(CPP_SAN_SOURCES) -o $@
 
