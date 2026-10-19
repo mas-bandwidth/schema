@@ -522,6 +522,9 @@ func recordHasListsSeen(u *ir.Unit, st *ir.Struct, seen map[*ir.Struct]bool) boo
 	}
 	seen[st] = true
 	for _, f := range st.Fields {
+		if f.IsMap() {
+			continue
+		}
 		if f.IsList() {
 			return true
 		}
@@ -537,7 +540,7 @@ func recordHasListsSeen(u *ir.Unit, st *ir.Struct, seen map[*ir.Struct]bool) boo
 
 // fieldHasLists reports a by-value field whose own storage holds an extent.
 func fieldHasLists(u *ir.Unit, f *ir.Field) bool {
-	if f == nil || f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
+	if f == nil || f.IsMap() || f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
 		return false
 	}
 	ref, ok := f.Type.Ref.(*ir.Struct)
@@ -579,6 +582,13 @@ func (g *cookGen) emitCookVariableCarve(name string) {
 	g.pf("    final order = c.order;\n")
 	g.emitCookExtentFields(rs, "value", "    ", true, "at", "base")
 	g.pf("    return point;\n  }\n\n")
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // emitCookExtentFields walks one record's fields in declaration order, emitting
@@ -628,6 +638,27 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 			continue
 		}
 		ref := tableRef(f)
+		// A BOUNDED array of records walks its elements too: the reference's
+		// carver descends a counted or fixed array by-value, live entries only
+		// for a counted one (internal/tablecook/extent.go).
+		if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
+			limit := fmt.Sprintf("%s.%s.length", expr, fieldMember(f))
+			if f.Array == ir.ArrayFixed {
+				limit = fmt.Sprint(f.ArrayBound)
+			}
+			stride := ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / maxInt64(f.ArrayBound, 1)
+			if f.Array == ir.ArrayCounted {
+				stride = ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / maxInt64(int64(f.ArrayBound), 1)
+			}
+			g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, limit)
+			if write {
+				g.pf("%s  point = _carve%s(%s.%s[i], c, %s + %d + i * %d, %s, point);\n", ind, ref.Name, expr, fieldMember(f), at, fl.Offset, stride, base)
+			} else {
+				g.pf("%s  point = _extent%s(%s.%s[i], point);\n", ind, ref.Name, expr, fieldMember(f))
+			}
+			g.pf("%s}\n", ind)
+			continue
+		}
 		if write {
 			g.pf("%spoint = _carve%s(%s.%s, c, %s + %d, %s, point);\n", ind, ref.Name, expr, fieldMember(f), at, fl.Offset, base)
 		} else {
