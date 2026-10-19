@@ -334,6 +334,9 @@ public final class Driver {
 
     private interface CookOpen { CookHandle open(byte[] data, int offset, long length); }
 
+    /** the generated openReason: the TableRefuseReason value name, or ok. */
+    private interface CookReason { String open(byte[] data, int offset, long length); }
+
     /** the generated deref: the slot's offset and the pointee's size (§6.3). */
     private interface Deref { int at(int slot, int size); }
 
@@ -347,13 +350,15 @@ public final class Driver {
     private static final class Root {
         String name;
         CookOpen open;
+        CookReason reason;
         graphdemo.TableCookInfo type;
     }
 
-    private static Root root(String name, CookOpen open, graphdemo.TableCookInfo type) {
+    private static Root root(String name, CookOpen open, CookReason reason, graphdemo.TableCookInfo type) {
         Root r = new Root();
         r.name = name;
         r.open = open;
+        r.reason = reason;
         r.type = type;
         return r;
     }
@@ -373,27 +378,27 @@ public final class Driver {
         roots.add(root("Scene", (d, o, n) -> {
             graphdemo.SceneCook c = graphdemo.SceneCook.open(d, o, n);
             return c == null ? null : handle(c.data(), c.region(), c.regionLength(), c::at);
-        }, graphdemo.SceneCook.type()));
+        }, graphdemo.SceneCook::openReason, graphdemo.SceneCook.type()));
         roots.add(root("Depot", (d, o, n) -> {
             graphdemo.DepotCook c = graphdemo.DepotCook.open(d, o, n);
             return c == null ? null : handle(c.data(), c.region(), c.regionLength(), c::at);
-        }, graphdemo.DepotCook.type()));
+        }, graphdemo.DepotCook::openReason, graphdemo.DepotCook.type()));
         roots.add(root("Album", (d, o, n) -> {
             graphdemo.AlbumCook c = graphdemo.AlbumCook.open(d, o, n);
             return c == null ? null : handle(c.data(), c.region(), c.regionLength(), c::at);
-        }, graphdemo.AlbumCook.type()));
+        }, graphdemo.AlbumCook::openReason, graphdemo.AlbumCook.type()));
         roots.add(root("TreeNode", (d, o, n) -> {
             graphdemo.TreeNodeCook c = graphdemo.TreeNodeCook.open(d, o, n);
             return c == null ? null : handle(c.data(), c.region(), c.regionLength(), c::at);
-        }, graphdemo.TreeNodeCook.type()));
+        }, graphdemo.TreeNodeCook::openReason, graphdemo.TreeNodeCook.type()));
         roots.add(root("ListNode", (d, o, n) -> {
             graphdemo.ListNodeCook c = graphdemo.ListNodeCook.open(d, o, n);
             return c == null ? null : handle(c.data(), c.region(), c.regionLength(), c::at);
-        }, graphdemo.ListNodeCook.type()));
+        }, graphdemo.ListNodeCook::openReason, graphdemo.ListNodeCook.type()));
         roots.add(root("Marker", (d, o, n) -> {
             graphdemo.MarkerCook c = graphdemo.MarkerCook.open(d, o, n);
             return c == null ? null : handle(c.data(), c.region(), c.regionLength(), c::at);
-        }, graphdemo.MarkerCook.type()));
+        }, graphdemo.MarkerCook::openReason, graphdemo.MarkerCook.type()));
     }
 
     private static Root rootNamed(String name) {
@@ -738,6 +743,52 @@ public final class Driver {
         return 0;
     }
 
+    // ---- THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §6.5, §7, §19.2)
+    //
+    // cook-reason and block-reason (test/conformance/README.md): each forgery of
+    // the kind, placed exactly as its line asks (the claim, the lead, or no
+    // buffer at all) and the generated openReason's answer: the
+    // TableRefuseReason value name of the FIRST failing clause, or `ok`. The
+    // harness compares the rows the manifest's `refusal` lines name. The reason
+    // is the generated reader's own: this driver places bytes and prints what it
+    // is told, and judges nothing.
+    private static String blockReason(String name, byte[] data, int base, long length) {
+        if (name.startsWith("block_render")) {
+            return blockdemo.RenderFrameBlock.openReason(data, base, length);
+        }
+        if (name.startsWith("block_padded")) {
+            return blockdemo.PaddedFrameBlock.openReason(data, base, length);
+        }
+        System.err.println("driver: no block named " + name);
+        System.exit(1);
+        return "";
+    }
+
+    private static int surfaceReason(String out, String form) throws IOException {
+        for (String[] f : kind("forgery")) {
+            if (!f[2].equals(form)) {
+                continue;
+            }
+            byte[] source = Files.readAllBytes(Paths.get(f[4]));
+            long claim = Long.parseLong(f[5]);
+            if (claim < 0) {
+                claim = source.length;
+            }
+            String pointer = f.length > 6 ? f[6] : "0";
+            String reason;
+            if (pointer.equals("null")) {
+                reason = form.equals("cook") ? rootNamed(f[3]).reason.open(null, 0, claim)
+                                             : blockReason(f[3], null, 0, claim);
+            } else {
+                Placed p = place(source, claim, Integer.parseInt(pointer));
+                reason = form.equals("cook") ? rootNamed(f[3]).reason.open(p.data, p.base, p.length)
+                                             : blockReason(f[3], p.data, p.base, p.length);
+            }
+            spill(out, f[1], reason + "\n");
+        }
+        return 0;
+    }
+
     private static int surfaceJsonRead(String out) throws IOException {
         for (String[] f : kind("instance")) {
             if (noText(f)) continue;
@@ -1005,7 +1056,7 @@ public final class Driver {
             // §3, §3.1, §16.7) for the roots this leg's variable wire carries —
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one.
-            System.out.print("wire\nreport\njson-read\njson-write\nmessage\n"
+            System.out.print("wire\nreport\nblock-reason\ncook-reason\njson-read\njson-write\nmessage\n"
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
             return 0;
@@ -1018,6 +1069,8 @@ public final class Driver {
         switch (surface) {
             case "wire": return surfaceWire(out);
             case "report": return surfaceReport(out);
+            case "block-reason": return surfaceReason(out, "block");
+            case "cook-reason": return surfaceReason(out, "cook");
             case "json-read": return surfaceJsonRead(out);
             case "json-write": return surfaceJsonWrite(out);
             case "message": return surfaceMessage(out);
