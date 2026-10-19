@@ -41,8 +41,19 @@ func TestRefusalNamesField(t *testing.T) {
  }
  for _,c:=range cases { c:=c; t.Run(c.name,func(t *testing.T){ root:=cleanRoot(); c.make(&root); _,err:=RootMeasureReason(&root); if err==nil { t.Fatalf("MeasureReason accepted %s",c.name) }; if !errors.Is(err,TableRefuseInvalidValue) { t.Fatalf("errors.Is(%v) false",err) }; if !strings.Contains(err.Error(),c.want)||!strings.Contains(err.Error(),c.path) { t.Fatalf("refusal %q, want reason and %q",err.Error(),c.path) }; if errors.Is(err,TableRefuseClamped) { t.Fatalf("refusal %v matched a different reason",err) } }) }
  root:=cleanRoot(); plain:=RootMeasure(&root); got,err:=RootMeasureReason(&root); if err!=nil||got!=plain { t.Fatalf("clean MeasureReason %d,%v want %d,nil",got,err,plain) }
- bad:=cleanRoot(); bad.N=99; _,err=RootMeasureReason(&bad); if err==nil { t.Fatal("expected refusal") }
- } 
+  bad:=cleanRoot(); bad.N=99; _,err=RootMeasureReason(&bad); if err==nil { t.Fatal("expected refusal") }
+  }
+
+func TestMapRefusalNamesField(t *testing.T) {
+  var b RootBuilder; b.Init(); defer b.Shutdown()
+  r:=b.GetRoot()
+  *RootEntriesInsert(&b.Main,&r.Entries,1) = GradeOld
+  _,err:=RootMeasureReason(r,&b.Arena)
+  if err==nil { t.Fatal("MeasureReason accepted a deprecated map value") }
+  if !errors.Is(err,TableRefuseInvalidValue) { t.Fatalf("errors.Is(%v) false",err) }
+  if !strings.Contains(err.Error(),"invalid_value")||!strings.Contains(err.Error(),"Root.entries") { t.Fatalf("refusal %q, want reason and a Root.entries path",err.Error()) }
+  if errors.Is(err,TableRefuseClamped) { t.Fatalf("refusal %v matched a different reason",err) }
+  }
 
 func TestFixedRefusalNamesField(t *testing.T) {
  vals:=[]FixedRoot{{N:99}}
