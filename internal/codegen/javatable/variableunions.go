@@ -152,7 +152,13 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			suffix = "Retain"
 			args = ",TableRetain retain,int[] path,int depth"
 		}
-		fmt.Fprintf(&b, "    static Value readPayload%s(TableVariable.Reader input,TableVariable.NodeTable nt,TableVariable.Report report%s){Value v=new Value();long ref=input.leb();if(input.fail||ref==0)return v;long id=input.resolve(ref);if(input.fail||!input.has(1)){report.malformed=true;return v;}int kind=input.get8();TableVariable.Reader body=input.body();if(body==null)return v;\n", suffix, args)
+		// A UNION FIELD'S HEADER DAMAGE IS NOT A NEW VALUE (docs/SPEC-TABLES.md
+		// §3): the oracle's unionCell leaves the cell an earlier occurrence
+		// decoded standing when the id reference, the arm id, the kind byte or
+		// the arm's `L` cannot be read, and only the field's own None, unknown
+		// or arm damage resets it. null says "leave the previous arm": the
+		// field caller keeps it, an array element takes None (§3, §2.8).
+		fmt.Fprintf(&b, "    static Value readPayload%s(TableVariable.Reader input,TableVariable.NodeTable nt,TableVariable.Report report%s){Value v=new Value();long ref=input.leb();if(input.fail)return null;if(ref==0)return v;long id=input.resolve(ref);if(input.fail)return null;if(!input.has(1)){report.malformed=true;return null;}int kind=input.get8();TableVariable.Reader body=input.body();if(body==null)return null;\n", suffix, args)
 		for i, arm := range un.Variants {
 			fmt.Fprintf(&b, "        if(id==0x%016xL){\n", ir.TableWireId(arm.WireName()))
 			if arm.Void() {
@@ -248,7 +254,10 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		if retain {
 			fmt.Fprintf(b, "retain.discardField(path,depth,%d);path[2*depth]=%d;path[2*depth+1]=0;", ordinal, ordinal)
 		}
-		fmt.Fprintf(b, "v.%s=%sVariable.%s(r,nt,report%s);}else{r.skip(kind);report.kindMismatch++;}\n", m, un.Name, method, args)
+		// A repeated field's last occurrence wins WHOLE, but a damaged occurrence
+		// whose header never became an arm leaves the earlier arm standing
+		// (docs/SPEC-TABLES.md §3, §4).
+		fmt.Fprintf(b, "%sVariable.Value read=%sVariable.%s(r,nt,report%s);if(read!=null)v.%s=read;}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m)
 		return
 	}
 	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(ek!=15){report.kindMismatch++;}else if(count<0||count>0x7fffffffL){report.refused=true;}else{v.%s.clear();", m)
@@ -259,7 +268,9 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	if retain {
 		fmt.Fprintf(b, "path[2*depth]=%d;path[2*depth+1]=(int)i;", ordinal)
 	}
-	fmt.Fprintf(b, "v.%s.add(%sVariable.%s(ar,nt,report%s));if(ar.fail)break;}}}}}else{r.skip(kind);report.kindMismatch++;}\n", m, un.Name, method, args)
+	// An ARRAY ELEMENT is reset the moment its arm id is read (§3, §4), so a
+	// null header answer there is None rather than a kept previous element.
+	fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);v.%s.add(elem==null?new %sVariable.Value():elem);if(ar.fail)break;}}}}}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m, un.Name)
 
 }
 
