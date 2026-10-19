@@ -54,6 +54,8 @@ static void fixed_strict()
     check( v.n == 3 && v.m == 4, "strict clean keeps the value" );
     check( r.clamped == 0 && r.kind_mismatch == 0 && r.duplicate == 0 && !r.malformed,
            "strict clean report is clean" );
+    check( r.refuse_reason == TableRefuseReason::ok,
+           "strict clean leaves the refusal reason ok" );
 
     // clamped: the strict read refuses, resets to defaults, counts clamped
     Fix c; FixReset( c ); c.n = 9; c.m = 9;
@@ -64,6 +66,10 @@ static void fixed_strict()
     check( defaults_fix( c ), "strict clamped resets to defaults" );
     check( cr.clamped == 1 && cr.kind_mismatch == 0 && !cr.malformed,
            "strict clamped counts clamped and nothing else" );
+    // the typed reason is gotable/refusal.go's TableReport.Err answer:
+    // TableRefuseClamped for {"n":100} (strictdefault_test.go FromJson clamped).
+    check( cr.refuse_reason == TableRefuseReason::clamped,
+           "strict clamped sets the clamped refusal reason" );
 
     // kind mismatch: refuse, reset, count kind_mismatch
     Fix k; FixReset( k ); k.n = 9; k.m = 9;
@@ -74,6 +80,10 @@ static void fixed_strict()
     check( defaults_fix( k ), "strict kind resets to defaults" );
     check( kr.kind_mismatch == 1 && kr.clamped == 0 && !kr.malformed,
            "strict kind counts kind_mismatch and nothing else" );
+    // TableRefuseKindMismatch for {"n":"x"} (strictdefault_test.go FromJson
+    // kind_mismatch).
+    check( kr.refuse_reason == TableRefuseReason::kind_mismatch,
+           "strict kind sets the kind_mismatch refusal reason" );
 
     // malformed: refuse, reset, count malformed
     Fix t; FixReset( t ); t.n = 9; t.m = 9;
@@ -84,6 +94,9 @@ static void fixed_strict()
     check( defaults_fix( t ), "strict malformed resets to defaults" );
     check( tr.malformed && tr.clamped == 0 && tr.kind_mismatch == 0,
            "strict malformed counts malformed and nothing else" );
+    // TableRefuseMalformed for {"n":3 (strictdefault_test.go FromJson truncated).
+    check( tr.refuse_reason == TableRefuseReason::malformed,
+           "strict malformed sets the malformed refusal reason" );
 
     // Duplicate alone is evolution, not loss: gotable/mappresence_test.go
     // accepts duplicate with a count, and oracle-dup.log uses this exact Fix.
@@ -133,6 +146,8 @@ static void variable_strict()
            "strict variable clean FromJson answers true" );
     check( r.clamped == 0 && r.kind_mismatch == 0 && !r.malformed,
            "strict variable clean report is clean" );
+    check( r.refuse_reason == TableRefuseReason::ok,
+           "strict variable clean leaves the refusal reason ok" );
 
     // clamped: the strict builder read refuses and counts clamped
     VarBuilder cb; cb.GetRoot()->n = 9; TableReport cr;
@@ -141,6 +156,9 @@ static void variable_strict()
            "strict variable clamped FromJson refuses" );
     check( cr.clamped == 1 && cr.kind_mismatch == 0 && !cr.malformed,
            "strict variable clamped counts clamped and nothing else" );
+    // strictdefault_test.go's variable FromJson clamped row: TableRefuseClamped.
+    check( cr.refuse_reason == TableRefuseReason::clamped,
+           "strict variable clamped sets the clamped refusal reason" );
     check( cb.GetRoot()->n == 1, "strict variable clamped resets root" );
 
     // kind mismatch: the strict builder read refuses and counts kind_mismatch
@@ -150,7 +168,23 @@ static void variable_strict()
            "strict variable kind FromJson refuses" );
     check( kr.kind_mismatch == 1 && kr.clamped == 0 && !kr.malformed,
            "strict variable kind counts kind_mismatch and nothing else" );
+    // strictdefault_test.go's variable FromJson kind_mismatch row:
+    // TableRefuseKindMismatch.
+    check( kr.refuse_reason == TableRefuseReason::kind_mismatch,
+           "strict variable kind sets the kind_mismatch refusal reason" );
     check( kb.GetRoot()->n == 1, "strict variable kind resets root" );
+
+    // malformed: the strict builder read refuses with TableRefuseMalformed
+    // (strictdefault_test.go's variable FromJson truncated row).
+    VarBuilder tb; tb.GetRoot()->n = 9; TableReport tr;
+    const char * truncated = "{\"n\":3,\"spare\":4";
+    check( !VarFromJson( tb, truncated, (int64_t) strlen( truncated ), &tr ),
+           "strict variable malformed FromJson refuses" );
+    check( tr.malformed && tr.clamped == 0 && tr.kind_mismatch == 0,
+           "strict variable malformed counts malformed and nothing else" );
+    check( tr.refuse_reason == TableRefuseReason::malformed,
+           "strict variable malformed sets the malformed refusal reason" );
+    check( tb.GetRoot()->n == 1, "strict variable malformed resets root" );
 
     // A locked builder cannot read and clears an old report before returning.
     VarBuilder locked;
@@ -160,6 +194,8 @@ static void variable_strict()
            "locked builder FromJson refuses" );
     check( lr.unknown == 0 && lr.clamped == 0 && lr.kind_mismatch == 0 && !lr.malformed,
            "locked builder leaves an empty report" );
+    check( lr.refuse_reason == TableRefuseReason::ok,
+           "locked builder leaves no refusal reason" );
 
     // the tolerant twin keeps the recovered value and its counters
     VarBuilder tcb; TableReport tcr;

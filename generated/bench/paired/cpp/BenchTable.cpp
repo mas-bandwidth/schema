@@ -3219,10 +3219,14 @@ bool MixedEntityFromJson( MixedEntity & value, const char * text, int64_t bytes,
     bool ok = TableJsonRead( &value, MixedEntityTableType(), text, bytes, &read );
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
     {
+        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
+        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }
         MixedEntityTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
         return false;
     }
+    read.refuse_reason = TableRefuseReason::ok;
     if ( report != NULL ) { *report = read; }
     return true;
 }
@@ -3248,10 +3252,14 @@ bool MixedStatFromJson( MixedStat & value, const char * text, int64_t bytes, Tab
     bool ok = TableJsonRead( &value, MixedStatTableType(), text, bytes, &read );
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
     {
+        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
+        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }
         MixedStatTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
         return false;
     }
+    read.refuse_reason = TableRefuseReason::ok;
     if ( report != NULL ) { *report = read; }
     return true;
 }
@@ -3277,10 +3285,14 @@ bool MixedHitEventFromJson( MixedHitEvent & value, const char * text, int64_t by
     bool ok = TableJsonRead( &value, MixedHitEventTableType(), text, bytes, &read );
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
     {
+        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
+        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }
         MixedHitEventTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
         return false;
     }
+    read.refuse_reason = TableRefuseReason::ok;
     if ( report != NULL ) { *report = read; }
     return true;
 }
@@ -3306,10 +3318,14 @@ bool MixedChatEventFromJson( MixedChatEvent & value, const char * text, int64_t 
     bool ok = TableJsonRead( &value, MixedChatEventTableType(), text, bytes, &read );
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
     {
+        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
+        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }
         MixedChatEventTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
         return false;
     }
+    read.refuse_reason = TableRefuseReason::ok;
     if ( report != NULL ) { *report = read; }
     return true;
 }
@@ -3335,10 +3351,14 @@ bool MixedPickupEventFromJson( MixedPickupEvent & value, const char * text, int6
     bool ok = TableJsonRead( &value, MixedPickupEventTableType(), text, bytes, &read );
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
     {
+        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
+        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }
         MixedPickupEventTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
         return false;
     }
+    read.refuse_reason = TableRefuseReason::ok;
     if ( report != NULL ) { *report = read; }
     return true;
 }
@@ -3364,10 +3384,14 @@ bool BenchMixedFromJson( BenchMixed & value, const char * text, int64_t bytes, T
     bool ok = TableJsonRead( &value, BenchMixedTableType(), text, bytes, &read );
     if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
     {
+        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
+        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
+        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }
         BenchMixedTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
         return false;
     }
+    read.refuse_reason = TableRefuseReason::ok;
     if ( report != NULL ) { *report = read; }
     return true;
 }
