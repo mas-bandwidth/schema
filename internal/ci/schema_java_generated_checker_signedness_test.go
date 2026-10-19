@@ -64,11 +64,8 @@ func TestSchemaJavaGeneratedCheckerSignednessIsNotAPort(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	body := readRepoFile(t, root, "Makefile")
-	if !strings.Contains(body, "NON_PORT_MAKE_FRAGMENTS := "+signednessMakeFile) {
-		t.Errorf("the Makefile does not name %s as a non-port fragment", signednessMakeFile)
-	}
-	if !strings.Contains(body, "$(filter-out $(NON_PORT_MAKE_FRAGMENTS),$(wildcard make/*.mk))") {
-		t.Errorf("tables-ports-refuse-wide-scalars does not filter NON_PORT_MAKE_FRAGMENTS out of its registry")
+	if !strings.Contains(body, "$(filter-out make/schema-%.mk,$(wildcard make/*.mk))") {
+		t.Errorf("tables-ports-refuse-wide-scalars does not filter the schema-* lens namespace out of its registry")
 	}
 }
 
