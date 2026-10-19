@@ -57,6 +57,12 @@ func TestStringArraysRefusedOffGo(t *testing.T) {
 				}
 				continue
 			}
+			if lang == "luau" && tc.want == `json = "array" on table GoalList` {
+				if err != nil {
+					t.Errorf("%s: luau refused a construct it carries: %v", tc.name, err)
+				}
+				continue
+			}
 			if err == nil {
 				t.Errorf("%s: target %s accepted the construct", tc.name, lang)
 				continue

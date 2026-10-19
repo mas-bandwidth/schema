@@ -122,10 +122,8 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 	}
 	// GO CARRIES TEXT LISTS AND THE ARRAY ROOT FIRST (docs/SPEC-TABLES.md
 	// §2.13, §16.10): every other target refuses them here, once, by name
-	if !carries(carrier, carryUnboundedText) && !carries(carrier, carryTextListTotal) && !carries(carrier, carryTextList) && !carries(carrier, carryArrayRoot) {
-		if err := refuseTextForms(u, carrier); err != nil {
-			return nil, err
-		}
+	if err := refuseTextForms(u, carrier); err != nil {
+		return nil, err
 	}
 	// GO CARRIES THE ONE-SIDED INTEGER RANGE FIRST (docs/SPEC-TABLES.md §4,
 	// SPEC §4.6): every other target refuses a unit that uses it, here,
