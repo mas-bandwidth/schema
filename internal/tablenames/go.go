@@ -431,6 +431,7 @@ func init() {
 		Name{Name: "TableFixedHashAt", What: "the fixed form's pinned header: the layout hash at offset 8 (§3)"},
 		Name{Name: "TableFixedEntry", What: "the fixed form (form 3)"},
 		Name{Name: "TableFixedDst", What: "the fixed form (form 3)"},
+		Name{Name: "tableFixedDstDeprecated", What: "the fixed form's deprecated-slot marker bit in a plan entry's Arg (docs/SPEC-TABLES.md §21.2)"},
 		Name{Name: "tableFixedCopy", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedCount", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedText", What: "the fixed form (form 3)"},
