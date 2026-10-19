@@ -23,6 +23,7 @@ package jstable
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -406,13 +407,14 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 // ---------------------------------------------------------------------------
 
 // generateVariableFiles emits the VARIABLE FORM codec (docs/SPEC-TABLES.md
-// §3.1) for the unit's card-construct roots, as one self-contained module per
-// unit (<Package>Variable.js). A unit with no such root gets nothing; a root
-// holding a construct outside the card set is refused by name
-// (refuseCardUnsupportedVariableConstructs, docs/SPEC-TABLES.md §11) and
-// carries no codec — unless the unit's closure declares a `fixed table`
-// (closureHoldsFixedTable), in which case the fixed form's codec stands and the
-// variable form's boundary does not bind the unit.
+// §3.1) for the unit's carried roots, as one self-contained module per unit
+// (<Package>Variable.js). A unit with no such root gets nothing; a table
+// holding a construct this leg does not carry, or reaching one that does, is
+// refused by name (refuseCardUnsupportedVariableConstructs, docs/SPEC-TABLES.md
+// §11) and carries no codec — unless the unit's closure declares a `fixed
+// table` (closureHoldsFixedTable), in which case the fixed form's codec stands,
+// the variable form's boundary does not bind the unit, and the refused table is
+// left absent rather than refusing the unit whole.
 func generateVariableFiles(u *ir.Unit, wide []string) (map[string][]byte, error) {
 	_ = wide
 	closure := ir.TableClosure(u)
@@ -428,8 +430,8 @@ func variableRoots(u *ir.Unit, tables []*ir.Struct) []*ir.Struct {
 	var out []*ir.Struct
 	for _, st := range tables {
 		// The VARIABLE form (§3.1) accepts constructs that the fixed form (§3.4)
-		// refuses: pointers (*string), unbounded arrays ([]T), maps, unions, etc.
-		// Only tables and map entries are excluded.
+		// refuses: pointers, blobs, unbounded arrays. Only tables are roots, and a
+		// map's generated entry is not one.
 		if !st.IsTable || st.IsMapEntry() {
 			continue
 		}
@@ -438,6 +440,9 @@ func variableRoots(u *ir.Unit, tables []*ir.Struct) []*ir.Struct {
 	return out
 }
 
+// variableCollectTypes orders a root's closure — every table it reaches by
+// value, by element or by pointer — so the emitted codecs cover the whole
+// graph a save can number (docs/SPEC-TABLES.md §3.1).
 func variableCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct) {
 	if seen[st.Name] {
 		return
@@ -447,81 +452,113 @@ func variableCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Stru
 		if f.Type.Kind != ir.TNamed {
 			continue
 		}
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
+		if r, ok := f.Type.Ref.(*ir.Struct); ok {
 			variableCollectTypes(r, seen, order)
 		}
 	}
 	*order = append(*order, st)
 }
 
-// variableFieldRefusal names the construct a field holds that the card set
-// does not include, as `Table.field: construct (cite)`. The empty string is a
-// field the card set accepts. The card set (the slice
-// js-carries-the-variable-form-for-card-constructs) is exactly: bool, int32
-// and int64 scalars with their defaults and min/max; enums; string(N);
-// *string (§2.5); and unbounded lists of tables []T (§2.9).
+// variableClass is one unit's answer to "does this leg carry that table on the
+// variable wire" (docs/SPEC-TABLES.md §3, §3.1, §11): per table, "" when it
+// does and `Table.field: construct (cite)` when it does not. A table whose own
+// fields are all carried but which reaches a table that is not is refused too,
+// at the field that reaches it, so a carried root never reaches a table this
+// leg has no codec for.
+type variableClass struct {
+	reason map[string]string
+}
+
+func newVariableClass(u *ir.Unit) *variableClass {
+	vc := &variableClass{reason: map[string]string{}}
+	names := make([]string, 0, len(u.Tables))
+	for n := range u.Tables {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		if refusals := tableVariableRefusals(u.Tables[n]); len(refusals) != 0 {
+			vc.reason[n] = refusals[0]
+		} else {
+			vc.reason[n] = ""
+		}
+	}
+	// THE FIXPOINT: a table reaching a refused table is refused at the field
+	// that reaches it, until nothing moves.
+	for changed := true; changed; {
+		changed = false
+		for _, n := range names {
+			if vc.reason[n] != "" {
+				continue
+			}
+			for _, f := range u.Tables[n].Fields {
+				ref, ok := f.Type.Ref.(*ir.Struct)
+				if !ok || f.Type.Kind != ir.TNamed {
+					continue
+				}
+				if why := vc.reason[ref.Name]; why != "" {
+					vc.reason[n] = fmt.Sprintf("%s.%s: it reaches %s, which this leg does not carry (%s)", n, f.Name, ref.Name, why)
+					changed = true
+					break
+				}
+			}
+		}
+	}
+	return vc
+}
+
+// carried reports whether the variable wire carries one table.
+func (vc *variableClass) carried(name string) bool { return vc.reason[name] == "" }
+
+// variableFieldRefusal names the construct a field holds that this leg's
+// variable wire does not carry, as `Table.field: construct (cite)`. The empty
+// string is a field it carries: bool; every int width but 128 and every uint
+// width (§3); float32 and float64; bits(N) (§15); string(N) and bytes(N) (§3);
+// *string and *bytes (§2.5); enums; a table nested by value (§3) or pointed at
+// (§2.1, §3.1); and an unbounded []T or a bounded [..N]T array of a table, a
+// pointer, a scalar or an enum element (§2.9) — a declared minimum, [Min..N]T,
+// moves nothing on this wire, which the reference engine never reads it on.
+// Whether a referenced TABLE is itself carried is the fixpoint's question
+// (newVariableClass).
 func variableFieldRefusal(st *ir.Struct, f *ir.Field) string {
 	name := st.Name + "." + f.Name
-	// f.IsList() covers the list itself; the element must be a table.
-	if f.IsList() {
-		if f.Type.Kind != ir.TNamed {
-			return name + ": a []T whose element is not a table (docs/SPEC-TABLES.md §2.9)"
-		}
-		if _, ok := f.Type.Ref.(*ir.Struct); !ok {
-			return name + ": a []T whose element is not a table (docs/SPEC-TABLES.md §2.9)"
-		}
-		return ""
-	}
-	if f.IsMap() {
+	switch {
+	case f.IsMap() || f.Type.Kind == ir.TMap:
 		return name + ": a map (docs/SPEC-TABLES.md §2.8)"
-	}
-	if f.KeyEnum != "" {
+	case f.KeyEnum != "":
 		return name + ": an enum-keyed array (docs/SPEC-TABLES.md §2.4)"
-	}
-	if f.Type.Optional {
+	case f.Type.Optional:
 		return name + ": an optional ?T (docs/SPEC-TABLES.md §2.3)"
+	case f.Guard != "":
+		return name + ": a guarded field, an if group (docs/SPEC-TABLES.md §16.2)"
+	case f.HasFloatRange:
+		return name + ": a compressed float (docs/SPEC-TABLES.md §3)"
+	case f.Array == ir.ArrayFixed:
+		return name + ": a fixed-length array [N]T (docs/SPEC-TABLES.md §3)"
+	case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+		return name + ": an array of strings or byte strings (docs/SPEC-TABLES.md §2.9)"
 	}
 	switch f.Type.Kind {
-	case ir.TBool:
+	case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes:
 		return ""
 	case ir.TInt:
-		if f.Type.Signed && (f.Type.Width == 32 || f.Type.Width == 64) {
-			return ""
+		if f.Type.Width == 128 {
+			return name + ": a " + ir.TableTypeSpelling(f) + " (docs/SPEC-TABLES.md §3)"
 		}
-		return name + ": a " + ir.TableTypeSpelling(f) + " (the card set's scalars are int32 and int64, docs/SPEC-TABLES.md §3)"
-	case ir.TBits:
-		return name + ": a bits(" + itoa(int64(f.Type.Width)) + ") (docs/SPEC-TABLES.md §15)"
-	case ir.TFloat32:
-		return name + ": a float32 (docs/SPEC-TABLES.md §3)"
-	case ir.TFloat64:
-		return name + ": a float64 (docs/SPEC-TABLES.md §3)"
-	case ir.TString:
-		// string(N) and *string (§2.5, the string kind) are both in the set.
 		return ""
-	case ir.TBytes:
-		if f.Type.Pointer {
-			return name + ": a *bytes (docs/SPEC-TABLES.md §2.5)"
-		}
-		return name + ": a bytes(N) (docs/SPEC-TABLES.md §3)"
 	case ir.TFixed:
 		return name + ": a fixed/ufixed (docs/SPEC-TABLES.md §15)"
-	case ir.TMap:
-		return name + ": a map (docs/SPEC-TABLES.md §2.8)"
 	case ir.TWString:
 		return name + ": a wstring(N) (docs/SPEC-TABLES.md §16)"
 	case ir.TNamed:
-		switch f.Type.Ref.(type) {
+		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
 			return ""
 		case *ir.Struct:
-			if f.Type.Pointer {
-				return name + ": a pointer to a table (docs/SPEC-TABLES.md §2.1)"
+			if !ref.IsTable {
+				return name + ": a nested type (docs/SPEC-TABLES.md §2)"
 			}
-			if f.Array != ir.ArrayNone {
-				return name + ": a " + ir.TableTypeSpelling(f) + " array (docs/SPEC-TABLES.md §2.9)"
-			}
-			return name + ": a table field by value (docs/SPEC-TABLES.md §3.1)"
+			return ""
 		case *ir.Union:
 			return name + ": a union arm (docs/SPEC-TABLES.md §2.6)"
 		case *ir.Flags:
@@ -531,8 +568,8 @@ func variableFieldRefusal(st *ir.Struct, f *ir.Field) string {
 	return name + ": a construct this backend cannot name (§11)"
 }
 
-// tableVariableRefusals lists every field of a variable root the card set does
-// not include, in declaration order.
+// tableVariableRefusals lists every field of a table the variable wire does not
+// carry, in declaration order.
 func tableVariableRefusals(st *ir.Struct) (out []string) {
 	for _, f := range st.Fields {
 		if r := variableFieldRefusal(st, f); r != "" {
@@ -541,5 +578,3 @@ func tableVariableRefusals(st *ir.Struct) (out []string) {
 	}
 	return out
 }
-
-func itoa(v int64) string { return fmt.Sprintf("%d", v) }

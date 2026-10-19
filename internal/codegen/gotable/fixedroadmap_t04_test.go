@@ -36,6 +36,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -309,6 +310,7 @@ func t04GoE8(t *testing.T) {
 // default" — and the title's "moves no counter at all" is asserted on the
 // running read.
 func t04GoR19(t *testing.T) {
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated clean pair)")
 	rows := []string{"field_append", "enum_append", "flags_append", "keyed_array_enum_append"}
 	root := t.TempDir()
 	var imports, requires, replaces, bodies []string
@@ -460,7 +462,7 @@ func t04CleanBody(t *testing.T, row, oa, na string) string {
 	got := make([]%s.Lineage, 1)
 	var r %s.TableReport
 	plan := make([]%s.TableFixedEntry, 4096)
-	if n := %s.LineageFixedLoad(got, buf, plan, &r); n != 1 {
+	if n := %s.LineageFixedLoadTolerant(got, buf, plan, &r); n != 1 {
 		t.Fatalf("R19 %s: the newer reader refused the older writer's file: n=%%d %%+v", n, r)
 	}
 %s
@@ -521,10 +523,17 @@ func t04GoR16(t *testing.T) {
 	if n := strings.Count(run, "report.KindMismatch++"); n != 0 {
 		t.Errorf("R16: the record loop counts KindMismatch %d times; that census is COMPILE's, once per peer", n)
 	}
-	for _, op := range []string{"case tableFixedCount:", "case tableFixedText:"} {
-		if !strings.Contains(t02GoBlock(t, run, op, "case tableFixed"), "report.Clamped++") {
-			t.Errorf("R16: %s does not clamp once per entry", op)
+	refusal := funcSource(tableFixedRuntime, "func tableFixedTextRefusal(")
+	if refusal == "" {
+		t.Fatal("R16: the total bounds/text pre-scan is not emitted")
+	}
+	for _, want := range []string{"case tableFixedCount:", "return TableFixedReasonCountOverBound", "case tableFixedText:", "return TableFixedReasonLengthOverBound"} {
+		if !strings.Contains(refusal, want) {
+			t.Errorf("R16: pre-scan does not carry %q", want)
 		}
+	}
+	if !strings.Contains(run, "if why := tableFixedTextRefusal(plan, count, src); why != \"\" {") {
+		t.Error("R16: direct runner does not pre-scan before writes")
 	}
 	// THE OPS MOVE NOTHING (§5.4): the ordinal and const ops land their value and
 	// count no clamp; the forged ordinal's count is the bounds pass's. The const
@@ -540,7 +549,7 @@ func t04GoR16(t *testing.T) {
 	if !strings.Contains(tableFixedRuntime, "func tableFixedForgedBounds(") {
 		t.Error("R16: the bounds pass that counts a forged ordinal is not emitted")
 	}
-	load := t02GoNorm(funcSource(t02GoEmit(t, unitFrom(t, t04Flat)), "func TFixedLoad("))
+	load := t02GoNorm(funcSource(t02GoEmit(t, unitFrom(t, t04Flat)), "func TFixedLoadTolerant("))
 	if !strings.Contains(load, "tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)") {
 		t.Error("R16: the compiled read does not run the bounds pass that counts a forged ordinal")
 	}
@@ -567,7 +576,7 @@ func t04GoR18(t *testing.T) {
 	if strings.Contains(usrc, "TFixedClamp") {
 		t.Error("R18: a clamp that cannot fire is emitted for an unbounded table")
 	}
-	if strings.Contains(t02GoNorm(funcSource(usrc, "func TFixedLoad(")), "TFixedClamp(") {
+	if strings.Contains(t02GoNorm(funcSource(usrc, "func TFixedLoadTolerant(")), "TFixedClamp(") {
 		t.Error("R18: the load calls a clamp for a table that declares nothing bounded")
 	}
 
@@ -579,7 +588,7 @@ func t04GoR18(t *testing.T) {
 	if !strings.Contains(rsrc, "func TFixedClamp(") {
 		t.Error("R18: a ranged table emitted no clamp pass")
 	}
-	if !strings.Contains(t02GoNorm(funcSource(rsrc, "func TFixedLoad(")), "TFixedClamp(&values[k], report)") {
+	if !strings.Contains(t02GoNorm(funcSource(rsrc, "func TFixedLoadTolerant(")), "TFixedClamp(&values[k], report)") {
 		t.Error("R18: the load does not run the clamp pass for a ranged table")
 	}
 	if !strings.Contains(rsrc, "report.Clamped += clamped") {

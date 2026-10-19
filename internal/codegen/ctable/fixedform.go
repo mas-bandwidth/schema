@@ -67,6 +67,9 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 			fixedCollectTypes(r, seen, order)
 		case *ir.Union:
 			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm names no type (§2.6)
+				}
 				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
 					fixedCollectTypes(s, seen, order)
 				}
@@ -224,11 +227,13 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED %s void %s( uint8_t * b, const %s * value )\n{\n",
 		tableInlineMacro(g.unit.Package), g.sym(st.Name, "fixed_write_body"), st.Name)
 	g.pf("    (void) b; (void) value;\n")
+	g.fixedTable, g.fixedLoop = st.Name, 0
 	off := int64(0)
 	for _, f := range st.Fields {
 		g.emitFixedWriteField(f, off, "b", "value->", 4)
 		off += ir.TableFixedFieldBytes(f)
 	}
+	g.fixedTable = ""
 	g.pf("}\n\n")
 }
 
@@ -278,9 +283,47 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base int64, count string, buf, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	elem := ir.TableFixedElementBytes(f)
-	g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < (int64_t) %s; ++i )\n%s    {\n", ind, ind, ind, count, ind)
-	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s + %d + i * %d", buf, base, elem), expr+"[i]", indent+8)
+	// A loop NESTS when an array arm rides inside an array of unions, and the
+	// C leg builds with -Wshadow: each level gets its own counter, the
+	// outermost keeping `i` (the reference's fixedLoopVar).
+	i := fixedLoopVar(g.fixedLoop)
+	g.fixedLoop++
+	g.pf("%s{\n%s    int64_t %s;\n%s    for ( %s = 0; %s < (int64_t) %s; ++%s )\n%s    {\n", ind, ind, i, ind, i, i, count, i, ind)
+	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s + %d + %s * %d", buf, base, i, elem), expr+"["+i+"]", indent+8)
 	g.pf("%s    }\n%s}\n", ind, ind)
+	g.fixedLoop--
+}
+
+// fixedLoopVar names a fixed write body's element-loop counter for a nesting
+// level: `i`, then `i1`, `i2`, ...
+func fixedLoopVar(depth int) string {
+	if depth == 0 {
+		return "i"
+	}
+	return fmt.Sprintf("i%d", depth)
+}
+
+// emitFixedWriteArm is ONE UNION ARM's fixed-form store, the C twin of the
+// reference's (cpptable emitFixedWriteArm): an arm is a whole field spelling,
+// not an element, so a text, bytes or array arm takes the payload store —
+// the used LENGTH or COUNT, then the units — with the arm's own storage
+// spellings (`.as.<arm>.value` beside `.as.<arm>.value_length` / `_count`,
+// §2.6). Reading such an arm as an element is what printed `uint0_t` and
+// `table_fixed_put0`: TableFixedStorageBytes has no width for a string. A
+// payload-free arm writes nothing under the tag.
+func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, off int64, buf, expr string, indent int) {
+	if v.Void() {
+		return
+	}
+	arm := *v.F
+	val := expr + ".as."
+	if armCompanioned(v) {
+		val = expr + ".as." + v.Name + "."
+		arm.Name = "value"
+	} else {
+		arm.Name = v.Name
+	}
+	g.emitFixedWritePayload(&arm, off, buf, val, indent)
 }
 
 /*
@@ -316,18 +359,21 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			g.pf("%s%s( %s + %d, &%s );\n", ind, g.sym(r.Name, "fixed_write_body"), buf, off, expr)
 			return
 		case *ir.Union:
-			tag := int64(ir.StorageBitsFor(r.Max) / 8)
+			tag := g.intBytes(g.fixedTable, f.Name+" (the "+r.Name+" tag)", int64(ir.StorageBitsFor(r.Max)/8))
 			g.pf("%stable_fixed_put%d( %s + %d, (uint%d_t) %s.type );\n", ind, tag*8, buf, off, tag*8, expr)
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 			for _, v := range r.Variants {
 				g.pf("%s    case %s:\n%s    {\n", ind, enumConst(f.Type.Name+"Type", v.Name), ind)
-				g.emitFixedWriteElement(v.F, off+tag, buf, fmt.Sprintf("%s.as.%s", expr, v.Name), indent+8)
+				// A payload-free arm's whole storage is the tag (§2.6): its case
+				// writes nothing under the tag. "A union writes the tag and the
+				// taken arm only" (docs/FIXED-FORM-ALGORITHM.md §3.1).
+				g.emitFixedWriteArm(v, off+tag, buf, expr, indent+8)
 				g.pf("%s        break;\n%s    }\n", ind, ind)
 			}
 			g.pf("%s    default: break;\n%s}\n", ind, ind)
 			return
 		case *ir.Enum:
-			w := int64(r.StorageBits / 8)
+			w := g.intBytes(g.fixedTable, f.Name, int64(r.StorageBits/8))
 			g.pf("%stable_fixed_put%d( %s + %d, (uint%d_t) %s );\n", ind, w*8, buf, off, w*8, expr)
 			return
 		case *ir.Flags:
@@ -352,6 +398,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			}
 			return
 		}
+		w = g.intBytes(g.fixedTable, f.Name, w)
 		g.pf("%stable_fixed_put%d( %s + %d, (uint%d_t) %s );\n", ind, w*8, buf, off, w*8, expr)
 	}
 }
@@ -439,6 +486,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED const TableFixedGuardLink %s_fixed_guards[] = {\n", n)
 	for _, l := range pool {
 		g.pf("    { %du, %du, %d },\n", l.Guard, l.Arg, l.ArgW)
+	}
+	if len(pool) == 0 {
+		// AN EMPTY POOL STILL DECLARES ONE LINK: `T x[] = {}` is a size-0
+		// array, which ISO C forbids and MSVC refuses (C2466). No chain points
+		// here and the count below stays 0, so the placeholder is never read.
+		g.pf("    { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */\n")
 	}
 	g.pf("};\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_guard_count = %d;\n\n", n, len(pool))

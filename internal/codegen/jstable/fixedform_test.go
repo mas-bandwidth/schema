@@ -330,32 +330,17 @@ fixed table Config {
 // the ArgW lane on that entry is 1, which is the width a tag had when this
 // field did not exist.
 func TestFixedGuardComparedAtArgW(t *testing.T) {
-	u := unitFrom(t, `package probe
-table Root { n int32 }
-`)
-	files, err := Generate(u)
-	if err != nil {
-		t.Fatalf("generate: %v", err)
-	}
-	var src string
-	for _, b := range files {
-		s := string(b)
-		if strings.Contains(s, "function TableFixedRun(") {
-			src = s
-			break
-		}
-	}
-	if src == "" {
-		t.Fatal("no TableFixedRun in the generated unit")
-	}
+	src := guardProbeSource(t)
 	if !strings.Contains(src, "function TableFixedTagAt(") {
 		t.Error("the runtime never names TableFixedTagAt")
 	}
 	if !strings.Contains(src, "const TableFixedLaneArgW = 8;") {
 		t.Error("the plan omits the ArgW lane")
 	}
-	if !strings.Contains(src, "export const TableFixedLanes = 9;") {
-		t.Error("a plan entry is nine int32 lanes, not eight")
+	// NINE LANES AND THE GUARD CHAIN'S TWO (docs/FIXED-FORM-ALGORITHM.md §4.1):
+	// offset+count into the plan's pool for an entry under more than one union.
+	if !strings.Contains(src, "export const TableFixedLanes = 11;") {
+		t.Error("a plan entry is eleven int32 lanes: the nine and the guard chain's offset+count")
 	}
 	if strings.Contains(src, "src[srcAt + guard] !== e[b + TableFixedLaneArg]") {
 		t.Error("the run loop still compares the union guard as one byte")
@@ -366,12 +351,43 @@ table Root { n int32 }
 	if strings.Contains(src, "if (identity)") {
 		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
 	}
-	if !strings.Contains(src, "RootFixedIdentity = new Int32Array([0, 0, 0, 4, 0, -1, 0, 0, 1])") {
-		t.Error("the identity plan omitted the ArgW lane (ninth is 1)")
-	}
 	if !strings.Contains(src, "plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;") {
 		t.Error("the compiler does not stamp ArgW from the writer's tag width")
 	}
+}
+
+// THE IDENTITY PLAN IS ELEVEN LANES, THE GUARD CHAIN'S OFFSET AND COUNT LAST.
+// The ninth lane is ArgW: the identity entry is one COPY of the body, and its
+// ArgW lane is 1, the width a tag had when the field did not exist.
+func TestFixedIdentityPlanIsElevenLanes(t *testing.T) {
+	t.Parallel()
+
+	src := guardProbeSource(t)
+	if !strings.Contains(src, "RootFixedIdentity = new Int32Array([0, 0, 0, 4, 0, -1, 0, 0, 1, 0, 0])") {
+		t.Error("the identity plan omitted the ArgW lane (ninth is 1, the guard chain's offset and count are the last two)")
+	}
+}
+
+// guardProbeSource generates the one-field fixed root both the ArgW guard test
+// and the identity-plan pin read, and answers the module that carries the
+// shared runtime and the table's fixed surface.
+func guardProbeSource(t *testing.T) string {
+	t.Helper()
+	u := unitFrom(t, `package probe
+table Root { n int32 }
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	for _, b := range files {
+		s := string(b)
+		if strings.Contains(s, "function TableFixedRun(") {
+			return s
+		}
+	}
+	t.Fatal("no TableFixedRun in the generated unit")
+	return ""
 }
 
 func unitFrom(t *testing.T, src string) *ir.Unit {

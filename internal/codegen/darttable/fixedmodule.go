@@ -208,10 +208,10 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 	return ""
 }
 
-// fixedLocalUnions finds unions with direct field-line, payload-free or TABLE
-// arms. Their fixed form owns its storage, including a tag-only union with no
-// arm members and a union whose arms are tables, which no other emitter
-// defines (docs/SPEC-TABLES.md §2.6, §3.4).
+// fixedLocalUnions finds unions with direct field-line, payload-free, TABLE or
+// UNION arms. Their fixed form owns its storage, including a tag-only union
+// with no arm members, a union whose arms are tables and a union whose arm is
+// a union, which no other emitter defines (docs/SPEC-TABLES.md §2.6, §3.4).
 func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 	seen := map[string]bool{}
 	var out []*ir.Union
@@ -235,6 +235,13 @@ func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 			// emits its class. The fixed form is its only home and owns its
 			// storage, one pre-allocated table per arm (§3.4).
 			if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed && s.IsTable {
+				local = true
+			}
+			// A UNION WHOSE ARM IS A UNION is a table union (SPEC-TABLES §2.6):
+			// internal/codegen/dart never declares it, so its storage is this
+			// emitter's, and its arms answer to the OUTER tag through the guard
+			// chain (docs/FIXED-FORM-ALGORITHM.md §4.1).
+			if _, ok := v.F.Type.Ref.(*ir.Union); ok {
 				local = true
 			}
 		}

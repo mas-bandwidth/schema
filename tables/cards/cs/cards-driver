@@ -1,0 +1,15 @@
+#!/bin/sh
+# THE C# CARD LEG's driver (tables/cards/conformance/FORMAT.md).
+#
+# A driver is a COMMAND, not a binary, exactly so a leg can be assembled from
+# what a backend already has. This one dispatches to the single built driver
+# program: a `dotnet run` per surface would pay a build check per surface,
+# and the check is measured across every registered leg, not this one alone.
+#
+# The working directory is the repository root, which is the contract: every
+# path in the manifest is repo-relative, so a driver never resolves one
+# itself.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+exec dotnet build/cards-driver-cs/CardsDriver.dll "$@"

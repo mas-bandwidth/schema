@@ -101,6 +101,25 @@ func tableScalarKind(f *ir.Field) int { return ir.TableScalarKind(f) }
 
 func tableKindWidth(kind int) int { return ir.TableKindWidth(kind) }
 
+// intBytes is THE ONE GATE every integer width this emitter prints passes
+// through: it returns bytes unchanged and, for anything but 1, 2, 4 or 8, records
+// a refusal naming the table, the field and the width. No zero-width integer is
+// ever valid (Glenn, 2026-10-16), so `uint0_t` cannot reach a header.
+func (g *tableGen) intBytes(table, field string, bytes int64) int64 {
+	if err := ir.PrintedIntegerWidthRefusal(table, field, bytes); err != nil && g.widthErr == nil {
+		g.widthErr = err
+	}
+	return bytes
+}
+
+// ownerName is the closure member being emitted, for a refusal's sentence.
+func (g *tableGen) ownerName() string {
+	if g.owner != nil {
+		return g.owner.Name
+	}
+	return ""
+}
+
 func tablePut(width int) string { return fmt.Sprintf("table_writer_put%d", width*8) }
 func tableGet(width int) string { return fmt.Sprintf("table_reader_get%d", width*8) }
 
@@ -135,7 +154,15 @@ type tableGen struct {
 	// table_writer_id_at beside the id itself. Built on first use.
 	idOrdinal map[uint64]int
 	body      strings.Builder
-	includes  map[string]bool // referenced files -> #include "<base>Table.h"
+	// widthErr is the FIRST printed integer width this generator refused
+	// (ir.PrintedIntegerWidthRefusal, through [tableGen.intBytes]); a non-nil
+	// one fails the whole Generate by name.
+	widthErr error
+	// fixedTable names the fixed write body being emitted, so a refused width
+	// names its table; fixedLoop is that body's element-loop nesting depth.
+	fixedTable string
+	fixedLoop  int
+	includes   map[string]bool // referenced files -> #include "<base>Table.h"
 }
 
 func (g *tableGen) canProbe(st *ir.Struct) bool {
@@ -735,6 +762,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			g.emitRetainBodies(nil, g.fileWireUnions())
 			g.pf("/* no tables declared or referenced in this file — codecs are emitted\n")
 			g.pf("   for the table closure only (`table` declarations and what they reach) */\n")
+		}
+		// A PRINTED INTEGER IS 1, 2, 4 OR 8 BYTES (ir.PrintedIntegerWidthRefusal):
+		// the first width either generator refused stops the build by name.
+		for _, eg := range []*tableGen{g, cg} {
+			if eg.widthErr != nil {
+				return nil, eg.widthErr
+			}
 		}
 		out[f.Base+"Table.h"] = g.header(u, f, members)
 		if len(members) > 0 {

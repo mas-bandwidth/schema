@@ -38,9 +38,14 @@ var docExamples = []docExample{
 	{"../docs/SPEC-TABLES.md", "table Node", 2},                       // §3.1, framing worked
 	{"../docs/SPEC-TABLES.md", "fixed table Item { count int32 }", 1}, // §2.8, maps
 	{"../docs/SPEC-TABLES.md", "package demo", 1},                     // §7.3, a cook worked to the byte
+	{"../docs/SPEC-TABLES.md", `table Pong | forms = "wire,json"`, 1}, // §2.12, the forms a table carries
 	{"../docs/SPEC-TABLES.md", "name    string(16)", 1},               // §16.7, one declaration, two texts
 	{"../docs/USAGE.md", "table OpenDocument", 1},                     // messages: a union whose arms are tables
 	{"../docs/USAGE.md", "table Node", 1},                             // pointers
+	{"../docs/SPEC-TABLES.md", "table Where", 1},                      // §2.13.1, unbounded text
+	{"../docs/USAGE.md", "table Where", 1},                            // unbounded text in lists and map keys
+	{"../docs/USAGE.md", "table Config", 1},                           // Tables from Go: the variable class, one unit
+	{"../docs/USAGE.md", "fixed table Marker", 1},                     // Tables from Go: the fixed class, its own unit
 }
 
 func TestDocExamplesParse(t *testing.T) {

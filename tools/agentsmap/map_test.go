@@ -127,6 +127,25 @@ func TestNoPerHarnessFileStandsBesideAgents(t *testing.T) {
 	}
 }
 
+// TestIgnoredScratchDirsAreNeverMapped pins that an ignored directory can
+// never be catalogued again. tmp/ is the gitignored scratch directory
+// (.gitignore:4), so whether it exists depends on the machine: a catalog row
+// for it turns the guard red on any machine without a local tmp/, and deleting
+// the row alone turns the guard red on any machine that has one. The ignored
+// name must be skipped by the tree walk and named by no row.
+func TestIgnoredScratchDirsAreNeverMapped(t *testing.T) {
+	t.Parallel()
+	if !skipDir("tmp") {
+		t.Errorf("skipDir(\"tmp\") = false; tmp/ is the gitignored scratch directory (.gitignore:4) and must be skipped on every machine")
+	}
+	for _, row := range catalog {
+		last := filepath.Base(filepath.FromSlash(row.Path))
+		if skipDir(last) {
+			t.Errorf("catalog row %q names ignored directory %q; an ignored directory can never be catalogued", row.Path, last)
+		}
+	}
+}
+
 func hasIssue(issues []string, sub string) bool {
 	for _, s := range issues {
 		if strings.Contains(s, sub) {

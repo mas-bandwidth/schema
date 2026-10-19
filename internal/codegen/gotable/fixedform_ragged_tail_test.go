@@ -6,11 +6,10 @@ import (
 
 // TestFixedFormRaggedTail is the row fixed_form_ragged_tail, item F8 of
 // schema#876: a GAP on go, cpp and cs, only partial on c and elixir. A record
-// region that is not a whole number of records is MALFORMED, not refused. It is
-// F7's direct sibling, the very next guard in the same emitted function. The
-// reader has exactly two answers - refused plus a Reason name, or malformed -
-// and they are NEVER both set; a ragged tail is the residue of a bad file, so
-// it sets Malformed and leaves Reason UNTOUCHED. recordBytes is known.Record,
+// region that is not a whole number of records is MALFORMED, named `truncated`
+// (docs/FIXED-FORM-ALGORITHM.md §5.3). It is F7's direct sibling, the very
+// next guard in the same emitted function; the reader sets Malformed and the
+// Reason name together. recordBytes is known.Record,
 // compiled into the reader from the selected lineage entry, so the guard's
 // recordBytes <= 8 arm is NOT reachable from a file at all. rest is the file's
 // bytes after the header and layout, taken from the file's length, so this row
@@ -47,7 +46,7 @@ func TestRaggedTail(t *testing.T) {
 		got := []Point{{X: -1, Y: -1}}
 		r = TableReport{}
 		ragged := append(buf, make([]byte, extra)...)
-		if n := PointFixedLoad(got, ragged, plan, &r); n != -1 || r != (TableReport{Malformed: true}) || got[0] != (Point{X: -1, Y: -1}) {
+		if n := PointFixedLoad(got, ragged, plan, &r); n != -1 || r != (TableReport{Malformed: true, Reason: "truncated"}) || got[0] != (Point{X: -1, Y: -1}) {
 			t.Fatalf("extra=%d: n=%d report=%+v dest=%+v", extra, n, r, got[0])
 		}
 	}

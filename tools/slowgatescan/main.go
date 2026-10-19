@@ -119,10 +119,10 @@ func main() {
 		}
 		os.Exit(runCoverage(*root, *coverage, recipes, exceptions, steps))
 	}
-	os.Exit(runStatic(recipes, exceptions, gated))
+	os.Exit(runStatic(*root, recipes, exceptions, gated))
 }
 
-func runStatic(recipes []recipe, exceptions []exception, gated map[string]bool) int {
+func runStatic(root string, recipes []recipe, exceptions []exception, gated map[string]bool) int {
 	var bare []recipe
 	usedException := map[int]bool{}
 	for _, r := range recipes {
@@ -147,6 +147,19 @@ func runStatic(recipes []recipe, exceptions []exception, gated map[string]bool) 
 			fmt.Printf("  %s:%d: %s: %s\n", r.file, r.line, r.target, strings.Join(r.packages, " "))
 		}
 		fmt.Println("remedy: run it through `sh test/slowgate/proof <label> '<required --- PASS names>' <go test args>`, or name it in make/slow-gate-exceptions.txt with the reason it is left to ci-full.yml.")
+		return 1
+	}
+	findings, err := proofListFindings(root, recipes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slow gate scan: auditing proof names: %v\n", err)
+		return 1
+	}
+	if len(findings) > 0 {
+		fmt.Printf("SLOW GATE SCAN FAILED: %d proof name(s) name no test in the package they are run in, so the gate proves nothing about them (schema#988):\n", len(findings))
+		for _, f := range findings {
+			fmt.Printf("  %s\n", f)
+		}
+		fmt.Println("remedy: name a test that exists, or remove the name from the proof list — a name no declaration satisfies can never print the required `--- PASS`.")
 		return 1
 	}
 	stale := 0
