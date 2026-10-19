@@ -87,6 +87,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := ir.RefuseWideTableKinds(u, "Lua"); err != nil {
 		return nil, err
 	}
+	return generate(u)
+}
+
+// generate is Generate's body below the refusal: the path this card's wide
+// kinds use while Generate keeps refusing them (docs/SPEC-TABLES.md §15, "a
+// backend that carries the kinds does not call it").
+func generate(u *ir.Unit) (map[string][]byte, error) {
 	name := ModuleName(u)
 	for _, f := range u.Files {
 		if f.Base == name {
@@ -199,7 +206,12 @@ func emit(m *Module) {
 	regionAlign := ir.TableRegionAlign(u)
 	m.Printf("local _M = {}\n\n")
 	m.Printf("_M.Package = %q\n", u.Package)
-	m.Printf("_M.RegionAlign = %d\n\n", regionAlign)
+	m.Printf("_M.RegionAlign = %d\n", regionAlign)
+	// the cook's Open needs the build version it was written for and the two
+	// reserved blob type ids a directory names (§7.1, §7.4, §6.3)
+	m.Printf("_M.BuildVersion = %s\n", idLit(ir.BuildVersion(u)))
+	m.Printf("_M.BytesBlobTypeId = %s\n", idLit(ir.BytesTypeId))
+	m.Printf("_M.StringBlobTypeId = %s\n\n", idLit(ir.StringTypeId))
 	m.Printf("-- the table descriptors, by name (docs/SPEC-TABLES.md §8.1)\n")
 	m.Printf("_M.Tables = {}\n\n")
 	variable := ir.VariableTables(u)
@@ -239,6 +251,9 @@ func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 	m.Printf("  type_id = %s,\n", idLit(ir.TableWireId(st.WireName())))
 	m.Printf("  table = %v,\n", st.IsTable)
 	m.Printf("  variable = %v,\n", variable)
+	if st.Integrity != "" {
+		m.Printf("  integrity = %q,\n", st.Integrity)
+	}
 	m.Printf("  map_entry = %v,\n", st.MapEntryOf != "")
 	m.Printf("  size = %d,\n", layout.Size)
 	m.Printf("  align = %d,\n", layout.Align)
@@ -246,7 +261,12 @@ func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 	m.Printf("  fields = {\n")
 	guards := tabletext.Guards(st)
 	for i, f := range st.Fields {
-		m.Printf("    %s,\n", guardedFieldDescriptor(m.Unit, f, i+1, guards[f.Name]))
+		fl := layout.FieldByName(f.Name)
+		var pieces []ir.BlockFieldPiece
+		if fl != nil {
+			pieces = ir.FieldPieces(m.Unit, f, fl.Offset)
+		}
+		m.Printf("    %s,\n", guardedFieldDescriptorAt(m.Unit, f, i+1, guards[f.Name], pieces))
 	}
 	m.Printf("  },\n")
 	m.Printf("}\n\n")
@@ -257,8 +277,13 @@ func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 // wire id (the hash of its name, or of its `was` name, §5), and its field
 // line's descriptor, nil for a payload-free arm.
 func emitUnionDescriptor(m *Module, un *ir.Union) {
+	size, align, tag, armOffset := ir.UnionLayout(m.Unit, un)
 	m.Printf("_M.Unions[%q] = {\n", un.Name)
 	m.Printf("  name = %q,\n", un.Name)
+	m.Printf("  size = %d,\n", size)
+	m.Printf("  align = %d,\n", align)
+	m.Printf("  tag = %d,\n", tag)
+	m.Printf("  arm_offset = %d,\n", armOffset)
 	m.Printf("  arms = {\n")
 	for i, v := range un.Variants {
 		wire := v.Name
@@ -267,7 +292,7 @@ func emitUnionDescriptor(m *Module, un *ir.Union) {
 		}
 		field := "nil"
 		if v.F != nil {
-			field = fieldDescriptor(m.Unit, v.F, i+1)
+			field = fieldDescriptorAt(m.Unit, v.F, i+1, fieldPieces(m.Unit, v.F))
 		}
 		m.Printf("    { name = %q, tag = %d, id = %s, field = %s },\n", v.Name, i+1, idLit(ir.TableWireId(wire)), field)
 	}
@@ -284,13 +309,43 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int) string {
 	return guardedFieldDescriptor(u, f, ordinal, nil)
 }
 
+func fieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, pieces []ir.BlockFieldPiece) string {
+	return guardedFieldDescriptorAt(u, f, ordinal, nil, pieces)
+}
+
 // guardedFieldDescriptor is fieldDescriptor with the field's `if` branch
 // condition (docs/SPEC-TABLES.md §3: a field under a false guard is elided;
 // SPEC §4.5), nil for an unguarded field.
 func guardedFieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, guard []tabletext.GuardTerm) string {
+	return guardedFieldDescriptorAt(u, f, ordinal, guard, nil)
+}
+
+// guardedFieldDescriptorAt adds the layout facts a cook's check reads
+// (docs/SPEC-TABLES.md §7.4): where the field's storage begins and, for a
+// count companion, how far past that beginning it sits. pieces are the
+// contiguous storage members ir.FieldPieces names, in order.
+func guardedFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, guard []tabletext.GuardTerm, pieces []ir.BlockFieldPiece) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "{ name = %q, key = %q, id = %s, ordinal = %d, kind = %d, ",
 		f.Name, ir.TableFieldJsonKey(f), idLit(ir.TableFieldWireId(f)), ordinal, ir.TableWireFieldKind(f))
+	if len(pieces) > 0 {
+		fmt.Fprintf(&b, "at = %d, ", pieces[0].Offset)
+		if needsCompanion(f) && len(pieces) > 1 {
+			fmt.Fprintf(&b, "companion = %d, ", pieces[1].Offset-pieces[0].Offset)
+		}
+	}
+	// The view's descriptor columns (docs/SPEC-TABLES.md §8.1), under the
+	// names the standard gives them. They sit beside the runtime's own keys
+	// below, which stay exactly where they were.
+	fmt.Fprintf(&b, "type_name = %q, elem_kind = %d, elem_size = %d, counted = %v, UnboundedContainer = %v, Unbounded = %v, array_bound = %d, ",
+		ir.TableTypeSpelling(f), ir.TableWireElemKind(f), descriptorElemSize(u, f), descriptorCounted(f),
+		descriptorUnboundedContainer(f), f.Type.TextUnbounded(), descriptorArrayBound(f))
+	if f.KeyEnum != "" {
+		fmt.Fprintf(&b, "key_type_name = %q, keys = %s, ", f.KeyEnum, variants(f.KeyEnumRef))
+	} else {
+		b.WriteString("key_type_name = \"\", keys = {}, ")
+	}
+	fmt.Fprintf(&b, "optional = %v, present = %q, ", f.Type.Optional, presentCompanion(f))
 	if len(guard) > 0 {
 		b.WriteString("guard = {")
 		for i, t := range guard {
@@ -301,9 +356,6 @@ func guardedFieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, guard []tablet
 		}
 		b.WriteString(" }, ")
 	}
-	if f.Type.Optional {
-		b.WriteString("optional = true, ")
-	}
 	if f.Required {
 		b.WriteString("required = true, ")
 	}
@@ -313,18 +365,19 @@ func guardedFieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, guard []tablet
 	switch {
 	case f.MapEntry != nil:
 		fmt.Fprintf(&b, "shape = \"map\", entry = %q, key_field = %s, value_field = %s }",
-			f.MapEntry.Name, fieldDescriptor(u, f.MapEntry.Fields[0], 1), fieldDescriptor(u, f.MapEntry.Fields[1], 2))
+			f.MapEntry.Name, fieldDescriptorAt(u, f.MapEntry.Fields[0], 1, fieldPieces(u, f.MapEntry.Fields[0])),
+			fieldDescriptorAt(u, f.MapEntry.Fields[1], 2, fieldPieces(u, f.MapEntry.Fields[1])))
 	case f.Array != ir.ArrayNone:
-		elemSize, elemAlign := ir.ListElementLayout(u, f)
-		fmt.Fprintf(&b, "shape = \"array\", list = %v, fixed = %v, min = %d, bound = %d, elem_kind = %d, elem_size = %d, elem_align = %d, ",
-			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayMin, f.ArrayBound, ir.TableWireElemKind(f), elemSize, elemAlign)
+		_, elemAlign := ir.ListElementLayout(u, f)
+		fmt.Fprintf(&b, "shape = \"array\", list = %v, fixed = %v, min = %d, bound = %d, elem_align = %d, elem_step = %d, ",
+			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayMin, f.ArrayBound, elemAlign, elementStep(u, f))
 		if f.KeyEnumRef != nil {
 			fmt.Fprintf(&b, "keyed = %s, ", variants(f.KeyEnumRef))
 		}
 		if f.TextTotal > 0 {
 			fmt.Fprintf(&b, "total = %d, ", f.TextTotal)
 		}
-		fmt.Fprintf(&b, "elem = %s }", elemDescriptor(f))
+		fmt.Fprintf(&b, "elem = %s }", elemDescriptor(u, f))
 	default:
 		b.WriteString(valueDescriptor(f, true))
 		b.WriteString(" }")
@@ -332,10 +385,140 @@ func guardedFieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, guard []tablet
 	return b.String()
 }
 
+// descriptorElemSize is the pitch a walker steps for the view (§8.1): the
+// element's storage size for an array or map, the scalar's wire width
+// otherwise. Lua has no addressable record, so this is the element size the
+// descriptor can name, not an offset into a C struct.
+func descriptorElemSize(u *ir.Unit, f *ir.Field) int64 {
+	switch {
+	case f.IsMap():
+		return ir.RecordLayout(u, f.MapEntry).Size
+	case f.Array != ir.ArrayNone:
+		size, _ := ir.ListElementLayout(u, f)
+		return size
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
+		return 1
+	case f.Type.Kind == ir.TWString:
+		return 2
+	}
+	if f.Type.Kind == ir.TNamed {
+		if r, ok := f.Type.Ref.(*ir.Struct); ok && !f.Type.Pointer {
+			return ir.RecordLayout(u, r).Size
+		}
+	}
+	return int64(ir.TableKindWidth(ir.TableWireFieldKind(f)))
+}
+
+// descriptorCounted is the §8.1 `counted` column: a fixed array has no count
+// companion, every other array-shaped field (a counted array, a list, a map,
+// a string or a byte buffer) does.
+func descriptorCounted(f *ir.Field) bool {
+	if f.IsList() || f.IsMap() {
+		return true
+	}
+	return f.Array == ir.ArrayCounted ||
+		(!f.Type.Pointer && !f.Type.TextUnbounded() &&
+			(f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString))
+}
+
+// descriptorUnboundedContainer is the ONE TELL of a container with no declared
+// bound (docs/SPEC-TABLES.md §8.1): a map or an unbounded array, with
+// array_bound 0 beside it. It is not Unbounded, which marks unbounded text
+// (§2.13.1).
+func descriptorUnboundedContainer(f *ir.Field) bool {
+	return f.IsList() || f.IsMap()
+}
+
+// descriptorArrayBound is the §8.1 `array_bound`: the declared storage extent,
+// 0 for a map or list (the unbounded-container tell), a keyed array's key
+// extent, and a string's or buffer's maximum length.
+func descriptorArrayBound(f *ir.Field) int64 {
+	switch {
+	case f.IsMap() || f.IsList():
+		return 0
+	case f.KeyEnum != "" && f.KeyEnumRef != nil:
+		return f.KeyEnumRef.Max
+	case f.Array != ir.ArrayNone:
+		return f.ArrayBound
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+		return f.Type.Size
+	}
+	return 0
+}
+
+// presentCompanion is the §8.1 presence companion's name: the `<field>_present`
+// bool a ?T stores, empty on a field that is not optional.
+func presentCompanion(f *ir.Field) string {
+	if f.Type.Optional {
+		return f.Name + "_present"
+	}
+	return ""
+}
+
 // elemDescriptor is an array's element: the facts a field of the element's
-// type carries, at its zero (§2.9).
-func elemDescriptor(f *ir.Field) string {
-	return "{ " + valueDescriptor(f, false) + " }"
+// type carries, at its zero (§2.9), with the element-local layout a cook's
+// check reads (§7.4).
+func elemDescriptor(u *ir.Unit, f *ir.Field) string {
+	pieces := fieldPieces(u, elementField(f))
+	var b strings.Builder
+	b.WriteString("{ ")
+	b.WriteString(valueDescriptor(f, false))
+	if len(pieces) > 0 {
+		fmt.Fprintf(&b, ", at = %d", pieces[0].Offset)
+		if needsCompanion(elementField(f)) && len(pieces) > 1 {
+			fmt.Fprintf(&b, ", companion = %d", pieces[1].Offset-pieces[0].Offset)
+		}
+	}
+	b.WriteString(" }")
+	return b.String()
+}
+
+// elementField is f as one VALUE: no array, key or optional wrapper, which is
+// the storage an array element takes (docs/SPEC-TABLES.md §2.9).
+func elementField(f *ir.Field) *ir.Field {
+	single := *f
+	single.Array = ir.ArrayNone
+	single.ArrayBound = 0
+	single.KeyEnum = ""
+	single.KeyEnumRef = nil
+	single.Type.Optional = false
+	return &single
+}
+
+// elementStep is the pitch of an array's elements: the full storage of one
+// element, companions included (tablecook's elementBytes).
+func elementStep(u *ir.Unit, f *ir.Field) int64 {
+	var end int64
+	for _, p := range fieldPieces(u, elementField(f)) {
+		if p.Offset+p.Size > end {
+			end = p.Offset + p.Size
+		}
+	}
+	return end
+}
+
+func fieldPieces(u *ir.Unit, f *ir.Field) []ir.BlockFieldPiece {
+	if u == nil {
+		return nil
+	}
+	return ir.FieldPieces(u, f, 0)
+}
+
+// needsCompanion reports a field whose storage carries a count companion the
+// cook's check bounds (§7.4): a by-value string, bytes or wstring, and a
+// counted array.
+func needsCompanion(f *ir.Field) bool {
+	if f.Array == ir.ArrayCounted {
+		return true
+	}
+	if f.Array != ir.ArrayNone || f.Type.Pointer {
+		return false
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TWString, ir.TBytes:
+		return true
+	}
+	return false
 }
 
 // valueDescriptor is the shape-specific part of a field's or an element's
@@ -348,7 +531,7 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 	case t.Pointer && t.Blob():
 		return "shape = \"bytes_blob\""
 	case t.Pointer:
-		return fmt.Sprintf("shape = \"pointer\", target = %q", t.Name)
+		return fmt.Sprintf("shape = \"pointer\", target = %q, target_id = %s", t.Name, idLit(ir.TableTypeId(ir.PointeeWireName(f))))
 	}
 	switch t.Kind {
 	case ir.TBool:
@@ -370,6 +553,13 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 		}
 		return s
 	case ir.TString:
+		if t.TextUnbounded() {
+			// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): a text-list
+			// element or a map key with no length bound, stored as one blob
+			// slot. No `bound =` rides, so no reader clamps and no map key is
+			// dropped for its length.
+			return "shape = \"string\", unbounded = true"
+		}
 		s := fmt.Sprintf("shape = \"string\", bound = %d", t.Size)
 		if withDefault {
 			s += ", default = " + lua.ByteString(f.DefBytes)
@@ -404,16 +594,32 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 			return fmt.Sprintf("shape = \"union\", target = %q", r.Name)
 		}
 	}
-	// an integer: intN/uintN, bits(N), a timestamp
-	s := fmt.Sprintf("shape = \"int\", width = %d, signed = %v", ir.TableKindWidth(ir.TableWireScalarKind(f)), t.Kind == ir.TInt && t.Signed)
+	// an integer or fixed-point scalar: intN/uintN, fixed(I, F)/ufixed(I, F), bits(N), a timestamp
+	kind := ir.TableWireScalarKind(f)
+	if (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Width == 128 {
+		// int128/uint128 and fixed128/ufixed128 are { lo = <int>, hi = <int> },
+		// two's complement (docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS,
+		// FIXED-POINT): their declared default and range are raw halves,
+		// exactly as the type wire carries them (docs/SPEC-TABLES.md §3 kinds
+		// 18/19 and 24/29).
+		s := fmt.Sprintf("shape = \"wide\", width = %d, signed = %v", ir.TableKindWidth(kind), t.Signed)
+		if lo, hi, ok := ir.TableRawRange(f); ok {
+			s += fmt.Sprintf(", lo = %s, hi = %s", lua.Int128Literal(lo), lua.Int128Literal(hi))
+		}
+		if withDefault {
+			s += ", default = " + lua.Int128Literal(defInt(f))
+		}
+		return s
+	}
+	s := fmt.Sprintf("shape = \"int\", width = %d, signed = %v", ir.TableKindWidth(kind), (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Signed)
 	if t.Kind == ir.TBits {
 		s += fmt.Sprintf(", bits = %d", t.Width)
 	}
 	if t.Timestamp {
 		s += ", timestamp = true"
 	}
-	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
-		s += fmt.Sprintf(", lo = %s, hi = %s", lua.IntLiteral(f.IntMin), lua.IntLiteral(f.IntMax))
+	if lo, hi, ok := ir.TableRawRange(f); ok {
+		s += fmt.Sprintf(", lo = %s, hi = %s", lua.IntLiteral(lo), lua.IntLiteral(hi))
 	}
 	if withDefault {
 		s += ", default = " + lua.IntLiteral(defInt(f))
@@ -531,6 +737,9 @@ func defaultExpr(f *ir.Field) string {
 	case ir.TWString:
 		return "{}"
 	}
+	if (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Width == 128 {
+		return lua.Int128Literal(defInt(f))
+	}
 	return lua.IntLiteral(defInt(f))
 }
 
@@ -560,6 +769,9 @@ func zeroExpr(f *ir.Field) string {
 		return `""`
 	case ir.TWString:
 		return "{}"
+	}
+	if (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Width == 128 {
+		return "{ lo = 0, hi = 0 }"
 	}
 	return "0"
 }

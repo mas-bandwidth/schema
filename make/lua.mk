@@ -63,7 +63,11 @@ update-goldens-lua: ;
 # build/conformance-lua is the tables manifest's units generated for lua, one
 # directory per unit key. A unit the target refuses leaves its refusal, by
 # name, in <unit>.refused instead of a directory — listed, never dropped.
-build/schema-lua: $(GO_SOURCES)
+# The binary embeds both runtime directories by glob (//go:embed
+# runtime/*.lua in internal/codegen/lua and internal/codegen/luatable), so a
+# new runtime file joins these prerequisites automatically: a changed runtime
+# must rebuild the binary every gate then measures.
+build/schema-lua: $(GO_SOURCES) $(wildcard internal/codegen/luatable/runtime/*.lua) $(wildcard internal/codegen/lua/runtime/*.lua)
 	@mkdir -p build
 	go build -tags schema_leg_lua -o $@ ./cmd/schema
 

@@ -28,29 +28,6 @@ local function refuse(name, field)
   error(name .. ": " .. (field or "wire"), 0)
 end
 
--- CRC-32C, the Castagnoli polynomial reflected (0x82F63B78) with the
--- initial value and final XOR the §2.14 vocabulary names. The table is built
--- once, on the first declaring root read.
-local crc_table = nil
-
-local function crc32c(bytes)
-  if crc_table == nil then
-    crc_table = {}
-    for i = 0, 255 do
-      local c = i
-      for _ = 1, 8 do
-        if c & 1 == 1 then c = (c >> 1) ~ 0x82f63b78 else c = c >> 1 end
-      end
-      crc_table[i] = c
-    end
-  end
-  local crc = 0xffffffff
-  for i = 1, #bytes do
-    crc = crc_table[(crc ~ bytes:byte(i)) & 0xff] ~ (crc >> 8)
-  end
-  return crc ~ 0xffffffff
-end
-
 -- THE DESCRIPTOR/REPORT PROXIES record the FIRST field an increment names.
 -- A counter is written after the field it belongs to has been touched, so the
 -- proxy remembers the last descriptor field read and the report proxy stamps
@@ -124,13 +101,19 @@ function R.ReadStrict(T, name, bytes, integrity)
     refuse("unknown_form", "form " .. string.format("%d", form))
   end
 
-  if integrity ~= nil then
-    if integrity ~= "crc32c" then refuse("malformed", name) end
+  -- THE REQUIRED CHECK IS THE DESCRIPTOR'S (§2.14): a declaring root's check
+  -- rides in T.Tables[name].integrity, so a caller need not pass it. The
+  -- argument still works for a caller that names the check itself.
+  local declared = T.Tables[name] and T.Tables[name].integrity or nil
+  local check = declared or integrity
+  if check ~= nil then
+    if check ~= "crc32c" then refuse("malformed", name) end
     if #bytes < 5 then refuse("integrity_mismatch", name) end
     local want = string.unpack("<I4", bytes, #bytes - 3)
-    local got = crc32c(bytes:sub(1, #bytes - 4))
-    if want ~= got then refuse("integrity_mismatch", name) end
-    bytes = bytes:sub(1, #bytes - 4)
+    if want ~= load.crc32c(bytes:sub(1, #bytes - 4)) then refuse("integrity_mismatch", name) end
+    -- A declaring root hands the file to the load, which strips and checks the
+    -- trailer itself; only an argument with no declaration is stripped here.
+    if declared == nil then bytes = bytes:sub(1, #bytes - 4) end
   end
 
   local report = {

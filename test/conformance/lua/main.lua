@@ -16,7 +16,7 @@
 -- default is what the Makefile writes (build/conformance-lua).
 
 local GENERATED = os.getenv("LUA_CONFORMANCE_GENERATED") or "build/conformance-lua"
-local SURFACES = { report = true, wire = true }
+local SURFACES = { report = true, wire = true, ["json-hostile"] = true }
 
 local function lines(manifest)
   local f = assert(io.open(manifest, "r"), "open " .. manifest)
@@ -113,6 +113,31 @@ local function surfaceWire(manifest, outdir)
   end
 end
 
+-- THE JSON-HOSTILE surface (test/conformance/README.md): FromJson of each
+-- hostile tree, writing the report line, or `refused` when the read refuses
+-- (docs/SPEC-TABLES.md §16.2, §16.3, §4).
+local function surfaceJsonHostile(manifest, outdir)
+  for _, f in ipairs(lines(manifest)) do
+    if f[1] == "json-hostile" and #f >= 5 then
+      local T = loadUnit(f[3])
+      if not T then
+        writeBytes(outdir .. "/" .. f[2] .. ".absent",
+          "unit not generated for lua: docs/SPEC-TABLES.md §15\n")
+      else
+        local J = require("json")
+        local text = readBytes(f[5] .. "/" .. f[4] .. ".json")
+        local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+        J.FromJson(T, f[4], text, r)
+        if r.malformed then
+          writeBytes(outdir .. "/" .. f[2], "refused\n")
+        else
+          writeBytes(outdir .. "/" .. f[2], reportLine(r))
+        end
+      end
+    end
+  end
+end
+
 local function usage()
   io.stderr:write("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>\n")
   os.exit(2)
@@ -131,4 +156,5 @@ if not SURFACES[surface] then os.exit(2) end
 
 if surface == "report" then surfaceReport(arg[1], arg[3]) end
 if surface == "wire" then surfaceWire(arg[1], arg[3]) end
+if surface == "json-hostile" then surfaceJsonHostile(arg[1], arg[3]) end
 os.exit(0)

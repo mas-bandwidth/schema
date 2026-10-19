@@ -819,6 +819,9 @@ type tableJsonIn struct {
 	pos    int
 	report *TableReport
 	bad    bool // the text is not JSON: the walk stops and keeps what it placed
+	// zero is set when the walk stopped on a U+0000 bound for text storage
+	// (docs/SPEC-TABLES.md §16.3): the field loop names the field in Reason
+	zero bool
 }
 
 func (in *tableJsonIn) space() {
@@ -935,9 +938,14 @@ func tableJsonEncodeUtf8(code uint32, unit []byte) int32 {
 // never cut through a multi-byte character. Clamping is counted, never fatal,
 // exactly as it is on the wire (§4). A nil destination scans past a string
 // without keeping it.
-func (in *tableJsonIn) scanString(out []byte) (int32, bool) {return in.scanText(out,nil)}
+func (in *tableJsonIn) scanString(out []byte) (int32, bool) {return in.scanText(out,nil,false)}
 
-func (in *tableJsonIn) scanText(out []byte, wide []uint16) (int32, bool) {
+// scanStored scans a string the walk PLACES in text storage. A zero in text
+// takes one rule in every form (docs/SPEC-TABLES.md §16.3): a stored string
+// that decodes to U+0000 refuses the read as text_holds_zero.
+func (in *tableJsonIn) scanStored(out []byte) (int32, bool) {return in.scanText(out,nil,true)}
+
+func (in *tableJsonIn) scanText(out []byte, wide []uint16, store bool) (int32, bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return 0, false
@@ -1007,6 +1015,13 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16) (int32, bool) {
 				// as the replacement character
 				if code >= 0xd800 && code <= 0xdfff {
 					code = 0xfffd
+				}
+				// docs/SPEC-TABLES.md §16.3: a U+0000 bound for text storage
+				// refuses the read, so no stored text holds one
+				if code == 0 && store {
+					in.zero = true
+					in.bad = true
+					return 0, false
 				}
 				unitLength = tableJsonEncodeUtf8(code, unit[:])
 			default:
@@ -1594,9 +1609,9 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 	storage := unsafe.Add(base, uintptr(f.Offset))
  if f.Map {return tableJsonReadMap(in,storage,f,depth)}
  if f.List {return tableJsonReadList(in,storage,f,depth)}
- if f.Kind==33 {units:=unsafe.Slice((*uint16)(storage),f.ArrayBound);clear(units);n,ok:=in.scanText(nil,units);if !ok{return false};tableJsonSetCount(base,f,n);return true}
+ if f.Kind==33 {units:=unsafe.Slice((*uint16)(storage),f.ArrayBound);clear(units);n,ok:=in.scanText(nil,units,false);if !ok{return false};tableJsonSetCount(base,f,n);return true}
 	if f.Kind == 12 {
-		length, ok := in.scanString(tableJsonBytes(storage, f.ArrayBound))
+		length, ok := in.scanStored(tableJsonBytes(storage, f.ArrayBound))
 		if !ok {
 			return false
 		}
@@ -1952,6 +1967,11 @@ func tableJsonReadTableFields(in *tableJsonIn,base unsafe.Pointer,info *TableTyp
 						return false
 					}
 				} else if !tableJsonReadField(in, base, f, depth) {
+					// docs/SPEC-TABLES.md §16.3: the innermost field that held
+					// a zero in text is the one the refusal names
+					if in.zero && in.report.Reason == "" {
+						in.report.Reason = "text_holds_zero: " + info.Name + "." + f.Name
+					}
 					return false
 				}
 				if f.Optional {

@@ -184,15 +184,21 @@ local function scan_unit(inp)
   return unit, false, true
 end
 
--- ONE JSON string into bytes, clamped at cap bytes (cap < 0 unbounded)
+-- ONE JSON string into bytes, clamped at cap bytes (cap < 0 unbounded). A
+-- fourth truth is returned when a BOUNDED body carried a U+0000 unit — the
+-- \u0000 escape into text storage §16.3 refuses as text_holds_zero — so the
+-- caller that places the value can name the field; callers that only scan
+-- (keys, skipped values) ignore it, because a zero that never lands in a
+-- bounded text field is not the event.
 local function scan_string(inp, cap)
   if peek(inp) ~= '"' then inp.bad = true; return nil, false, false end
   inp.p = inp.p + 1
-  local out, n, clamped = {}, 0, false
+  local out, n, clamped, nul = {}, 0, false, false
   while true do
     local unit, done, ok = scan_unit(inp)
-    if not ok then return nil, false, false end
+    if not ok then return nil, false, false, false end
     if done then break end
+    if cap >= 0 and unit == "\0" then nul = true end
     if clamped or (cap >= 0 and n + #unit > cap) then
       clamped = true
     else
@@ -200,7 +206,7 @@ local function scan_string(inp, cap)
       n = n + #unit
     end
   end
-  return table.concat(out), clamped, true
+  return table.concat(out), clamped, true, nul
 end
 
 -- ONE JSON string into UTF-16 code units, clamped at cap units (§16.2)
@@ -365,6 +371,7 @@ local function zero_elem(T, e)
   local s = e.shape
   if s == "bool" then return false end
   if s == "int" or s == "flags" then return 0 end
+  if s == "wide" then return { lo = 0, hi = 0 } end
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
   if s == "wstring" then return {} end
@@ -548,6 +555,357 @@ local function map_int_key(fd, key)
 end
 
 ----------------------------------------------------------------------------
+-- the WIDE kinds (§16.2): int128/uint128 and fixed/ufixed have exact text
+-- spellings — a 128-bit integer is a decimal integer and a fixed point value
+-- is whole units with at least one fractional digit. Nothing here passes
+-- through a double: the lanes are 64-bit and the decimal work is integer
+-- digits (docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS, FIXED-POINT).
+----------------------------------------------------------------------------
+
+local WIDE_BAND = 40
+local WIDE_SIGNED_MIN = "170141183460469231731687303715884105728"
+local WIDE_SIGNED_MAX = "170141183460469231731687303715884105727"
+local WIDE_UNSIGNED_MAX = "340282366920938463463374607431768211455"
+
+local function dec_norm(s)
+  local t = s:gsub("^0+", "")
+  if t == "" then return "0" end
+  return t
+end
+
+local function dec_less(a, b)
+  if #a ~= #b then return #a < #b end
+  return a < b
+end
+
+local function dec_mul(s, m)
+  local out, carry = {}, 0
+  for i = #s, 1, -1 do
+    local p = (s:byte(i) - 48) * m + carry
+    out[#out + 1] = string.char(48 + p % 10)
+    carry = p // 10
+  end
+  while carry > 0 do
+    out[#out + 1] = string.char(48 + carry % 10)
+    carry = carry // 10
+  end
+  local r = {}
+  for i = #out, 1, -1 do r[#r + 1] = out[i] end
+  return table.concat(r)
+end
+
+local function dec_div(s, d)
+  local q, rem = {}, 0
+  for i = 1, #s do
+    local cur = rem * 10 + (s:byte(i) - 48)
+    q[#q + 1] = string.char(48 + cur // d)
+    rem = cur % d
+  end
+  return dec_norm(table.concat(q)), rem
+end
+
+-- ONE JSON number token as its sign, its digits with the leading and trailing
+-- zeros stripped, and the decimal point's position among those digits — the
+-- normalization ParseWide makes before any arithmetic (§16.2).
+local function wide_token_parts(token)
+  local i = 1
+  local neg = false
+  local c = token:sub(1, 1)
+  if c == "-" or c == "+" then
+    neg = c == "-"
+    i = 2
+  end
+  local intStart = i
+  while i <= #token do
+    local b = token:byte(i)
+    if b < 48 or b > 57 then break end
+    i = i + 1
+  end
+  local intDigits = token:sub(intStart, i - 1)
+  local fracDigits = ""
+  if token:sub(i, i) == "." then
+    i = i + 1
+    local start = i
+    while i <= #token do
+      local b = token:byte(i)
+      if b < 48 or b > 57 then break end
+      i = i + 1
+    end
+    fracDigits = token:sub(start, i - 1)
+  end
+  local exp = 0
+  local e = token:sub(i, i)
+  if e == "e" or e == "E" then
+    i = i + 1
+    local eneg = false
+    local s = token:sub(i, i)
+    if s == "-" or s == "+" then
+      eneg = s == "-"
+      i = i + 1
+    end
+    while i <= #token do
+      local b = token:byte(i)
+      if b < 48 or b > 57 then break end
+      if exp < 100000 then exp = exp * 10 + (b - 48) end
+      i = i + 1
+    end
+    if eneg then exp = -exp end
+  end
+  local digits = intDigits .. fracDigits
+  local point = #intDigits + exp
+  local lead = 0
+  while lead < #digits and digits:byte(lead + 1) == 48 do lead = lead + 1 end
+  digits = digits:sub(lead + 1)
+  point = point - lead
+  digits = digits:gsub("0+$", "")
+  return neg, digits, point
+end
+
+local function wide_mul_add(lo, hi, m, a)
+  local l0, l1 = lo & 0xffffffff, (lo >> 32) & 0xffffffff
+  local l2, l3 = hi & 0xffffffff, (hi >> 32) & 0xffffffff
+  local p = l0 * m + a
+  l0 = p & 0xffffffff
+  local c = p >> 32
+  p = l1 * m + c
+  l1 = p & 0xffffffff
+  c = p >> 32
+  p = l2 * m + c
+  l2 = p & 0xffffffff
+  c = p >> 32
+  p = l3 * m + c
+  l3 = p & 0xffffffff
+  return l0 | (l1 << 32), l2 | (l3 << 32)
+end
+
+local function wide_mul_small(lo, hi, m)
+  return wide_mul_add(lo, hi, m, 0)
+end
+
+local function wide_neg(lo, hi)
+  lo = (~lo) + 1
+  hi = ~hi
+  if lo == 0 then hi = hi + 1 end
+  return lo, hi
+end
+
+local function ushr64(x, n)
+  if n == 0 then return x end
+  if n >= 64 then return 0 end
+  return (x >> n) & ((1 << (64 - n)) - 1)
+end
+
+local function wide_shr(lo, hi, n)
+  if n == 0 then return lo, hi end
+  if n >= 128 then return 0, 0 end
+  if n >= 64 then return ushr64(hi, n - 64), 0 end
+  return ushr64(lo, n) | (hi << (64 - n)), ushr64(hi, n)
+end
+
+local function wide_low(lo, hi, n)
+  if n <= 0 then return 0, 0 end
+  if n >= 64 then
+    if n == 64 then return lo, 0 end
+    return lo, hi & ((1 << (n - 64)) - 1)
+  end
+  return lo & ((1 << n) - 1), 0
+end
+
+local function dec_to_lanes(s)
+  local lo, hi = 0, 0
+  for i = 1, #s do
+    lo, hi = wide_mul_add(lo, hi, 10, s:byte(i) - 48)
+  end
+  return lo, hi
+end
+
+local function wide_div10(lo, hi)
+  local l = { lo & 0xffffffff, (lo >> 32) & 0xffffffff,
+    hi & 0xffffffff, (hi >> 32) & 0xffffffff }
+  local rem = 0
+  for i = 4, 1, -1 do
+    local cur = rem * 4294967296 + l[i]
+    l[i] = cur // 10
+    rem = cur % 10
+  end
+  return l[1] | (l[2] << 32), l[3] | (l[4] << 32), rem
+end
+
+local function wide_decimal(lo, hi)
+  if lo == 0 and hi == 0 then return "0" end
+  local digits = {}
+  repeat
+    local rem
+    lo, hi, rem = wide_div10(lo, hi)
+    digits[#digits + 1] = string.char(48 + rem)
+  until lo == 0 and hi == 0
+  local out = {}
+  for i = #digits, 1, -1 do out[#out + 1] = digits[i] end
+  return table.concat(out)
+end
+
+-- the declared F of a fixed/ufixed kind (§16.2); a 128-bit integer has none
+local function wide_frac(d)
+  if d.kind == nil or d.kind < 20 then return 0 end
+  local f = d.type_name and d.type_name:match("^u?fixed%(%d+%s*,%s*(%d+)%)")
+  return tonumber(f) or 0
+end
+
+local function wide_less_signed(al, ah, bl, bh)
+  local an, bn = ah < 0, bh < 0
+  if an ~= bn then return an end
+  if ah ~= bh then return ah < bh end
+  return math.ult(al, bl)
+end
+
+local function wide_less_unsigned(al, ah, bl, bh)
+  if ah ~= bh then return math.ult(ah, bh) end
+  return math.ult(al, bl)
+end
+
+-- the raw value of one token, scaled by 2^F (§16.2: a fraction that is not
+-- exactly representable is a kind mismatch, never rounded; a magnitude past
+-- 128 bits saturates to the kind's domain and counts as a clamp)
+local function wide_parse(token, kind, frac)
+  local neg, digits, point = wide_token_parts(token)
+  local signed = kind == 18 or (kind >= 20 and kind <= 24)
+  if digits == "" then return { lo = 0, hi = 0 }, true, false end
+  local saturated = false
+  local mag
+  if point > WIDE_BAND then
+    saturated = true
+  elseif point < -WIDE_BAND then
+    return nil, false, false
+  else
+    local scale = point - #digits
+    mag = digits
+    if scale >= 0 then
+      if scale > 0 then mag = mag .. string.rep("0", scale) end
+      for _ = 1, frac do mag = dec_mul(mag, 2) end
+    else
+      local k = -scale
+      for _ = 1, k do
+        local rem
+        mag, rem = dec_div(mag, 5)
+        if rem ~= 0 then return nil, false, false end
+      end
+      local e = frac - k
+      if e >= 0 then
+        for _ = 1, e do mag = dec_mul(mag, 2) end
+      else
+        for _ = 1, -e do
+          local rem
+          mag, rem = dec_div(mag, 2)
+          if rem ~= 0 then return nil, false, false end
+        end
+      end
+    end
+    mag = dec_norm(mag)
+    if mag == "0" then return { lo = 0, hi = 0 }, true, false end
+    local limit
+    if signed then
+      limit = neg and WIDE_SIGNED_MIN or WIDE_SIGNED_MAX
+    else
+      limit = WIDE_UNSIGNED_MAX
+    end
+    if dec_less(limit, mag) then saturated = true end
+  end
+  if saturated then
+    if signed then
+      if neg then return { lo = 0, hi = 0x8000000000000000 }, true, true end
+      return { lo = 0xffffffffffffffff, hi = 0x7fffffffffffffff }, true, true
+    end
+    if neg then return { lo = 0, hi = 0 }, true, true end
+    return { lo = 0xffffffffffffffff, hi = 0xffffffffffffffff }, true, true
+  end
+  if not signed and neg then
+    return { lo = 0, hi = 0 }, true, true
+  end
+  local lo, hi = dec_to_lanes(mag)
+  if neg then lo, hi = wide_neg(lo, hi) end
+  return { lo = lo, hi = hi }, true, false
+end
+
+-- a declared bound in lanes: a 128-bit descriptor carries { lo, hi }, a
+-- narrower fixed kind its raw Lua integer (§16.2)
+local function bound_lanes(d, b)
+  if type(b) == "table" then return b.lo or 0, b.hi or 0 end
+  if d.signed then return b, (b < 0 and -1 or 0) end
+  return b, 0
+end
+
+local function wide_clamp(value, d)
+  if d.lo == nil or d.hi == nil then return value, false end
+  local less = d.signed and wide_less_signed or wide_less_unsigned
+  local llo, lhi = bound_lanes(d, d.lo)
+  local hlo, hhi = bound_lanes(d, d.hi)
+  if less(value.lo, value.hi, llo, lhi) then
+    return { lo = llo, hi = lhi }, true
+  end
+  if less(hlo, hhi, value.lo, value.hi) then
+    return { lo = hlo, hi = hhi }, true
+  end
+  return value, false
+end
+
+-- §16.2's write spelling: a decimal integer for a 128-bit kind, the shortest
+-- exact decimal in whole units for a fixed point value, at least one digit
+-- after the point
+local function wide_text(d, val)
+  local kind = d.kind or 0
+  local signed = kind == 18 or (kind >= 20 and kind <= 24)
+  local lo, hi
+  if type(val) == "table" then
+    lo, hi = val.lo or 0, val.hi or 0
+  elseif val == nil then
+    lo, hi = 0, 0
+  elseif signed then
+    lo, hi = val, (val < 0 and -1 or 0)
+  else
+    lo, hi = val, 0
+  end
+  local neg = false
+  if signed and hi < 0 then
+    neg = true
+    lo, hi = wide_neg(lo, hi)
+  end
+  local sign = neg and "-" or ""
+  if kind == 18 or kind == 19 then
+    return sign .. wide_decimal(lo, hi)
+  end
+  local frac = wide_frac(d)
+  local wlo, whi = wide_shr(lo, hi, frac)
+  local out = sign .. wide_decimal(wlo, whi) .. "."
+  local flo, fhi = wide_low(lo, hi, frac)
+  if flo == 0 and fhi == 0 then return out .. "0" end
+  while flo ~= 0 or fhi ~= 0 do
+    local mlo, mhi = wide_mul_small(flo, fhi, 10)
+    local dlo = wide_shr(mlo, mhi, frac)
+    out = out .. string.char(48 + dlo)
+    flo, fhi = wide_low(mlo, mhi, frac)
+  end
+  return out
+end
+
+-- one wide token into its storage (docs/SPEC-TABLES.md §16.2): a 128-bit
+-- shape holds { lo, hi }, a narrower fixed kind holds its raw Lua integer
+local function read_wide(inp, d, holder, key, report)
+  local token = scan_number(inp)
+  if token == nil then inp.bad = true; return false end
+  local value, exact, saturated = wide_parse(token, d.kind or 0, wide_frac(d))
+  if not exact then
+    report.kindMismatch = report.kindMismatch + 1
+    return true
+  end
+  if saturated then report.clamped = report.clamped + 1 end
+  local clamped
+  value, clamped = wide_clamp(value, d)
+  if clamped then report.clamped = report.clamped + 1 end
+  if d.shape == "wide" then holder[key] = value else holder[key] = value.lo end
+  return true
+end
+
+----------------------------------------------------------------------------
 -- the read walk
 ----------------------------------------------------------------------------
 
@@ -597,7 +955,7 @@ local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
           report.kindMismatch = report.kindMismatch + 1
           if not skip_value(inp, depth + 1, graph) then return false end
         else
-          if not read_value(T, fd, inp, v, fd.name, depth, graph, report, false) then return false end
+          if not read_value(T, fd, inp, v, fd.name, depth, graph, report, false, desc.name, fd.name) then return false end
         end
         if fd.optional then v[fd.name .. "_present"] = true end
       end
@@ -711,7 +1069,7 @@ local function read_base64(inp, bound, report)
   return table.concat(out)
 end
 
-local function read_array(T, fd, inp, holder, key, depth, graph, report)
+local function read_array(T, fd, inp, holder, key, depth, graph, report, table_name, field_name)
   if peek(inp) ~= '[' then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out = {}
@@ -741,7 +1099,7 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report)
     else
       placed = placed + 1
       if out[placed] == nil then out[placed] = zero_elem(T, fd.elem) end
-      if not read_value(T, fd.elem, inp, out, placed, depth + 1, graph, report, true) then
+      if not read_value(T, fd.elem, inp, out, placed, depth + 1, graph, report, true, table_name, field_name) then
         return false
       end
     end
@@ -760,7 +1118,7 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report)
   return true
 end
 
-local function read_map(T, fd, inp, holder, key, depth, graph, report)
+local function read_map(T, fd, inp, holder, key, depth, graph, report, table_name, field_name)
   if peek(inp) ~= '{' then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out, seen = {}, {}
@@ -825,7 +1183,7 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report)
       if seen[kval] then report.duplicate = report.duplicate + 1 end
       seen[kval] = true
       local tmp = {}
-      if not read_value(T, fd.value_field, inp, tmp, "v", depth + 1, graph, report, true) then
+      if not read_value(T, fd.value_field, inp, tmp, "v", depth + 1, graph, report, true, table_name, field_name) then
         return false
       end
       out[kval] = tmp.v
@@ -845,7 +1203,7 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report)
   return true
 end
 
-local function read_keyed(T, fd, inp, holder, key, depth, graph, report)
+local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_name, field_name)
   if peek(inp) ~= '{' then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out = {}
@@ -874,7 +1232,7 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report)
         report.kindMismatch = report.kindMismatch + 1
         if not skip_value(inp, depth + 1, graph) then return false end
       else
-        if not read_value(T, fd.elem, inp, out, slot, depth + 1, graph, report, true) then
+        if not read_value(T, fd.elem, inp, out, slot, depth + 1, graph, report, true, table_name, field_name) then
           return false
         end
       end
@@ -894,7 +1252,7 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report)
   return true
 end
 
-local function read_union(T, u, inp, depth, graph, report)
+local function read_union(T, u, inp, depth, graph, report, table_name, field_name)
   if peek(inp) ~= '{' then inp.bad = true; return nil end
   inp.p = inp.p + 1
   if peek(inp) == '}' then inp.p = inp.p + 1; return { tag = 0 } end
@@ -929,7 +1287,7 @@ local function read_union(T, u, inp, depth, graph, report)
     if not skip_value(inp, depth + 1, graph) then return nil end
   else
     out.tag = tag
-    if not read_value(T, arm.field, inp, out, arm.name, depth + 1, graph, report, false) then
+    if not read_value(T, arm.field, inp, out, arm.name, depth + 1, graph, report, false, table_name, field_name) then
       return nil
     end
   end
@@ -943,13 +1301,20 @@ local function read_union(T, u, inp, depth, graph, report)
   return nil
 end
 
-read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
+read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_name, field_name)
   local s = d.shape
   if s == "pointer" then
     return read_pointer(T, d, inp, holder, key, depth, graph, report)
   elseif s == "string" then
-    local out, clamped, ok = scan_string(inp, d.bound)
+    local out, clamped, ok, nul = scan_string(inp, d.bound)
     if not ok then return false end
+    if nul then
+      -- §16.3: a JSON text that lands U+0000 in bounded text storage is
+      -- refused as text_holds_zero, naming the innermost field.
+      report.Reason = "text_holds_zero: " .. table_name .. "." .. field_name
+      inp.bad = true
+      return false
+    end
     if clamped then report.clamped = report.clamped + 1 end
     holder[key] = out
     return true
@@ -982,10 +1347,10 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
     else holder[key] = { value = out == false and "" or out } end
     return true
   elseif s == "array" then
-    if d.keyed ~= nil then return read_keyed(T, d, inp, holder, key, depth, graph, report) end
-    return read_array(T, d, inp, holder, key, depth, graph, report)
+    if d.keyed ~= nil then return read_keyed(T, d, inp, holder, key, depth, graph, report, table_name, field_name) end
+    return read_array(T, d, inp, holder, key, depth, graph, report, table_name, field_name)
   elseif s == "map" then
-    return read_map(T, d, inp, holder, key, depth, graph, report)
+    return read_map(T, d, inp, holder, key, depth, graph, report, table_name, field_name)
   elseif s == "table" then
     local node = fresh(T, T.Tables[d.target])
     holder[key] = node
@@ -993,7 +1358,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
   elseif s == "union" then
     local u = T.Unions[d.target]
     if u == nil then inp.bad = true; return false end
-    local out = read_union(T, u, inp, depth, graph, report)
+    local out = read_union(T, u, inp, depth, graph, report, table_name, field_name)
     if out == nil then return false end
     holder[key] = out
     return true
@@ -1088,7 +1453,17 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem)
     end
     holder[key] = x
     return true
+  elseif s == "wide" then
+    -- §16.2's wide rows: a 128-bit integer takes any integral token, a fixed
+    -- takes any token whose value is exactly representable in Q I.F; a finer
+    -- fraction is the wrong shape, never rounded.
+    return read_wide(inp, d, holder, key, report)
   elseif s == "int" then
+    if d.kind ~= nil and d.kind >= 18 then
+      -- a fixed/ufixed narrower than 128 bits rides in a Lua integer but its
+      -- TEXT is the wide whole-unit spelling (§16.2)
+      return read_wide(inp, d, holder, key, report)
+    end
     if d.timestamp then
       local text, _, ok = scan_string(inp, -1)
       if not ok then return false end
@@ -1392,6 +1767,21 @@ local function count_of(fd, v)
   return math.min(#v, fd.bound or 0)
 end
 
+-- A GUARDED FIELD RIDES ONLY WHEN ITS GUARD HOLDS (docs/SPEC-TABLES.md §3: a
+-- field under a false guard is elided whatever its storage holds; §3.1: it is
+-- not an edge, so its target takes no node). fd.guard is the conjunction of
+-- the field's `if` branch conditions, each a bool field of the same body and
+-- the value it must hold (luatable.go emitDescriptor; tabletext.Guards); a
+-- field with no guard always rides. A bool not set reads false.
+local function guard_holds(fd, v)
+  local g = fd.guard
+  if g == nil then return true end
+  for _, t in ipairs(g) do
+    if (v[t.field] == true) ~= t.want then return false end
+  end
+  return true
+end
+
 -- THE NUMBERING PASS (§16.7): how many slots name each node, and whether the
 -- graph has a cycle, which the text refuses as the wire does (§3.1).
 local edge_value, edge_union, edges
@@ -1432,7 +1822,7 @@ end
 
 edges = function(T, desc, v, out, cache)
   for _, fd in ipairs(desc.fields) do
-    if not (fd.optional and not v[fd.name .. "_present"]) then
+    if guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
       edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
     end
   end
@@ -1470,7 +1860,7 @@ local write_value, write_table, write_pointer, write_field, write_fields
 
 write_fields = function(T, desc, v, depth, g, w, any)
   for _, fd in ipairs(desc.fields) do
-    if not (fd.optional and not v[fd.name .. "_present"]) then
+    if guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
       if not any then put(w, '{') else put(w, ',') end
       any = true
       line(w, depth + 1)
@@ -1668,7 +2058,13 @@ write_value = function(T, d, val, depth, g, w, elem)
     if text == nil then return false end
     raw(w, text)
     return true
+  elseif s == "wide" then
+    raw(w, wide_text(d, val))
+    return true
   elseif s == "int" then
+    if d.kind ~= nil and d.kind >= 18 then
+      raw(w, wide_text(d, val)); return true
+    end
     if d.timestamp then write_timestamp(w, val); return true end
     if d.signed then raw(w, string.format("%d", val))
     else raw(w, u64_text(val)) end

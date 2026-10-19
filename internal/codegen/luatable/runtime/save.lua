@@ -12,6 +12,11 @@
 -- cycle or a value with no wire identity refuses the save (nil).
 local S = {}
 
+-- THE CHECK is load.lua's one CRC-32C table (docs/SPEC-TABLES.md §2.14): the
+-- save seals it and the load and the strict read verify it.
+local load = require("load")
+local crc32c = load.crc32c
+
 local NODE_TABLE_ID = -1         -- 0xffffffffffffffff
 local STRING_BLOB_ID = 0x704be0d8faaffc58
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
@@ -60,6 +65,44 @@ end
 -- float32 field is written with the standard pack, which preserves the value.
 local function narrow_f32(v)
   return string.pack("<f", v)
+end
+
+-- WELL-FORMED UTF-8 with no zero byte is a text list element's write bound
+-- (docs/SPEC-TABLES.md §2.13, §3), as a string(N) field's is; Go's Save
+-- refuses a value that breaks it.
+local function text_ok(s)
+  local i, n = 1, #s
+  while i <= n do
+    local c = s:byte(i)
+    if c == 0 then return false end
+    if c < 0x80 then
+      i = i + 1
+    elseif c >= 0xc2 and c <= 0xdf then
+      if i + 1 > n then return false end
+      local b1 = s:byte(i + 1)
+      if b1 < 0x80 or b1 > 0xbf then return false end
+      i = i + 2
+    elseif c >= 0xe0 and c <= 0xef then
+      if i + 2 > n then return false end
+      local b1, b2 = s:byte(i + 1), s:byte(i + 2)
+      if b1 == nil or b2 == nil then return false end
+      if b1 < 0x80 or b1 > 0xbf or b2 < 0x80 or b2 > 0xbf then return false end
+      if c == 0xe0 and b1 < 0xa0 then return false end
+      if c == 0xed and b1 > 0x9f then return false end
+      i = i + 3
+    elseif c >= 0xf0 and c <= 0xf4 then
+      if i + 3 > n then return false end
+      local b1, b2, b3 = s:byte(i + 1), s:byte(i + 2), s:byte(i + 3)
+      if b1 == nil or b2 == nil or b3 == nil then return false end
+      if b1 < 0x80 or b1 > 0xbf or b2 < 0x80 or b2 > 0xbf or b3 < 0x80 or b3 > 0xbf then return false end
+      if c == 0xf0 and b1 < 0x90 then return false end
+      if c == 0xf4 and b1 > 0x8f then return false end
+      i = i + 4
+    else
+      return false
+    end
+  end
+  return true
 end
 
 -- THE NODE NUMBERING (§3.1, internal/tablewire/nodes.go): first-visit order of
@@ -270,6 +313,12 @@ local function at_default(fd, v)
     return n == 0
   end
   if s == "wstring" then return x == nil or #x == 0 end
+  if s == "wide" then
+    -- int128/uint128 at zero are their two zero halves (docs/PORT-LUA.md,
+    -- 64-BIT AND 128-BIT INTEGERS): the declared default is a { lo, hi }.
+    if type(x) ~= "table" then return false end
+    return x.lo == fd.default.lo and x.hi == fd.default.hi
+  end
   -- a float32 is compared at float32 (§3; jstable Math.fround)
   if s == "float" and fd.f32 and type(x) == "number" then x = string.unpack("<f", narrow_f32(x)) end
   return x == fd.default
@@ -345,6 +394,16 @@ write_field = function(T, ids, nodes, fd, v, w)
   elseif s == "int" or s == "flags" then
     if fd.optional or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind); w_int(w, fd.width, fd.signed, x or 0)
+    end
+  elseif s == "wide" then
+    -- int128/uint128 and fixed128/ufixed128: sixteen bytes, the low 64-bit
+    -- half then the high one, two's complement (docs/SPEC-TABLES.md §3 kinds
+    -- 18/19 and 20-29; docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS,
+    -- FIXED-POINT).
+    if fd.optional or not at_default(fd, v) then
+      local q = x or { lo = 0, hi = 0 }
+      w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind)
+      w_raw(w, string.pack("<i8", q.lo)); w_raw(w, string.pack("<i8", q.hi))
     end
   elseif s == "float" then
     if fd.optional or not at_default(fd, v) then
@@ -432,11 +491,46 @@ write_field = function(T, ids, nodes, fd, v, w)
     else
       if not fd.optional and at_default(fd, v) then return true end
       local n = count_of(fd, x)
+      -- A TEXT LIST (docs/SPEC-TABLES.md §2.13): its storage is an array of
+      -- the generated element record, its plain spelling rides each element
+      -- as kind 12's own L and bytes, and `total` bounds the sum of the
+      -- elements' byte lengths. A value past the element bound or the total
+      -- refuses, returning -1 with nothing written.
+      local textvf = nil
+      if fd.elem.shape == "table" then
+        local ep = T.Tables[fd.elem.target]
+        local vf = ep and ep.fields[1]
+        if vf ~= nil and vf.shape == "string" and (fd.elem_kind == 12 or fd.total ~= nil) then
+          textvf = vf
+        end
+      end
+      if textvf ~= nil then
+        local spent = 0
+        for i = 1, n do
+          local el = x[i]
+          local present = not textvf.optional or (el ~= nil and el[textvf.name .. "_present"] == true)
+          if present then
+            local text = (el ~= nil and el[textvf.name]) or ""
+            if type(text) ~= "string" then return false end
+            if textvf.bound ~= nil and textvf.bound > 0 and #text > textvf.bound then return false end
+            if not text_ok(text) then return false end
+            spent = spent + #text
+          end
+        end
+        if fd.total ~= nil and fd.total > 0 and spent > fd.total then return false end
+      end
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, 14)
       local body = W()
       w_u8(body, fd.elem_kind); w_leb(body, n)
-      for i = 1, n do
-        if not write_element(T, ids, nodes, fd.elem, x[i], body) then return false end
+      if fd.elem_kind == 12 and textvf ~= nil then
+        for i = 1, n do
+          local text = (x[i] ~= nil and x[i][textvf.name]) or ""
+          w_leb(body, #text); w_raw(body, text)
+        end
+      else
+        for i = 1, n do
+          if not write_element(T, ids, nodes, fd.elem, x[i], body) then return false end
+        end
       end
       w_leb(w, body.n); w_raw(w, table.concat(body.parts))
     end
@@ -467,6 +561,9 @@ write_element = function(T, ids, nodes, e, val, body)
   local s = e.shape
   if s == "bool" then w_u8(body, val and 1 or 0)
   elseif s == "int" or s == "flags" then w_int(body, e.width, e.signed, val or 0)
+  elseif s == "wide" then
+    local q = val or { lo = 0, hi = 0 }
+    w_raw(body, string.pack("<i8", q.lo)); w_raw(body, string.pack("<i8", q.hi))
   elseif s == "float" then if e.f32 then w_raw(body, narrow_f32(val or 0.0)) else w_f64(body, val or 0.0) end
   elseif s == "enum" then
     local vref = 0
@@ -535,6 +632,9 @@ write_union_at = function(T, ids, nodes, f, val, body)
   local s = f.shape
   if s == "bool" then w_u8(body, val and 1 or 0)
   elseif s == "int" or s == "flags" then w_int(body, f.width, f.signed, val or 0)
+  elseif s == "wide" then
+    local q = val or { lo = 0, hi = 0 }
+    w_raw(body, string.pack("<i8", q.lo)); w_raw(body, string.pack("<i8", q.hi))
   elseif s == "float" then if f.f32 then w_raw(body, narrow_f32(val)) else w_f64(body, val) end
   elseif s == "string" then w_raw(body, val)
   elseif s == "wstring" then
@@ -603,7 +703,15 @@ function S.Save(T, name, v)
   w_u8(idx, 0)
   for _, id in ipairs(ids.list) do w_u64(idx, id) end
   w_u64(idx, #ids.list)
-  return table.concat(idx.parts)
+  local out = table.concat(idx.parts)
+  -- THE INTEGRITY TRAILER (docs/SPEC-TABLES.md §2.14, §3.4): a declaring
+  -- root's file ends with the little-endian CRC-32C of every byte before it,
+  -- after the id table and so the last four bytes. Measure is Save's length,
+  -- so it carries the four bytes with it.
+  if desc.integrity ~= nil then
+    out = out .. string.pack("<I4", crc32c(out))
+  end
+  return out
 end
 
 -- THE MEASURE: the length of what Save would write — the saved length.

@@ -276,8 +276,139 @@ decode_table = function(T, name, buf, pos, writerSize)
   return v
 end
 
+-- A LOCKED LAYOUT AS A TREE (docs/FIXED-FORM-ALGORITHM.md §5.2): the layout
+-- bytes are pre-order entries of {kind, size, children}, and an older writer's
+-- record is read against ITS OWN tree, never against this build's descriptors.
+local function layout_tree(layout)
+  if #layout < 4 then return nil end
+  local count = string.unpack("<I4", layout, 1)
+  if count == 0 or #layout ~= 4 + 17 * count then return nil end
+  local i = 0
+  local function parse()
+    i = i + 1
+    if i > count then return nil end
+    local at = 4 + (i - 1) * 17
+    local node = {
+      kind = layout:byte(at + 9),
+      size = string.unpack("<I4", layout, at + 10),
+      children = {},
+    }
+    local kids = string.unpack("<I4", layout, at + 14)
+    for k = 1, kids do node.children[k] = parse() end
+    return node
+  end
+  local root = parse()
+  if i ~= count or root == nil then return nil end
+  return root
+end
+
+local decode_old_value
+
+-- decode_old_table walks THIS build's descriptors against the WRITER's tree:
+-- a field the older layout does not carry keeps its declared default, and a
+-- field both carry is read at the older size (docs/FIXED-FORM-ALGORITHM.md
+-- §5.2's PLAN: the writer's sizes, never the reader's).
+local function decode_old_table(T, name, node, buf, pos)
+  local desc = T.Tables[name]
+  if desc == nil then error("fixed: no descriptor for table " .. tostring(name)) end
+  local v = T["New" .. name]()
+  local cursor = pos
+  for i, f in ipairs(desc.fields) do
+    local child = node.children[i]
+    if child == nil then break end
+    if f.optional then
+      if child.kind == 35 then
+        local present = buf:byte(cursor) ~= 0
+        v[f.name .. "_present"] = present
+        if present and child.children[1] ~= nil then
+          v[f.name] = decode_old_value(T, f, child.children[1], buf, cursor + 1)
+        end
+      else
+        -- THE PRESENT COMPANION THE READER GAINED IS TRUE for an old T (§5.9
+        -- #40): the writer sent the value, so the ?T this reader declares is
+        -- present.
+        v[f.name .. "_present"] = true
+        v[f.name] = decode_old_value(T, f, child, buf, cursor)
+      end
+      cursor = cursor + child.size
+    else
+      v[f.name] = decode_old_value(T, f, child, buf, cursor)
+      cursor = cursor + child.size
+    end
+  end
+  return v
+end
+
+decode_old_value = function(T, d, node, buf, pos)
+  local s = d.shape
+  if s == "int" then
+    local signed = d.signed
+    if d.timestamp then signed = true end
+    return unpack_int(buf, pos, node.size, signed)
+  elseif s == "bool" then
+    return buf:byte(pos) ~= 0
+  elseif s == "float" then
+    if node.size == 4 or node.kind == 10 then return string.unpack("<f", buf, pos) end
+    return string.unpack("<d", buf, pos)
+  elseif s == "string" or s == "bytes" then
+    local n = string.unpack("<i4", buf, pos)
+    local cap = node.size - 4
+    if n < 0 or n > cap then error("length_over_bound") end
+    return string.sub(buf, pos + 4, pos + 4 + n - 1)
+  elseif s == "wstring" then
+    local n = string.unpack("<i4", buf, pos)
+    local cap = math.floor((node.size - 4) / 2)
+    if n < 0 or n > cap then error("length_over_bound") end
+    local t = {}
+    for i = 1, n do t[i] = string.unpack("<I2", buf, pos + 4 + (i - 1) * 2) end
+    return t
+  elseif s == "enum" then
+    local raw = unpack_int(buf, pos, node.size, false)
+    if raw ~= 0 and d.variants[raw] ~= nil then return d.variants[raw][1] end
+    return nil
+  elseif s == "flags" then
+    return unpack_int(buf, pos, node.size, false)
+  elseif s == "table" then
+    return decode_old_table(T, d.target, node, buf, pos)
+  elseif s == "union" then
+    local tagNode = node.children[1]
+    local w = tagNode and tagNode.size or 4
+    local tag = unpack_int(buf, pos, w, false)
+    if tag > #T.Unions[d.target].arms then tag = 0 end
+    local v = { tag = tag }
+    if tag ~= 0 then
+      local armNode = node.children[1 + tag]
+      local arm = T.Unions[d.target].arms[tag]
+      if armNode ~= nil and arm.field ~= nil then
+        v[arm.name] = decode_old_value(T, arm.field, armNode, buf, pos + w)
+      end
+    end
+    return v
+  elseif s == "array" then
+    local t = {}
+    local elem
+    if node.kind == 16 then elem = node.children[2] else elem = node.children[1] end
+    local es = elem and elem.size or 0
+    if node.kind == 16 or d.fixed then
+      local n = es > 0 and math.floor(node.size / es) or 0
+      for i = 1, n do t[i] = decode_old_value(T, d.elem, elem, buf, pos + (i - 1) * es) end
+      return t
+    end
+    local n = string.unpack("<i4", buf, pos)
+    local cap = es > 0 and math.floor((node.size - 4) / es) or 0
+    if n < 0 or n > cap then error("count_over_bound") end
+    for i = 1, n do t[i] = decode_old_value(T, d.elem, elem, buf, pos + 4 + (i - 1) * es) end
+    return t
+  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
+    return nil
+  end
+  error("fixed: unknown shape " .. tostring(s))
+end
+
 -- F.read parses the file framing (docs/FIXED-FORM-ALGORITHM.md §2): the form
--- byte, the reserved zeroes, the hash, the layout and one record.
+-- byte, the reserved zeroes, the hash, the layout and one record. A fixed
+-- table reads BACKWARD (§5.2): the header's hash selects a layout the BUILD
+-- laid down, and an older writer's records are read under ITS layout bytes.
 function F.read(T, name, buf)
   if #buf < 1 then error("malformed") end
   local form = buf:byte(1)
@@ -293,18 +424,46 @@ function F.read(T, name, buf)
   local layoutLen = string.unpack("<I4", buf, 17)
   if layoutLen < 4 or 20 + layoutLen > #buf then error("layout_malformed") end
   local layout = string.sub(buf, 21, 20 + layoutLen)
+  local fixed = T.Fixed[name]
+  if fixed == nil then error("fixed: no fixed descriptor for table " .. tostring(name)) end
+  local known, entry, pick = fixed.known, nil, nil
+  if known ~= nil then
+    for i, k in ipairs(known) do
+      if k.hash == hash then pick, entry = i, k break end
+    end
+    if entry == nil then error("no_layout") end
+    if fixed.floor and pick <= fixed.floor then error("layout_unsupported") end
+    -- under a KNOWN hash the bytes are only COMPARED to the lock's layout,
+    -- never walked: every §1.1 malformation is one name, layout_malformed
+    -- (docs/FIXED-FORM-ALGORITHM.md §1.1, §2 step 5, §5.3).
+    if #layout ~= #entry.layout or layout ~= entry.layout then error("layout_malformed") end
+    if entry.tree == nil then
+      entry.tree = layout_tree(entry.layout)
+      if entry.tree == nil then error("layout_malformed") end
+    end
+    layout = entry.layout
+  end
   local count = string.unpack("<I4", layout, 1)
   if count == 0 or #layout ~= 4 + 17 * count then error("layout_malformed") end
-  local rootKind = layout:byte(5 + 8)
-  local rootSize = string.unpack("<I4", layout, 5 + 9)
+  local rootKind, rootSize
+  if entry ~= nil then
+    rootKind, rootSize = entry.tree.kind, entry.tree.size
+  else
+    rootKind = layout:byte(5 + 8)
+    rootSize = string.unpack("<I4", layout, 5 + 9)
+  end
   if rootKind ~= 13 then error("layout_malformed") end
   if rootSize > maxRecordBytes then error("layout_record_too_large") end
-  local recSize = 8 + rootSize
+  local recSize
+  if entry ~= nil then recSize = entry.record else recSize = 8 + rootSize end
   local rest = #buf - 20 - layoutLen
   if recSize <= 8 or rest <= 0 or rest % recSize ~= 0 then error("malformed") end
   if rest / recSize > maxRecords then error("plan_too_large") end
   local at = 21 + layoutLen
   if string.unpack("<I8", buf, at) ~= hash then error("no_layout") end
+  if entry ~= nil and entry.hash ~= fixed.hash then
+    return decode_old_table(T, name, entry.tree, buf, at + 8), hash, layout
+  end
   return decode_table(T, name, buf, at + 8, rootSize), hash, layout
 end
 

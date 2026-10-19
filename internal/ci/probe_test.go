@@ -47,6 +47,17 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err := os.Remove(filepath.Join(fixture, "make", "checks", "lua-fuzz.mk")); err != nil {
 		t.Fatal(err)
 	}
+	// make/schema-lua-nightly-fuzz.mk is the lua fuzz lane's own make fragment
+	// (schema-lua-nightly-fuzz), not a compiler backend; drop it the same way.
+	if err := os.Remove(filepath.Join(fixture, "make", "schema-lua-nightly-fuzz.mk")); err != nil {
+		t.Fatal(err)
+	}
+	// make/schema-lua-version-differential.mk is the Lua version differential's
+	// gate (make/schema-lua-version-differential.mk, "THE GATE"), not a compiler
+	// backend; drop it from the fixture so the registry probe counts only legs.
+	if err := os.Remove(filepath.Join(fixture, "make", "schema-lua-version-differential.mk")); err != nil {
+		t.Fatal(err)
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)

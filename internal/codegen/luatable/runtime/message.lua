@@ -223,6 +223,21 @@ local function same_scalar(d, v)
   return v == def
 end
 
+-- A GUARDED FIELD RIDES ONLY WHEN ITS GUARD HOLDS (docs/SPEC-TABLES.md §3: a
+-- field under a false guard is elided whatever its storage holds; §3.1: it is
+-- not an edge, so its target takes no node). fd.guard is the conjunction of
+-- the field's `if` branch conditions, each a bool field of the same body and
+-- the value it must hold (luatable.go emitDescriptor; tabletext.Guards); a
+-- field with no guard always rides. A bool not set reads false.
+local function guard_holds(fd, v)
+  local g = fd.guard
+  if g == nil then return true end
+  for _, t in ipairs(g) do
+    if (v[t.field] == true) ~= t.want then return false end
+  end
+  return true
+end
+
 local rides
 
 local function elem_rides(d, v)
@@ -292,7 +307,7 @@ rides_table = function(T, name, v)
   local desc = T.Tables[name]
   if desc == nil then return false end
   for _, f in ipairs(desc.fields) do
-    if rides(T, f, v[f.name]) then return true end
+    if guard_holds(f, v) and rides(T, f, v[f.name]) then return true end
   end
   return false
 end
@@ -575,7 +590,7 @@ write_body = function(W, T, name, value, ctx)
   local desc = T.Tables[name]
   if desc == nil then return false end
   for _, f in ipairs(desc.fields) do
-    if rides(T, f, value[f.name]) then
+    if guard_holds(f, value) and rides(T, f, value[f.name]) then
       W:put(slot_field(T, f), ctx.refBits)
       if not write_value(W, T, f, value, f.name, ctx) then return false end
     end
@@ -595,7 +610,7 @@ build_numbering = function(T, root, value)
     local desc = T.Tables[name]
     if desc == nil then return false end
     for _, f in ipairs(desc.fields) do
-      if rides(T, f, val[f.name]) then
+      if guard_holds(f, val) and rides(T, f, val[f.name]) then
         local s = f.shape
         if s == "pointer" then
           local target = val[f.name]
