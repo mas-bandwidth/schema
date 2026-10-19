@@ -367,11 +367,11 @@ struct VariableMessage
 #define MESSAGE( unit_key, ns, type ) \
     { unit_key, #type, 2, 0, FixedMessage<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableMessageEntry, ns::kTableMessageEntriesHere>::run< \
         ns::AnnounceMeasure, ns::Announce, ns::AnnounceRead, \
-        ns::type##LoadMessages, ns::type##MeasureMessages, ns::type##SaveMessages> }
+        ns::type##LoadMessagesTolerant, ns::type##MeasureMessages, ns::type##SaveMessages> }
 #define MESSAGE_VARIABLE( unit_key, ns, type ) \
     { unit_key, #type, 2, 0, VariableMessage<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableMessageEntry, ns::kTableMessageEntriesHere, ns::TableAllocator>::run< \
         ns::AnnounceMeasure, ns::Announce, ns::AnnounceRead, \
-        ns::type##LoadMeasure, ns::type##LoadMessages, ns::type##MeasureMessages, ns::type##SaveMessages, ns::TableDefaultAllocator> }
+        ns::type##LoadMeasure, ns::type##LoadMessagesTolerant, ns::type##MeasureMessages, ns::type##SaveMessages, ns::TableDefaultAllocator> }
 
 static const Codec codecs[] = {
     FIXED( "tabledemo", tabledemo, RootConfig ),
