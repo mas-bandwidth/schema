@@ -115,7 +115,7 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 	}
 
 	cases := []refusalRow{
-		{"refuseWideText", "wide text", "package probe\n\ntable L\n{\n    w wstring(8)\n}\n", "L.w", false},
+		{"refuseWideText", "wide text", "package probe\n\ntable L\n{\n    w wstring(8)\n}\n", "L.w", true},
 		{"refuseBytes", "byte buffer", "package probe\n\ntable L\n{\n    b *bytes\n}\n", "L.b", false},
 		{"refuseStrings", "string buffer", "package probe\n\ntable L\n{\n    s *string\n}\n", "L.s", false},
 		{refuser: "refuseMaps", name: "map", src: "package probe\n\ntable L\n{\n    index map[string(8)]int32\n}\n", field: "L.index", carried: true},
@@ -164,6 +164,9 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			}
 			if slices.Contains([]string{"refuseTableArms", "refuseVoidArms", "refuseUnionArrays"}, tc.refuser) {
 				registered = c != nil
+			}
+			if tc.refuser == "refuseWideText" {
+				registered = tableWideTextTargets["squirrel"]
 			}
 			if registered {
 				if err := refusers[tc.refuser](u, "squirrel"); err != nil {
