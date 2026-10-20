@@ -82,7 +82,7 @@ local function surfaceReport(manifest, outdir)
           "unit not generated for lua: docs/SPEC-TABLES.md §15\n")
       else
         local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-        load.Load(T, f[4], readBytes(f[5]), r)
+        load.LoadTolerant(T, f[4], readBytes(f[5]), r)
         writeBytes(outdir .. "/" .. f[2], reportLine(r))
       end
     end
@@ -102,7 +102,7 @@ local function surfaceWire(manifest, outdir)
           "unit not generated for lua: docs/SPEC-TABLES.md §15\n")
       else
         local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-        local v = load.Load(T, f[4], readBytes(f[5]), r)
+        local v = load.LoadTolerant(T, f[4], readBytes(f[5]), r)
         if v == nil then
           error("load refused " .. f[5])
         end

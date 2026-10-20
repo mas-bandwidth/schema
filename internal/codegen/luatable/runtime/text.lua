@@ -167,7 +167,7 @@ function Text.LoadText(T, name, text, report, integrity)
   local wire, why = decode(text)
   if wire == nil then error(why, 0) end
   local root = refusal.ReadStrict(T, name, wire, integrity)
-  if report ~= nil and integrity == nil then load.Load(T, name, wire, report) end
+  if report ~= nil and integrity == nil then load.LoadTolerant(T, name, wire, report) end
   return root
 end
 

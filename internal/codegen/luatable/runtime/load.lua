@@ -1294,14 +1294,18 @@ local function resolve(ctx, root, rootdesc)
   end
 end
 
--- Load loads a form-1 wire for table `name` of module T into a fresh value,
--- fills report, and returns the value. A FIXED root (no pointer in its
+-- LoadTolerant loads a form-1 wire for table `name` of module T into a fresh
+-- value, fills report, and returns the value. A FIXED root (no pointer in its
 -- by-value closure, docs/SPEC-TABLES.md §2.2) ALWAYS LOADS (§4.2, §6.5;
 -- internal/tablewire decodeWith): a wire refused by its form byte (§3) or one
 -- that does not open (an empty or short wire, an unreadable trailer, bytes
 -- after the root's terminator) answers the root at its defaults, with the
 -- report saying what happened. Only a VARIABLE root answers nil there.
-function L.Load(T, name, bytes, report)
+--
+-- This is THE TOLERANT READ (docs/SPEC-TABLES.md §6.5), under its explicit
+-- name: it keeps the recovered value and its report. The plain L.Load below is
+-- the strict read.
+function L.LoadTolerant(T, name, bytes, report)
   local desc = T.Tables[name]
   -- THE INTEGRITY TRAILER (§2.14, §3.4): a declaring root's form-1 file ends
   -- with the little-endian CRC-32C of every byte before it. The form byte is
@@ -1377,6 +1381,65 @@ function L.Load(T, name, bytes, report)
   read_body(T, ctx, desc, new_reader(bytes, 1, o.lim), root, false)
   if report.missingRequired and report.missingRequired > missingBefore then return nil end
   resolve(ctx, root, desc)
+  return root
+end
+
+-- strict_refusal answers the refusal's §11/§6.5 name when the strict read
+-- refuses this wire, and nil when it accepts it. It reads the FORM BYTE FIRST
+-- in refusal.lua's order (§2.14, §6.5), then the report the tolerant walk just
+-- filled: a refused form, integrity_mismatch, wire_damaged, missing_required,
+-- malformed, then the counters blob_shared, clamped and kind_mismatch, and
+-- last a non-finite plain float. The set is the one refusal.lua's ReadStrict
+-- owns; unknown, widened and duplicate ALONE are evolution, exact decoding and
+-- data identity, not loss (§6.5), so they read clean. This entry reads the
+-- variable form, so every form byte but 1 is the one reason unknown_form:
+-- TableReport.Err() folds previous_form, newer_form and message_form_as_file
+-- alike (§11).
+local function strict_refusal(bytes, report, root)
+  if type(bytes) ~= "string" then return "wire_damaged" end
+  local form = #bytes >= 1 and bytes:byte(1) or nil
+  if form ~= nil and form ~= 1 then return "unknown_form" end
+  if report.refused ~= 0 then return "unknown_form" end
+  if report.reason == "integrity_mismatch" then return "integrity_mismatch" end
+  if report.wireDamaged then return "wire_damaged" end
+  if (report.missingRequired or 0) > 0 then return "missing_required" end
+  if report.malformed then return report.reason or "malformed" end
+  if (report.blobShared or 0) > 0 then return "blob_shared" end
+  if report.clamped > 0 then return "clamped" end
+  if report.kindMismatch > 0 then return "kind_mismatch" end
+  if report.reason ~= nil and string.sub(report.reason, 1, 11) == "non_finite:" then
+    return "non_finite"
+  end
+  if root == nil then return "wire_damaged" end
+  return nil
+end
+
+-- Load is THE STRICT READ (docs/SPEC-TABLES.md §6.5: THE PLAIN NAME IS THE
+-- STRICT READ): it runs the tolerant walk into the caller's report, overwriting
+-- it with THIS read's report (every counter counted as the tolerant read counts
+-- it), and answers the root only where the strict set accepts the wire.
+-- Otherwise it answers nil, raising nothing, with report.reason naming the
+-- refusal. A nil report refuses the same way (§6.5).
+function L.Load(T, name, bytes, report)
+  local r = report
+  if r == nil then r = {} end
+  r.malformed = false
+  r.refused = 0
+  r.unknown = 0
+  r.kindMismatch = 0
+  r.clamped = 0
+  r.widened = 0
+  r.duplicate = 0
+  r.blobShared = 0
+  r.missingRequired = 0
+  r.wireDamaged = false
+  r.reason = nil
+  local root = L.LoadTolerant(T, name, bytes, r)
+  local reason = strict_refusal(bytes, r, root)
+  if reason ~= nil then
+    r.reason = reason
+    return nil
+  end
   return root
 end
 

@@ -23,7 +23,7 @@ local save = require("save")
 local text = require("text")
 local inputs = require("inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.Load(T, "` + root + `", inputs.wire, report)
+local v = load.LoadTolerant(T, "` + root + `", inputs.wire, report)
 print(text.SaveText(T, "` + root + `", v))
 local back = text.LoadText(T, "` + root + `", inputs.expect)
 local saved = save.Save(T, "` + root + `", back)
@@ -46,7 +46,7 @@ local load = require("load")
 local text = require("text")
 local inputs = require("inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.Load(T, "` + root + `", inputs.wire, report)
+local v = load.LoadTolerant(T, "` + root + `", inputs.wire, report)
 print(text.SaveText(T, "` + root + `", v))
 `
 }

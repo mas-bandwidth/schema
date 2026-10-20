@@ -199,7 +199,8 @@ the carry-across record (the sprint retired per-technique issues).
 | schema-lua-port-design | this page, the skeleton, both type and table surfaces without codecs | the files above |
 | schema-lua-type-wire-read | the type wire's read side: every type, union and array; the C++-pinned goldens | `lua/read.go`, `lua/runtime/bitreader.lua` |
 | schema-lua-type-wire-write | the type wire's write side, byte for byte with the goldens | `lua/write.go`, `lua/runtime/bitwriter.lua` |
-| schema-lua-table-wire-load | the variable form's tolerant load and its report (§3.1, §4) | `luatable/runtime/load.lua` |
+| schema-lua-table-wire-load | the variable form's tolerant load `LoadTolerant` and its report (§3.1, §4) | `luatable/runtime/load.lua` |
+| schema-lua-plain-load-is-strict | the plain `Load` is the strict read; `LoadTolerant` is the tolerant one (§6.5) | `luatable/runtime/load.lua`, `luatable/runtime/refusal.lua` |
 | schema-lua-table-wire-save | the variable form's save, every instance byte for byte | `luatable/runtime/save.lua` |
 | schema-lua-fixed-form | form `3` against the byte oracle (docs/FIXED-FORM-ALGORITHM.md) | `luatable/fixedform.go`, `luatable/runtime/fixed.lua` |
 | schema-lua-message-form | form `2` against its goldens | `luatable/messageform.go`, `luatable/runtime/message.lua` |

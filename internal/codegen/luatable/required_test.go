@@ -173,7 +173,7 @@ end
 do
   local lg = T.NewLegacy(); lg.a = 5
   local w = save.Save(T, "Legacy", lg)
-  local r = rep(); local v = load.Load(T, "Cur", w, r)
+  local r = rep(); local v = load.LoadTolerant(T, "Cur", w, r)
   line("root_missing", r, v)
 end
 -- B: a required field rides at its default, and a clean record reads back and
@@ -183,7 +183,7 @@ do
   local w = save.Save(T, "Cur", c)
   local lg = T.NewLegacy(); lg.a = 5
   local wl = save.Save(T, "Legacy", lg)
-  local r = rep(); local v = load.Load(T, "Cur", w, r)
+  local r = rep(); local v = load.LoadTolerant(T, "Cur", w, r)
   print(string.format("rides %d|%s|%s|%s", r.missingRequired or 0, tostring(#w > #wl), tostring(v ~= nil), tostring(v ~= nil and v.b == 0)))
   resave("rides", "Cur", w, v)
 end
@@ -191,21 +191,21 @@ end
 do
   local g = T.NewG()
   local w = save.Save(T, "G", g)
-  local r = rep(); local v = load.Load(T, "G", w, r)
+  local r = rep(); local v = load.LoadTolerant(T, "G", w, r)
   line("off_guard", r, v)
   resave("off_guard", "G", w, v)
 end
 do
   local gl = T.NewGLegacy(); gl.active = true; gl.x = 5
   local w = save.Save(T, "GLegacy", gl)
-  local r = rep(); local v = load.Load(T, "G", w, r)
+  local r = rep(); local v = load.LoadTolerant(T, "G", w, r)
   line("on_guard_missing", r, v)
 end
 -- D: a required field two levels deep refuses the outer record, naming the child.
 do
   local oo = T.NewOldOuter(); oo.a = 3; oo.kid.y = 2
   local w = save.Save(T, "OldOuter", oo)
-  local r = rep(); local v = load.Load(T, "Outer", w, r)
+  local r = rep(); local v = load.LoadTolerant(T, "Outer", w, r)
   line("nested_missing", r, v)
 end
 -- E: a required field whose range excludes zero takes no default: an older
@@ -214,13 +214,13 @@ end
 do
   local oe = T.NewOldExact()
   local w = save.Save(T, "OldExact", oe)
-  local r = rep(); local v = load.Load(T, "Exact", w, r)
+  local r = rep(); local v = load.LoadTolerant(T, "Exact", w, r)
   line("nodefault_missing", r, v)
 end
 do
   local oh = T.NewOther()
   local w = save.Save(T, "Other", oh)
-  local r = rep(); local v = load.Load(T, "Other", w, r)
+  local r = rep(); local v = load.LoadTolerant(T, "Other", w, r)
   line("other_clean", r, v)
   resave("other_clean", "Other", w, v)
 end
@@ -228,14 +228,14 @@ end
 do
   local hp = T.NewHasPick(); hp.pid = 1; hp.pick = { tag = 0 }
   local w = save.Save(T, "HasPick", hp)
-  local r = rep(); local v = load.Load(T, "HasPick", w, r)
+  local r = rep(); local v = load.LoadTolerant(T, "HasPick", w, r)
   line("union_arm_off", r, v)
   resave("union_arm_off", "HasPick", w, v)
 end
 do
   local oh = T.NewOldHasPick(); oh.pid = 1; oh.pick = { tag = 1, kid = { y = 2 } }
   local w = save.Save(T, "OldHasPick", oh)
-  local r = rep(); local v = load.Load(T, "HasPick", w, r)
+  local r = rep(); local v = load.LoadTolerant(T, "HasPick", w, r)
   line("union_arm_on_missing", r, v)
 end
 -- G: a required map, blob and union ride at zero: the Lua save writes exactly
@@ -246,7 +246,7 @@ do
   local w = save.Save(T, "R", r)
   print(string.format("oracle_save %s", tostring(hexenc(w) == ORACLE)))
   local d = hexdec(ORACLE)
-  local r2 = rep(); local v = load.Load(T, "R", d, r2)
+  local r2 = rep(); local v = load.LoadTolerant(T, "R", d, r2)
   line("oracle_go", r2, v)
   if v ~= nil then
     local w2 = save.Save(T, "R", v)
@@ -257,7 +257,7 @@ end
 do
   local k = T.NewKeys()
   local w = save.Save(T, "Keys", k)
-  local r = rep(); local v = load.Load(T, "Keys", w, r)
+  local r = rep(); local v = load.LoadTolerant(T, "Keys", w, r)
   line("keyed_zero", r, v)
   if v ~= nil then
     local w2 = save.Save(T, "Keys", v)
@@ -275,7 +275,7 @@ do
   local w = save.Save(T, "RS", s)
   print(string.format("shapes_oracle_save %s", tostring(hexenc(w) == SHAPES_ORACLE)))
   local d = hexdec(SHAPES_ORACLE)
-  local r = rep(); local v = load.Load(T, "RS", d, r)
+  local r = rep(); local v = load.LoadTolerant(T, "RS", d, r)
   line("shapes_oracle_go", r, v)
   if v ~= nil then
     local w2 = save.Save(T, "RS", v)

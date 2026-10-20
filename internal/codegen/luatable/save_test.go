@@ -24,7 +24,7 @@ local save = require("save")
 local inputs = require("inputs")
 local wire = inputs.wire
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.Load(T, "` + root + `", wire, report)
+local v = load.LoadTolerant(T, "` + root + `", wire, report)
 local saved = save.Save(T, "` + root + `", v)
 local measure = save.Measure(T, "` + root + `", v)
 print(#saved .. ":" .. (saved == wire and "same" or "diff") .. ":" .. measure)
