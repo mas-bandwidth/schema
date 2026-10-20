@@ -943,10 +943,7 @@ func lobsterFixedCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "old_field_append.bin")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", dir, err)
-		}
-		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+		t.Fatalf("the reference's byte oracle is not built: run make tables-fixedform-corpus (%v)", err)
 	}
 	return dir
 }
