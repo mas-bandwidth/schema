@@ -39,6 +39,9 @@ func (t squirrelTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, e
 	if err := refuseUnported(u, "squirrel"); err != nil {
 		return nil, err
 	}
+	// squirrel carries the optional array (compiler/target_squirrel_optionalarrays.go,
+	// docs/SPEC-TABLES.md §2.3): the refuser below reads that registration and
+	// rides for squirrel while still refusing an unregistered target.
 	if err := refuseOptionalArrays(u, "squirrel"); err != nil {
 		return nil, err
 	}
@@ -66,6 +69,9 @@ func (t squirrelTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *Fixed
 	if err := refuseUnported(u, "squirrel"); err != nil {
 		return nil, err
 	}
+	// squirrel carries the optional array (compiler/target_squirrel_optionalarrays.go,
+	// docs/SPEC-TABLES.md §2.3): the refuser below reads that registration and
+	// rides for squirrel while still refusing an unregistered target.
 	if err := refuseOptionalArrays(u, "squirrel"); err != nil {
 		return nil, err
 	}
