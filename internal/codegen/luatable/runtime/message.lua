@@ -219,12 +219,22 @@ local function elem_zero(d)
   return nil
 end
 
+-- A PLAIN FLOAT'S SPECIAL VALUES TAKE ONE RULE (docs/SPEC-TABLES.md §3.3,
+-- "-0 IS A VALUE, AND IT RIDES"): the elision compares BIT PATTERNS, never
+-- ==, because -0 == +0 under == and a -0 must ride the message form too.
+local function same_float(f32, a, b)
+  if type(a) ~= "number" or type(b) ~= "number" then return a == b end
+  if f32 then return string.pack("<f", a) == string.pack("<f", b) end
+  return string.pack("<d", a) == string.pack("<d", b)
+end
+
 local function same_scalar(d, v)
   if v == nil then return false end
   local def = d.default
   if def == nil then def = elem_zero(d) end
   if d.shape == "float" then
     if v ~= v and def ~= def then return true end
+    return same_float(d.f32, v, def)
   end
   return v == def
 end
@@ -271,7 +281,9 @@ local function elem_rides(T, d, v)
   elseif s == "bool" or s == "int" or s == "flags" then
     return v ~= 0 and v ~= false
   elseif s == "float" then
-    return v ~= 0.0
+    -- AN ELEMENT'S ZERO IS +0, AND THE COMPARE IS BY BITS (§3.3): a -0 element
+    -- rides, and so does a NaN or an infinity.
+    return not same_float(d.f32, v, 0.0)
   elseif s == "string" or s == "bytes" then
     return #v > 0
   elseif s == "wstring" then

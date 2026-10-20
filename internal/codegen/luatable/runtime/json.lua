@@ -1431,6 +1431,10 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     local token = scan_number(inp)
     if token == nil then inp.bad = true; return false end
     local x = tonumber(token)
+    -- A `-0` TOKEN IS THE FLOAT -0.0 (docs/SPEC-TABLES.md §3.3, "-0 IS A
+    -- VALUE, AND IT RIDES"; §16.3): Lua reads an integer token "-0" as +0, so
+    -- the sign the token spells is kept here.
+    if x == 0 and token:sub(1, 1) == "-" then x = -0.0 end
     if x == nil or x ~= x or x == math.huge or x == -math.huge then
       report.kindMismatch = report.kindMismatch + 1
       return true
@@ -1715,6 +1719,9 @@ end
 
 local function float_text(v, single)
   if v ~= v or v == math.huge or v == -math.huge then return nil end
+  -- -0 IS A VALUE AND WRITES AS -0, exactly as Go's writer does (§3.3,
+  -- §16.3); -0 == +0 under ==, so the sign is read from the reciprocal.
+  if v == 0 and 1 / v < 0 then return "-0" end
   local low, high = single and 6 or 15, single and 9 or 17
   for digits = low, high do
     local text = format_g(v, digits)
