@@ -406,7 +406,7 @@ func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 		// refused by name.
 		for _, f := range rs.Fields {
 			if f.Guard != "" && !guardedCookField(f) {
-				why = fmt.Sprintf("%s.%s is guarded and holds a reference or a record, whose numbering under a false guard this writer does not carry yet (docs/SPEC-TABLES.md §3.1, §7.6)", name, f.Name)
+				why = fmt.Sprintf("%s.%s is guarded and holds a blob, whose write under a false guard this writer does not carry yet (docs/SPEC-TABLES.md §3.1, §7.6)", name, f.Name)
 				break
 			}
 			if un := unionRef(f); un != nil {
@@ -513,11 +513,140 @@ func variableCookField(f *ir.Field) bool {
 // decides what RIDES, and the cooked region is the storage, so a scalar or an
 // inline text slot under a false guard is written exactly as it is held —
 // what internal/tablecook's region writer and the Go leg's tableCookWriter
-// both write (§7.6). A reference is different: §3.1's numbering skips a node
-// reached only through a false guard, so its slot has no node to point at,
-// and a guarded record may hold such a slot; both stay refused by name.
+// both write (§7.6). A reference under a true guard is numbered and written as
+// any reference (§3.1); under a false guard §3.1's numbering skips its target,
+// so its slot has no node to point at and the emitted writer refuses a slot
+// that still holds a target, exactly as the reference leg does (§7.6). A
+// guarded record is by-value storage and is written verbatim whatever its guard
+// holds — while it reaches no reference; a pointer anywhere in its by-value
+// closure is a target the clear guard leaves unnumbered (§3.1), so the emitted
+// writer refuses it exactly as the reference leg does (§7.6). Only a guarded
+// blob stays refused by name.
 func guardedCookField(f *ir.Field) bool {
-	return !f.Type.Pointer && !f.Type.Blob() && tableRef(f) == nil
+	return !f.Type.Blob()
+}
+
+// guardHoldsCond spells the Dart condition under which f's guard HOLDS, or ""
+// when f is unguarded or names no storage this record carries. A guard is a
+// conjunction of (possibly negated) bool field names (§2.2, §16.2).
+func guardHoldsCond(f *ir.Field, guardMember map[string]string) string {
+	if f.Guard == "" {
+		return ""
+	}
+	var conds []string
+	for _, t := range strings.Split(f.Guard, "&&") {
+		t = strings.TrimSpace(t)
+		want := "true"
+		if strings.HasPrefix(t, "!") {
+			t = strings.TrimPrefix(t, "!")
+			want = "false"
+		}
+		m, ok := guardMember[t]
+		if !ok {
+			continue
+		}
+		conds = append(conds, m+"=="+want)
+	}
+	if len(conds) == 0 {
+		return ""
+	}
+	return strings.Join(conds, " && ")
+}
+
+// guardedRefCheck returns the Dart condition under which a guarded reference
+// field must refuse, or "" when it must not. A reference is carried only when
+// its guard holds; a clear guard leaves its target unnumbered (§3.1), so a
+// reference that still holds a target is refused — the same refusal the
+// reference leg makes when a referenced node is not in the numbering
+// (docs/SPEC-TABLES.md §7).
+func guardedRefCheck(f *ir.Field, expr string, guardMember map[string]string) string {
+	holds := guardHoldsCond(f, guardMember)
+	if holds == "" {
+		return ""
+	}
+	return expr + " != null && !(" + holds + ")"
+}
+
+// refClosureExpr spells the Dart condition under which a BY-VALUE field's
+// storage holds a non-null reference anywhere in its by-value closure, or ""
+// when it holds none. Under a clear guard the reference numbering never
+// descends into that storage (§3.1), so every pointer the region writer still
+// writes is a target the numbering cannot carry and the cook must refuse
+// exactly as the reference leg does (docs/SPEC-TABLES.md §7, §7.6).
+func refClosureExpr(u *ir.Unit, f *ir.Field, expr string) string {
+	return fieldRefExpr(u, f, expr, map[*ir.Struct]bool{})
+}
+
+func fieldRefExpr(u *ir.Unit, f *ir.Field, expr string, seen map[*ir.Struct]bool) string {
+	if f == nil || f.IsMap() {
+		return ""
+	}
+	if f.Type.Optional {
+		inner := *f
+		inner.Type.Optional = false
+		return fieldRefExpr(u, &inner, expr, seen)
+	}
+	if f.Type.Pointer {
+		switch f.Array {
+		case ir.ArrayNone:
+			return expr + " != null"
+		case ir.ArrayFixed, ir.ArrayCounted, ir.ArrayList:
+			return expr + ".any((e) => e != null)"
+		}
+		return ""
+	}
+	if un := unionRef(f); un != nil {
+		var arms []string
+		for i, arm := range un.Variants {
+			if arm.Void() {
+				continue
+			}
+			if body := fieldRefExpr(u, arm.F, expr+"."+armMember(arm), seen); body != "" {
+				arms = append(arms, fmt.Sprintf("%s.armTag == %d && (%s)", expr, i+1, body))
+			}
+		}
+		if len(arms) == 0 {
+			return ""
+		}
+		if f.Array == ir.ArrayNone {
+			return strings.Join(arms, " || ")
+		}
+		return ""
+	}
+	st := tableRef(f)
+	if st == nil {
+		return ""
+	}
+	if f.Array == ir.ArrayNone {
+		return byValueRefExpr(u, st, expr, seen)
+	}
+	body := byValueRefExpr(u, st, "e", seen)
+	if body == "" {
+		return ""
+	}
+	return expr + ".any((e) => " + body + ")"
+}
+
+// byValueRefExpr walks one record's by-value fields for the reference slots its
+// storage holds (docs/SPEC-TABLES.md §2.1, §7.6). A by-value cycle is
+// impossible, so the walk is one pass; seen only stops a repeated type from
+// being walked twice on the same branch.
+func byValueRefExpr(u *ir.Unit, st *ir.Struct, expr string, seen map[*ir.Struct]bool) string {
+	if st == nil || seen[st] {
+		return ""
+	}
+	seen[st] = true
+	defer delete(seen, st)
+	var terms []string
+	for _, fl := range ir.RecordLayout(u, st).Fields {
+		if term := fieldRefExpr(u, fl.Field, expr+"."+fieldMember(fl.Field), seen); term != "" {
+			terms = append(terms, term)
+		}
+	}
+	if len(terms) == 0 {
+		return ""
+	}
+	return strings.Join(terms, " || ")
 }
 
 // emitCookVariableRecord writes one record of the graph where it lies, with
@@ -525,10 +654,18 @@ func guardedCookField(f *ir.Field) bool {
 func (g *cookGen) emitCookVariableRecord(name string) {
 	rs := cookMember(g.unit, name)
 	ml := ir.RecordLayout(g.unit, rs)
+	// guardMember maps a bool guard field's name to its Dart storage member, so
+	// a guarded reference field can check whether its guard holds (§2, §3.1).
+	guardMember := map[string]string{}
+	for _, fl := range ml.Fields {
+		if fl.Field.Type.Kind == ir.TBool && fl.Field.Array == ir.ArrayNone {
+			guardMember[fl.Field.Name] = "value." + fieldMember(fl.Field)
+		}
+	}
 	outer := g.body
 	g.body = strings.Builder{}
 	for _, fl := range ml.Fields {
-		g.emitCookGraphField(fl.Field, fl.Offset, "value."+fieldMember(fl.Field), "    ")
+		g.emitCookGraphField(fl.Field, fl.Offset, "value."+fieldMember(fl.Field), "    ", guardMember)
 	}
 	fields := g.body.String()
 	g.body = outer
@@ -715,7 +852,7 @@ var (
 	cookUsesOrder = regexp.MustCompile(`\border\b`)
 )
 
-func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind string) {
+func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind string, guardMember map[string]string) {
 	pieces := ir.FieldPieces(g.unit, f, offset)
 	switch {
 	case f.Type.Blob():
@@ -751,7 +888,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		for i, arm := range un.Variants {
 			g.pf("%s  case %d:\n", ind, i+1)
 			if !arm.Void() {
-				g.emitCookVariableField(arm.F, offset+armOffset, expr+"."+armMember(arm), ind+"    ")
+				g.emitCookVariableField(arm.F, offset+armOffset, expr+"."+armMember(arm), ind+"    ", guardMember)
 			}
 			g.pf("%s    break;\n", ind)
 		}
@@ -765,11 +902,17 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		bound := f.ArrayBound
 		stride := pieces[0].Size / bound
 		ref := tableRef(f)
+		holds := guardHoldsCond(f, guardMember)
 		g.pf("%sif (%s.length > %d) return false;\n", ind, expr, bound)
 		g.pf("%sout?.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, expr)
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
 		switch {
 		case ref != nil && f.Type.Pointer:
+			if holds != "" {
+				// a clear guard leaves every live target unnumbered (§3.1), so a
+				// live slot that still holds one is refused (§7.6)
+				g.pf("%s  if (!(%s) && i < %s.length && %s[i] != null) return false;\n", ind, holds, expr, expr)
+			}
 			g.pf("%s  c.ref(at + %d + i * %d, i < %s.length ? %s[i] : null);\n", ind, offset, stride, expr, expr)
 		case ref != nil:
 			// a DEAD slot holds the element's declared defaults, as the
@@ -778,6 +921,11 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 				g.pf("%s\n", line)
 			} else {
 				g.pf("%s  final e = i < %s.length\n%s      ? %s[i]\n%s      : wire.%s();\n", ind, expr, ind, expr, ind, ref.Name)
+			}
+			if holds != "" {
+				if refs := byValueRefExpr(g.unit, ref, "e", map[*ir.Struct]bool{}); refs != "" {
+					g.pf("%s  if (!(%s) && i < %s.length && (%s)) return false;\n", ind, holds, expr, refs)
+				}
 			}
 			g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d)) return false;\n", ind, ref.Name, offset, stride)
 		default:
@@ -796,19 +944,40 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		bound := f.ArrayBound
 		stride := pieces[0].Size / bound
 		ref := tableRef(f)
+		holds := guardHoldsCond(f, guardMember)
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
 		switch {
 		case ref != nil && f.Type.Pointer:
+			if holds != "" {
+				// a clear guard leaves every fixed slot's target unnumbered
+				// (§3.1), so a slot that still holds one is refused (§7.6)
+				g.pf("%s  if (!(%s) && %s[i] != null) return false;\n", ind, holds, expr)
+			}
 			g.pf("%s  c.ref(at + %d + i * %d, %s[i]);\n", ind, offset, stride, expr)
 		case ref != nil:
+			if holds != "" {
+				if refs := byValueRefExpr(g.unit, ref, expr+"[i]", map[*ir.Struct]bool{}); refs != "" {
+					g.pf("%s  if (!(%s) && (%s)) return false;\n", ind, holds, refs)
+				}
+			}
 			g.pf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;\n", ind, ref.Name, expr, offset, stride)
 		default:
 			g.emitCookFixedScalar(f, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
 		}
 		g.pf("%s}\n", ind)
 	case isPointerTable(f):
+		if chk := guardedRefCheck(f, expr, guardMember); chk != "" {
+			g.pf("%sif (%s) return false;\n", ind, chk)
+		}
 		g.pf("%sc.ref(at + %d, %s);\n", ind, offset, expr)
 	case isByValueTable(f):
+		if holds := guardHoldsCond(f, guardMember); holds != "" {
+			if refs := refClosureExpr(g.unit, f, expr); refs != "" {
+				// a by-value record under a clear guard is not descended by the
+				// numbering, so a reference it still holds is refused (§3.1, §7.6)
+				g.pf("%sif (!(%s) && (%s)) return false;\n", ind, holds, refs)
+			}
+		}
 		g.pf("%sif (!_cook%s(%s, c, at + %d)) return false;\n", ind, tableRef(f).Name, expr, offset)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.needConvert = true
