@@ -475,27 +475,30 @@ local function interpret_integer(token, integral)
   return out
 end
 
-local function int_less(n, bound)
+-- A declared bound is a signed integer where the field is signed and the
+-- stored BITS where it is unsigned: a uint64 bound above int64's ceiling is a
+-- negative Lua integer that must compare by math.ult, not by `<`
+-- (docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS; docs/SPEC-TABLES.md §4).
+local function int_less(n, bound, signed)
   if n.neg then
-    if bound >= 0 then return true end
-    local bm = 0 - bound
-    return math.ult(n.mag, bm)
+    if signed and bound < 0 then return math.ult(0 - bound, n.mag) end
+    return true
   end
-  if bound < 0 then return false end
+  if signed and bound < 0 then return false end
   return math.ult(n.mag, bound)
 end
 
-local function int_greater(n, bound)
-  if bound < 0 then
+local function int_greater(n, bound, signed)
+  if signed and bound < 0 then
     if not n.neg then return true end
-    return math.ult(0 - bound, n.mag)
+    return math.ult(n.mag, 0 - bound)
   end
   if n.neg then return false end
   return math.ult(bound, n.mag)
 end
 
-local function set_from_bound(n, bound)
-  if bound < 0 then n.neg, n.mag = true, 0 - bound
+local function set_from_bound(n, bound, signed)
+  if signed and bound < 0 then n.neg, n.mag = true, 0 - bound
   else n.neg, n.mag = false, bound end
 end
 
@@ -506,12 +509,12 @@ local function place_integer(fd, n, report)
   end
   if n.sat then report.clamped = report.clamped + 1 end
   if fd.lo ~= nil and fd.hi ~= nil then
-    if int_less(n, fd.lo) then set_from_bound(n, fd.lo); report.clamped = report.clamped + 1
-    elseif int_greater(n, fd.hi) then set_from_bound(n, fd.hi); report.clamped = report.clamped + 1 end
+    if int_less(n, fd.lo, fd.signed) then set_from_bound(n, fd.lo, fd.signed); report.clamped = report.clamped + 1
+    elseif int_greater(n, fd.hi, fd.signed) then set_from_bound(n, fd.hi, fd.signed); report.clamped = report.clamped + 1 end
   end
   if fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
     local bmax = (1 << fd.bits) - 1
-    if int_greater(n, bmax) then set_from_bound(n, bmax); report.clamped = report.clamped + 1 end
+    if int_greater(n, bmax, false) then set_from_bound(n, bmax, false); report.clamped = report.clamped + 1 end
   end
   local width = fd.width or 8
   local moved = false
