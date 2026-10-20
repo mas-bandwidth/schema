@@ -32,10 +32,7 @@ func TestSquirrelDriverListsItsSurfaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sq, err := sqrun.Interpreter()
-	if err != nil {
-		t.Fatalf("the pinned Squirrel interpreter does not resolve (%v); run make dist-squirrel, or point SQ at sq64 built with -DSQUSEDOUBLE", err)
-	}
+	sq := sqrun.Require(t)
 	manifest := filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt")
 	driver := filepath.Join(root, "test", "conformance", "squirrel", "driver")
 	cmd := exec.Command(driver, manifest, "list")

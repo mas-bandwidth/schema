@@ -108,6 +108,7 @@ func (f *fatalTB) Fatalf(format string, args ...any) {
 // never hand back its partial stdout as a pass.
 func TestSqrunFailsAScriptThatThrows(t *testing.T) {
 	t.Parallel()
+	sqrun.Require(t)
 	dir := t.TempDir()
 	main := "print(\"before\\n\");\nthrow \"boom\";\n"
 	if err := os.WriteFile(filepath.Join(dir, "main.nut"), []byte(main), 0o644); err != nil {
