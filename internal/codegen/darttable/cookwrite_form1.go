@@ -147,17 +147,17 @@ func form1CookField(f *ir.Field) bool {
 // emitCookGraphField writes one field of a graph record: the variable writer's
 // own field, or on a fixed root's form-1 cook the fixed class's constructs
 // as well (§7.2).
-func (g *cookGen) emitCookGraphField(f *ir.Field, offset int64, expr, ind string, guardMember map[string]string) {
+func (g *cookGen) emitCookGraphField(f *ir.Field, offset int64, expr, ind string, guardMember map[string]string, live string) {
 	if !g.form1 {
-		g.emitCookVariableField(f, offset, expr, ind, guardMember)
+		g.emitCookVariableField(f, offset, expr, ind, guardMember, live)
 		return
 	}
-	g.emitCookForm1Field(f, offset, expr, ind, guardMember)
+	g.emitCookForm1Field(f, offset, expr, ind, guardMember, live)
 }
 
 // emitCookForm1Field writes one field of a fixed root's form-1 value at the
 // cook's offsets, every piece in the target byte order (§7.2, §7.6).
-func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string, guardMember map[string]string) {
+func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string, guardMember map[string]string, live string) {
 	pieces := ir.FieldPieces(g.unit, f, offset)
 	if f.Type.Optional {
 		// §2.3 on the cooked storage: the presence bool is the LAST piece, and
@@ -170,7 +170,7 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 		g.pf("%sout?.setUint8(at + %d, %s.%s ? 1 : 0);\n", ind, pieces[len(pieces)-1].Offset, owner, hasMember(f))
 		inner := *f
 		inner.Type.Optional = false
-		g.emitCookForm1Field(&inner, offset, expr, ind, guardMember)
+		g.emitCookForm1Field(&inner, offset, expr, ind, guardMember, live)
 		return
 	}
 	if f.KeyEnum != "" || f.Array == ir.ArrayFixed {
@@ -184,12 +184,12 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 		g.pf("%sif (%s.length != %d) return false;\n", ind, expr, bound)
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
 		if ref := tableRef(f); ref != nil {
-			call := fmt.Sprintf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;", ind, ref.Name, expr, offset, stride)
+			call := fmt.Sprintf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d, %s)) return false;", ind, ref.Name, expr, offset, stride, live)
 			if len(call) <= 80 {
 				g.pf("%s\n", call)
 			} else {
 				g.pf("%s  final e = %s[i];\n", ind, expr)
-				g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d)) return false;\n", ind, ref.Name, offset, stride)
+				g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d, %s)) return false;\n", ind, ref.Name, offset, stride, live)
 			}
 		} else {
 			g.pf("%s  final e = %s[i];\n", ind, expr)
@@ -201,7 +201,7 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 	if f.Array == ir.ArrayNone && f.Type.Kind == ir.TNamed {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Union:
-			g.emitCookForm1Union(f, ref, offset, expr, ind, guardMember)
+			g.emitCookForm1Union(f, ref, offset, expr, ind, guardMember, live)
 			return
 		case *ir.Enum, *ir.Flags:
 			g.emitCookFixedScalar(f, expr, fmt.Sprintf("at + %d", offset), pieces[0].Size, ind)
@@ -226,16 +226,16 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 		// a record held by value, in the spelling `dart format` writes: a
 		// union arm's deeper indent splits the long call (tables-dart-clean)
 		ref := tableRef(f).Name
-		if line := fmt.Sprintf("%sif (!_cook%s(%s, c, at + %d)) return false;", ind, ref, expr, offset); len(line) <= 80 {
+		if line := fmt.Sprintf("%sif (!_cook%s(%s, c, at + %d, %s)) return false;", ind, ref, expr, offset, live); len(line) <= 80 {
 			g.pf("%s\n", line)
-		} else if head := fmt.Sprintf("%sif (!_cook%s(%s, c, at + %d))", ind, ref, expr, offset); len(head) <= 80 {
+		} else if head := fmt.Sprintf("%sif (!_cook%s(%s, c, at + %d, %s))", ind, ref, expr, offset, live); len(head) <= 80 {
 			g.pf("%s\n%s  return false;\n", head, ind)
 		} else {
-			g.pf("%sif (!_cook%s(\n%s  %s,\n%s  c,\n%s  at + %d,\n%s))\n%s  return false;\n", ind, ref, ind, expr, ind, ind, offset, ind, ind)
+			g.pf("%sif (!_cook%s(\n%s  %s,\n%s  c,\n%s  at + %d,\n%s  %s,\n%s))\n%s  return false;\n", ind, ref, ind, expr, ind, ind, offset, ind, live, ind, ind)
 		}
 		return
 	}
-	g.emitCookVariableField(f, offset, expr, ind, guardMember)
+	g.emitCookVariableField(f, offset, expr, ind, guardMember, live)
 }
 
 // emitCookForm1Union writes a union where it lies (§2.6, §7.2): the TAG at
@@ -243,7 +243,7 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 // other byte, so the extent outside the set arm stays the zero the region was
 // filled with — what internal/tablecook's region writer writes. A tag past
 // the declared arms is refused as `invalid_value`.
-func (g *cookGen) emitCookForm1Union(f *ir.Field, un *ir.Union, offset int64, expr, ind string, guardMember map[string]string) {
+func (g *cookGen) emitCookForm1Union(f *ir.Field, un *ir.Union, offset int64, expr, ind string, guardMember map[string]string, live string) {
 	_, _, tag, armOffset := ir.UnionLayout(g.unit, un)
 	arm := dartName(f.Name) + "Arm"
 	g.pf("%sfinal %s = %s.armTag;\n", ind, arm, expr)
@@ -260,7 +260,7 @@ func (g *cookGen) emitCookForm1Union(f *ir.Field, un *ir.Union, offset int64, ex
 			continue
 		}
 		g.pf("%s  case %d:\n", ind, i+1)
-		g.emitCookForm1Field(v.F, offset+armOffset, expr+"."+armMember(v), ind+"    ", guardMember)
+		g.emitCookForm1Field(v.F, offset+armOffset, expr+"."+armMember(v), ind+"    ", guardMember, live)
 	}
 	g.pf("%s}\n", ind)
 }

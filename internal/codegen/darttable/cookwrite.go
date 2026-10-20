@@ -362,11 +362,11 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 		recordBytes := (ml.Size + ir.RegionAlignFloor - 1) & -ir.RegionAlignFloor
 		g.pf("      case %s:\n", dartU64Literal(tableWireId(rs)))
 		if recordHasLists(g.unit, rs) {
-			g.pf("        if (!_cook%s(node as wire.%s, c, at)) return false;\n", r, r)
-			g.pf("        if (_carve%s(node as wire.%s, c, at, at + %d, 0) < 0) return false;\n", r, r, recordBytes)
+			g.pf("        if (!_cook%s(node as wire.%s, c, at, true)) return false;\n", r, r)
+			g.pf("        if (_carve%s(node as wire.%s, c, at, at + %d, 0, true) < 0) return false;\n", r, r, recordBytes)
 			g.pf("        return true;\n")
 		} else {
-			g.pf("        return _cook%s(node as wire.%s, c, at);\n", r, r)
+			g.pf("        return _cook%s(node as wire.%s, c, at, true);\n", r, r)
 		}
 	}
 	g.pf("    }\n    return false;\n  }\n\n")
@@ -518,18 +518,19 @@ func variableCookField(f *ir.Field) bool {
 // so its slot has no node to point at and the emitted writer refuses a slot
 // that still holds a target, exactly as the reference leg does (§7.6). A
 // guarded record is by-value storage and is written verbatim whatever its guard
-// holds. Only a guarded blob stays refused by name.
+// holds — UNLESS its by-value closure reaches a pointer: then a false guard
+// leaves that pointer unnumbered (§3.1) and the record's own cook refuses it,
+// as the reference leg's region writer does (§7.6). The same per-slot refusal
+// applies to a guarded array of pointers. Only a guarded blob stays refused by
+// name.
 func guardedCookField(f *ir.Field) bool {
 	return !f.Type.Blob()
 }
 
-// guardedRefCheck returns the Dart condition under which a guarded reference
-// field must refuse, or "" when it must not. A reference is carried only when
-// its guard holds; a clear guard leaves its target unnumbered (§3.1), so a
-// reference that still holds a target is refused — the same refusal the
-// reference leg makes when a referenced node is not in the numbering
-// (docs/SPEC-TABLES.md §7).
-func guardedRefCheck(f *ir.Field, expr string, guardMember map[string]string) string {
+// guardHoldsExpr returns the Dart expression under which a field's guard
+// holds, or "" when the field is unguarded. A guard is the wire's (§2.2,
+// §16.2): a conjunction of bool fields, each possibly negated.
+func guardHoldsExpr(f *ir.Field, guardMember map[string]string) string {
 	if f.Guard == "" {
 		return ""
 	}
@@ -550,7 +551,54 @@ func guardedRefCheck(f *ir.Field, expr string, guardMember map[string]string) st
 	if len(conds) == 0 {
 		return ""
 	}
-	return expr + " != null && !(" + strings.Join(conds, " && ") + ")"
+	return strings.Join(conds, " && ")
+}
+
+// combineLive conjoins a container's reachability with one field's guard, the
+// expression a by-value child's cook takes as `live` (§3.1): a child reached
+// only when both the container and the guard are live has its pointers
+// numbered only then.
+func combineLive(live, guard string) string {
+	switch {
+	case guard == "":
+		return live
+	case live == "true":
+		return "(" + guard + ")"
+	case live == "false":
+		return "false"
+	default:
+		return "(" + live + " && " + guard + ")"
+	}
+}
+
+// guardedRefCheck returns the Dart condition under which a reference slot must
+// refuse, or "" when it must not. A reference is carried only when its guard
+// holds AND its container is live; a clear guard, or a guarded record whose
+// own guard is clear, leaves the target unnumbered (§3.1), so a slot that still
+// holds a target is refused — the same refusal the reference leg makes when a
+// referenced node is not in the numbering (docs/SPEC-TABLES.md §7).
+func guardedRefCheck(f *ir.Field, expr, live string, guardMember map[string]string) string {
+	eff := combineLive(live, guardHoldsExpr(f, guardMember))
+	switch eff {
+	case "true":
+		return ""
+	case "false":
+		return expr + " != null"
+	default:
+		return expr + " != null && !(" + eff + ")"
+	}
+}
+
+// cookGuardMembers maps a record's bool fields to their Dart storage members,
+// the operands a guard expression (§2.2, §16.2) names.
+func cookGuardMembers(u *ir.Unit, rs *ir.Struct) map[string]string {
+	members := map[string]string{}
+	for _, fl := range ir.RecordLayout(u, rs).Fields {
+		if fl.Field.Type.Kind == ir.TBool && fl.Field.Array == ir.ArrayNone {
+			members[fl.Field.Name] = "value." + fieldMember(fl.Field)
+		}
+	}
+	return members
 }
 
 // emitCookVariableRecord writes one record of the graph where it lies, with
@@ -560,24 +608,19 @@ func (g *cookGen) emitCookVariableRecord(name string) {
 	ml := ir.RecordLayout(g.unit, rs)
 	// guardMember maps a bool guard field's name to its Dart storage member, so
 	// a guarded reference field can check whether its guard holds (§2, §3.1).
-	guardMember := map[string]string{}
-	for _, fl := range ml.Fields {
-		if fl.Field.Type.Kind == ir.TBool && fl.Field.Array == ir.ArrayNone {
-			guardMember[fl.Field.Name] = "value." + fieldMember(fl.Field)
-		}
-	}
+	guardMember := cookGuardMembers(g.unit, rs)
 	outer := g.body
 	g.body = strings.Builder{}
 	for _, fl := range ml.Fields {
-		g.emitCookGraphField(fl.Field, fl.Offset, "value."+fieldMember(fl.Field), "    ", guardMember)
+		g.emitCookGraphField(fl.Field, fl.Offset, "value."+fieldMember(fl.Field), "    ", guardMember, "live")
 	}
 	fields := g.body.String()
 	g.body = outer
 	g.pf("  // The shared ABI's field pieces at the cook's offsets (§7.2).\n")
-	if sig := fmt.Sprintf("  static bool _cook%s(wire.%s value, TableCookGraph c, int at) {", name, name); len(sig) <= 80 {
+	if sig := fmt.Sprintf("  static bool _cook%s(wire.%s value, TableCookGraph c, int at, bool live) {", name, name); len(sig) <= 80 {
 		g.pf("%s\n", sig)
 	} else {
-		g.pf("  static bool _cook%s(\n    wire.%s value,\n    TableCookGraph c,\n    int at,\n  ) {\n", name, name)
+		g.pf("  static bool _cook%s(\n    wire.%s value,\n    TableCookGraph c,\n    int at,\n    bool live,\n  ) {\n", name, name)
 	}
 	if cookUsesOut.MatchString(fields) {
 		g.pf("    final out = c.out;\n")
@@ -643,7 +686,7 @@ func (g *cookGen) emitCookVariableExtent(name string) {
 	g.pf("  // The extent's measure (§7.2): the holder's unbounded arrays behind its\n")
 	g.pf("  // record, pre-order, the arithmetic the write carves with.\n")
 	g.pf("  static int _extent%s(wire.%s value, int point) {\n", name, name)
-	g.emitCookExtentFields(rs, "value", "    ", false, "", "")
+	g.emitCookExtentFields(rs, "value", "    ", false, "", "", cookGuardMembers(g.unit, rs), "true")
 	g.pf("    return point;\n  }\n\n")
 }
 
@@ -660,10 +703,10 @@ func (g *cookGen) emitCookVariableCarve(name string) {
 		return
 	}
 	g.pf("  // The extent's carve (§7.6): the same pre-order walk, writing.\n")
-	g.pf("  static int _carve%s(wire.%s value, TableCookGraph c, int at, int base, int point) {\n", name, name)
+	g.pf("  static int _carve%s(\n    wire.%s value,\n    TableCookGraph c,\n    int at,\n    int base,\n    int point,\n    bool live,\n  ) {\n", name, name)
 	g.pf("    final out = c.out;\n")
 	g.pf("    final order = c.order;\n")
-	g.emitCookExtentFields(rs, "value", "    ", true, "at", "base")
+	g.emitCookExtentFields(rs, "value", "    ", true, "at", "base", cookGuardMembers(g.unit, rs), "live")
 	g.pf("    return point;\n  }\n\n")
 }
 
@@ -678,10 +721,11 @@ func maxInt64(a, b int64) int64 {
 // the measure half (write false) or the write half (write true) of §7.2's
 // extent. `expr` is the record value, `at` its own address for the write half,
 // and `base` the extent's start, which a nested record keeps from its holder.
-func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bool, at, base string) {
+func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bool, at, base string, guardMember map[string]string, live string) {
 	ml := ir.RecordLayout(g.unit, st)
 	for _, fl := range ml.Fields {
 		f := fl.Field
+		childLive := combineLive(live, guardHoldsExpr(f, guardMember))
 		if f.IsList() {
 			size, align := ir.ListElementLayout(g.unit, f)
 			slotOff := ir.FieldPieces(g.unit, f, fl.Offset)[0].Offset
@@ -698,7 +742,7 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 				g.pf("%s    out.setInt32(%s + %d, n, order);\n", ind, at, slotOff+8)
 				g.pf("%s    for (var i = 0; i < n; i++) {\n", ind)
 				if ref := tableRef(f); ref != nil {
-					g.pf("%s      if (!_cook%s(l[i], c, array + i * %d)) return -1;\n", ind, ref.Name, size)
+					g.pf("%s      if (!_cook%s(l[i], c, array + i * %d, %s)) return -1;\n", ind, ref.Name, size, childLive)
 				} else {
 					g.emitCookFixedScalar(f, "l[i]", fmt.Sprintf("array + i * %d", size), size, ind+"      ")
 				}
@@ -708,7 +752,7 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 				ref := tableRef(f)
 				g.pf("%s  for (var i = 0; i < n; i++) {\n", ind)
 				if write {
-					g.pf("%s    point = _carve%s(l[i], c, %s + start + i * %d, %s, point);\n", ind, ref.Name, base, size, base)
+					g.pf("%s    point = _carve%s(l[i], c, %s + start + i * %d, %s, point, %s);\n", ind, ref.Name, base, size, base, childLive)
 				} else {
 					g.pf("%s    point = _extent%s(l[i], point);\n", ind, ref.Name)
 				}
@@ -735,7 +779,7 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 			}
 			g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, limit)
 			if write {
-				g.pf("%s  point = _carve%s(%s.%s[i], c, %s + %d + i * %d, %s, point);\n", ind, ref.Name, expr, fieldMember(f), at, fl.Offset, stride, base)
+				g.pf("%s  point = _carve%s(%s.%s[i], c, %s + %d + i * %d, %s, point, %s);\n", ind, ref.Name, expr, fieldMember(f), at, fl.Offset, stride, base, childLive)
 			} else {
 				g.pf("%s  point = _extent%s(%s.%s[i], point);\n", ind, ref.Name, expr, fieldMember(f))
 			}
@@ -743,7 +787,7 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 			continue
 		}
 		if write {
-			g.pf("%spoint = _carve%s(%s.%s, c, %s + %d, %s, point);\n", ind, ref.Name, expr, fieldMember(f), at, fl.Offset, base)
+			g.pf("%spoint = _carve%s(%s.%s, c, %s + %d, %s, point, %s);\n", ind, ref.Name, expr, fieldMember(f), at, fl.Offset, base, childLive)
 		} else {
 			g.pf("%spoint = _extent%s(%s.%s, point);\n", ind, ref.Name, expr, fieldMember(f))
 		}
@@ -756,8 +800,9 @@ var (
 	cookUsesOrder = regexp.MustCompile(`\border\b`)
 )
 
-func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind string, guardMember map[string]string) {
+func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind string, guardMember map[string]string, live string) {
 	pieces := ir.FieldPieces(g.unit, f, offset)
+	childLive := combineLive(live, guardHoldsExpr(f, guardMember))
 	switch {
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
@@ -792,7 +837,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		for i, arm := range un.Variants {
 			g.pf("%s  case %d:\n", ind, i+1)
 			if !arm.Void() {
-				g.emitCookVariableField(arm.F, offset+armOffset, expr+"."+armMember(arm), ind+"    ", guardMember)
+				g.emitCookVariableField(arm.F, offset+armOffset, expr+"."+armMember(arm), ind+"    ", guardMember, childLive)
 			}
 			g.pf("%s    break;\n", ind)
 		}
@@ -811,7 +856,11 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
 		switch {
 		case ref != nil && f.Type.Pointer:
-			g.pf("%s  c.ref(at + %d + i * %d, i < %s.length ? %s[i] : null);\n", ind, offset, stride, expr, expr)
+			g.pf("%s  final e = i < %s.length ? %s[i] : null;\n", ind, expr, expr)
+			if chk := guardedRefCheck(f, "e", live, guardMember); chk != "" {
+				g.pf("%s  if (%s) return false;\n", ind, chk)
+			}
+			g.pf("%s  c.ref(at + %d + i * %d, e);\n", ind, offset, stride)
 		case ref != nil:
 			// a DEAD slot holds the element's declared defaults, as the
 			// reference's storage does (§7.6)
@@ -820,7 +869,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 			} else {
 				g.pf("%s  final e = i < %s.length\n%s      ? %s[i]\n%s      : wire.%s();\n", ind, expr, ind, expr, ind, ref.Name)
 			}
-			g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d)) return false;\n", ind, ref.Name, offset, stride)
+			g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d, %s)) return false;\n", ind, ref.Name, offset, stride, childLive)
 		default:
 			zero := "0"
 			switch f.Type.Kind {
@@ -840,20 +889,24 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
 		switch {
 		case ref != nil && f.Type.Pointer:
-			g.pf("%s  c.ref(at + %d + i * %d, %s[i]);\n", ind, offset, stride, expr)
+			g.pf("%s  final e = %s[i];\n", ind, expr)
+			if chk := guardedRefCheck(f, "e", live, guardMember); chk != "" {
+				g.pf("%s  if (%s) return false;\n", ind, chk)
+			}
+			g.pf("%s  c.ref(at + %d + i * %d, e);\n", ind, offset, stride)
 		case ref != nil:
-			g.pf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;\n", ind, ref.Name, expr, offset, stride)
+			g.pf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d, %s)) return false;\n", ind, ref.Name, expr, offset, stride, childLive)
 		default:
 			g.emitCookFixedScalar(f, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
 		}
 		g.pf("%s}\n", ind)
 	case isPointerTable(f):
-		if chk := guardedRefCheck(f, expr, guardMember); chk != "" {
+		if chk := guardedRefCheck(f, expr, live, guardMember); chk != "" {
 			g.pf("%sif (%s) return false;\n", ind, chk)
 		}
 		g.pf("%sc.ref(at + %d, %s);\n", ind, offset, expr)
 	case isByValueTable(f):
-		g.pf("%sif (!_cook%s(%s, c, at + %d)) return false;\n", ind, tableRef(f).Name, expr, offset)
+		g.pf("%sif (!_cook%s(%s, c, at + %d, %s)) return false;\n", ind, tableRef(f).Name, expr, offset, childLive)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.needConvert = true
 		text := dartName(f.Name) + "Text"
