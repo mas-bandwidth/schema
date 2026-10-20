@@ -307,18 +307,17 @@ The last registration of a key wins, and a shape reads its report through
 form byte this reader does not carry; a collection count past the int32 cap
 on a variable root, which Go returns as `CountRefusal`).
 
-**Not carried yet, by name.** The descriptor does not name an enum-keyed
-array's KEY enum, so `schema_rt.keyed_keys(table, field, variants)` registers
-it; until an emitter emits that call (a `lobstertable.Register` part, or a
-`keyvs` member on the descriptor), a program registers it itself, as the
-load test does. A DEPRECATED enum variant (§2.15) is not on `EnumVariant`, so
-the load reads it as its value rather than the default; no manifest unit has
-one. A text-list clamp, of an element or of the count (§2.13), is counted but
-does not set `reason` to `clamped: <Holder.field>` as Go's does: the
-descriptor does not carry the element table's map-entry name, and the report
-line the tests compare carries no `reason`; the text-lists card
-(schema-lobster-vt-text-lists) carries it. Retention (§6.6) and the region
-read are later cards' (retain-unknown).
+**Carried by the descriptor card.** The descriptor names an enum-keyed
+array's KEY enum (`schema_rt.keyed_enum`) beside the variants
+(`schema_rt.keyed_keys`), a map field's ENTRY TABLE (`schema_rt.map_entry`),
+and each deprecated enum variant's flag on `ViewVariant`; the load's
+`DeprecatedEnumShape` yields the field's declared default for such a variant
+(§2.15), never the variant itself. A text-list clamp, of an element or of the
+count (§2.13), is counted but does not set `reason` to
+`clamped: <Holder.field>` as Go's does, and the report line the tests compare
+carries no `reason`; the text-lists card (schema-lobster-vt-text-lists)
+carries it. Retention (§6.6) and the region read are later cards'
+(retain-unknown).
 
 **The test.** `TestLobsterTableLoadMatchesTheReports` loads every report and
 instance row of the tables manifest, one program per unit, and holds each
@@ -373,17 +372,21 @@ as lines (lowercase hex for bytes).**
 The `lobster` column of docs/PORTING.md is filled, every cell with its
 reason:
 
-- **✅ carried now:** I4 (per-case absent, in the driver's line grammar) and
-  I10 (the zero-cost gate, `TestLobsterTableFreeUnitAddsNothing`).
+- **✅ carried now:** I4 (per-case absent, in the driver's line grammar), I10
+  (the zero-cost gate, `TestLobsterTableFreeUnitAddsNothing`), M13 (constant
+  descriptors: the emitted `<Name>Descriptor` is a `let` global built once at
+  load; `TestLobsterDescriptors` pins it, and its `constant_descriptor`
+  planted bug turns the test red) and J1 (accessor/descriptor agreement:
+  `TestLobsterDescriptors` reads a fresh row through the generated accessor
+  and through the descriptor's defaults, and its `accessor_descriptor`
+  planted bug turns the agreement red).
 - **— the platform cannot:** M3 (a `float` is an unboxed 64-bit slot, so a
   float crossing a call allocates nothing), M4 (no inlining directive or
   aliasing qualifier; M4b is the shape), M10 (memory is the VM's compile-time
   reference counting over its own allocator), M11 (a Lobster class has no
   layout to assert).
 - **❌ not yet:** every other technique, each naming the card of THE CARD MAP
-  that carries it. M13 is among them: Lobster
-  has no frozen object, so a descriptor is a `let` global that cannot be
-  rebound but whose fields stay assignable. Each cites #381, the request for
+  that carries it. Each cites #381, the request for
   languages beyond the nine: no Lobster carry-across issue exists yet, and
   filing one is a public act this card does not take. When it is filed, its
   number replaces #381 in the column.

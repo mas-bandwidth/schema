@@ -518,7 +518,7 @@ plain-cache line.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lobster |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ❌ #518 | ✅ `internal/codegen/gotable/codecs.go` (`emitTableDescriptor`) | ❌ #411 (the plain-cache idiom) | ✅ `TestJavaDescriptorsAreSafelyPublished` | ❌ #516 | ❌ #514 | ❌ #515 | ❌ #381 — card schema-lobster-vt-descriptors (docs/PORT-LOBSTER.md, THE CARD MAP); constant descriptors; Lobster has no frozen object: a descriptor is a `let` global (the binding cannot be rebound) built once at load and registered by name, but its fields stay assignable |
+| ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ❌ #518 | ✅ `internal/codegen/gotable/codecs.go` (`emitTableDescriptor`) | ❌ #411 (the plain-cache idiom) | ✅ `TestJavaDescriptorsAreSafelyPublished` | ❌ #516 | ❌ #514 | ❌ #515 | ✅ `TestLobsterDescriptors` (`constant_descriptor` negative control) — Lobster has no frozen object: a descriptor is a `let` global (the binding cannot be rebound) built once at load and registered by name, but its fields stay assignable |
 
 **C# Table Serialization Contract.** In C#, generated typed `<Name>Save` entry points read fields directly and use compile-time ordinal indexing: scalar leaves and child scalar arrays are typed; everything else is descriptor-driven. For those direct-read paths (scalar leaves and child scalar arrays), typed `<Name>Save` does not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors (such as getter swapping, custom defaults, guard overrides, or field id alterations). Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations across all fields.
 
@@ -1391,7 +1391,7 @@ each through `go build -overlay`; each must turn the leg red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lobster |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #421 | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ❌ #421 | ❌ #421 | ❌ #381 — card schema-lobster-vt-descriptors (docs/PORT-LOBSTER.md, THE CARD MAP); accessor and descriptor agreement |
+| ❌ #421 | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `TestLobsterDescriptors` (`accessor_descriptor` negative control) — a fresh row read through the generated accessor agrees with the descriptor's defaults |
 
 ### J2 — The runtime home, with a file-order control
 
