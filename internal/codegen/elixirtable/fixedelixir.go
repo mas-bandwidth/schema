@@ -95,6 +95,15 @@ func generateFixed(u *ir.Unit, ns string, lineage map[string][]FixedLineageEntry
 	closure := fixedClosure(roots)
 	out := map[string][]byte{}
 	rt := string(fixedRuntimeModule(u, ns))
+	// The 3-arity text/wtext wrappers forward their default; name it `default`
+	// rather than `_default` so the strict compile does not flag the underscore
+	// variable as used after being set (docs/SPEC-TABLES.md §3.4).
+	rt = strings.ReplaceAll(rt,
+		"  def text(used, _default, m), do: text(used, _default, m, true)",
+		"  def text(used, default, m), do: text(used, default, m, true)")
+	rt = strings.ReplaceAll(rt,
+		"  def wtext(used, _default, m), do: wtext(used, _default, m, true)",
+		"  def wtext(used, default, m), do: wtext(used, default, m, true)")
 	rt = strings.ReplaceAll(rt,
 		"            acc = guarded(acc, guard ++ [{their_at, argw}], tag ++ [j + 1], {:const, aux_at, my_tag, k + 1})\n",
 		"            acc =\n              guarded(\n                acc,\n                guard ++ [{their_at, argw}],\n                tag ++ [j + 1],\n                {:const, aux_at, my_tag, k + 1}\n              )\n")

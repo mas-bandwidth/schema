@@ -1407,6 +1407,10 @@ defmodule Bench.Table do
   # walks a record by name and kind with, no per-version struct on hand.
   def descriptors, do: @tables
 
+  defp union_desc(union), do: apply(Map, :fetch!, [@unions, union])
+
+  defp union_arm(union, arm), do: Map.fetch!(union_desc(union).by_name, arm)
+
   # roots that reach a map, a union or an enum-keyed array (docs/SPEC-TABLES.md
   # §2.4, §2.6, §2.8, §11). The id-table wire and the text form carry them
   # (§3, §3.2, §16); the cook write and the wire-fuzz roster do not yet, so
@@ -1499,7 +1503,7 @@ defmodule Bench.Table do
   defp collect_union_nodes(_union, nil, acc), do: acc
 
   defp collect_union_nodes(union, {arm, payload}, acc) do
-    case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
+    case union_arm(union, arm) do
       %{t: :void} -> acc
       a -> collect_nodes(%{fields: [a]}, %{a.name => payload}, acc)
     end
@@ -1829,7 +1833,7 @@ defmodule Bench.Table do
   defp arm_header(_union, nil, _idx_map, ids, order), do: {leb_encode(0), ids, order}
 
   defp arm_header(union, {arm, payload}, idx_map, ids, order) do
-    a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
+    a = union_arm(union, arm)
     {aref, ids, order} = intern(ids, order, Map.get(a, :arm_id, a.id))
 
     {content, ids, order} =
@@ -1917,7 +1921,7 @@ defmodule Bench.Table do
     {leb_encode(idx), ids, order}
   end
 
-  defp emit_element(%{elem_kind: 12} = f, e, _idx_map, ids, order) do
+  defp emit_element(%{elem_kind: 12}, e, _idx_map, ids, order) do
     {[leb_encode(byte_size(e)), e], ids, order}
   end
 
@@ -1933,11 +1937,11 @@ defmodule Bench.Table do
     {if(e, do: <<1>>, else: <<0>>), ids, order}
   end
 
-  defp emit_element(%{elem_kind: kind} = f, e, _idx_map, ids, order) when kind in [10, 11] do
+  defp emit_element(%{elem_kind: kind}, e, _idx_map, ids, order) when kind in [10, 11] do
     {float_bytes(e, kind_width(kind)), ids, order}
   end
 
-  defp emit_element(%{elem_kind: kind} = f, e, _idx_map, ids, order)
+  defp emit_element(%{elem_kind: kind}, e, _idx_map, ids, order)
        when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] do
     {int_bytes(e, kind_width(kind), kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24]), ids, order}
   end
@@ -2598,7 +2602,7 @@ defmodule Bench.Table do
             {:halt, nil, %{report | malformed: true}}
 
           arm_id ->
-            un = Map.fetch!(@unions, union)
+            un = union_desc(union)
 
             case Map.fetch(un.by_id, arm_id) do
               :error ->
@@ -2848,7 +2852,7 @@ defmodule Bench.Table do
     w = kind_width(kind)
 
     if byte_size(rest) >= w do
-      <<raw::binary-size(w), after_sub::binary>> = rest
+      <<raw::binary-size(^w), after_sub::binary>> = rest
       read_list_elements(f, after_sub, n - 1, nodes, ids, [float_of(raw, w) | acc], report)
     else
       {Enum.reverse(acc), %{report | malformed: true}}
@@ -2861,7 +2865,7 @@ defmodule Bench.Table do
     signed = kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24]
 
     if byte_size(rest) >= w do
-      <<raw::binary-size(w), after_sub::binary>> = rest
+      <<raw::binary-size(^w), after_sub::binary>> = rest
       read_list_elements(f, after_sub, n - 1, nodes, ids, [int_of(raw, w, signed) | acc], report)
     else
       {Enum.reverse(acc), %{report | malformed: true}}
@@ -3230,7 +3234,7 @@ defmodule Bench.Table do
   end
 
   defp tally_field(%{t: :union, elem: union}, {arm, payload}, acc) do
-    case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
+    case union_arm(union, arm) do
       %{t: :void} -> acc
       a -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)
     end
@@ -3360,35 +3364,6 @@ defmodule Bench.Table do
 
   defp json_field(%{t: :list}, _other, _depth), do: "[]"
 
-  # json_list_elem writes one unbounded array's element by its element kind
-  # (docs/SPEC-TABLES.md §2.9, §16.7): a table or pointer element is an object, a
-  # string or enum a quoted name, and a scalar its own spelling.
-  defp json_list_elem(%{elem_kind: 13} = f, e, depth),
-    do: json_object(Map.fetch!(@tables, f.elem), e, depth)
-
-  defp json_list_elem(%{elem_kind: 17} = _f, nil, _depth), do: "null"
-  defp json_list_elem(%{elem_kind: 17} = f, e, depth), do: json_node(f.elem, e, depth)
-  defp json_list_elem(%{elem_kind: 12}, e, _depth), do: ["\"", json_escape(e), "\""]
-  defp json_list_elem(%{elem_kind: 30}, nil, _depth), do: "\"None\""
-  defp json_list_elem(%{elem_kind: 30}, e, _depth), do: ["\"", json_escape(e), "\""]
-
-  defp json_list_elem(%{elem_flags: names}, e, depth),
-    do: json_field(%{t: :int, flags: names}, e, depth)
-
-  defp json_list_elem(%{elem_kind: 1}, e, _depth), do: if(e, do: "true", else: "false")
-
-  defp json_list_elem(%{elem_kind: kind}, e, _depth)
-       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19], do: Integer.to_string(e)
-
-  defp json_list_elem(%{elem_kind: kind, elem_frac: frac}, e, _depth) when kind in 20..29,
-    do: fixed_text(e, frac)
-
-  defp json_list_elem(%{elem_kind: kind}, e, _depth) when kind in [10, 11],
-    do: json_float(e, kind_width(kind))
-
-  defp json_list_elem(%{elem_kind: 15} = f, e, depth), do: json_arm(f.elem, e, depth)
-  defp json_list_elem(_f, _e, _depth), do: "null"
-
   defp json_field(%{optional: true}, nil, _depth), do: "null"
   defp json_field(%{t: :string}, v, _depth), do: ["\"", json_escape(v), "\""]
 
@@ -3490,6 +3465,35 @@ defmodule Bench.Table do
   defp json_field(%{t: :float} = f, v, _depth), do: json_float(v, f.width)
   defp json_field(%{t: :bool}, v, _depth), do: if(v, do: "true", else: "false")
 
+  # json_list_elem writes one unbounded array's element by its element kind
+  # (docs/SPEC-TABLES.md §2.9, §16.7): a table or pointer element is an object, a
+  # string or enum a quoted name, and a scalar its own spelling.
+  defp json_list_elem(%{elem_kind: 13} = f, e, depth),
+    do: json_object(Map.fetch!(@tables, f.elem), e, depth)
+
+  defp json_list_elem(%{elem_kind: 17} = _f, nil, _depth), do: "null"
+  defp json_list_elem(%{elem_kind: 17} = f, e, depth), do: json_node(f.elem, e, depth)
+  defp json_list_elem(%{elem_kind: 12}, e, _depth), do: ["\"", json_escape(e), "\""]
+  defp json_list_elem(%{elem_kind: 30}, nil, _depth), do: "\"None\""
+  defp json_list_elem(%{elem_kind: 30}, e, _depth), do: ["\"", json_escape(e), "\""]
+
+  defp json_list_elem(%{elem_flags: names}, e, depth),
+    do: json_field(%{t: :int, flags: names}, e, depth)
+
+  defp json_list_elem(%{elem_kind: 1}, e, _depth), do: if(e, do: "true", else: "false")
+
+  defp json_list_elem(%{elem_kind: kind}, e, _depth)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19], do: Integer.to_string(e)
+
+  defp json_list_elem(%{elem_kind: kind, elem_frac: frac}, e, _depth) when kind in 20..29,
+    do: fixed_text(e, frac)
+
+  defp json_list_elem(%{elem_kind: kind}, e, _depth) when kind in [10, 11],
+    do: json_float(e, kind_width(kind))
+
+  defp json_list_elem(%{elem_kind: 15} = f, e, depth), do: json_arm(f.elem, e, depth)
+  defp json_list_elem(_f, _e, _depth), do: "null"
+
   # json_float spells one float as C's %.*g does, byte for byte, over the
   # float's OWN width (docs/SPEC-TABLES.md §16, "The FLOAT SPELLING", which
   # §16.7 holds for the variable class): the first precision from low to high
@@ -3582,7 +3586,7 @@ defmodule Bench.Table do
   defp json_arm(_union, nil, _depth), do: "{}"
 
   defp json_arm(union, {arm, payload}, depth) do
-    a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
+    a = union_arm(union, arm)
 
     inner =
       case a do
@@ -3844,34 +3848,6 @@ defmodule Bench.Table do
     {Map.get(f, :default, 0), %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
-  # clamp_json_int clamps a JSON integer to the field's declared range and
-  # then to its storage domain, counting each clamp (docs/SPEC-TABLES.md §16.2).
-  defp clamp_json_int(v, f, report) do
-    {v, report} = clamp_int(v, f, report)
-    {lo, hi} = int_domain_bounds(f)
-
-    cond do
-      v < lo -> {lo, %{report | clamped: report.clamped + 1}}
-      v > hi -> {hi, %{report | clamped: report.clamped + 1}}
-      true -> {v, report}
-    end
-  end
-
-  # int_domain_bounds is an integer field's storage domain (§16.2).
-  defp int_domain_bounds(%{bits: bits}) when is_integer(bits) and bits > 0 do
-    {0, (1 <<< bits) - 1}
-  end
-
-  defp int_domain_bounds(%{width: w, signed: true}) do
-    bits = w * 8
-    {-(1 <<< (bits - 1)), (1 <<< (bits - 1)) - 1}
-  end
-
-  defp int_domain_bounds(%{width: w, signed: false}) do
-    bits = w * 8
-    {0, (1 <<< bits) - 1}
-  end
-
   defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}
 
   defp json_read_field(%{t: :bool} = f, raw, report) do
@@ -3910,18 +3886,6 @@ defmodule Bench.Table do
   defp json_read_field(%{t: :bytes} = f, raw, report) do
     json_skip_value(raw)
     {Map.get(f, :default, <<>>), %{report | kind_mismatch: report.kind_mismatch + 1}}
-  end
-
-  # json_decode_base64 reads §16.2's bytes spelling: standard base64, padded
-  # or unpadded (docs/SPEC-TABLES.md §16.2).
-  defp json_decode_base64(""), do: {:ok, <<>>}
-
-  defp json_decode_base64(raw) do
-    if String.contains?(raw, "=") do
-      Base.decode64(raw)
-    else
-      Base.decode64(raw, padding: false)
-    end
   end
 
   defp json_read_field(%{t: :table} = f, {:obj, pairs}, report) do
@@ -4011,6 +3975,46 @@ defmodule Bench.Table do
     {[], %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
+  # json_decode_base64 reads §16.2's bytes spelling: standard base64, padded
+  # or unpadded (docs/SPEC-TABLES.md §16.2).
+  defp json_decode_base64(""), do: {:ok, <<>>}
+
+  defp json_decode_base64(raw) do
+    if String.contains?(raw, "=") do
+      Base.decode64(raw)
+    else
+      Base.decode64(raw, padding: false)
+    end
+  end
+
+  # clamp_json_int clamps a JSON integer to the field's declared range and
+  # then to its storage domain, counting each clamp (docs/SPEC-TABLES.md §16.2).
+  defp clamp_json_int(v, f, report) do
+    {v, report} = clamp_int(v, f, report)
+    {lo, hi} = int_domain_bounds(f)
+
+    cond do
+      v < lo -> {lo, %{report | clamped: report.clamped + 1}}
+      v > hi -> {hi, %{report | clamped: report.clamped + 1}}
+      true -> {v, report}
+    end
+  end
+
+  # int_domain_bounds is an integer field's storage domain (§16.2).
+  defp int_domain_bounds(%{bits: bits}) when is_integer(bits) and bits > 0 do
+    {0, (1 <<< bits) - 1}
+  end
+
+  defp int_domain_bounds(%{width: w, signed: true}) do
+    bits = w * 8
+    {-(1 <<< (bits - 1)), (1 <<< (bits - 1)) - 1}
+  end
+
+  defp int_domain_bounds(%{width: w, signed: false}) do
+    bits = w * 8
+    {0, (1 <<< bits) - 1}
+  end
+
   # json_read_list_elem reads one unbounded array's element by its element kind
   # (docs/SPEC-TABLES.md §2.9, §16.7), folding the element's report into the list's.
   defp json_read_list_elem(f, {:decimal, _} = e, report) when not is_map_key(f, :elem_frac),
@@ -4079,7 +4083,7 @@ defmodule Bench.Table do
   defp json_read_arm(_union, {:obj, []}, report), do: {nil, report}
 
   defp json_read_arm(union, {:obj, [{name, input}]}, report) do
-    un = Map.fetch!(@unions, union)
+    un = union_desc(union)
 
     case Map.fetch(un.by_name, name) do
       :error ->
@@ -4488,8 +4492,6 @@ defmodule Bench.Table do
   # the measure to the framing's bound. A wire this reader cannot open, or a
   # list count past the storage cap, answers -1.
 
-  def load_measure(table, _data) when table in @uncarried, do: -1
-
   def load_measure(table, data) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
 
@@ -4740,7 +4742,7 @@ defmodule Bench.Table do
 
   defp cook_plan(table, value) do
     try do
-      if table in @uncarried or not is_map(value) do
+      if not is_map(value) do
         throw(:invalid)
       end
 
@@ -4824,7 +4826,7 @@ defmodule Bench.Table do
             d = Map.get(n, :desc) || Map.fetch!(@tables, n.elem)
             align = max(align, d.align)
             start = cook_align(offset, d.align)
-            ext = if(d.has_extent, do: cook_extent(d, n.value), else: 0)
+            ext = 0
             size = d.record + ext
 
             {start + size, align,
@@ -4833,60 +4835,6 @@ defmodule Bench.Table do
       end)
 
     {cook_align(offset, align), align, Enum.reverse(acc)}
-  end
-
-  defp cook_extent(desc, value), do: cook_extent_fields(desc.fields, value, 0)
-
-  defp cook_extent_fields(fields, value, at) do
-    Enum.reduce(fields, at, fn f, at -> cook_extent_field(f, value, at) end)
-  end
-
-  defp cook_extent_field(%{t: :list, array: :list} = f, value, at) do
-    elems = cook_list(value, f)
-    at = cook_align(at, f.elem_align) + length(elems) * f.elem_size
-    cook_extent_after(f, elems, at)
-  end
-
-  defp cook_extent_field(%{t: :list, elem_t: :record, elem: elem} = f, value, at) do
-    d = Map.fetch!(@tables, elem)
-
-    if d.has_extent do
-      Enum.reduce(cook_list(value, f), at, fn e, at -> cook_extent_fields(d.fields, e, at) end)
-    else
-      at
-    end
-  end
-
-  defp cook_extent_field(%{t: :table, elem: elem, name: name}, value, at) do
-    d = Map.fetch!(@tables, elem)
-
-    if d.has_extent do
-      cook_extent_fields(d.fields, Map.get(value, name, %{}), at)
-    else
-      at
-    end
-  end
-
-  defp cook_extent_field(_, _, at), do: at
-
-  defp cook_extent_after(%{elem_kind: 13, elem: elem}, elems, at) do
-    d = Map.fetch!(@tables, elem)
-
-    if d.has_extent do
-      Enum.reduce(elems, at, fn e, at -> cook_extent_fields(d.fields, e, at) end)
-    else
-      at
-    end
-  end
-
-  defp cook_extent_after(_, _, at), do: at
-
-  defp cook_list(value, f) do
-    case Map.get(value, f.name, []) do
-      v when is_list(v) -> v
-      nil -> []
-      _ -> throw(:invalid)
-    end
   end
 
   defp cook_render(plan, order) do
@@ -4904,11 +4852,7 @@ defmodule Bench.Table do
             :table ->
               data = cook_record(n.desc, n.value, n.offset, index, order, data)
 
-              if n.extent == 0 and not n.desc.has_extent do
-                data
-              else
-                cook_carve(n.desc, n.value, n.offset, index, order, data)
-              end
+              data
           end
         end)
 
@@ -5038,7 +4982,7 @@ defmodule Bench.Table do
 
   defp cook_slots(f, v, base, index, order, buf, counted) do
     elems = if(is_list(v), do: v, else: throw(:invalid))
-    bound = Map.get(f, :bound) || Map.get(f, :array_bound) || length(elems)
+    _bound = Map.get(f, :bound) || Map.get(f, :array_bound) || length(elems)
     # cardBound overwrites :bound with nil; the array maximum is the first bound
     # the descriptor wrote, kept here as the list's own length ceiling when the
     # field named one. A missing ceiling is the element's own.
@@ -5099,7 +5043,7 @@ defmodule Bench.Table do
 
   defp cook_elem(_, _, _, _, _, buf), do: buf
 
-  defp cook_ord(%{ords: ords}, nil), do: 0
+  defp cook_ord(%{ords: _ords}, nil), do: 0
 
   defp cook_ord(%{ords: ords}, v) when is_binary(v) do
     case Map.fetch(ords, v) do
@@ -5114,7 +5058,7 @@ defmodule Bench.Table do
 
   defp cook_ord(_, _), do: throw(:invalid)
 
-  defp cook_ref(buf, at, _id, nil, _index, _order), do: buf
+  defp cook_ref(buf, _at, _id, nil, _index, _order), do: buf
 
   defp cook_ref(buf, at, id, v, index, order) do
     case Map.fetch(index, {id, v}) do
@@ -5128,136 +5072,6 @@ defmodule Bench.Table do
     buf = put_raw(buf, at, v)
     put_i32(buf, len_at, byte_size(v), order)
   end
-
-  defp cook_carve(desc, value, node_off, index, order, buf) do
-    {_, buf} =
-      cook_carve_fields(
-        desc.fields,
-        value,
-        node_off,
-        node_off + desc.record,
-        0,
-        index,
-        order,
-        buf
-      )
-
-    buf
-  end
-
-  defp cook_carve_fields(fields, value, rec, extent_at, cursor, index, order, buf) do
-    Enum.reduce(fields, {cursor, buf}, fn f, {cursor, buf} ->
-      cook_carve_field(f, value, rec, extent_at, cursor, index, order, buf)
-    end)
-  end
-
-  defp cook_carve_field(
-         %{t: :list, array: :list} = f,
-         value,
-         rec,
-         extent_at,
-         cursor,
-         index,
-         order,
-         buf
-       ) do
-    elems = cook_list(value, f)
-    count = length(elems)
-    cursor = cook_align(cursor, f.elem_align)
-    start = extent_at + cursor
-    slot = rec + f.cook_off
-
-    buf =
-      if count > 0 do
-        put_i64(buf, slot, start - slot, order)
-      else
-        buf
-      end
-
-    buf = put_i32(buf, slot + 8, count, order)
-
-    buf =
-      Enum.reduce(Enum.with_index(elems), buf, fn {e, i}, buf ->
-        cook_elem(f, e, start + i * f.elem_size, index, order, buf)
-      end)
-
-    cursor = cursor + count * f.elem_size
-    cook_carve_after(f, elems, start, extent_at, cursor, index, order, buf)
-  end
-
-  defp cook_carve_field(
-         %{t: :table, elem: elem, cook_off: off, name: name},
-         value,
-         rec,
-         extent_at,
-         cursor,
-         index,
-         order,
-         buf
-       ) do
-    d = Map.fetch!(@tables, elem)
-
-    if d.has_extent do
-      cook_carve_fields(
-        d.fields,
-        Map.get(value, name, %{}),
-        rec + off,
-        extent_at,
-        cursor,
-        index,
-        order,
-        buf
-      )
-    else
-      {cursor, buf}
-    end
-  end
-
-  defp cook_carve_field(
-         %{t: :list, elem_t: :record, elem: elem, cook_off: off, elem_size: step} = f,
-         value,
-         rec,
-         extent_at,
-         cursor,
-         index,
-         order,
-         buf
-       ) do
-    d = Map.fetch!(@tables, elem)
-
-    if d.has_extent do
-      Enum.reduce(Enum.with_index(cook_list(value, f)), {cursor, buf}, fn {e, i}, {cursor, buf} ->
-        cook_carve_fields(d.fields, e, rec + off + i * step, extent_at, cursor, index, order, buf)
-      end)
-    else
-      {cursor, buf}
-    end
-  end
-
-  defp cook_carve_field(_, _, _, _, cursor, _, _, buf), do: {cursor, buf}
-
-  defp cook_carve_after(
-         %{elem: elem, elem_size: step},
-         elems,
-         start,
-         extent_at,
-         cursor,
-         index,
-         order,
-         buf
-       ) do
-    d = Map.get(@tables, elem)
-
-    if is_map(d) and d.has_extent do
-      Enum.reduce(Enum.with_index(elems), {cursor, buf}, fn {e, i}, {cursor, buf} ->
-        cook_carve_fields(d.fields, e, start + i * step, extent_at, cursor, index, order, buf)
-      end)
-    else
-      {cursor, buf}
-    end
-  end
-
-  defp cook_carve_after(_, _, _, _, cursor, _, _, buf), do: {cursor, buf}
 
   defp cook_align(v, a) when a <= 1, do: v
   defp cook_align(v, a), do: div(v + a - 1, a) * a
@@ -5312,9 +5126,6 @@ defmodule Bench.Table do
   # record the remaining capacity cannot hold whole is dropped and counted one
   # retain_lost (§6.6).
 
-  def load_retain(table, _data, retain, report) when table in @uncarried,
-    do: {:error, :uncarried, report, retain}
-
   def load_retain(table, data, retain, report) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
     # §6.6: a retention buffer belongs to one loaded region; the next LoadRetain
@@ -5353,9 +5164,6 @@ defmodule Bench.Table do
     byte_size(bytes)
   end
 
-  def save_retain(table, _value, retain, report) when table in @uncarried,
-    do: {:error, :uncarried, report, retain}
-
   def save_retain(table, value, retain, report) when is_map(value) do
     {:ok, bytes, retain, report} = save_retain_internal(table, value, retain, report)
     {:ok, bytes, report, retain}
@@ -5369,7 +5177,7 @@ defmodule Bench.Table do
     {_idx_map, ids, order, retain, report, body} =
       save_fields_retain(desc, value, idx_map, %{}, [], retain, report, [], [])
 
-    {body, ids, order} = save_node_table(nodes, idx_map, ids, order, body)
+    {body, _ids, order} = save_node_table(nodes, idx_map, ids, order, body)
     ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
 
     {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>]),
