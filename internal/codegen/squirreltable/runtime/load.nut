@@ -176,10 +176,48 @@ local readPrim = function(r, kind, ...) {
   return null;
 };
 
+// UNSIGNED 64-bit ORDER, which Squirrel's signed integer does not give: the
+// sign bit is flipped so the two's-complement pattern sorts as unsigned.
+local u64cmp = function(a, b) {
+  local MIN = 0x8000000000000000;
+  local au = a ^ MIN, bu = b ^ MIN;
+  return au < bu ? -1 : (au > bu ? 1 : 0);
+};
+
+// A 128-bit value and a declared bound on the same [low, high] pair. A bound
+// that fits 64 bits is sign-extended; the descriptor writes both forms.
+local widePair = function(v) {
+  if (typeof v == "array") return v;
+  return [v, v < 0 ? -1 : 0];
+};
+
+local wideCompare = function(a, b, signed) {
+  if (signed) {
+    local MIN = 0x8000000000000000;
+    local an = (a[1] & MIN) != 0, bn = (b[1] & MIN) != 0;
+    if (an != bn) return an ? -1 : 1;
+  }
+  local c = u64cmp(a[1], b[1]);
+  if (c != 0) return c;
+  return u64cmp(a[0], b[0]);
+};
+
 // THE §4 CLAMPS: a declared integer range, then a bits(N) ceiling.
 local clampScalar = function(fd, kind, x, report) {
   if (x == null) return null;
-  if (typeof x == "array") return x; // a 128-bit value's range is the codec's
+  if (typeof x == "array") {
+    if (fd.lo != null && fd.hi != null) {
+      local lo = widePair(fd.lo), hi = widePair(fd.hi);
+      if (wideCompare(x, lo, fd.signed) < 0) {
+        x = [lo[0], lo[1]];
+        report.clamped = report.clamped + 1;
+      } else if (wideCompare(x, hi, fd.signed) > 0) {
+        x = [hi[0], hi[1]];
+        report.clamped = report.clamped + 1;
+      }
+    }
+    return x;
+  }
   local width = kindWidth(kind);
   if (fd.lo != null && typeof fd.lo == "integer") {
     if (kindSigned(kind)) {
@@ -562,10 +600,15 @@ local mapKeyScan = function(es, table, kd) {
   local widened = false;
   for (;;) {
     local ref = leb(scan);
-    if (scan.bad) return [true, widened];
-    if (ref == 0) return [bad, widened];
-    if (ref > table.len()) return [true, widened];
-    if (scan.at >= scan.end) return [true, widened];
+    // A FRAMING FAILURE IS Malformed, NOT kind_mismatch, unless a key under
+    // the wrong kind was already seen (the engine's mapKey returns keyOk
+    // false and mapField checks the kind first).
+    if (scan.bad) return [bad, widened, false];
+    // THE TERMINATOR MUST CONSUME THE ENTRY'S L (the engine's mapKey): a
+    // body whose zero lands before its end is framing damage, not a key.
+    if (ref == 0) return [bad, widened, scan.at == scan.end];
+    if (ref > table.len()) return [bad, widened, false];
+    if (scan.at >= scan.end) return [bad, widened, false];
     local id = table[ref - 1];
     local kind = u8(scan);
     if (id == MAP_KEY_ID) {
@@ -576,7 +619,7 @@ local mapKeyScan = function(es, table, kd) {
         bad = false;
       }
     }
-    if (!skipField(scan, kind)) return [true, widened];
+    if (!skipField(scan, kind)) return [bad, widened, false];
   }
 };
 
@@ -638,6 +681,12 @@ readMapField = function(fd, r, T, table, v, report, st) {
       // EMPTY, ONE kind_mismatch counts for it, and the rest skips by L.
       report.kindMismatch = report.kindMismatch + 1;
       arr = [];
+      break;
+    }
+    if (!scan[2]) {
+      // the entry's terminator did not land on its end: framing damage, and
+      // the entry is not decoded, so no counter inside it is read
+      report.malformed = true;
       break;
     }
     local ent = ed.make();
