@@ -233,7 +233,13 @@ func TestLuaBase64TextNegativeControl(t *testing.T) {
 	var patched int
 	var diverged int
 	compared := 0
+	// A ROW THE MANIFEST MARKS A NAMED WIRE REFUSAL has no text to compare:
+	// SaveText raises the writer's name (docs/SPEC-TABLES.md §2.5, §16.7).
+	wireRefusal := manifestWireRefusalRows(t, manifestPath)
 	for _, row := range manifestRows(t, manifestPath, "instance") {
+		if wireRefusal[row.caseName] {
+			continue
+		}
 		paths, ok := unitFiles[row.unit]
 		if !ok {
 			continue

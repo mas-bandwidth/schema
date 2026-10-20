@@ -60,6 +60,29 @@ func saveInstance(t *testing.T, repo string, paths []string, row manifestRow, pa
 	return strings.TrimRight(string(luarun.Run(t, dir, "main.lua", map[string][]byte{"wire": wireData})), "\n")
 }
 
+// manifestWireRefusalRows reads the instance rows the manifest marks a NAMED
+// WIRE REFUSAL (docs/SPEC-TABLES.md §2.5): a writer refuses those values by
+// name, so the round-trip and its negative control pass over them.
+func manifestWireRefusalRows(t *testing.T, path string) map[string]bool {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := map[string]bool{}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 5 && f[0] == "instance" {
+			for _, x := range f[5:] {
+				if strings.HasPrefix(x, "go-refusal=") {
+					refused[f[1]] = true
+				}
+			}
+		}
+	}
+	return refused
+}
+
 // TestLuaTableSaveRoundTripsEveryInstance loads every instance row of the
 // tables conformance manifest whose unit the Lua target generates, saves it
 // back with the form-1 SAVE, and requires the saved bytes to equal the wire
@@ -78,12 +101,19 @@ func TestLuaTableSaveRoundTripsEveryInstance(t *testing.T) {
 		}
 		unitFiles[k] = full
 	}
+	// A ROW THE MANIFEST MARKS A NAMED WIRE REFUSAL has no saved bytes to
+	// compare: the writer refuses it by name (docs/SPEC-TABLES.md §2.5), so
+	// the instance round-trip holds only the rows no refusal marker names.
+	wireRefusal := manifestWireRefusalRows(t, manifestPath)
 	refused := map[string]string{}
 	refusedRows := map[string][]string{}
 	compared := 0
 	instances := 0
 	var mismatches []string
 	for _, row := range manifestRows(t, manifestPath, "instance") {
+		if wireRefusal[row.caseName] {
+			continue
+		}
 		paths, ok := unitFiles[row.unit]
 		if !ok {
 			mismatches = append(mismatches, fmt.Sprintf("instance %s: no manifest unit", row.caseName))
@@ -138,14 +168,14 @@ func TestLuaTableSaveRoundTripsEveryInstance(t *testing.T) {
 	t.Logf("%d of %d instances round-trip byte-for-byte; %d refused unit(s) holding %d instance(s)", compared, instances, len(refused), skipped)
 }
 
-// TestLuaTableSaveKeepsBlobIdentity loads and saves the two blob-identity
-// instance rows and requires the saved bytes to equal the wire byte for byte
+// TestLuaTableSaveKeepsBlobIdentity loads and saves the blob-identity instance
+// row and requires the saved bytes to equal the wire byte for byte
 // (docs/SPEC-TABLES.md §3.1: every reachable node is written once, and two
 // references to one node are one node; §6.3: sharing and a back-reference are
 // the same fact). blob_equal_bytes is two distinct *bytes nodes carrying equal
-// bytes, which a save keyed by content would merge into one node;
-// blob_shared_string is one *string node named from two slots, which a save
-// keyed per slot would write as two nodes.
+// bytes, which a save keyed by content would merge into one node. The row
+// whose one *string node two slots name is now a NAMED REFUSAL (§2.5,
+// blob_shared) and is pinned by TestLuaBlobNamedTwiceIsBlobShared.
 func TestLuaTableSaveKeepsBlobIdentity(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -165,7 +195,6 @@ func TestLuaTableSaveKeepsBlobIdentity(t *testing.T) {
 	}
 	cases := []struct{ name, why string }{
 		{"blob_equal_bytes", "two distinct *bytes nodes with equal bytes are two nodes"},
-		{"blob_shared_string", "one *string node named from two slots is one node"},
 	}
 	for _, c := range cases {
 		row, ok := rows[c.name]
@@ -207,7 +236,11 @@ func TestLuaTableSaveNegativeControl(t *testing.T) {
 	var patched int
 	var diverged int
 	compared := 0
+	wireRefusal := manifestWireRefusalRows(t, manifestPath)
 	for _, row := range manifestRows(t, manifestPath, "instance") {
+		if wireRefusal[row.caseName] {
+			continue
+		}
 		paths, ok := unitFiles[row.unit]
 		if !ok {
 			continue
