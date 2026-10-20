@@ -126,7 +126,7 @@ for _, c in ipairs(cases) do
   v[c.field] = c.lit
   local raw = save.Save(T, "OneSided", v)
   local jr = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-  local jv = J.FromJson(T, "OneSided", c.text, jr)
+  local jv = J.FromJsonTolerant(T, "OneSided", c.text, jr)
   local jsave = jv and save.Save(T, "OneSided", jv) or nil
   local jtext = jv and J.ToJson(T, "OneSided", jv) or nil
   local br = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
