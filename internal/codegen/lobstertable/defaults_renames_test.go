@@ -1,6 +1,7 @@
 package lobstertable_test
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -126,12 +127,16 @@ func encodeOld(t *testing.T, u *loadUnit, root string, fill func(*tabletext.Mode
 // probeProgram is one Lobster main: it imports every table module, the load
 // and this card's runtime, prints the unit's BuildVersion, and loads (then
 // RE-LOADS) each wire, printing the report line and THE VALUE DUMP each time.
+// Each row then saves the loaded record and re-loads what was written, so the
+// save round trip is held against the Go engine for every construct save
+// reaches (defaults, renames, the build version).
 func probeProgram(g *loadUnit, roots []string) string {
 	var b strings.Builder
 	for _, m := range g.mods {
 		fmt.Fprintf(&b, "import .%s\n", m)
 	}
 	b.WriteString("import .load\n")
+	b.WriteString("import .schema_save\n")
 	b.WriteString("import .defaults_renames\n")
 	b.WriteString(keyedRegistrations(g.u))
 	b.WriteString(dumpLobster)
@@ -139,14 +144,50 @@ func probeProgram(g *loadUnit, roots []string) string {
 	for i, r := range roots {
 		fmt.Fprintf(&b, "run(%q, \"w%d\")\n", r, i)
 		fmt.Fprintf(&b, "run(%q, \"w%d\")\n", r, i)
+		fmt.Fprintf(&b, "save_rel(%q, \"w%d\")\n", r, i)
 	}
 	return b.String()
 }
 
-// runProbe generates the NEW unit, loads every row's OLD wire twice under the
-// pinned Lobster toolchain, and returns the printed build version, each
-// row's (report, dump) for the load and for the re-load.
-func runProbe(t *testing.T, g *loadUnit, rows []loadRow) (string, [][2]string, [][2]string) {
+// saveRel is the save round trip's tail: load the wire, save the loaded
+// record, print the saved hex (or "" when the runtime can refuse), then
+// reload the saved bytes and print the re-load's report line and THE VALUE
+// DUMP, so a Lobster save_round_trip can be held against the reference.
+const saveRel = `def save_rel(root:string, file:string):
+    let data = read_file(file)
+    assert data
+    let rep = schema_rt.LoadReport {}
+    let rec = schema_rt.load(root, data, rep)
+    if not rec:
+        print("")
+        print(report_line(rep))
+        print("0")
+        return
+    let out = schema_rt.save(rec)
+    let saved = hexs(out)
+    print(saved)
+    let rep2 = schema_rt.LoadReport {}
+    let rec2 = schema_rt.load(root, out, rep2)
+    print(report_line(rep2))
+    labels = []
+    var dump = "nil"
+    if rec2:
+        push(labels, rec2)
+        dump = drec(rec2)
+    let n = (length(dump) + 39999) / 40000
+    print("{n}")
+    var i = 0
+    while i < n:
+        print(substring(dump, i * 40000, min(40000, length(dump) - i * 40000)))
+        i++
+`
+
+// runProbe generates the NEW unit, runs the probe program, and returns the
+// printed build version, each row's (report, dump) for the load and for the
+// re-load, and each row's save round trip (saved hex, reload report, dump).
+// A row the load refuses prints an empty save; an empty save with no reload
+// result means the load itself went wrong.
+func runProbe(t *testing.T, g *loadUnit, rows []loadRow) (string, [][2]string, [][2]string, []saveRound) {
 	t.Helper()
 	var roots []string
 	inputs := map[string][]byte{}
@@ -154,7 +195,8 @@ func runProbe(t *testing.T, g *loadUnit, rows []loadRow) (string, [][2]string, [
 		inputs[fmt.Sprintf("w%d", i)] = row.data
 		roots = append(roots, row.root)
 	}
-	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(probeProgram(g, roots)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"),
+		[]byte(probeProgram(g, roots)+saveRel), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out := strings.Split(strings.TrimRight(string(lobsterrun.Run(t, g.dir, "main.lobster", inputs)), "\n"), "\n")
@@ -164,14 +206,16 @@ func runProbe(t *testing.T, g *loadUnit, rows []loadRow) (string, [][2]string, [
 	build := strings.TrimPrefix(out[0], "build:")
 	out = out[1:]
 	var first, again [][2]string
-	for range rows {
+	var saves []saveRound
+	for ri := range rows {
 		for pass := 0; pass < 2; pass++ {
 			if len(out) < 2 {
-				t.Fatalf("unit %s: the program's output ends early", rows[0].unit)
+				t.Fatalf("unit %s row %d pass %d: the program's output ends early (have %d lines)", rows[0].unit, ri, pass, len(out))
 			}
 			var n int
-			if _, err := fmt.Sscanf(out[1], "%d", &n); err != nil || len(out) < 2+n {
-				t.Fatalf("unit %s: the output is not report, count, dump: %q", rows[0].unit, out[1])
+			leftover, _ := fmt.Sscanf(out[1], "%d", &n)
+			if leftover == 0 || len(out) < 2+n {
+				t.Fatalf("unit %s row %d pass %d: the output is not report, count, dump:\nout[0]=%q\nout[1]=%q\nout[2]=%q\nall=%q", rows[0].unit, ri, pass, out[0], out[1], out[2], out)
 			}
 			pair := [2]string{out[0], strings.Join(out[2:2+n], "")}
 			if pass == 0 {
@@ -181,11 +225,70 @@ func runProbe(t *testing.T, g *loadUnit, rows []loadRow) (string, [][2]string, [
 			}
 			out = out[2+n:]
 		}
+		var s saveRound
+		if len(out) < 4 {
+			t.Fatalf("unit %s row %d: the program's save output ends early (have %d lines)", rows[0].unit, ri, len(out))
+		}
+		s.saved = out[0]
+		s.report = out[1]
+		var sn int
+		leftover, _ := fmt.Sscanf(out[2], "%d", &sn)
+		if leftover == 0 || len(out) < 3+sn {
+			t.Fatalf("unit %s row %d: the save output is not saved, report, count, dump:\nout[0]=%q\nout[1]=%q\nout[2]=%q\nall=%q", rows[0].unit, ri, out[0], out[1], out[2], out)
+		}
+		s.dump = strings.Join(out[3:3+sn], "")
+		saves = append(saves, s)
+		out = out[3+sn:]
 	}
 	if len(out) != 0 {
 		t.Fatalf("unit %s: %d lines past the last row", rows[0].unit, len(out))
 	}
-	return build, first, again
+	return build, first, again, saves
+}
+
+// saveRound is one row's save + re-load under Lobster: the bytes saved (empty
+// if save refused), the re-load report line, and the re-load value dump.
+type saveRound struct {
+	saved  string
+	report string
+	dump   string
+}
+
+// goSaveLoad is the reference's save round trip: decode the wire, encode the
+// record, decode the saved bytes, and return the saved hex, the re-load report
+// line, and the re-load value dump. A Go writer refusal (a strict save of a
+// deprecated variant, §2.15) is returned as refused=true and the caller
+// records the comparison as PATHS-PROPOSED.
+func goSaveLoad(u *ir.Unit, rootName string, wire []byte) (savedHex, report, dump string, refused bool) {
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup(rootName))
+	var rep tabletext.Report
+	if _, err := tablewire.Decode(m, inst, wire, &rep); err != nil {
+		return "", reportLine(rep), "nil", true
+	}
+	saved, err := tablewire.Encode(m, inst)
+	if err != nil {
+		return "", "0,0,0,0,0,false,refused", "nil", true
+	}
+	m2 := tabletext.NewModel(u)
+	inst2 := m2.New(m2.Lookup(rootName))
+	var rep2 tabletext.Report
+	_, _ = tablewire.Decode(m2, inst2, saved, &rep2)
+	line := reportLine(rep2)
+	d := &goDumper{labels: map[*tabletext.Instance]int{inst2: 0}, next: 1}
+	return hex.EncodeToString(saved), line, d.rec(inst2), false
+}
+
+// reportLine is the load report line one instance wrote, in the harness's
+// spelling (load_test.go's goLoad).
+func reportLine(rep tabletext.Report) string {
+	verdict := "read"
+	if rep.Refused {
+		verdict = "refused"
+	}
+	return fmt.Sprintf("%d,%d,%d,%d,%d,%t,%s",
+		rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate,
+		rep.Malformed, verdict)
 }
 
 // TestLobsterDefaultsAndRenames holds this card's constructs on the OLD wire
@@ -194,9 +297,11 @@ func runProbe(t *testing.T, g *loadUnit, rows []loadRow) (string, [][2]string, [
 // field rename, a nested `type` field rename, an enum variant rename and a
 // union arm rename (§5), and a variant retired in place (§2.15). Each
 // construct is named with its count. A Lobster load and a RE-LOAD must both
-// agree with the reference report for report and dump for dump. The save
-// half and the write refusal are reported PATHS-PROPOSED: runtime/save.lobster
-// does not exist at this card's BASE, so there is no save walk to join.
+// agree with the reference report for report and dump for dump; the save
+// round trip must agree byte for byte and re-load for re-load with the Go
+// engine, for every construct save can carry. The write refusal for a
+// `| deprecated` variant is reported PATHS-PROPOSED: save.lobster has no
+// per-kind hook the deprecation rule can join without itself being edited.
 func TestLobsterDefaultsAndRenames(t *testing.T) {
 	t.Parallel()
 	old, err := generateLoadUnit(t, []string{writeSchema(t, "Defaults", defaultsOld)})
@@ -256,7 +361,7 @@ func TestLobsterDefaultsAndRenames(t *testing.T) {
 		{kind: "instance", name: "renames", unit: "defaultsprobe", root: "Ship", data: renameWire},
 		{kind: "instance", name: "deprecated", unit: "defaultsprobe", root: "Ship", data: deprecatedWire},
 	}
-	build, first, again := runProbe(t, g, rows)
+	build, first, again, saves := runProbe(t, g, rows)
 
 	wantBuild := fmt.Sprintf("%016x", ir.BuildVersion(g.u))
 	if build != wantBuild {
@@ -280,14 +385,33 @@ func TestLobsterDefaultsAndRenames(t *testing.T) {
 			}
 		}
 	}
+
+	for i, row := range rows {
+		gtSaved, gtReport, gtDump, refused := goSaveLoad(g.u, row.root, row.data)
+		if refused {
+			t.Errorf("%s %s: the Go writer refused to save this row, but save can carry it (docs/SPEC-TABLES.md §2.15, §5)", row.kind, row.name)
+			continue
+		}
+		if saves[i].saved != gtSaved {
+			t.Errorf("%s %s: the saved bytes are not the reference's:\nlobster: %s\ngo:      %s", row.kind, row.name, saves[i].saved, gtSaved)
+			continue
+		}
+		if saves[i].report != gtReport {
+			t.Errorf("%s %s: the saved-reload report is not the reference's:\nlobster: %s\ngo:      %s", row.kind, row.name, saves[i].report, gtReport)
+			continue
+		}
+		if saves[i].dump != gtDump {
+			t.Errorf("%s %s: the saved-reload value is not the reference's at byte %s", row.kind, row.name, divergence(saves[i].dump, gtDump))
+		}
+	}
 	if t.Failed() {
 		return
 	}
-	t.Logf("defaults: string=1 bytes=1 flags=1 (old wire, new reader; load and re-load equal Go)")
-	t.Logf("renames: table=1 field=1 type-field=1 variant=1 arm=1 (old ids, new names)")
-	t.Logf("deprecated: scalar=1 element=1 (reads as the field/element default, §2.15)")
+	t.Logf("defaults: string=1 bytes=1 flags=1 (old wire, new reader; load, re-load and save-reload equal Go)")
+	t.Logf("renames: table=1 field=1 type-field=1 variant=1 arm=1 (old ids, new names; save round trip agrees with Go)")
+	t.Logf("deprecated: scalar=1 element=1 (reads as the field/element default, §2.15; save round trip agrees with Go)")
 	t.Logf("build version: 1 value %s (docs/SPEC-TABLES.md §20)", build)
-	t.Logf("save and the write refusal: not carried — runtime/save.lobster is absent at BASE (PATHS-PROPOSED)")
+	t.Logf("write refusal for §2.15's deprecated variant on save: PATHS-PROPOSED — save.lobster has no per-kind hook for `save_enum_ref` to refuse a retired variant; the rule is a one-line `if variant_retired(...): return false` edit to save.lobster this card does not touch")
 }
 
 // TestLobsterDefaultsAndRenamesNegativeControl patches the emitted runtime's
@@ -309,7 +433,7 @@ func TestLobsterDefaultsAndRenamesNegativeControl(t *testing.T) {
 	})
 	rows := []loadRow{{kind: "instance", name: "deprecated", unit: "defaultsprobe", root: "Ship", data: wire}}
 	goLine, goDump := goLoad(g.u, "Ship", wire)
-	_, first, _ := runProbe(t, g, rows)
+	_, first, _, _ := runProbe(t, g, rows)
 	if first[0][0] != goLine || first[0][1] != goDump {
 		t.Fatalf("the control, unpatched: lobster %s %s, go %s %s", first[0][0], first[0][1], goLine, goDump)
 	}
@@ -326,7 +450,7 @@ func TestLobsterDefaultsAndRenamesNegativeControl(t *testing.T) {
 	if err := os.WriteFile(path, []byte(patched), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, got, _ := runProbe(t, g, rows)
+	_, got, _, _ := runProbe(t, g, rows)
 	if got[0][0] == goLine && got[0][1] == goDump {
 		t.Fatalf("the patched runtime still matches Go: %s %s", got[0][0], got[0][1])
 	}
