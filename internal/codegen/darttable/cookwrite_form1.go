@@ -193,7 +193,7 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 			}
 		} else {
 			g.pf("%s  final e = %s[i];\n", ind, expr)
-			g.emitCookFixedScalar(f, "e", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
+			g.emitCookFixedScalar(f, "e", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ", false)
 		}
 		g.pf("%s}\n", ind)
 		return
@@ -204,7 +204,7 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 			g.emitCookForm1Union(f, ref, offset, expr, ind)
 			return
 		case *ir.Enum, *ir.Flags:
-			g.emitCookFixedScalar(f, expr, fmt.Sprintf("at + %d", offset), pieces[0].Size, ind)
+			g.emitCookFixedScalar(f, expr, fmt.Sprintf("at + %d", offset), pieces[0].Size, ind, false)
 			return
 		}
 	}
