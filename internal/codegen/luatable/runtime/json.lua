@@ -182,7 +182,13 @@ local function scan_unit(inp)
     inp.p = inp.p + 1
   end
   local unit = inp.t:sub(start, inp.p - 1)
-  if utf8_seq(unit, 1) ~= #unit then inp.bad = true; return nil, false, false end
+  if utf8_seq(unit, 1) ~= #unit then
+    -- §16.3: ill-formed UTF-8 is refused by name at every string site, before
+    -- any bound clamp; the read answers string_not_utf8 (<root> at the top)
+    inp.utf8 = true
+    inp.bad = true
+    return nil, false, false
+  end
   return unit, false, true
 end
 
@@ -1538,6 +1544,10 @@ function J.FromJson(T, name, text, report)
     if inp.p ~= #inp.t + 1 then inp.bad = true end
   end
   if inp.bad or not ok then report.malformed = true end
+  if inp.utf8 and (report.Reason == nil or report.Reason == "") then
+    -- §16.3: the READ refuses ill-formed UTF-8 by name; <root> names the top
+    report.Reason = "string_not_utf8: <root>"
+  end
   return v
 end
 
