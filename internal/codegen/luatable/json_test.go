@@ -73,7 +73,7 @@ local function hex(s)
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
 local r1 = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v1 = J.FromJson(T, "` + root + `", inputs.text, r1)
+local v1 = J.FromJsonTolerant(T, "` + root + `", inputs.text, r1)
 local saved = save.Save(T, "` + root + `", v1)
 local r2 = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local v2 = load.Load(T, "` + root + `", inputs.wire, r2)
@@ -91,7 +91,7 @@ func jsonHostileProbe(module, root string) string {
 local J = require("json")
 local inputs = require("inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = J.FromJson(T, "` + root + `", inputs.text, report)
+local v = J.FromJsonTolerant(T, "` + root + `", inputs.text, report)
 if v == nil then report.malformed = true end
 if report.malformed then
   print("refused")
@@ -303,7 +303,7 @@ table F { v float32 }
 local J = require("json")
 local inputs = require("inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = J.FromJson(T, "F", inputs.text, report)
+local v = J.FromJsonTolerant(T, "F", inputs.text, report)
 local text = J.ToJson(T, "F", v)
 if text == nil then print("nil") else print((text:gsub(".", function(c) return string.format("%02x", c:byte()) end))) end
 `
@@ -403,7 +403,7 @@ table N
 local J = require("json")
 local inputs = require("inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = J.FromJson(T, "N", inputs.text, report)
+local v = J.FromJsonTolerant(T, "N", inputs.text, report)
 local has = v ~= nil and v.blobs[7] == false and v.blobs[8] ~= nil and v.blobs[8].value == "\1\2"
 local arm = v ~= nil and v.body.tag == 1 and v.body.data == nil
 print(string.format("km=%d entries=%s arm=%s", report.kindMismatch, tostring(has), tostring(arm)))

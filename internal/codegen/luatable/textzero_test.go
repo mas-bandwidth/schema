@@ -129,7 +129,7 @@ local function fresh()
     clamped = 0, widened = 0, duplicate = 0 }
 end
 local report = fresh()
-local v = J.FromJson(T, "Root", inputs.text, report)
+local v = J.FromJsonTolerant(T, "Root", inputs.text, report)
 if v == nil or report.malformed then
   print("refused")
   print(report.Reason or "-")
@@ -142,7 +142,7 @@ else
   else
     print(hex(out))
     local again_report = fresh()
-    local again = J.FromJson(T, "Root", out, again_report)
+    local again = J.FromJsonTolerant(T, "Root", out, again_report)
     print(again ~= nil and not again_report.malformed and again_report.Reason == nil
       and "clean" or "dirty")
     local out2 = again and J.ToJson(T, "Root", again)
