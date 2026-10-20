@@ -38,6 +38,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// testgenLua is the Lua target's generated-test writer, registered by the
+// schema_leg_lua build (cmd/schema/testgen_lua.go). Nil in the default build,
+// where compiler.Testgen refuses --lang lua by name with every other non-Go
+// target (docs/SPEC-TABLES.md §16.11).
+var testgenLua func(*ir.Unit) (map[string][]byte, error)
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -340,14 +346,22 @@ func main() {
 		// The unit is loaded as generate loads it, so the tests are of the
 		// same tables.
 		fs := flag.NewFlagSet("testgen", flag.ExitOnError)
-		lang := fs.String("lang", "go", "target language (go only: every other target refuses testgen by name)")
+		lang := fs.String("lang", "go", "target language (go; lua in a schema_leg_lua build; every other target refuses testgen by name)")
 		out := fs.String("out", "generated", "output directory: the directory generate wrote")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		c.TablesBaseline = true
 		c.SchemaLock = true
 		unit := loadUnit(c, fs.Args())
-		files, err := c.Testgen(unit, *lang)
+		var (
+			files map[string][]byte
+			err   error
+		)
+		if *lang == "lua" && testgenLua != nil {
+			files, err = testgenLua(unit)
+		} else {
+			files, err = c.Testgen(unit, *lang)
+		}
 		if err != nil {
 			fail(err)
 		}
@@ -771,7 +785,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
   schema check      [--verbose] [--fixed-record-limit N] [saved-file] [dir|files...]
   schema generate   [--lang <target>] [--out generated] [--verbose] [--fixed-record-limit N] [dir|files...]
-  schema testgen    [--lang go] [--out generated] [--verbose] [dir|files...]
+  schema testgen    [--lang go|lua] [--out generated] [--verbose] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
   schema build-version [--facts] [dir|files...]
@@ -802,7 +816,8 @@ not silent; --tolerate accepts it.
 
 testgen writes the round-trip and damage tests of every table beside the code
 generate wrote, one <Base>Table_gen_test.go per schema file (docs/SPEC-TABLES.md
-§16.11); go test runs them. Go only today: every other --lang is refused.
+§16.11); go test runs them, and a schema_leg_lua build writes and runs the Lua
+target's. Go carries it first: every other --lang is refused by name.
 
 A FIXED table's record body warns past 4096 bytes and stops carrying the fixed
 form past 65536, which is the size no conforming reader decodes
