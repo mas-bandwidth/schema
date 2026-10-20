@@ -265,7 +265,9 @@ local function caseResult(c)
         return "refuse", announced.reason ~= "" and announced.reason or "damaged", nil
       end
     end
-    local values = M.loadMessages(T, c[4], vocab, payload, r)
+    -- The manifest's message cases name a caller storage of one (§3.3): a
+    -- batch of 2 is refused batch_too_large before a body is decoded.
+    local values = M.loadMessages(T, c[4], vocab, payload, r, 1)
     if r.reason ~= "" then return "refuse", r.reason, nil end
     if r.refused > 0 then return "refuse", "damaged", nil end
     if r.malformed or values == nil or values[1] == nil then return "refuse", "damaged", nil end
@@ -382,9 +384,8 @@ func luaHostileCarriedList(cases []luaHostileCase) map[string]luaHostileCarried 
 	} {
 		out[name] = luaHostileCarried{"refuse", "damaged", "schema-shared-hostile-corpus"}
 	}
-	// The message reader has no caller storage bound and the wire reader names
-	// the count past the int32 cap damaged, not count_refusal.
-	out["message-batch-too-large"] = luaHostileCarried{"accept", "-", "schema-lua-message-honors-storage-bound-r"}
+	// The wire reader names the count past the int32 cap damaged, not
+	// count_refusal.
 	out["wire-count-refusal"] = luaHostileCarried{"refuse", "damaged", "schema-lua-wire-names-count-refusal-r"}
 	// Accepted by both, but the subnormal float's canonical text differs: a
 	// reader/writer spelling bug in the Lua float32 path.

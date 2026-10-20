@@ -797,7 +797,9 @@ end
 -- `strict` is the plain name's read. A body the tolerant walk itself stopped
 -- on keeps the records ahead of it (BASE's answer); a read that completed but
 -- met the strict rule alone is refused with count 0 and every record reset.
-function M.loadMessages(T, root, vocab, data, report, strict)
+-- `capacity` is the caller's storage (docs/SPEC-TABLES.md §3.3): the batch's
+-- eight-bit count is compared to it before any body is decoded.
+function M.loadMessages(T, root, vocab, data, report, capacity, strict)
   report = report or {}
   -- THE PLAIN NAME'S REPORT IS THIS READ'S ALONE (docs/SPEC-TABLES.md §6.5):
   -- every counter is cleared before the walk, so a reused report cannot refuse
@@ -816,6 +818,13 @@ function M.loadMessages(T, root, vocab, data, report, strict)
   end
   if #data < 2 then report.malformed = true; return nil end
   local count = string.byte(data, 2) + 1
+  -- `M` ABOVE THE CALLER'S STORAGE IS A REFUSAL BY NAME (docs/SPEC-TABLES.md
+  -- §3.3, "batch_too_large"): the count is read before any body, so nothing
+  -- is decoded, no counter moves and `malformed` does not fire.
+  if capacity == nil then capacity = T.MessageBatchMax end
+  if count > capacity then
+    report.refused = 1; report.reason = "batch_too_large"; return nil
+  end
   local R = new_reader(data, 16)
   local values = {}
   for i = 1, count do

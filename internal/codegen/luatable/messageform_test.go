@@ -239,3 +239,57 @@ func patchMessageRuntime(runtime []byte) []byte {
 	}
 	return []byte(strings.Replace(s, anchor, repl, 1))
 }
+
+// TestLuaMessageBatchPastStorageRefused pins docs/SPEC-TABLES.md §3.3's read
+// bound: "M ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY
+// NAME", found from the eight-bit count before any body is decoded. A batch
+// at the caller's capacity loads; one above refuses batch_too_large and
+// delivers nothing, moving no counter and not reporting damage.
+func TestLuaMessageBatchPastStorageRefused(t *testing.T) {
+	t.Parallel()
+	const schema = `package probe
+fixed table Fix
+{
+    n int32 = 1 | min = 0, max = 10
+}
+`
+	dir := t.TempDir()
+	schemaPath := filepath.Join(dir, "probe.schema")
+	if err := os.WriteFile(schemaPath, []byte(schema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	unit := luarun.LoadUnit(t, schemaPath)
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := t.TempDir()
+	luarun.WriteFiles(t, run, files)
+	writeFile(t, filepath.Join(run, "main.lua"), `
+local T = require("`+ModuleName(unit)+`")
+local vocab = {}
+for i = 1, T.MessageEntries do vocab[i] = {} end
+assert(T.AnnounceRead(vocab, T.Announcement, {}), "announcement refused")
+local a, b = T.NewFix(), T.NewFix()
+a.n, b.n = 3, 7
+local batch = assert(T.SaveMessages("Fix", vocab, { a, b }), "batch save refused")
+-- AT CAPACITY: two bodies into storage for two.
+local two = T.LoadMessages("Fix", vocab, batch, {}, 2)
+assert(two ~= nil and #two == 2, "a batch at capacity did not load")
+assert(two[1].n == 3 and two[2].n == 7, "a batch at capacity decoded the wrong values")
+-- ONE ABOVE: the count is refused before body 1 is decoded and no value is
+-- delivered; no counter moves and the wire is not damage.
+local past = { refused = 0, reason = "", malformed = false, clamped = 0 }
+local none = T.LoadMessages("Fix", vocab, batch, past, 1)
+assert(none == nil, "a batch above capacity delivered values")
+assert(past.refused == 1, "a batch above capacity did not set refused")
+assert(past.reason == "batch_too_large", "a batch above capacity named " .. tostring(past.reason))
+assert(past.malformed == false, "a batch above capacity reported damage")
+assert((past.clamped or 0) == 0, "a batch above capacity moved clamped")
+print("storage-bound-ok")
+`)
+	out := luarun.Run(t, run, "main.lua", nil)
+	if !strings.Contains(string(out), "storage-bound-ok") {
+		t.Fatalf("the storage-bound probe did not finish: %q", out)
+	}
+}

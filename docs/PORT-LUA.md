@@ -179,6 +179,17 @@ computes independently from the IR. `luarun.LoadUnit` builds a unit from
 schema paths the manifest's way. Everything runs in `t.TempDir()`: no
 network, no clock, no service.
 
+## THE MESSAGE BATCH
+
+The message form's read takes the caller's storage capacity as its last
+argument, the way Go's reader takes `len(insts)`: `LoadMessages` and
+`LoadMessagesTolerant` pass it to `runtime/message.lua`, which compares the
+batch's eight-bit count to it before any body is decoded. A count above it is
+the named refusal `batch_too_large` on `report.reason`, with nothing delivered
+and no counter moved (docs/SPEC-TABLES.md §3.3). A caller that passes no
+capacity declares the wire's own `MessageBatchMax` (256), which is the bound
+the write side enforces.
+
 ## THE REGISTER
 
 The lua column of [PORTING.md](PORTING.md) is filled for every technique.
