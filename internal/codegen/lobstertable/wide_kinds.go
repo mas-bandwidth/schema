@@ -19,8 +19,13 @@ import "github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 
 func init() { Register("wide-kinds", emitWideKinds) }
 
-// emitWideKinds is deliberately empty: every wide-kind fact is a descriptor
-// column (docs/SPEC-TABLES.md §8.1), which lobstertable.go emits for all
-// tables at once, and the wire rules are the runtime's. The empty part still
-// runs in name order, so a failure to place it is visible in the module.
-func emitWideKinds(*lobster.Gen) error { return nil }
+// emitWideKinds joins runtime/wide_kinds.lobster to every table module: the
+// module registers the scalar shape that names kind 36, and a program loads
+// it exactly when the table module it imports does (docs/PORT-LOBSTER.md,
+// THE DISPATCH TABLE and THE RUNTIME LAYOUT). Every other wide-kind fact is
+// a descriptor column (docs/SPEC-TABLES.md §8.1), which lobstertable.go
+// emits for all tables at once, and the wire rules are the runtime's.
+func emitWideKinds(g *lobster.Gen) error {
+	g.Import("wide_kinds")
+	return nil
+}

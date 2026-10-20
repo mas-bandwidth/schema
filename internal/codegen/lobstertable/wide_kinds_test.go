@@ -6,12 +6,14 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // wideKindsSchema declares every construct this card carries: a timestamp
@@ -111,16 +113,19 @@ func wideRowWire(t *testing.T, row loadRow) []byte {
 // every row: the report and the value dump of the load, the save's bytes
 // (internal/tablewire.Encode of the reference's decoded instance), and the
 // dump of the re-loaded saved bytes.
-func compareWideRows(t *testing.T, g *loadUnit, rows []loadRow, construct string, counts map[string]int, refusals map[string]int) {
+func compareWideRows(t *testing.T, g *loadUnit, rows []loadRow, constructs []string, counts map[string]int, refusals map[string]int) {
 	t.Helper()
+	label := strings.Join(constructs, ", ")
 	var kept []loadRow
 	var want [][]byte
 	for _, row := range rows {
 		wire := wideRowWire(t, row)
 		saved, err := goSave(g, row.root, wire)
 		if err != nil {
-			t.Logf("%s %s: the Go writer refuses it and it is not compared: %v", construct, row.name, err)
-			refusals[construct]++
+			t.Logf("%s %s: the Go writer refuses it and it is not compared: %v", label, row.name, err)
+			for _, construct := range constructs {
+				refusals[construct]++
+			}
 			continue
 		}
 		kept = append(kept, row)
@@ -133,24 +138,81 @@ func compareWideRows(t *testing.T, g *loadUnit, rows []loadRow, construct string
 	save := runSaveRows(t, g, kept)
 	for i, row := range kept {
 		if load.lob[2*i] != load.goLine[i] {
-			t.Errorf("%s %s: the report is not the reference's:\nlobster: %s\ngo:      %s", construct, row.name, load.lob[2*i], load.goLine[i])
+			t.Errorf("%s %s: the report is not the reference's:\nlobster: %s\ngo:      %s", label, row.name, load.lob[2*i], load.goLine[i])
 			continue
 		}
 		if load.lob[2*i+1] != load.goDump[i] {
-			t.Errorf("%s %s: the loaded value is not the reference's at byte %s", construct, row.name, divergence(load.lob[2*i+1], load.goDump[i]))
+			t.Errorf("%s %s: the loaded value is not the reference's at byte %s", label, row.name, divergence(load.lob[2*i+1], load.goDump[i]))
 			continue
 		}
 		if got, wantHex := save.saved[i], hex.EncodeToString(want[i]); got != wantHex {
-			t.Errorf("%s %s: the saved bytes are not the reference's:\nlobster: %s\ngo:      %s", construct, row.name, got, wantHex)
+			t.Errorf("%s %s: the saved bytes are not the reference's:\nlobster: %s\ngo:      %s", label, row.name, got, wantHex)
 			continue
 		}
 		_, goDump := goLoad(g.u, row.root, want[i])
 		if save.dump[i] != goDump {
-			t.Errorf("%s %s: the re-loaded value is not the reference's at byte %s", construct, row.name, divergence(save.dump[i], goDump))
+			t.Errorf("%s %s: the re-loaded value is not the reference's at byte %s", label, row.name, divergence(save.dump[i], goDump))
 			continue
 		}
-		counts[construct]++
+		for _, construct := range constructs {
+			counts[construct]++
+		}
 	}
+}
+
+// wideUnitConstructs names the wide kinds a unit's declarations use: a
+// timestamp (kind 36), a one-sided integer range, an enum (kind 30) and
+// wstring(N) (kind 33). TestLobsterWideKinds generates every manifest unit
+// whose declarations name one, so no construct rides an ungenerated unit.
+func wideUnitConstructs(u *ir.Unit) []string {
+	seen := map[string]bool{}
+	scan := func(f *ir.Field) {
+		if f == nil {
+			return
+		}
+		if f.Type.Kind == ir.TInt && f.Type.Timestamp {
+			seen["timestamp"] = true
+		}
+		if f.Type.Kind == ir.TWString {
+			seen["wstring"] = true
+		}
+		if f.Type.Kind == ir.TNamed {
+			if _, ok := f.Type.Ref.(*ir.Enum); ok {
+				seen["enum"] = true
+			}
+		}
+		if f.RangeOneSided {
+			seen["one-sided-range (minimum and maximum)"] = true
+		}
+	}
+	walkStruct := func(st *ir.Struct) {
+		for _, f := range st.Fields {
+			scan(f)
+		}
+	}
+	walkUnion := func(un *ir.Union) {
+		for _, v := range un.Variants {
+			scan(v.F)
+		}
+	}
+	for _, st := range u.Tables {
+		walkStruct(st)
+	}
+	for _, st := range u.Structs {
+		walkStruct(st)
+	}
+	for _, un := range u.Unions {
+		walkUnion(un)
+	}
+	for _, un := range u.TableUnions {
+		walkUnion(un)
+	}
+	out := make([]string, 0, len(seen))
+	for construct := range seen {
+		out = append(out, construct)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // TestLobsterWideKinds carries the wide kinds across the variable table wire
@@ -164,32 +226,31 @@ func TestLobsterWideKinds(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
 	byUnit := map[string][]loadRow{}
+	var order []string
 	for _, row := range loadRows(t) {
-		if row.unit == "tabledemo" || row.unit == "widedemo" {
-			byUnit[row.unit] = append(byUnit[row.unit], row)
+		if _, seen := byUnit[row.unit]; !seen {
+			order = append(order, row.unit)
 		}
+		byUnit[row.unit] = append(byUnit[row.unit], row)
 	}
 	counts := map[string]int{}
 	refusals := map[string]int{}
-	for _, key := range []string{"widedemo", "tabledemo"} {
+	for _, key := range order {
 		rows := byUnit[key]
-		if len(rows) == 0 {
-			t.Fatalf("the manifest names no rows for unit %s", key)
-		}
 		paths, err := compiler.GatherPaths(prefix(units[key]))
 		if err != nil {
 			t.Fatalf("unit %s: %v", key, err)
 		}
 		g, err := generateLoadUnit(t, paths)
 		if err != nil {
-			t.Fatalf("unit %s is refused, so its wide kinds are not carried: %v", key, err)
+			t.Logf("unit %s is refused, so its rows are not compared: %v", key, err)
+			continue
 		}
-		g.mods = append(g.mods, "wide_kinds")
-		construct := "enum"
-		if key == "widedemo" {
-			construct = "wstring"
+		constructs := wideUnitConstructs(g.u)
+		if len(constructs) == 0 {
+			continue
 		}
-		compareWideRows(t, g, rows, construct, counts, refusals)
+		compareWideRows(t, g, rows, constructs, counts, refusals)
 	}
 
 	src := filepath.Join(t.TempDir(), "WideKinds.schema")
@@ -200,9 +261,15 @@ func TestLobsterWideKinds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the surface refuses the wide-kind sample: %v", err)
 	}
-	g.mods = append(g.mods, "wide_kinds")
-	if len(g.mods) != 2 {
+	if len(g.mods) != 1 {
 		t.Fatalf("the sample generated %d table modules, want 1", len(g.mods))
+	}
+	module, err := os.ReadFile(filepath.Join(g.dir, g.mods[0]+".lobster"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(module), "import .wide_kinds") {
+		t.Fatalf("the table module does not import wide_kinds, so a program never loads the timestamp shape")
 	}
 	var negativeTime int64 = -1234567890123
 	opened := uint64(negativeTime)
@@ -216,15 +283,9 @@ func TestLobsterWideKinds(t *testing.T) {
 		sample("nan", math.NaN()),
 		sample("infinity", math.Inf(1)),
 	}
-	compareWideRows(t, g, nonFinite, "non_finite", counts, refusals)
-
-	// TIMESTAMP and the two ONE-SIDED RANGES ride the same sample wire; each
-	// is named once for every row that carried it.
-	compareWideRows(t, g, nonFinite[:1], "timestamp", counts, refusals)
-	compareWideRows(t, g, nonFinite[:1], "one-sided-range (minimum and maximum)", counts, refusals)
-	counts["enum"] += 0
-	// the sample's enum and wstring are part of every non_finite row; count
-	// them once more only through the explicit rows above, never twice.
+	// every non_finite row carries the sample's timestamp, both one-sided
+	// ranges, its enum and its wstring, so one pass names all six.
+	compareWideRows(t, g, nonFinite, []string{"non_finite", "timestamp", "one-sided-range (minimum and maximum)", "enum", "wstring"}, counts, refusals)
 
 	escape := sample("escape", 1.0)
 	escape.data = withEscape(t, escape.data, []byte{0xde, 0xad, 0xbe, 0xef})
@@ -232,7 +293,7 @@ func TestLobsterWideKinds(t *testing.T) {
 	if !strings.HasPrefix(line, "1,") {
 		t.Fatalf("the reference does not count the escape as one unknown field (%s): the wire does not exercise kind 31", line)
 	}
-	compareWideRows(t, g, []loadRow{escape}, "escape", counts, refusals)
+	compareWideRows(t, g, []loadRow{escape}, []string{"escape"}, counts, refusals)
 
 	for _, name := range []string{"timestamp", "one-sided-range (minimum and maximum)", "enum", "escape", "wstring", "non_finite"} {
 		if counts[name] == 0 {
@@ -240,8 +301,12 @@ func TestLobsterWideKinds(t *testing.T) {
 		}
 		t.Logf("%s: %d rows agree with Go on load, save and re-load", name, counts[name])
 	}
-	if refusals["enum"]+refusals["wstring"] > 0 {
-		t.Logf("%d manifest rows were refused by the Go writer and not compared", refusals["enum"]+refusals["wstring"])
+	var refused int
+	for _, n := range refusals {
+		refused += n
+	}
+	if refused > 0 {
+		t.Logf("%d manifest rows were refused by the Go writer and not compared", refused)
 	}
 }
 
@@ -258,7 +323,6 @@ func TestLobsterWideKindsNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the surface refuses the wide-kind sample: %v", err)
 	}
-	g.mods = append(g.mods, "wide_kinds")
 	row := loadRow{kind: "instance", name: "negative_time", unit: "widekinds", root: "Sample",
 		data: wideWire(t, g, negativeTimeOpened(), 1, 2, 1, []uint16{'A'}, 1.0)}
 	if got, want := runUnit(t, g, []loadRow{row}).lob[1], goLoadDump(g, row); got != want {
