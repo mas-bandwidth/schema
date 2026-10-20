@@ -147,7 +147,7 @@ func TestSquirrelFixedFormAgreesWithTheByteOracle(t *testing.T) {
 		}
 		fmt.Fprintf(&p, "{ local S = dofile(%q, true); local T = S.require(%q);\n", v.key+"/schema_module.nut", v.module)
 		fmt.Fprintf(&p, "  local b = inputs[%q]; local back = []; for (local k = 0; k < %d; k++) back.append(T.%s());\n", v.key, n, v.root)
-		fmt.Fprintf(&p, "  local got = T.%sFixedLoad(b, back, null);\n", v.root)
+		fmt.Fprintf(&p, "  local got = T.%sFixedLoadTolerant(b, back, null);\n", v.root)
 		fmt.Fprintf(&p, "  if (got != %d) { print(\"LOAD:%s:\" + got + \":\" + T.FixedReason + \"\\n\"); }\n", n, v.key)
 		fmt.Fprintf(&p, "  else { local out = blob(b.len()); T.%sFixedSave(out, back); ::hexlineN(out, b.len()); }\n", v.root)
 		p.WriteString("}\n")
@@ -170,11 +170,11 @@ func TestSquirrelFixedFormAgreesWithTheByteOracle(t *testing.T) {
   local N = dofile("vnew/schema_module.nut", true).require("VrootTables");
   local o = O.VR(); o.A = 42; local ob = blob(256); local om = O.VRFixedSave(ob, [o]);
   local ob2 = blob(om); for (local i = 0; i < om; i++) ob2[i] = ob[i];
-  local n = N.VR(); local got = N.VRFixedLoad(ob2, [n], null);
+  local n = N.VR(); local got = N.VRFixedLoadTolerant(ob2, [n], null);
   if (got != 1 || n.A != 42 || n.B != 11) print("VERSION-OLD-NEW:" + got + ":" + N.FixedReason + ":len=" + ob.len() + ":L=" + ((ob[16]|ob[17]<<8|ob[18]<<16|ob[19]<<24)) + "\n");
   local nv = N.VR(); nv.A = 43; nv.B = 44; local nb = blob(256); local nm = N.VRFixedSave(nb, [nv]);
   local nb2 = blob(nm); for (local i = 0; i < nm; i++) nb2[i] = nb[i];
-  local ov = O.VR(); local got2 = O.VRFixedLoad(nb2, [ov], null);
+  local ov = O.VR(); local got2 = O.VRFixedLoadTolerant(nb2, [ov], null);
   if (got2 != 1 || ov.A != 43) print("VERSION-NEW-OLD:" + got2 + ":" + O.FixedReason + ":len=" + nb.len() + ":L=" + ((nb[16]|nb[17]<<8|nb[18]<<16|nb[19]<<24)) + "\n");
 }
 `)
@@ -191,10 +191,10 @@ func TestSquirrelFixedFormAgreesWithTheByteOracle(t *testing.T) {
 	inputs["toobig"] = tooBig
 	p.WriteString(`{ local S = dofile("fx1/schema_module.nut", true); local T = S.require("Tblfx1Tables");
   local v = [T.FxRoot()];
-  T.FxRootFixedLoad(inputs["prev"], v, null); print("R1:" + T.FixedReason + "\n");
-  T.FxRootFixedLoad(inputs["mal"], v, null); print("R2:" + T.FixedReason + "\n");
-  T.FxRootFixedLoad(inputs["toobig"], v, null); print("R3:" + T.FixedReason + "\n");
-  T.FxRootFixedLoad(inputs["fx1"], v, 0); print("R4:" + T.FixedReason + "\n");
+  T.FxRootFixedLoadTolerant(inputs["prev"], v, null); print("R1:" + T.FixedReason + "\n");
+  T.FxRootFixedLoadTolerant(inputs["mal"], v, null); print("R2:" + T.FixedReason + "\n");
+  T.FxRootFixedLoadTolerant(inputs["toobig"], v, null); print("R3:" + T.FixedReason + "\n");
+  T.FxRootFixedLoadTolerant(inputs["fx1"], v, 0); print("R4:" + T.FixedReason + "\n");
 }
 `)
 	if err := os.WriteFile(filepath.Join(dir, "main.nut"), []byte(p.String()), 0o644); err != nil {

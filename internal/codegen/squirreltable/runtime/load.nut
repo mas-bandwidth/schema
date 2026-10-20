@@ -4,12 +4,14 @@
 // RESOLUTION, ONE BODY and AN ARRAY BODY, which are ports of
 // internal/tablewire's decode.go, decodenodes.go and nodetable.go.
 //
-// _M.load(T, root, bytes, report) answers the loaded root instance or null.
+// _M.load(T, root, bytes, report) is the strict read: the root or null (§6.5).
+// _M.loadTolerant(T, root, bytes, report) keeps the recovered root and counters.
 // T is a unit's table module (the exports table schema_module.nut requires);
 // root is the root table's schema name. report is the caller's §4 report: the
 // six counters, the malformed flag and the refusal verdict. It is filled in
 // place, never created here.
 local _M = vargv[0];
+local _require = vargv[1];
 
 // THE RESERVED IDS the language holds back (docs/SPEC-TABLES.md §3.1, §5).
 local NODE_TABLE_ID = 0xffffffffffffffff;
@@ -1113,10 +1115,11 @@ local resolve = function(st, root, report) {
   }
 };
 
-// THE LOAD (docs/SPEC-TABLES.md §3, §3.1, §4): the form byte, the id table,
-// the node table's records first, then every record's body, then the root
-// body, then the one numbering's resolution.
-_M.load <- function(T, rootName, bytes, report, retain = null) {
+// THE TOLERANT LOAD (docs/SPEC-TABLES.md §3, §3.1, §4): the form byte, the id
+// table, the node table's records first, then every record's body, then the
+// root body, then the one numbering's resolution. It keeps the recovered value
+// and its counters; the plain name is the strict read (§6.5).
+_M.loadTolerant <- function(T, rootName, bytes, report, retain = null) {
   if (report.unknown == null) report.unknown <- 0;
   if (report.kindMismatch == null) report.kindMismatch <- 0;
   if (report.widened == null) report.widened <- 0;
@@ -1248,4 +1251,14 @@ _M.load <- function(T, rootName, bytes, report, retain = null) {
     }
   }
   return v;
+};
+
+// THE STRICT LOAD (docs/SPEC-TABLES.md §6.5): the plain name is the strict
+// read. It runs the tolerant walk and refuses whatever ReadStrict refuses,
+// leaving the reason and the first field that moved its counter in the report
+// and answering null; the recovered value is never handed back. The retaining
+// read (LoadRetain, §6.6) and the wire-fuzz diagnostic name the Tolerant twin.
+_M.load <- function(T, rootName, bytes, report) {
+  local R = _require("schema_table_refusal");
+  return R.ReadStrict(T, rootName, bytes, report);
 };

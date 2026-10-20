@@ -57,7 +57,7 @@ local report = function() {
 local check = function(key, v, present, want) {
   local b = S.save(T, "L", v);
   local r = report();
-  local back = L.load(T, "L", b, r);
+  local back = L.loadTolerant(T, "L", b, r);
   if (r.malformed || r.refused) { print("FAIL " + key + " load\n"); return; }
   if (back.MaybePresent != present) { print("FAIL " + key + " present\n"); return; }
   if (present) {

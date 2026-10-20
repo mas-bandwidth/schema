@@ -63,11 +63,11 @@ local instance = function(unit, mod, root, key) {
   local L = schema.require("schema_table_load");
   local S = schema.require("schema_table_save");
   local J = schema.require("schema_table_json");
-  local v = L.load(T, root, inputs[key + ".wire"], fresh());
+  local v = L.loadTolerant(T, root, inputs[key + ".wire"], fresh());
   local w = J.ToJson(T, root, v);
   local m = J.ToJsonMeasure(T, root, v);
   local r = fresh();
-  local x = J.FromJson(T, root, inputs[key + ".json"], r);
+  local x = J.FromJsonTolerant(T, root, inputs[key + ".json"], r);
   local b = r.malformed ? null : S.save(T, root, x);
   print("instance " + key + " " + hexOf(w) + " " + m + " " + hexOf(b) + " " + reportLine(r) + "\n");
 };
@@ -76,7 +76,7 @@ local hostile = function(unit, mod, root, key) {
   local T = schema.require(mod);
   local J = schema.require("schema_table_json");
   local r = fresh();
-  J.FromJson(T, root, inputs[key + ".hostile"], r);
+  J.FromJsonTolerant(T, root, inputs[key + ".hostile"], r);
   print("hostile " + key + " " + reportLine(r) + "\n");
 };
 `
@@ -387,7 +387,7 @@ local L = schema.require("schema_table_load");
 local J = schema.require("schema_table_json");
 local report = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
   malformed = false, refused = false };
-local v = L.load(T, "KeyedConfig", inputs["keyed_config"], report);
+local v = L.loadTolerant(T, "KeyedConfig", inputs["keyed_config"], report);
 local c = T.Descriptors.KeyedConfig;
 local h = T.Descriptors.HullConfig;
 v[c.byKey.hulls.member][0][h.byKey.health.member] = 0.3333333432674408;
@@ -501,7 +501,7 @@ local J = schema.require("schema_table_json");
 foreach (key in %s) {
   local r = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
     malformed = false, refused = false };
-  local v = J.FromJson(T, "Patrol", inputs[key], r);
+  local v = J.FromJsonTolerant(T, "Patrol", inputs[key], r);
   local w = r.malformed ? null : J.ToJson(T, "Patrol", v);
   local out = "";
   if (w == null) out = "null";

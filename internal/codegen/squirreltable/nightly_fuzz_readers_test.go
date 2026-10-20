@@ -54,7 +54,7 @@ local run = function(unit, mod, root, key, kind) {
       throw "LoadText answered a value and a refusal together, or neither";
   } else {
     local J = schema.require("schema_table_json");
-    v = J.FromJson(T, root, inputs[key], r);
+    v = J.FromJsonTolerant(T, root, inputs[key], r);
     // FromJson always answers an instance; a bad text must set malformed,
     // which is its typed refusal, never a silent clean read.
   }

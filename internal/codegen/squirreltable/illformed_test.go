@@ -63,7 +63,7 @@ local T = schema.require(%q);
 local J = schema.require("schema_table_json");
 local r = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
   malformed = false, refused = false };
-J.FromJson(T, "RootConfig", inputs["illformed"], r);
+J.FromJsonTolerant(T, "RootConfig", inputs["illformed"], r);
 local why = ("reason" in r) ? ((r.reason == null) ? "-" : r.reason) : "-";
 print((r.malformed ? "refused" : "read") + "|" + why + "\n");
 `, squirreltable.ModuleName(u))

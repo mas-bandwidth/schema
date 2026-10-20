@@ -93,7 +93,7 @@ func TestSquirrelFixedReadsItsLineage(t *testing.T) {
 local N = dofile("new/schema_module.nut", true).require("VrTables");
 local r = O.VR(); r.A = 42; local b = blob(256); local n = O.VRFixedSave(b, [r]);
 local nb = blob(n); for (local i = 0; i < n; i++) nb[i] = b[i];
-local v = N.VR(); local got = N.VRFixedLoad(nb, [v], null);
+local v = N.VR(); local got = N.VRFixedLoadTolerant(nb, [v], null);
 print("LINEAGE:%s:" + got + ":" + (N.FixedReason == null ? "" : N.FixedReason) + ":" + v.A + "\n");
 `, c.name))
 			if err := os.WriteFile(filepath.Join(dir, "main.nut"), []byte(p.String()), 0o644); err != nil {

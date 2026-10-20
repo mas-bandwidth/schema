@@ -47,7 +47,7 @@ local status = function() {
     report.widened, report.clamped, report.duplicate) + "," +
     report.malformed.tostring() + "," + report.refused.tostring();
 };
-local read = L.load(T, "L", inputs.want, report);
+local read = L.loadTolerant(T, "L", inputs.want, report);
 print("loaded=" + values(read) + "\n");
 print("loaded-report=" + status() + "\n");
 ::hexline(S.save(T, "L", read));
@@ -58,7 +58,7 @@ local fresh = T.Descriptors.L.make();
 fresh[member] = [10, -20, 30];
 local saved = S.save(T, "L", fresh);
 ::hexline(saved);
-local again = L.load(T, "L", saved, report);
+local again = L.loadTolerant(T, "L", saved, report);
 print("round=" + values(again) + "\n");
 print("round-report=" + status() + "\n");
 `

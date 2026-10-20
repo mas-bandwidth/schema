@@ -83,12 +83,12 @@ local J = schema.require("schema_table_json");
 foreach (key in %s) {
   local r = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
     malformed = false, refused = false };
-  local v = J.FromJson(T, %q, inputs[key + ".json"], r);
+  local v = J.FromJsonTolerant(T, %q, inputs[key + ".json"], r);
   if (r.malformed) { print(key + " json-refused\n"); continue; }
   hexline(S.save(T, %q, v));
   local lr = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
     malformed = false, refused = false };
-  local loaded = L.load(T, %q, inputs[key + ".wire"], lr);
+  local loaded = L.loadTolerant(T, %q, inputs[key + ".wire"], lr);
   if (lr.malformed) { print(key + " load-refused\n"); continue; }
   hexline(S.save(T, %q, loaded));
 }

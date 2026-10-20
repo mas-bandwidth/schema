@@ -167,11 +167,11 @@ local same = function(a, b) {
   return true;
 };
 local run = function() {
-  local a = L.load(T, %q, inputs["wire"], fresh());
+  local a = L.loadTolerant(T, %q, inputs["wire"], fresh());
   if (a == null) { print("load:null\n"); return; }
   local one = S.save(T, %q, a);
   if (one == null) { print("save:null\n"); return; }
-  local back = L.load(T, %q, one, fresh());
+  local back = L.loadTolerant(T, %q, one, fresh());
   if (back == null) { print("reload:null\n"); return; }
   local two = S.save(T, %q, back);
   if (two == null) { print("resave:null\n"); return; }

@@ -29,7 +29,7 @@ local run = function(unit, mod, root, key) {
     unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
     duplicate = 0, malformed = false, refused = false
   };
-  L.load(T, root, inputs[key], report);
+  L.loadTolerant(T, root, inputs[key], report);
   local verdict = report.refused ? "refused" : "read";
   local m = report.malformed ? "true" : "false";
   print(key + " " + report.unknown.tostring() + "," + report.kindMismatch.tostring() + "," +

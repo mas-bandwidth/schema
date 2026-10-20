@@ -13,6 +13,9 @@ func init() {
 	define(Squirrel,
 		Name{Name: "ReadStrict", What: "the strict read over the tolerant load, naming the refusal and the first field that moved its counter (docs/SPEC-TABLES.md §6.5, §11)", Scoped: true},
 		Name{Name: "ReadStrictNames", What: "the strict read's refusal vocabulary, by name (§11, §6.5)", Scoped: true},
+		Name{Name: "loadTolerant", What: "the tolerant load, keeping the recovered value and its counters (docs/SPEC-TABLES.md §6.5)", Scoped: true},
+		Name{Name: "FromJsonTolerant", What: "the tolerant text read, keeping the recovered value and its counters (docs/SPEC-TABLES.md §6.5)", Scoped: true},
+		Name{Name: "FixedLoadTolerant", What: "the tolerant fixed-form read, keeping the recovered records (docs/SPEC-TABLES.md §3.4, §6.5)", Scoped: true},
 		// The hand-editable text form (docs/SPEC-TABLES.md §16.9): the runtime
 		// schema_table_document's exports, reached as _rt_document.<Name>. The
 		// unit module's per-table <Name>LoadTextForm, <Name>SaveTextForm and

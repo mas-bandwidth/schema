@@ -267,7 +267,7 @@ foreach (c in cases) {
   local saved = "-";
   if (c[2]) {
     local jr = {};
-    local jv = J.FromJson(T, c[1], inputs[c[0] + ".json"], jr);
+    local jv = J.FromJsonTolerant(T, c[1], inputs[c[0] + ".json"], jr);
     if (jv == null || jr.malformed) saved = "json-refused";
     else saved = hex(S.save(T, c[1], jv));
   }

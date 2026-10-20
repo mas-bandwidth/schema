@@ -23,7 +23,7 @@ local run = function(unit, mod, root, key, wantb64, d1, d2, d3) {
   local L = schema.require("schema_table_load");
   local TX = schema.require("schema_table_text");
   local r1 = { unknown=0, kindMismatch=0, widened=0, clamped=0, duplicate=0, malformed=false, refused=false };
-  local v = L.load(T, root, inputs[key], r1);
+  local v = L.loadTolerant(T, root, inputs[key], r1);
   if (v == null || r1.refused) { print(key + " loadrefused\n"); return; }
   local saveText = TX.SaveText(T, root, v);
   if (saveText == null) { print(key + " savenull\n"); return; }

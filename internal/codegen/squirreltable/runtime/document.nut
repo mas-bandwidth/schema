@@ -1177,7 +1177,7 @@ local read = function(T, rootName, src, limits) {
 // between the two and is never accepted silently.
 local land = function(T, rootName, js) {
   local report = {};
-  local v = _json.FromJson(T, rootName, js, report);
+  local v = _json.FromJsonTolerant(T, rootName, js, report);
   local name = null;
   if (report.clamped > 0) name = BOUND;
   else if (report.unknown > 0) name = UNKNOWN_KEY;
