@@ -234,6 +234,9 @@ local function caseResult(c)
       local form = #payload > 0 and payload:byte(1) or 0
       return "refuse", form == 2 and "message_form_as_file" or "newer_form", nil
     end
+    -- A LOAD THAT NAMED A REASON reports it: count_refusal is a storage
+    -- refusal (§2.9), not the unnamed damage the wire branch otherwise reads.
+    if r.reason ~= "" then return "refuse", r.reason, nil end
     if r.malformed or value == nil then return "refuse", "damaged", nil end
   elseif c[2] == "announce" then
     local vocab = {}
@@ -377,10 +380,8 @@ func luaHostileCarriedList(cases []luaHostileCase) map[string]luaHostileCarried 
 	} {
 		out[name] = luaHostileCarried{"refuse", "damaged", "schema-shared-hostile-corpus"}
 	}
-	// The message reader has no caller storage bound and the wire reader names
-	// the count past the int32 cap damaged, not count_refusal.
+	// The message reader has no caller storage bound.
 	out["message-batch-too-large"] = luaHostileCarried{"accept", "-", "schema-lua-message-honors-storage-bound-r"}
-	out["wire-count-refusal"] = luaHostileCarried{"refuse", "damaged", "schema-lua-wire-names-count-refusal-r"}
 	// Accepted by both, but the subnormal float's canonical text differs: a
 	// reader/writer spelling bug in the Lua float32 path.
 	out["conformance-num-float32-subnormal"] = luaHostileCarried{"accept", "-", "schema-lua-float32-subnormal-canonical-text-r"}

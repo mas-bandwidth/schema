@@ -194,6 +194,18 @@ computes independently from the IR. `luarun.LoadUnit` builds a unit from
 schema paths the manifest's way. Everything runs in `t.TempDir()`: no
 network, no clock, no service.
 
+## THE TABLE WIRE'S COUNT REFUSAL
+
+A collection count is an unsigned 64-bit number ([SPEC-TABLES.md](SPEC-TABLES.md) §3).
+A **map** (§2.8) or an **unbounded array** (§2.9) whose count is past the
+int32 storage cap is the engine's **CountRefusal** (`internal/tablewire/decode.go`,
+`decodenodes.go`): the tolerant load keeps nothing for the field and sets
+`report.reason = "count_refusal"`, and meeting the cap adds no malformed event
+or other counter. A count AT the cap decodes normally. The hostile-corpus
+runner's wire branch returns a report's named reason before it calls the
+answer `damaged`, so `wire-count-refusal` lands the manifest's
+`refuse/count_refusal`; damage that names no reason stays `damaged`.
+
 ## THE REGISTER
 
 The lua column of [PORTING.md](PORTING.md) is filled for every technique.
