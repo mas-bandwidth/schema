@@ -116,8 +116,12 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 
 	cases := []refusalRow{
 		{"refuseWideText", "wide text", "package probe\n\ntable L\n{\n    w wstring(8)\n}\n", "L.w", false},
-		{"refuseBytes", "byte buffer", "package probe\n\ntable L\n{\n    b *bytes\n}\n", "L.b", false},
-		{"refuseStrings", "string buffer", "package probe\n\ntable L\n{\n    s *string\n}\n", "L.s", false},
+		// this construct is LIFTED (compiler/target_squirrel_blobs.go): the
+		// tagged target carries the byte and string buffers, so the refusers
+		// accept squirrel and still refuse a target that has not registered
+		// (docs/SPEC-TABLES.md §2.5).
+		{"refuseBytes", "byte buffer", "package probe\n\ntable L\n{\n    b *bytes\n}\n", "L.b", true},
+		{"refuseStrings", "string buffer", "package probe\n\ntable L\n{\n    s *string\n}\n", "L.s", true},
 		{refuser: "refuseMaps", name: "map", src: "package probe\n\ntable L\n{\n    index map[string(8)]int32\n}\n", field: "L.index", carried: true},
 		// this construct is LIFTED (compiler/target_squirrel_lists.go): the
 		// tagged target carries it, so the refuser accepts squirrel and still
@@ -161,6 +165,12 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			registered := true
 			if tc.refuser == "refuseLists" {
 				registered = slices.Contains(listTargets, "squirrel")
+			}
+			if tc.refuser == "refuseBytes" {
+				registered = slices.Contains(blobTargets, "squirrel")
+			}
+			if tc.refuser == "refuseStrings" {
+				registered = slices.Contains(stringTargets, "squirrel")
 			}
 			if slices.Contains([]string{"refuseTableArms", "refuseVoidArms", "refuseUnionArrays"}, tc.refuser) {
 				registered = c != nil
