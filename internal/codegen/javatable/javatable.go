@@ -183,9 +183,10 @@ func javaFile(u *ir.Unit, summary, body string) []byte {
 }
 
 // Generate emits the unit's Java table surface — the record accessors, the
-// block and cook read halves with their runtime types, and the build version —
-// and nothing when the unit declares no table: a table-free unit's generated
-// Java is byte-identical with or without this package.
+// block build and read halves, the cook write and read halves with their
+// runtime types, and the build version — and nothing when the unit declares no
+// table: a table-free unit's generated Java is byte-identical with or without
+// this package.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return GenerateLineage(u, nil)
 }
@@ -221,39 +222,34 @@ func generateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry, canon f
 		return nil, err
 	}
 	out := map[string][]byte{}
+	// The two ACCELERATORS operate directly on a byte[] the caller owns:
+	// the BLOCK form (§19) builds and opens in-place block images and the
+	// COOK (§7) measures, writes, and opens cooked regions, reaching every
+	// cookable table of the unit — a pointered unit's cooks open and write in full.
+	var blocks *ir.BlockUnit
 	if !scope.Accelerators {
-		// The two ACCELERATORS operate directly on a byte[] the caller owns:
-		// the BLOCK form (§19) builds and opens in-place block images and the
-		// COOK (§7) measures, writes, and opens cooked regions, reaching every
-		// cookable table of the unit — a pointered unit's cooks open and write in full.
-		blocks := ir.Blocks(u)
-		ck := cookUnitOf(u)
-		set := collectRecords(u, blocks, ck)
-		// TableBytes and BuildVersion BELONG TO THE TWO ACCELERATORS and to
-		// nothing else: block.go and cook.go are their only callers, the fixed
-		// form reads its bytes through TableFixed's own accessors and carries
-		// its own layout hash rather than the build version. So they ride in
-		// this branch, where the accelerators are, and a wide-kind unit that
-		// gets only a fixed form is not handed two classes nobody names.
-		out["TableBytes.java"] = tableBytesFile(u)
-		out["BuildVersion.java"] = buildVersionFile(u)
-		maps.Copy(out, emitRowFiles(u, set, blocks, ck))
-		withBlock := anyBlockForm(u, blocks)
-		if withBlock {
-			blockFiles, err := generateBlockFiles(u, blocks)
-			if err != nil {
-				return nil, err
-			}
-			maps.Copy(out, blockFiles)
-			out["TableBlockLayout.java"] = emitBlockLayoutFile(u, blocks, set)
-		}
-		cooks, err := generateCookFiles(u, ck)
+		blocks = ir.Blocks(u)
+	}
+	ck := cookUnitOf(u)
+	set := collectRecords(u, blocks, ck)
+	out["TableBytes.java"] = tableBytesFile(u)
+	out["BuildVersion.java"] = buildVersionFile(u)
+	maps.Copy(out, emitRowFiles(u, set, blocks, ck))
+	withBlock := blocks != nil && anyBlockForm(u, blocks)
+	if withBlock {
+		blockFiles, err := generateBlockFiles(u, blocks)
 		if err != nil {
 			return nil, err
 		}
-		maps.Copy(out, cooks)
-		out["TableCookLayout.java"] = emitCookLayoutFile(u, ck, set, withBlock)
+		maps.Copy(out, blockFiles)
+		out["TableBlockLayout.java"] = emitBlockLayoutFile(u, blocks, set)
 	}
+	cooks, err := generateCookFiles(u, ck)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, cooks)
+	out["TableCookLayout.java"] = emitCookLayoutFile(u, ck, set, withBlock)
 	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
 	// FIRST table wire. It rides unconditionally — a wire a consumer can be
 	// handed is not something they opt into — and nothing about form 1 moves.
