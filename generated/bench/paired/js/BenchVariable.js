@@ -119,6 +119,7 @@ class TableVariableReader {
     // A FAILED LEB LEAVES THE CURSOR WHERE IT STARTED (docs/SPEC-TABLES.md §3),
     // as the engine's readLeb does: one value has one spelling, and a number
     // that is not one is not consumed.
+    this.bad = false;
     let r = 0, s = 0;
     const start = this.at;
     for (let i = 0; i < 10; i++) {
@@ -398,7 +399,7 @@ function tableRetainNameable(id) {
   while (lo <= hi) { const m = (lo + hi) >> 1; if (TableRetainKnown[m] === id) { return true; } if (TableRetainKnown[m] < id) { lo = m + 1; } else { hi = m - 1; } }
   return false;
 }
-function tableRetainReserved(id) { return id === TableNodeTableId || id === TableBuildVersionId || id === TableMessageVocabularyId; }
+function tableRetainReserved(id) { return id === 0n || id === TableNodeTableId || id === TableBuildVersionId || id === TableMessageVocabularyId; }
 
 // THE RESOLVING WALK, capture half (§6.6): read a field's payload by kind and
 // write its RESOLVED form — every reference widened to a 64-bit id, every
@@ -408,19 +409,83 @@ function tableRetainReserved(id) { return id === TableNodeTableId || id === Tabl
 // false, as does any framing the walk cannot take.
 function TableVariableRetainResolveBody(r, table, out, depth, end) {
   if (depth > 64) { return false; }
+  // THE BODY IS ITS OWN CURSOR: a reference or length must not read past the
+  // bytes its framing gave it, exactly as the reference's sub-cursor bounds it
+  // (internal/tablewire retain.go walkBody).
+  const rd = new TableVariableReader(r.b, r.at, end);
   while (true) {
-    if (r.at > end) { return false; }
-    const ref = r.leb(); if (r.bad) { return false; }
-    if (ref === 0) { out.u64(0n); if (r.at !== end) { return false; } return true; }
-    if (ref > table.length || r.at >= end) { return false; }
+    if (rd.at > end) { return false; }
+    const ref = rd.leb(); if (rd.bad) { return false; }
+    if (ref === 0) { out.u64(0n); if (rd.at !== end) { return false; } r.at = rd.at; return true; }
+    if (ref > table.length || rd.at >= end) { return false; }
     const id = table[ref - 1];
     if (tableRetainReserved(id)) { return false; }
     out.u64(id);
-    if (r.at >= end) { return false; }
-    const k = r.u8(); out.u8(k);
-    if (!TableVariableRetainResolve(r, table, k, out, depth + 1)) { return false; }
-    if (r.at > end) { return false; }
+    if (rd.at >= end) { return false; }
+    const k = rd.u8(); out.u8(k);
+    if (!TableVariableRetainResolve(rd, table, k, out, depth + 1)) { return false; }
+    if (rd.at > end) { return false; }
   }
+}
+
+// TableVariableRetainResolveContent is the private-format content of one
+// framed payload whose length the caller has already consumed, the twin of the
+// reference's tableRetainIn.content (internal/codegen/gotable/retain.go):
+// kind 13 is a body, 14 and 16 the counted elements of a list and a keyed
+// array, 15 and 30 carry a resolved reference, and every other kind copies the
+// framed bytes as they stand.
+function TableVariableRetainResolveContent(r, table, kind, out, depth, end) {
+  if (depth > 64) { return false; }
+  const rd = new TableVariableReader(r.b, r.at, end);
+  let ok = false;
+  switch (kind) {
+    case 13: ok = TableVariableRetainResolveBody(rd, table, out, depth, end); break;
+    case 14: case 16: ok = TableVariableRetainResolveElements(rd, table, kind, out, depth, end); break;
+    case 15: case 30: ok = TableVariableRetainResolve(rd, table, kind, out, depth); break;
+    case 17: return false;
+    default:
+      if (rd.at > end) { return false; }
+      out.raw(rd.b.subarray(rd.at, end));
+      rd.at = end;
+      ok = true;
+  }
+  if (ok) { r.at = rd.at; }
+  return ok;
+}
+
+// TableVariableRetainResolveElements is the [element kind][count] header and
+// its elements: a kind-14 list element is the element kind's own payload, a
+// kind-16 keyed element is a resolved key id, then its length and body
+// (§6.6, internal/tablewire retain.go's keyed arm).
+function TableVariableRetainResolveElements(r, table, kind, out, depth, end) {
+  // the element span is its own cursor, as the reference's framed content is
+  const rd = new TableVariableReader(r.b, r.at, end);
+  if (rd.at + 1 > end) { return false; }
+  const ek = rd.u8(); out.u8(ek);
+  const n = rd.leb(); if (rd.bad) { return false; }
+  out.leb(n);
+  for (let i = 0; i < n; i++) {
+    if (kind === 16) {
+      const keyRef = rd.leb(); if (rd.bad || keyRef === 0 || keyRef > table.length) { return false; }
+      const keyId = table[keyRef - 1];
+      if (tableRetainReserved(keyId)) { return false; }
+      out.u64(keyId);
+      const elen = rd.leb(); if (rd.bad || rd.at + elen > end) { return false; }
+      const eend = rd.at + elen;
+      const mark = out.len;
+      out.u32(0);
+      if (!TableVariableRetainResolveContent(rd, table, ek, out, depth + 1, eend)) { return false; }
+      if (rd.at !== eend) { return false; }
+      const bytes = out.len - mark - 4;
+      out.b[mark] = bytes & 0xff; out.b[mark + 1] = (bytes >>> 8) & 0xff; out.b[mark + 2] = (bytes >>> 16) & 0xff; out.b[mark + 3] = (bytes >>> 24) & 0xff;
+    } else if (!TableVariableRetainResolve(rd, table, ek, out, depth + 1)) {
+      return false;
+    }
+    if (rd.at > end) { return false; }
+  }
+  if (rd.at !== end) { return false; }
+  r.at = rd.at;
+  return true;
 }
 
 function TableVariableRetainResolve(r, table, kind, out, depth) {
@@ -428,7 +493,7 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } out.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
-    case 12: case 33: {
+    case 12: case 31: case 32: case 33: {
       // a string and a wide string (§6.6, internal/tablewire retain.go): the
       // payload copies verbatim under its L
       const L = r.leb(); if (r.bad || r.at + L > r.end) { return false; }
@@ -452,23 +517,29 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
       out.b[mark] = bytes & 0xff; out.b[mark + 1] = (bytes >>> 8) & 0xff; out.b[mark + 2] = (bytes >>> 16) & 0xff; out.b[mark + 3] = (bytes >>> 24) & 0xff;
       return true;
     }
-    case 14: {
+    case 14: case 16: {
       const L = r.leb(); if (r.bad || r.at + L > r.end) { return false; }
       const end = r.at + L;
-      if (r.at + 1 > end) { return false; }
-      const ek = r.u8(); out.u8(ek);
-      const n = r.leb(); if (r.bad) { return false; } out.leb(n);
-      for (let i = 0; i < n; i++) {
-        const elen = r.leb(); if (r.bad || r.at + elen > end) { return false; }
-        const eend = r.at + elen;
-        const mark = out.len;
-        out.u32(0);
-        if (!TableVariableRetainResolveBody(r, table, out, depth + 1, eend)) { return false; }
-        const bytes = out.len - mark - 4;
-        out.b[mark] = bytes & 0xff; out.b[mark + 1] = (bytes >>> 8) & 0xff; out.b[mark + 2] = (bytes >>> 16) & 0xff; out.b[mark + 3] = (bytes >>> 24) & 0xff;
-        if (r.at > end) { return false; }
-      }
+      return TableVariableRetainResolveElements(r, table, kind, out, depth + 1, end);
+    }
+    case 15: {
+      // a union whose arm carries a payload (§6.6): the arm's resolved id, the
+      // arm's kind byte, then the arm's framed content.
+      const ref = r.leb(); if (r.bad) { return false; }
+      if (ref === 0) { out.u64(0n); return true; }
+      if (ref > table.length || r.at >= r.end) { return false; }
+      const id = table[ref - 1];
+      if (tableRetainReserved(id)) { return false; }
+      out.u64(id);
+      const k = r.u8(); out.u8(k);
+      const L = r.leb(); if (r.bad || r.at + L > r.end) { return false; }
+      const end = r.at + L;
+      const mark = out.len;
+      out.u32(0);
+      if (!TableVariableRetainResolveContent(r, table, k, out, depth + 1, end)) { return false; }
       if (r.at !== end) { return false; }
+      const bytes = out.len - mark - 4;
+      out.b[mark] = bytes & 0xff; out.b[mark + 1] = (bytes >>> 8) & 0xff; out.b[mark + 2] = (bytes >>> 16) & 0xff; out.b[mark + 3] = (bytes >>> 24) & 0xff;
       return true;
     }
     case 17: return false;
@@ -513,17 +584,62 @@ function TableVariableRetainEmitBody(r, ids, w) {
   }
 }
 
+// TableVariableRetainEmitContent is the wire form of one private content whose
+// length the caller writes, the twin of tableRetainOut.content: the same six
+// shapes the capture half kept (internal/codegen/gotable/retain.go).
+function TableVariableRetainEmitContent(r, ids, kind, w) {
+  switch (kind) {
+    case 13: return TableVariableRetainEmitBody(r, ids, w);
+    case 14: case 16: return TableVariableRetainEmitElements(r, ids, kind, w);
+    case 15: case 30: return TableVariableRetainEmit(r, ids, kind, w);
+    case 17: return false;
+    default:
+      if (r.at > r.end) { return false; }
+      w.raw(r.b.subarray(r.at, r.end));
+      r.at = r.end;
+      return true;
+  }
+}
+
+function TableVariableRetainEmitElements(r, ids, kind, w) {
+  if (r.at + 1 > r.end) { return false; }
+  const ek = r.u8(); w.u8(ek);
+  const n = r.leb(); if (r.bad) { return false; }
+  w.leb(n);
+  for (let i = 0; i < n; i++) {
+    if (kind === 16) {
+      if (r.at + 8 > r.end) { return false; }
+      const keyId = r.u64();
+      const keyRef = ids.ref(keyId, true);
+      if (keyRef === -1) { return false; }
+      w.leb(keyRef);
+      const L = r.u32(); if (r.at + L > r.end) { return false; }
+      const sub = new TableVariableWriter();
+      if (!TableVariableRetainEmitContent(new TableVariableReader(r.b, r.at, r.at + L), ids, ek, sub)) { return false; }
+      r.at += L;
+      w.leb(sub.len); w.raw(sub.b);
+    } else {
+      // a list element is the element kind's OWN payload (tableRetainOut's
+      // payload(k)): a table carries its length, a scalar only its width.
+      if (!TableVariableRetainEmit(r, ids, ek, w)) { return false; }
+    }
+  }
+  return true;
+}
+
 function TableVariableRetainEmit(r, ids, kind, w) {
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } w.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
-    case 12: case 33: {
+    case 12: case 31: case 32: case 33: {
       const L = r.leb(); if (r.bad || r.at + L > r.end) { return false; }
       w.leb(L); w.raw(r.b.subarray(r.at, r.at + L)); r.at += L; return true;
     }
     case 30: {
       if (r.at + 8 > r.end) { return false; }
       const id = r.u64();
+      // a None variant is the one zero reference (§3): it names no id at all
+      if (id === 0n) { w.leb(0); return true; }
       const ref = ids.ref(id, true);
       if (ref === -1) { return false; }
       w.leb(ref); return true;
@@ -535,19 +651,27 @@ function TableVariableRetainEmit(r, ids, kind, w) {
       r.at += L;
       w.leb(sub.len); w.raw(sub.b); return true;
     }
-    case 14: {
-      if (r.at + 1 > r.end) { return false; }
-      const ek = r.u8();
-      const n = r.leb(); if (r.bad) { return false; }
+    case 14: case 16: {
+      // the private form of a list carries no outer length: its [element kind]
+      // and count are followed by each element's own length and body.
       const sub = new TableVariableWriter();
-      sub.u8(ek); sub.leb(n);
-      for (let i = 0; i < n; i++) {
-        const elen = r.u32(); if (r.at + elen > r.end) { return false; }
-        const esub = new TableVariableWriter();
-        if (!TableVariableRetainEmitBody(new TableVariableReader(r.b, r.at, r.at + elen), ids, esub)) { return false; }
-        r.at += elen;
-        sub.leb(esub.len); sub.raw(esub.b);
-      }
+      if (!TableVariableRetainEmitElements(r, ids, kind, sub)) { return false; }
+      w.leb(sub.len); w.raw(sub.b); return true;
+    }
+    case 15: {
+      if (r.at + 8 > r.end) { return false; }
+      const id = r.u64();
+      // None is the one zero reference and carries no kind byte or length
+      if (id === 0n) { w.leb(0); return true; }
+      if (r.at + 1 > r.end) { return false; }
+      const ref = ids.ref(id, true);
+      if (ref === -1) { return false; }
+      w.leb(ref);
+      const k = r.u8(); w.u8(k);
+      const L = r.u32(); if (r.at + L > r.end) { return false; }
+      const sub = new TableVariableWriter();
+      if (!TableVariableRetainEmitContent(new TableVariableReader(r.b, r.at, r.at + L), ids, k, sub)) { return false; }
+      r.at += L;
       w.leb(sub.len); w.raw(sub.b); return true;
     }
     default: return false;
@@ -587,6 +711,38 @@ function TableVariableRetainTail(w, ids, retain, path) {
 
 // A record still unplaced after the save lost its body (§6.6): one retainLost
 // each, counted once at the end.
+// TableVariableRetainDiscard drops the records at or under a path, exactly as
+// the reference's TableRetain.discard (§6.6): a body re-read replaces what an
+// earlier read retained there, so a duplicate map entry or a re-selected union
+// arm does not leave two records behind. The field flag narrows the pass to records
+// whose first step under the path is the field's own ordinal.
+function TableVariableRetainDiscard(retain, path, field, ordinal) {
+  if (retain === null) { return; }
+  const depth = path.length;
+  let at = 0, out = 0, count = 0;
+  while (at < retain.used) {
+    const b = retain.bytes;
+    const total = tableRetainU32(b, at);
+    const rdepth = b[at + 4];
+    let drop = false;
+    if (rdepth >= depth) {
+      let match = true;
+      for (let k = 0; k < depth; k++) {
+        if (tableRetainU32(b, at + 5 + k * 8) !== path[k].o || tableRetainU32(b, at + 9 + k * 8) !== path[k].i) { match = false; break; }
+      }
+      if (match && (!field || (rdepth > depth && tableRetainU32(b, at + 5 + depth * 8) === ordinal))) { drop = true; }
+    }
+    if (!drop) {
+      if (out !== at) { b.copyWithin(out, at, at + total); }
+      out += total;
+      count++;
+    }
+    at += total;
+  }
+  retain.used = out;
+  retain.count = count;
+}
+
 function TableVariableRetainCountLost(retain, report) {
   if (retain === null || report === null) { return; }
   let at = 0;
@@ -635,13 +791,15 @@ function TableVariableWidenF32(bits) {
 }
 
 // §4's WIDENING RUNGS: a narrower kind on its own signedness ladder, and f32
-// into f64.
+// into f64. The 128-bit rungs are kind 18 (I128) accepting 2..5 and kind 19
+// (U128) accepting 6..9 — a cross-sign or float payload is a kind mismatch, not
+// a widen, exactly as ir.TableKindWidens decides (docs/SPEC-TABLES.md §4).
 function TableVariableWidens(kind, declared) {
   switch (declared) {
     case 3: case 4: case 5: return kind >= 2 && kind < declared;
     case 7: case 8: case 9: return kind >= 6 && kind < declared;
-    case 18: return kind >= 2 && kind < declared;
-    case 19: return kind >= 6 && kind < declared;
+    case 18: return kind >= 2 && kind <= 5;
+    case 19: return kind >= 6 && kind <= 9;
     case 11: return kind === 10;
   }
   return false;
@@ -701,6 +859,21 @@ function TableVariableGuardHolds(fd, v) {
 class TableVariableNodes {
   constructor() { this.list = []; this.index = new Map(); this.slots = new Map(); }
   slot(holder, name) { return this.slots.get(holder).get(name); }
+}
+
+// RETENTION'S NODE STEP (§6.6): a record retained inside a node record names
+// which node it belongs to by the object's own identity, so the same record
+// rides back into that node's body when the value is saved. The ordinal is
+// reader-private: nothing on the wire reads it, and the root's path has none.
+const TableVariableRetainNodeIds = new WeakMap();
+let TableVariableRetainNextNodeId = 1;
+// the ROOT's path is the one node step that names no record, so a discard in
+// the root body cannot reach a record retained inside a node.
+function TableVariableRetainRootPath() { return [{ o: 0xffffffff, i: 0 }]; }
+function TableVariableRetainNodePath(v) {
+  let id = TableVariableRetainNodeIds.get(v);
+  if (id === undefined) { id = TableVariableRetainNextNodeId++; TableVariableRetainNodeIds.set(v, id); }
+  return [{ o: 0xffffffff, i: id }];
 }
 
 // the pointer and blob edges of one node's by-value closure, in the walk's
@@ -968,7 +1141,12 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
     case "union":
       // a None element rides as the single zero byte: position is identity (§3)
       if (val === null) { w.leb(0); return true; }
-      return TableVariableArmWrite(e.u, w, ids, nodes, val, retain, path, fd.o);
+      // THE ELEMENT'S OWN STEP (§6.6): repeated union elements retain under
+      // different indices, as the reference's retainReadPath(i) does.
+      if (path !== null) { path.push({ o: fd.o, i: i }); }
+      const okU = TableVariableArmWrite(e.u, w, ids, nodes, val, retain, path, fd.o);
+      if (path !== null) { path.pop(); }
+      return okU;
     case "tab": {
       const body = new TableVariableWriter();
       path.push({ o: fd.o, i: i });
@@ -1003,7 +1181,7 @@ function TableVariableSaveWalk(c, v, retain) {
   const w = new TableVariableWriter();
   w.u8(TableVariableForm);
   const ids = new TableVariableIds(retain);
-  const path = [];
+  const path = TableVariableRetainRootPath();
   if (!TableVariableWriteFields(c, w, ids, nodes, v, retain, path)) { return null; }
   if (!TableVariableRetainTail(w, ids, retain, path)) { return null; }
   if (nodes.list.length > 0) {
@@ -1020,7 +1198,7 @@ function TableVariableSaveWalk(c, v, retain) {
         continue;
       }
       const body = new TableVariableWriter();
-      if (!TableVariableWriteBody(n.codec, body, ids, nodes, n.v, null, [])) { return null; }
+      if (!TableVariableWriteBody(n.codec, body, ids, nodes, n.v, retain, TableVariableRetainNodePath(n.v))) { return null; }
       sub.leb(body.len);
       sub.raw(body.b);
     }
@@ -1084,7 +1262,10 @@ function TableVariableOpen(bytes, report) {
 // every pointer naming it reads null.
 function TableVariableLoad(c, bytes, report, retain) {
   const open = TableVariableOpen(bytes, report);
-  if (open === null) { return null; }
+  // A non-variable root starts at its declared defaults and keeps them when
+  // the file framing is damaged or refused before any field decodes
+  // (docs/SPEC-TABLES.md §3, §4).
+  if (open === null) { return c.variable ? null : c.make(); }
   const table = open.table;
   const v = c.make();
   const raw = c.variable ? TableVariableNodeTableScan(bytes, table, open.end, report) : null;
@@ -1115,12 +1296,13 @@ function TableVariableLoad(c, bytes, report, retain) {
     }
     for (const n of st.nodes) {
       if (n === null || n.kind !== "t") { continue; }
-      // RETENTION INSIDE A NODE RECORD IS NOT KEPT by this leg: an unknown field
-      // there counts retainLost (path null), never a record re-emitted elsewhere
-      TableVariableBodyRead(n.codec, new TableVariableReader(n.body, 0, n.body.length), table, n.v, report, st, true, retain, null);
+      // RETENTION INSIDE A NODE RECORD (§6.6): the record's path starts with
+      // the node's own identity, so its unknown fields ride back into the same
+      // record's tail on the save.
+      TableVariableBodyRead(n.codec, new TableVariableReader(n.body, 0, n.body.length), table, n.v, report, st, true, retain, TableVariableRetainNodePath(n.v));
     }
   }
-  TableVariableBodyRead(c, new TableVariableReader(bytes, 1, open.end), table, v, report, st, false, retain, []);
+  TableVariableBodyRead(c, new TableVariableReader(bytes, 1, open.end), table, v, report, st, false, retain, TableVariableRetainRootPath());
   TableVariableResolve(st, report);
   return v;
 }
@@ -1188,6 +1370,10 @@ function TableVariableResolve(st, report) {
 // in, §6.6), a kind that widens decoded at its own width and counted widened,
 // any other kind a kind mismatch skipped whole. Damage stops the body.
 function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path) {
+  // A BODY READ REPLACES WHAT AN EARLIER PASS RETAINED HERE (§6.6): the
+  // reference's LoadBodyRetain opens with TableRetain.discard(Path,false,0),
+  // which is what keeps a duplicate map entry from leaving two records.
+  if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, false, 0); }
   for (;;) {
     const ref = r.leb();
     if (r.bad) { report.malformed = true; return false; }
@@ -1400,13 +1586,20 @@ function TableVariableReadArray(fd, r, table, v, report, st, retain, path) {
 // SELECTED: false for a damaged count or a foreign element kind, where an arm
 // holding it reads None. A present optional array that rode with its own
 // element kind is present even when its body is inert (§2.3).
+//
+// THE HEADER IS READ AGAINST THE PARENT BUFFER and not against the body's own
+// L, because a canonical LEB128 is up to ten bytes and an L of 2 is the
+// shortest body that carries one at all (docs/SPEC-TABLES.md §3, §4; decode.go
+// arrayBody). A count spelled wide enough therefore leaves the cursor past the
+// end it was framed by, and a bounded array's excess is clamped and counts even
+// as that body covers no elements; read is bounded by the body and a count the
+// body cannot cover keeps the decoded prefix.
 function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, path) {
   const L = end - r.at;
   if (L >= 2) {
-    const sub = new TableVariableReader(r.b, r.at, end);
-    const ek = sub.u8();
-    const count = sub.leb();
-    if (sub.bad) {
+    const ek = r.u8();
+    const count = r.leb();
+    if (r.bad) {
       report.malformed = true;
       if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
       return false;
@@ -1422,6 +1615,12 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       keep = fd.bound;
       report.clamped++;
     }
+    // the span from the cursor to the body's end, empty rather than negative
+    // when the count's own spelling ran past it (decode.go subTo)
+    const subStart = r.at;
+    const subEnd = Math.max(r.at, end);
+    const sub = new TableVariableReader(r.b, subStart, subEnd);
+    if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     if (fd.s === "bytes") {
       const out = [];
       for (let i = 0; i < keep; i++) {
@@ -1456,7 +1655,11 @@ function TableVariableReadElement(fd, r, table, out, report, st, retain, path, e
       // an ARM HEADER in its place (decode.go element): null for None
       if (r.at >= r.end) { report.malformed = true; return false; }
       if (fd.fixed) { out[i] = null; }
+      // THE ELEMENT'S OWN STEP (§6.6), the twin of the writer's: repeated
+      // union elements are different records, not one re-read.
+      if (path !== null) { path.push({ o: fd.o, i: i }); }
       const x = TableVariableUnionRead(e.u, r, table, report, st, retain, path, fd.o);
+      if (path !== null) { path.pop(); }
       if (x === undefined) { return false; }
       out[i] = x;
       return true;
@@ -1492,6 +1695,202 @@ function TableVariableReadElement(fd, r, table, out, report, st, retain, path, e
   if (x === undefined) { return false; }
   out[i] = x;
   return true;
+}
+
+// ---- THE REGION MEASURE (docs/SPEC-TABLES.md §6.5, §20.3) ----------------
+//
+// TableVariableExtent walks ONE table body, mirroring
+// internal/tablewire/extent.go's extentScan: it adds the STORAGE the framing
+// commands — the element extent of each unbounded list (§2.9) and each map
+// (§2.8), aligned as the element is laid — and descends into a table nested by
+// value and into a union's selected arm. It never descends into a list or map
+// ELEMENT: those records are sized by the node table, not by the parent.
+// A count that cannot fit its framing answers -1, a refusal LoadMeasure reports.
+function TableVariableExtent(c, r, ids, at) {
+  for (;;) {
+    if (r.at >= r.end) { return at; }
+    const ref = r.leb();
+    if (r.bad || ref === 0 || ref > ids.length) { return at; }
+    if (r.at >= r.end) { return at; }
+    const id = ids[ref - 1];
+    const kind = r.u8();
+    if (id === TableNodeTableId) { if (!TableVariableSkip(r, kind)) { return at; } continue; }
+    const fd = c.byId.get(id);
+    if (fd === undefined) { if (!TableVariableSkip(r, kind)) { return at; } continue; }
+    if (kind !== fd.k) {
+      if (!TableVariableWidens(kind, fd.k)) { if (!TableVariableSkip(r, kind)) { return at; } continue; }
+    }
+    if (fd.s === "union") {
+      const rr = TableVariableUnionBodyExtent(fd.u, r, ids, at);
+      if (rr < 0) { return -1; }
+      at = rr;
+      continue;
+    }
+    switch (fd.s) {
+      case "tab": case "arr": case "bytes": case "map": case "keyed": {
+        const rr = TableVariableContainerExtent(fd, r, ids, at);
+        if (rr < 0) { return -1; }
+        at = rr;
+        continue;
+      }
+      default: {
+        if (!TableVariableSkip(r, kind)) { return at; }
+      }
+    }
+  }
+}
+
+// TableVariableContainerExtent reads one container field's L-bounded payload and
+// adds the storage it commands (docs/SPEC-TABLES.md §6.5, §20.3): a table by
+// value recurses, a list adds its element extent, a map adds its entry extent,
+// and each element or entry record is then walked for the nested lists and maps
+// it holds by value, as internal/tablewire's extentScan field() does. bytes(N),
+// a fixed array and a keyed array add no element extent of their own, but their
+// element records still add the storage they hold. A length the reader cannot
+// hold ends the WHOLE walk of the enclosing body, as extentBody's r.off =
+// len(r.buf) does: the bytes after an overrunning length are not fields, so
+// nothing past it is counted.
+function TableVariableContainerExtent(fd, r, ids, at) {
+  const L = r.leb();
+  if (r.bad || r.at + L > r.end) { r.at = r.end; return at; }
+  const sub = new TableVariableReader(r.b, r.at, r.at + L);
+  r.at += L;
+  switch (fd.s) {
+    case "tab": return TableVariableExtent(fd.c, sub, ids, at);
+    case "arr": return TableVariableArrayExtent(fd, sub, ids, at);
+    case "map": return TableVariableMapExtent(fd, sub, ids, at);
+    case "keyed": return TableVariableKeyedExtent(fd, sub, ids, at);
+    default: return at;
+  }
+}
+
+// TableVariableElementsExtent adds the nested storage of n element records
+// (docs/SPEC-TABLES.md §6.5, §20.3). A table element is one L-bounded body; a
+// union element is an arm header in its place. Any other element takes no
+// nested storage, so there is nothing to walk.
+function TableVariableElementsExtent(e, sub, ids, at, n) {
+  if (e.s === "tab") {
+    for (let i = 0; i < n && sub.at < sub.end; i++) {
+      const elen = sub.leb();
+      if (sub.bad || sub.at + elen > sub.end) { return at; }
+      const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
+      sub.at += elen;
+      const rr = TableVariableExtent(e.c, er, ids, at);
+      if (rr < 0) { return -1; }
+      at = rr;
+    }
+  } else if (e.s === "union") {
+    for (let i = 0; i < n && sub.at < sub.end; i++) {
+      const rr = TableVariableUnionBodyExtent(e.u, sub, ids, at);
+      if (rr < 0) { return -1; }
+      at = rr;
+    }
+  }
+  return at;
+}
+
+// TableVariableArrayExtent adds an unbounded array's element extent, aligned as
+// its element is laid, then walks every element record (docs/SPEC-TABLES.md
+// §6.5, §20.3): the element storage of nested lists and maps is inside the
+// holder's node extent and must be counted at every depth.
+function TableVariableArrayExtent(fd, sub, ids, at) {
+  if (sub.end - sub.at < 2) { return at; }
+  const ek = sub.u8();
+  const n = sub.leb();
+  if (sub.bad) { return at; }
+  if (ek !== fd.ek && !TableVariableWidens(ek, fd.ek)) { return at; }
+  if (fd.list) {
+    if (n > 0x7fffffff) { return -1; }
+    const floor = ek === 13 ? 2 : ek === 17 ? 1 : Math.max(1, tableRetainWidth(ek));
+    if (n > Math.floor((sub.end - sub.at) / floor)) { return -1; }
+    at = TableVariableRound(at, fd.eal);
+    at += n * fd.esz;
+  }
+  return TableVariableElementsExtent(fd.e, sub, ids, at, n);
+}
+
+// TableVariableMapExtent adds a map's entry extent, aligned as its entry is
+// laid, then walks every entry record (docs/SPEC-TABLES.md §6.5, §20.3): the
+// entries are by-value records inside the holder's node extent, and the lists
+// and maps an entry's value holds by value are laid after it.
+function TableVariableMapExtent(fd, sub, ids, at) {
+  if (sub.end - sub.at < 2) { return at; }
+  const ek = sub.u8();
+  const n = sub.leb();
+  if (sub.bad) { return at; }
+  if (ek !== 13) { return at; }
+  if (n > 0x7fffffff) { return -1; }
+  if (n > Math.floor((sub.end - sub.at) / 2)) { return -1; }
+  at = TableVariableRound(at, fd.eal);
+  at += n * fd.esz;
+  for (let i = 0; i < n && sub.at < sub.end; i++) {
+    const elen = sub.leb();
+    if (sub.bad || sub.at + elen > sub.end) { return at; }
+    const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
+    sub.at += elen;
+    const rr = TableVariableExtent(fd.c, er, ids, at);
+    if (rr < 0) { return -1; }
+    at = rr;
+  }
+  return at;
+}
+
+// TableVariableKeyedExtent walks a keyed array's present slots (docs/
+// SPEC-TABLES.md §6.5, §20.3): a slot is a key reference, then its element
+// where an unbounded array holds one. The slot's record storage is inside the
+// holder's node extent, so its nested lists and maps are counted.
+function TableVariableKeyedExtent(fd, sub, ids, at) {
+  if (sub.end - sub.at < 2) { return at; }
+  const ek = sub.u8();
+  const n = sub.leb();
+  if (sub.bad) { return at; }
+  if (ek !== fd.ek && !TableVariableWidens(ek, fd.ek)) { return at; }
+  if (fd.e.s !== "tab" && fd.e.s !== "union") { return at; }
+  for (let i = 0; i < n && sub.at < sub.end; i++) {
+    sub.leb();
+    if (sub.bad) { return at; }
+    if (fd.e.s === "union") {
+      const rr = TableVariableUnionBodyExtent(fd.e.u, sub, ids, at);
+      if (rr < 0) { return -1; }
+      at = rr;
+      continue;
+    }
+    const elen = sub.leb();
+    if (sub.bad || sub.at + elen > sub.end) { return at; }
+    const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
+    sub.at += elen;
+    const rr = TableVariableExtent(fd.e.c, er, ids, at);
+    if (rr < 0) { return -1; }
+    at = rr;
+  }
+  return at;
+}
+
+// TableVariableUnionBodyExtent reads one union payload from a reader (a field's
+// or an array element's place) and adds the storage its selected arm commands.
+// The arm is chosen by its id alone, exactly as internal/tablewire/extent.go's
+// extentScan.union does: the arm's kind byte is consumed and not compared, so a
+// rewritten or damaged kind still measures the selected arm's payload, the way
+// the oracle counts it. A header the reader cannot hold (a bad arm reference,
+// an id past the trailer, a length past the end) ends the walk of the reader it
+// was read from, as extentScan.union sets r.off = len(r.buf).
+function TableVariableUnionBodyExtent(u, r, ids, at) {
+  if (r.at >= r.end) { return at; }
+  const armRef = r.leb();
+  if (r.bad) { r.at = r.end; return at; }
+  if (armRef === 0) { return at; }
+  if (armRef > ids.length || r.at >= r.end) { r.at = r.end; return at; }
+  const armId = ids[armRef - 1];
+  r.u8();
+  const n = r.leb();
+  if (r.bad || r.at + n > r.end) { r.at = r.end; return at; }
+  const sub = new TableVariableReader(r.b, r.at, r.at + n);
+  r.at += n;
+  const arm = u.byId.get(armId);
+  if (arm === undefined) { return at; }
+  if (arm.body) { return TableVariableExtent(arm.c, sub, ids, at); }
+  if (!arm.void && arm.f !== undefined) { return TableVariableContainerExtent(arm.f, sub, ids, at); }
+  return at;
 }
 
 // ---------------------------------------------------------------------------
@@ -1851,14 +2250,20 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
   const end = r.at + L;
   if (L >= 2) {
-    const sub = new TableVariableReader(r.b, r.at, end);
-    const ek = sub.u8();
-    const count = sub.leb();
-    if (sub.bad) { report.malformed = true; r.at = end; return true; }
+    // THE HEADER IS READ AGAINST THE PARENT BUFFER, as the oracle reads it
+    // (decode.go mapField): a canonical LEB128 is up to ten bytes, so a count
+    // spelled wide enough leaves the cursor past the body's own L. The span
+    // from the cursor to the body's end is empty rather than negative then
+    // (decode.go subTo, docs/SPEC-TABLES.md §3).
+    const ek = r.u8();
+    const count = r.leb();
+    if (r.bad) { report.malformed = true; r.at = end; return true; }
     if (ek !== 13) { report.kindMismatch++; r.at = end; return true; }
+    if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     const m = new Map();
     v[fd.n] = m;
     if (count > 0x7fffffff) { report.malformed = true; r.at = end; return true; }
+    const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
     const ents = [];
     let last = null, landed = false, widened = false;
     for (let i = 0; i < count; i++) {
@@ -1899,10 +2304,13 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
   const end = r.at + L;
   if (L < 2) { r.at = end; return true; }
-  const sub = new TableVariableReader(r.b, r.at, end);
-  const ek = sub.u8();
-  const count = sub.leb();
-  if (sub.bad) { report.malformed = true; r.at = end; return true; }
+  // the same parent-buffer header as a map's and an array's (decode.go keyed,
+  // subTo; docs/SPEC-TABLES.md §3): a count spelled past the body leaves the
+  // entry span empty rather than negative
+  const ek = r.u8();
+  const count = r.leb();
+  if (r.bad) { report.malformed = true; r.at = end; return true; }
+  const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
   if (ek !== fd.ek) {
     if (!TableVariableWidens(ek, fd.ek)) { report.kindMismatch++; r.at = end; return true; }
     report.widened++;
@@ -1952,6 +2360,9 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
 // arm damaged inside its L (malformed) — and undefined for damage that stops
 // the enclosing body
 function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
+  // A re-selected arm replaces the records an earlier selection retained here
+  // under this field's ordinal (the reference's retainDiscard before the arm).
+  if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, o); }
   const ref = r.leb();
   if (r.bad) { report.malformed = true; return undefined; }
   if (ref === 0) { return null; }
@@ -3238,6 +3649,7 @@ function TableVariableTextInt(d, inp, holder, key, report) {
 }
 export const MixedEntityTableType = {
   name: "MixedEntity",
+  sz: 64, al: 8,
   fields: [
     { name: "entity_id", kind: 7, shape: "value", bound: 0 },
     { name: "pos_x", kind: 4, shape: "value", bound: 0 },
@@ -3258,6 +3670,7 @@ export const MixedEntityTableType = {
 
 export const MixedStatTableType = {
   name: "MixedStat",
+  sz: 8, al: 4,
   fields: [
     { name: "stat_id", kind: 6, shape: "value", bound: 0 },
     { name: "delta", kind: 4, shape: "value", bound: 0 },
@@ -3266,6 +3679,7 @@ export const MixedStatTableType = {
 
 export const MixedHitEventTableType = {
   name: "MixedHitEvent",
+  sz: 16, al: 4,
   fields: [
     { name: "target_id", kind: 7, shape: "value", bound: 0 },
     { name: "damage", kind: 4, shape: "value", bound: 0 },
@@ -3276,6 +3690,7 @@ export const MixedHitEventTableType = {
 
 export const MixedChatEventTableType = {
   name: "MixedChatEvent",
+  sz: 8, al: 4,
   fields: [
     { name: "channel", kind: 4, shape: "value", bound: 0 },
     { name: "speaker", kind: 7, shape: "value", bound: 0 },
@@ -3284,6 +3699,7 @@ export const MixedChatEventTableType = {
 
 export const MixedPickupEventTableType = {
   name: "MixedPickupEvent",
+  sz: 8, al: 4,
   fields: [
     { name: "item_id", kind: 7, shape: "value", bound: 0 },
     { name: "amount", kind: 4, shape: "value", bound: 0 },
@@ -3292,6 +3708,7 @@ export const MixedPickupEventTableType = {
 
 export const BenchMixedTableType = {
   name: "BenchMixed",
+  sz: 1376, al: 16,
   fields: [
     { name: "sequence", kind: 7, shape: "value", bound: 0 },
     { name: "ack_sequence", kind: 4, shape: "value", bound: 0 },
@@ -3325,6 +3742,7 @@ export const BenchMixedTableType = {
 
 export const FixedTableTableType = {
   name: "FixedTable",
+  sz: 1376, al: 16,
   fields: [
     { name: "value", kind: 13, shape: "value", bound: 0 },
   ],
@@ -3447,6 +3865,7 @@ const TableVariableCodecs = {
     make: () => new MixedEntity(),
     typeId: 0x9367b84cab99cdc3n,
     variable: false,
+    sz: 64, al: 8,
     entry: false,
     fields: [
       { n: "entity_id", key: "entity_id", id: 0x23fcfd6678e36712n, o: 0, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 12, bmax: 4095, frac: 0, tlo: 0n, thi: 4095n, dlo: 0n, dhi: 4294967295n, def: 0 },
@@ -3471,6 +3890,7 @@ const TableVariableCodecs = {
     make: () => new MixedStat(),
     typeId: 0xc42975bfe5e07baan,
     variable: false,
+    sz: 8, al: 4,
     entry: false,
     fields: [
       { n: "stat_id", key: "stat_id", id: 0x80ab75f0866dbf65n, o: 0, s: "int", js: "n", k: 6, big: false, kw: 1, lo: null, hi: null, bits: 8, bmax: 255, frac: 0, tlo: 0n, thi: 255n, dlo: 0n, dhi: 4294967295n, def: 0 },
@@ -3483,6 +3903,7 @@ const TableVariableCodecs = {
     make: () => new MixedHitEvent(),
     typeId: 0xac9fe3b25a77f1d7n,
     variable: false,
+    sz: 16, al: 4,
     entry: false,
     fields: [
       { n: "target_id", key: "target_id", id: 0xb7bc9ac015a25050n, o: 0, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 12, bmax: 4095, frac: 0, tlo: 0n, thi: 4095n, dlo: 0n, dhi: 4294967295n, def: 0 },
@@ -3497,6 +3918,7 @@ const TableVariableCodecs = {
     make: () => new MixedChatEvent(),
     typeId: 0x9f2c9da926a7408an,
     variable: false,
+    sz: 8, al: 4,
     entry: false,
     fields: [
       { n: "channel", key: "channel", id: 0xa5013e9ad5caeda4n, o: 0, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 3, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 3n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
@@ -3509,6 +3931,7 @@ const TableVariableCodecs = {
     make: () => new MixedPickupEvent(),
     typeId: 0x3d827cb76b809d8cn,
     variable: false,
+    sz: 8, al: 4,
     entry: false,
     fields: [
       { n: "item_id", key: "item_id", id: 0x9e7fd06d864fbd56n, o: 0, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 10, bmax: 1023, frac: 0, tlo: 0n, thi: 1023n, dlo: 0n, dhi: 4294967295n, def: 0 },
@@ -3521,6 +3944,7 @@ const TableVariableCodecs = {
     make: () => new BenchMixed(),
     typeId: 0xeb80cfd516eb3d5cn,
     variable: false,
+    sz: 1376, al: 16,
     entry: false,
     fields: [
       { n: "sequence", key: "sequence", id: 0xaa38aca481f528a8n, o: 0, s: "int", js: "n", k: 7, big: false, kw: 2, lo: null, hi: null, bits: 16, bmax: 65535, frac: 0, tlo: 0n, thi: 65535n, dlo: 0n, dhi: 4294967295n, def: 0 },
@@ -3532,10 +3956,10 @@ const TableVariableCodecs = {
       { n: "world_time", key: "world_time", id: 0x3eee6b51be54fc85n, o: 6, s: "int", js: "n", k: 5, big: true, kw: 8, lo: -1000000000000n, hi: 1000000000000n, bits: 0, bmax: 0, frac: 0, tlo: -1000000000000n, thi: 1000000000000n, dlo: -9223372036854775808n, dhi: 9223372036854775807n, def: 0n },
       { n: "frame_tick", key: "frame_tick", id: 0x7bbc035f7b6d0112n, o: 7, s: "int", js: "n", k: 9, big: true, kw: 8, lo: null, hi: null, bits: 48, bmax: 281474976710655n, frac: 0, tlo: 0n, thi: 281474976710655n, dlo: 0n, dhi: 18446744073709551615n, def: 0n },
       { n: "server_time", key: "server_time", id: 0x3c460475f9be69c6n, o: 8, s: "int", js: "n", k: 22, big: false, kw: 4, lo: 0, hi: 16776960, bits: 0, bmax: 0, frac: 8, tlo: 0n, thi: 16776960n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "entities", key: "entities", id: 0x935d0fb07bb3822an, o: 9, k: 14, s: "arr", js: "a", list: false, fixed: false, bound: 8, ek: 13, e: { s: "tab", js: "o", t: "MixedEntity" } },
-      { n: "stats", key: "stats", id: 0xee639cad45b1994cn, o: 10, k: 14, s: "arr", js: "a", list: false, fixed: false, bound: 80, ek: 13, e: { s: "tab", js: "o", t: "MixedStat" } },
+      { n: "entities", key: "entities", id: 0x935d0fb07bb3822an, o: 9, k: 14, s: "arr", js: "a", list: false, fixed: false, bound: 8, ek: 13, esz: 64, eal: 8, e: { s: "tab", js: "o", t: "MixedEntity" } },
+      { n: "stats", key: "stats", id: 0xee639cad45b1994cn, o: 10, k: 14, s: "arr", js: "a", list: false, fixed: false, bound: 80, ek: 13, esz: 8, eal: 4, e: { s: "tab", js: "o", t: "MixedStat" } },
       { n: "game_event", key: "game_event", id: 0x2e35dc5321aa5790n, o: 11, k: 15, s: "union", js: "o", un: "MixedEvent" },
-      { n: "loadout", key: "loadout", id: 0x5759ce7586bbb5a3n, o: 12, k: 14, s: "arr", js: "a", list: false, fixed: true, bound: 4, ek: 6, e: { s: "int", js: "n", k: 6, big: false, kw: 1, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 255n, def: 0 } },
+      { n: "loadout", key: "loadout", id: 0x5759ce7586bbb5a3n, o: 12, k: 14, s: "arr", js: "a", list: false, fixed: true, bound: 4, ek: 6, esz: 1, eal: 1, e: { s: "int", js: "n", k: 6, big: false, kw: 1, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 255n, def: 0 } },
       { n: "player_name", key: "player_name", id: 0x13a62f542cf8e86en, o: 13, k: 12, s: "str", js: "s", bound: 15, def: "" },
       { n: "payload", key: "payload", id: 0xcfb8a9d063b5e9e5n, o: 14, k: 14, s: "bytes", js: "s", list: false, bound: 16, ek: 6, def: new Uint8Array([]) },
       { n: "aim_x", key: "aim_x", id: 0xdbaf7be5e24296c9n, o: 15, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, def: 0 },
@@ -3558,6 +3982,7 @@ const TableVariableCodecs = {
     make: () => new FixedTable(),
     typeId: 0x85df369cdca746b3n,
     variable: false,
+    sz: 1376, al: 16,
     entry: false,
     fields: [
       { n: "value", key: "value", id: 0x7ce4fd9430e80cean, o: 0, k: 13, s: "tab", js: "o", t: "BenchMixed" },
@@ -4004,18 +4429,6 @@ export function FixedTableCookFrom(value, buffer, order) {
   return TableCookWrite.variableFrom("FixedTable", value, buffer, order);
 }
 
-function FixedTableExtent(r, ids, at) {
-  while (true) {
-    if (r.at >= r.end) { break; }
-    const ref = r.leb();
-    if (r.bad || ref === 0 || ref > ids.length) { break; }
-    if (r.at >= r.end) { break; }
-    const kind = r.u8();
-    if (!TableVariableSkip(r, kind)) { break; }
-  }
-  return at;
-}
-
 export function FixedTableMeasure(v) {
   const b = TableVariableSave(TableVariableCodecs.FixedTable, v, null);
   return b === null ? -1 : b.length;
@@ -4038,17 +4451,17 @@ export function FixedTableFromJson(text, report) {
 }
 
 export function FixedTableLoadMeasure(bytes) {
-  if (bytes.length < 9) { return -1; }
-  if (bytes[0] !== TableVariableForm) { return -1; }
+  if (bytes.length < 9) { return 1392; }
+  if (bytes[0] !== TableVariableForm) { return 1392; }
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = dv.getBigUint64(bytes.length - 8, true);
-  if (count > BigInt(Math.floor((bytes.length - 9) / 8))) { return -1; }
+  if (count > BigInt(Math.floor((bytes.length - 9) / 8))) { return 1392; }
   const first = bytes.length - 8 - Number(count) * 8;
   const ids = [];
   const seen = new Set();
   for (let i = 0; i < Number(count); i++) {
     const id = dv.getBigUint64(first + i * 8, true);
-    if (seen.has(id)) { return -1; }
+    if (seen.has(id)) { return 1392; }
     seen.add(id);
     ids.push(id);
   }
@@ -4057,7 +4470,7 @@ export function FixedTableLoadMeasure(bytes) {
     while (true) {
       const ref = w.leb();
       if (w.bad) { break; }
-      if (ref === 0) { if (w.at !== w.end) { return -1; } break; }
+      if (ref === 0) { if (w.at !== w.end) { return 1392; } break; }
       if (ref > ids.length) { break; }
       if (w.at >= w.end) { break; }
       const kind = w.u8();
@@ -4065,8 +4478,8 @@ export function FixedTableLoadMeasure(bytes) {
     }
   }
   const r = new TableVariableReader(bytes, 1, first);
-  const at = FixedTableExtent(r, ids, 0);
-  if (at < 0) { return -1; }
+  const at = TableVariableExtent(TableVariableCodecs.FixedTable, r, ids, 0);
+  if (at < 0) { return 1392; }
   let data = TableVariableRound(1376 + at, 16);
   const nr = new TableVariableReader(bytes, 1, first);
   let present = false, bad = false, payload = null;
@@ -4088,6 +4501,8 @@ export function FixedTableLoadMeasure(bytes) {
     }
     if (!TableVariableSkip(nr, kind)) { break; }
   }
+  const place = TableVariableCodecs.FixedTable.place;
+  const byType = place.byType;
   let records = 0;
   if (present && !bad) { payload.leb(); }
   while (!bad && present && payload !== null && payload.at < payload.end) {
@@ -4095,6 +4510,20 @@ export function FixedTableLoadMeasure(bytes) {
     if (tref === 0 || tref > ids.length) { break; }
     const tlen = payload.leb();
     if (payload.at + tlen > payload.end) { break; }
+    const tid = ids[tref - 1];
+    const cc = byType.get(tid);
+    if (cc !== undefined) {
+      const br = new TableVariableReader(bytes, payload.at, payload.at + tlen);
+      const ba = TableVariableExtent(cc, br, ids, 0);
+      if (ba < 0) { return -1; }
+      data += TableVariableRound(cc.sz + ba, 16);
+    } else if (tid === TableStringBlobId && place.str) {
+      if (tlen > 0xffffffff) { return -1; }
+      data += TableVariableRound(8 + tlen + 1, 16);
+    } else if (tid === TableBytesBlobId && place.bytes) {
+      if (tlen > 0xffffffff) { return -1; }
+      data += TableVariableRound(8 + tlen, 16);
+    }
     payload.at += tlen;
     records++;
   }

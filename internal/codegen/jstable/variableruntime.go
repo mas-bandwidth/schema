@@ -137,6 +137,21 @@ class TableVariableNodes {
   slot(holder, name) { return this.slots.get(holder).get(name); }
 }
 
+// RETENTION'S NODE STEP (§6.6): a record retained inside a node record names
+// which node it belongs to by the object's own identity, so the same record
+// rides back into that node's body when the value is saved. The ordinal is
+// reader-private: nothing on the wire reads it, and the root's path has none.
+const TableVariableRetainNodeIds = new WeakMap();
+let TableVariableRetainNextNodeId = 1;
+// the ROOT's path is the one node step that names no record, so a discard in
+// the root body cannot reach a record retained inside a node.
+function TableVariableRetainRootPath() { return [{ o: 0xffffffff, i: 0 }]; }
+function TableVariableRetainNodePath(v) {
+  let id = TableVariableRetainNodeIds.get(v);
+  if (id === undefined) { id = TableVariableRetainNextNodeId++; TableVariableRetainNodeIds.set(v, id); }
+  return [{ o: 0xffffffff, i: id }];
+}
+
 // the pointer and blob edges of one node's by-value closure, in the walk's
 // order: fields in declaration order, array elements in index order, a nested
 // table or a table element descended in place
@@ -402,7 +417,12 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
     case "union":
       // a None element rides as the single zero byte: position is identity (§3)
       if (val === null) { w.leb(0); return true; }
-      return TableVariableArmWrite(e.u, w, ids, nodes, val, retain, path, fd.o);
+      // THE ELEMENT'S OWN STEP (§6.6): repeated union elements retain under
+      // different indices, as the reference's retainReadPath(i) does.
+      if (path !== null) { path.push({ o: fd.o, i: i }); }
+      const okU = TableVariableArmWrite(e.u, w, ids, nodes, val, retain, path, fd.o);
+      if (path !== null) { path.pop(); }
+      return okU;
     case "tab": {
       const body = new TableVariableWriter();
       path.push({ o: fd.o, i: i });
@@ -437,7 +457,7 @@ function TableVariableSaveWalk(c, v, retain) {
   const w = new TableVariableWriter();
   w.u8(TableVariableForm);
   const ids = new TableVariableIds(retain);
-  const path = [];
+  const path = TableVariableRetainRootPath();
   if (!TableVariableWriteFields(c, w, ids, nodes, v, retain, path)) { return null; }
   if (!TableVariableRetainTail(w, ids, retain, path)) { return null; }
   if (nodes.list.length > 0) {
@@ -454,7 +474,7 @@ function TableVariableSaveWalk(c, v, retain) {
         continue;
       }
       const body = new TableVariableWriter();
-      if (!TableVariableWriteBody(n.codec, body, ids, nodes, n.v, null, [])) { return null; }
+      if (!TableVariableWriteBody(n.codec, body, ids, nodes, n.v, retain, TableVariableRetainNodePath(n.v))) { return null; }
       sub.leb(body.len);
       sub.raw(body.b);
     }
@@ -552,12 +572,13 @@ function TableVariableLoad(c, bytes, report, retain) {
     }
     for (const n of st.nodes) {
       if (n === null || n.kind !== "t") { continue; }
-      // RETENTION INSIDE A NODE RECORD IS NOT KEPT by this leg: an unknown field
-      // there counts retainLost (path null), never a record re-emitted elsewhere
-      TableVariableBodyRead(n.codec, new TableVariableReader(n.body, 0, n.body.length), table, n.v, report, st, true, retain, null);
+      // RETENTION INSIDE A NODE RECORD (§6.6): the record's path starts with
+      // the node's own identity, so its unknown fields ride back into the same
+      // record's tail on the save.
+      TableVariableBodyRead(n.codec, new TableVariableReader(n.body, 0, n.body.length), table, n.v, report, st, true, retain, TableVariableRetainNodePath(n.v));
     }
   }
-  TableVariableBodyRead(c, new TableVariableReader(bytes, 1, open.end), table, v, report, st, false, retain, []);
+  TableVariableBodyRead(c, new TableVariableReader(bytes, 1, open.end), table, v, report, st, false, retain, TableVariableRetainRootPath());
   TableVariableResolve(st, report);
   return v;
 }
@@ -625,6 +646,10 @@ function TableVariableResolve(st, report) {
 // in, §6.6), a kind that widens decoded at its own width and counted widened,
 // any other kind a kind mismatch skipped whole. Damage stops the body.
 function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path) {
+  // A BODY READ REPLACES WHAT AN EARLIER PASS RETAINED HERE (§6.6): the
+  // reference's LoadBodyRetain opens with TableRetain.discard(Path,false,0),
+  // which is what keeps a duplicate map entry from leaving two records.
+  if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, false, 0); }
   for (;;) {
     const ref = r.leb();
     if (r.bad) { report.malformed = true; return false; }
@@ -871,6 +896,7 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     const subStart = r.at;
     const subEnd = Math.max(r.at, end);
     const sub = new TableVariableReader(r.b, subStart, subEnd);
+    if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     if (fd.s === "bytes") {
       const out = [];
       for (let i = 0; i < keep; i++) {
@@ -905,7 +931,11 @@ function TableVariableReadElement(fd, r, table, out, report, st, retain, path, e
       // an ARM HEADER in its place (decode.go element): null for None
       if (r.at >= r.end) { report.malformed = true; return false; }
       if (fd.fixed) { out[i] = null; }
+      // THE ELEMENT'S OWN STEP (§6.6), the twin of the writer's: repeated
+      // union elements are different records, not one re-read.
+      if (path !== null) { path.push({ o: fd.o, i: i }); }
       const x = TableVariableUnionRead(e.u, r, table, report, st, retain, path, fd.o);
+      if (path !== null) { path.pop(); }
       if (x === undefined) { return false; }
       out[i] = x;
       return true;

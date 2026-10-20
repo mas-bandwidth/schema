@@ -505,6 +505,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     const count = r.leb();
     if (r.bad) { report.malformed = true; r.at = end; return true; }
     if (ek !== 13) { report.kindMismatch++; r.at = end; return true; }
+    if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     const m = new Map();
     v[fd.n] = m;
     if (count > 0x7fffffff) { report.malformed = true; r.at = end; return true; }
@@ -605,6 +606,9 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
 // arm damaged inside its L (malformed) — and undefined for damage that stops
 // the enclosing body
 function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
+  // A re-selected arm replaces the records an earlier selection retained here
+  // under this field's ordinal (the reference's retainDiscard before the arm).
+  if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, o); }
   const ref = r.leb();
   if (r.bad) { report.malformed = true; return undefined; }
   if (ref === 0) { return null; }
