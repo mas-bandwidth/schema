@@ -43,12 +43,12 @@ func widedemoCarried(t *testing.T, root string) (*ir.Unit, []string) {
 	return u, paths
 }
 
-// wideWire is a hand-made form-1 body for `table Root { t wstring(4) }`:
+// wideWire is a hand-made form-1 body for `table Root { <field> wstring(4) }`:
 // the field under kind 33 with L and its payload, then the terminator and the
 // one-entry id table.
-func wideWire(t *testing.T, payload []byte) []byte {
+func wideWire(t *testing.T, field string, payload []byte) []byte {
 	t.Helper()
-	id := ir.TableWireId("t")
+	id := ir.TableWireId(field)
 	body := binary.AppendUvarint(nil, 1)
 	body = append(body, byte(ir.TableKindWstring))
 	body = binary.AppendUvarint(body, uint64(len(payload)))
@@ -150,9 +150,16 @@ func TestSquirrelWideTextMatchesTheWire(t *testing.T) {
 		t.Errorf("map-wide entry: load then save wrote %d bytes, the wire holds %d\n got %x\nwant %x", len(have), len(mapWire), have, mapWire)
 	}
 
-	// the refusals: a lone surrogate and an odd byte length read as malformed
-	// with the same counters as internal/tablewire for the same bytes (§3, §4)
-	refUnit := loadSource(t, "package probewide\n\ntable Root\n{\n    t wstring(4)\n}\n")
+	// the refusals: every malformed kind 33 payload reads as malformed with the
+	// same counters as internal/tablewire for the same bytes (§3, §4; wideValid
+	// in internal/tablewire/text.go). Each row pins one refusal in wideDecode:
+	// the odd length (framing), a zero code unit, a lone low surrogate, a high
+	// surrogate followed by a non-low unit, and a trailing high surrogate after
+	// a valid unit. The field is f34 because its wire id's low byte is 0xDE, so
+	// after the trailing high surrogate the terminator (00) and that id byte
+	// (DE) spell the valid low surrogate DE00: a missing length guard would
+	// read on past L and accept the pair, where the oracle refuses it.
+	refUnit := loadSource(t, "package probewide\n\ntable Root\n{\n    f34 wstring(4)\n}\n")
 	rDir := t.TempDir()
 	rMod := emitUnit(t, rDir, "probewide", refUnit)
 	refModel := tabletext.NewModel(refUnit)
@@ -165,19 +172,26 @@ func TestSquirrelWideTextMatchesTheWire(t *testing.T) {
 		return reportOf(report)
 	}
 
-	odd := wideWire(t, []byte{0x41})
-	if want := decode(t, odd); want != "0,0,0,0,0,true,read" {
-		t.Fatalf("the odd-byte oracle reports %q, want malformed and read", want)
-	} else if got := squirrelReport(t, rDir, "probewide", rMod, string(odd)); got != want {
-		t.Errorf("odd byte length: Squirrel reports %q, the wire oracle %q", got, want)
+	for _, c := range []struct {
+		name    string
+		payload []byte
+	}{
+		{"odd byte length", []byte{0x41}},
+		{"zero code unit", []byte{0x00, 0x00}},
+		{"lone high surrogate", []byte{0x00, 0xD8}},
+		{"lone low surrogate", []byte{0x00, 0xDC}},
+		{"high surrogate then a non-low unit", []byte{0x00, 0xD8, 0x41, 0x00}},
+		{"trailing high surrogate after a valid unit", []byte{0x41, 0x00, 0x00, 0xD8}},
+	} {
+		wire := wideWire(t, "f34", c.payload)
+		want := decode(t, wire)
+		if want != "0,0,0,0,0,true,read" {
+			t.Fatalf("%s: the wire oracle reports %q, want malformed and read", c.name, want)
+		}
+		if got := squirrelReport(t, rDir, "probewide", rMod, string(wire)); got != want {
+			t.Errorf("%s: Squirrel reports %q, the wire oracle %q", c.name, got, want)
+		}
 	}
 
-	surrogate := wideWire(t, []byte{0x00, 0xD8})
-	if want := decode(t, surrogate); want != "0,0,0,0,0,true,read" {
-		t.Fatalf("the lone-surrogate oracle reports %q, want malformed and read", want)
-	} else if got := squirrelReport(t, rDir, "probewide", rMod, string(surrogate)); got != want {
-		t.Errorf("lone surrogate: Squirrel reports %q, the wire oracle %q", got, want)
-	}
-
-	t.Logf("load then save equals the wire for %d of %d widedemo rows and mapdemo's wide entry; odd length and lone surrogate read malformed with the wire's counters", compared, len(names))
+	t.Logf("load then save equals the wire for %d of %d widedemo rows and mapdemo's wide entry; six malformed payloads read with the wire's counters", compared, len(names))
 }
