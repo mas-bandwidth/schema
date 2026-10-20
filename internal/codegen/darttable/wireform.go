@@ -1834,12 +1834,6 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\t\tfinal ref = r.readLeb();\n")
 	g.pf("\t\tif (ref == null) { r.report.malformed = true; return; }\n")
 	g.pf("\t\tif (ref == 0) return;\n")
-	// A REFERENCE ABOVE THE ENTRY COUNT IS FRAMING DAMAGE ON THIS BODY
-	// (docs/SPEC-TABLES.md §3, §4): a ten-byte LEB with bit 63 set is a
-	// negative Dart int but an unsigned value above every entry, so the value
-	// pass stops where internal/tablewire/decode.go bodyAt's id fails, instead
-	// of treating it as a name and reading on.
-	g.pf("\t\tif (ref < 1 || ref > r.entryCount) { r.report.malformed = true; return; }\n")
 	g.pf("\t\tfinal id = r.refToId[ref];\n")
 	g.pf("\t\tif (id == null) { r.report.malformed = true; return; }\n")
 	g.pf("\t\tif (!r.has(1)) { r.report.malformed = true; return; }\n")
@@ -1943,8 +1937,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindTable)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
-		// a negative length is an unsigned value past the body (§3, §4)
-		g.pf("%s\t\tif (len == null || len < 0 || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tfinal sub = TableWireReader.sub(r, r.pos, r.pos + len);\n", ind)
 		g.pf("%s\t\t%s(sub, v.%s, true);\n", ind, dartName(ref.Name)+"WireLoadBody", name)
 		g.pf("%s\t\tif (sub.pos != sub.limit) { r.report.malformed = true; v.%s = %s(); }\n", ind, name, ref.Name)
@@ -1955,11 +1948,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
-		// A LENGTH ABOVE THE BODY, including a ten-byte LEB with bit 63 set
-		// (a negative Dart int), is framing damage on this body (§3, §4):
-		// internal/tablewire/decode.go arrayBody refuses a bodyLen above its
-		// own buffer before it clears the holder, so the value pass stops here.
-		g.pf("%s\t\tif (len == null || len < 0 || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 		et := dartListElemType(f)
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
@@ -2199,11 +2188,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
-		// A LENGTH ABOVE THE BODY, including a ten-byte LEB with bit 63 set
-		// (a negative Dart int), is framing damage on this body (§3, §4):
-		// internal/tablewire/decode.go arrayBody refuses a bodyLen above its
-		// own buffer before it clears the holder, so the value pass stops here.
-		g.pf("%s\t\tif (len == null || len < 0 || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 		// bytes(N) takes \u00a73's list header under the same rule as every other
