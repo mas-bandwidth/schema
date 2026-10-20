@@ -756,10 +756,11 @@ local function read_leb(s, at)
 end
 
 -- known_kind is §3's closed set plus the 0 an entry takes when its framing is
--- not an entry's to give (§3.3).
+-- not an entry's to give, and kind 36, the timestamp (§3.3's entry shape
+-- table; §2.11: a sixty-four-bit raw payload, no shape bytes).
 local function known_kind(kind)
   return kind == 0 or (kind >= 1 and kind <= 17) or (kind >= 18 and kind <= 29)
-    or (kind >= 30 and kind <= 33)
+    or (kind >= 30 and kind <= 33) or kind == 36
 end
 
 -- skip_shape steps over one announced shape, which is what makes the entry
@@ -770,7 +771,7 @@ local function skip_shape(kind, s, at)
     return nextAt
   end
   if kind == 0 or kind == 1 or kind == 11 or kind == 13 or kind == 15
-      or kind == 17 or kind == 30 or kind == 31 or kind == 32 then
+      or kind == 17 or kind == 30 or kind == 31 or kind == 32 or kind == 36 then
     return at
   elseif (kind >= 2 and kind <= 9) or kind == 18 or kind == 19 then
     if at > #s then return nil end

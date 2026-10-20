@@ -24,9 +24,10 @@ fixed table Session
 `
 
 // TestTimestampIsCarriedByGoAndRefusedByName pins the central refusal: Go
-// carries the kind first, and generating a unit that uses it for any other
-// target is an error naming the construct, the target and "Go carries it
-// first" — raised once, in Generate, with no other emitter edited.
+// carries the kind first, Lua carries it now, and generating a unit that uses
+// it for any other target is an error naming the construct, the target and
+// "Go carries it first" — raised once, in Generate, with no other emitter
+// edited.
 func TestTimestampIsCarriedByGoAndRefusedByName(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -47,7 +48,7 @@ func TestTimestampIsCarriedByGoAndRefusedByName(t *testing.T) {
 		t.Fatalf("expected the other targets to be registered: %v", targets)
 	}
 	for _, target := range targets {
-		if target == "go" {
+		if carries(target, carryTimestamp) {
 			continue
 		}
 		files, err := c.Generate(u, target, Options{})
