@@ -101,13 +101,17 @@ func generateCookUnit(t *testing.T, row cookWriteRow) *cookUnit {
 		files[k] = v
 	}
 	g := &cookUnit{pkg: u.Package, dir: t.TempDir()}
+	open := []byte("def " + row.root + "Open(")
 	for name, data := range files {
-		if strings.HasSuffix(name, "Table.lobster") {
+		if strings.HasSuffix(name, "Table.lobster") && strings.Contains(string(data), string(open)) {
 			g.base = strings.TrimSuffix(name, "Table.lobster")
 		}
 		if err := os.WriteFile(filepath.Join(g.dir, name), data, 0o644); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if g.base == "" {
+		t.Fatalf("%s: no table module declares %sOpen", row.unit, row.root)
 	}
 	return g
 }
@@ -122,6 +126,7 @@ def run():
     assert f
     let v = %s.%sOpen(f)
     print(if v: "ok" else: "refused")
+run()
 `, g.base, g.pkg, rootName)
 	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
