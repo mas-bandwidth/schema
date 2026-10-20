@@ -466,23 +466,64 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		count := fmt.Sprintf("%d", f.ArrayBound)
+		aind := ind
 		if f.Array == ir.ArrayCounted {
+			// A COUNTED ARRAY'S CLAMP IS A BLOCK: its `kept` is a local, so a
+			// second counted array in the same body does not redeclare it.
+			g.pf("%s{\n", ind)
+			aind = ind + "  "
 			count = expr + "Count"
 			if ir.TableMessageCountBits(shape) > 0 {
-				g.pf("%s%s = r.bits.get(%d) + %d;\n", ind, count, ir.TableMessageCountBits(shape), shape.Min)
-				g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
+				g.pf("%s%s = r.bits.get(%d) + %d;\n", aind, count, ir.TableMessageCountBits(shape), shape.Min)
+				g.pf("%sif (r.bits.failed) { %s; }\n", aind, bad)
 			}
+			// A COUNT ABOVE THIS READER'S OWN BOUND KEEPS THE BOUND and counts
+			// one `clamped`, exactly as the oracle's array read does
+			// (internal/tablewire/messagedecode.go, `array`; docs/SPEC-TABLES.md
+			// §3.3, §4). The elements past the bound are still read and dropped,
+			// as Go's array does.
+			g.pf("%s  final kept = %s < %d ? %s : %d;\n", aind, count, f.ArrayBound, count, f.ArrayBound)
+			g.pf("%s  if (kept != %s) { r.report.clamped++; }\n", aind, count)
 		} else if ir.TableMessageCountBits(shape) > 0 {
-			g.pf("%sr.bits.get(%d);\n", ind, ir.TableMessageCountBits(shape))
-			g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
+			g.pf("%sr.bits.get(%d);\n", aind, ir.TableMessageCountBits(shape))
+			g.pf("%sif (r.bits.failed) { %s; }\n", aind, bad)
 		}
 		if ir.TableMessageAligns(kind, shape) {
-			g.pf("%sif (!r.bits.align()) { %s; }\n", ind, bad)
+			g.pf("%sif (!r.bits.align()) { %s; }\n", aind, bad)
 		}
 		elem := messageElementField(f)
-		g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
-		g.emitMessageReadElement(elem, entry, expr+"[i]", ind+"  ")
-		g.pf("%s}\n", ind)
+		if f.Array == ir.ArrayCounted {
+			if run := messageElementRunBits(kind, shape); run >= 0 {
+				// a FIXED-WIDTH element: keep the bound and skip the surplus in
+				// one arithmetic step, as the oracle's skipRun does (§3.3)
+				g.pf("%s  for (var i = 0; i < kept; i++) {\n", aind)
+				g.emitMessageReadElement(elem, entry, expr+"[i]", aind+"  ")
+				g.pf("%s  }\n", aind)
+				g.pf("%s  if (kept != %s) {\n", aind, count)
+				g.pf("%s    if (!r.bits.skip((%s - kept) * %d)) { %s; }\n", aind, count, run, bad)
+				g.pf("%s  }\n", aind)
+			} else {
+				// a COMPLEX element has no fixed width: walk them all and read
+				// the surplus into a dropped sink, exactly as the oracle's array
+				// walk does (§3.3)
+				g.pf("%s  for (var i = 0; i < %s; i++) {\n", aind, count)
+				g.pf("%s    if (i < kept) {\n", aind)
+				g.emitMessageReadElement(elem, entry, expr+"[i]", aind+"      ")
+				g.pf("%s    } else {\n", aind)
+				g.emitMessageDropElement(elem, entry, aind+"      ")
+				g.pf("%s    }\n", aind)
+				g.pf("%s  }\n", aind)
+			}
+			// THE READER'S OWN COUNT BECOMES THE KEPT COUNT, as Go's array does
+			// (`fv.Count = int(kept)`), so a save writes the bound and the
+			// elements it holds, not the wire's larger count.
+			g.pf("%s  %s = kept;\n", aind, count)
+			g.pf("%s}\n", ind)
+		} else {
+			g.pf("%sfor (var i = 0; i < %s; i++) {\n", aind, count)
+			g.emitMessageReadElement(elem, entry, expr+"[i]", aind+"  ")
+			g.pf("%s}\n", aind)
+		}
 	case f.Type.Kind == ir.TNamed:
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
@@ -537,6 +578,16 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		g.pf("%s  }\n", ind)
 		g.pf("%s}\n", ind)
 		g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+		if f.HasFloatRange && f.Type.Kind == ir.TFloat32 {
+			// THE READER'S OWN RANGED FLOAT CLAMPS AND COUNTS, exactly as the
+			// oracle's float32 read does (internal/tablewire/messagedecode.go,
+			// `float32` and `clampFloat`; docs/SPEC-TABLES.md §3.3, §4) and as
+			// the file form's emitClamp does (fixeddart.go). A float64 field
+			// reads raw and clamps nothing, as Go's scalar case for F64.
+			lo, hi, _ := fixedFloatClampEnds(f)
+			g.pf("%sif (%s < %s) { %s = %s; r.report.clamped++; } else if (%s > %s) { %s = %s; r.report.clamped++; }\n",
+				ind, expr, lo, expr, lo, expr, hi, expr, hi)
+		}
 		return
 	}
 	if kind == ir.TableKindF64 {
@@ -560,7 +611,21 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		if shape.Packing == ir.TableMessageRanged && shape.Base != nil && shape.Base.Sign() != 0 {
 			value += " + " + message128Lit(cls, shape.Base)
 		}
-		g.pf("%s  %s = %s;\n%s}\n", ind, expr, value, ind)
+		g.pf("%s  %s = %s;\n", ind, expr, value)
+		if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
+			// A 128-BIT SCALAR CLAMPS AGAINST THIS READER'S OWN DECLARATION and
+			// counts, exactly as the oracle's wide read does
+			// (internal/tablewire/messagedecode.go, `scalar`, the 128-bit
+			// payload via tabletext.WideClamp; docs/SPEC-TABLES.md §3.3, §4).
+			// The comparison literals come from the fixed form's own
+			// fixedClampTerms (fixeddart.go), which spell an Int128/UInt128
+			// bound as its high and low hex halves.
+			loLHS, loCmp, loAssign := g.gen.fixedClampTerms(f.Type, expr, f.IntMin)
+			hiLHS, hiCmp, hiAssign := g.gen.fixedClampTerms(f.Type, expr, f.IntMax)
+			g.pf("%s  if (%s < %s) { %s = %s; r.report.clamped++; } else if (%s > %s) { %s = %s; r.report.clamped++; }\n",
+				ind, loLHS, loCmp, expr, loAssign, hiLHS, hiCmp, expr, hiAssign)
+		}
+		g.pf("%s}\n", ind)
 		return
 	}
 	g.pf("%s%s = r.bits.get(%d);\n", ind, expr, bits)
@@ -581,6 +646,28 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	switch kind {
 	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32:
 		g.pf("%s%s = %s.toSigned(%d);\n", ind, expr, expr, 8*ir.TableKindWidth(int(kind)))
+	}
+	// THE VALUE IS THEN CLAMPED TO THIS READER'S OWN DECLARATION and counted,
+	// in the oracle's order (internal/tablewire/messagedecode.go, `scalar`;
+	// docs/SPEC-TABLES.md §3.3, §4): the integer range first — signed against
+	// the signed bounds, unsigned against the whole unsigned bounds — then the
+	// `bits(N)` width clamp, each counting one `clamped`.
+	// The comparisons and assignment literals are the fixed form's own
+	// (fixedClampTerms, fixeddart.go): a uint64 bound at 2^63 or above rides
+	// as its bit pattern XOR-flipped into the unsigned domain, so an unsigned
+	// range is ordered whole (a decoded value past 2^63 reads back negative in
+	// the Dart int and must not be mistaken for below-min), and an int64 bound
+	// at -2^63 is written as the exhaustive literal Dart accepts (fixedIntLit).
+	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
+		loLHS, loCmp, loAssign := g.gen.fixedClampTerms(f.Type, expr, f.IntMin)
+		hiLHS, hiCmp, hiAssign := g.gen.fixedClampTerms(f.Type, expr, f.IntMax)
+		g.pf("%sif (%s < %s) { %s = %s; r.report.clamped++; } else if (%s > %s) { %s = %s; r.report.clamped++; }\n",
+			ind, loLHS, loCmp, expr, loAssign, hiLHS, hiCmp, expr, hiAssign)
+	}
+	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+		maxBits := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+		lhs, cmp, assign := g.gen.fixedClampTerms(f.Type, expr, maxBits)
+		g.pf("%sif (%s > %s) { %s = %s; r.report.clamped++; }\n", ind, lhs, cmp, expr, assign)
 	}
 }
 
@@ -661,6 +748,45 @@ func messageElementField(f *ir.Field) *ir.Field {
 		e.Type = ir.FieldType{Kind: ir.TInt, Width: 8, Signed: false}
 	}
 	return &e
+}
+
+// messageElementRunBits is the bits ONE element of a message array occupies
+// where that is a fixed number the reader can multiply, and -1 where the
+// element has to be stepped one at a time — the message-form mirror of the
+// oracle's elementRunBits (internal/tablewire/messagedecode.go).
+func messageElementRunBits(kind uint8, shape ir.TableMessageShape) int64 {
+	if int(kind) != ir.TableKindArray {
+		return -1
+	}
+	switch int(shape.Elem) {
+	case ir.TableKindTable, ir.TableKindUnion, ir.TableKindEnum, ir.TableKindPointer:
+		return -1
+	}
+	inner := ir.TableMessageShape{}
+	if shape.Inner != nil {
+		inner = *shape.Inner
+	}
+	return int64(ir.TableMessageValueBits(shape.Elem, inner))
+}
+
+// emitMessageDropElement reads one array element past the reader's own bound
+// into a throwaway sink, consuming the same bits the oracle's element walk
+// consumes so the fields that follow stay aligned; the value is discarded
+// (internal/tablewire/messagedecode.go, `array`; docs/SPEC-TABLES.md §3.3).
+func (g *fixedModule) emitMessageDropElement(f *ir.Field, entry ir.TableVocabularyEntry, ind string) {
+	elem := messageElementField(f)
+	switch t := elem.Type.Ref.(type) {
+	case *ir.Struct:
+		g.pf("%s    final t = %s();\n", ind, t.Name)
+		g.emitMessageReadElement(elem, entry, "t", ind+"  ")
+		return
+	case *ir.Union:
+		g.pf("%s    final t = %s();\n", ind, t.Name)
+		g.emitMessageReadElement(elem, entry, "t", ind+"  ")
+		return
+	}
+	g.pf("%s    var t;\n", ind)
+	g.emitMessageReadElement(elem, entry, "t", ind+"  ")
 }
 
 const dartMessageBatchRuntime = `
