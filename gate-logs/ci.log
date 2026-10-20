@@ -1,0 +1,335 @@
+=== full gate attempt (internal/ci timed out under load 253)
+
+--- FAIL: TestIssue611JsonUnsignedOverflowLandsCeiling (0.58s)
+    --- FAIL: TestIssue611JsonUnsignedOverflowLandsCeiling/cs (0.16s)
+        issue611_test.go:132: dotnet run: exit status 1
+            System.IO.IOException: The system cannot open the device or file specified. : 'NuGet-Migrations'. One or more system calls failed: open("/tmp/.dotnet/shm", 0x80000, 0x0) == -1; errno == EACCES;
+               at System.Threading.Mutex.CreateMutexCore(Boolean initiallyOwned, String name, NamedWaitHandleOptionsInternal options, Boolean& createdNew)
+               at System.Threading.Mutex..ctor(Boolean initiallyOwned, String name)
+               at NuGet.Common.Migrations.MigrationRunner.Run(String migrationsDirectory, IEnvironmentVariableReader environmentVariableReader)
+               at Microsoft.DotNet.Configurer.DotnetFirstTimeUseConfigurer.Configure()
+               at Microsoft.DotNet.Cli.Program.ConfigureDotNetForFirstTimeUse(IFirstTimeUseNoticeSentinel firstTimeUseNoticeSentinel, IAspNetCertificateSentinel aspNetCertificateSentinel, IFileSentinel toolPathSentinel, Boolean isDotnetBeingInvokedFromNativeInstaller, DotnetFirstRunConfiguration dotnetFirstRunConfiguration, IEnvironmentProvider environmentProvider, Dictionary`2 performanceMeasurements, Boolean skipFirstTimeUseCheck)
+               at Microsoft.DotNet.Cli.Program.ProcessArgs(String[] args, TimeSpan startupTime)
+               at Microsoft.DotNet.Cli.Program.Main(String[] args)
+packet-text-fuzz[cpp]: 22 seeds, 682 cases, 0 divergences
+packet-text-fuzz[c]: 22 seeds, 682 cases, 0 divergences
+FAIL
+FAIL	github.com/mas-bandwidth/schema/v2/compiler	57.286s
+manifest line 3:
+  committed: announce-bytes-too-large	announce_bytes	tables/examples	PackConfig	inputs/announcement.bin	bound: the vocabulary field one above a receiver's byte bound (MaxBytes=8)	accept	-	0000000000000000000000000000000000000000000000000000000000000000
+  engine:    announce-bytes-too-large	announce_bytes	tables/examples	PackConfig	inputs/announcement.bin	bound: the vocabulary field one above a receiver's byte bound (MaxBytes=8)	refuse	vocabulary_too_large	-
+panic: test timed out after 10m0s
+	running tests:
+		TestSpecPinS6PlantedUnpinnedSentence (9m24s)
+		TestSpecPinsSection7PlantsAnUnpinnedRule (9m24s)
+
+goroutine 609 [running]:
+testing.(*M).startAlarm.func1()
+	testing/testing.go:2802 +0x354
+created by time.goFunc
+	time/sleep.go:215 +0x2d
+
+goroutine 1 [chan receive, 2 minutes]:
+testing.tRunner.func1()
+	testing/testing.go:1993 +0x445
+testing.tRunner(0x2ebe8e548248, 0x2ebe8e5ffc58)
+	testing/testing.go:2042 +0x123
+testing.runTests({0xd0f0a1, 0x22}, {0xd2c549, 0x2e}, 0x2ebe8e2a2078, {0x15f19e0, 0x42, 0x42}, {0xc2adc6a62939e391, 0x8bb35c3991, ...})
+	testing/testing.go:2583 +0x505
+testing.(*M).Run(0x2ebe8e42a6e0)
+	testing/testing.go:2443 +0x6ac
+main.main()
+	_testmain.go:176 +0x9b
+
+goroutine 410 [runnable]:
+regexp.(*machine).step(0x2ebe8faa82d0, 0x2ebe8faa82e0, 0x2ebe8faa8310, 0xdfe7, 0xdfe8, 0x6e, 0x2ebe91e08dd8)
+	regexp/exec.go:260 +0x6d8
+regexp.(*machine).match(0x2ebe8faa82d0, {0x10b38e0, 0x2ebe8faa8390}, 0xdf79)
+	regexp/exec.go:225 +0x3ff
+regexp.(*Regexp).doExecute(0x2ebe8e42a5a0, {0x0, 0x0}, {0x0, 0x0, 0x0}, {0x2ebe92c98000, 0x23e32}, 0xdf79, 0x2, ...)
+	regexp/exec.go:542 +0x30e
+regexp.(*Regexp).replaceAll(0x2ebe8e42a5a0, {0x0, 0x0, 0x0}, {0x2ebe92c98000, 0x23e32}, 0x2, 0x2ebe91e08ff8)
+	regexp/regexp.go:599 +0x185
+regexp.(*Regexp).ReplaceAllString(0x2ebe8e42a5a0, {0x2ebe92c98000, 0x23e32}, {0x0, 0x0})
+	regexp/regexp.go:557 +0xd2
+github.com/mas-bandwidth/schema/v2/internal/ci.resolveHarnessPin({0x10acde0, 0x2ebe8e7d4000}, {0xd1406b, 0x1a}, {0xd14086, 0x9})
+	github.com/mas-bandwidth/schema/v2/internal/ci/schema_spec_pin_design_row_ids_test.go:1744 +0x851
+github.com/mas-bandwidth/schema/v2/internal/ci.resolvePin({0x10acde0, 0x2ebe8e7d4000}, {{0xcdc0d4, 0x5}, {0xcdba4e, 0x4}, {0xd1406b, 0x24}, {0x0, 0x0}, ...})
+	github.com/mas-bandwidth/schema/v2/internal/ci/schema_spec_pin_design_row_ids_test.go:874 +0x1c5
+github.com/mas-bandwidth/schema/v2/internal/ci.checkSpecPins({{0x10acde0, 0x2ebe8e7d4000}, {0xcef50e, 0x13}, {0xceb22e, 0x11}, {0x2ebe8e738000, 0x8cd, 0xa5d}})
+	github.com/mas-bandwidth/schema/v2/internal/ci/schema_spec_pin_design_row_ids_test.go:767 +0x2519
+github.com/mas-bandwidth/schema/v2/internal/ci.TestSpecPinS6PlantedUnpinnedSentence(0x2ebe8ec18488)
+	github.com/mas-bandwidth/schema/v2/internal/ci/schema_spec_pin_s6_test.go:234 +0x3ea
+testing.tRunner(0x2ebe8ec18488, 0x10a5e30)
+	testing/testing.go:2036 +0xea
+created by testing.(*T).Run in goroutine 1
+	testing/testing.go:2101 +0x4c5
+
+goroutine 411 [runnable]:
+go/parser.(*parser).parseBlockStmt(0x2ebe91aed4a0)
+	go/parser/parser.go:1446 +0x109
+go/parser.(*parser).parseIfStmt(0x2ebe91aed4a0)
+	go/parser/parser.go:2169 +0x165
+go/parser.(*parser).parseStmt(0x2ebe91aed4a0)
+	go/parser/parser.go:2477 +0x245
+go/parser.(*parser).parseStmtList(0x2ebe91aed4a0)
+	go/parser/parser.go:1419 +0x125
+go/parser.(*parser).parseBody(0x2ebe91aed4a0)
+	go/parser/parser.go:1431 +0xd7
+go/parser.(*parser).parseFuncDecl(0x2ebe91aed4a0)
+	go/parser/parser.go:2815 +0x245
+go/parser.(*parser).parseDecl(0x2ebe91aed4a0, 0x2ebe8e40a720)
+	go/parser/parser.go:2861 +0x105
+go/parser.(*parser).parseFile(0x2ebe91aed4a0)
+	go/parser/parser.go:2921 +0x593
+go/parser.ParseFile(0x2ebe925903f0, {0x2ebe9257c2c7, 0x9}, {0xc5aba0?, 0x2ebe9296f1b8?}, 0x0)
+	go/parser/interface.go:131 +0x179
+github.com/mas-bandwidth/schema/v2/internal/ci.loadGoPkg({0x10acde0, 0x2ebe8e934000}, {0x2ebe9abb8324, 0x12}, 0x0)
+	github.com/mas-bandwidth/schema/v2/internal/ci/schema_spec_pin_design_row_ids_test.go:916 +0x645
+github.com/mas-bandwidth/schema/v2/internal/ci.resolveGoPin.func1({0x2ebe9abb8301, 0x35})
+	github.com/mas-bandwidth/schema/v2/internal/ci/schema_spec_pin_design_row_ids_test.go:1058 +0x337
+github.com/mas-bandwidth/schema/v2/internal/ci.resolveGoPin.func2(0x2ebe91e98330, 0x2ebe92243a70, {0x0, 0x0})
+	github.com/mas-bandwidth/schema/v2/internal/ci/schema_spec_pin_design_row_ids_test.go:1098 +0x335
+github.com/mas-bandwidth/schema/v2/internal/ci.resolveGoPin({0x10acde0, 0x2ebe8e934000}, {0xd5317d, 0x1f}, {0xd5319d, 0x1f})
+	github.com/mas-bandwidth/schema/v2/internal/ci/schema_spec_pin_design_row_ids_test.go:1162 +0xe78
+github.com/mas-bandwidth/schema/v2/internal/ci.resolvePin({0x10acde0, 0x2ebe8e934000}, {{0xcdc0bb, 0x5}, {0xcdb496, 0x2}, {0xd5317d, 0x3f}, {0x0, 0x0}, ...})
+	github.com/mas-bandwidth/schema/v2/internal/ci/schema_spec_pin_design_row_ids_test.go:868 +0xed
+github.com/mas-bandwidth/schema/v2/internal/ci.checkSpecPins({{0x10acde0, 0x2ebe8e934000}, {0xcef50e, 0x13}, {0xceb22e, 0x11}, {0x2ebe8e738000, 0x8cd, 0xa5d}})
+	github.com/mas-bandwidth/schema/v2/internal/ci/schema_spec_pin_design_row_ids_test.go:767 +0x2519
+github.com/mas-bandwidth/schema/v2/internal/ci.TestSpecPinsSection7PlantsAnUnpinnedRule.func1(...)
+	github.com/mas-bandwidth/schema/v2/internal/ci/schema_spec_pin_s7_test.go:713
+github.com/mas-bandwidth/schema/v2/internal/ci.TestSpecPinsSection7PlantsAnUnpinnedRule(0x2ebe8ec186c8)
+	github.com/mas-bandwidth/schema/v2/internal/ci/schema_spec_pin_s7_test.go:725 +0x57a
+testing.tRunner(0x2ebe8ec186c8, 0x10a5e70)
+	testing/testing.go:2036 +0xea
+created by testing.(*T).Run in goroutine 1
+	testing/testing.go:2101 +0x4c5
+FAIL	github.com/mas-bandwidth/schema/v2/internal/ci	600.090s
+ok  	github.com/mas-bandwidth/schema/v2/internal/tabletext	6.654s
+ok  	github.com/mas-bandwidth/schema/v2/internal/tablewire	1.527s
+FAIL
+
+=== final compiler/tabletext/tablewire
+
+--- FAIL: TestIssue611JsonUnsignedOverflowLandsCeiling (0.59s)
+    --- FAIL: TestIssue611JsonUnsignedOverflowLandsCeiling/cs (0.17s)
+        issue611_test.go:132: dotnet run: exit status 1
+            System.IO.IOException: The system cannot open the device or file specified. : 'NuGet-Migrations'. One or more system calls failed: open("/tmp/.dotnet/shm", 0x80000, 0x0) == -1; errno == EACCES;
+               at System.Threading.Mutex.CreateMutexCore(Boolean initiallyOwned, String name, NamedWaitHandleOptionsInternal options, Boolean& createdNew)
+               at System.Threading.Mutex..ctor(Boolean initiallyOwned, String name)
+               at NuGet.Common.Migrations.MigrationRunner.Run(String migrationsDirectory, IEnvironmentVariableReader environmentVariableReader)
+               at Microsoft.DotNet.Configurer.DotnetFirstTimeUseConfigurer.Configure()
+               at Microsoft.DotNet.Cli.Program.ConfigureDotNetForFirstTimeUse(IFirstTimeUseNoticeSentinel firstTimeUseNoticeSentinel, IAspNetCertificateSentinel aspNetCertificateSentinel, IFileSentinel toolPathSentinel, Boolean isDotnetBeingInvokedFromNativeInstaller, DotnetFirstRunConfiguration dotnetFirstRunConfiguration, IEnvironmentProvider environmentProvider, Dictionary`2 performanceMeasurements, Boolean skipFirstTimeUseCheck)
+               at Microsoft.DotNet.Cli.Program.ProcessArgs(String[] args, TimeSpan startupTime)
+               at Microsoft.DotNet.Cli.Program.Main(String[] args)
+packet-text-fuzz[cpp]: 22 seeds, 682 cases, 0 divergences
+packet-text-fuzz[c]: 22 seeds, 682 cases, 0 divergences
+FAIL
+FAIL	github.com/mas-bandwidth/schema/v2/compiler	56.167s
+ok  	github.com/mas-bandwidth/schema/v2/internal/tabletext	6.781s
+ok  	github.com/mas-bandwidth/schema/v2/internal/tablewire	1.637s
+FAIL
+
+=== internal/ci with the heavy spec-pin tests skipped (green)
+
+ok  	github.com/mas-bandwidth/schema/v2/internal/ci	105.976s
+
+=== internal/ci core spec pins (green)
+
+=== RUN   TestSpecPinsHoldOnTheSpec
+=== PAUSE TestSpecPinsHoldOnTheSpec
+=== RUN   TestSpecPinsSectionSizes
+=== PAUSE TestSpecPinsSectionSizes
+=== RUN   TestSpecPinsSizingUsesRoadmapPorts
+=== PAUSE TestSpecPinsSizingUsesRoadmapPorts
+=== RUN   TestSpecPinsSizingInheritsHeadingScope
+=== PAUSE TestSpecPinsSizingInheritsHeadingScope
+=== RUN   TestSpecPinsFixturePasses
+=== PAUSE TestSpecPinsFixturePasses
+=== RUN   TestSpecPinsTLALineCommentHidesABlockOpen
+=== PAUSE TestSpecPinsTLALineCommentHidesABlockOpen
+=== CONT  TestSpecPinsHoldOnTheSpec
+=== CONT  TestSpecPinsSizingUsesRoadmapPorts
+=== CONT  TestSpecPinsTLALineCommentHidesABlockOpen
+=== CONT  TestSpecPinsSectionSizes
+=== CONT  TestSpecPinsFixturePasses
+=== CONT  TestSpecPinsSizingInheritsHeadingScope
+--- PASS: TestSpecPinsSizingInheritsHeadingScope (0.00s)
+--- PASS: TestSpecPinsTLALineCommentHidesABlockOpen (0.00s)
+--- PASS: TestSpecPinsFixturePasses (0.00s)
+--- PASS: TestSpecPinsSizingUsesRoadmapPorts (0.01s)
+--- PASS: TestSpecPinsHoldOnTheSpec (331.08s)
+=== NAME  TestSpecPinsSectionSizes
+    schema_spec_pin_design_row_ids_test.go:2182: 
+        | Spec line | Spec section | Normative sentences | Ports carrying the section's features | Mapping basis | Unmapped normative sentences |
+        | ---: | --- | ---: | --- | --- | ---: |
+        | 1 | schema — tables | 1 | compiler | row features | 0 |
+        | 36 | Row ids and pins | 14 | none | informative; no port obligation | 0 |
+        | 212 | The three wires | 11 | compiler | row features | 0 |
+        | 300 | The performance ladder | 0 | none | no normative matches | 0 |
+        | 385 | What allocates, and what never does | 27 | compiler | row features | 0 |
+        | 932 | 1. Purpose | 2 | compiler | row features | 0 |
+        | 963 | 2. Declaration | 5 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 2; row mapping pending | 5 |
+        | 1054 | 2.1 Pointers | 3 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 2.1; row mapping pending | 3 |
+        | 1121 | 2.2 The class is declared: `fixed table` | 5 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 2.2; row mapping pending | 5 |
+        | 1247 | 2.3 Optional fields: `settings ?GunnerSettings` | 3 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 2.3; row mapping pending | 3 |
+        | 1406 | The `\| required` marker | 14 | compiler | row features | 0 |
+        | 1475 | 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig` | 25 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 2.4; row mapping pending | 25 |
+        | 1795 | 2.5 Byte buffers: `data *bytes` | 9 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 2.5; row mapping pending | 9 |
+        | 1910 | 2.6 Union arms are field lines | 9 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 2.6; row mapping pending | 9 |
+        | 2151 | 2.7 The block form is not declared | 3 | compiler | row features | 0 |
+        | 2171 | 2.8 Maps: `ships map[string(32)]ShipConfig` | 30 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 2.8; row mapping pending | 30 |
+        | 2967 | 2.9 Unbounded arrays: `placements []Placement` | 31 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 2.9; row mapping pending | 31 |
+        | 3605 | 2.10 Evolution of fixed tables: append-only, and the lock | 0 | none | no normative matches | 0 |
+        | 3644 | The `deprecated` marker | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 2.10; row mapping pending | 1 |
+        | 3686 | Renaming is not a change | 0 | none | no normative matches | 0 |
+        | 3693 | Compaction is a new table | 0 | none | no normative matches | 0 |
+        | 3701 | The lock | 5 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 2.10; row mapping pending | 5 |
+        | 3964 | `schema lock` | 4 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 2.10; row mapping pending | 4 |
+        | 4009 | Held by test | 3 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 2.10; row mapping pending | 3 |
+        | 4054 | 2.11 Timestamps: `opened_at timestamp` | 10 | compiler | row features | 0 |
+        | 4141 | 2.12 The forms a table carries: `forms` | 6 | compiler | row features | 0 |
+        | 4199 | 2.13 Text lists: `rules [..16]string(64)` | 14 | compiler | row features | 0 |
+        | 4395 | 2.13.1 Unbounded text: `[]string` and `map[string]V` | 10 | compiler | row features | 0 |
+        | 4538 | 2.14 The integrity check: `integrity` | 17 | compiler | row features | 0 |
+        | 4734 | 2.15 Enum variants: `\| deprecated` in place | 11 | compiler | row features | 0 |
+        | 4805 | 3. The wire | 0 | none | no normative matches | 0 |
+        | 4815 | THE FIRST BYTE | 25 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3; row mapping pending | 25 |
+        | 5586 | 3.1 Pointers on the wire: a flat node table | 17 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3.1; row mapping pending | 17 |
+        | 6084 | 3.2 Enum-keyed arrays on the wire: slots by name | 4 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3.2; row mapping pending | 4 |
+        | 6156 | 3.3 The message form: a batch of bitpacked bodies under one announced vocabulary | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3.3; row mapping pending | 1 |
+        | 6190 | The scope is the ANNOUNCEMENT, not the transport | 9 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3.3; row mapping pending | 9 |
+        | 6262 | The primitive is a BATCH | 9 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3.3; row mapping pending | 9 |
+        | 6348 | The wire, exactly | 8 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3.3; row mapping pending | 8 |
+        | 6550 | The announcement | 15 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3.3; row mapping pending | 15 |
+        | 6842 | Elision, defaults, and what a reader reports | 2 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3.3; row mapping pending | 2 |
+        | 6871 | Damage is terminal for the batch, and that is the price of bits | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3.3; row mapping pending | 1 |
+        | 6941 | Form byte `2` keeps its number, and the byte body is replaced | 2 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3.3; row mapping pending | 2 |
+        | 6963 | Retention, and what does not move | 15 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3.3; row mapping pending | 15 |
+        | 7183 | THE SURFACE, OWED TO §11's CLAIMED SET | 6 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3.3; row mapping pending | 6 |
+        | 7239 | SECURITY | 9 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3.3; row mapping pending | 9 |
+        | 7326 | THE COST RULE, and it is this form's own | 0 | none | no normative matches | 0 |
+        | 7389 | THE ARITHMETIC, worked from the wire model | 0 | none | no normative matches | 0 |
+        | 7603 | HELD BY TEST | 32 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 3.3; row mapping pending | 32 |
+        | 7804 | THE GOLDENS: the three messages of schema#523 | 0 | none | no normative matches | 0 |
+        | 7894 | 3.4 The fixed form: a record of values under a layout | 1 | none | row features | 0 |
+        | 7921 | THE VERSIONING INVARIANT, FIRST | 9 | c, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 7981 | THE OWNER'S THREE QUESTIONS, AND THE ANSWER THIS FORM IS | 0 | none | no normative matches | 0 |
+        | 8003 | THE LAYOUT | 2 | c, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 8093 | THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER: WHAT A READER HOLDS IT TO | 4 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 8132 | THE SIZE BOUNDS: 4096 AND 65536 | 4 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 8189 | THE RECORD | 13 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 8309 | SELECTION IS BY THE KEYWORD | 2 | compiler | row features | 0 |
+        | 8355 | A VARIABLE TABLE IN THE UNIT CHANGES NOTHING FOR ITS FIXED TABLES | 1 | compiler | row features | 0 |
+        | 8390 | THE ONE READER PATH: A PLAN | 4 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 8503 | THE WRITE: A TEMPLATE | 0 | none | no normative matches | 0 |
+        | 8515 | THE FRAMING: WHERE THE FORM BYTE AND THE LAYOUT GO, IN ALL THREE CARRIERS | 6 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 8616 | THE FORM-BYTE REGISTRY | 4 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 8656 | HELD BY TEST | 10 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 8738 | 4. Versioning is wire tolerance | 4 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 9054 | 4.1 The silent class, in full | 24 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 9197 | 4.2 The read is the verifier: the wire fuzzer | 16 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 9420 | 4.3 One-sided integer ranges | 2 | compiler | row features | 0 |
+        | 9438 | 5. Identity: the name hash, `was`, and the collision refusal | 14 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 9583 | 6. The two lives of a table | 0 | none | no normative matches | 0 |
+        | 9593 | 6.1 Fixed-size: a value | 2 | compiler | row features | 0 |
+        | 9683 | 6.2 Variable-length: a lifecycle | 4 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 9811 | 6.3 Two reference encodings, one slot | 2 | compiler | row features | 0 |
+        | 9939 | 6.4 Building on many threads | 0 | none | no normative matches | 0 |
+        | 9961 | 6.5 The two load paths | 41 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 10277 | 6.6 Retain-unknown: an opt-in that keeps what this build cannot name | 21 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 10903 | 7. The cooked form | 29 | c, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 11532 | 7.1 The file, byte for byte | 6 | c, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 11599 | 7.2 The region, byte for byte | 4 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 11703 | 7.3 A cook, worked to the byte | 0 | none | no normative matches | 0 |
+        | 11791 | 7.4 What the check reads, and what it does not | 7 | c, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 11863 | 7.5 Held by test | 21 | c, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 12100 | 7.6 The write side: `Cook` and `CookMeasure` | 9 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | row features | 0 |
+        | 12309 | 8. Reflection: the view | 0 | none | no normative matches | 0 |
+        | 12353 | 8.1 The descriptors | 3 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 8; row mapping pending | 3 |
+        | 12773 | 8.2 The type view: every type, on the side | 5 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 8; row mapping pending | 5 |
+        | 12856 | 8.3 The unit registry | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 8; row mapping pending | 1 |
+        | 13049 | 8.4 What it costs: the include rule | 0 | none | no normative matches | 0 |
+        | 13073 | The shared Go runtime (the default) | 3 | compiler | row features | 0 |
+        | 13126 | 8.5 On the side | 0 | none | no normative matches | 0 |
+        | 13166 | 8.6 What the view does not carry | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 8; row mapping pending | 1 |
+        | 13206 | 8.7 Held by test | 5 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 8; row mapping pending | 5 |
+        | 13391 | 8.8 The `--surface` flag | 2 | compiler | row features | 0 |
+        | 13432 | 9. Relocatable, and built wide | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 9; row mapping pending | 1 |
+        | 13485 | 10. Independence from the hardcoded wire | 0 | none | no normative matches | 0 |
+        | 13498 | 11. Refused by name | 65 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 11; row mapping pending | 65 |
+        | 14263 | 12. The expressiveness gate | 2 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 12; row mapping pending | 2 |
+        | 14307 | 12.1 Gate 2: the render data | 3 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 12.1; row mapping pending | 3 |
+        | 14401 | 13. Rulings, recorded | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 13; row mapping pending | 1 |
+        | 14440 | 13.1 Pointer semantics, ruled | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 13.1; row mapping pending | 1 |
+        | 14484 | 13.2 Cost and allocation, ruled | 0 | none | no normative matches | 0 |
+        | 14508 | 13.3 The fixed-class constructs, ruled | 4 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 13.3; row mapping pending | 4 |
+        | 14568 | 13.4 The cooked form, ruled | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 13.4; row mapping pending | 1 |
+        | 14642 | 13.5 Header versus translation unit, ruled | 0 | none | no normative matches | 0 |
+        | 14676 | 13.6 The block form, ruled | 4 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 13.6; row mapping pending | 4 |
+        | 14774 | 13.7 The view, ruled | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 13.7; row mapping pending | 1 |
+        | 14815 | 13.8 The build version, ruled | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 13.8; row mapping pending | 1 |
+        | 14855 | 13.9 The C++ dialect, ruled | 2 | cpp | section scope 13.9; row mapping pending | 2 |
+        | 14956 | 14. Design notes: the shapes rejected | 5 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 14; row mapping pending | 5 |
+        | 15143 | 15. Named follow-ons | 27 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 15; row mapping pending | 27 |
+        | 15659 | 16. The text form: JSON in and out of one table | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 16; row mapping pending | 1 |
+        | 15703 | 16.1 The surface | 4 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 16; row mapping pending | 4 |
+        | 15897 | 16.2 The mapping, field kind by field kind | 14 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 16; row mapping pending | 14 |
+        | 16112 | 16.3 What the writer refuses | 18 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 16; row mapping pending | 18 |
+        | 16251 | 16.4 The key: `json` | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 16; row mapping pending | 1 |
+        | 16269 | 16.5 Held by test | 3 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 16; row mapping pending | 3 |
+        | 16344 | 16.6 What this is not | 0 | none | no normative matches | 0 |
+        | 16350 | 16.7 The variable class: the same text, and one construct for sharing | 20 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 16.7; row mapping pending | 20 |
+        | 16658 | 16.8 Carrying a table over a text channel | 8 | compiler | row features | 0 |
+        | 16722 | 16.9 The hand-editable text form: a table with its document | 1 | compiler | row features | 0 |
+        | 16738 | 16.9.1 Grammar and identity | 2 | compiler | row features | 0 |
+        | 16781 | 16.9.2 Mapping, field kind by field kind | 2 | compiler | row features | 0 |
+        | 16820 | 16.9.3 Comments, layout and lossless edits | 7 | compiler | row features | 0 |
+        | 16880 | 16.9.4 Named refusals and conformance | 7 | compiler | row features | 0 |
+        | 16940 | 16.10 The array root: `table GoalList \| json = "array"` | 5 | compiler | row features | 0 |
+        | 16981 | 16.11 Generated round-trip and damage tests: `schema testgen` | 15 | compiler | row features | 0 |
+        | 17156 | 16.12 The outside oracle: JSONTestSuite | 28 | compiler | row features | 0 |
+        | 17269 | 16.13 Any JSON value in a variable table: `table Doc \| json = "value"` | 18 | compiler | row features | 0 |
+        | 17489 | 17. Packing: a directory tree that mirrors a root table | 0 | none | no normative matches | 0 |
+        | 17508 | 17.1 The engine | 0 | none | no normative matches | 0 |
+        | 17534 | 17.2 The directory rule | 1 | compiler | section scope 17; row mapping pending | 1 |
+        | 17574 | 17.3 What comes out | 2 | compiler | section scope 17; row mapping pending | 2 |
+        | 17619 | 17.4 Refusals and the report | 3 | compiler | section scope 17; row mapping pending | 3 |
+        | 17652 | 17.5 Held by test | 3 | compiler | section scope 17; row mapping pending | 3 |
+        | 17677 | 18. The tables baseline | 3 | compiler | section scope 18; row mapping pending | 3 |
+        | 17700 | 18.1 The file | 5 | compiler | section scope 18; row mapping pending | 5 |
+        | 17864 | 18.2 The check | 9 | compiler | section scope 18; row mapping pending | 9 |
+        | 17948 | 18.3 What a name is worth, and what a referent is worth | 8 | compiler | section scope 18; row mapping pending | 8 |
+        | 18038 | 18.4 Moving it is an explicit act | 5 | compiler | section scope 18; row mapping pending | 5 |
+        | 18090 | 18.5 What it does not cover | 0 | none | no normative matches | 0 |
+        | 18097 | 18.6 Held by test | 6 | compiler | section scope 18; row mapping pending | 6 |
+        | 18127 | 19. The block form | 3 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 19; row mapping pending | 3 |
+        | 18268 | 19.1 The builder | 10 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 19; row mapping pending | 10 |
+        | 18469 | 19.2 The reflective read | 8 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 19; row mapping pending | 8 |
+        | 18726 | 19.3 The layout contract | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 19; row mapping pending | 1 |
+        | 18830 | 19.4 Evolution | 9 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 19; row mapping pending | 9 |
+        | 18875 | 19.5 Held by test | 11 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 19; row mapping pending | 11 |
+        | 19009 | 20. The build version | 2 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 20; row mapping pending | 2 |
+        | 19085 | 20.1 What it digests | 2 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 20; row mapping pending | 2 |
+        | 19212 | 20.2 The cook projection, and the id taken over it | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 20; row mapping pending | 1 |
+        | 19484 | 20.3 The compiler computes the layout; the backends must assert it | 2 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 20; row mapping pending | 2 |
+        | 19527 | 20.4 What moves it, and what does not | 2 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 20; row mapping pending | 2 |
+        | 19621 | 20.5 The connect gate is the protocol id, and nothing else | 2 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 20; row mapping pending | 2 |
+        | 19639 | 20.6 The tuple | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 20; row mapping pending | 1 |
+        | 19671 | 20.7 The surface | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 20; row mapping pending | 1 |
+        | 19692 | 20.8 Held by test | 2 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 20; row mapping pending | 2 |
+        | 19766 | 21. The fixed table reads backward, never forward | 2 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 21; row mapping pending | 2 |
+        | 19777 | 21.1 The law: everything that inputs into a fixed table only widens | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 21; row mapping pending | 1 |
+        | 19806 | 21.2 What a newer reader does with an older file | 0 | none | no normative matches | 0 |
+        | 19814 | 21.3 What an older reader does with a newer file | 6 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 21; row mapping pending | 6 |
+        | 19848 | 21.4 The closure rule | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 21; row mapping pending | 1 |
+        | 19857 | 21.5 The lineage, the floor, and the plans | 1 | c, compiler, cpp, cs, dart, elixir, go, java, js, lua, luau, rust, squirrel | section scope 21; row mapping pending | 1 |
+        | 19870 | 21.6 The deployment rule, and the lifecycle | 0 | none | no normative matches | 0 |
+        
+--- PASS: TestSpecPinsSectionSizes (333.88s)
+PASS
+ok  	github.com/mas-bandwidth/schema/v2/internal/ci	333.913s
+
+=== internal/ci S6/S7 plant tests alone (green)
+
+ok  	github.com/mas-bandwidth/schema/v2/internal/ci	412.291s

@@ -1,0 +1,23 @@
+go test -v -count=1 -timeout 600s ./internal/ci -run '^(TestHostileRefusalReasonFailsClosed|TestSchemaSharedHostileCorpus|TestSchemaSharedHostileCorpusReasons|TestSchemaSharedHostileCorpusSources|TestSchemaSharedHostileCorpusExcludedSources)$'
+=== RUN   TestHostileRefusalReasonFailsClosed
+=== PAUSE TestHostileRefusalReasonFailsClosed
+=== RUN   TestSchemaSharedHostileCorpus
+=== PAUSE TestSchemaSharedHostileCorpus
+=== RUN   TestSchemaSharedHostileCorpusReasons
+=== PAUSE TestSchemaSharedHostileCorpusReasons
+=== RUN   TestSchemaSharedHostileCorpusSources
+=== PAUSE TestSchemaSharedHostileCorpusSources
+=== RUN   TestSchemaSharedHostileCorpusExcludedSources
+=== PAUSE TestSchemaSharedHostileCorpusExcludedSources
+=== CONT  TestHostileRefusalReasonFailsClosed
+=== CONT  TestSchemaSharedHostileCorpusSources
+=== CONT  TestSchemaSharedHostileCorpusReasons
+--- PASS: TestHostileRefusalReasonFailsClosed (0.00s)
+=== CONT  TestSchemaSharedHostileCorpus
+=== CONT  TestSchemaSharedHostileCorpusExcludedSources
+--- PASS: TestSchemaSharedHostileCorpusReasons (0.00s)
+--- PASS: TestSchemaSharedHostileCorpusExcludedSources (0.00s)
+--- PASS: TestSchemaSharedHostileCorpusSources (0.01s)
+--- PASS: TestSchemaSharedHostileCorpus (0.14s)
+PASS
+ok  	github.com/mas-bandwidth/schema/v2/internal/ci	0.164s
