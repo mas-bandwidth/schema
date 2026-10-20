@@ -156,7 +156,15 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
-	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long n=ar.leb();if(!ar.fail){if(ek!=13){report.kindMismatch++;}else if(n<0||n>0x7fffffffL||n>(long)(ar.limit-ar.off)/2){report.refused=true;}else {\n")
+	// THE MAP HEADER IS READ AGAINST THE PARENT BUFFER, not against the map's
+	// own L: a canonical LEB128 is up to ten bytes, so a count spelled wide
+	// enough leaves the cursor PAST the body it was framed by
+	// (internal/tablewire/decode.go mapField, subTo). A count that cannot be
+	// read at all is malformed and no kind is judged; once it is read, the
+	// ELEMENT KIND is judged first, so a map whose body declares any element
+	// kind but 13 counts one kind_mismatch even where the count then overruns
+	// L (docs/SPEC-TABLES.md §2.8, §4).
+	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();TableVariable.Reader cr=new TableVariable.Reader(r.buf,r.ids,report);cr.off=ar.off;cr.limit=r.limit;long n=cr.leb();if(!cr.fail){ar.off=cr.off;if(ek!=13){report.kindMismatch++;}else if(cr.off>ar.limit){report.malformed=true;}else if(n<0||n>0x7fffffffL||n>(long)(ar.limit-ar.off)/2){report.refused=true;}else {\n")
 	if retain {
 		fmt.Fprintf(b, "                    retain.discardField(path,depth,%d);\n", ordinal)
 	}
