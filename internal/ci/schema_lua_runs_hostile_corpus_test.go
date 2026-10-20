@@ -226,7 +226,10 @@ local function caseResult(c)
   local value
 
   if c[2] == "text" then
-    value = J.FromJson(T, c[4], payload, r)
+    -- The corpus carries the TOLERANT answer (§16.1): the strict plain
+    -- FromJson refuses clamped and malformed rows the engine's corpus accepts,
+    -- so the runner asks the twin the tolerant read is named after.
+    value = J.FromJsonTolerant(T, c[4], payload, r)
     if r.malformed or value == nil then return "refuse", "damaged", nil end
   elseif c[2] == "wire" then
     value = L.Load(T, c[4], payload, r)
@@ -234,6 +237,11 @@ local function caseResult(c)
       local form = #payload > 0 and payload:byte(1) or 0
       return "refuse", form == 2 and "message_form_as_file" or "newer_form", nil
     end
+    -- A LOAD THAT NAMED A STORAGE REFUSAL reports it: count_refusal is the
+    -- engine's CountRefusal (§2.9), not the unnamed damage the wire branch
+    -- otherwise reads. The strict read's other reasons (wire_damaged,
+    -- malformed, integrity_mismatch) stay the manifest's generic damaged.
+    if r.reason == "count_refusal" then return "refuse", r.reason, nil end
     if r.malformed or value == nil then return "refuse", "damaged", nil end
   elseif c[2] == "announce" then
     local vocab = {}
@@ -377,10 +385,8 @@ func luaHostileCarriedList(cases []luaHostileCase) map[string]luaHostileCarried 
 	} {
 		out[name] = luaHostileCarried{"refuse", "damaged", "schema-shared-hostile-corpus"}
 	}
-	// The message reader has no caller storage bound and the wire reader names
-	// the count past the int32 cap damaged, not count_refusal.
+	// The message reader has no caller storage bound.
 	out["message-batch-too-large"] = luaHostileCarried{"accept", "-", "schema-lua-message-honors-storage-bound-r"}
-	out["wire-count-refusal"] = luaHostileCarried{"refuse", "damaged", "schema-lua-wire-names-count-refusal-r"}
 	// Accepted by both, but the subnormal float's canonical text differs: a
 	// reader/writer spelling bug in the Lua float32 path.
 	out["conformance-num-float32-subnormal"] = luaHostileCarried{"accept", "-", "schema-lua-float32-subnormal-canonical-text-r"}
