@@ -169,7 +169,7 @@ func (g *cookGen) emitCookFixedField(f *ir.Field, offset int64, expr, ind string
 			return
 		}
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
-		g.emitCookFixedScalar(f, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
+		g.emitCookFixedScalar(f, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ", false)
 		g.pf("%s}\n", ind)
 		return
 	}
@@ -186,11 +186,14 @@ func (g *cookGen) emitCookFixedField(f *ir.Field, offset int64, expr, ind string
 		g.pf("%s  }\n%s}\n", ind, ind)
 		return
 	}
-	g.emitCookFixedScalar(f, expr, fmt.Sprintf("at + %d", offset), pieces[0].Size, ind)
+	g.emitCookFixedScalar(f, expr, fmt.Sprintf("at + %d", offset), pieces[0].Size, ind, false)
 }
 
 // emitCookFixedScalar writes storage widths in the target byte order (§7.6).
-func (g *cookGen) emitCookFixedScalar(f *ir.Field, expr, at string, width int64, ind string) {
+// `guarded` is true when the caller has already established `out != null`; the
+// emitted block omits the `if (out != null)` test, which Dart reads as
+// `unnecessary_null_comparison`.
+func (g *cookGen) emitCookFixedScalar(f *ir.Field, expr, at string, width int64, ind string, guarded bool) {
 	if ref, ok := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && ok {
 		line := fmt.Sprintf("%sif (!_cook%s(%s, out, %s, order)) return false;", ind, ref.Name, expr, at)
 		if len(line) <= 80 {
@@ -203,34 +206,41 @@ func (g *cookGen) emitCookFixedScalar(f *ir.Field, expr, at string, width int64,
 		}
 		return
 	}
-	g.pf("%sif (out != null) {\n", ind)
+	if guarded {
+		g.pf("%s", ind)
+	} else {
+		g.pf("%sif (out != null) {\n", ind)
+		ind = ind + "  "
+	}
 	switch {
 	case f.Type.Kind == ir.TBool:
-		g.pf("%s  out.setUint8(%s, %s ? 1 : 0);\n", ind, at, expr)
+		g.pf("%sout.setUint8(%s, %s ? 1 : 0);\n", ind, at, expr)
 	case f.Type.Kind == ir.TFloat32:
-		line := fmt.Sprintf("%s  out.setUint32(%s, TableCookWriteReport.float32Bits(%s), order);", ind, at, expr)
+		line := fmt.Sprintf("%sout.setUint32(%s, TableCookWriteReport.float32Bits(%s), order);", ind, at, expr)
 		if len(line) <= 80 {
 			g.pf("%s\n", line)
 		} else {
-			g.pf("%s  out.setUint32(\n%s    %s,\n%s    TableCookWriteReport.float32Bits(%s),\n%s    order,\n%s  );\n", ind, ind, at, ind, expr, ind, ind)
+			g.pf("%sout.setUint32(\n%s  %s,\n%s  TableCookWriteReport.float32Bits(%s),\n%s  order,\n%s);\n", ind, ind, at, ind, expr, ind, ind)
 		}
 	case f.Type.Kind == ir.TFloat64:
-		g.pf("%s  out.setFloat64(%s, %s, order);\n", ind, at, expr)
+		g.pf("%sout.setFloat64(%s, %s, order);\n", ind, at, expr)
 	case width == 16:
-		g.pf("%s  out.setUint64(%s, order == Endian.little ? %s.lo : %s.hi, order);\n", ind, at, expr, expr)
-		g.pf("%s  out.setUint64(%s + 8, order == Endian.little ? %s.hi : %s.lo, order);\n", ind, at, expr, expr)
+		g.pf("%sout.setUint64(%s, order == Endian.little ? %s.lo : %s.hi, order);\n", ind, at, expr, expr)
+		g.pf("%sout.setUint64(%s + 8, order == Endian.little ? %s.hi : %s.lo, order);\n", ind, at, expr, expr)
 	default:
 		signed := "Uint"
 		if fixedSigned(f.Type) {
 			signed = "Int"
 		}
 		if width == 1 {
-			g.pf("%s  out.set%s8(%s, %s);\n", ind, signed, at, expr)
+			g.pf("%sout.set%s8(%s, %s);\n", ind, signed, at, expr)
 		} else {
-			g.pf("%s  out.set%s%d(%s, %s, order);\n", ind, signed, width*8, at, expr)
+			g.pf("%sout.set%s%d(%s, %s, order);\n", ind, signed, width*8, at, expr)
 		}
 	}
-	g.pf("%s}\n", ind)
+	if !guarded {
+		g.pf("%s}\n", ind[:len(ind)-2])
+	}
 }
 
 // emitCookWriteVariable writes §7.6's VARIABLE-CLASS cook: the region of a
@@ -362,8 +372,11 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 		recordBytes := (ml.Size + ir.RegionAlignFloor - 1) & -ir.RegionAlignFloor
 		g.pf("      case %s:\n", dartU64Literal(tableWireId(rs)))
 		if recordHasLists(g.unit, rs) {
-			g.pf("        if (!_cook%s(node as wire.%s, c, at)) return false;\n", r, r)
-			g.pf("        if (_carve%s(node as wire.%s, c, at, at + %d, 0) < 0) return false;\n", r, r, recordBytes)
+			// one cast, shared between _cook and _carve; the second `node as
+			// wire.%s` reads redundant under Dart's flow analysis (§11)
+			g.pf("        final v = node as wire.%s;\n", r)
+			g.pf("        if (!_cook%s(v, c, at)) return false;\n", r)
+			g.pf("        if (_carve%s(v, c, at, at + %d, 0) < 0) return false;\n", r, recordBytes)
 			g.pf("        return true;\n")
 		} else {
 			g.pf("        return _cook%s(node as wire.%s, c, at);\n", r, r)
@@ -618,11 +631,25 @@ func (g *cookGen) emitCookVariableCarve(name string) {
 	if !recordHasLists(g.unit, rs) {
 		return
 	}
+	// gather the carve body first, then declare only the locals the body reads
+	// — a record whose carve walks only nested lists has no `out`/`order` use,
+	// and Dart flags them as `unused_local_variable`. Reuse the same builder-
+	// swap trick as emitCookVariableRecord: strings.Builder must not be copied
+	// after first use, so the carve body goes into a brand new builder.
+	outer := g.body
+	g.body = strings.Builder{}
+	g.emitCookExtentFields(rs, "value", "    ", true, "at", "base")
+	body := g.body.String()
+	g.body = outer
 	g.pf("  // The extent's carve (§7.6): the same pre-order walk, writing.\n")
 	g.pf("  static int _carve%s(wire.%s value, TableCookGraph c, int at, int base, int point) {\n", name, name)
-	g.pf("    final out = c.out;\n")
-	g.pf("    final order = c.order;\n")
-	g.emitCookExtentFields(rs, "value", "    ", true, "at", "base")
+	if cookUsesOut.MatchString(body) {
+		g.pf("    final out = c.out;\n")
+	}
+	if cookUsesOrder.MatchString(body) {
+		g.pf("    final order = c.order;\n")
+	}
+	g.pf("%s", body)
 	g.pf("    return point;\n  }\n\n")
 }
 
@@ -648,7 +675,12 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 			g.pf("%s  final l = %s.%s;\n", ind, expr, fieldMember(f))
 			g.pf("%s  final n = l.length;\n", ind)
 			g.pf("%s  point = ((point + %d - 1) & ~(%d - 1));\n", ind, align, align)
-			g.pf("%s  final start = point;\n", ind)
+			// `start` is the list's base address; the carve half reads it to
+			// write the slot and to walk nested lists, the measure half reads
+			// neither (§7.2)
+			if write {
+				g.pf("%s  final start = point;\n", ind)
+			}
 			g.pf("%s  point += n * %d;\n", ind, size)
 			if write {
 				g.pf("%s  if (out != null) {\n", ind)
@@ -659,7 +691,10 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 				if ref := tableRef(f); ref != nil {
 					g.pf("%s      if (!_cook%s(l[i], c, array + i * %d)) return -1;\n", ind, ref.Name, size)
 				} else {
-					g.emitCookFixedScalar(f, "l[i]", fmt.Sprintf("array + i * %d", size), size, ind+"      ")
+					// already guarded by the outer `if (out != null)` (the slot
+					// writes above would have crashed without it), so the inner
+					// `if (out != null)` emitCookFixedScalar would add is dead
+					g.emitCookFixedScalar(f, "l[i]", fmt.Sprintf("array + i * %d", size), size, ind+"      ", true)
 				}
 				g.pf("%s    }\n%s  }\n", ind, ind)
 			}
@@ -789,7 +824,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 				zero = "0.0"
 			}
 			g.pf("%s  final e = i < %s.length ? %s[i] : %s;\n", ind, expr, expr, zero)
-			g.emitCookFixedScalar(f, "e", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
+			g.emitCookFixedScalar(f, "e", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ", false)
 		}
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayFixed:
@@ -803,7 +838,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		case ref != nil:
 			g.pf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;\n", ind, ref.Name, expr, offset, stride)
 		default:
-			g.emitCookFixedScalar(f, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
+			g.emitCookFixedScalar(f, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ", false)
 		}
 		g.pf("%s}\n", ind)
 	case isPointerTable(f):
@@ -823,7 +858,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 	case isWide(f):
 		g.emitCookVariableWide(f, expr, offset, ind)
 	default:
-		g.emitCookFixedScalar(f, expr, fmt.Sprintf("at + %d", offset), pieces[0].Size, ind)
+		g.emitCookFixedScalar(f, expr, fmt.Sprintf("at + %d", offset), pieces[0].Size, ind, false)
 	}
 }
 
