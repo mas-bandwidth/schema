@@ -984,16 +984,23 @@ int _tableMessageQuantizedBits(Uint8List sig, int at) {
 }
 
 /// bits_required(min, max): the width of max - min, and zero where the two
-/// are equal (ir.TableMessageBitsRequired).
+/// are equal (ir.TableMessageBitsRequired). The difference is taken in the
+/// 64-bit domain Go's int64 subtraction wraps in, and a span near 2^64 reads
+/// back negative in a Dart int: its uint64 bit length is 64, exactly what
+/// bits.Len64 answers after the same wrap.
 int _tableMessageBitsRequired(int min, int max) {
   if (max <= min) {
     return 0;
   }
-  var value = max - min;
+  final value = max - min;
+  if (value < 0) {
+    return 64;
+  }
   var width = 0;
-  while (value != 0) {
+  var v = value;
+  while (v != 0) {
     width++;
-    value >>= 1;
+    v >>= 1;
   }
   return width;
 }
