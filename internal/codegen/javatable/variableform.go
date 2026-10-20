@@ -2271,8 +2271,8 @@ public final class TableJson {
                         try {
                             v = Long.parseUnsignedLong(tok);
                         } catch (NumberFormatException e) {
-                            rep.clamped++;
-                            return max;
+                            rep.clamped++; // past what sixty-four bits hold
+                            v = -1L; // the largest unsigned magnitude; the range checks below add a second clamp when the bound is narrower than uint64
                         }
                     }
                 }
@@ -2403,7 +2403,7 @@ public final class TableJson {
                     return;
                 }
                 if (closing == '}') {
-                    scanString();
+                    String key = scanString();
                     if (bad) {
                         return;
                     }
@@ -2412,6 +2412,29 @@ public final class TableJson {
                         return;
                     }
                     p++;
+                    // A DEFINITION IN A SKIPPED VALUE STILL TAKES ITS LABEL, with no
+                    // node, so a later reference reads null rather than refusing
+                    // (docs/SPEC-TABLES.md §16.7, §17.5; read.go's skippedAmpersand).
+                    if ("&node".equals(key)) {
+                        long labelId = scanLabel();
+                        if (bad) {
+                            return;
+                        }
+                        if (!labels.containsKey(labelId)) {
+                            labels.put(labelId, new LabelEntry(null, 0L, false));
+                        }
+                        c = peek();
+                        if (c == ',') {
+                            p++;
+                            continue;
+                        }
+                        if (c == closing) {
+                            p++;
+                            return;
+                        }
+                        bad = true;
+                        return;
+                    }
                 }
                 skipValue();
                 if (bad) {
@@ -3592,10 +3615,20 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	m := varMember(f)
 	fmt.Fprintf(b, "                if (in.peek() == '[') {\n")
 	b.WriteString("                    in.p++;\n")
+	b.WriteString("                    int idx = 0;\n")
+	if f.Array != ir.ArrayList {
+		fmt.Fprintf(b, "                    int ab = %d;\n", f.ArrayBound)
+	} else {
+		b.WriteString("                    int ab = -1;\n")
+	}
 	b.WriteString("                    while (true) {\n")
 	b.WriteString("                        int ec = in.peek();\n")
 	b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
 	b.WriteString("                        if (ec == 0) { in.bad = true; break; }\n")
+	b.WriteString("                        if (ab >= 0 && idx >= ab) {\n")
+	b.WriteString("                            in.rep.clamped++;\n")
+	b.WriteString("                            in.skipValue();\n")
+	b.WriteString("                        } else {\n")
 	if variableWide(f) {
 		writeVariableWideJsonRead(b, f, "v."+m, true)
 	} else {
@@ -3649,6 +3682,8 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			}
 		}
 	}
+	b.WriteString("                            idx++;\n")
+	b.WriteString("                        }\n")
 	b.WriteString("                        ec = in.peek();\n")
 	b.WriteString("                        if (ec == ',') { in.p++; continue; }\n")
 	b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
@@ -3845,12 +3880,26 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		target := f.Type.Ref.(*ir.Struct)
 		b.WriteString("                if (in.peek() == '[') {\n")
 		b.WriteString("                    in.p++;\n")
+		b.WriteString("                    int idx = 0;\n")
+		if f.Array != ir.ArrayList {
+			fmt.Fprintf(b, "                    int ab = %d;\n", f.ArrayBound)
+		} else {
+			b.WriteString("                    int ab = -1;\n")
+		}
 		b.WriteString("                    while (true) {\n")
 		b.WriteString("                        int ec = in.peek();\n")
 		b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
 		b.WriteString("                        if (ec == 0) { in.bad = true; break; }\n")
-		b.WriteString("                        if (ec != '{') { in.skipValue(); in.rep.kindMismatch++; }\n")
+		b.WriteString("                        if (ab >= 0 && idx >= ab) {\n")
+		b.WriteString("                            // MORE ELEMENTS THAN THE BOUND: keep the prefix and\n")
+		b.WriteString("                            // count the excess, the wire's rule (docs/SPEC-TABLES.md\n")
+		b.WriteString("                            // §4, §16.2). A definition in the dropped tail still\n")
+		b.WriteString("                            // takes its label, so a reference reads null (§16.7).\n")
+		b.WriteString("                            in.rep.clamped++;\n")
+		b.WriteString("                            in.skipValue();\n")
+		b.WriteString("                        } else if (ec != '{') { in.skipValue(); in.rep.kindMismatch++; }\n")
 		fmt.Fprintf(b, "                        else { %sVariable.Value e = new %sVariable.Value(); %sVariable.jsonReadFields(in, e); v.%s.add(e); }\n", target.Name, target.Name, target.Name, m)
+		b.WriteString("                        idx++;\n")
 		b.WriteString("                        ec = in.peek();\n")
 		b.WriteString("                        if (ec == ',') { in.p++; continue; }\n")
 		b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
