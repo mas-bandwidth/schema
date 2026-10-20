@@ -161,6 +161,21 @@ The type surface emits `<Base>.lua` per schema file; the table surface emits
 one self-contained `<Package>Tables.lua` per unit (it requires no packet
 module) plus the table runtime.
 
+## THE MESSAGE FORM'S ANNOUNCEMENT
+
+`M.announceRead` reads the announcement as the ordinary form-`1` file
+[SPEC-TABLES.md](SPEC-TABLES.md) §3.3 defines, not as a byte-for-byte match
+with the unit's own constant: the build version keys the vocabulary and gates
+nothing, so an engine announcement at another build reads. It walks the
+trailer, applies the two strict body checks (one build version, kind `9`,
+eight bytes; one vocabulary, kind `14` over element kind `6`), and counts the
+entries before resolving the unit's projection-order vocabulary. The two
+receiver bounds are arguments: the vocabulary field's byte length is checked
+before an entry is touched and the entry count is refused at the entry past
+the caller's capacity, both as `vocabulary_too_large`. `_M.AnnounceRead`
+forwards them, and the shared hostile corpus's runner states `MaxBytes=8` and
+`MaxEntries=1` for its two bound cases.
+
 ## THE HARNESS
 
 Lua has the `io` library, so the conformance driver is ONE lua process per
