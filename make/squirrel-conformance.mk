@@ -50,3 +50,43 @@ conformance-negative-control-squirrel: build/conformance-harness build/conforman
 		exit 1; \
 	fi; \
 	echo "Squirrel conformance negative control: the load saboteur is caught by report, not wire"
+
+# THE EMBEDDED RUNTIME IS A BUILD INPUT. squirreltable.go carries
+# `//go:embed runtime/*.nut`, but the Makefile's GO_SOURCES names only *.go, so
+# without this prerequisite a runtime change leaves build/schema-squirrel — and
+# the corpus it generates — holding the OLD emitter (docs/PORT-SQUIRREL.md, THE
+# HARNESS; docs/SPEC-TABLES.md §3). The wire surface then compares saves from a
+# runtime the source no longer names. Naming the files here rebuilds the tagged
+# compiler, and the corpus, whenever a runtime moves.
+build/schema-squirrel: $(wildcard internal/codegen/squirreltable/runtime/*.nut)
+
+# THE WIRE PIN. A clean build every time (a stale corpus is the failure this
+# gate exists to catch), then the Squirrel leg alone. The wire cell must be a
+# pass with no `squirrel / wire:` failure line, and its passing count may never
+# fall below SQUIRREL_WIRE_PIN — the count at the head this gate landed on.
+# Setting it lower is how a regression becomes a new baseline, so it is raised
+# only when a card adds wire cases (docs/SPEC-TABLES.md §3).
+SQUIRREL_WIRE_PIN ?= 73
+
+.PHONY: conformance-squirrel-wire-pin
+conformance-squirrel-wire-pin: build/conformance-harness toolchain-squirrel
+	@set -eu; \
+	rm -rf build/conformance-squirrel build/schema-squirrel; \
+	$(MAKE) build/conformance-harness build/conformance-squirrel; \
+	./build/conformance-harness run --only squirrel > build/squirrel-wire-pin.log 2>&1 || true; \
+	cat build/squirrel-wire-pin.log; \
+	if grep -q 'squirrel / wire:' build/squirrel-wire-pin.log; then \
+		echo "SQUIRREL WIRE PIN FAILED: the wire surface has a failure above" >&2; \
+		exit 1; \
+	fi; \
+	cell=$$(grep '^wire ' build/squirrel-wire-pin.log | head -1); \
+	if ! printf '%s\n' "$$cell" | grep -q 'pass '; then \
+		echo "SQUIRREL WIRE PIN FAILED: the wire cell does not read a pass ($$cell)" >&2; \
+		exit 1; \
+	fi; \
+	pass=$$(printf '%s\n' "$$cell" | sed -E 's/.*pass ([0-9]+)\/[0-9]+.*/\1/'); \
+	if [ "$$pass" -lt "$(SQUIRREL_WIRE_PIN)" ]; then \
+		echo "SQUIRREL WIRE PIN FAILED: $$pass passing, the pin is $(SQUIRREL_WIRE_PIN)" >&2; \
+		exit 1; \
+	fi; \
+	echo "Squirrel wire pin: $$cell (pin $(SQUIRREL_WIRE_PIN))"
