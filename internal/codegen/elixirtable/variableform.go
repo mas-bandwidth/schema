@@ -3319,12 +3319,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # ---- the region measure (docs/SPEC-TABLES.md §4.2, §6.5) ----
   #
   # load_measure/2 answers the region bytes a variable-class Load owes: the
-  # root's node bytes (its record plus every list extent the value reaches),
-  # each node record's storage, and the attribution directory of one u64 pair
-  # per record plus the root (§6.3). It is the number the Go, C, C++ and C#
-  # backends answer, so a caller sizes a region and the harness's oracle holds
-  # the measure to the framing's bound. A wire this reader cannot open, or a
-  # list count past the storage cap, answers -1.
+  # root's record plus every list extent its value reaches (§4.2, §6.5), every
+  # node record the framing commands and its own extents, the attribution
+  # directory of one u64 pair per record plus the root (§6.3), and a *string or
+  # *bytes blob's storage rounded as a node. It is the number
+  # internal/tablewire's FileRegionMeasure answers for the same framing: damage
+  # this reader can step over does not shrink the region the framing commands.
+  # A wire this reader cannot open, or a list count past the storage cap,
+  # answers -1.
 
   def load_measure(table, _data) when table in @uncarried, do: -1
 
@@ -3337,8 +3339,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       {:ok, body, ids} ->
         with {:ok, at} <- extent(desc, body, ids),
-             {:ok, count, blobs} <- measure_nodes(body, ids) do
-          region_round(region_round(desc.size) + at) + blobs + (count + 1) * 16
+             {:ok, count, storage} <- measure_nodes(body, ids) do
+          region_round(region_round(desc.size) + at) + storage + (count + 1) * 16
         else
           _ -> -1
         end
@@ -3349,13 +3351,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp align_to(n, a), do: div(n + a - 1, a) * a
 
-  # extent walks one body's triples summing the storage its list fields command
-  # (docs/SPEC-TABLES.md §3.1, §6.5): a list's elements are inside its holder's
-  # node extent, count × elem_size at elem_align, and the walk recurses into
-  # each element body so a list inside a list is counted where it lives.
-  defp extent(desc, bin, ids), do: extent(desc, bin, ids, 0)
+  # extent walks one body's triples summing the storage its fields command
+  # (docs/SPEC-TABLES.md §3.1, §6.5): a list's or map's elements are inside its
+  # holder's node extent, count × elem_size at elem_align, and the walk recurses
+  # into every element body and every by-value subtable so a list inside a list
+  # is counted where it lives. A pointer field adds nothing here: its node is a
+  # record in the node table and is sized there (§3.1).
+  defp extent(desc, bin, ids), do: extent_body(desc, bin, ids, 0)
 
-  defp extent(desc, bin, ids, at) do
+  defp extent_body(desc, bin, ids, at) do
     case leb(bin) do
       :error ->
         {:ok, at}
@@ -3371,30 +3375,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           id ->
             case rest do
               <<kind, rest2::binary>> ->
-                field = find_field(desc, id)
+                case slice(rest2, kind) do
+                  {:ok, payload, rest3} ->
+                    case extent_field(find_field(desc, id), kind, payload, ids, at) do
+                      :error -> :error
+                      {:ok, at2} -> extent_body(desc, rest3, ids, at2)
+                    end
 
-                if field != nil and field.t == :list and kind == 14 do
-                  case slice(rest2, kind) do
-                    {:ok, payload, rest3} ->
-                      case leb(payload) do
-                        {_l, arr} ->
-                          case list_extent(field, arr, ids, at) do
-                            :error -> :error
-                            {:ok, at2} -> extent(desc, rest3, ids, at2)
-                          end
-
-                        :error ->
-                          {:ok, at}
-                      end
-
-                    :error ->
-                      {:ok, at}
-                  end
-                else
-                  case slice(rest2, kind) do
-                    {:ok, _payload, rest3} -> extent(desc, rest3, ids, at)
-                    :error -> {:ok, at}
-                  end
+                  :error ->
+                    {:ok, at}
                 end
 
               _ ->
@@ -3404,31 +3393,77 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp list_extent(field, arr, ids, at) do
-    case arr do
-      <<13, count_rest::binary>> ->
-        case leb(count_rest) do
-          :error ->
-            :error
+  defp extent_field(nil, _kind, _payload, _ids, at), do: {:ok, at}
+  defp extent_field(%{t: :pointer}, _kind, _payload, _ids, at), do: {:ok, at}
 
-          {count, elems} ->
-            if count > 0x7FFFFFFF do
-              :error
-            else
-              if count > div(byte_size(elems), 2) do
-                :error
-              else
-                at = align_to(at, field.elem_align) + count * field.elem_size
-                elem_desc = Map.fetch!(@tables, field.elem)
-                elements_extent(elem_desc, elems, count, ids, at)
-              end
-            end
-        end
+  defp extent_field(%{t: :map} = f, _kind, payload, ids, at),
+    do: extent_array(f, f.elem, 13, payload, ids, at, true)
 
-      _ ->
-        {:ok, at}
+  defp extent_field(%{t: :list} = f, _kind, payload, ids, at),
+    do:
+      extent_array(
+        f,
+        Map.get(f, :elem),
+        f.elem_kind,
+        payload,
+        ids,
+        at,
+        not Map.has_key?(f, :array_bound)
+      )
+
+  defp extent_field(%{t: :table} = f, _kind, payload, ids, at) do
+    case leb(payload) do
+      {_l, body} -> extent_body(Map.fetch!(@tables, f.elem), body, ids, at)
+      :error -> {:ok, at}
     end
   end
+
+  defp extent_field(_f, _kind, _payload, _ids, at), do: {:ok, at}
+
+  defp extent_array(field, elem, expected, payload, ids, at, counted) do
+    case leb(payload) do
+      :error ->
+        {:ok, at}
+
+      {_l, content} ->
+        case content do
+          <<kind, rest::binary>> when kind == expected ->
+            case leb(rest) do
+              :error ->
+                {:ok, at}
+
+              {count, elems} ->
+                if count > 0x7FFFFFFF or count > div(byte_size(elems), elem_floor(kind)) do
+                  :error
+                else
+                  at =
+                    if counted,
+                      do: align_to(at, field.elem_align) + count * field.elem_size,
+                      else: at
+
+                  if kind in [13, 15] do
+                    elements_extent(Map.fetch!(@tables, elem), elems, count, ids, at)
+                  else
+                    {:ok, at}
+                  end
+                end
+            end
+
+          _ ->
+            {:ok, at}
+        end
+    end
+  end
+
+  # elem_floor is the least wire width one element can occupy (§3's kind
+  # widths), the bound FileRegionMeasure uses to refuse an impossible count.
+  defp elem_floor(13), do: 2
+  defp elem_floor(17), do: 1
+  defp elem_floor(kind) when kind in [1, 2, 6, 20, 25], do: 1
+  defp elem_floor(kind) when kind in [3, 7, 21, 26], do: 2
+  defp elem_floor(kind) when kind in [4, 8, 10, 22, 27], do: 4
+  defp elem_floor(kind) when kind in [5, 9, 11, 23, 28, 18, 19, 24, 29], do: 8
+  defp elem_floor(_kind), do: 1
 
   defp elements_extent(_desc, _elems, 0, _ids, at), do: {:ok, at}
 
@@ -3441,7 +3476,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         body = binary_part(rest, 0, len)
         after_body = binary_part(rest, len, byte_size(rest) - len)
 
-        case extent(desc, body, ids, at) do
+        case extent_body(desc, body, ids, at) do
           :error -> :error
           {:ok, at2} -> elements_extent(desc, after_body, n - 1, ids, at2)
         end
@@ -3452,10 +3487,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # measure_nodes reads the node table out of the root body and sums the storage
-  # each record commands (docs/SPEC-TABLES.md §3.1): a *string blob is its u32
-  # length header, its bytes and its terminator, rounded; a type id this build
-  # cannot name commands none. A node table that cannot be read whole commands
-  # nothing, exactly as a reader that cannot name it steps over it.
+  # each record commands (docs/SPEC-TABLES.md §3.1, §6.3): a table record is its
+  # rounded record layout plus the extents its body commands; a *string or
+  # *bytes blob is its u32 length header, its bytes and (for a string) its
+  # terminator, rounded; a type id this build cannot name commands none. A node
+  # table that cannot be read whole commands nothing, exactly as a reader that
+  # cannot name it steps over it.
   defp measure_nodes(bin, ids) do
     case leb(bin) do
       :error ->
@@ -3476,7 +3513,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                   {:ok, payload, rest3} ->
                     if id == @node_id and kind == 12 do
                       case measure_node_table(payload, ids) do
-                        {:ok, count, blobs} -> {:ok, count, blobs}
+                        {:ok, count, storage} -> {:ok, count, storage}
                         :error -> {:ok, 0, 0}
                       end
                     else
@@ -3509,21 +3546,47 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp measure_records(_rest, 0, _ids, count, blobs), do: {:ok, count, blobs}
+  defp measure_records(rest, 0, _ids, count, storage) do
+    if byte_size(rest) == 0, do: {:ok, count, storage}, else: :error
+  end
 
-  defp measure_records(rest, n, ids, count, blobs) do
+  defp measure_records(rest, n, ids, count, storage) do
     with {tref, r1} <- leb(rest),
+         true <- tref != 0,
          {len, r2} <- leb(r1),
          true <- byte_size(r2) >= len do
-      blobs =
-        case resolve(ids, tref) do
-          @string_id -> blobs + region_round(8 + len + 1)
-          _ -> blobs
-        end
+      body = binary_part(r2, 0, len)
+      tail = binary_part(r2, len, byte_size(r2) - len)
 
-      measure_records(binary_part(r2, len, byte_size(r2) - len), n - 1, ids, count + 1, blobs)
+      case node_storage(resolve(ids, tref), body, ids) do
+        :error -> :error
+        {:ok, bytes} -> measure_records(tail, n - 1, ids, count + 1, storage + bytes)
+      end
     else
       _ -> :error
+    end
+  end
+
+  defp node_storage(:error, _body, _ids), do: :error
+
+  defp node_storage(id, body, ids) do
+    case Map.fetch(@node_types, id) do
+      {:ok, :string} ->
+        {:ok, region_round(8 + byte_size(body) + 1)}
+
+      {:ok, :bytes} ->
+        {:ok, region_round(8 + byte_size(body))}
+
+      {:ok, name} ->
+        desc = Map.fetch!(@tables, name)
+
+        case extent(desc, body, ids) do
+          :error -> :error
+          {:ok, at} -> {:ok, region_round(region_round(desc.size) + at)}
+        end
+
+      :error ->
+        {:ok, 0}
     end
   end
 `
