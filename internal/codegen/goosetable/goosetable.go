@@ -30,10 +30,12 @@ import (
 // (docs/PORT-GOOSE.md, THE RUNTIME LAYOUT).
 const RuntimeModule = "schema_tables"
 
-//go:embed runtime/*.goose
+//go:embed runtime/*.goose runtime/registry
 var runtimeFS embed.FS
 
-// Runtime returns every runtime/*.goose file, keyed by basename.
+// Runtime returns every runtime/*.goose file, keyed by basename, with
+// schema_tables.goose carrying THE REGISTRY assembled from every
+// runtime/registry/*.goosereg fragment (registry.go).
 func Runtime() map[string][]byte {
 	out := map[string][]byte{}
 	entries, err := runtimeFS.ReadDir("runtime")
@@ -41,7 +43,35 @@ func Runtime() map[string][]byte {
 		panic(err)
 	}
 	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
 		data, err := runtimeFS.ReadFile(path.Join("runtime", e.Name()))
+		if err != nil {
+			panic(err)
+		}
+		out[e.Name()] = data
+	}
+	tables, err := assembleRegistry(out[RuntimeModule+".goose"], registryFragments())
+	if err != nil {
+		panic(err) // the fragments are compiled in; TestGooseRegistryEmbeddedAssembles names the defect
+	}
+	out[RuntimeModule+".goose"] = tables
+	return out
+}
+
+// registryFragments is every runtime/registry/*.goosereg, keyed by basename.
+func registryFragments() map[string][]byte {
+	out := map[string][]byte{}
+	entries, err := runtimeFS.ReadDir(RegistryDir)
+	if err != nil {
+		panic(err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), RegistryExt) {
+			continue
+		}
+		data, err := runtimeFS.ReadFile(path.Join(RegistryDir, e.Name()))
 		if err != nil {
 			panic(err)
 		}

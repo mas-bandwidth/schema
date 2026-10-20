@@ -238,10 +238,36 @@ Fixed now for the pro cards; never renamed.
 | `internal/codegen/goosetable/goosetable.go` | the TABLE emitter: structs, constructors and one DESCRIPTOR per table as data, and `goosetable.Register` | this card only |
 | `internal/codegen/goosetable/<form>.go` | a form's emitted code (the per-table accessor), joined through `goosetable.Register` | fixedform.go, messageform.go, … — one per card |
 | `internal/codegen/goosetable/runtime/*.goose` | the table runtime by glob, one file per card: `schema_tables.goose` now (the descriptor types); `load.goose`, `save.goose`, `fixed.goose`, `message.goose`, … later | one file per card |
+| `internal/codegen/goosetable/runtime/registry/<construct>.goosereg` | THE REGISTRY's fragments: a card's dispatch registrations (an enum variant, a table row), assembled onto the end of `schema_tables.goose` when the target emits it (`goosetable/registry.go`) | one file per card; none edits another's, and none edits a registry's enum or array in a `.goose` file |
 | `internal/codegen/goose/gooserun` | THE HARNESS's helper | this card |
 | `test/conformance/goose/driver`, `ci.json`, `main.goose` | the conformance leg | this card (driver, ci.json); conformance-leg (`main.goose`) |
 | `make/goose.mk` | the leg's build: `dist-goose`, `toolchain-goose`, `test-goose`, `build/conformance-goose` | this card; later cards add their own `make/goose-*.mk` |
 | `bench/tables/goose/leg` | the tables-bench leg, ABSENT until a codec exists | schema-goose-bench |
+
+**The registry.** Goose has no function values in data, and an enum or an
+array literal is ONE declaration, so a dispatch table every construct card
+extends (a `Loader` variant and its `load_registry` row per kind, the same for
+the save walk) would be one shared list that fourteen cards edit, and their
+landings would conflict row against row. So a registry is never written as a
+literal in a `.goose` file. Each card writes its own fragment,
+`goosetable/runtime/registry/<construct>.goosereg`, and `goosetable.Runtime`
+assembles every fragment onto the end of `schema_tables.goose` (namespace
+`schema_rt`, so every walker that imports `.schema_tables` sees it). A
+fragment is lines (blank and `//` lines ignored): `declare enum <Name>`,
+`declare array <name> <ElemType>`, and `add <registry> <rank> <entry>`, an
+entry being one variant identifier or one element's Goose text, with an
+optional trailing `//` comment. A registry is declared once, by the card that
+owns its walker (table-wire-load declares `Loader` and `load_registry`;
+table-wire-save its own), and takes entries from any fragment. Entries are
+ordered by rank, then fragment name, then line, so a first-match table states
+its precedence by rank and never by landing order: a narrower row takes a
+lower rank than the wider row it shadows. The element type, the enum's case
+functions and the walker stay in the owning card's runtime file. Strict on
+write, each refused by file and line: an unknown directive, a registry
+declared twice or left without an entry, an entry for an undeclared registry,
+a non-integer rank, a repeated or non-identifier variant. No fragment, no
+change: `schema_tables.goose` is then emitted byte for byte as written
+(`TestGooseRegistry*` in `goosetable/registry_test.go`).
 
 **Modules.** One module per schema file, `<Base>.goose` (the type surface),
 and `<Base>Table.goose` for a file with tables or with a packet type a table
