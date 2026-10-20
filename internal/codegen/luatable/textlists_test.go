@@ -81,7 +81,7 @@ hexline(save.Save(T, "L", fill(T.NewL())))
 hexline(save.Save(T, "T", fill(T.NewT())))
 
 local r = report()
-local got = load.Load(T, "T", inputs.wireL, r)
+local got = load.LoadTolerant(T, "T", inputs.wireL, r)
 print(string.format("load %d %s %s %s %s %s %d %s [%s] %s %s %s %d %s %d",
   #got.names, got.names[1].value, got.names[2].value,
   tostring(got.first[1].value_present), got.first[1].value, tostring(got.first[2].value_present),
@@ -103,7 +103,7 @@ print(string.format("refuse %s %s %s %s",
 
 local function over(name, wire)
   local rr = report()
-  local g = load.Load(T, "T", inputs[wire], rr)
+  local g = load.LoadTolerant(T, "T", inputs[wire], rr)
   if name == "names" then
     print(string.format("over names %d %d %s%s%s", rr.clamped, #g.names, g.names[1].value, g.names[2].value, g.names[3].value))
   elseif name == "first" then

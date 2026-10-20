@@ -1241,14 +1241,18 @@ local function resolve(ctx, root, rootdesc)
   end
 end
 
--- Load loads a form-1 wire for table `name` of module T into a fresh value,
--- fills report, and returns the value. A FIXED root (no pointer in its
+-- LoadTolerant loads a form-1 wire for table `name` of module T into a fresh
+-- value, fills report, and returns the value. A FIXED root (no pointer in its
 -- by-value closure, docs/SPEC-TABLES.md §2.2) ALWAYS LOADS (§4.2, §6.5;
 -- internal/tablewire decodeWith): a wire refused by its form byte (§3) or one
 -- that does not open (an empty or short wire, an unreadable trailer, bytes
 -- after the root's terminator) answers the root at its defaults, with the
 -- report saying what happened. Only a VARIABLE root answers nil there.
-function L.Load(T, name, bytes, report)
+--
+-- This is THE TOLERANT READ (docs/SPEC-TABLES.md §6.5), under its explicit
+-- name: it keeps the recovered value and its report. The plain L.Load below is
+-- the strict read.
+function L.LoadTolerant(T, name, bytes, report)
   local desc = T.Tables[name]
   -- THE INTEGRITY TRAILER (§2.14, §3.4): a declaring root's form-1 file ends
   -- with the little-endian CRC-32C of every byte before it. The form byte is
@@ -1322,6 +1326,57 @@ function L.Load(T, name, bytes, report)
   local root = fresh(T, desc)
   read_body(T, ctx, desc, new_reader(bytes, 1, o.lim), root, false)
   resolve(ctx, root, desc)
+  return root
+end
+
+-- strict_refusal answers the refusal's §11/§6.5 name when the strict read
+-- refuses this wire, and nil when it accepts it. It reads the FORM BYTE FIRST
+-- in refusal.lua's order (§2.14, §6.5), then the report the tolerant walk just
+-- filled: a refused form, malformed (the trailer check's integrity_mismatch
+-- included, §2.14), then the four counters clamped, kind_mismatch, duplicate,
+-- unknown. The set is the one refusal.lua's ReadStrict owns; this entry reads
+-- the variable form, so a form-3 byte is the previous form here (§3).
+local function strict_refusal(bytes, report)
+  if type(bytes) ~= "string" then return "malformed" end
+  local form = #bytes >= 1 and bytes:byte(1) or nil
+  if form == nil then return "malformed" end
+  if form ~= 1 then
+    if form == 2 then return "message_form_as_file" end
+    if form == 3 then return "previous_form" end
+    return "unknown_form"
+  end
+  if report.refused ~= 0 then return "unknown_form" end
+  if report.malformed then return report.reason or "malformed" end
+  if report.clamped > 0 then return "clamped" end
+  if report.kindMismatch > 0 then return "kind_mismatch" end
+  if report.duplicate > 0 then return "duplicate" end
+  if report.unknown > 0 then return "unknown" end
+  return nil
+end
+
+-- Load is THE STRICT READ (docs/SPEC-TABLES.md §6.5: THE PLAIN NAME IS THE
+-- STRICT READ): it runs the tolerant walk into the caller's report, overwriting
+-- it with THIS read's report (every counter counted as the tolerant read counts
+-- it), and answers the root only where the strict set accepts the wire.
+-- Otherwise it answers nil, raising nothing, with report.reason naming the
+-- refusal. A nil report refuses the same way (§6.5).
+function L.Load(T, name, bytes, report)
+  local r = report
+  if r == nil then r = {} end
+  r.malformed = false
+  r.refused = 0
+  r.unknown = 0
+  r.kindMismatch = 0
+  r.clamped = 0
+  r.widened = 0
+  r.duplicate = 0
+  r.reason = nil
+  local root = L.LoadTolerant(T, name, bytes, r)
+  local reason = strict_refusal(bytes, r)
+  if reason ~= nil then
+    r.reason = reason
+    return nil
+  end
   return root
 end
 

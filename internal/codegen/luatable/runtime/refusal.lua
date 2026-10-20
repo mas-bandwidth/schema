@@ -122,7 +122,7 @@ function R.ReadStrict(T, name, bytes, integrity)
   }
   local first = {}
   local proxied, wrapped = instrument(T, report, first)
-  local root = load.Load(proxied, name, bytes, wrapped)
+  local root = load.LoadTolerant(proxied, name, bytes, wrapped)
 
   if report.refused ~= 0 then refuse("unknown_form", name) end
   if report.malformed then refuse("malformed", first.malformed or name) end

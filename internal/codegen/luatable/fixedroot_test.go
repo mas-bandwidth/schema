@@ -59,7 +59,7 @@ local load = require("load")
 local inputs = require("inputs")
 for i = 1, %d do
   local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-  local v = load.Load(T, %q, inputs["w" .. i], report)
+  local v = load.LoadTolerant(T, %q, inputs["w" .. i], report)
   local verdict
   if report.refused > 0 then verdict = "refused" else verdict = "read" end
   print(string.format("%%s,%%d,%%d,%%d,%%d,%%d,%%s,%%s", v ~= nil and "root" or "nil",

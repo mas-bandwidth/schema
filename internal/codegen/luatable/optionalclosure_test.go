@@ -155,10 +155,10 @@ local function hex(s)
   if s == nil then return "nil" end
   return (s:gsub(".", function(c) return string.format("%%02x", c:byte()) end))
 end
-local a = load.Load(T, "Outer", inputs.absent, report())
+local a = load.LoadTolerant(T, "Outer", inputs.absent, report())
 print("measure_absent=" .. tostring(load.LoadMeasure(T, "Outer", inputs.absent)))
 print("json_absent=" .. hex(json.ToJson(T, "Outer", a)))
-local p = load.Load(T, "Outer", inputs.present, report())
+local p = load.LoadTolerant(T, "Outer", inputs.present, report())
 print("measure_present=" .. tostring(load.LoadMeasure(T, "Outer", inputs.present)))
 print("json_present=" .. hex(json.ToJson(T, "Outer", p)))
 p.inner_present = false

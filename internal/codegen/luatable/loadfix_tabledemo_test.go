@@ -80,7 +80,7 @@ local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
 local function hex(s)
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
-local v = load.Load(T, "` + root + `", wire, report)
+local v = load.LoadTolerant(T, "` + root + `", wire, report)
 local loaded = 0
 local savedHex = "none"
 if v ~= nil then
