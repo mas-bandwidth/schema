@@ -246,6 +246,65 @@ func runProbe(t *testing.T, g *loadUnit, rows []loadRow) (string, [][2]string, [
 	return build, first, again, saves
 }
 
+// refusalProgram is one Lobster main for the WRITE refusal (§2.15): it builds
+// a fresh record and puts a retired variant in a scalar field and in an array
+// element, then names what the strict write answered.
+func refusalProgram(g *loadUnit) string {
+	var b strings.Builder
+	for _, m := range g.mods {
+		fmt.Fprintf(&b, "import .%s\n", m)
+	}
+	b.WriteString("import .load\n")
+	b.WriteString("import .schema_save\n")
+	b.WriteString("import .defaults_renames\n")
+	b.WriteString(`def refusal(root:string, field:string, value:int, element:bool, at:int):
+    let d = schema_rt.lookup_table(root)
+    assert d
+    let rec = schema_rt.new_record(d)
+    for(rec.fields) sl:
+        if sl.fd.name == field:
+            if element:
+                sl.elems[at].i = value
+                sl.count = at + 1
+            else:
+                sl.cell.i = value
+    let out = schema_rt.save_strict(rec)
+    print(if out == "": "refused" else: "wrote")
+`)
+	b.WriteString("refusal(\"Ship\", \"kind\", 2, false, 0)\n")
+	b.WriteString("refusal(\"Ship\", \"kinds\", 2, true, 1)\n")
+	return b.String()
+}
+
+// runRefusalProbe generates and runs the refusal probes, returning the two
+// answers in order.
+func runRefusalProbe(t *testing.T, g *loadUnit) []string {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"),
+		[]byte(refusalProgram(g)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := strings.TrimRight(string(lobsterrun.Run(t, g.dir, "main.lobster", nil)), "\n")
+	return strings.Split(out, "\n")
+}
+
+// goRefuses is the reference's strict write (§2.15): encode a record holding
+// a retired variant and report whether the writer refused it.
+func goRefuses(t *testing.T, u *ir.Unit, rootName, field string, value uint64, element bool, at int) bool {
+	t.Helper()
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup(rootName))
+	fv := probeField(t, inst, field)
+	if element {
+		fv.Elems[at].U = value
+		fv.Count = at + 1
+	} else {
+		fv.Cell.U = value
+	}
+	_, err := tablewire.Encode(m, inst)
+	return err != nil
+}
+
 // saveRound is one row's save + re-load under Lobster: the bytes saved (empty
 // if save refused), the re-load report line, and the re-load value dump.
 type saveRound struct {
@@ -300,8 +359,8 @@ func reportLine(rep tabletext.Report) string {
 // agree with the reference report for report and dump for dump; the save
 // round trip must agree byte for byte and re-load for re-load with the Go
 // engine, for every construct save can carry. The write refusal for a
-// `| deprecated` variant is reported PATHS-PROPOSED: save.lobster has no
-// per-kind hook the deprecation rule can join without itself being edited.
+// `| deprecated` variant is the strict write: save_strict refuses a retired
+// variant in a scalar field and in an array element, as the reference does.
 func TestLobsterDefaultsAndRenames(t *testing.T) {
 	t.Parallel()
 	old, err := generateLoadUnit(t, []string{writeSchema(t, "Defaults", defaultsOld)})
@@ -404,14 +463,36 @@ func TestLobsterDefaultsAndRenames(t *testing.T) {
 			t.Errorf("%s %s: the saved-reload value is not the reference's at byte %s", row.kind, row.name, divergence(saves[i].dump, gtDump))
 		}
 	}
+	refusals := runRefusalProbe(t, g)
+	probes := []struct {
+		field   string
+		value   uint64
+		element bool
+		at      int
+	}{
+		{field: "kind", value: 2},
+		{field: "kinds", value: 2, element: true, at: 1},
+	}
+	for i, p := range probes {
+		if !goRefuses(t, g.u, "Ship", p.field, p.value, p.element, p.at) {
+			t.Errorf("write refusal %s: the Go writer did not refuse a retired variant", p.field)
+		}
+		got := ""
+		if i < len(refusals) {
+			got = refusals[i]
+		}
+		if got != "refused" {
+			t.Errorf("write refusal %s: the strict write answered %q, want refused", p.field, got)
+		}
+	}
 	if t.Failed() {
 		return
 	}
 	t.Logf("defaults: string=1 bytes=1 flags=1 (old wire, new reader; load, re-load and save-reload equal Go)")
 	t.Logf("renames: table=1 field=1 type-field=1 variant=1 arm=1 (old ids, new names; save round trip agrees with Go)")
 	t.Logf("deprecated: scalar=1 element=1 (reads as the field/element default, §2.15; save round trip agrees with Go)")
+	t.Logf("write refusal: scalar=1 element=1 (a retired variant is refused on save, §2.15; save_strict answers \"\")")
 	t.Logf("build version: 1 value %s (docs/SPEC-TABLES.md §20)", build)
-	t.Logf("write refusal for §2.15's deprecated variant on save: PATHS-PROPOSED — save.lobster has no per-kind hook for `save_enum_ref` to refuse a retired variant; the rule is a one-line `if variant_retired(...): return false` edit to save.lobster this card does not touch")
 }
 
 // TestLobsterDefaultsAndRenamesNegativeControl patches the emitted runtime's
