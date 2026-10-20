@@ -87,7 +87,13 @@ func javaRecordType(t ir.FieldType) string {
 		return "float"
 	case ir.TFloat64:
 		return "double"
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		if t.Width > 64 {
+			if t.Signed {
+				return "Int128"
+			}
+			return "UInt128"
+		}
 		return intJavaType(t.Width)
 	case ir.TBits:
 		if t.Width <= 32 {
@@ -122,6 +128,10 @@ func readCall(typ, at string) string {
 		return "TableBytes.f32(data, " + at + ")"
 	case "double":
 		return "TableBytes.f64(data, " + at + ")"
+	case "Int128":
+		return "new Int128(TableBytes.i64(data, (" + at + ") + 8), TableBytes.i64(data, " + at + "))"
+	case "UInt128":
+		return "new UInt128(TableBytes.i64(data, (" + at + ") + 8), TableBytes.i64(data, " + at + "))"
 	}
 	return "TableBytes.i8(data, " + at + ")"
 }
@@ -190,10 +200,12 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 		g.f("    public static int %sSlot(int at) { return at + %d; }\n", name, pieces[0].Offset)
 		g.f("    /** the raw SIGNED SELF-RELATIVE delta; zero is null. */\n")
 		g.f("    public static long %sDelta(byte[] data, int at) { return TableBytes.i64(data, at + %d); }\n\n", name, pieces[0].Offset)
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TWString:
 		what := "string"
 		if f.Type.Kind == ir.TBytes {
 			what = "bytes"
+		} else if f.Type.Kind == ir.TWString {
+			what = "wstring"
 		}
 		g.f("    /** %s(%d): the buffer's own offset and the used length beside it (§7.2).\n", what, f.Type.Size)
 		g.f("     *  The used bytes are data[%sAt(at) .. +%sLength(data, at)]. */\n", name, name)
@@ -336,6 +348,9 @@ func (g *rowGen) emitCookRecordInfo(name string, ml *ir.MemberLayout) {
 	if st := g.unit.Tables[name]; st != nil {
 		g.f("            info.typeId = 0x%016xL;\n", ir.TableWireId(st.WireName()))
 	}
+	if st := cookMember(g.unit, name); st != nil && refuseVariableFormClosure(st, map[string]bool{}) == nil {
+		g.f("            info.empty = new %sVariable.Value();\n", name)
+	}
 	g.f("            TableCookFieldInfo[] fields = new TableCookFieldInfo[%d];\n", len(ml.Fields))
 	for i, fl := range ml.Fields {
 		g.f("            fields[%d] = %s;\n", i, g.cookFieldInfo(fl))
@@ -346,14 +361,21 @@ func (g *rowGen) emitCookRecordInfo(name string, ml *ir.MemberLayout) {
 }
 
 func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
+	return cookFieldInfo(g.unit, fl)
+}
+
+func cookFieldInfo(u *ir.Unit, fl ir.FieldLayout) string {
 	f := fl.Field
 	names := "null"
 	if f.Type.Kind == ir.TNamed {
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok {
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
 			names = fmt.Sprintf("() -> %sRow.cookInfo()", ref.Name)
+		case *ir.Union:
+			names = fmt.Sprintf("() -> TableCookWrite.union%sCookInfo()", ref.Name)
 		}
 	}
-	pieces := ir.FieldPieces(g.unit, f, fl.Offset)
+	pieces := ir.FieldPieces(u, f, fl.Offset)
 	countOffset := int64(-1)
 	if f.Array == ir.ArrayCounted {
 		countOffset = pieces[len(pieces)-1].Offset
@@ -361,8 +383,8 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 			countOffset = pieces[len(pieces)-2].Offset
 		}
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-		// Only an INLINE string(N)/bytes(N) carries a count companion beside its
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+		// Only an INLINE string(N)/bytes(N)/wstring(N) carries a count companion beside its
 		// bytes; a *string/*bytes BLOB is a pointer slot (REFERENCE, §2.5, §6.3)
 		// and has no companion, so its countOffset stays -1.
 		if !f.Type.Pointer {
@@ -371,12 +393,12 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 	}
 	isArray := f.KeyEnum != "" || f.Array != ir.ArrayNone
 	bound := int64(1)
-	elemSize := fl.Size
+	elemSize := pieces[0].Size
 	if isArray {
 		bound = f.ArrayBound
 		elemSize = pieces[0].Size / bound
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
 		// the COUNT COMPANION of a string or a `bytes` bounds a walker just as an
 		// array's does (§7.4), and the bound is the declared length
 		bound = f.Type.Size
@@ -387,7 +409,7 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 		presentOffset = pieces[len(pieces)-1].Offset
 	}
 	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, %v, %d, %v, %d, %d, TableCookStorage.%s, %s)",
-		f.Name, member(f), fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, countOffset, presentOffset,
+		f.Name, varMember(f), fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, countOffset, presentOffset,
 		cookStorageKind(f), names)
 }
 
@@ -403,13 +425,13 @@ func cookStorageKind(f *ir.Field) string {
 		return "BOOL"
 	case ir.TFloat32, ir.TFloat64:
 		return "FLOAT"
-	case ir.TString:
+	case ir.TString, ir.TWString:
 		return "STRING"
 	case ir.TBytes:
 		return "BYTES"
 	case ir.TBits:
 		return "UNSIGNED"
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
 		if f.Type.Signed {
 			return "SIGNED"
 		}
@@ -418,7 +440,7 @@ func cookStorageKind(f *ir.Field) string {
 		switch f.Type.Ref.(type) {
 		case *ir.Enum, *ir.Flags:
 			return "UNSIGNED"
-		case *ir.Struct:
+		case *ir.Struct, *ir.Union:
 			return "RECORD"
 		}
 	}

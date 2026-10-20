@@ -13,6 +13,40 @@ import (
 func tableCookWriteSource(u *ir.Unit, ck *cookUnit) string {
 	var b strings.Builder
 	b.WriteString(tableCookWriteRuntime)
+	for _, un := range ck.unions {
+		size, align, tag, armOffset := ir.UnionLayout(u, un)
+		fmt.Fprintf(&b, "    private static volatile TableCookInfo union%sCookInfoCached;\n", un.Name)
+		fmt.Fprintf(&b, "    static TableCookInfo union%sCookInfo() {\n", un.Name)
+		fmt.Fprintf(&b, "        TableCookInfo info = union%sCookInfoCached;\n", un.Name)
+		fmt.Fprintf(&b, "        if (info == null) {\n")
+		fmt.Fprintf(&b, "            info = new TableCookInfo();\n")
+		fmt.Fprintf(&b, "            info.typeId = 0x%016xL;\n", ir.TableWireId(un.Name))
+		fmt.Fprintf(&b, "            info.size = %d;\n", size)
+		fmt.Fprintf(&b, "            info.align = %d;\n", align)
+		fmt.Fprintf(&b, "            info.tagSize = %d;\n", tag)
+		fmt.Fprintf(&b, "            info.numFields = %d;\n", len(un.Variants))
+		fmt.Fprintf(&b, "            TableCookFieldInfo[] fields = new TableCookFieldInfo[%d];\n", len(un.Variants))
+		mem := unionMembers(un)
+		for i, v := range un.Variants {
+			if v.Void() {
+				continue
+			}
+			one := *unionArmField(v)
+			one.Name = mem[i]
+			fl := ir.FieldLayout{
+				Field:  &one,
+				Offset: armOffset,
+				Size:   size - armOffset,
+				Align:  align,
+			}
+			fmt.Fprintf(&b, "            fields[%d] = %s;\n", i, cookFieldInfo(u, fl))
+		}
+		fmt.Fprintf(&b, "            info.fields = fields;\n")
+		fmt.Fprintf(&b, "            union%sCookInfoCached = info;\n", un.Name)
+		fmt.Fprintf(&b, "        }\n")
+		fmt.Fprintf(&b, "        return info;\n")
+		fmt.Fprintf(&b, "    }\n")
+	}
 	b.WriteString("    private static TableCookInfo info(long id) {\n")
 	for _, name := range ck.order {
 		st := u.Tables[name]
@@ -77,7 +111,14 @@ public final class TableCookWrite {
     private static int count(Object value, TableCookFieldInfo f, Object source)
             throws ReflectiveOperationException {
         if (source == null) { throw new IllegalArgumentException("null array"); }
-        if (f.countOffset < 0) { return f.arrayBound; }
+        if (f.countOffset < 0) {
+            if (source instanceof java.util.List<?>) {
+                int n = ((java.util.List<?>) source).size();
+                if (n > f.arrayBound) { throw new IllegalArgumentException("array count"); }
+                return n;
+            }
+            return f.arrayBound;
+        }
         try {
             return ((Number) field(value, f.sourceName + "Count")).intValue();
         } catch (NoSuchFieldException ignored) {
@@ -116,17 +157,33 @@ public final class TableCookWrite {
 
     private static void discover(Plan p, Object value, TableCookInfo info)
             throws ReflectiveOperationException {
-        for (TableCookFieldInfo f : info.fields) {
-            Object source = field(value, f.sourceName);
-            if (f.isArray) {
-                int used = count(value, f, source);
-                if (used < 0 || used > f.arrayBound || length(source) < used) {
-                    throw new IllegalArgumentException("array count");
-                }
-                for (int i = 0; i < used; i++) { discoverValue(p, element(source, i), f); }
-            } else {
-                discoverValue(p, source, f);
+        if (info.tagSize > 0) {
+            int tag = ((Number) field(value, "tag")).intValue();
+            if (tag < 0 || tag > info.numFields) {
+                throw new IllegalArgumentException("union tag");
             }
+            if (tag == 0) { return; }
+            TableCookFieldInfo f = info.fields[tag - 1];
+            if (f == null) { return; }
+            discoverField(p, value, f);
+            return;
+        }
+        for (TableCookFieldInfo f : info.fields) {
+            discoverField(p, value, f);
+        }
+    }
+
+    private static void discoverField(Plan p, Object value, TableCookFieldInfo f)
+            throws ReflectiveOperationException {
+        Object source = field(value, f.sourceName);
+        if (f.isArray) {
+            int used = count(value, f, source);
+            if (used < 0 || used > f.arrayBound || length(source) < used) {
+                throw new IllegalArgumentException("array count");
+            }
+            for (int i = 0; i < used; i++) { discoverValue(p, element(source, i), f); }
+        } else {
+            discoverValue(p, source, f);
         }
     }
 
@@ -189,7 +246,19 @@ public final class TableCookWrite {
             if (source != null && target == null) { throw new IllegalArgumentException("unnumbered pointer"); }
             put(out, order, at, target == null ? 0 : (64L + target.offset - at), 8);
         } else if (f.storage == TableCookStorage.RECORD) {
-            if (source != null) { record(p, out, order, at, source, f.record()); }
+            TableCookInfo sub = f.record();
+            Object rec = source != null ? source : (sub != null ? sub.empty : null);
+            if (rec != null) { record(p, out, order, at, rec, sub); }
+        } else if (f.elemSize == 16) {
+            long hi = source == null ? 0L : ((Number) field(source, "hi")).longValue();
+            long lo = source == null ? 0L : ((Number) field(source, "lo")).longValue();
+            if (order == BIG) {
+                put(out, order, at, hi, 8);
+                put(out, order, at + 8, lo, 8);
+            } else {
+                put(out, order, at, lo, 8);
+                put(out, order, at + 8, hi, 8);
+            }
         } else {
             put(out, order, at, bits(source, f.storage, f.elemSize), f.elemSize);
         }
@@ -197,40 +266,71 @@ public final class TableCookWrite {
 
     private static void record(Plan p, byte[] out, int order, long at, Object source, TableCookInfo info)
             throws ReflectiveOperationException {
-        for (TableCookFieldInfo f : info.fields) {
-            Object v = field(source, f.sourceName);
-            if (f.presentOffset >= 0) {
-                Object present = field(source, f.sourceName + "Present");
-                put(out, order, at + f.presentOffset, Boolean.TRUE.equals(present) ? 1 : 0, 1);
+        if (info.tagSize > 0) {
+            int tag = source == null ? 0 : ((Number) field(source, "tag")).intValue();
+            if (tag < 0 || tag > info.numFields) {
+                throw new IllegalArgumentException("union tag");
             }
-            long dest = at + f.offset;
-            if (f.storage == TableCookStorage.STRING || f.storage == TableCookStorage.BYTES) {
-                byte[] bytes = v instanceof String ? ((String) v).getBytes(java.nio.charset.StandardCharsets.UTF_8)
-                        : (byte[]) v;
-                if (bytes == null) { bytes = new byte[0]; }
-                int used = bytes.length;
-                if (!(v instanceof String)) {
-                    try { used = ((Number) field(source, f.sourceName + "Length")).intValue(); }
-                    catch (NoSuchFieldException ignored) { /* variable bytes use their full length */ }
-                }
-                if (used < 0 || used > f.arrayBound || used > bytes.length) {
+            put(out, order, at, tag, info.tagSize);
+            if (tag == 0) { return; }
+            TableCookFieldInfo f = info.fields[tag - 1];
+            if (f == null) { return; }
+            recordField(p, out, order, at, source, f);
+            return;
+        }
+        for (TableCookFieldInfo f : info.fields) {
+            recordField(p, out, order, at, source, f);
+        }
+    }
+
+    private static void recordField(Plan p, byte[] out, int order, long at, Object source, TableCookFieldInfo f)
+            throws ReflectiveOperationException {
+        Object v = field(source, f.sourceName);
+        if (f.presentOffset >= 0) {
+            Object present = field(source, f.sourceName + "Present");
+            put(out, order, at + f.presentOffset, Boolean.TRUE.equals(present) ? 1 : 0, 1);
+        }
+        long dest = at + f.offset;
+        if (f.storage == TableCookStorage.STRING || f.storage == TableCookStorage.BYTES) {
+            if (v instanceof char[]) {
+                char[] chars = (char[]) v;
+                int used = chars.length;
+                try { used = ((Number) field(source, f.sourceName + "Length")).intValue(); }
+                catch (NoSuchFieldException ignored) { /* variable wstring uses its full length */ }
+                if (used < 0 || used > f.arrayBound || used > chars.length) {
                     throw new IllegalArgumentException("text length");
                 }
-                if (out != null) { System.arraycopy(bytes, 0, out, (int) dest, used); }
+                for (int i = 0; i < used; i++) {
+                    put(out, order, dest + (long) i * 2, chars[i], 2);
+                }
                 put(out, order, at + f.countOffset, used, 4);
-            } else if (f.isArray) {
-                int used = count(source, f, v);
-                if (used < 0 || used > f.arrayBound || length(v) < used) {
-                    throw new IllegalArgumentException("array count");
-                }
-                if (f.countOffset >= 0) { put(out, order, at + f.countOffset, used, 4); }
-                for (int i = 0; i < f.arrayBound; i++) {
-                    value(p, out, order, dest + (long) i * f.elemSize,
-                            i < length(v) ? element(v, i) : null, f);
-                }
-            } else {
-                value(p, out, order, dest, v, f);
+                return;
             }
+            byte[] bytes = v instanceof String ? ((String) v).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                    : (byte[]) v;
+            if (bytes == null) { bytes = new byte[0]; }
+            int used = bytes.length;
+            if (!(v instanceof String)) {
+                try { used = ((Number) field(source, f.sourceName + "Length")).intValue(); }
+                catch (NoSuchFieldException ignored) { /* variable bytes use their full length */ }
+            }
+            if (used < 0 || used > f.arrayBound || used > bytes.length) {
+                throw new IllegalArgumentException("text length");
+            }
+            if (out != null) { System.arraycopy(bytes, 0, out, (int) dest, used); }
+            put(out, order, at + f.countOffset, used, 4);
+        } else if (f.isArray) {
+            int used = count(source, f, v);
+            if (used < 0 || used > f.arrayBound || length(v) < used) {
+                throw new IllegalArgumentException("array count");
+            }
+            if (f.countOffset >= 0) { put(out, order, at + f.countOffset, used, 4); }
+            for (int i = 0; i < f.arrayBound; i++) {
+                value(p, out, order, dest + (long) i * f.elemSize,
+                        i < length(v) ? element(v, i) : null, f);
+            }
+        } else {
+            value(p, out, order, dest, v, f);
         }
     }
 
