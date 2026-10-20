@@ -886,8 +886,12 @@ func (g *fixedModule) emitMessageDropElement(f *ir.Field, entry ir.TableVocabula
 		g.emitMessageReadElement(elem, entry, "t", ind+"  ")
 		return
 	}
-	g.pf("%s    var t;\n", ind)
-	g.emitMessageReadElement(elem, entry, "t", ind+"  ")
+	// A scalar, enum, string or bytes sink: the read lands on the reader's own
+	// throwaway cell, so no local is declared that the body never reads. The
+	// reference reads a discarded element into a sink cell too
+	// (internal/tablewire/messagedecode.go, `array`: `var sink tabletext.Cell`;
+	// docs/SPEC-TABLES.md §3.3).
+	g.emitMessageReadElement(elem, entry, "r.messageSink", ind+"  ")
 }
 
 const dartMessageBatchRuntime = `
@@ -973,6 +977,9 @@ class TableMessageReader {
   TableBitReader bits = TableBitReader(Uint8List(0));
   TableVocabulary vocabulary = TableVocabulary(entries: <TableMessageEntry>[]);
   TableReport report = TableReport();
+  // the sink an array element past this build's bound is read into and
+  // dropped (§3.3): one cell, reused, so a walk allocates none.
+  dynamic messageSink;
 }
 
 /// Opens one form-2 batch: the form byte first, then the count, then the
