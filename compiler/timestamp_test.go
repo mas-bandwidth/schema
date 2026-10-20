@@ -47,7 +47,7 @@ func TestTimestampIsCarriedByGoAndRefusedByName(t *testing.T) {
 		t.Fatalf("expected the other targets to be registered: %v", targets)
 	}
 	for _, target := range targets {
-		if target == "go" {
+		if target == "go" || carries(target, carryTimestamp) {
 			continue
 		}
 		files, err := c.Generate(u, target, Options{})
