@@ -1,37 +1,42 @@
-// TestLuaRefusesUnportedConstructsByName: for every construct the lua target
-// refuses at compile time, the refusal must name the field and the target
-// lua (docs/SPEC-TABLES.md §15, §2.14).
+//go:build schema_leg_lua
+
+// TestLuaGeneratesWideKinds: the lua target emits the fixed-point and 128-bit
+// table kinds instead of refusing them (docs/SPEC-TABLES.md §3, §15): the
+// fixed form names no kind, so the wide scalars are their declared storage
+// images, and the message form carries their announced packing.
 package compiler
 
 import (
-	"strings"
+	"bytes"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TestLuaRefusesUnportedConstructsByName pins each compile-time refusal the lua
-// target owns, by name. target_lua.go opens with this same check before either
-// emitter runs, and the error names the offending field and the target.
-func TestLuaRefusesUnportedConstructsByName(t *testing.T) {
+func TestLuaGeneratesWideKinds(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct{ name, src, field string }{
-		{"fixed-point", "package probe\ntable T\n{\n    q fixed(16, 16) | min = -1, max = 1\n}\n", "T.q"},
-		{"int128", "package probe\ntable T\n{\n    i int128 | min = -1000, max = 1000\n}\n", "T.i"},
-		{"uint128", "package probe\ntable T\n{\n    u uint128\n}\n", "T.u"},
+	for _, tc := range []struct{ name, src, typename string }{
+		{"fixed-point", "package probe\ntable T\n{\n    q fixed(16, 16) | min = -1, max = 1\n}\n", "fixed(16, 16)"},
+		{"int128", "package probe\ntable T\n{\n    i int128 | min = -1000, max = 1000\n}\n", "int128"},
+		{"uint128", "package probe\ntable T\n{\n    u uint128\n}\n", "uint128"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			u := unitFromSource(t, tc.src)
-			err := ir.RefuseWideTableKinds(u, "lua")
-			if err == nil {
-				t.Fatalf("lua accepted %s by-name", tc.name)
+			files, err := luaGenerate(u, nil)
+			if err != nil {
+				t.Fatalf("lua refused %s: %v", tc.name, err)
 			}
-			msg := err.Error()
-			if !strings.Contains(msg, tc.field) {
-				t.Errorf("lua refusal does not name the field %s: %s", tc.field, msg)
+			var module []byte
+			for name, data := range files {
+				if bytes.Contains(data, []byte("_M.Tables = {}")) {
+					module = data
+					_ = name
+				}
 			}
-			if !strings.Contains(msg, "lua") {
-				t.Errorf("lua refusal does not name the target lua: %s", msg)
+			if module == nil {
+				t.Fatalf("lua emitted no table module for %s", tc.name)
+			}
+			if !bytes.Contains(module, []byte(tc.typename)) {
+				t.Errorf("the table module does not name %s", tc.typename)
 			}
 		})
 	}

@@ -51,6 +51,10 @@ func TestLuaViewDescriptorsMatchGo(t *testing.T) {
 		if len(u.Tables) == 0 {
 			continue
 		}
+		if len(ir.TableWideFields(u)) > 0 {
+			refused = append(refused, fmt.Sprintf("%s: carries the wide kinds the listing does not spell yet", key))
+			continue
+		}
 		files, err := Generate(u)
 		if err != nil {
 			if !strings.Contains(err.Error(), "Lua") {

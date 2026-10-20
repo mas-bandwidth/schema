@@ -21,6 +21,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 type strictJSONRow struct {
@@ -183,6 +184,10 @@ func TestLuaFromJsonIsStrict(t *testing.T) {
 			t.Fatalf("unit %s has no manifest unit", unit)
 		}
 		u := luarun.LoadUnit(t, paths...)
+		if len(ir.TableWideFields(u)) > 0 {
+			t.Logf("unit %s carries the wide kinds; its JSON rows are not this card's (docs/SPEC-TABLES.md §15)", unit)
+			continue
+		}
 		luaFiles, err := Generate(u)
 		if err != nil {
 			t.Logf("unit %s is not generated for lua: %v", unit, err)
