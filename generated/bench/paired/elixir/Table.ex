@@ -5312,9 +5312,6 @@ defmodule Bench.Table do
   # record the remaining capacity cannot hold whole is dropped and counted one
   # retain_lost (§6.6).
 
-  def load_retain(table, _data, retain, report) when table in @uncarried,
-    do: {:error, :uncarried, report, retain}
-
   def load_retain(table, data, retain, report) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
     # §6.6: a retention buffer belongs to one loaded region; the next LoadRetain
@@ -5353,9 +5350,6 @@ defmodule Bench.Table do
     byte_size(bytes)
   end
 
-  def save_retain(table, _value, retain, report) when table in @uncarried,
-    do: {:error, :uncarried, report, retain}
-
   def save_retain(table, value, retain, report) when is_map(value) do
     {:ok, bytes, retain, report} = save_retain_internal(table, value, retain, report)
     {:ok, bytes, report, retain}
@@ -5389,34 +5383,119 @@ defmodule Bench.Table do
     {idx_map, ids, order, retain, report, acc}
   end
 
-  defp emit_field_retain(%{t: :list} = f, value, idx_map, ids, order, retain, report, path, acc) do
-    case Map.get(value, f.name, []) do
-      [] ->
+  # only an array of TABLES or of UNIONS carries element bodies a retained
+  # record can name (docs/SPEC-TABLES.md §6.6); every other array is the plain
+  # codec's (§2.9).
+  defp emit_field_retain(%{t: :list, elem_kind: ek} = f, value, idx_map, ids, order, retain, report, path, acc)
+       when ek in [13, 15] do
+    case Map.get(value, f.name, Map.get(f, :default)) do
+      nil ->
         {idx_map, ids, order, retain, report, acc}
 
       elements ->
-        {ref, ids, order} = intern(ids, order, f.id)
+        elements = pad_fixed(f, elements)
+
+        if list_elides?(f, elements) do
+          {idx_map, ids, order, retain, report, acc}
+        else
+          {ref, ids, order} = intern(ids, order, f.id)
+
+          {body, idx_map, ids, order, retain, report} =
+            save_elements_retain(
+              f,
+              elements,
+              0,
+              idx_map,
+              ids,
+              order,
+              retain,
+              report,
+              f.ordinal,
+              path,
+              []
+            )
+
+          array = [<<ek>>, leb_encode(length(elements)), body]
+
+          {idx_map, ids, order, retain, report,
+           [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
+        end
+    end
+  end
+
+  defp emit_field_retain(%{t: :map} = f, value, idx_map, ids, order, retain, report, path, acc) do
+    entries = map_entries(f, Map.get(value, f.name, %{}))
+    emit_field_retain(%{f | t: :list}, %{f.name => entries}, idx_map, ids, order, retain, report, path, acc)
+  end
+
+  defp emit_field_retain(%{t: :table} = f, value, idx_map, ids, order, retain, report, path, acc) do
+    case Map.get(value, f.name) do
+      nil ->
+        {idx_map, ids, order, retain, report, acc}
+
+      v ->
+        {ref, ids1, order1} = intern(ids, order, f.id)
         elem_desc = Map.fetch!(@tables, f.elem)
+        elem_path = path ++ [{f.ordinal, 0}]
 
-        {body, idx_map, ids, order, retain, report} =
-          save_elements_retain(
-            elem_desc,
-            elements,
-            0,
-            idx_map,
-            ids,
-            order,
-            retain,
-            report,
-            f.ordinal,
-            path,
-            []
-          )
+        {_idx, ids2, order2, retain, report, body} =
+          save_fields_retain(elem_desc, v, idx_map, ids1, order1, retain, report, elem_path, [])
 
-        array = [<<13>>, leb_encode(length(elements)), body]
+        if IO.iodata_length(body) == 0 and not Map.get(f, :optional, false) do
+          {idx_map, ids, order, retain, report, acc}
+        else
+          framed = [body, <<0>>]
 
-        {idx_map, ids, order, retain, report,
-         [acc, leb_encode(ref), <<14>>, leb_encode(IO.iodata_length(array)), array]}
+          {idx_map, ids2, order2, retain, report,
+           [acc, leb_encode(ref), <<13>>, leb_encode(IO.iodata_length(framed)), framed]}
+        end
+    end
+  end
+
+  defp emit_field_retain(%{t: :union} = f, value, idx_map, ids, order, retain, report, path, acc) do
+    case Map.get(value, f.name) do
+      nil ->
+        {idx_map, ids, order, retain, report, acc}
+
+      sel ->
+        {ref, ids, order} = intern(ids, order, f.id)
+        {header, ids, order, retain, report} = arm_header_retain(f.elem, sel, idx_map, ids, order, retain, report, path, f.ordinal)
+        {idx_map, ids, order, retain, report, [acc, leb_encode(ref), <<15>>, header]}
+    end
+  end
+
+  defp emit_field_retain(%{t: :keyed} = f, value, idx_map, ids, order, retain, report, path, acc) do
+    slots = Map.get(value, f.name) || %{}
+    {ref, ids1, order1} = intern(ids, order, f.id)
+    item = Map.put(f.item, :elem_kind, f.elem_kind)
+
+    {pairs, n, ids2, order2, retain, report} =
+      Enum.reduce(Enum.with_index(f.key_names), {[], 0, ids1, order1, retain, report}, fn {name, index},
+                                                                                          {pairs, n,
+                                                                                           ids, order,
+                                                                                           retain,
+                                                                                           report} ->
+        v = Map.get(slots, name, f.item.default)
+        {kref, ids_k, order_k} = intern(ids, order, Map.fetch!(f.key_ids, name))
+        elem_path = path ++ [{f.ordinal, index}]
+
+        case keyed_elem_retain(item, v, idx_map, ids_k, order_k, retain, report, elem_path) do
+          :elide ->
+            {pairs, n, ids, order, retain, report}
+
+          {elem, ids_e, order_e, retain, report} ->
+            {[pairs, leb_encode(kref), leb_encode(IO.iodata_length(elem)), elem], n + 1, ids_e,
+             order_e, retain, report}
+        end
+      end)
+
+    if n == 0 do
+      {idx_map, ids, order, retain, report, acc}
+    else
+      inner = [<<f.elem_kind>>, leb_encode(n), pairs]
+
+      {idx_map, ids2, order2, retain, report,
+       [acc, leb_encode(ref), <<16>>, leb_encode(IO.iodata_length(inner)), inner]}
     end
   end
 
@@ -5426,7 +5505,7 @@ defmodule Bench.Table do
   end
 
   defp save_elements_retain(
-         _desc,
+         _f,
          [],
          _index,
          idx_map,
@@ -5441,7 +5520,7 @@ defmodule Bench.Table do
        do: {acc, idx_map, ids, order, retain, report}
 
   defp save_elements_retain(
-         desc,
+         f,
          [e | rest],
          index,
          idx_map,
@@ -5455,13 +5534,21 @@ defmodule Bench.Table do
        ) do
     elem_path = path ++ [{ordinal, index}]
 
-    {idx_map, ids, order, retain, report, body} =
-      save_fields_retain(desc, e, idx_map, ids, order, retain, report, elem_path, [])
+    {body, idx_map, ids, order, retain, report} =
+      if f.elem_kind == 15 do
+        {header, ids, order, retain, report} =
+          arm_header_retain(f.elem, e, idx_map, ids, order, retain, report, elem_path, f.ordinal)
 
-    framed = [leb_encode(IO.iodata_length(body) + 1), body, <<0>>]
+        {header, idx_map, ids, order, retain, report}
+      else
+        {_idx, ids, order, retain, report, body} =
+          save_fields_retain(Map.fetch!(@tables, f.elem), e, idx_map, ids, order, retain, report, elem_path, [])
+
+        {[leb_encode(IO.iodata_length(body) + 1), body, <<0>>], idx_map, ids, order, retain, report}
+      end
 
     save_elements_retain(
-      desc,
+      f,
       rest,
       index + 1,
       idx_map,
@@ -5471,8 +5558,77 @@ defmodule Bench.Table do
       report,
       ordinal,
       path,
-      [acc, framed]
+      [acc, body]
     )
+  end
+
+  defp keyed_elem_retain(%{elem_kind: 13} = item, v, idx_map, ids, order, retain, report, elem_path) do
+    {_idx, ids, order, retain, report, body} =
+      save_fields_retain(Map.fetch!(@tables, item.elem), v || %{}, idx_map, ids, order, retain, report, elem_path, [])
+
+    if IO.iodata_length(body) == 0 do
+      :elide
+    else
+      {[body, <<0>>], ids, order, retain, report}
+    end
+  end
+
+  defp keyed_elem_retain(%{elem_kind: 15} = item, v, idx_map, ids, order, retain, report, elem_path) do
+    {header, ids, order, retain, report} =
+      arm_header_retain(item.elem, v, idx_map, ids, order, retain, report, elem_path, item.ordinal)
+
+    {header, ids, order, retain, report}
+  end
+
+  defp keyed_elem_retain(item, v, idx_map, ids, order, retain, report, _elem_path) do
+    if v == item.default do
+      :elide
+    else
+      {elem, ids, order} = emit_element(item, v, idx_map, ids, order)
+      {elem, ids, order, retain, report}
+    end
+  end
+
+  defp arm_header_retain(_union, nil, _idx_map, ids, order, retain, report, _path, _ordinal),
+    do: {leb_encode(0), ids, order, retain, report}
+
+  defp arm_header_retain(union, {arm, payload}, idx_map, ids, order, retain, report, path, ordinal) do
+    a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
+    {aref, ids, order} = intern(ids, order, Map.get(a, :arm_id, a.id))
+    arm_path = path ++ [{ordinal, a.ordinal + 1}]
+
+    {content, ids, order, retain, report} =
+      arm_content_retain(a, if(payload == nil, do: a.default, else: payload), idx_map, ids, order, retain, report, arm_path)
+
+    {[leb_encode(aref), <<a.arm_kind>>, leb_encode(IO.iodata_length(content)), content], ids,
+     order, retain, report}
+  end
+
+  defp arm_content_retain(%{t: :void}, _v, _idx_map, ids, order, retain, report, _path),
+    do: {<<>>, ids, order, retain, report}
+
+  defp arm_content_retain(%{t: :table} = a, v, idx_map, ids, order, retain, report, arm_path) do
+    {_idx, ids, order, retain, report, body} =
+      save_fields_retain(Map.fetch!(@tables, a.elem), v || %{}, idx_map, ids, order, retain, report, arm_path, [])
+
+    {[body, <<0>>], ids, order, retain, report}
+  end
+
+  defp arm_content_retain(%{t: :list} = a, v, idx_map, ids, order, retain, report, arm_path) do
+    elements = pad_fixed(a, v || [])
+
+    {body, idx_map, ids, order, retain, report} =
+      save_elements_retain(a, elements, 0, idx_map, ids, order, retain, report, a.ordinal, arm_path, [])
+
+    {[<<a.elem_kind>>, leb_encode(length(elements)), body], ids, order, retain, report}
+  end
+
+  defp arm_content_retain(%{t: :union} = a, v, idx_map, ids, order, retain, report, arm_path),
+    do: arm_header_retain(a.elem, v, idx_map, ids, order, retain, report, arm_path, a.ordinal)
+
+  defp arm_content_retain(a, v, idx_map, ids, order, retain, report, _arm_path) do
+    {content, ids, order} = arm_content(a, v, idx_map, ids, order)
+    {content, ids, order, retain, report}
   end
 
   # emit_retain_tail re-emits the records whose path names the body being
@@ -5560,18 +5716,19 @@ defmodule Bench.Table do
     end)
   end
 
+  # an array of TABLES or of UNIONS carries element bodies a retained record
+  # can name (docs/SPEC-TABLES.md §6.6); every other array has no body of its
+  # own and is the plain codec's (§2.9).
   defp read_payload_retain(%{t: :list} = f, payload, nodes, ids, report, retain, path) do
     case leb(payload) do
       {_len, arr} ->
-        elem_desc = Map.fetch!(@tables, f.elem)
-
         case arr do
-          <<13, count_rest::binary>> ->
+          <<elem_kind, count_rest::binary>> when elem_kind in [13, 15] ->
             case leb(count_rest) do
               {n, elems} ->
                 {value, report, retain} =
                   read_elements_retain(
-                    elem_desc,
+                    f,
                     elems,
                     n,
                     nodes,
@@ -5590,11 +5747,212 @@ defmodule Bench.Table do
             end
 
           _ ->
-            {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+            case read_payload(f, payload, nodes, ids, report) do
+              {:cont, v, report} -> {:cont, v, report, retain}
+              {:halt, v, report} -> {:halt, v, report, retain}
+            end
         end
 
       :error ->
         {:cont, [], %{report | malformed: true}, retain}
+    end
+  end
+
+  # a nested table by value is a framed body, and its field walk is the
+  # retaining one at a step of its own (§6.6).
+  defp read_payload_retain(%{t: :table} = f, payload, nodes, ids, report, retain, path) do
+    case leb(payload) do
+      {_len, body} ->
+        elem_desc = Map.fetch!(@tables, f.elem)
+        elem_path = path ++ [{f.ordinal, 0}]
+        read_body_retain(elem_desc, body, nodes, ids, report, retain, elem_path)
+
+      :error ->
+        {:cont, %{}, %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_payload_retain(%{t: :map} = f, payload, nodes, ids, report, retain, path) do
+    case read_payload_retain(%{f | t: :list}, payload, nodes, ids, report, retain, path) do
+      {:cont, entries, report, retain} ->
+        [kf, vf | _] = Map.fetch!(@tables, f.elem).fields
+
+        values =
+          Map.new(entries, fn entry ->
+            key = Map.get(entry, "key", kf.default)
+
+            {if(is_binary(key), do: key, else: Integer.to_string(key)),
+             Map.get(entry, "value", vf.default)}
+          end)
+
+        {:cont, values, report, retain}
+
+      other ->
+        other
+    end
+  end
+
+  defp read_payload_retain(%{t: :union} = f, payload, nodes, ids, report, retain, path),
+    do: read_arm_retain(f, payload, nodes, ids, report, retain, path)
+
+  defp read_payload_retain(%{t: :keyed} = f, payload, nodes, ids, report, retain, path) do
+    with {_len, <<ek, rest::binary>>} <- leb(payload),
+         true <- ek == f.elem_kind,
+         {n, pairs} <- leb(rest) do
+      read_keyed_pairs_retain(f, pairs, n, nodes, ids, %{}, report, retain, path)
+    else
+      _ -> {:cont, %{}, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+    end
+  end
+
+  defp read_body_retain(desc, body, nodes, ids, report, retain, path) do
+    if ends_early?(body, ids) do
+      {:cont, %{}, malformed_report(), retain}
+    else
+      case entries(body, ids, desc.string_blob, false) do
+        {:ok, fields, []} ->
+          {value, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, path)
+          {:cont, value, report, retain}
+
+        {:stop, fields, [], 0} ->
+          {value, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, path)
+          {:cont, value, %{report | malformed: true}, retain}
+
+        {:stop, fields, [], _remaining} ->
+          {_value, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, path)
+          {:cont, %{}, %{report | malformed: true}, retain}
+
+        _ ->
+          {:cont, %{}, malformed_report(), retain}
+      end
+    end
+  end
+
+  defp read_arm_retain(f, bin, nodes, ids, report, retain, path) do
+    case leb(bin) do
+      {0, _} ->
+        {:cont, nil, report, retain}
+
+      {aref, <<k, rest::binary>>} ->
+        case resolve(ids, aref) do
+          :error ->
+            {:halt, nil, %{report | malformed: true}, retain}
+
+          arm_id ->
+            un = Map.fetch!(@unions, f.elem)
+
+            case Map.fetch(un.by_id, arm_id) do
+              :error ->
+                {:cont, nil,
+                 %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1},
+                 retain}
+
+              {:ok, name} ->
+                a = Map.fetch!(un.by_name, name)
+                arm_path = path ++ [{f.ordinal, a.ordinal + 1}]
+
+                case leb(rest) do
+                  {l, content} when byte_size(content) >= l and k == a.arm_kind ->
+                    inner = binary_part(content, 0, l)
+                    framed = binary_part(rest, 0, byte_size(rest) - byte_size(content) + l)
+                    read_arm_payload_retain(a, name, inner, framed, nodes, ids, report, retain, arm_path)
+
+                  {l, content} when byte_size(content) >= l ->
+                    {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+
+                  _ ->
+                    {:cont, nil, %{report | malformed: true}, retain}
+                end
+            end
+        end
+
+      _ ->
+        {:halt, nil, %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_arm_payload_retain(%{t: :void}, name, _inner, _framed, _nodes, _ids, report, retain, _path),
+    do: {:cont, {name, nil}, report, retain}
+
+  defp read_arm_payload_retain(%{t: :table} = a, name, inner, _framed, nodes, ids, report, retain, arm_path) do
+    case read_body_retain(Map.fetch!(@tables, a.elem), inner, nodes, ids, report, retain, arm_path) do
+      {:cont, v, report, retain} -> {:cont, {name, v}, report, retain}
+      {:halt, v, report, retain} -> {:halt, {name, v}, report, retain}
+    end
+  end
+
+  defp read_arm_payload_retain(a, name, inner, framed, nodes, ids, report, retain, arm_path) do
+    payload = if a.arm_kind in [12, 13, 14, 16, 33], do: framed, else: inner
+
+    case read_payload_retain(a, payload, nodes, ids, report, retain, arm_path) do
+      {:cont, v, report, retain} -> {:cont, {name, v}, report, retain}
+      {:halt, v, report, retain} -> {:halt, {name, v}, report, retain}
+    end
+  end
+
+  defp read_keyed_pairs_retain(_f, _bin, 0, _nodes, _ids, acc, report, retain, _path),
+    do: {:cont, acc, report, retain}
+
+  defp read_keyed_pairs_retain(f, bin, n, nodes, ids, acc, report, retain, path) do
+    with {kref, r1} <- leb(bin),
+         {l, r2} when byte_size(r2) >= l <- leb(r1) do
+      elem = binary_part(r2, 0, l)
+      rest = binary_part(r2, l, byte_size(r2) - l)
+
+      case resolve(ids, kref) do
+        :error ->
+          read_keyed_pairs_retain(f, rest, n - 1, nodes, ids, acc, %{report | malformed: true}, retain, path)
+
+        kid ->
+          case Enum.find_index(f.key_names, fn name -> Map.fetch!(f.key_ids, name) == kid end) do
+            nil ->
+              # an unknown KEY is one of §6.6's excluded classes: it is not the
+              # reader's to name, so its element is not read and one loss counts
+              read_keyed_pairs_retain(
+                f,
+                rest,
+                n - 1,
+                nodes,
+                ids,
+                acc,
+                %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1},
+                retain,
+                path
+              )
+
+            index ->
+              name = Enum.at(f.key_names, index)
+              item = Map.put(f.item, :elem_kind, f.elem_kind)
+              elem_path = path ++ [{f.ordinal, index}]
+
+              {v, report, retain} =
+                if f.elem_kind == 13 do
+                  case read_body_retain(Map.fetch!(@tables, item.elem), elem, nodes, ids, report, retain, elem_path) do
+                    {:cont, v, report, retain} -> {v, report, retain}
+                    {:halt, v, report, retain} -> {v, report, retain}
+                  end
+                else
+                  case read_payload_retain(item, elem, nodes, ids, report, retain, elem_path) do
+                    {:cont, v, report, retain} -> {v, report, retain}
+                    {:halt, v, report, retain} -> {v, report, retain}
+                  end
+                end
+
+              read_keyed_pairs_retain(
+                f,
+                rest,
+                n - 1,
+                nodes,
+                ids,
+                Map.put(acc, name, v),
+                report,
+                retain,
+                path
+              )
+          end
+      end
+    else
+      _ -> {:cont, acc, %{report | malformed: true}, retain}
     end
   end
 
@@ -5632,39 +5990,58 @@ defmodule Bench.Table do
     end
   end
 
-  defp read_elements_retain(_desc, _rest, 0, _nodes, _ids, acc, report, retain, _ordinal, _path),
+  defp read_elements_retain(_f, _rest, 0, _nodes, _ids, acc, report, retain, _ordinal, _path),
     do: {Enum.reverse(acc), report, retain}
 
-  defp read_elements_retain(desc, rest, n, nodes, ids, acc, report, retain, ordinal, path) do
-    case leb(rest) do
-      {len, body} when byte_size(body) >= len ->
-        sub = binary_part(body, 0, len)
-        after_sub = binary_part(body, len, byte_size(body) - len)
+  defp read_elements_retain(f, rest, n, nodes, ids, acc, report, retain, ordinal, path) do
+    index = length(acc)
+    elem_path = path ++ [{ordinal, index}]
 
-        {value, report, retain} =
-          read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, length(acc))
+    if f.elem_kind == 15 do
+      # an array of unions is a bare sequence of arm headers (docs/SPEC-TABLES.md
+      # §2.9, §3), not L-framed element bodies
+      case slice(rest, 15) do
+        {:ok, header, after_sub} ->
+          {value, report, retain} =
+            case read_arm_retain(f, header, nodes, ids, report, retain, elem_path) do
+              {:cont, v, report, retain} -> {v, report, retain}
+              {:halt, v, report, retain} -> {v, report, retain}
+            end
 
-        read_elements_retain(
-          desc,
-          after_sub,
-          n - 1,
-          nodes,
-          ids,
-          [value | acc],
-          report,
-          retain,
-          ordinal,
-          path
-        )
+          read_elements_retain(f, after_sub, n - 1, nodes, ids, [value | acc], report, retain, ordinal, path)
 
-      _ ->
-        {Enum.reverse(acc), %{report | malformed: true}, retain}
+        :error ->
+          {Enum.reverse(acc), %{report | malformed: true}, retain}
+      end
+    else
+      case leb(rest) do
+        {len, body} when byte_size(body) >= len ->
+          sub = binary_part(body, 0, len)
+          after_sub = binary_part(body, len, byte_size(body) - len)
+
+          {value, report, retain} =
+            read_element_retain(Map.fetch!(@tables, f.elem), sub, nodes, ids, report, retain, elem_path)
+
+          read_elements_retain(
+            f,
+            after_sub,
+            n - 1,
+            nodes,
+            ids,
+            [value | acc],
+            report,
+            retain,
+            ordinal,
+            path
+          )
+
+        _ ->
+          {Enum.reverse(acc), %{report | malformed: true}, retain}
+      end
     end
   end
 
-  defp read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, index) do
-    elem_path = path ++ [{ordinal, index}]
-
+  defp read_element_retain(desc, sub, nodes, ids, report, retain, elem_path) do
     if ends_early?(sub, ids) do
       {%{}, malformed_report(), retain}
     else
