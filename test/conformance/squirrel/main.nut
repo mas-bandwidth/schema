@@ -18,6 +18,19 @@
 
 local argv = vargv;
 if (argv.len() < 2) { return; }
+
+// THE PINNED INTERPRETER IS PART OF THE LEG (docs/PORT-SQUIRREL.md, 64-BIT AND
+// 128-BIT INTEGERS): make dist-squirrel builds sq64 with -DSQUSEDOUBLE, so a
+// float is 8 bytes and the wire's f32/f64 bit patterns survive. A 4-byte-float
+// sq truncates casti2f's 64-bit result, so every loaded float becomes zero and
+// the save elides the field: the wire surface then answers short bodies instead
+// of the corpus bytes. Refuse that interpreter by name rather than answering
+// with wrong bytes.
+if (_floatsize_ != 8) {
+  throw "squirrel conformance: this interpreter has " + _floatsize_ +
+        "-byte floats; run make dist-squirrel (SQUSEDOUBLE) and set SQ to its sq";
+}
+
 local manifest = argv[0];
 local mode = argv[1];
 local outdir = argv.len() >= 3 ? argv[2] : "";
