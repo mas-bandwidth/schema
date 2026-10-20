@@ -4,9 +4,12 @@ import (
 	"bufio"
 	"fmt"
 	"maps"
+	"math"
+	"math/big"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -314,7 +317,7 @@ func TestGooseTableLoadMatchesTheReports(t *testing.T) {
 			t.Fatalf("%s: reports.txt pins no such case", r.name)
 		}
 	}
-	compared, cleanLoads, refusedRows := 0, 0, 0
+	compared, cleanLoads, refusedRows, values := 0, 0, 0, 0
 	var refusedUnits []string
 	for _, key := range order {
 		u, files, err := generateUnit(t, units[key], nil)
@@ -324,6 +327,7 @@ func TestGooseTableLoadMatchesTheReports(t *testing.T) {
 			continue
 		}
 		got := runLoads(t, u, files, byUnit[key])
+		var loadInstances []loadCase
 		for _, c := range byUnit[key] {
 			want := cleanReport
 			if isReport[c.name] {
@@ -331,9 +335,46 @@ func TestGooseTableLoadMatchesTheReports(t *testing.T) {
 				compared++
 			} else {
 				cleanLoads++
+				loadInstances = append(loadInstances, c)
 			}
 			if got[c.name] != want {
 				t.Errorf("%s (unit %s, root %s): the Goose load reports %q, the reference %q", c.name, key, c.root, got[c.name], want)
+			}
+		}
+		if len(loadInstances) == 0 {
+			continue
+		}
+		dumps := runValueDumps(t, u, files, loadInstances)
+		for _, c := range loadInstances {
+			wire, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(c.wire)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, ok := goValueDump(u, c.root, wire)
+			if !ok {
+				t.Errorf("%s (unit %s, root %s): the Go reference does not decode the instance", c.name, key, c.root)
+				continue
+			}
+			values += len(want)
+			have := dumps[c.name]
+			n := len(want)
+			if len(have) < n {
+				n = len(have)
+			}
+			diverged := false
+			for i := 0; i < n; i++ {
+				if have[i] != want[i].value {
+					t.Errorf("%s (unit %s, root %s): value %d at %s: the Goose load has %q, the reference %q", c.name, key, c.root, i, want[i].path, have[i], want[i].value)
+					diverged = true
+					break
+				}
+			}
+			if !diverged && len(have) != len(want) {
+				path := "past the last value"
+				if len(want) > n {
+					path = want[n].path
+				}
+				t.Errorf("%s (unit %s, root %s): the Goose load has %d values, the reference %d (first missing at %s)", c.name, key, c.root, len(have), len(want), path)
 			}
 		}
 	}
@@ -343,7 +384,7 @@ func TestGooseTableLoadMatchesTheReports(t *testing.T) {
 	if compared+cleanLoads+refusedRows != len(reports)+len(instances) {
 		t.Errorf("compared %d report rows and %d instances and refused %d rows, want %d", compared, cleanLoads, refusedRows, len(reports)+len(instances))
 	}
-	t.Logf("compared %d of %d report rows with reports.txt and loaded %d of %d instances clean; %d rows in %d refused units", compared, len(reports), cleanLoads, len(instances), refusedRows, len(refusedUnits))
+	t.Logf("compared %d of %d report rows with reports.txt and loaded %d of %d instances clean; %d values equal the Go reference's; %d rows in %d refused units", compared, len(reports), cleanLoads, len(instances), values, refusedRows, len(refusedUnits))
 }
 
 // TestGooseTableLoadNegativeControl patches the emitted load runtime in
@@ -627,4 +668,418 @@ fn load_payload(k: Loader.Probe, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, t
 		t.Fatalf("no row of %s reached the registered kind: the registry is not the dispatch", unit)
 	}
 	t.Logf("the registered kind took %d of %d rows of %s, load.goose unchanged", counted, len(cases), unit)
+}
+
+// dumpLine is one line of THE VALUE DUMP: a field path for a divergence
+// report, and the canonical rendering both halves print. The line format is
+// `<path>|<presence>|<value>`; presence is `+`/`-` on an optional field and
+// `.` everywhere else, and every value is walked in field order — a record's
+// fields, an array's elements, a map's entries, a union's one arm — so two
+// loads of the same bytes produce the same lines (docs/PORT-GOOSE.md, THE
+// LOADED VALUE).
+type dumpLine struct{ path, value string }
+
+// gooseValueDump is the Goose half of THE VALUE DUMP: it walks the flat
+// LoadVal table through the descriptors (docs/PORT-GOOSE.md, THE VALUE
+// RECORD) and prints the same canonical line the Go half prints, never
+// reading a byte the load already placed.
+const gooseValueDump = `
+var dump_label_vals: i64[8192] = [0; 8192];
+var dump_label_ns: i64[8192] = [0; 8192];
+var dump_label_len: i64 = 0;
+var dump_label_next: i64 = 1;
+var dump_label_root: i64 = -1;
+
+fn dump_label_reset(root: i64) {
+    dump_label_len = 0;
+    dump_label_next = 1;
+    dump_label_root = root;
+}
+
+fn dump_label_of(v: i64) -> i64 {
+    if v == dump_label_root { return 0; }
+    for i in dump_label_len { if dump_label_vals[i] == v { return dump_label_ns[i]; } }
+    return -1;
+}
+
+fn dump_label_add(v: i64) -> i64 {
+    let n = dump_label_next;
+    let at = dump_label_len;
+    dump_label_len += 1;
+    dump_label_next += 1;
+    dump_label_vals[at] = v;
+    dump_label_ns[at] = n;
+    return n;
+}
+
+fn dline(pres: const u8[:], body: const u8[:]) {
+    print(pres, "|", body);
+}
+
+fn dbytes(b: const u8[:], pres: const u8[:]) {
+    var p: u8[>..] = [];
+    format(p, "T", b.len, ":");
+    for i in b.len {
+        if i > 0 { format(p, ","); }
+        format(p, b[i]);
+    }
+    dline(pres, p);
+}
+
+fn dtext(c: schema_rt::LoadCtx&, v: i64, pres: const u8[:]) {
+    var p: u8[>..] = [];
+    format(p, "T", c.vals[v].len, ":");
+    for i in c.vals[v].len {
+        if i > 0 { format(p, ","); }
+        format(p, c.data[c.vals[v].off + i]);
+    }
+    dline(pres, p);
+}
+
+fn dwide(c: schema_rt::LoadCtx&, v: i64, pres: const u8[:]) {
+    var p: u8[>..] = [];
+    let units = c.vals[v].len / 2;
+    format(p, "W", units, ":");
+    for i in units {
+        let lo: u16 = c.data[c.vals[v].off + i * 2];
+        let hi: u16 = c.data[c.vals[v].off + i * 2 + 1];
+        let u = lo | (hi << 8);
+        if i > 0 { format(p, ","); }
+        format(p, u);
+    }
+    dline(pres, p);
+}
+
+fn dblob(c: schema_rt::LoadCtx&, v: i64, pres: const u8[:]) {
+    let idx = c.vals[v].bits.lo;
+    if c.vals[v].state != schema_rt::ValPresent || idx == 0 { dline(pres, "Xnull"); return; }
+    let node = c.nodes[(idx - 2) as! i64];
+    var p: u8[>..] = [];
+    format(p, "X", node.len, ":");
+    for i in node.len {
+        if i > 0 { format(p, ","); }
+        format(p, c.data[node.off + i]);
+    }
+    dline(pres, p);
+}
+
+recursive fn dslot(c: schema_rt::LoadCtx&, v: i64, d: schema_rt::FieldDesc) {
+    var pres = ".";
+    if d.optional { pres = if c.vals[v].state == schema_rt::ValAbsent { "-" } else { "+" }; }
+    if d.shape == schema_rt::ShapeMap {
+        let n = c.vals[v].len;
+        dline(pres, str("M", n));
+        for i in n { drec(c, c.vals[v].first + i, "."); }
+        return;
+    }
+    if d.shape == schema_rt::ShapeArr {
+        var shown: i64 = c.vals[v].len;
+        var children: i64 = c.vals[v].len;
+        if d.array == schema_rt::ArrayFixed || d.array == schema_rt::ArrayKeyed { shown = 0; children = c.vals[v].count; }
+        else if d.array == schema_rt::ArrayCounted { children = c.vals[v].count; }
+        dline(pres, str("A", shown));
+        let e = d.elem;
+        guard e else { return; }
+        let first = c.vals[v].first;
+        for i in children { dvalue(c, first + i, e, "."); }
+        return;
+    }
+    dvalue(c, v, d, pres);
+}
+
+recursive fn dvalue(c: schema_rt::LoadCtx&, v: i64, d: schema_rt::FieldDesc, pres: const u8[:]) {
+    let x = c.vals[v];
+    if d.shape == schema_rt::ShapeBool { dline(pres, str("B", x.bits.lo)); return; }
+    if d.shape == schema_rt::ShapeInt { dline(pres, str("I", x.bits.hi, ",", x.bits.lo)); return; }
+    if d.shape == schema_rt::ShapeFloat {
+        var bits = x.bits.lo;
+        if d.is_f32 && (bits & 0x7F800000) == 0x7F800000 && (bits & 0x007FFFFF) != 0 {
+            bits = schema_rt::widen_f32(bits as! u32);
+        }
+        dline(pres, str("F", bits));
+        return;
+    }
+    if d.shape == schema_rt::ShapeStr || d.shape == schema_rt::ShapeText || d.shape == schema_rt::ShapeBytes {
+        if d.wide { dwide(c, v, pres); }
+        else if x.state == schema_rt::ValAbsent && d.has_def { dbytes(d.def_s, pres); }
+        else { dtext(c, v, pres); }
+        return;
+    }
+    if d.shape == schema_rt::ShapeEnum { dline(pres, str("E", x.bits.lo)); return; }
+    if d.shape == schema_rt::ShapeUnion {
+        let tag = x.bits.lo;
+        dline(pres, str("U", tag));
+        if x.made && tag >= 1 {
+            let u = x.tab;
+            let a = c.unit.unions[u].arms[(tag - 1) as! i64];
+            if a.shape == schema_rt::ShapeTab { drec(c, x.first, "."); }
+            else { dslot(c, x.first, a); }
+        }
+        return;
+    }
+    if d.shape == schema_rt::ShapePtr {
+        if x.state != schema_rt::ValPresent || x.bits.lo == 0 { dline(pres, "Pnull"); return; }
+        var target: i64 = -1;
+        if x.bits.lo == 1 { target = dump_label_root; }
+        else { target = c.nodes[(x.bits.lo - 2) as! i64].val; }
+        if target < 0 { dline(pres, "Pnull"); return; }
+        let at = dump_label_of(target);
+        if at >= 0 { dline(pres, str("P^", at)); return; }
+        let n = dump_label_add(target);
+        dline(pres, str("P@", n));
+        drec(c, target, ".");
+        return;
+    }
+    if d.shape == schema_rt::ShapeSBlob || d.shape == schema_rt::ShapeBBlob { dblob(c, v, pres); return; }
+    if d.shape == schema_rt::ShapeTab {
+        if x.made { drec(c, v, pres); } else { dline(pres, "Rnull"); }
+        return;
+    }
+    if d.shape == schema_rt::ShapeVoid { dline(pres, "V"); return; }
+    dline(pres, "?");
+}
+
+recursive fn drec(c: schema_rt::LoadCtx&, v: i64, pres: const u8[:]) {
+    if v < 0 { dline(pres, "Rnull"); return; }
+    dline(pres, "R");
+    let t = c.vals[v].tab;
+    let first = c.vals[v].first;
+    for i in c.vals[v].count { dslot(c, first + i, c.unit.tables[t].fields[i]); }
+}
+`
+
+// valueProgram is the probe's root for THE VALUE DUMP: it imports every
+// module of the unit, builds the LoadUnit as loadProgram does, and for each
+// instance prints `@<case>` and then one canonical line per loaded value.
+func valueProgram(t *testing.T, u *ir.Unit, files map[string][]byte, cases []loadCase) string {
+	t.Helper()
+	head, build := probeUnit(t, u, files)
+	var b strings.Builder
+	b.WriteString(head)
+	b.WriteString(gooseValueDump)
+	b.WriteString(`fn probe(unit: schema_rt::LoadUnit, name: const u8[:], root: const u8[:], file: const u8[:]) {
+    var data: u8[>..] = [];
+    if !read_file(file, data) { print("@", name); print("#unreadable"); return; }
+    var vals: schema_rt::LoadVal[>..] = [];
+    var nodes: schema_rt::LoadNode[>..] = [];
+    var rep = schema_rt::LoadReport { .. };
+    let r = schema_rt::load_table(unit, root, data, vals, nodes, rep);
+    print("@", name);
+    if r < 0 { print("#none"); return; }
+    dump_label_reset(r);
+    var c = schema_rt::LoadCtx { data: data, unit: unit, vals: vals, nodes: nodes, report: rep, root_tab: -1, root_val: r, .. };
+    drec(c, r, ".");
+}
+
+`)
+	b.WriteString("fn main() {\n")
+	b.WriteString(build)
+	for _, c := range cases {
+		fmt.Fprintf(&b, "    probe(unit, %q, %q, %q);\n", c.name, c.root, c.name+".bin")
+	}
+	b.WriteString("}\n")
+	return b.String()
+}
+
+// runValueDumps generates one unit's value probe and returns case -> lines.
+func runValueDumps(t *testing.T, u *ir.Unit, files map[string][]byte, cases []loadCase) map[string][]string {
+	t.Helper()
+	inputs := map[string][]byte{}
+	for _, c := range cases {
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(c.wire)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs[c.name+".bin"] = data
+	}
+	out := runProbe(t, files, valueProgram(t, u, files, cases), inputs)
+	got := map[string][]string{}
+	cur := ""
+	for _, line := range strings.Split(out, "\n") {
+		if name, ok := strings.CutPrefix(line, "@"); ok {
+			cur = name
+			got[cur] = nil
+			continue
+		}
+		if cur == "" {
+			t.Fatalf("value probe line %q is not under an instance", line)
+		}
+		got[cur] = append(got[cur], line)
+	}
+	return got
+}
+
+// goValueDump is the Go reference's half of THE VALUE DUMP: it loads the
+// same bytes through internal/tablewire into a tabletext.Instance and prints
+// every slot, count, presence bit, element, map entry, arm and node the
+// reference keeps, in field order.
+func goValueDump(u *ir.Unit, rootName string, wire []byte) ([]dumpLine, bool) {
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup(rootName))
+	var rep tabletext.Report
+	ok, err := tablewire.Decode(m, inst, wire, &rep)
+	if err != nil || !ok {
+		return nil, false
+	}
+	d := &goDumper{labels: map[*tabletext.Instance]int{inst: 0}, next: 1}
+	d.record(inst, "$", ".")
+	return d.lines, true
+}
+
+// goDumper walks Go's loaded instance in the same order as gooseValueDump.
+type goDumper struct {
+	labels map[*tabletext.Instance]int
+	next   int
+	lines  []dumpLine
+}
+
+func (d *goDumper) emit(path, pres, body string) {
+	d.lines = append(d.lines, dumpLine{path: path, value: pres + "|" + body})
+}
+
+func (d *goDumper) record(inst *tabletext.Instance, path, pres string) {
+	if inst == nil {
+		d.emit(path, pres, "Rnull")
+		return
+	}
+	d.emit(path, pres, "R")
+	for i := range inst.Fields {
+		fv := &inst.Fields[i]
+		d.slotAt(fv, fv.Def, path+"."+fv.Def.Name)
+	}
+}
+
+func (d *goDumper) slotAt(fv *tabletext.Field, f *ir.Field, path string) {
+	pres := "."
+	if f.Type.Optional {
+		if fv.Present {
+			pres = "+"
+		} else {
+			pres = "-"
+		}
+	}
+	switch {
+	case f.IsMap():
+		d.emit(path, pres, "M"+strconv.Itoa(len(fv.Entries)))
+		for i := range fv.Entries {
+			d.record(fv.Entries[i].Tab, fmt.Sprintf("%s<%d>", path, i), ".")
+		}
+	case f.Array != ir.ArrayNone:
+		d.emit(path, pres, "A"+strconv.Itoa(fv.Count))
+		e := *f
+		e.Array = ir.ArrayNone
+		e.KeyEnum = ""
+		for i := range fv.Elems {
+			d.valueAt(&fv.Elems[i], &e, fmt.Sprintf("%s[%d]", path, i), ".")
+		}
+	default:
+		d.valueAt(&fv.Cell, f, path, pres)
+	}
+}
+
+func (d *goDumper) valueAt(c *tabletext.Cell, f *ir.Field, path, pres string) {
+	t := f.Type
+	switch {
+	case t.Pointer && t.Blob():
+		if c.Blob == nil {
+			d.emit(path, pres, "Xnull")
+			return
+		}
+		d.emit(path, pres, fmt.Sprintf("X%d:%s", len(c.Blob.Data), byteList(c.Blob.Data)))
+		return
+	case t.Pointer:
+		d.pointer(c.Node, path, pres)
+		return
+	case t.Kind == ir.TBool:
+		if c.B {
+			d.emit(path, pres, "B1")
+		} else {
+			d.emit(path, pres, "B0")
+		}
+		return
+	case t.Kind == ir.TFloat32 || t.Kind == ir.TFloat64:
+		if t.Kind == ir.TFloat32 && !math.IsNaN(c.F) {
+			d.emit(path, pres, "F"+strconv.FormatUint(uint64(math.Float32bits(float32(c.F))), 10))
+		} else {
+			d.emit(path, pres, "F"+strconv.FormatUint(math.Float64bits(c.F), 10))
+		}
+		return
+	case t.Kind == ir.TWString:
+		parts := make([]string, len(c.Units))
+		for i, u := range c.Units {
+			parts[i] = strconv.FormatUint(uint64(u), 10)
+		}
+		d.emit(path, pres, fmt.Sprintf("W%d:%s", len(c.Units), strings.Join(parts, ",")))
+		return
+	case t.Kind == ir.TString || t.Kind == ir.TBytes:
+		d.emit(path, pres, fmt.Sprintf("T%d:%s", len(c.Str), byteList(c.Str)))
+		return
+	}
+	if un := tabletext.UnionOf(f); un != nil {
+		d.emit(path, pres, "U"+strconv.FormatUint(c.U, 10))
+		if c.U >= 1 && int(c.U) <= len(un.Variants) {
+			name := un.Variants[c.U-1].Name
+			sub := path + "(" + name + ")"
+			if c.Tab != nil {
+				d.record(c.Tab, sub, ".")
+			} else if c.Arm != nil {
+				af := *c.Arm.Def
+				af.Name = name
+				d.slotAt(c.Arm, &af, sub)
+			}
+		}
+		return
+	}
+	if tabletext.EnumOf(f) != nil {
+		d.emit(path, pres, "E"+strconv.FormatUint(c.U, 10))
+		return
+	}
+	if tabletext.StructOf(f) != nil {
+		d.record(c.Tab, path, pres)
+		return
+	}
+	kind := ir.TableScalarKind(f)
+	lo, hi := c.U, uint64(0)
+	if ir.TableKindWide(kind) {
+		hi, lo = wideLanes(c.Wide)
+	} else if ir.TableKindSigned(kind) && int64(lo) < 0 {
+		hi = ^uint64(0)
+	}
+	d.emit(path, pres, fmt.Sprintf("I%d,%d", hi, lo))
+}
+
+func (d *goDumper) pointer(inst *tabletext.Instance, path, pres string) {
+	if inst == nil {
+		d.emit(path, pres, "Pnull")
+		return
+	}
+	if n, ok := d.labels[inst]; ok {
+		d.emit(path, pres, "P^"+strconv.Itoa(n))
+		return
+	}
+	n := d.next
+	d.next++
+	d.labels[inst] = n
+	d.emit(path, pres, "P@"+strconv.Itoa(n))
+	d.record(inst, path+"->", ".")
+}
+
+func byteList(b []byte) string {
+	parts := make([]string, len(b))
+	for i, c := range b {
+		parts[i] = strconv.Itoa(int(c))
+	}
+	return strings.Join(parts, ",")
+}
+
+func wideLanes(v *big.Int) (uint64, uint64) {
+	if v == nil {
+		return 0, 0
+	}
+	two128 := new(big.Int).Lsh(big.NewInt(1), 128)
+	x := new(big.Int).Mod(v, two128)
+	mask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1))
+	lo := new(big.Int).And(x, mask).Uint64()
+	hi := new(big.Int).Rsh(x, 64).Uint64()
+	return hi, lo
 }

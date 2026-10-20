@@ -399,7 +399,11 @@ of:
 | `ValPresent` | the field rode and placed its value | in `bits`, the view, or the children |
 
 So an optional's `<Name>Present` is `state != ValAbsent`, and a construct
-card never re-derives presence from content (§2.3).
+card never re-derives presence from content (§2.3). An absent field's slots
+are materialized at load time — the descriptor's default, else the type's
+zero, and a NESTED RECORD's own defaults — so a construct card reads a value
+rather than re-deriving one; an array whose field never rode keeps its bound
+slots at the value-initialized element, the asymmetry `T x[N] = {}` has.
 
 **The value record.** One `LoadVal` shape serves every field shape:
 
@@ -467,9 +471,11 @@ card); each is named here so the card that owns the descriptor can add it:
 schema-goose-vt-retain-unknown); the region load and `DecodeRegion`'s count
 path (§6.5); the report's `Reason` text; the optional text list's element
 records (§2.13: the descriptor does not tell a plain list from an optional
-one, and no manifest unit declares either). A `bits` value is not yet
-compared with Go's loaded instance value field by field: the tests compare
-the reports.
+one, and no manifest unit declares either). The tests compare more than the
+reports: `TestGooseTableLoadMatchesTheReports` walks the flat value table in
+field order and holds every value of every instance to the Go reference's
+decoded instance — state and bits, text bytes, element counts — field by
+field.
 
 ## THE REGISTER
 

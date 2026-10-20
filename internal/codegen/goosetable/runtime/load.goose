@@ -392,6 +392,16 @@ fn f32_bits(x: f32) -> u32 {
     return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
 }
 
+// f64_bits is float-to-bits through a one-element view, the f64 twin of
+// f32_bits (docs/PORT-GOOSE.md, FLOAT32).
+fn f64_bits(x: f64) -> u64 {
+    var a: f64[1] = [x];
+    let b = bytes_of(a);
+    var v: u64 = 0;
+    for i in 8 { v |= (b[i] as! u64) << ((8 * i) as! u64); }
+    return v;
+}
+
 // widen_f32 is the float64 bits of a float32's bits, exact, NaN payload kept
 // as the Go reference's widenF32NaN keeps it (docs/SPEC-TABLES.md §4).
 fn widen_f32(bits: u32) -> u64 {
@@ -427,19 +437,69 @@ fn union_index(c: LoadCtx&, name: const u8[:]) -> i64 {
     return -1;
 }
 
+// default_val gives one slot the value it holds when nothing rode: the
+// descriptor's declared default, else the type's zero (docs/PORT-GOOSE.md,
+// THE LOADED VALUE: ValAbsent). `declared` is false for an ARRAY ELEMENT,
+// whose zero is the value-initialized element, not the field default — the
+// asymmetry C++'s `T x[N] = {}` has (internal/tabletext reset).
+recursive fn default_val(c: LoadCtx&, slot: i64, d: FieldDesc, declared: bool) {
+    c.vals[slot] = LoadVal { shape: d.shape, tab: -1, .. };
+    let def = declared && d.has_def;
+    if d.shape == ShapeBool {
+        c.vals[slot].bits = Int128 { lo: if def && d.def_b { 1 } else { 0 }, hi: 0 };
+        return;
+    }
+    if d.shape == ShapeInt || d.shape == ShapeEnum {
+        c.vals[slot].bits = if def { d.def_i } else { Int128 { .. } };
+        return;
+    }
+    if d.shape == ShapeFloat {
+        // an f32 default is the f32 the generated initializer carries, in the
+        // low 32 bits, exactly as a wire f32 is (docs/PORT-GOOSE.md, FLOAT32)
+        if def {
+            if d.is_f32 { c.vals[slot].bits = Int128 { lo: f32_bits(d.def_f as f32), hi: 0 }; }
+            else { c.vals[slot].bits = Int128 { lo: f64_bits(d.def_f), hi: 0 }; }
+        }
+        return;
+    }
+    if d.shape == ShapeStr || d.shape == ShapeText || d.shape == ShapeBytes {
+        return; // a text default is d.def_s; off/len never name the input
+    }
+    if d.shape == ShapeArr {
+        var n: i64 = 0;
+        if d.array != ArrayList { n = d.bound; }
+        let e = d.elem;
+        guard e else { return; }
+        if n > 0 {
+            make_slots(c, slot, n, e);
+            for i in n { default_val(c, c.vals[slot].first + i, e, false); }
+        }
+        return;
+    }
+    if d.shape == ShapeTab {
+        let t = table_index(c, d.ref);
+        make_record(c, slot, t);
+        c.vals[slot].state = ValAbsent;
+        return;
+    }
+    if d.shape == ShapeUnion { c.vals[slot].tab = union_index(c, d.ref); return; }
+    // a map, a pointer, a blob, a list: empty, null, or None
+}
+
 // clear_fields resets a record's fields to their descriptor defaults (the Go
-// reference's Refill): a damaged body falls back on its defaults (§3).
-fn clear_fields(c: LoadCtx&, rec: i64) {
+// reference's Refill): a damaged body falls back on its defaults, and a
+// field that never rode keeps the value Go keeps (§3, §4).
+recursive fn clear_fields(c: LoadCtx&, rec: i64) {
     let t = c.vals[rec].tab;
     let first = c.vals[rec].first;
     for i in c.vals[rec].count {
-        c.vals[first + i] = LoadVal { shape: c.unit.tables[t].fields[i].shape, .. };
+        default_val(c, first + i, c.unit.tables[t].fields[i], true);
     }
 }
 
 // make_record gives slot `v` the field slots of table t, or resets the ones
 // it has: a body is the same storage across occurrences (§3).
-fn make_record(c: LoadCtx&, v: i64, t: i64) {
+recursive fn make_record(c: LoadCtx&, v: i64, t: i64) {
     if c.vals[v].made && c.vals[v].tab == t {
         clear_fields(c, v);
         return;
@@ -462,11 +522,12 @@ fn fresh_record(c: LoadCtx&, t: i64) -> i64 {
 }
 
 // make_slots gives a collection slot n element slots (made once: a fixed,
-// counted or keyed array keeps its storage across occurrences).
-fn make_slots(c: LoadCtx&, v: i64, n: i64, shape: u8) {
+// counted or keyed array keeps its storage across occurrences). Each slot
+// starts at the element's zero, so an untouched slot is the value Go keeps.
+recursive fn make_slots(c: LoadCtx&, v: i64, n: i64, e: FieldDesc) {
     if c.vals[v].made { return; }
     let first = reserve(c, n);
-    for i in n { c.vals[first + i].shape = shape; }
+    for i in n { default_val(c, first + i, e, false); }
     c.vals[v].made = true;
     c.vals[v].first = first;
     c.vals[v].count = n;
@@ -935,18 +996,17 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
         } else {
             let e = d.elem;
             guard e else { r.off = end; return true, true; }
-            var eshape = e.shape;
             if list {
                 // a fresh run, bounded by the bytes that can carry elements
                 let room = (sub.end - sub.off + 1) as! u64;
                 let n = (if keep < room { keep } else { room }) as! i64;
                 let first = reserve(c, n);
-                for k in n { c.vals[first + k].shape = eshape; }
+                for k in n { default_val(c, first + k, e, false); }
                 c.vals[slot].made = true;
                 c.vals[slot].first = first;
                 c.vals[slot].count = n;
             } else {
-                make_slots(c, slot, d.bound, eshape);
+                make_slots(c, slot, d.bound, e);
             }
             var i: i64 = 0;
             while (i as! u64) < keep && i < c.vals[slot].count {
@@ -1068,7 +1128,7 @@ fn load_keyed(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool 
     guard e else { r.off = end; return true; }
     var sub = Rd { off: r.off, end: if end < r.off { r.off } else { end } };
     let keys = key_variants(c, owner, d);
-    make_slots(c, slot, d.bound, e.shape);
+    make_slots(c, slot, d.bound, e);
     c.vals[slot].state = ValPresent;
     c.vals[slot].len = d.bound;
     var k: u64 = 0;
