@@ -324,13 +324,25 @@ func (g *wireGen) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, 
 // tableWireId is a table's NODE TYPE id (§3.1): the hash of its wire name.
 func tableWireId(st *ir.Struct) uint64 { return ir.TableWireId(st.WireName()) }
 
+// rowCursorMembers are the members every generated <Record>Row cursor owns:
+// the view, the mutable offset, and the record's size and alignment
+// (docs/SPEC-TABLES.md §19.2; block.go emitRowCursor, cook.go emitRecordCursor).
+// A record field may be named any of them — Messages' InsertText names a field
+// `at` — so its Dart spelling takes the same underscore suffix a reserved word
+// does, and the cursor's own members keep the names every walk and the
+// conformance driver use.
+var rowCursorMembers = map[string]bool{
+	"view": true, "at": true, "rowSize": true, "rowAlign": true,
+}
+
 // fieldMember is the Dart storage member for a field: the lowerCamelCase
 // spelling every Dart surface uses, with an underscore appended when that
 // spelling lands on a Dart reserved word (an ordinary schema field like `_new`
-// maps to `new`, a keyword), so the member stays public and valid (§11).
+// maps to `new`, a keyword) or on a Row cursor's own member, so the member
+// stays public and valid (§11, §19.2).
 func fieldMember(f *ir.Field) string {
 	name := dartName(f.Name)
-	if dartReserved[name] {
+	if dartReserved[name] || rowCursorMembers[name] {
 		return name + "_"
 	}
 	return name
