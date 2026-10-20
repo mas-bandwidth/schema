@@ -4225,7 +4225,12 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	if f.ArrayBound > 0 {
 		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.clamped++; }", f.ArrayBound, f.ArrayBound)
 	}
-	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (%s) { long n = ar.leb(); if (ar.fail) { } %s if (ek != %d) { report.widened++; } ", cond, countCheck, ek)
+	// The body's HEADER is read against the parent reader's extent, not the
+	// body's own L (docs/SPEC-TABLES.md §3.3, §4): a canonical LEB128 is up to
+	// ten bytes, so a count spelled wide enough may leave the cursor PAST the
+	// end it was framed by. Widen the sub-reader only for the count, then
+	// restore L before the elements, which stay bounded by the body.
+	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (%s) { int ekL = ar.limit; ar.limit = r.limit; long n = ar.leb(); boolean ekFail = ar.fail; ar.limit = ekL; if (ekFail) { } %s if (ek != %d) { report.widened++; } ", cond, countCheck, ek)
 	if f.Array != ir.ArrayFixed {
 		fmt.Fprintf(b, "v.%s.clear(); ", m)
 	}
