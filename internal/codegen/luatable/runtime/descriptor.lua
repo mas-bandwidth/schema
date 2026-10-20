@@ -59,6 +59,16 @@ check_value = function(T, where, d, v, elem)
     if type(v) ~= "boolean" or not (elem or v == d.default) then return fail(where, "bool at its default") end
   elseif s == "int" or s == "flags" then
     if math.type(v) ~= "integer" or not (elem or v == d.default) then return fail(where, "integer at its default") end
+  elseif s == "wide" then
+    -- a 128-bit value is its two halves (docs/PORT-LUA.md, 64-BIT AND
+    -- 128-BIT INTEGERS); the declared default is a pair too (§3 kinds 18/19,
+    -- 24/29)
+    if type(v) ~= "table" or math.type(v.lo) ~= "integer" or math.type(v.hi) ~= "integer" then
+      return fail(where, "wide value is a pair of halves")
+    end
+    if not elem and (v.lo ~= d.default.lo or v.hi ~= d.default.hi) then
+      return fail(where, "wide value at its default")
+    end
   elseif s == "float" then
     if math.type(v) ~= "float" or not (elem or v == d.default or (v ~= v and d.default ~= d.default)) then
       return fail(where, "float at its default")
