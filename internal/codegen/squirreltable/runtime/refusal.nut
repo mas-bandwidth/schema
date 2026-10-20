@@ -272,7 +272,8 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   foreach (k, _ in COUNTERS) store[k] <- report[k];
   store.missingRequired <- false;
   local first = {};
-  local v = _load.load(T, root, bytes, witness(store, first));
+  // the trailer was opened above (§2.14), so the load must not strip it again
+  local v = _load.load(T, root, bytes, witness(store, first), null, true);
   foreach (k, _ in COUNTERS) report[k] = store[k];
   report.missingRequired = store.missingRequired;
   // A MISSING REQUIRED FIELD IS ITS OWN NAME (docs/SPEC-TABLES.md §2.3): the
