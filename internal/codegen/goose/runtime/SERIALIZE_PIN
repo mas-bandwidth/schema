@@ -1,0 +1,15 @@
+# SERIALIZE_PIN — the vendored serialize.goose files (docs/PORT-GOOSE.md,
+# THE RUNTIME LAYOUT). Copied VERBATIM from the repository and commit below;
+# `make vendor-serialize-goose` re-copies them from this pin for the next bump.
+repository https://github.com/mas-bandwidth/serialize.goose
+commit 8f9a5ec8da26da45f7755c6cfb15d94d8b30d3da
+sha256  c3267616148b00edfff13dad76e83ac32fe95e8c88f8a97a0fc56fa9d97da421  serialize_bitpacker.goose
+sha256  45777564c7ed933d9331467ec6d6504b3d8b4b86472d0681db3a21fdc4568014  serialize_bytes.goose
+sha256  589615ced70c45c83e93e608b7064cddaeaf405ec1f96402fd5c7ce8fcd2a7b4  serialize_compressed_float.goose
+sha256  58a44525dfca9d20237a1b6c55e3f476f8824013cc71efe1fd1a6aa7d690d5c7  serialize_fixed.goose
+sha256  5586a3a28555da86bed9950e54cf4a926e94cbdddec71dcc04236a9dc31cb082  serialize_float.goose
+sha256  abbc1cc97a89cc4113c9c770e26ef74fce9733a3bccc8872355cc6a28bfc301d  serialize.goose
+sha256  4e43688c37bb330b3dfd9ecaf16433acbdaa2335290489a308d6b7328da72286  serialize_int128.goose
+sha256  ba4d1bfbd61b60e5e05acba3317c2fe49b46c5a34eb151e439585a71553da53f  serialize_int.goose
+sha256  024633e9ad9bae570be649425d1c659f4d3991926021ffe9f6768044b83cdfc8  serialize_object.goose
+sha256  b4269c3fdfe44b4241c8e1e0b9769a1390b39794edad3cd796ba5dea2793efcd  serialize_stream.goose
