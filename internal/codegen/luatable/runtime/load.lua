@@ -726,7 +726,11 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
     -- what it holds; then every entry's KEY is scanned before its body is
     -- read, ascending against the last entry that landed.
     if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; return nil, true end
-    if above(count, 0x7fffffff) then report.malformed = true; return {} end
+    -- PAST THE INT32 STORAGE CAP is the engine's CountRefusal (§2.8, §2.9),
+    -- not damage: the field keeps nothing, the reason is named, and meeting
+    -- the cap adds no malformed event or other counter (decode.go
+    -- collectionCap). A count AT the cap decodes normally.
+    if above(count, 0x7fffffff) then report.reason = "count_refusal"; return {} end
     local entry = T.Tables[fd.entry]
     local kf = fd.key_field
     local keyname = kf.name
@@ -900,7 +904,11 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
   end
   local keep = count
   if fd.list then
-    if above(count, 0x7fffffff) then report.malformed = true; return {} end
+    -- PAST THE INT32 STORAGE CAP is the engine's CountRefusal (§2.9),
+    -- not damage: the field keeps nothing, the reason is named, and meeting
+    -- the cap adds no malformed event or other counter (decode.go
+    -- collectionCap). A count AT the cap decodes normally.
+    if above(count, 0x7fffffff) then report.reason = "count_refusal"; return {} end
   elseif above(count, fd.bound) then
     keep = fd.bound
     report.clamped = report.clamped + 1

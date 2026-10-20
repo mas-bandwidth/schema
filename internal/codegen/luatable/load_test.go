@@ -272,3 +272,70 @@ func TestLuaTableLoadNegativeControl(t *testing.T) {
 	}
 	t.Logf("%d of %d report rows diverge with the unknown-id counter removed", len(res.mismatches), res.compared+len(res.mismatches))
 }
+
+// wireCountRefusalSchema is the hostile corpus's probe root
+// (hostilecorpus.ProbeSchema): one map whose count can pass the int32
+// storage cap (docs/SPEC-TABLES.md §2.8, §2.9; internal/tablewire/decode.go
+// CountRefusal).
+const wireCountRefusalSchema = `package probe
+
+table Root
+{
+    entries map[int32]int32
+}
+`
+
+// wireCountRefusalReason loads one wire with the emitted runtime and returns
+// report.reason, the named refusal the runner's wire branch reads.
+func wireCountRefusalReason(t *testing.T, wire []byte) string {
+	t.Helper()
+	schema := filepath.Join(t.TempDir(), "probe.schema")
+	if err := os.WriteFile(schema, []byte(wireCountRefusalSchema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u := luarun.LoadUnit(t, schema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	probe := `local T = require("` + ModuleName(u) + `")
+local load = require("load")
+local inputs = require("inputs")
+local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
+  clamped = 0, widened = 0, duplicate = 0, reason = "" }
+load.Load(T, "Root", inputs.wire, report)
+print(report.reason)
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimRight(string(luarun.Run(t, dir, "main.lua", map[string][]byte{"wire": wire})), "\n")
+}
+
+// TestLuaWireCountPastCapIsCountRefusal pins the hostile corpus's
+// wire-count-refusal row (docs/SPEC-TABLES.md §2.8, §2.9): the map count
+// 2^31 is past the int32 storage cap and names count_refusal, exactly as the
+// engine's builder-path CountRefusal does, while a count AT the cap (2^31-1)
+// is not that refusal.
+func TestLuaWireCountPastCapIsCountRefusal(t *testing.T) {
+	t.Parallel()
+	corpus, err := os.ReadFile(filepath.Join("..", "..", "..", "internal", "ci", "hostilecorpus", "corpus", "inputs", "wire-count-refusal.bin"))
+	if err != nil {
+		t.Fatalf("read the corpus input: %v", err)
+	}
+	// The map body: elem kind at 4, then the five-byte LEB128 count at 5..9.
+	// The committed input spells 2^31 there; the at-cap control spells 2^31-1.
+	if got := corpus[5:10]; string(got) != "\x80\x80\x80\x80\x08" {
+		t.Fatalf("the corpus count bytes are % x, want 80 80 80 80 08", got)
+	}
+	if reason := wireCountRefusalReason(t, corpus); reason != "count_refusal" {
+		t.Errorf("wire-count-refusal: reason = %q, want count_refusal", reason)
+	}
+	atCap := append([]byte(nil), corpus...)
+	copy(atCap[5:10], []byte{0xff, 0xff, 0xff, 0xff, 0x07})
+	if reason := wireCountRefusalReason(t, atCap); reason == "count_refusal" {
+		t.Errorf("a count at the int32 cap answered count_refusal; it must decode normally")
+	}
+}
