@@ -38,7 +38,19 @@ func (lobsterTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) 
 	// descriptor surface itself describes them all
 	// (TestLobsterTableDescriptorsLoad generates every manifest unit through
 	// lobster and lobstertable directly).
-	for _, refuse := range []func(*ir.Unit, string) error{refuseUnported, refuseOptionalArrays, refuseMaps, refuseLists} {
+	refusals := []func(*ir.Unit, string) error{refuseUnported, refuseOptionalArrays}
+	// A text list and an unbounded map key ARE the unbounded list and the map
+	// this target otherwise refuses; carries_lobster_text_lists.go registers
+	// them, so a unit whose lists are ALL text lists and whose maps ALL have
+	// unbounded text keys is theirs to emit. Every other list or map is still
+	// refused by name.
+	if lobsterListRefusalApplies(u) {
+		refusals = append(refusals, refuseLists)
+	}
+	if lobsterMapRefusalApplies(u) {
+		refusals = append(refusals, refuseMaps)
+	}
+	for _, refuse := range refusals {
 		if err := refuse(u, "lobster"); err != nil {
 			return nil, err
 		}
