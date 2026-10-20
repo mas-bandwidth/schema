@@ -9,9 +9,109 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
+
+// optionalsImport joins this card's runtime file to the load and save walkers
+// (docs/PORT-LOBSTER.md, THE LOAD): every runtime/*.lobster file is emitted
+// beside the modules, and importing optionals.lobster is the per-kind hook
+// this card's constructs ride. The shared helpers import only load and save,
+// so the two below are the same program with the hook added.
+func optionalsImport(program string) string {
+	return strings.Replace(program, "import .load\n", "import .load\nimport .optionals\n", 1)
+}
+
+// runOptionalsLoad is runUnit with optionals.lobster imported, so the load
+// half is exercised through this card's hook and every row's report line and
+// value dump are held to the Go reference.
+func runOptionalsLoad(t *testing.T, g *loadUnit, rows []loadRow) unitResult {
+	t.Helper()
+	var roots []string
+	inputs := map[string][]byte{}
+	res := unitResult{rows: rows}
+	for i, row := range rows {
+		wire := row.data
+		if wire == nil {
+			var err error
+			if wire, err = os.ReadFile(filepath.Join(root, row.wire)); err != nil {
+				t.Fatalf("%s: %v", row.name, err)
+			}
+		}
+		inputs[fmt.Sprintf("w%d", i)] = wire
+		roots = append(roots, row.root)
+		line, dump := goLoad(g.u, row.root, wire)
+		res.goLine = append(res.goLine, line)
+		res.goDump = append(res.goDump, dump)
+	}
+	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(optionalsImport(loadProgram(g, roots))), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := strings.Split(strings.TrimRight(string(lobsterrun.Run(t, g.dir, "main.lobster", inputs)), "\n"), "\n")
+	for range rows {
+		var n int
+		if len(out) < 2 {
+			t.Fatalf("unit %s: the program's output ends early", rows[0].unit)
+		}
+		if _, err := fmt.Sscanf(out[1], "%d", &n); err != nil || len(out) < 2+n {
+			t.Fatalf("unit %s: the program's output is not report, count, dump: %q", rows[0].unit, out[1])
+		}
+		res.lob = append(res.lob, out[0], strings.Join(out[2:2+n], ""))
+		out = out[2+n:]
+	}
+	if len(out) != 0 {
+		t.Fatalf("unit %s: %d lines past the last row", rows[0].unit, len(out))
+	}
+	return res
+}
+
+// runOptionalsSaveRows is runSaveRows with optionals.lobster imported: the
+// saved bytes and the re-loaded dump are held to the reference through this
+// card's hook.
+func runOptionalsSaveRows(t *testing.T, g *loadUnit, rows []loadRow) saveResult {
+	t.Helper()
+	var roots []string
+	inputs := map[string][]byte{}
+	for i, row := range rows {
+		wire := row.data
+		if wire == nil {
+			var err error
+			if wire, err = os.ReadFile(filepath.Join(root, row.wire)); err != nil {
+				t.Fatalf("%s: %v", row.name, err)
+			}
+		}
+		inputs[fmt.Sprintf("w%d", i)] = wire
+		roots = append(roots, row.root)
+	}
+	program := optionalsImport(saveProgram(g, roots))
+	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(program), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := strings.Split(strings.TrimRight(string(lobsterrun.Run(t, g.dir, "main.lobster", inputs)), "\n"), "\n")
+	res := saveResult{}
+	for range rows {
+		if len(out) < 2 {
+			t.Fatalf("unit %s: the program's output ends early", rows[0].unit)
+		}
+		var hn int
+		if _, err := fmt.Sscanf(out[0], "%d", &hn); err != nil || len(out) < 1+hn+1 {
+			t.Fatalf("unit %s: the program's output is not hex count, hex, count, dump: %q", rows[0].unit, out[0])
+		}
+		res.saved = append(res.saved, strings.Join(out[1:1+hn], ""))
+		out = out[1+hn:]
+		var n int
+		if _, err := fmt.Sscanf(out[0], "%d", &n); err != nil || len(out) < 1+n {
+			t.Fatalf("unit %s: the program's output is not hex, count, dump: %q", rows[0].unit, out[0])
+		}
+		res.dump = append(res.dump, strings.Join(out[1:1+n], ""))
+		out = out[1+n:]
+	}
+	if len(out) != 0 {
+		t.Fatalf("unit %s: %d lines past the last row", rows[0].unit, len(out))
+	}
+	return res
+}
 
 // optionalRows are the manifest rows that use this card's reachable
 // constructs: tabledemo's enum-keyed configuration (§3.2), tblg1's optional
@@ -73,6 +173,20 @@ func TestLobsterOptionals(t *testing.T) {
 	compared := 0
 	compareUnit := func(g *loadUnit, rows []loadRow) {
 		t.Helper()
+		// LOAD, report for report and dump for dump (docs/SPEC-TABLES.md §2.3,
+		// §2.8, §3.2): the optional and keyed shapes the walker dispatches on
+		// are held to the Go reference before a byte is written.
+		loaded := runOptionalsLoad(t, g, rows)
+		for i, row := range rows {
+			if got, exp := loaded.lob[2*i], loaded.goLine[i]; got != exp {
+				t.Errorf("%s: the load report is not the reference's:\nlobster: %s\ngo:      %s", row.name, got, exp)
+				continue
+			}
+			if got, exp := loaded.lob[2*i+1], loaded.goDump[i]; got != exp {
+				t.Errorf("%s: the loaded value is not the reference's at %s", row.name, divergence(got, exp))
+				continue
+			}
+		}
 		var keep []loadRow
 		var want [][]byte
 		for _, row := range rows {
@@ -90,7 +204,7 @@ func TestLobsterOptionals(t *testing.T) {
 			keep = append(keep, row)
 			want = append(want, out)
 		}
-		res := runSaveRows(t, g, keep)
+		res := runOptionalsSaveRows(t, g, keep)
 		for i, row := range keep {
 			if got, exp := res.saved[i], hex.EncodeToString(want[i]); got != exp {
 				t.Errorf("%s: the saved bytes are not the reference's:\nlobster: %s\ngo:      %s", row.name, got, exp)
