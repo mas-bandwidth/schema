@@ -44,7 +44,11 @@ func TestGeneratedTableCompilesStrictElixir(t *testing.T) {
 
 	units := strictFixedUnits(t, root)
 	tmp := t.TempDir()
-	var fixedFiles []string
+	type generated struct {
+		name  string
+		files []string
+	}
+	var fixed []generated
 
 	for _, unit := range units {
 		parts := strings.SplitN(unit, ":", 2)
@@ -53,7 +57,7 @@ func TestGeneratedTableCompilesStrictElixir(t *testing.T) {
 		}
 		out := filepath.Join(tmp, "gen", parts[0])
 		run(root, "./bin/schema", "generate", "--lang", "elixir", "--out", out, parts[1])
-		fixedFiles = append(fixedFiles, exFiles(t, out)...)
+		fixed = append(fixed, generated{name: parts[0], files: exFiles(t, out)})
 	}
 
 	src := filepath.Join(tmp, "bench-src")
@@ -83,7 +87,11 @@ func TestGeneratedTableCompilesStrictElixir(t *testing.T) {
 		}
 	}
 
-	compile("fixed", fixedFiles)
+	// Each unit compiles on its own: the strict gate must hold for the unit
+	// make/elixir.mk builds, not only for the whole set side by side.
+	for _, unit := range fixed {
+		compile(unit.name, unit.files)
+	}
 	compile("bench", exFiles(t, benchOut))
 }
 

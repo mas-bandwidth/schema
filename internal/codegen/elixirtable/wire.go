@@ -32,6 +32,12 @@ func tableRuntimeModule(u *ir.Unit, ns string) []byte {
 // tableRuntimeSource is the module body. It is INDENTED for the module it lands
 // in and carries no banner: `mix format --check-formatted` is the leg's gate,
 // so the shapes here are the formatter's own.
+//
+// The identity and id-table code below spells the XOR as Bitwise.bxor/2 and
+// pins each binary size built from a runtime value with ^, so Elixir 1.20's
+// type checker has no unused-variable or unreachable-clause fact to report
+// under make/elixir-strict.sh (docs/SPEC-TABLES.md §3, §5, §2.9, §11). The
+// bytes are unchanged.
 const tableRuntimeSource = `  @moduledoc """
   The id-table wire's shared runtime (docs/SPEC-TABLES.md §3, §5): the form
   byte, the canonical LEB128 every length, count, index and reference rides as,

@@ -82,6 +82,11 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 // OF FIELDS"). No kind byte, no length and no alignment rides inside a body, so
 // a reader that has lost its position has lost it for the rest of the batch:
 // damage is terminal for the batch (§3.3's "DAMAGE IS TERMINAL FOR THE BATCH").
+//
+// A binding the body does not read (the encoded accumulator, and the kind of a
+// packed scalar whose base already carries it) is spelled with a leading
+// underscore, so Elixir 1.20's type checker reports no unused-variable warning
+// under make/elixir-strict.sh (docs/SPEC-TABLES.md §3.3, §2.9, §11).
 const messageBatchRuntimeBody = `  @batch_max 256
 
   @doc """
