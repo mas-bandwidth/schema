@@ -493,9 +493,13 @@ card); each is named here so the card that owns the descriptor can add it:
 schema-goose-vt-retain-unknown); the region load and `DecodeRegion`'s count
 path (§6.5); the report's `Reason` text; the optional text list's element
 records (§2.13: the descriptor does not tell a plain list from an optional
-one, and no manifest unit declares either). A `bits` value is not yet
-compared with Go's loaded instance value field by field: the tests compare
-the reports.
+one, and no manifest unit declares either). Every loaded value IS compared
+with the Go reference: `TestGooseTableLoadMatchesTheReports` walks the flat
+`LoadVal` table in field order (state resolved through the descriptor's
+declared default, `bits`, text bytes, element and entry counts, union tags
+and payloads, pointer nodes by first-visit label) and compares that dump line
+for line with `tablewire.Decode` of the same bytes, naming unit, instance and
+field path at the first divergence.
 
 ## THE REGISTER
 
