@@ -36,6 +36,7 @@ func emitDescriptors(g *lobster.Gen) error {
 		g.Pf("schema_rt.view_table(%sDescriptor, %s, %s, %s)\n", t.Name, lobster.StringLit([]byte(base)), lobster.StringLit([]byte(t.Doc)), tagList(t.Tags))
 		for _, f := range t.Fields {
 			fieldAnnotations(g, t.Name, f)
+			emitMapEntry(g, t.Name, f)
 		}
 	}
 	for _, un := range g.File.TableUnions {
@@ -60,6 +61,7 @@ func emitDescriptors(g *lobster.Gen) error {
 			g.Pf("schema_rt.view_type(%sDescriptor, %s, %s, %s)\n", d.Name, lobster.StringLit([]byte(base)), lobster.StringLit([]byte(d.Doc)), tagList(d.Tags))
 			for _, f := range d.Fields {
 				fieldAnnotations(g, d.Name, f)
+				emitMapEntry(g, d.Name, f)
 			}
 		case *ir.Enum:
 			emitVocabulary(g, d.Name, base, "enum", d.Doc, d.Tags, d.Variants, d.VariantDocs, d.VariantTags, d.VariantDeprecated, enumIDs(d))
@@ -103,6 +105,7 @@ func emitDescriptors(g *lobster.Gen) error {
 					idLit(ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))))
 			}
 			g.Pf("schema_rt.keyed_keys(%s, %s, [%s]::%s.EnumVariant)\n", lobster.StringLit([]byte(t.Name)), lobster.StringLit([]byte(f.Name)), join(vs), rt)
+			g.Pf("schema_rt.keyed_enum(%s, %s, %s)\n", lobster.StringLit([]byte(t.Name)), lobster.StringLit([]byte(f.Name)), lobster.StringLit([]byte(f.KeyEnumRef.Name)))
 		}
 	}
 	return nil
@@ -115,6 +118,17 @@ func fieldAnnotations(g *lobster.Gen, owner string, f *ir.Field) {
 	g.Pf("schema_rt.field_annotation(%s, %s, %s, %s)\n",
 		lobster.StringLit([]byte(owner)), lobster.StringLit([]byte(f.Name)),
 		lobster.StringLit([]byte(f.Doc)), tagList(f.Tags))
+}
+
+// emitMapEntry names a map field's ENTRY TABLE in the registry, so the
+// descriptor's entry table is a fact the reflection surface carries by name
+// (docs/SPEC-TABLES.md §2.8, §8.1).
+func emitMapEntry(g *lobster.Gen, owner string, f *ir.Field) {
+	if !f.IsMap() {
+		return
+	}
+	g.Pf("schema_rt.map_entry(%s, %s, %s)\n",
+		lobster.StringLit([]byte(owner)), lobster.StringLit([]byte(f.Name)), lobster.StringLit([]byte(f.MapEntry.Name)))
 }
 
 func emitVocabulary(g *lobster.Gen, name, base, kind, doc string, tags []string, variants, docs []string, vtags [][]string, dep []bool, ids []uint64) {

@@ -13,6 +13,9 @@ enum Mode | inspected
 /// A retired vocabulary.
 enum Old
 {
+    /// The current variant.
+    Fresh,
+
     /// The retired variant.
     Gone | deprecated
 }
@@ -33,6 +36,8 @@ table Holder | inspected
     nums [Mode]int32
 
     entries map[string(8)]int32
+
+    retired Old
 
     old int32 = 7 | deprecated
 

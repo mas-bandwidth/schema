@@ -117,6 +117,42 @@ def field_tags(owner:string, field:string) -> [string]:
             return a.tags
     return []
 
+// A MAP FIELD'S ENTRY TABLE (§2.8, §8.1): the descriptor names the generated
+// { key, value } table, and the registry makes that name a reflection fact.
+class MapEntryName:
+    owner:string
+    field:string
+    entry:string
+
+let map_entries:[MapEntryName] = []
+
+def map_entry(owner:string, field:string, entry:string):
+    push(map_entries, MapEntryName { owner: owner, field: field, entry: entry })
+
+def map_entry_of(owner:string, field:string) -> string:
+    for(map_entries) m:
+        if m.owner == owner and m.field == field:
+            return m.entry
+    return ""
+
+// AN ENUM-KEYED ARRAY'S KEY ENUM (§2.4, §3.2): the field's key vocabulary,
+// named beside the variants keyed_keys carries.
+class KeyEnumName:
+    owner:string
+    field:string
+    enum_name:string
+
+let key_enums:[KeyEnumName] = []
+
+def keyed_enum(owner:string, field:string, enum_name:string):
+    push(key_enums, KeyEnumName { owner: owner, field: field, enum_name: enum_name })
+
+def keyed_enum_of(owner:string, field:string) -> string:
+    for(key_enums) k:
+        if k.owner == owner and k.field == field:
+            return k.enum_name
+    return ""
+
 // THE DEPRECATED ENUM VARIANT (§2.15): the variant keeps its id, but a read
 // yields the field's declared default (an element's zero). The marker is
 // registered from the descriptors, and this file replaces the enum shape.
