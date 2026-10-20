@@ -401,6 +401,17 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
   local e = d.elem;
   wu8(w, e.kind == 0 ? 6 : e.kind);
   local n = val.len();
+  if (d.textlist != 0 && ("total" in d) && d.total != null) {
+    // THE TOTAL OF A TEXT LIST (docs/SPEC-TABLES.md §2.13): the sum of the
+    // elements' UTF-8 byte lengths is at most d.total; an absent ?string
+    // element and a present empty one count zero. A refusal writes nothing
+    // and answers -1.
+    local sum = 0;
+    for (local i = 0; i < n; i++) {
+      if (d.textlist == 1 || val[i].ValuePresent) sum = sum + val[i].Value.len();
+      if (sum > d.total) return -1;
+    }
+  }
   if (e.shape == "tab" && e.kind == 12) {
     // A PLAIN TEXT LIST's element is kind 12 (docs/SPEC-TABLES.md §2.13, §3):
     // its storage is the generated element record, but the wire carries the

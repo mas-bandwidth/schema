@@ -770,6 +770,27 @@ readFieldArray = function(fd, r, T, table, v, report, st) {
 // header is inert; a damaged count is malformed and keeps the field; an
 // element kind that is not this array's (and does not widen) is a kind
 // mismatch and keeps the field; a bounded array's excess is clamped.
+// THE TOTAL OF A TEXT LIST ON THE READ (docs/SPEC-TABLES.md §2.13): keep the
+// longest prefix whose sum is within fd.total, drop the first element that
+// would cross it and every element after it, counting clamped ONCE for the
+// field. The elements are already clamped at their own M, and a count past the
+// array's own bound has already clamped. An absent ?string element adds nothing.
+local textTotalTrim = function(fd, out, report) {
+  if (!("total" in fd) || fd.total == null) return out;
+  local spent = 0;
+  local keep = 0;
+  for (local i = 0; i < out.len(); i++) {
+    local rec = out[i];
+    local len = (fd.textlist == 1 || rec.ValuePresent) ? rec.Value.len() : 0;
+    if (spent + len > fd.total) { report.clamped = report.clamped + 1; break; }
+    spent = spent + len;
+    keep++;
+  }
+  if (keep < out.len()) out.resize(keep);
+  return out;
+};
+
+// AN ARRAY BODY (docs/SPEC-TABLES.md §2.9, §3): a body shorter than its own
 readArrayBody = function(fd, r, T, table, v, report, st) {
   if (r.end - r.at < 2) return ARRAY_SELECTED;
   local ek = u8(r);
@@ -816,7 +837,7 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
       out.append(inst);
       r.at += L;
     }
-    v[fd.member] = out;
+    v[fd.member] = textTotalTrim(fd, out, report);
     return ARRAY_SELECTED;
   }
   local out = [];
@@ -866,6 +887,7 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
       for (local i = out.len(); i < cur.len(); i++) out.append(cur[i]);
     }
   }
+  if (fd.textlist != 0) out = textTotalTrim(fd, out, report);
   v[fd.member] = out;
   return ARRAY_SELECTED;
 };

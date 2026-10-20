@@ -1024,9 +1024,19 @@ writeMap = function(T, d, val, depth, g, out) {
 
 // A TEXT LIST's text form (§2.13, §16.2): a plain array of strings, absent
 // `?string` elements as null. The storage is the generated element record;
-// textlist 1 is the plain spelling and 2 the optional one.
+// textlist 1 is the plain spelling and 2 the optional one. THE TOTAL refuses
+// the write past N, as the wire does (§2.13).
 local writeTextArray = function(T, d, val, depth, out) {
   local n = writeCount(d, val);
+  local total = (("total" in d) && d.total != null) ? d.total : -1;
+  if (total >= 0) {
+    local sum = 0;
+    for (local i = 0; i < n; i++) {
+      local rec = elemAt(T, d.elem, val, i);
+      if (d.textlist == 1 || (rec != null && rec.ValuePresent)) sum = sum + (rec == null ? 0 : rec.Value.len());
+      if (sum > total) return false;
+    }
+  }
   if (n == 0) { out.append("[]"); return true; }
   out.append("[");
   for (local i = 0; i < n; i++) {
@@ -1722,7 +1732,10 @@ readArray = function(T, c, fd, r, v, depth) {
 };
 
 // A TEXT LIST's text form read (§2.13, §16.2): a plain array of strings into
-// the generated element records; null is an absent `?string` element.
+// the generated element records; null is an absent `?string` element. THE TOTAL
+// keeps the longest prefix within N, drops the crossing element and every one
+// after it, and counts clamped ONCE for the field (§2.13); a count past the
+// array's own bound clamps first.
 readTextArray = function(T, c, fd, r, v, depth) {
   if (peek(r) != '[') { r.bad = true; return false; }
   r.p++;
@@ -1732,23 +1745,27 @@ readTextArray = function(T, c, fd, r, v, depth) {
   local bound = fd.list ? 0x7fffffff : fd.bound;
   local vf = ed.fields[0];
   local capacity = (!vf.unbounded && vf.bound > 0) ? vf.bound : -1;
+  local total = (("total" in fd) && fd.total != null) ? fd.total : -1;
+  local spent = 0;
+  local over = false;
   for (;;) {
     local ch = peek(r);
     if (ch == ']') { r.p++; break; }
     if (ch == 0) { r.bad = true; return false; }
     local rec = ed.make();
     local vs = valueShape(r);
+    local len = 0;
+    local place = true;
     if (out.len() >= bound) {
       r.report.clamped++;
       if (!skipValue(r, depth + 1)) return false;
+      place = false;
     } else if (fd.textlist == 2 && vs == 'z') {
       if (!literal(r, "null")) return false;
       rec.ValuePresent = false;
-      out.append(rec);
     } else if (vs != 's') {
       r.report.kindMismatch++;
       if (!skipValue(r, depth + 1)) return false;
-      out.append(rec);
     } else {
       local s = scanBytes(r, capacity);
       if (s == null) return false;
@@ -1756,7 +1773,16 @@ readTextArray = function(T, c, fd, r, v, depth) {
       if (s[1]) r.report.clamped++;
       rec.Value = bytesToString(s[0]);
       if (fd.textlist == 2) rec.ValuePresent = true;
+      len = s[0].len();
+    }
+    if (place && total >= 0 && (over || spent + len > total)) {
+      if (!over) r.report.clamped++;
+      over = true;
+      place = false;
+    }
+    if (place) {
       out.append(rec);
+      spent = spent + len;
     }
     ch = peek(r);
     if (ch == ',') { r.p++; continue; }
