@@ -195,7 +195,9 @@ func (g *wireGen) emitFixedHelper(st *ir.Struct, f *ir.Field) {
 	g.pf("\tfor (var i = 0; i < keep; i++) {\n")
 	g.emitGetElem(f, ek, "out", "p", "\t\t")
 	g.pf("\t}\n")
-	g.pf("\tif (keep == count && p.pos != p.limit) { p.report.malformed = true; return false; }\n")
+	// SLACK AFTER A FIXED ARRAY'S ELEMENTS IS NOT DAMAGE: the reference skips
+	// the rest of the body by its L and keeps what it decoded
+	// (internal/tablewire decode.go arrayBody).
 	g.pf("\tfinal fresh = List<%s>.generate(%d, (_) => %s);\n", et, f.ArrayBound, g.elemDefault(f))
 	g.pf("\tfor (var i = 0; i < out.length && i < %d; i++) {\n", f.ArrayBound)
 	g.pf("\t\tfresh[i] = out[i];\n")

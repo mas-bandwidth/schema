@@ -1186,6 +1186,34 @@ cards-dart-wire-fuzz: cards-dart-generate build/conformance-harness build/confor
 # identical byte-for-byte contract the Go leg's cards-wire-fuzz pins.
 test-dart: cards-dart-wire-fuzz
 
+# tables-dart-wire-fuzz-all is THE WIRE FUZZER OVER EVERY ROOT (§4.2), the
+# Dart leg's twin of the Makefile's tables-wire-fuzz: NO --manifest, so the
+# harness runs its default manifest — every instance and every report case the
+# corpus pins — against the Dart driver's roster. The greps are
+# cards-dart-wire-fuzz's three: zero divergences, the nonzero seed/root count,
+# and the nonzero mutant count. A root the leg carries and the roster cannot
+# open turns the first grep red; a root left unavailable would shrink the root
+# count the second grep prints.
+TABLES_DART_FUZZ_TIME ?= 120s
+TABLES_DART_FUZZ_SEED ?= 24845619678
+TABLES_DART_FUZZ_N ?= 100
+
+.PHONY: tables-dart-wire-fuzz-all
+tables-dart-wire-fuzz-all: build/conformance-harness build/conformance-dart
+	@mkdir -p build
+	@timeout $(TABLES_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+		--driver 'build/conformance-dart wire-fuzz' \
+		--seed $(TABLES_DART_FUZZ_SEED) --n $(TABLES_DART_FUZZ_N) \
+		> build/tables-dart-wire-fuzz-all.log 2>&1; \
+		status=$$?; cat build/tables-dart-wire-fuzz-all.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -q '0 divergences' build/tables-dart-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-dart-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* mutants' build/tables-dart-wire-fuzz-all.log
+
+# THE WIRE FUZZER'S ALL-ROOTS ARM RIDES THE DART LEG'S GATE (§4.2).
+test-dart: tables-dart-wire-fuzz-all
+
 # cards-dart-retain-fuzz is the SAME fuzzer through the RETENTION ARM
 # (docs/SPEC-TABLES.md §6.6): every mutant is read and written back through the
 # Card codec's retaining pair, and the two retention counters ride beside the
