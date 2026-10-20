@@ -31,6 +31,25 @@ table Config
 const textInput = `(:name "ship" :count 3 :enabled true :tags (1 2))`
 const textJSON = `{"name":"ship","count":3,"enabled":true,"tags":[1,2]}`
 
+// textSchema2 is this card's second probe unit: the kinds the second slice
+// of the hand-editable text form carries (docs/SPEC-TABLES.md §16.9.2) —
+// float32, float64, bytes(N) as padded base64, an optional string, and a
+// fixed array.
+const textSchema2 = `package textdemo2
+
+table Config
+{
+    ratio    float32
+    weight   float64
+    blob     bytes(4)
+    note     ?int32
+    pair     [2]int32
+}
+`
+
+const textInput2 = `(:ratio 1.5 :weight 2.25 :blob "AP8=" :note 42 :pair (7 8))`
+const textJSON2 = `{"ratio":1.5,"weight":2.25,"blob":"AP8=","note":42,"pair":[7,8]}`
+
 // textProgram is the unit's main: read the document, save its value, write
 // the no-op rewrite, apply one leaf edit, and load the saved bytes back for
 // THE VALUE DUMP.
@@ -45,7 +64,7 @@ def textmain():
     let wire = schema_rt.save(doc.rec)
     print(hexs(wire))
     print(hexs(schema_rt.text_save(doc)))
-    let ed = schema_rt.text_edit(doc, "count", "6")
+    let ed = schema_rt.text_edit(doc, "%s", "%s")
     assert ed
     print(schema_rt.text_save(ed))
     let rep = schema_rt.LoadReport {}
@@ -59,7 +78,7 @@ type textRun struct {
 	wire, rewrite, edited, dump string
 }
 
-func runText(t *testing.T, schema, input string) textRun {
+func runText(t *testing.T, schema, input, editPath, editToken string) textRun {
 	t.Helper()
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "Config.schema")
@@ -74,7 +93,7 @@ func runText(t *testing.T, schema, input string) textRun {
 	if err != nil {
 		t.Fatalf("the probe unit is refused: %v", err)
 	}
-	main := fmt.Sprintf(textProgram, dumpLobster)
+	main := fmt.Sprintf(textProgram, dumpLobster, editPath, editToken)
 	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +139,7 @@ func goText(t *testing.T, schema, json string) ([]byte, string) {
 func TestLobsterTextForm(t *testing.T) {
 	t.Parallel()
 	want, wantDump := goText(t, textSchema, textJSON)
-	got := runText(t, textSchema, textInput)
+	got := runText(t, textSchema, textInput, "count", "6")
 	if got.wire != hex.EncodeToString(want) {
 		t.Fatalf("the text form saved %s, Go saved %x", got.wire, want)
 	}
@@ -135,6 +154,27 @@ func TestLobsterTextForm(t *testing.T) {
 		t.Fatalf("the re-loaded value is not Go's at byte %s", divergence(got.dump, wantDump))
 	}
 	t.Logf("constructs: string(N) 1, int 1, bool 1, [..N]int 1; saved %d bytes as Go did, rewrite and one leaf edit green", len(want))
+
+	// The second slice's probe: the kinds §16.9.2 gives their own rule — a
+	// float, a bytes field spelled as padded base64, an optional that is
+	// present, and a fixed array of an exact length — read, saved byte for
+	// byte as Go does, rewritten unchanged and leaf-edited.
+	want2, wantDump2 := goText(t, textSchema2, textJSON2)
+	got2 := runText(t, textSchema2, textInput2, "ratio", "2.5")
+	if got2.wire != hex.EncodeToString(want2) {
+		t.Fatalf("the text form saved %s, Go saved %x", got2.wire, want2)
+	}
+	if got2.rewrite != hex.EncodeToString([]byte(textInput2)) {
+		t.Fatalf("the no-op rewrite is not the input byte for byte: %q", got2.rewrite)
+	}
+	const edited2 = `(:ratio 2.5 :weight 2.25 :blob "AP8=" :note 42 :pair (7 8))`
+	if got2.edited != edited2 {
+		t.Fatalf("the leaf edit is not the one-token change: got %q want %q", got2.edited, edited2)
+	}
+	if got2.dump != wantDump2 {
+		t.Fatalf("the re-loaded value is not Go's at byte %s", divergence(got2.dump, wantDump2))
+	}
+	t.Logf("constructs: float32 1, float64 1, bytes(N) 1, ?int32 1, [N]int 1; saved %d bytes as Go did, rewrite and one leaf edit green", len(want2))
 }
 
 // TestLobsterTextFormNegativeControl plants a wrong integer in the emitted
@@ -155,7 +195,7 @@ func TestLobsterTextFormNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	main := fmt.Sprintf(textProgram, dumpLobster)
+	main := fmt.Sprintf(textProgram, dumpLobster, "count", "6")
 	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
 	}

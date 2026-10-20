@@ -1,10 +1,11 @@
 // text_form.lobster — the hand-editable text form (docs/SPEC-TABLES.md §16.9;
-// docs/PORT-LOBSTER.md, THE CARD MAP). A first slice: the restricted
-// s-expression grammar of §16.9.1, read into the load's Record, kept with its
-// source bytes so a rewrite is the input (§16.9.3), and one leaf edit by the
-// token's span. The typed mapping here covers bool, int, string/N, enum,
-// nested by-value tables and bounded arrays of those; the rest of §16.9.2's
-// kinds are named as not carried in RESULT.md.
+// docs/PORT-LOBSTER.md, THE CARD MAP). The restricted s-expression grammar of
+// §16.9.1, read into the load's Record, kept with its source bytes so a
+// rewrite is the input (§16.9.3), and one leaf edit by the token's span. The
+// typed mapping here covers bool, int, float32/float64, string/N, bytes(N) as
+// padded base64, enum, optional presence, nested by-value tables and fixed,
+// bounded and unbounded arrays of those; the rest of §16.9.2's kinds are named
+// as not carried in RESULT.md.
 // SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 import .load
@@ -170,6 +171,60 @@ def t_field_of(d:TableDescriptor, key:string) -> FieldDescriptor?:
             return f
     return nil
 
+// t_b64_val is one base64 character's value, -1 for a character outside the
+// standard alphabet (§16.9.2: bytes(N) is standard-alphabet padded base64).
+def t_b64_val(c:int) -> int:
+    if c >= 65 and c <= 90:
+        return c - 65
+    if c >= 97 and c <= 122:
+        return c - 71
+    if c >= 48 and c <= 57:
+        return c + 4
+    if c == 43:
+        return 62
+    if c == 47:
+        return 63
+    return -1
+
+// t_base64 decodes one padded base64 string into the bytes it spells
+// (§16.9.2: bytes(N)); an invalid character or a bad pad is text_encoding.
+def t_base64(p:TextParser, s:string) -> string:
+    let vals:[int] = []
+    var acc = 0
+    var bits = 0
+    var i = 0
+    let n = length(s)
+    var pad = 0
+    while i < n:
+        let c = s[i]
+        if c == 61:
+            pad++
+            i++
+            continue
+        if pad > 0:
+            t_set_fail(p, "text_encoding")
+            return ""
+        let v = t_b64_val(c)
+        if v < 0:
+            t_set_fail(p, "text_encoding")
+            return ""
+        acc = acc * 64 + v
+        bits += 6
+        if bits >= 8:
+            bits -= 8
+            push(vals, (acc >> bits) & 255)
+            acc = acc & ((1 << bits) - 1)
+        i++
+    if bits >= 6 or (pad > 0 and bits != 2 and bits != 4):
+        t_set_fail(p, "text_encoding")
+        return ""
+    var out = zeros(length(vals))
+    var j = 0
+    while j < length(vals):
+        out = write_int8_le(out, j, vals[j])
+        j++
+    return out
+
 def t_key_text(n:TNode) -> string:
     return n.text
 
@@ -186,12 +241,26 @@ def t_set_scalar(p:TextParser, sl:Slot, v:TNode, path:string) -> bool:
             t_set_fail(p, "text_kind_mismatch")
             return false
         sl.cell.i = t_int(v.text)
-    elif s == "str" or s == "text" or s == "bytes":
+    elif s == "float":
+        if v.kind != "num":
+            t_set_fail(p, "text_kind_mismatch")
+            return false
+        sl.cell.f = string_to_float(v.text)
+    elif s == "str" or s == "text":
         if v.kind != "str":
             t_set_fail(p, "text_kind_mismatch")
             return false
         sl.cell.s = v.text
         sl.count = length(v.text)
+    elif s == "bytes":
+        if v.kind != "str":
+            t_set_fail(p, "text_kind_mismatch")
+            return false
+        let dec = t_base64(p, v.text)
+        if p.fail != "":
+            return false
+        sl.cell.s = dec
+        sl.count = length(dec)
     elif s == "enum":
         if v.kind != "kw" and v.kind != "str":
             t_set_fail(p, "text_kind_mismatch")
@@ -229,6 +298,8 @@ def t_fill(p:TextParser, n:TNode, d:TableDescriptor, path:string) -> Record?:
             t_set_fail(p, "text_unknown_key")
             return nil
         let sl = rec.fields[f.o]
+        if f.present != "":
+            sl.present = true
         let v = n.items[k + 1]
         let child = if path == "": key else: path + "." + key
         if f.s == "tab":
@@ -250,7 +321,7 @@ def t_fill(p:TextParser, n:TNode, d:TableDescriptor, path:string) -> Record?:
             if f.array == "fixed" and length(sl.elems) != f.bound:
                 t_set_fail(p, "text_bound")
                 return nil
-            if f.array != "fixed" and length(sl.elems) > f.bound:
+            if f.array == "counted" and length(sl.elems) > f.bound:
                 t_set_fail(p, "text_bound")
                 return nil
             sl.count = length(sl.elems)
