@@ -98,7 +98,7 @@ print("SAVE:" + h + "\n");
 local bf = blob(n);
 for (local i = 0; i < n; i++) bf[i] = b[i];
 local back = [T.Wide128()];
-local got = T.Wide128FixedLoad(bf, back, null);
+local got = T.Wide128FixedLoadTolerant(bf, back, null);
 print("COUNT:" + got + "\n");
 local b2 = blob(1024);
 local n2 = T.Wide128FixedSave(b2, back);

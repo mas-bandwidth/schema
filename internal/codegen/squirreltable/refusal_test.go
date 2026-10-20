@@ -137,7 +137,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		for name, data := range tables {
 			writeFile(t, filepath.Join(out, name), data)
 			for tname := range unit.Tables {
-				if strings.Contains(string(data), "_M."+tname+"FixedLoad <-") {
+				if strings.Contains(string(data), "_M."+tname+"FixedLoadTolerant <-") {
 					fixedReaders[u.key+"/"+tname] = true
 				}
 			}

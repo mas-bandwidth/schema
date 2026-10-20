@@ -1174,10 +1174,12 @@ local read = function(T, rootName, src, limits) {
 
 // land runs the JSON walk over the transcoded value. The strict resolve
 // refuses every event the walk can count, so a count here is a disagreement
-// between the two and is never accepted silently.
+// between the two and is never accepted silently. The land keeps today's
+// tolerant answer, so it calls the Tolerant twin by name: the plain FromJson
+// is the strict read (docs/SPEC-TABLES.md §6.5).
 local land = function(T, rootName, js) {
   local report = {};
-  local v = _json.FromJson(T, rootName, js, report);
+  local v = _json.FromJsonTolerant(T, rootName, js, report);
   local name = null;
   if (report.clamped > 0) name = BOUND;
   else if (report.unknown > 0) name = UNKNOWN_KEY;

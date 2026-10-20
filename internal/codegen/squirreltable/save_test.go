@@ -25,7 +25,7 @@ local run = function(unit, mod, root, key) {
     unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
     duplicate = 0, malformed = false, refused = false
   };
-  local v = L.load(T, root, inputs[key], report);
+  local v = L.loadTolerant(T, root, inputs[key], report);
   local b = S.save(T, root, v);
   local m = S.measure(T, root, v);
   if (b == null) { print(key + " null -1\n"); return; }
