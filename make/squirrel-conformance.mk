@@ -82,7 +82,7 @@ conformance-squirrel-wire-pin: build/conformance-harness toolchain-squirrel
 	@set -eu; \
 	rm -rf build/conformance-squirrel build/schema-squirrel; \
 	$(MAKE) build/conformance-harness build/conformance-squirrel; \
-	./build/conformance-harness run --only squirrel > build/squirrel-wire-pin.log 2>&1 || true; \
+	SQ="$(SQ)" ./build/conformance-harness run --only squirrel > build/squirrel-wire-pin.log 2>&1 || true; \
 	cat build/squirrel-wire-pin.log; \
 	if grep -q 'squirrel / wire:' build/squirrel-wire-pin.log; then \
 		echo "SQUIRREL WIRE PIN FAILED: the wire surface has a failure above" >&2; \
