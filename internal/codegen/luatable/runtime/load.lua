@@ -216,17 +216,17 @@ end
 -- the form byte, the trailer and the id table, and the root body's own
 -- framing (docs/SPEC-TABLES.md §3): nil when the wire is refused or damaged.
 local function open(bytes, report)
-  if #bytes < 1 then report.malformed = true; return nil end
+  if #bytes < 1 then report.malformed = true; report.wireDamaged = true; return nil end
   if bytes:byte(1) ~= 1 then report.refused = 1; return nil end
-  if #bytes < 9 then report.malformed = true; return nil end
+  if #bytes < 9 then report.malformed = true; report.wireDamaged = true; return nil end
   local count = string.unpack("<i8", bytes, #bytes - 7)
-  if count < 0 or count > (#bytes - 9) // 8 then report.malformed = true; return nil end
+  if count < 0 or count > (#bytes - 9) // 8 then report.malformed = true; report.wireDamaged = true; return nil end
   local endpos = #bytes - 8 - count * 8
   local table_ids = {}
   local seen = {}
   for i = 0, count - 1 do
     local id = string.unpack("<i8", bytes, endpos + i * 8 + 1)
-    if seen[id] then report.malformed = true; return nil end
+    if seen[id] then report.malformed = true; report.wireDamaged = true; return nil end
     seen[id] = true
     table_ids[i + 1] = id
   end
@@ -236,7 +236,7 @@ local function open(bytes, report)
     local ref = r_leb(w)
     if w.bad then break end
     if ref == 0 then
-      if w.at ~= w.lim then report.malformed = true; return nil end
+      if w.at ~= w.lim then report.malformed = true; report.wireDamaged = true; return nil end
       break
     end
     if above(ref, #table_ids) then break end
@@ -277,21 +277,21 @@ local function node_scan(bytes, o, report, variable)
       break
     end
   end
-  if present and bad then report.malformed = true; return nil end
+  if present and bad then report.malformed = true; report.wireDamaged = true; return nil end
   if not present then return {} end
   local rec = new_reader(payload, 0, #payload)
   local count = r_leb(rec)
-  if rec.bad then report.malformed = true; return nil end
+  if rec.bad then report.malformed = true; report.wireDamaged = true; return nil end
   local raw = {}
   while rec.at < rec.lim do
     local tref = r_leb(rec)
-    if rec.bad or tref == 0 or above(tref, #o.table) then report.malformed = true; return nil end
+    if rec.bad or tref == 0 or above(tref, #o.table) then report.malformed = true; report.wireDamaged = true; return nil end
     local n = r_leb(rec)
-    if rec.bad or n < 0 or rec.at + n > rec.lim then report.malformed = true; return nil end
+    if rec.bad or n < 0 or rec.at + n > rec.lim then report.malformed = true; report.wireDamaged = true; return nil end
     raw[#raw + 1] = { tid = o.table[tref], body = string.sub(payload, rec.at + 1, rec.at + n) }
     rec.at = rec.at + n
   end
-  if count ~= #raw then report.malformed = true; return nil end
+  if count ~= #raw then report.malformed = true; report.wireDamaged = true; return nil end
   return raw
 end
 
@@ -391,6 +391,16 @@ local function less_than(d, a, b)
   return math.ult(a, b)
 end
 
+-- A PLAIN FLOAT'S SPECIAL VALUES (docs/SPEC-TABLES.md §3.3): a NaN or an
+-- infinity RIDES the binary forms; the tolerant read lands it exactly as
+-- written and counts nothing, naming the field in the report's Reason. The
+-- first name a read records wins, as for clamped.
+local function note_non_finite(report, d)
+  if d.shape ~= "float" then return end
+  if report.reason ~= nil and report.reason ~= "" then return end
+  report.reason = "non_finite: " .. (report.nonFiniteTable or "?") .. "." .. tostring(d.name)
+end
+
 -- a scalar decoded at the WIRE kind (the declared kind or one it widens),
 -- sign-extended where the kind is signed, then the declared range and the
 -- bits(N) clamp (§4, decode.go scalarAt).
@@ -434,6 +444,9 @@ local function scalar_at(r, d, kind, report)
     report.malformed = true; return nil
   end
   if r.bad then report.malformed = true; return nil end
+  if type(x) == "number" and (x ~= x or x == math.huge or x == -math.huge) then
+    note_non_finite(report, d)
+  end
   if d.shape == "wide" and type(x) ~= "table" then
     -- a narrower signed kind widens by SIGN-EXTENDING into the high half; an
     -- unsigned one zero-extends (docs/SPEC-TABLES.md §4; gotable wide.go).
@@ -930,6 +943,7 @@ end
 -- whole. Damage stops the body.
 read_body = function(T, ctx, desc, r, v, nested, mapkey)
   local report = ctx.report
+  report.nonFiniteTable = desc.name
   while true do
     local ref = r_leb(r)
     if r.bad then report.malformed = true; return false end
@@ -1202,6 +1216,7 @@ end
 local function resolve(ctx, root, rootdesc)
   local report = ctx.report
   local good = ctx.good
+  local seen_blob = {}
   for _, p in ipairs(ctx.pending) do
     local d = p.d
     local value = nil
@@ -1219,9 +1234,15 @@ local function resolve(ctx, root, rootdesc)
           value = nil
         elseif node ~= nil then
           if d.shape == "string_blob" then
-            if node.kind == "s" then value = node.box else report.kindMismatch = report.kindMismatch + 1 end
+            if node.kind == "s" then
+              value = node.box
+              if seen_blob[p.index] then report.blobShared = (report.blobShared or 0) + 1 else seen_blob[p.index] = true end
+            else report.kindMismatch = report.kindMismatch + 1 end
           elseif d.shape == "bytes_blob" then
-            if node.kind == "b" then value = node.box else report.kindMismatch = report.kindMismatch + 1 end
+            if node.kind == "b" then
+              value = node.box
+              if seen_blob[p.index] then report.blobShared = (report.blobShared or 0) + 1 else seen_blob[p.index] = true end
+            else report.kindMismatch = report.kindMismatch + 1 end
           elseif node.kind == "t" and node.codec.name == d.target then
             value = node.value
           else
@@ -1291,7 +1312,7 @@ function L.Load(T, name, bytes, report)
         if utf8_ok(rec.body) then
           ctx.nodes[#ctx.nodes + 1] = { kind = "s", blob = rec.body, box = { value = rec.body } }
         else
-          report.malformed = true
+          report.malformed = true; report.wireDamaged = true
           -- §3.1: the record keeps its index even when its content is refused,
           -- so one unnameable node never shifts the rest; every pointer naming
           -- it reads null.

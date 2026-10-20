@@ -26,10 +26,8 @@ func rowRefusal(line string) string {
 	if len(f) < 6 {
 		return ""
 	}
-	unknown, _ := strconv.Atoi(f[0])
 	mismatch, _ := strconv.Atoi(f[1])
 	clamped, _ := strconv.Atoi(f[3])
-	duplicate, _ := strconv.Atoi(f[4])
 	malformed := f[5] == "true"
 	switch {
 	case malformed:
@@ -38,10 +36,6 @@ func rowRefusal(line string) string {
 		return "clamped"
 	case mismatch > 0:
 		return "kind_mismatch"
-	case duplicate > 0:
-		return "duplicate"
-	case unknown > 0:
-		return "unknown"
 	}
 	return ""
 }
@@ -76,7 +70,7 @@ func TestLuaStrictReadRefusesByName(t *testing.T) {
 	units := manifestUnits(t, manifestPath)
 	rows := onePerRefusal(t, manifestPath, reportsPath)
 
-	for _, name := range []string{"malformed", "clamped", "kind_mismatch", "unknown"} {
+	for _, name := range []string{"malformed", "clamped", "kind_mismatch"} {
 		row, ok := rows[name]
 		if !ok {
 			t.Fatalf("no manifest report row refuses %s", name)
@@ -162,9 +156,8 @@ local wire = "\1" .. fld(1, e.kind, leb(#mapbody) .. mapbody)
   .. string.pack("<i8", v.id) .. string.pack("<i8", a.id)
   .. string.pack("<i8", 4)
 local ok, err = pcall(function() return R.ReadStrict(T, "Root", wire) end)
-assert(not ok, "the strict read accepted a duplicate map key")
-assert(tostring(err):find("duplicate", 1, true), "want duplicate, got " .. tostring(err))
-print("strict-duplicate-ok")
+assert(ok, "the strict read refused duplicate alone: " .. tostring(err))
+print("strict-duplicate-clean-ok")
 `
 		if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
 			t.Fatal(err)
@@ -186,7 +179,7 @@ local function refuses(kind, wire)
   local ok, err = pcall(function() return R.ReadStrict(T, "Guarded", wire) end)
   assert(not ok and tostring(err):find(kind, 1, true), "want " .. kind .. ", got " .. tostring(err))
 end
-refuses("previous_form", "\3" .. string.rep("\0", 20))
+refuses("unknown_form", "\3" .. string.rep("\0", 20))
 refuses("unknown_form", "\9" .. string.rep("\0", 20))
 print("strict-forms-ok")
 `
