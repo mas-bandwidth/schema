@@ -270,7 +270,17 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		fmt.Fprintf(b, "%sVariable.Value read=%sVariable.%s(r,nt,report%s);if(read!=null)v.%s=read;}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m)
 		return
 	}
-	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(ek!=15){report.kindMismatch++;}else if(count<0||count>0x7fffffffL){report.refused=true;}else{v.%s.clear();", m)
+	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(ek!=15){report.kindMismatch++;}else{")
+	// A count past this build's bound keeps the bound's prefix and counts
+	// clamped, as the oracle's arrayBody does; the tail is stepped over
+	// because the field body's L says where the next field begins (§3, §4).
+	// A BOUNDED array never refuses a wide count: the bound is the answer.
+	if f.ArrayBound > 0 {
+		fmt.Fprintf(b, "if(Long.compareUnsigned(count,%dL)>0){count=%d;report.clamped++;}", f.ArrayBound, f.ArrayBound)
+	} else {
+		b.WriteString("if(Long.compareUnsigned(count,0x7fffffffL)>0){report.refused=true;}else{")
+	}
+	fmt.Fprintf(b, "v.%s.clear();", m)
 	if retain {
 		fmt.Fprintf(b, "retain.discardField(path,depth,%d);", ordinal)
 	}
@@ -280,7 +290,14 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	}
 	// An ARRAY ELEMENT is reset the moment its arm id is read (§3, §4), so a
 	// null header answer there is None rather than a kept previous element.
-	fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);v.%s.add(elem==null?new %sVariable.Value():elem);if(ar.fail)break;}}}}}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m, un.Name)
+	closeExtra := ""
+	if f.ArrayBound == 0 {
+		closeExtra = "}"
+	}
+	// A damaged element is NOT kept: the oracle's arrayBody truncates the
+	// list to the prefix the body covered (§3, §4), so the failure is checked
+	// before the element is appended.
+	fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);if(ar.fail)break;v.%s.add(elem==null?new %sVariable.Value():elem);}"+closeExtra+"}}}}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m, un.Name)
 
 }
 
