@@ -60,6 +60,15 @@ conformance-negative-control-squirrel: build/conformance-harness build/conforman
 # compiler, and the corpus, whenever a runtime moves.
 build/schema-squirrel: $(wildcard internal/codegen/squirreltable/runtime/*.nut)
 
+# THE GENERATED CORPUS HAS THE SAME INPUT. The corpus copies the embedded
+# runtime into every unit it generates, so a runtime move that leaves the
+# compiler binary untouched still makes build/conformance-squirrel stale: the
+# driver then saves with the previous runtime and every case whose fields moved
+# comes out short (docs/SPEC-TABLES.md §3; docs/PORT-SQUIRREL.md, THE HARNESS).
+# Naming the files on the corpus as well keeps the two in lockstep even when the
+# compiler target is already up to date.
+build/conformance-squirrel: $(wildcard internal/codegen/squirreltable/runtime/*.nut)
+
 # THE WIRE PIN. A clean build every time (a stale corpus is the failure this
 # gate exists to catch), then the Squirrel leg alone. The wire cell must be a
 # pass with no `squirrel / wire:` failure line, and its passing count may never
