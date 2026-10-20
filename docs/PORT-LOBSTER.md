@@ -172,6 +172,29 @@ path moves its 32 bits with `read_uint32_le` and builds the double by bit
 surgery (`schema_rt.f32bits` and `f64frombits` are the pieces), so a
 signalling NaN and its payload survive a round trip.
 
+## THE WRITE
+
+`internal/codegen/lobster/write.go` (schema-lobster-type-wire-write) is the
+type wire's write half: for every packet struct and packet union of a unit it
+emits `Write<Name>(s:serialize_write_stream, v:<Name>) -> bool`, joined into
+the emitter with `Register("write", writePart)` in its `init()`. A writer
+rides the fields in declared order (SPEC §4.3) — const, reserved and align
+keep their places — and makes every bit through the vendored serialize port's
+methods (`serialize_bits`, `serialize_bits64`, `serialize_bool`,
+`serialize_align`, `pack_bytes`, ...): there is no private bit writer, and a
+refused value returns false before its bits ride. The module imports only the
+serialize families its fields need (`serialize_stream` and
+`serialize_bitpacker` always; `serialize_float`, `serialize_fixed` and
+`serialize_int128` where a field of that kind rides); compressed floats and
+byte buffers are written with the bit packer directly.
+
+It rests on the vendored runtime (schema-lobster-serialize-vendor):
+`runtime/serialize*.lobster` must be emitted beside the generated modules for
+`import .serialize_stream` to resolve. `TestLobsterTypeWireWritesTheGoldens`
+writes the 14 instances of `testdata/wire/*.bin` and compares bytes, naming
+each golden; `TestLobsterTypeWireWriteNegativeControl` widens one
+`serialize_bool` to two bits and holds the comparison red.
+
 ## THE RUNTIME LAYOUT
 
 Fixed now for the pro cards; never renamed.

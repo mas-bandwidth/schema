@@ -79,8 +79,9 @@ var bornAtMinimum = map[string]string{
 // only two: every other target has a build-removable idiom and is held to it
 // by assertsInDebug.
 var refusesEveryBuild = map[string][]string{
-	"elixir": {"if n < 2 do", "if n > 8 do", "raise ArgumentError"},
-	"go":     {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
+	"elixir":  {"if n < 2 do", "if n > 8 do", "raise ArgumentError"},
+	"go":      {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
+	"lobster": {"if v.WindowCount < 2 or v.WindowCount > 8: return false"},
 }
 
 // assertsInDebug is the count's DEBUG-ONLY form in each target that has one:
@@ -113,8 +114,9 @@ var goneFromRelease = map[string][]string{
 // contracts with. For a refusesEveryBuild target, none of them may reach the
 // count.
 var assertToken = map[string][]string{
-	"elixir": nil, // the BEAM has no compile-out assert, so the raise is always on
-	"go":     nil, // the runtime returns an error, in every build
+	"elixir":  nil, // the BEAM has no compile-out assert, so the raise is always on
+	"go":      nil, // the runtime returns an error, in every build
+	"lobster": nil, // a return-value refusal, in every build
 }
 
 // generatedText renders every file the target emits for the unit, joined, so a
@@ -155,9 +157,7 @@ func jsFlatWriter(t *testing.T, text, fn string) string {
 // gives it a writer. A claim about what a WRITER emits has nothing to hold
 // there, so the gate says so by name rather than passing in silence; the
 // write card takes the leg off this list, which re-arms every write claim.
-var codecless = map[string]string{
-	"lobster": "schema-lobster-type-wire-write (docs/PORT-LOBSTER.md, THE CARD MAP)",
-}
+var codecless = map[string]string{}
 
 // codeclessLeg reports a codecless leg, and fails the gate if the leg now
 // emits a writer while still listed: the list may not outlive the codec.
