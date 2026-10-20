@@ -63,7 +63,15 @@ update-goldens-luau: ;
 # joins the builtins (compiler/target_luau.go). A unit the target refuses is
 # recorded as its refusal line, never dropped in silence.
 LUAU_MANIFEST := testdata/conformance/tables/MANIFEST.txt
-build/conformance-luau: $(LUAU_MANIFEST) make/luau.mk
+# Every .schema file the manifest's units name: a unit path is either a file or
+# a directory of them.
+LUAU_CONFORMANCE_UNIT_PATHS := $(shell awk '/^unit[ \t]/ { for (i = 3; i <= NF; i++) print $$i }' $(LUAU_MANIFEST))
+LUAU_CONFORMANCE_SCHEMAS := $(foreach p,$(LUAU_CONFORMANCE_UNIT_PATHS),$(if $(filter %.schema,$(p)),$(p),$(wildcard $(p)/*.schema)))
+build/conformance-luau: $(LUAU_MANIFEST) make/luau.mk \
+	$(wildcard internal/codegen/luautable/runtime/*.luau) \
+	$(wildcard internal/codegen/luau/runtime/*) \
+	$(GO_SOURCES) \
+	$(LUAU_CONFORMANCE_SCHEMAS)
 	@rm -rf $@ && mkdir -p $@
 	go build -tags schema_leg_luau -o build/schema-luau ./cmd/schema
 	@grep '^unit ' $(LUAU_MANIFEST) | while read -r _ key paths; do \
