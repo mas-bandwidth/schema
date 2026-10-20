@@ -1395,8 +1395,9 @@ end
 -- strict_refusal answers the refusal's §11/§6.5 name when the strict read
 -- refuses this wire, and nil when it accepts it. It reads the FORM BYTE FIRST
 -- in refusal.lua's order (§2.14, §6.5), then the report the tolerant walk just
--- filled: a refused form, integrity_mismatch, wire_damaged, missing_required,
--- malformed, then the counters blob_shared, clamped and kind_mismatch, and
+-- filled: a refused form, integrity_mismatch, a count_refusal (the engine's
+-- CountRefusal, §2.9), wire_damaged, missing_required, malformed, then the
+-- counters blob_shared, clamped and kind_mismatch, and
 -- last a non-finite plain float. The set is the one refusal.lua's ReadStrict
 -- owns; unknown, widened and duplicate ALONE are evolution, exact decoding and
 -- data identity, not loss (§6.5), so they read clean. This entry reads the
@@ -1409,6 +1410,9 @@ local function strict_refusal(bytes, report, root)
   if form ~= nil and form ~= 1 then return "unknown_form" end
   if report.refused ~= 0 then return "unknown_form" end
   if report.reason == "integrity_mismatch" then return "integrity_mismatch" end
+  -- THE WALK'S CountRefusal (§2.9): the builder-path storage refusal is the
+  -- load's own result, so it refuses by name before any damage class does.
+  if report.reason == "count_refusal" then return "count_refusal" end
   if report.wireDamaged then return "wire_damaged" end
   if (report.missingRequired or 0) > 0 then return "missing_required" end
   if report.malformed then return report.reason or "malformed" end

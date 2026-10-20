@@ -226,7 +226,10 @@ local function caseResult(c)
   local value
 
   if c[2] == "text" then
-    value = J.FromJson(T, c[4], payload, r)
+    -- The corpus carries the TOLERANT answer (§16.1): the strict plain
+    -- FromJson refuses clamped and malformed rows the engine's corpus accepts,
+    -- so the runner asks the twin the tolerant read is named after.
+    value = J.FromJsonTolerant(T, c[4], payload, r)
     if r.malformed or value == nil then return "refuse", "damaged", nil end
   elseif c[2] == "wire" then
     value = L.Load(T, c[4], payload, r)
@@ -234,9 +237,11 @@ local function caseResult(c)
       local form = #payload > 0 and payload:byte(1) or 0
       return "refuse", form == 2 and "message_form_as_file" or "newer_form", nil
     end
-    -- A LOAD THAT NAMED A REASON reports it: count_refusal is a storage
-    -- refusal (§2.9), not the unnamed damage the wire branch otherwise reads.
-    if r.reason ~= "" then return "refuse", r.reason, nil end
+    -- A LOAD THAT NAMED A STORAGE REFUSAL reports it: count_refusal is the
+    -- engine's CountRefusal (§2.9), not the unnamed damage the wire branch
+    -- otherwise reads. The strict read's other reasons (wire_damaged,
+    -- malformed, integrity_mismatch) stay the manifest's generic damaged.
+    if r.reason == "count_refusal" then return "refuse", r.reason, nil end
     if r.malformed or value == nil then return "refuse", "damaged", nil end
   elseif c[2] == "announce" then
     local vocab = {}

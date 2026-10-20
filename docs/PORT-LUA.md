@@ -201,10 +201,13 @@ A **map** (§2.8) or an **unbounded array** (§2.9) whose count is past the
 int32 storage cap is the engine's **CountRefusal** (`internal/tablewire/decode.go`,
 `decodenodes.go`): the tolerant load keeps nothing for the field and sets
 `report.reason = "count_refusal"`, and meeting the cap adds no malformed event
-or other counter. A count AT the cap decodes normally. The hostile-corpus
-runner's wire branch returns a report's named reason before it calls the
-answer `damaged`, so `wire-count-refusal` lands the manifest's
-`refuse/count_refusal`; damage that names no reason stays `damaged`.
+or other counter. A count AT the cap decodes normally. The strict read
+(`L.Load`, §6.5) answers nil with `report.reason = "count_refusal"` rather
+than accepting the wire, because the engine's CountRefusal is the load's own
+result, not a report counter. The hostile-corpus runner's wire branch returns
+a report's named reason before it calls the answer `damaged`, so
+`wire-count-refusal` lands the manifest's `refuse/count_refusal`; damage that
+names no reason stays `damaged`.
 
 ## THE REGISTER
 
