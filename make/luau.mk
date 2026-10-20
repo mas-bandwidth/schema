@@ -43,10 +43,19 @@ toolchain-luau:
 
 # test-luau runs both Luau packages: the type surface (internal/codegen/luau)
 # and the table surface (internal/codegen/luautable), each under the pinned
-# interpreter.
+# interpreter. The luautable tests read the fixed-form corpus, the conformance
+# driver's generated modules and the Go runtime, so the leg BUILDS them first
+# (docs/PORT-LUAU.md, THE HARNESS): CI and a clean checkout do not stage them.
+# SCHEMA_REQUIRE_CORPUS=1 turns a missing oracle into a failure, and the runtime
+# reaches the probes as an absolute path whichever checkout the Makefile
+# resolved.
 .PHONY: test-luau update-goldens-luau
-test-luau: toolchain-luau
-	go test -count=1 -timeout 600s ./internal/codegen/luau/... ./internal/codegen/luautable/...
+test-luau: toolchain-luau tables-fixedform-corpus \
+	$(LUAU_CONFORMANCE_DRIVER)/inputs.luau \
+	$(LUAU_CONFORMANCE_DRIVER)/units.luau \
+	$(SERIALIZE_GO_RUNTIME)/go.mod
+	SCHEMA_REQUIRE_CORPUS=1 SCHEMA_SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
+		go test -count=1 -timeout 600s ./internal/codegen/luau/... ./internal/codegen/luautable/...
 update-goldens-luau: ;
 
 # build/conformance-luau is the manifest's units generated for luau, one

@@ -16,6 +16,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // The two units gotable/textform_test.go reads: the Document contract as a
@@ -266,6 +267,7 @@ func tfJSONDocument(v *Document) []byte {
 // (docs/SPEC-TABLES.md §16.9, §16.9.4).
 func TestLuauLoadTextFormAgreesWithGo(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the pinned Luau interpreter")
 	cases := tfCases(t)
 	for _, unit := range []struct {
 		name  string
@@ -311,10 +313,7 @@ func TestLuauLoadTextFormAgreesWithGo(t *testing.T) {
 				t.Fatal(err)
 			}
 			maps.Copy(goFiles, tables)
-			runtime, err := filepath.Abs("../../../build/serialize.go")
-			if err != nil {
-				t.Fatal(err)
-			}
+			runtime := tfSerializeGoRuntime(t)
 			goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 			var lit strings.Builder
 			for i, c := range selected {
@@ -435,4 +434,19 @@ end
 			}
 		})
 	}
+}
+
+// tfSerializeGoRuntime is the Go runtime the probes compile against: the
+// Makefile's resolved checkout when the leg exports it, else the sibling
+// serialize.go checkout four levels above the package (block_read_test.go).
+func tfSerializeGoRuntime(t *testing.T) string {
+	t.Helper()
+	if dir := os.Getenv("SCHEMA_SERIALIZE_GO"); dir != "" {
+		return dir
+	}
+	runtime, err := filepath.Abs("../../../../serialize.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return runtime
 }
