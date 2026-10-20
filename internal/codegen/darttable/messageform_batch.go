@@ -460,7 +460,7 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		g.pf("%s  if (r.bits.failed) { %s; }\n", ind, bad)
 		g.pf("%s  var kept = n;\n", ind)
 		g.pf("%s  if (kept > %d) { kept = %d; r.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size)
-		g.pf("%s  final buf = List<int>(n);\n", ind)
+		g.pf("%s  final buf = List<int>.filled(n, 0);\n", ind)
 		g.pf("%s  for (var i = 0; i < n; i++) { buf[i] = r.bits.get(16); }\n", ind)
 		g.pf("%s  if (r.bits.failed) { %s; }\n", ind, bad)
 		g.pf("%s  for (var i = 0; i < kept; i++) { %s[i] = buf[i]; }\n", ind, expr)

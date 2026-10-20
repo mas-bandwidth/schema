@@ -207,7 +207,7 @@ func TestMessageShortReadKeepsLandedValueDart(t *testing.T) {
 				duplicate: goReport.Duplicate,
 				malformed: boolInt(goReport.Malformed),
 				refused:   boolInt(goReport.Refused),
-				count:      0,
+				count:     0,
 			}
 			if got.report != want {
 				t.Fatalf("%s Dart report %+v, want Go report %+v (docs/SPEC-TABLES.md §3.3)\n%s",
