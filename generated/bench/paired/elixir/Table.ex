@@ -2888,32 +2888,37 @@ defmodule Bench.Table do
   # DEFAULTS and one malformed counts, and the list reads on past it. A clean
   # body reads its value, and an event inside it folds into the list's report.
   defp read_element(desc, sub, nodes, ids) do
-    if ends_early?(sub, ids) do
-      {%{}, malformed_report()}
-    else
-      case entries(sub, ids, false, false) do
-        {:ok, fields, []} ->
-          # a list element's report FOLDS into the enclosing one (§4): the
-          # counters sum and malformed sticks, so an event inside an element
-          # is never lost when the element's own walk returns.
-          decode(desc, fields, nodes, ids)
+    early = ends_early?(sub, ids)
 
-        {:stop, fields, [], 0} ->
-          # the element's body ran off its own end with no terminator: the
-          # prefix decoded stands, and one malformed counts (§3)
-          {value, report} = decode(desc, fields, nodes, ids)
-          {value, %{report | malformed: true}}
+    case entries(sub, ids, false, false) do
+      {:ok, fields, []} ->
+        # a list element's report FOLDS into the enclosing one (§4): the
+        # counters sum and malformed sticks, so an event inside an element
+        # is never lost when the element's own walk returns.
+        {value, report} = decode(desc, fields, nodes, ids)
 
-        {:stop, fields, [], _remaining} ->
-          # the element's body is damaged mid-walk: the events its prefix
-          # already earned count, the element reads its declared defaults, and
-          # one malformed counts (§3, §4)
-          {_value, report} = decode(desc, fields, nodes, ids)
-          {%{}, %{report | malformed: true}}
+        # A terminator BEFORE the body's last byte leaves bytes no field
+        # claims and is malformed (§3), but the fields the walk did reach
+        # already decoded and their events still count (§4). The element keeps
+        # the value its prefix read; dropping the prefix would lose a
+        # kind_mismatch the reference counts on the same bytes.
+        if early, do: {value, %{report | malformed: true}}, else: {value, report}
 
-        _ ->
-          {%{}, malformed_report()}
-      end
+      {:stop, fields, [], 0} ->
+        # the element's body ran off its own end with no terminator: the
+        # prefix decoded stands, and one malformed counts (§3)
+        {value, report} = decode(desc, fields, nodes, ids)
+        {value, %{report | malformed: true}}
+
+      {:stop, fields, [], _remaining} ->
+        # the element's body is damaged mid-walk: the events its prefix
+        # already earned count, the element reads its declared defaults, and
+        # one malformed counts (§3, §4)
+        {_value, report} = decode(desc, fields, nodes, ids)
+        {%{}, %{report | malformed: true}}
+
+      _ ->
+        {%{}, malformed_report()}
     end
   end
 
