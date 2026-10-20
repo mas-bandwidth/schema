@@ -127,6 +127,37 @@ class CookField:
     tag:int = 0
     arm:int = 0
 
+// cook_f32frombits is the float32 read's widening (docs/SPEC-TABLES.md §3.3,
+// PORT-LOBSTER FLOAT32): the 32 bits move into a double by bit surgery, never
+// a conversion, so a NaN's payload survives. Zero, the subnormals and the
+// infinities keep their exact values (Go's tablewire.WidenF32).
+def cook_f32frombits(bits:int) -> float:
+    let sign = shl(shr(bits, 31) & 1, 63)
+    let exp = shr(bits, 23) & 0xff
+    let frac = bits & 0x7fffff
+    if exp == 0xff:
+        return f64frombits(sign | 0x7ff0000000000000 | shl(frac, 29))
+    if exp == 0:
+        if frac == 0:
+            return f64frombits(sign)
+        var k = 0
+        var x = frac
+        while x > 1:
+            x = shr(x, 1)
+            k++
+        let e = k + 874
+        let m = shl(frac - shl(1, k), 52 - k)
+        return f64frombits(sign | shl(e, 52) | m)
+    return f64frombits(sign | shl(exp + 896, 52) | shl(frac, 29))
+
+// cook_wide reports an integer-shaped value stored in Value.w rather than
+// Value.i: EVERY kind 18..29 — the 128-bit integers and the whole fixed-point
+// family, not only the sixteen-byte ones (load.lobster's kind_wide, which the
+// save walker also takes). A fixed element carries ibits; a 128-bit one is
+// the int128 domain.
+def cook_wide(fd:FieldDescriptor) -> bool:
+    return fd.dom == "int128" or fd.ibits > 0
+
 class CookTable:
     name:string
     size:int = 0
@@ -207,6 +238,7 @@ class CookGraph:
     recs:[Record] = []
     rec_index:[int] = []
     blobs:[string] = []
+    blob_kinds:[int] = []
     blob_index:[int] = []
     open:[bool] = []
     cycle:bool = false
@@ -217,9 +249,13 @@ def cg_rec_index(g:CookGraph, rec:Record) -> int:
             return g.rec_index[i]
     return 0
 
-def cg_blob_index(g:CookGraph, b:string) -> int:
+// cg_blob_index merges the slots that name ONE blob node. The record model
+// keeps a blob as its bytes, so two slots naming one node are two equal
+// strings; the KIND is part of the identity, because an empty *string and an
+// empty *bytes are two nodes with one payload (§2.5).
+def cg_blob_index(g:CookGraph, b:string, kind:int) -> int:
     for(g.blobs) x, i:
-        if x == b:
+        if x == b and g.blob_kinds[i] == kind:
             return g.blob_index[i]
     return 0
 
@@ -239,13 +275,17 @@ def cg_add_rec(g:CookGraph, rec:Record) -> int:
     return idx
 
 def cg_add_blob(g:CookGraph, b:string, kind:int) -> int:
-    let at = cg_blob_index(g, b)
+    let at = cg_blob_index(g, b, kind)
     if at != 0:
         return at
     let idx = length(g.nodes) + 1
     push(g.nodes, CookNode { kind: kind, blob: b })
     push(g.blobs, b)
+    push(g.blob_kinds, kind)
     push(g.blob_index, idx)
+    // open is indexed by NODE index, and a blob is a node: keep the two
+    // vectors the same length so a record after a blob does not run past it.
+    push(g.open, false)
     return idx
 
 def cg_visit_value(g:CookGraph, v:Value, d:FieldDescriptor) -> void:
@@ -335,8 +375,8 @@ def cw_ref(c:CookWrite, at:int, rec:Record?) -> void:
             return
     co_u64(c.o, at, 0, c.big)
 
-def cw_ref_blob(c:CookWrite, at:int, b:string) -> void:
-    let to = cg_blob_index(c.g, b)
+def cw_ref_blob(c:CookWrite, at:int, b:string, kind:int) -> void:
+    let to = cg_blob_index(c.g, b, kind)
     if to != 0:
         co_u64(c.o, at, cook_header_bytes + c.g.nodes[to - 1].off - at, c.big)
         return
@@ -387,10 +427,11 @@ def cw_units(c:CookWrite, at:int, units:[int], bufsize:int, countoff:int) -> voi
 
 def cw_field(c:CookWrite, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> void:
     if fd.present != "":
-        if not sl.present:
-            return
+        // The presence slot is STORAGE like every other (§20.2): it is
+        // written whether it is set or not, and the value beside it keeps
+        // the storage the constructor gave it (Go's regionWriter.field).
         if cf.present >= 0:
-            co_u8(c.o, at + cf.present, 1)
+            co_u8(c.o, at + cf.present, if sl.present: 1 else: 0)
     let s = fd.s
     if s == "tab":
         let t = sl.cell.tab
@@ -403,7 +444,7 @@ def cw_field(c:CookWrite, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> 
     elif s == "sblob" or s == "bblob":
         let b = sl.cell.blob
         if b:
-            cw_ref_blob(c, at, b)
+            cw_ref_blob(c, at, b, if s == "sblob": 2 else: 3)
     elif s == "union":
         cw_union(c, at, sl.cell, fd, cf)
     elif s == "str":
@@ -429,7 +470,7 @@ def cw_field(c:CookWrite, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> 
     elif s == "map":
         return
     else:
-        if fd.dom == "int128":
+        if cook_wide(fd):
             cw_wide(c, at, sl.cell.w, cf.size)
         else:
             cw_int(c, at, cf.size, sl.cell.i)
@@ -441,7 +482,7 @@ def cw_elem(c:CookWrite, at:int, e:FieldDescriptor, v:Value, vsize:int, countoff
     elif s == "sblob" or s == "bblob":
         let b = v.blob
         if b:
-            cw_ref_blob(c, at, b)
+            cw_ref_blob(c, at, b, if s == "sblob": 2 else: 3)
     elif s == "tab":
         let t = v.tab
         if t:
@@ -469,7 +510,7 @@ def cw_elem(c:CookWrite, at:int, e:FieldDescriptor, v:Value, vsize:int, countoff
     elif s == "enum":
         cw_int(c, at, vsize, v.i)
     else:
-        if e.dom == "int128":
+        if cook_wide(e):
             cw_wide(c, at, v.w, vsize)
         else:
             cw_int(c, at, vsize, v.i)
@@ -783,6 +824,19 @@ def cr_wide(c:CookRead, at:int) -> Int128:
         return Int128 { lo: cr_word(c, at + 8), hi: cr_word(c, at) }
     return Int128 { lo: cr_word(c, at), hi: cr_word(c, at + 8) }
 
+// cr_wide_at reads a wide kind at its storage width: sixteen bytes for the
+// 128-bit kinds, and the fixed family's own 1, 2, 4 or 8, sign-extended into
+// the Int128 lanes the record model stores (uncook.go's element).
+def cr_wide_at(c:CookRead, at:int, width:int, signed:bool) -> Int128:
+    if width >= 16:
+        return cr_wide(c, at)
+    var v = cr_int(c, at, width)
+    if signed and width < 8:
+        let shift = width * 8
+        if (v & shl(1, shift - 1)) != 0:
+            v -= shl(1, shift)
+    return Int128 { lo: v, hi: if signed and v < 0: -1 else: 0 }
+
 def cr_count(c:CookRead, at:int, countoff:int, bufsize:int) -> int:
     if countoff < 0:
         return 0
@@ -818,9 +872,10 @@ def cr_field(c:CookRead, at:int, sl:Slot, cf:CookField) -> void:
     let fd = sl.fd
     let s = fd.s
     if fd.present != "":
-        sl.present = c.data[at + cf.present] != 0
-        if not sl.present:
-            return
+        if cf.present >= 0:
+            sl.present = c.data[at + cf.present] != 0
+        // The value beside the presence slot is storage like any other, so it
+        // is read whether the field is present or not (uncook.go's field).
     if s == "tab":
         let ct = cook_table_of(fd.t)
         if ct:
@@ -853,18 +908,21 @@ def cr_field(c:CookRead, at:int, sl:Slot, cf:CookField) -> void:
         sl.cell.b = c.data[at] != 0
     elif s == "float":
         if fd.f32:
-            sl.cell.f = fixed_f32frombits(cr_word32(c, at))
+            sl.cell.f = cook_f32frombits(cr_word32(c, at))
         else:
             sl.cell.f = f64frombits(cr_word(c, at))
     elif s == "enum":
         sl.cell.i = cr_int(c, at, cf.size)
     elif s == "arr":
-        cr_array(c, at, sl, cf, fd)
+        if fd.array == "list":
+            cr_list(c, at, sl, cf, fd)
+        else:
+            cr_array(c, at, sl, cf, fd)
     elif s == "map":
         return
     else:
-        if fd.dom == "int128":
-            sl.cell.w = cr_wide(c, at)
+        if cook_wide(fd):
+            sl.cell.w = cr_wide_at(c, at, cf.size, fd.signed)
         else:
             sl.cell.i = cr_int(c, at, cf.size)
 
@@ -899,14 +957,14 @@ def cr_elem(c:CookRead, at:int, e:FieldDescriptor, v:Value, vsize:int, countoff:
         v.b = c.data[at] != 0
     elif s == "float":
         if e.f32:
-            v.f = fixed_f32frombits(cr_word32(c, at))
+            v.f = cook_f32frombits(cr_word32(c, at))
         else:
             v.f = f64frombits(cr_word(c, at))
     elif s == "enum":
         v.i = cr_int(c, at, vsize)
     else:
-        if e.dom == "int128":
-            v.w = cr_wide(c, at)
+        if cook_wide(e):
+            v.w = cr_wide_at(c, at, vsize, e.signed)
         else:
             v.i = cr_int(c, at, vsize)
     return v
@@ -920,6 +978,27 @@ def cr_array(c:CookRead, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> v
         i++
     if fd.array == "counted" and cf.count >= 0:
         sl.count = cr_word32(c, at + cf.count)
+
+// cr_list reads ONE unbounded array back (docs/SPEC-TABLES.md §2.9, §7.2;
+// uncook.go's list): the slot's self-relative delta and int32 count, then the
+// elements at the array the delta names, in index order. The elements are not
+// inline in the record; they ride in the holder's extent.
+def cr_list(c:CookRead, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> void:
+    let delta = cr_word(c, at)
+    let count = cr_word32(c, at + 8)
+    sl.elems = []
+    if delta == 0 or count <= 0:
+        sl.count = 0
+        return
+    let start = at + delta
+    let e = elem_of(fd)
+    var i = 0
+    while i < count:
+        let v = element_zero(fd)
+        cr_elem(c, start + i * cf.lsize, e, v, cf.lvalue, cf.lcount)
+        push(sl.elems, v)
+        i++
+    sl.count = count
 
 def cr_union(c:CookRead, at:int, v:Value, fd:FieldDescriptor) -> void:
     let un = cook_union_named(fd.t)
@@ -957,10 +1036,14 @@ def cook_read(data:string, build:int, desc:TableDescriptor, t:CookTable) -> Reco
     let count = attrib_length / cook_directory_entry
     if count <= 0:
         return nil
+    // The directory offsets are REGION offsets, and the records' reference
+    // slots are deltas from their own addresses IN THE FILE. Storing each
+    // entry as its absolute file offset makes `slot address + delta` and the
+    // directory compare in one space (uncook.go's regionReader.entryAt).
     var i = 0
     while i < count:
         let e = data_offset + data_length + i * cook_directory_entry
-        push(c.dir, cr_word(c, e))
+        push(c.dir, data_offset + cr_word(c, e))
         push(c.tids, cr_word(c, e + 8))
         push(c.nodes, nil)
         push(c.blobs, "")
@@ -968,12 +1051,12 @@ def cook_read(data:string, build:int, desc:TableDescriptor, t:CookTable) -> Reco
     i = 0
     while i < count:
         if c.tids[i] == string_blob_id or c.tids[i] == bytes_blob_id:
-            let length_at = data_offset + c.dir[i]
+            let length_at = c.dir[i]
             let n = cr_word32(c, length_at)
             let start = length_at + 8
             var end = start + n
             if i + 1 < count:
-                end = data_offset + c.dir[i + 1]
+                end = c.dir[i + 1]
             if start + n > end:
                 return nil
             c.blobs[i] = substring(data, start, n)
@@ -990,7 +1073,7 @@ def cook_read(data:string, build:int, desc:TableDescriptor, t:CookTable) -> Reco
             let ct = cook_table_of(rec.d.name)
             if not ct:
                 return nil
-            cr_record(c, data_offset + c.dir[i], rec, ct)
+            cr_record(c, c.dir[i], rec, ct)
         i++
     let root = c.nodes[0]
     if not root:

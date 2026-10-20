@@ -126,6 +126,23 @@ func generateCookUnit(t *testing.T, row cookWriteRow) *cookUnit {
 	return g
 }
 
+// cookHexProbe is [lobsterrun.HexProbe] in chunks: a cooked file can pass
+// 50,000 bytes, and a Lobster print of more than 100,000 characters is cut
+// there. Each byte blob is its lowercase hex across as many lines as it takes,
+// and the line "end" closes it, so the reader never guesses at a boundary.
+const cookHexProbe = `def cookhex(b:string):
+    var s = ""
+    var i = 0
+    for(b) c:
+        s += number_to_string(c, 16, 2)
+        i++
+        if i % 40000 == 0:
+            print(lowercase(s))
+            s = ""
+    print(lowercase(s))
+    print("end")
+`
+
 // cookProbe is the Lobster program for one row: load the wire, measure and
 // cook it in both orders, open what was written, read it back and save it.
 func cookProbe(g *cookUnit, row cookWriteRow) string {
@@ -147,20 +164,20 @@ def run():
     print("{m}")
     let le = %s.%sCook(rec, false)
     let be = %s.%sCook(rec, true)
-    hex(le)
-    hex(be)
+    cookhex(le)
+    cookhex(be)
     print(if %s.%sOpen(le): "ok" else: "no")
     print(if %s.%sOpen(be): "ok" else: "no")
     let back = %s.%sReadCook(le)
     if back:
-        hex(schema_rt.save(back))
+        cookhex(schema_rt.save(back))
     else:
         print("nil")
     let bad = read_file("bad.cook")
     assert bad
     print(if %s.%sOpen(bad): "ok" else: "no")
 run()
-`, imports.String(), lobsterrun.HexProbe, keyedRegistrations(g.u),
+`, imports.String(), cookHexProbe, keyedRegistrations(g.u),
 		lobster.StringLit([]byte(row.root)),
 		g.pkg, row.root,
 		g.pkg, row.root,
@@ -192,19 +209,45 @@ func runCookProbe(t *testing.T, g *cookUnit, row cookWriteRow, bad []byte) cookO
 	}
 	raw := lobsterrun.Run(t, g.dir, "main.lobster", map[string][]byte{"w": wire, "bad.cook": bad})
 	lines := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
-	if len(lines) != 7 && len(lines) != 8 {
-		t.Fatalf("%s: the probe printed %d lines, want 7 or 8:\n%s", row.name, len(lines), raw)
-	}
 	var out cookOutput
 	out.raw = string(raw)
-	fmt.Sscanf(lines[0], "%d", &out.measure)
-	out.little, _ = hex.DecodeString(lines[1])
-	out.big, _ = hex.DecodeString(lines[2])
-	out.open[0], out.open[1] = lines[3], lines[4]
-	if len(lines) >= 6 && lines[5] != "nil" && lines[5] != "" {
-		out.saved, _ = hex.DecodeString(lines[5])
+	at := 0
+	next := func() string {
+		if at >= len(lines) {
+			t.Fatalf("%s: the probe ended after %d lines:\n%s", row.name, at, raw)
+		}
+		at++
+		return lines[at-1]
 	}
-	out.open[2] = lines[len(lines)-1]
+	blob := func() []byte {
+		var h strings.Builder
+		for {
+			l := next()
+			if l == "end" {
+				break
+			}
+			h.WriteString(l)
+		}
+		b, err := hex.DecodeString(h.String())
+		if err != nil {
+			t.Fatalf("%s: the probe's hex is not hex: %v:\n%s", row.name, err, raw)
+		}
+		return b
+	}
+	fmt.Sscanf(next(), "%d", &out.measure)
+	out.little = blob()
+	out.big = blob()
+	out.open[0], out.open[1] = next(), next()
+	if saved := next(); saved == "nil" {
+		out.saved = nil
+	} else {
+		at--
+		out.saved = blob()
+	}
+	out.open[2] = next()
+	if at != len(lines) {
+		t.Fatalf("%s: the probe printed %d trailing lines:\n%s", row.name, len(lines)-at, raw)
+	}
 	return out
 }
 
