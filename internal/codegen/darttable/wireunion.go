@@ -687,16 +687,20 @@ func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
 		e := enumRef(f)
 		g.pf("%sfinal vref = %s.readLeb();\n", ind, p)
 		g.pf("%sif (vref == null) %s\n", ind, bad)
-		g.pf("%sfinal vid = vref == 0 ? 0 : %s.refToId[vref];\n", ind, p)
-		g.pf("%sif (vid == null) %s\n", ind, bad)
-		// an element naming no variant this reader knows reads None and
-		// counts unknown, exactly as an enum field does (§4)
-		g.pf("%sswitch (vid) {\n", ind)
-		g.pf("%s\tcase 0: %s.add(0);\n", ind, out)
+		// ONLY THE ZERO REFERENCE IS None (§3): a NONZERO reference whose
+		// table entry is id 0 names no variant this reader knows, reads None
+		// and counts one unknown, exactly as internal/tablewire enumCell does.
+		g.pf("%sif (vref == 0) {\n", ind)
+		g.pf("%s\t%s.add(0);\n", ind, out)
+		g.pf("%s} else {\n", ind)
+		g.pf("%s\tfinal vid = %s.refToId[vref];\n", ind, p)
+		g.pf("%s\tif (vid == null) %s\n", ind, bad)
+		g.pf("%s\tswitch (vid) {\n", ind)
 		for i := range e.Variants {
-			g.pf("%s\tcase %s: %s.add(%d);\n", ind, dartU64Literal(ir.TableWireId(e.VariantWireName(i))), out, i+1)
+			g.pf("%s\t\tcase %s: %s.add(%d);\n", ind, dartU64Literal(ir.TableWireId(e.VariantWireName(i))), out, i+1)
 		}
-		g.pf("%s\tdefault: %s.add(0); %s.report.unknown++; if (%s.retain != null) %s.report.retainLost++;\n", ind, out, p, p, p)
+		g.pf("%s\t\tdefault: %s.add(0); %s.report.unknown++; if (%s.retain != null) %s.report.retainLost++;\n", ind, out, p, p, p)
+		g.pf("%s\t}\n", ind)
 		g.pf("%s}\n", ind)
 	case wireKindBool:
 		g.pf("%sif (!%s.has(1)) %s\n", ind, p, bad)

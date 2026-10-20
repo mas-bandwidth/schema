@@ -481,6 +481,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tfinal v = %s();\n", n)
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	g.pf("\tr.report = report;\n")
+	g.pf("\tr.variableRoot = true;\n")
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
 	g.pf("\tr.retain = retain;\n")
 	g.pf("\tr.path = [1];\n")

@@ -181,28 +181,63 @@ func (g *wireGen) emitArrayHelpers(st *ir.Struct) {
 func (g *wireGen) emitFixedHelper(st *ir.Struct, f *ir.Field) {
 	ek := arrayElemKind(f)
 	et := dartListElemType(f)
+	numeric := f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 || f.Type.Kind == ir.TBool
 	// THE HEADER (element kind and count) is read by the FIELD against the
 	// PARENT buffer, exactly as internal/tablewire arrayBody reads it; the
 	// helper gets the body the header framed and the header it carried, and
 	// judges the element kind before the count is looked at (§3, §4).
 	g.pf("bool %s(TableWireReader p, %s v, int elemKind, int count) {\n", arrayHelper(st, f, "Fixed"), st.Name)
-	g.pf("\tif (elemKind != %d) { p.report.kindMismatch++; return true; }\n", ek)
+	// A SMALLER KIND ON THE SAME LADDER WIDENS (§4): one `widened` counts for
+	// the field, however many elements it holds, exactly as
+	// internal/tablewire decode.go arrayBody tests ir.TableKindWidens.
+	widen := ""
+	for k := 1; k <= wireKindWString; k++ {
+		if ir.TableKindWidens(k, ek) {
+			if widen != "" {
+				widen += " || "
+			}
+			widen += fmt.Sprintf("elemKind == %d", k)
+		}
+	}
+	if widen == "" {
+		g.pf("\tif (elemKind != %d) { p.report.kindMismatch++; return true; }\n", ek)
+	} else {
+		g.pf("\tif (elemKind != %d) {\n", ek)
+		g.pf("\t\tif (!(%s)) { p.report.kindMismatch++; return true; }\n", widen)
+		g.pf("\t\tp.report.widened++;\n")
+		g.pf("\t}\n")
+	}
 	g.pf("\tfinal out = <%s>[];\n", et)
 	// a count past the declared slots keeps them and counts one clamp; the
 	// excess skips via the length (§4, internal/tablewire arrayBody)
 	g.pf("\tvar keep = count;\n")
 	g.pf("\tif (keep > %d) { keep = %d; p.report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
-	g.pf("\tfor (var i = 0; i < keep; i++) {\n")
-	g.emitGetElem(f, ek, "out", "p", "\t\t")
-	g.pf("\t}\n")
+	// A DAMAGED ELEMENT KEEPS THE PREFIX THE BODY COVERED (§4): the reference
+	// decodes into the field's EXISTING slots one element at a time, so a
+	// break leaves the elements before it standing — and a REPEAT under this
+	// id that decodes fewer slots keeps the slots an earlier occurrence left
+	// (internal/tablewire decode.go arrayBody's `decoded` prefix; §3, §4).
+	// The finally commits the prefix whether the walk reaches the end or
+	// stops on damage.
+	g.pf("\tfinal fresh = List<%s>.of(v.%s);\n", et, fieldMember(f))
+	g.pf("\ttry {\n")
+	g.pf("\t\tfor (var i = 0; i < keep; i++) {\n")
+	if numeric {
+		// read at the WIRE kind's width so a widened element lands its value
+		g.emitLoadScalarListElem(f, "out", "p", "p", "\t\t\t")
+	} else {
+		g.emitGetElem(f, ek, "out", "p", "\t\t\t")
+	}
+	g.pf("\t\t}\n")
+	g.pf("\t} finally {\n")
 	// SLACK AFTER A FIXED ARRAY'S ELEMENTS IS NOT DAMAGE: the reference skips
 	// the rest of the body by its L and keeps what it decoded
 	// (internal/tablewire decode.go arrayBody).
-	g.pf("\tfinal fresh = List<%s>.generate(%d, (_) => %s);\n", et, f.ArrayBound, g.elemDefault(f))
-	g.pf("\tfor (var i = 0; i < out.length && i < %d; i++) {\n", f.ArrayBound)
-	g.pf("\t\tfresh[i] = out[i];\n")
+	g.pf("\t\tfor (var i = 0; i < out.length && i < %d; i++) {\n", f.ArrayBound)
+	g.pf("\t\t\tfresh[i] = out[i];\n")
+	g.pf("\t\t}\n")
+	g.pf("\t\tv.%s = fresh;\n", fieldMember(f))
 	g.pf("\t}\n")
-	g.pf("\tv.%s = fresh;\n", fieldMember(f))
 	g.pf("\treturn true;\n")
 	g.pf("}\n\n")
 }
@@ -213,21 +248,69 @@ func (g *wireGen) emitKeyedHelper(st *ir.Struct, f *ir.Field) {
 	et := dartListElemType(f)
 	elem := arrayHelper(st, f, "Elem")
 	g.pf("bool %s(TableWireReader p, List<%s> v, int slot, int kind) {\n", elem, et)
-	g.emitGetPayload(singleOf(f), "v[slot]", "p", "\t")
+	if ef := singleOf(f); enumRef(ef) != nil {
+		e := enumRef(ef)
+		// A KEYED ENUM ELEMENT IS ONE VARIANT REFERENCE (§3.2): the reference
+		// is read, whatever bytes of the element's L follow are SLACK, and a
+		// reference this reader cannot name reads None and counts unknown,
+		// exactly as internal/tablewire keyed's enumCell path reads it.
+		g.pf("\tfinal vref = p.readLeb();\n")
+		g.pf("\tif (vref == null) { p.report.malformed = true; return false; }\n")
+		g.pf("\tif (vref != 0) {\n")
+		g.pf("\t\tfinal vid = p.refToId[vref];\n")
+		g.pf("\t\tif (vid == null) { p.report.malformed = true; return false; }\n")
+		g.pf("\t\tswitch (vid) {\n")
+		for i := range e.Variants {
+			g.pf("\t\t\tcase %s: v[slot] = %d;\n", dartU64Literal(ir.TableWireId(e.VariantWireName(i))), i+1)
+		}
+		g.pf("\t\t\tdefault: v[slot] = 0; p.report.unknown++; if (p.retain != null) p.report.retainLost++;\n")
+		g.pf("\t\t}\n")
+		g.pf("\t} else {\n")
+		g.pf("\t\tv[slot] = 0;\n")
+		g.pf("\t}\n")
+		g.pf("\tp.pos = p.limit;\n")
+		g.pf("\treturn true;\n")
+	} else {
+		g.emitGetPayload(singleOf(f), "v[slot]", "p", "\t")
+	}
 	g.pf("}\n\n")
 	g.pf("bool %s(TableWireReader p, %s v) {\n", arrayHelper(st, f, "Keyed"), st.Name)
 	g.pf("\tif (!p.has(1)) { p.report.malformed = true; return false; }\n")
 	g.pf("\tfinal elemKind = p.readByte();\n")
 	g.pf("\tfinal pairs = p.readLeb();\n")
 	g.pf("\tif (pairs == null) { p.report.malformed = true; return false; }\n")
-	g.pf("\tif (elemKind != %d) { p.report.kindMismatch++; return true; }\n", ek)
-	g.pf("\tfinal fresh = List<%s>.generate(%d, (_) => %s);\n", et, f.ArrayBound, g.elemDefault(f))
+	// AN ELEMENT KIND THAT WIDENS IS READ AT THE WIRE KIND AND COUNTS ONE
+	// `widened` for the field (§4): internal/tablewire decode.go keyed tests
+	// ir.TableKindWidens before it declares a kind mismatch.
+	widen := ""
+	for k := 1; k <= wireKindWString; k++ {
+		if ir.TableKindWidens(k, ek) {
+			if widen != "" {
+				widen += " || "
+			}
+			widen += fmt.Sprintf("elemKind == %d", k)
+		}
+	}
+	if widen == "" {
+		g.pf("\tif (elemKind != %d) { p.report.kindMismatch++; return true; }\n", ek)
+	} else {
+		g.pf("\tif (elemKind != %d) {\n", ek)
+		g.pf("\t\tif (!(%s)) { p.report.kindMismatch++; return true; }\n", widen)
+		g.pf("\t\tp.report.widened++;\n")
+		g.pf("\t}\n")
+	}
+	// A TRIPLE THE BODY CANNOT FRAME STOPS THE BODY AND KEEPS THE SLOTS IT
+	// DECODED (§3.2, §4): the reference breaks out of the loop, never
+	// un-assigns a slot, and skips the rest by the field's L
+	// (internal/tablewire decode.go keyed). The slots an earlier occurrence
+	// left stand where this body sends none.
+	g.pf("\tfinal fresh = List<%s>.of(v.%s);\n", et, fieldMember(f))
 	g.pf("\tfor (var k = 0; k < pairs; k++) {\n")
 	g.pf("\t\tfinal keyRef = p.readLeb();\n")
-	g.pf("\t\tif (keyRef == null) { p.report.malformed = true; return false; }\n")
+	g.pf("\t\tif (keyRef == null || keyRef == 0) { p.report.malformed = true; break; }\n")
 	g.pf("\t\tfinal vid = p.refToId[keyRef];\n")
 	g.pf("\t\tfinal n = p.readLeb();\n")
-	g.pf("\t\tif (vid == null || n == null || !p.has(n)) { p.report.malformed = true; return false; }\n")
+	g.pf("\t\tif (vid == null || n == null || !p.has(n)) { p.report.malformed = true; break; }\n")
 	g.pf("\t\tfinal slot = switch (vid) {")
 	for i := range e.Variants {
 		g.pf(" %s => %d,", dartU64Literal(ir.TableWireId(e.VariantWireName(i))), i)
@@ -237,11 +320,26 @@ func (g *wireGen) emitKeyedHelper(st *ir.Struct, f *ir.Field) {
 	g.pf("\t\t\tp.report.unknown++;\n")
 	g.pf("\t\t\tif (p.retain != null) p.report.retainLost++;\n")
 	g.pf("\t\t} else {\n")
-	g.pf("\t\t\t%s(TableWireReader.sub(p, p.pos, p.pos + n), fresh, slot, elemKind);\n", elem)
+	// A SCALAR ELEMENT IS READ AT THE WIRE KIND'S OWN WIDTH and the rest of
+	// its triple's L is slack, exactly as internal/tablewire keyed reads one
+	// (decode.go keyed's `elem.scalarAt` then `sub.off += elemLen`). A width
+	// the element's L cannot cover is that element's damage and the body
+	// reads on.
+	if f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 || f.Type.Kind == ir.TBool {
+		g.pf("\t\t\tfinal width = _kindWidth(elemKind);\n")
+		g.pf("\t\t\tif (width > n || !p.has(width)) {\n")
+		g.pf("\t\t\t\tp.report.malformed = true;\n")
+		g.pf("\t\t\t} else {\n")
+		g.pf("\t\t\t\t%s(TableWireReader.sub(p, p.pos, p.pos + width), fresh, slot, elemKind);\n", elem)
+		g.pf("\t\t\t}\n")
+	} else {
+		g.pf("\t\t\t%s(TableWireReader.sub(p, p.pos, p.pos + n), fresh, slot, elemKind);\n", elem)
+	}
 	g.pf("\t\t}\n")
 	g.pf("\t\tp.pos += n;\n")
 	g.pf("\t}\n")
-	g.pf("\tif (p.pos != p.limit) { p.report.malformed = true; return false; }\n")
+	// THE FIELD'S L BOUNDS THE BODY, so slack the triples did not claim is
+	// skipped, not damage (internal/tablewire decode.go keyed's `r.off = end`).
 	g.pf("\tv.%s = fresh;\n", fieldMember(f))
 	g.pf("\treturn true;\n")
 	g.pf("}\n\n")

@@ -927,6 +927,11 @@ final class TableWireReader {
   TableWireReport report;
   int entryCount = 0;
   bool nodeTableGood = true;
+  // variableRoot says this read is a VARIABLE-class root: only that class owns
+  // the reserved node-table id and scans it (§3.1). A fixed-class root has no
+  // node table, so the reserved id is an ordinary unknown field there, exactly
+  // as internal/tablewire decodeWith's value-only branch reads it.
+  bool variableRoot = false;
   bool stringBlob = false;
   bool bytesBlob = false;
   TableRetain? retain;
@@ -958,6 +963,7 @@ final class TableWireReader {
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
+      variableRoot = parent.variableRoot,
       stringBlob = parent.stringBlob,
       bytesBlob = parent.bytesBlob,
       retain = parent.retain,
@@ -979,6 +985,7 @@ final class TableWireReader {
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
+      variableRoot = parent.variableRoot,
       stringBlob = parent.stringBlob,
       bytesBlob = parent.bytesBlob,
       retain = parent.retain,
@@ -1689,15 +1696,23 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%sif (%s != %s) {\n", ind, expr, g.enumDefault(f))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindEnum)
-		g.pf("%s\tint vid;\n", ind)
-		g.pf("%s\tswitch (%s) {\n", ind, expr)
+		// NONE IS REFERENCE ZERO AND IS NEVER INTERNED (§3): an enum field
+		// whose declared default is a variant still writes a value of None, and
+		// the zero reference is that field's payload, not an early return that
+		// would abandon the rest of the body.
+		g.pf("%s\tif (%s == 0) {\n", ind, expr)
+		g.pf("%s\t\tw.putLeb(0);\n", ind)
+		g.pf("%s\t} else {\n", ind)
+		g.pf("%s\t\tint vid;\n", ind)
+		g.pf("%s\t\tswitch (%s) {\n", ind, expr)
 		for i := range e.Variants {
 			vid := ir.TableWireId(e.VariantWireName(i))
-			g.pf("%s\t\tcase %d: vid = %s;\n", ind, i+1, dartU64Literal(vid))
+			g.pf("%s\t\t\tcase %d: vid = %s;\n", ind, i+1, dartU64Literal(vid))
 		}
-		g.pf("%s\t\tdefault: return;\n", ind)
+		g.pf("%s\t\t\tdefault: return;\n", ind)
+		g.pf("%s\t\t}\n", ind)
+		g.pf("%s\t\tw.putLeb(w.refFor(vid));\n", ind)
 		g.pf("%s\t}\n", ind)
-		g.pf("%s\tw.putLeb(w.refFor(vid));\n", ind)
 		g.pf("%s}\n", ind)
 	default:
 		// No other construct reaches this emitter: checkUnsupportedConstructs
@@ -1854,8 +1869,13 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\t\tif (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }\n")
 	g.pf("\t\tif (id == _kNodeTableId) {\n")
 	g.pf("\t\t\tif (nested) { r.report.malformed = true; return; }\n")
-	g.pf("\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n")
-	g.pf("\t\t\tcontinue;\n")
+	// THE RESERVED ID IS ONLY THE NODE TABLE FOR A VARIABLE-CLASS ROOT (§3.1):
+	// a value-only body has no numbering, so its reserved id is an ordinary
+	// unknown field and counts one, as internal/tablewire decode.go body does.
+	g.pf("\t\t\tif (r.variableRoot) {\n")
+	g.pf("\t\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n")
+	g.pf("\t\t\t\tcontinue;\n")
+	g.pf("\t\t\t}\n")
 	g.pf("\t\t}\n")
 	g.pf("\t\tswitch (id) {\n")
 	for i, f := range st.Fields {
@@ -1909,6 +1929,10 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		// the bare field's own case line is dropped: this case already opened
 		caseText = caseText[strings.Index(caseText, "\n")+1:]
 		caseText = strings.ReplaceAll(caseText, "r.report.kindMismatch++;", "r.report.kindMismatch++; v."+has+" = false;")
+		// A FIELD WHOSE OWN FRAMING FAILS NEVER RODE: the reference sets
+		// Present only after the field's read returns whole (§2.3, §4), so a
+		// framing damage that ends the body clears presence with it.
+		caseText = strings.ReplaceAll(caseText, "r.report.malformed = true; return;", "r.report.malformed = true; v."+has+" = false; return;")
 		rest := g.body.String()[:start]
 		g.body.Reset()
 		g.body.WriteString(rest)
@@ -2028,7 +2052,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			g.pf("%s\t\t\tif (idx == null) { r.report.malformed = true; break; }\n", ind)
 			g.pf("%s\t\t\tv.%s.add(r.resolveTable(idx, %s) as %s?);\n", ind, name, typeConst(ref), ref.Name)
 		default:
-			g.emitLoadScalarListElem(f, "v."+name, "arr", ind)
+			g.emitLoadScalarListElem(f, "v."+name, "arr", "r", ind)
 		}
 		g.pf("%s\t\t}\n", ind)
 		g.pf("%s\t\tr.pos = end;\n", ind)
@@ -2256,51 +2280,51 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 // of scalars, strings or enums, appending it to the destination list (dest is
 // `v.field`). A scalar reads at its kind's width, a bool one byte, a string
 // length-framed, an enum a variant id reference (§2.9, §3).
-func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind string) {
+func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr, rep, ind string) {
 	elemKind := listElementKind(f)
 	switch elemKind {
 	case wireKindString:
 		g.pf("%s\t\t\tfinal elen = %s.readLeb();\n", ind, arr)
-		g.pf("%s\t\t\tif (elen == null || !%s.has(elen)) { r.report.malformed = true; break; }\n", ind, arr)
-		g.pf("%s\t\t\tif (!_lebValid(%s.data, %s.pos, elen)) { r.report.malformed = true; %s.pos += elen; break; }\n", ind, arr, arr, arr)
+		g.pf("%s\t\t\tif (elen == null || !%s.has(elen)) { "+rep+".report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\tif (!_lebValid(%s.data, %s.pos, elen)) { "+rep+".report.malformed = true; %s.pos += elen; break; }\n", ind, arr, arr, arr)
 		g.pf("%s\t\t\t%s.add(utf8.decode(%s.data.sublist(%s.pos, %s.pos + elen)));\n", ind, dest, arr, arr, arr)
 		g.pf("%s\t\t\t%s.pos += elen;\n", ind, arr)
 	case wireKindEnum:
 		e := enumRef(f)
 		g.pf("%s\t\t\tfinal vref = %s.readLeb();\n", ind, arr)
-		g.pf("%s\t\t\tif (vref == null) { r.report.malformed = true; break; }\n", ind)
+		g.pf("%s\t\t\tif (vref == null) { "+rep+".report.malformed = true; break; }\n", ind)
 		g.pf("%s\t\t\tif (vref == 0) {\n", ind)
 		g.pf("%s\t\t\t\t%s.add(0);\n", ind, dest)
 		g.pf("%s\t\t\t} else {\n", ind)
 		g.pf("%s\t\t\tfinal vid = %s.refToId[vref];\n", ind, arr)
-		g.pf("%s\t\t\tif (vid == null) { r.report.malformed = true; break; }\n", ind)
+		g.pf("%s\t\t\tif (vid == null) { "+rep+".report.malformed = true; break; }\n", ind)
 		g.pf("%s\t\t\tswitch (vid) {\n", ind)
 		for i := range e.Variants {
 			vid := ir.TableWireId(e.VariantWireName(i))
 			g.pf("%s\t\t\t\tcase %s: %s.add(%d);\n", ind, dartU64Literal(vid), dest, i+1)
 		}
-		g.pf("%s\t\t\t\tdefault: %s.add(0); r.report.unknown++;\n", ind, dest)
+		g.pf("%s\t\t\t\tdefault: %s.add(0); "+rep+".report.unknown++;\n", ind, dest)
 		g.pf("%s\t\t\t}\n", ind)
 		g.pf("%s\t\t\t}\n", ind)
 	case wireKindBool:
-		g.pf("%s\t\t\tif (!%s.has(1)) { r.report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\tif (!%s.has(1)) { "+rep+".report.malformed = true; break; }\n", ind, arr)
 		g.pf("%s\t\t\t%s.add(%s.readByte() != 0);\n", ind, dest, arr)
 	case wireKindF32:
-		g.pf("%s\t\t\tif (!%s.has(4)) { r.report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\tif (!%s.has(4)) { "+rep+".report.malformed = true; break; }\n", ind, arr)
 		g.pf("%s\t\t\t%s.add(_f32FromBits(readU32(%s.data, %s.pos))); %s.pos += 4;\n", ind, dest, arr, arr, arr)
 	case wireKindF64:
 		// f64 widens an f32 element kind (§4). The array already counted widened.
 		g.pf("%s\t\t\tif (elemKind == %d) {\n", ind, wireKindF32)
-		g.pf("%s\t\t\t\tif (!%s.has(4)) { r.report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\t\tif (!%s.has(4)) { "+rep+".report.malformed = true; break; }\n", ind, arr)
 		g.pf("%s\t\t\t\t%s.add(_f32FromBits(readU32(%s.data, %s.pos))); %s.pos += 4;\n", ind, dest, arr, arr, arr)
 		g.pf("%s\t\t\t} else if (elemKind == %d) {\n", ind, wireKindF64)
-		g.pf("%s\t\t\t\tif (!%s.has(8)) { r.report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\t\tif (!%s.has(8)) { "+rep+".report.malformed = true; break; }\n", ind, arr)
 		g.pf("%s\t\t\t\t%s.add(_f64FromBits(readU64(%s.data, %s.pos))); %s.pos += 8;\n", ind, dest, arr, arr, arr)
-		g.pf("%s\t\t\t} else { r.report.malformed = true; break; }\n", ind)
+		g.pf("%s\t\t\t} else { "+rep+".report.malformed = true; break; }\n", ind)
 	default:
 		if ir.TableKindWide(elemKind) {
 			w := ir.TableKindWidth(elemKind)
-			g.pf("%s\t\t\tif (!%s.has(%d)) { r.report.malformed = true; break; }\n", ind, arr, w)
+			g.pf("%s\t\t\tif (!%s.has(%d)) { "+rep+".report.malformed = true; break; }\n", ind, arr, w)
 			g.pf("%s\t\t\t{\n", ind)
 			g.pf("%s\t\t\t\tvar x = _getWide(%s, %d, %v);\n", ind, arr, w, ir.TableKindSigned(elemKind))
 			g.emitWideClamp(f, "x", "r", ind+"\t\t\t\t")
@@ -2322,13 +2346,13 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 			}
 			w := ir.TableKindWidth(k)
 			g.pf("%s\t\t\t%s (elemKind == %d) {\n", ind, kw, k)
-			g.pf("%s\t\t\t\tif (!%s.has(%d)) { r.report.malformed = true; break; }\n", ind, arr, w)
+			g.pf("%s\t\t\t\tif (!%s.has(%d)) { "+rep+".report.malformed = true; break; }\n", ind, arr, w)
 			switch w {
 			case 1:
 				if signed {
-					g.pf("%s\t\t\t\t%s.add(_signExtend(%s.readByte(), 1));\n", ind, dest, arr)
+					g.pf("%s\t\t\t\tvar value = _signExtend(%s.readByte(), 1);\n", ind, arr)
 				} else {
-					g.pf("%s\t\t\t\t%s.add(%s.readByte());\n", ind, dest, arr)
+					g.pf("%s\t\t\t\tvar value = %s.readByte();\n", ind, arr)
 				}
 			case 2:
 				g.pf("%s\t\t\t\tvar raw = 0;\n", ind)
@@ -2336,21 +2360,26 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 					g.pf("%s\t\t\t\traw |= %s.readByte() << %d;\n", ind, arr, 8*b)
 				}
 				if signed {
-					g.pf("%s\t\t\t\t%s.add(_signExtend(raw, 2));\n", ind, dest)
+					g.pf("%s\t\t\t\tvar value = _signExtend(raw, 2);\n", ind)
 				} else {
-					g.pf("%s\t\t\t\t%s.add(raw);\n", ind, dest)
+					g.pf("%s\t\t\t\tvar value = raw;\n", ind)
 				}
 			case 4:
 				if signed {
-					g.pf("%s\t\t\t\t%s.add(_signExtend(readU32(%s.data, %s.pos), 4)); %s.pos += 4;\n", ind, dest, arr, arr, arr)
+					g.pf("%s\t\t\t\tvar value = _signExtend(readU32(%s.data, %s.pos), 4); %s.pos += 4;\n", ind, arr, arr, arr)
 				} else {
-					g.pf("%s\t\t\t\t%s.add(readU32(%s.data, %s.pos)); %s.pos += 4;\n", ind, dest, arr, arr, arr)
+					g.pf("%s\t\t\t\tvar value = readU32(%s.data, %s.pos); %s.pos += 4;\n", ind, arr, arr, arr)
 				}
 			default:
-				g.pf("%s\t\t\t\t%s.add(readU64(%s.data, %s.pos)); %s.pos += 8;\n", ind, dest, arr, arr, arr)
+				g.pf("%s\t\t\t\tvar value = readU64(%s.data, %s.pos); %s.pos += 8;\n", ind, arr, arr, arr)
 			}
+			// A RANGED OR BITS ELEMENT CLAMPS AS EVERY BOUNDED SCALAR DOES
+			// (§4): internal/tablewire decode.go scalarAt applies the declared
+			// range and bits mask after the wire kind's value is read.
+			g.emitIntClamp(f, "value", "r", ind+"\t\t\t\t")
+			g.pf("%s\t\t\t\t%s.add(value);\n", ind, dest)
 		}
-		g.pf("%s\t\t\t} else { r.report.malformed = true; break; }\n", ind)
+		g.pf("%s\t\t\t} else { "+rep+".report.malformed = true; break; }\n", ind)
 	}
 }
 
@@ -2514,6 +2543,7 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	g.pf("\tfinal v = %s();\n", n)
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	bytesBlob, strBlob := ir.PointerReachableBlobs(st)
+	g.pf("\tr.variableRoot = %v;\n", ir.VariableTables(g.unit)[st.Name])
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
 	g.pf("\tr.bytesBlob = %v;\n", bytesBlob)
 	g.pf("\tr.path = [1];\n")
@@ -2525,7 +2555,7 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	// is read tolerantly up to the damage (docs/SPEC-TABLES.md §3.3, §4;
 	// internal/tablewire/decode.go decodeWith), so it falls through here.
 	g.pf("\tif (verdict == 2) { r.report.malformed = true; return v; }\n")
-	g.pf("\tr.scanNodeTable();\n")
+	g.pf("\tif (r.variableRoot) r.scanNodeTable();\n")
 	g.pf("\tr.pos = 1;\n")
 	g.pf("\t%s(r, v, false);\n", dartName(n)+"WireLoadBody")
 	g.pf("\treturn v;\n")
