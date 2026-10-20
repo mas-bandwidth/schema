@@ -42,7 +42,7 @@ func TestJavaFixArrayCountReadPastBody(t *testing.T) {
 		t.Fatal(err)
 	}
 	u1 := unitFromDir(t, sdir)
-	runArrayCountPastBodyCase(t, u1, "Cfg", "cfg14505",
+	runArrayCountPastBodyCase(t, u1, "Cfg", "cfg14505", 1,
 		"01010a0000f040020100031e04050c056672657368060d0d070a00001841080a0000804000090e0a04020a000000c80000000a1e0b0c0e051e030d0b0e0f0e051ecfe1a49d874f03000d00100e0e0403070000000800000009000000111c1204040000000003000000000000ed09000000120f130d0714040600000000008cec01864cdc63aff2ef01864cde63afb2ad1dc4a2eb3d0d8be145c2cb04da4f861b638ebaadbcc48792885f8f064c2da6ecee9a99eb45453e203d04727ee88a6f2c414fbf84783ed48ac477299ba832b318320d7ec916c4c599f782764e0ad98025f1eade1ae5c391c5c4aa397792c44925d7235af46fb44656eeb16b2e8ce6dd542dd0294d3faa9443f2513bc8c136ca74e32f19244a339d707c9d0ac9dde81400000000000000",
 		"b1e8185e35622b8e6eafd46818c5b2f8ebd6fc66b00c0b1d69a2b1271947006f",
 		"tblv1")
@@ -61,12 +61,35 @@ fixed table T {
 		t.Fatal(err)
 	}
 	u2 := unitFromDir(t, wsdir)
-	runArrayCountPastBodyCase(t, u2, "T", "wide-fixed",
+	runArrayCountPastBodyCase(t, u2, "T", "wide-fixed", 1,
 		"01010e0213874f0100000000000000000000000000000002000000000000000000000000000000030000000000000000000000000000000038b3700519b156e70100000000000000",
 		"", "wk")
+
+	// Case 3, a hand-built UNBOUNDED LIST ([]int32) with the same
+	// count-straddles-L shape: L=2 holds the element kind 04 and one count byte
+	// 87, the count's second byte 4f past the body. The oracle reads the count
+	// against the parent extent (10119, inside the collection cap), then reads
+	// the elements over the body's empty span: the list stays empty and
+	// malformed counts, with NO refusal — a count that ran past L is not one
+	// the framing walk compares against the body (docs/SPEC-TABLES.md §3.3,
+	// §4). The widened read must not turn the negative remainder into a
+	// refusal.
+	listSchema := `package lp
+table T {
+    arr []int32
+}
+`
+	lsdir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(lsdir, "L.schema"), []byte(listSchema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u3 := unitFromDir(t, lsdir)
+	runArrayCountPastBodyCase(t, u3, "T", "list-past-body", 0,
+		"01010e0204874f0100000000000000000000000000000002000000000000000000000000000000030000000000000000000000000000000038b3700519b156e70100000000000000",
+		"", "lp")
 }
 
-func runArrayCountPastBodyCase(t *testing.T, u *ir.Unit, root, name, wireHex, sha, pkg string) {
+func runArrayCountPastBodyCase(t *testing.T, u *ir.Unit, root, name string, wantClamped int, wireHex, sha, pkg string) {
 	t.Helper()
 	model := tabletext.NewModel(u)
 
@@ -177,7 +200,7 @@ func runArrayCountPastBodyCase(t *testing.T, u *ir.Unit, root, name, wireHex, sh
 	if saved != hex.EncodeToString(owire) {
 		t.Errorf("%s: saved bytes differ: java %s, oracle %x", name, saved, owire)
 	}
-	if oreport.Clamped != 1 {
-		t.Fatalf("%s: test setup: oracle report %+v, want clamped=1", name, oreport)
+	if oreport.Clamped != wantClamped {
+		t.Fatalf("%s: test setup: oracle report %+v, want clamped=%d", name, oreport, wantClamped)
 	}
 }

@@ -4247,7 +4247,14 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m string) {
 	}
 	refusePrefix := func(widthExpr string) string {
 		if f.Array == ir.ArrayList {
-			return fmt.Sprintf("if (n > (long) (ar.limit - ar.off) / (%s)) { report.refused = true; } else ", widthExpr)
+			// A count that ran past the body's L (ar.off > ar.limit) is not a
+			// count the framing walk can compare against the body (the oracle's
+			// extent scan reads the LEB inside the body and stops without a
+			// refusal when it crosses L). The element read over the empty span
+			// flags malformed instead, and the list keeps the empty prefix
+			// (docs/SPEC-TABLES.md §3.3, §4); a negative remainder must not
+			// read as a refusal.
+			return fmt.Sprintf("if (ar.off <= ar.limit && n > (long) (ar.limit - ar.off) / (%s)) { report.refused = true; } else ", widthExpr)
 		}
 		return ""
 	}
