@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -28,24 +29,25 @@ const matchResultFileKeepsDecodedMutant = "0101090101010101010101020ed1010d0a110
 func TestJavaFixMatchResultFileKeepsDecoded(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
-	mutant, err := hex.DecodeString(matchResultFileKeepsDecodedMutant)
+	cardMutant, err := hex.DecodeString(matchResultFileKeepsDecodedMutant)
 	if err != nil {
 		t.Fatal(err)
+	}
+	base, err := os.ReadFile(filepath.Join(repo, "testdata", "wire", "tables", "match_full.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	early := append([]byte(nil), base...)
+	early[28] = 0x00
+	cases := []struct {
+		name         string
+		mutant       []byte
+		kindMismatch int
+	}{
+		{"card truncated unknown union", cardMutant, 1},
+		{"array element early terminator", early, 0},
 	}
 	u := unitFromDir(t, filepath.Join(repo, "tables", "backend"))
-	model := tabletext.NewModel(u)
-	value := model.New(u.Tables["MatchResult"])
-	report := new(tabletext.Report)
-	if _, derr := tablewire.Decode(model, value, mutant, report); derr != nil {
-		t.Fatalf("Go reference: err=%v report=%+v", derr, report)
-	}
-	if !report.Malformed || report.KindMismatch != 1 {
-		t.Fatalf("Go reference report does not show this cause: %+v", report)
-	}
-	golden, err := tablewire.Encode(model, value)
-	if err != nil {
-		t.Fatal(err)
-	}
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -89,37 +91,64 @@ func TestJavaFixMatchResultFileKeepsDecoded(t *testing.T) {
 	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	wirePath := filepath.Join(dir, "mutant.bin")
-	if err := os.WriteFile(wirePath, mutant, 0o644); err != nil {
-		t.Fatal(err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			model := tabletext.NewModel(u)
+			value := model.New(u.Tables["MatchResult"])
+			report := new(tabletext.Report)
+			if _, derr := tablewire.Decode(model, value, tc.mutant, report); derr != nil {
+				t.Fatalf("Go reference: err=%v report=%+v", derr, report)
+			}
+			if !report.Malformed || report.KindMismatch != tc.kindMismatch {
+				t.Fatalf("Go reference report does not show this cause: %+v", report)
+			}
+			golden, err := tablewire.Encode(model, value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wirePath := filepath.Join(t.TempDir(), "mutant.bin")
+			if err := os.WriteFile(wirePath, tc.mutant, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			out, err := exec.Command(javaBin, "-ea", "-cp", classes, driverName, wirePath).CombinedOutput()
+			if err != nil {
+				t.Fatalf("java driver: %v\n%s", err, out)
+			}
+			line := strings.TrimSpace(string(out))
+			var savedHex string
+			javaKind, javaMalformed := -1, ""
+			for _, field := range strings.Fields(line) {
+				switch {
+				case strings.HasPrefix(field, "saveHex="):
+					savedHex = strings.TrimPrefix(field, "saveHex=")
+				case strings.HasPrefix(field, "kindMismatch="):
+					javaKind, _ = strconv.Atoi(strings.TrimPrefix(field, "kindMismatch="))
+				case strings.HasPrefix(field, "malformed="):
+					javaMalformed = strings.TrimPrefix(field, "malformed=")
+				}
+			}
+			if savedHex == "" {
+				t.Fatalf("driver printed no saveHex: %q", line)
+			}
+			if javaKind != report.KindMismatch || javaMalformed != strconv.FormatBool(report.Malformed) {
+				t.Errorf("Java report kindMismatch=%d malformed=%s, Go oracle kindMismatch=%d malformed=%v",
+					javaKind, javaMalformed, report.KindMismatch, report.Malformed)
+			}
+			got, err := hex.DecodeString(savedHex)
+			if err != nil {
+				t.Fatalf("bad saveHex %q: %v", savedHex, err)
+			}
+			if !bytes.Equal(got, golden) {
+				d := 0
+				for d < len(got) && d < len(golden) && got[d] == golden[d] {
+					d++
+				}
+				t.Errorf("Java saved %d bytes, Go oracle %d; first difference at byte %d\nJava %s\nGo   %s",
+					len(got), len(golden), d, hex.EncodeToString(got), hex.EncodeToString(golden))
+			}
+			t.Logf("MatchResult file keeps the oracle's decoded bytes: %d bytes, kindMismatch=%d malformed=%v", len(got), report.KindMismatch, report.Malformed)
+		})
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, driverName, wirePath).CombinedOutput()
-	if err != nil {
-		t.Fatalf("java driver: %v\n%s", err, out)
-	}
-	line := strings.TrimSpace(string(out))
-	var savedHex string
-	for _, field := range strings.Fields(line) {
-		if strings.HasPrefix(field, "saveHex=") {
-			savedHex = strings.TrimPrefix(field, "saveHex=")
-		}
-	}
-	if savedHex == "" {
-		t.Fatalf("driver printed no saveHex: %q", line)
-	}
-	got, err := hex.DecodeString(savedHex)
-	if err != nil {
-		t.Fatalf("bad saveHex %q: %v", savedHex, err)
-	}
-	if !bytes.Equal(got, golden) {
-		d := 0
-		for d < len(got) && d < len(golden) && got[d] == golden[d] {
-			d++
-		}
-		t.Errorf("Java saved %d bytes, Go oracle %d; first difference at byte %d\nJava %s\nGo   %s",
-			len(got), len(golden), d, hex.EncodeToString(got), hex.EncodeToString(golden))
-	}
-	t.Logf("MatchResult file keeps the oracle's decoded bytes: %d bytes, kindMismatch=%d malformed=%v", len(got), report.KindMismatch, report.Malformed)
 }
 
 func matchResultFileDriver(pkg string) string {
@@ -146,7 +175,7 @@ public final class Driver {
             if (x < 16) { sb.append('0'); }
             sb.append(Integer.toHexString(x));
         }
-        System.out.println("saveHex=" + sb);
+        System.out.println("saveHex=" + sb + " kindMismatch=" + report.kindMismatch + " malformed=" + report.malformed);
     }
 }
 `
