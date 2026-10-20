@@ -90,12 +90,14 @@ func emitMessageForm(m *Module) error {
 	m.Printf("end\n\n")
 	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ IS NAMED
 	// (docs/SPEC-TABLES.md §6.5): LoadMessages passes the strict decision into
-	// runtime/message.lua, and LoadMessagesTolerant keeps BASE's answer.
-	m.Printf("function _M.LoadMessagesTolerant(root, vocab, data, report)\n")
-	m.Printf("  return M.loadMessages(_M, root, vocab, data, report, false)\n")
+	// runtime/message.lua, and LoadMessagesTolerant keeps BASE's answer. Both
+	// take the caller's storage capacity as their last argument (§3.3), the
+	// read-side bound the count is refused against before a body is decoded.
+	m.Printf("function _M.LoadMessagesTolerant(root, vocab, data, report, capacity)\n")
+	m.Printf("  return M.loadMessages(_M, root, vocab, data, report, capacity, false)\n")
 	m.Printf("end\n\n")
-	m.Printf("function _M.LoadMessages(root, vocab, data, report)\n")
-	m.Printf("  return M.loadMessages(_M, root, vocab, data, report, true)\n")
+	m.Printf("function _M.LoadMessages(root, vocab, data, report, capacity)\n")
+	m.Printf("  return M.loadMessages(_M, root, vocab, data, report, capacity, true)\n")
 	m.Printf("end\n\n")
 	m.Printf("function _M.MeasureMessages(root, vocab, values)\n")
 	m.Printf("  return M.measureMessages(_M, root, vocab, values)\n")
