@@ -333,3 +333,22 @@ ok  	github.com/mas-bandwidth/schema/v2/internal/ci	333.913s
 === internal/ci S6/S7 plant tests alone (green)
 
 ok  	github.com/mas-bandwidth/schema/v2/internal/ci	412.291s
+
+=== final full gate at the card head (internal/ci ok; the allowed compiler red is the dotnet /tmp EACCES one, red at BASE too)
+--- FAIL: TestIssue611JsonUnsignedOverflowLandsCeiling (0.32s)
+FAIL
+FAIL	github.com/mas-bandwidth/schema/v2/compiler	22.767s
+ok  	github.com/mas-bandwidth/schema/v2/internal/ci	378.394s
+ok  	github.com/mas-bandwidth/schema/v2/internal/tabletext	2.088s
+ok  	github.com/mas-bandwidth/schema/v2/internal/tablewire	0.497s
+FAIL
+
+=== the same pair timed out at BASE 8c67a42b under fleet load (pre-existing, not the merge)
+panic: test timed out after 10m0s
+	running tests:
+		TestSpecPinS6PlantedUnpinnedSentence (9m44s)
+		TestSpecPinsSection7PlantsAnUnpinnedRule (9m44s)
+github.com/mas-bandwidth/schema/v2/internal/ci.TestSpecPinS6PlantedUnpinnedSentence(0x3a365cc8b8c8)
+github.com/mas-bandwidth/schema/v2/internal/ci.TestSpecPinsSection7PlantsAnUnpinnedRule.func1(...)
+github.com/mas-bandwidth/schema/v2/internal/ci.TestSpecPinsSection7PlantsAnUnpinnedRule(0x3a365cc8bb08)
+FAIL	github.com/mas-bandwidth/schema/v2/internal/ci	600.051s

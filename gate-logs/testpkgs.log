@@ -1,7 +1,7 @@
---- FAIL: TestIssue611JsonUnsignedOverflowLandsCeiling (0.59s)
-    --- FAIL: TestIssue611JsonUnsignedOverflowLandsCeiling/cs (0.17s)
+--- FAIL: TestIssue611JsonUnsignedOverflowLandsCeiling (0.32s)
+    --- FAIL: TestIssue611JsonUnsignedOverflowLandsCeiling/cs (0.16s)
         issue611_test.go:132: dotnet run: exit status 1
-            System.IO.IOException: The system cannot open the device or file specified. : 'NuGet-Migrations'. One or more system calls failed: open("/tmp/.dotnet/shm", 0x80000, 0x0) == -1; errno == EACCES;
+            System.IO.IOException: The system cannot open the device or file specified. : 'NuGet-Migrations'. One or more system calls failed: mkdtemp("/tmp/.dotnet.577d9s") == nullptr; errno == EACCES;
                at System.Threading.Mutex.CreateMutexCore(Boolean initiallyOwned, String name, NamedWaitHandleOptionsInternal options, Boolean& createdNew)
                at System.Threading.Mutex..ctor(Boolean initiallyOwned, String name)
                at NuGet.Common.Migrations.MigrationRunner.Run(String migrationsDirectory, IEnvironmentVariableReader environmentVariableReader)
@@ -12,7 +12,8 @@
 packet-text-fuzz[cpp]: 22 seeds, 682 cases, 0 divergences
 packet-text-fuzz[c]: 22 seeds, 682 cases, 0 divergences
 FAIL
-FAIL	github.com/mas-bandwidth/schema/v2/compiler	56.167s
-ok  	github.com/mas-bandwidth/schema/v2/internal/tabletext	6.781s
-ok  	github.com/mas-bandwidth/schema/v2/internal/tablewire	1.637s
+FAIL	github.com/mas-bandwidth/schema/v2/compiler	22.767s
+ok  	github.com/mas-bandwidth/schema/v2/internal/ci	378.394s
+ok  	github.com/mas-bandwidth/schema/v2/internal/tabletext	2.088s
+ok  	github.com/mas-bandwidth/schema/v2/internal/tablewire	0.497s
 FAIL
