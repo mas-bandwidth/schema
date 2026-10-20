@@ -664,8 +664,15 @@ public final class TableVariable {
         }
         int form = data[0] & 0xff;
         if (form != 1) {
+            // A REFUSED form byte names its direction (docs/SPEC-TABLES.md §3,
+            // §3.3, §6.5), spelled as the reference leg spells it (gotable
+            // fixedform.go and message.go) and as the JavaScript leg does:
+            // message_form_as_file for a batch (form 2) handed to a file root,
+            // newer_form for any other byte. A widening is not a refusal: the
+            // widened counter counts it and reason stays null (§4.1). Damage
+            // is the malformed flag and names no reason.
             report.refused = true;
-            report.reason = "unsupported wire form";
+            report.reason = form == 2 ? "message_form_as_file" : "newer_form";
             return -1;
         }
         if (data.length < 9) {
