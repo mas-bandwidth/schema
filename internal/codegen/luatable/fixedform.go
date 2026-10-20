@@ -410,9 +410,16 @@ func emitFixedForm(m *Module) error {
 		m.Printf("_M.Fixed[%q].floor = %d\n", st.Name, floor)
 	}
 	emitFixedTables(m, roots)
-	m.Printf("\nfunction _M.ReadFixed(name, buf)\n")
+	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ IS NAMED
+	// (docs/SPEC-TABLES.md §6.5): ReadFixed passes the strict decision into
+	// runtime/fixed.lua, and ReadFixedTolerant keeps BASE's answer.
+	m.Printf("\nfunction _M.ReadFixedTolerant(name, buf)\n")
 	m.Printf("  local f = _M.Fixed[name]\n")
-	m.Printf("  return F.read(_M, f.table, buf)\n")
+	m.Printf("  return F.read(_M, f.table, buf, false)\n")
+	m.Printf("end\n\n")
+	m.Printf("function _M.ReadFixed(name, buf)\n")
+	m.Printf("  local f = _M.Fixed[name]\n")
+	m.Printf("  return F.read(_M, f.table, buf, true)\n")
 	m.Printf("end\n\n")
 	m.Printf("function _M.WriteFixed(name, value)\n")
 	m.Printf("  local f = _M.Fixed[name]\n")

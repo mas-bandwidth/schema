@@ -762,8 +762,50 @@ function M.announceRead(T, vocab, data, report)
   return true
 end
 
-function M.loadMessages(T, root, vocab, data, report)
+-- THE STRICT SET (docs/SPEC-TABLES.md §6.5): a value a body states past its
+-- declared bound is `clamped`; the tolerant read keeps BASE's answer, the
+-- plain name counts it and refuses. The walk is the descriptor's own.
+local function strict_count(T, d, v)
+  if v == nil then return 0 end
+  local s = d.shape
+  if s == "int" then
+    if d.lo ~= nil and d.hi ~= nil and (v < d.lo or v > d.hi) then return 1 end
+    return 0
+  elseif s == "table" then
+    local desc = T.Tables[d.target]
+    if desc == nil then return 0 end
+    local n = 0
+    for _, f in ipairs(desc.fields) do n = n + strict_count(T, f, v[f.name]) end
+    return n
+  elseif s == "union" then
+    local tag = v.tag or 0
+    local un = T.Unions[d.target]
+    if tag ~= 0 and un ~= nil then
+      local arm = un.arms[tag]
+      if arm ~= nil and arm.field ~= nil then return strict_count(T, arm.field, v[arm.name]) end
+    end
+    return 0
+  elseif s == "array" then
+    local n = 0
+    for i = 1, #v do n = n + strict_count(T, d.elem, v[i]) end
+    return n
+  end
+  return 0
+end
+
+-- loadMessages is the read behind both names (docs/SPEC-TABLES.md §6.5):
+-- `strict` is the plain name's read. A body the tolerant walk itself stopped
+-- on keeps the records ahead of it (BASE's answer); a read that completed but
+-- met the strict rule alone is refused with count 0 and every record reset.
+function M.loadMessages(T, root, vocab, data, report, strict)
   report = report or {}
+  -- THE PLAIN NAME'S REPORT IS THIS READ'S ALONE (docs/SPEC-TABLES.md §6.5):
+  -- every counter is cleared before the walk, so a reused report cannot refuse
+  -- a clean batch for a previous read's clamped or malformed count.
+  if strict then
+    report.unknown = 0; report.kindMismatch = 0; report.clamped = 0
+    report.widened = 0; report.duplicate = 0; report.blobShared = 0
+  end
   report.malformed = false; report.refused = 0; report.reason = ""
   if #data == 0 then report.malformed = true; return nil end
   if string.byte(data, 1) ~= 2 then
@@ -783,6 +825,16 @@ function M.loadMessages(T, root, vocab, data, report)
   end
   if not R:align() or R.off ~= R.nbits then
     report.malformed = true
+  end
+  if strict then
+    local clamped = 0
+    for i = 1, #values do
+      clamped = clamped + strict_count(T, { shape = "table", target = root }, values[i])
+    end
+    if clamped > 0 then report.clamped = (report.clamped or 0) + clamped end
+    local refused = report.malformed or (report.clamped or 0) > 0
+      or (report.kindMismatch or 0) > 0 or (report.blobShared or 0) > 0
+    if refused then values = {} end
   end
   return values
 end

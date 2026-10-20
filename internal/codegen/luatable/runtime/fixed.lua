@@ -414,11 +414,38 @@ decode_old_value = function(T, d, node, buf, pos)
   error("fixed: unknown shape " .. tostring(s))
 end
 
+-- THE STRICT SET (docs/SPEC-TABLES.md §6.5, §3.4): the fixed form carries its
+-- own rule, and a RANGED integer clamps on load (§3.4 THE RECORD), so a value
+-- the record states past its declared bound is the `clamped` refusal. The
+-- tolerant read keeps BASE's answer; the plain name walks what it decoded once.
+local function strict_value(T, d, v)
+  if v == nil then return end
+  local s = d.shape
+  if s == "int" then
+    if d.lo ~= nil and d.hi ~= nil and (v < d.lo or v > d.hi) then error("clamped", 0) end
+  elseif s == "table" then
+    local desc = T.Tables[d.target]
+    if desc == nil then return end
+    for _, f in ipairs(desc.fields) do strict_value(T, f, v[f.name]) end
+  elseif s == "union" then
+    local tag = v.tag or 0
+    local un = T.Unions[d.target]
+    if tag ~= 0 and un ~= nil then
+      local arm = un.arms[tag]
+      if arm ~= nil and arm.field ~= nil then strict_value(T, arm.field, v[arm.name]) end
+    end
+  elseif s == "array" then
+    for i = 1, #v do strict_value(T, d.elem, v[i]) end
+  end
+end
+
 -- F.read parses the file framing (docs/FIXED-FORM-ALGORITHM.md §2): the form
 -- byte, the reserved zeroes, the hash, the layout and one record. A fixed
 -- table reads BACKWARD (§5.2): the header's hash selects a layout the BUILD
 -- laid down, and an older writer's records are read under ITS layout bytes.
-function F.read(T, name, buf)
+-- `strict` is the plain name's read (docs/SPEC-TABLES.md §6.5): the tolerant
+-- twin passes false and keeps BASE's answers.
+function F.read(T, name, buf, strict)
   if #buf < 1 then error("malformed") end
   local form = buf:byte(1)
   if form ~= formByte then
@@ -470,10 +497,14 @@ function F.read(T, name, buf)
   if rest / recSize > maxRecords then error("plan_too_large") end
   local at = 21 + layoutLen
   if string.unpack("<I8", buf, at) ~= hash then error("no_layout") end
+  local value
   if entry ~= nil and entry.hash ~= fixed.hash then
-    return decode_old_table(T, name, entry.tree, buf, at + 8), hash, layout
+    value = decode_old_table(T, name, entry.tree, buf, at + 8)
+  else
+    value = decode_table(T, name, buf, at + 8, rootSize)
   end
-  return decode_table(T, name, buf, at + 8, rootSize), hash, layout
+  if strict then strict_value(T, { shape = "table", target = name }, value) end
+  return value, hash, layout
 end
 
 -- F.write writes the header and ONE record (docs/FIXED-FORM-ALGORITHM.md §2,
