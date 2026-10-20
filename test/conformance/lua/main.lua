@@ -127,7 +127,7 @@ local function surfaceJsonHostile(manifest, outdir)
         local J = require("json")
         local text = readBytes(f[5] .. "/" .. f[4] .. ".json")
         local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-        J.FromJson(T, f[4], text, r)
+        J.FromJsonTolerant(T, f[4], text, r)
         if r.malformed then
           writeBytes(outdir .. "/" .. f[2], "refused\n")
         else
