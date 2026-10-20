@@ -46,7 +46,7 @@ func TestJSONRefusesIllFormedAtBound(t *testing.T) {
 local J = require("json")
 local inputs = require("inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = J.FromJson(T, "` + row.root + `", inputs.text, report)
+local v = J.FromJsonTolerant(T, "` + row.root + `", inputs.text, report)
 print(report.Reason or "")
 print(report.malformed and "1" or "0")
 `

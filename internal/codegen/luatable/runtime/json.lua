@@ -1556,8 +1556,9 @@ parse_timestamp = function(text)
   return secs * 1000000000 + frac
 end
 
--- ONE TEXT: the root's object and nothing after it (§16.1)
-function J.FromJson(T, name, text, report)
+-- ONE TEXT: the root's object and nothing after it (§16.1). This is the
+-- TOLERANT read: it keeps the recovered value and counts every event it met.
+function J.FromJsonTolerant(T, name, text, report)
   local desc = T.Tables[name]
   if desc == nil then report.malformed = true; return nil end
   local inp = new_in(text)
@@ -1573,6 +1574,35 @@ function J.FromJson(T, name, text, report)
   if inp.utf8 and (report.Reason == nil or report.Reason == "") then
     -- §16.3: the READ refuses ill-formed UTF-8 by name; <root> names the top
     report.Reason = "string_not_utf8: <root>"
+  end
+  return v
+end
+
+-- THE PLAIN NAME IS THE STRICT READ (§6.5, §16.2): it answers nil where the
+-- tolerant report is not clean under the strict set, writing that reason into
+-- the supplied report. Unknown and duplicate alone are evolution, not loss,
+-- and read clean. The precedence is Go's TableReport.Err
+-- (internal/codegen/gotable/refusal.go): missing_required once carried, then
+-- malformed, blob_shared, clamped and kind_mismatch.
+function J.FromJson(T, name, text, report)
+  local v = J.FromJsonTolerant(T, name, text, report)
+  local reason = nil
+  if report.MissingRequired ~= nil and report.MissingRequired > 0 then
+    reason = report.Reason or "missing_required"
+  elseif report.malformed then
+    reason = "malformed"
+  elseif report.blobShared ~= nil and report.blobShared > 0 then
+    reason = "blob_shared"
+  elseif report.clamped ~= nil and report.clamped > 0 then
+    reason = "clamped"
+  elseif report.kindMismatch ~= nil and report.kindMismatch > 0 then
+    reason = "kind_mismatch"
+  elseif report.Reason ~= nil and report.Reason:sub(1, 12) == "non_finite: " then
+    reason = "non_finite"
+  end
+  if reason ~= nil then
+    report.Reason = reason
+    return nil
   end
   return v
 end

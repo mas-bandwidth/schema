@@ -53,7 +53,7 @@ func nulProbe(module string) string {
 local J = require("json")
 local inputs = require("inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = J.FromJson(T, "RootConfig", inputs.text, report)
+local v = J.FromJsonTolerant(T, "RootConfig", inputs.text, report)
 print(report.malformed and "refused" or "read")
 print(report.Reason or "-")
 `
