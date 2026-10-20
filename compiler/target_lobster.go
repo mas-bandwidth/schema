@@ -40,14 +40,14 @@ func (lobsterTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) 
 	// lobster and lobstertable directly).
 	refusals := []func(*ir.Unit, string) error{refuseUnported, refuseOptionalArrays}
 	// A text list and an unbounded map key ARE the unbounded list and the map
-	// this target otherwise refuses; the cards that carry them register it in
-	// carries_lobster_text_lists.go, so a unit whose lists are ALL text lists
-	// and whose maps ALL have unbounded text keys is theirs to emit. Every
-	// other list or map is still refused by name.
-	if !carries("lobster", carryUnboundedText) || !lobsterOnlyTextLists(u) {
+	// this target otherwise refuses; carries_lobster_text_lists.go registers
+	// them, so a unit whose lists are ALL text lists and whose maps ALL have
+	// unbounded text keys is theirs to emit. Every other list or map is still
+	// refused by name.
+	if lobsterListRefusalApplies(u) {
 		refusals = append(refusals, refuseLists)
 	}
-	if !carries("lobster", carryUnboundedText) || !lobsterOnlyUnboundedMapKeys(u) {
+	if lobsterMapRefusalApplies(u) {
 		refusals = append(refusals, refuseMaps)
 	}
 	for _, refuse := range refusals {
@@ -70,62 +70,6 @@ func (lobsterTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) 
 		files[name] = data
 	}
 	return files, nil
-}
-
-// lobsterOnlyTextLists reports that every unbounded list the unit declares is
-// a text list (docs/SPEC-TABLES.md §2.13, §2.13.1), the construct carried by
-// carries_lobster_text_lists.go.
-func lobsterOnlyTextLists(u *ir.Unit) bool {
-	for _, st := range append(unitTables(u), unitStructs(u)...) {
-		for _, f := range st.Fields {
-			if f.IsList() && !f.IsTextList() {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-// lobsterOnlyUnboundedMapKeys reports that every map the unit declares has an
-// unbounded text key (docs/SPEC-TABLES.md §2.13.1).
-func lobsterOnlyUnboundedMapKeys(u *ir.Unit) bool {
-	for _, st := range append(unitTables(u), unitStructs(u)...) {
-		for _, f := range st.Fields {
-			if f.IsMap() && !mapHasUnboundedKey(f) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-// mapHasUnboundedKey reports an unbounded text key anywhere in a map's value
-// chain: `map[uint8]map[string]V` carries one at the inner map.
-func mapHasUnboundedKey(f *ir.Field) bool {
-	if ir.MapKeyUnbounded(f) {
-		return true
-	}
-	if f.IsMap() && f.MapEntry != nil && len(f.MapEntry.Fields) > 1 {
-		value := f.MapEntry.Fields[1]
-		return value.IsMap() && mapHasUnboundedKey(value)
-	}
-	return false
-}
-
-func unitTables(u *ir.Unit) []*ir.Struct {
-	out := make([]*ir.Struct, 0, len(u.Tables))
-	for _, st := range u.Tables {
-		out = append(out, st)
-	}
-	return out
-}
-
-func unitStructs(u *ir.Unit) []*ir.Struct {
-	out := make([]*ir.Struct, 0, len(u.Structs))
-	for _, st := range u.Structs {
-		out = append(out, st)
-	}
-	return out
 }
 
 func init() {
