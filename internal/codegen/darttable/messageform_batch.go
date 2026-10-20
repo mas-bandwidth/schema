@@ -888,6 +888,9 @@ func (g *fixedModule) emitMessageDropElement(f *ir.Field, entry ir.TableVocabula
 	}
 	g.pf("%s    var t;\n", ind)
 	g.emitMessageReadElement(elem, entry, "t", ind+"  ")
+	// The element read only writes `t`; read it once into the wildcard so the
+	// analyzer does not report the throwaway sink as unused_local_variable.
+	g.pf("%s    final _ = t;\n", ind)
 }
 
 const dartMessageBatchRuntime = `

@@ -206,9 +206,7 @@ func (g *cookGen) emitCookFixedScalar(f *ir.Field, expr, at string, width int64,
 		}
 		return
 	}
-	if guarded {
-		g.pf("%s", ind)
-	} else {
+	if !guarded {
 		g.pf("%sif (out != null) {\n", ind)
 		ind = ind + "  "
 	}
@@ -642,7 +640,20 @@ func (g *cookGen) emitCookVariableCarve(name string) {
 	body := g.body.String()
 	g.body = outer
 	g.pf("  // The extent's carve (§7.6): the same pre-order walk, writing.\n")
-	g.pf("  static int _carve%s(wire.%s value, TableCookGraph c, int at, int base, int point) {\n", name, name)
+	sig := fmt.Sprintf("  static int _carve%s(wire.%s value, TableCookGraph c, int at, int base, int point) {", name, name)
+	if len(sig) <= 80 {
+		g.pf("%s\n", sig)
+	} else {
+		// dart format writes a signature past 80 columns tall, one parameter
+		// to a line (docs/SPEC-TABLES.md §11, the format-canonical gate)
+		g.pf("  static int _carve%s(\n", name)
+		g.pf("    wire.%s value,\n", name)
+		g.pf("    TableCookGraph c,\n")
+		g.pf("    int at,\n")
+		g.pf("    int base,\n")
+		g.pf("    int point,\n")
+		g.pf("  ) {\n")
+	}
 	if cookUsesOut.MatchString(body) {
 		g.pf("    final out = c.out;\n")
 	}
@@ -805,7 +816,12 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
 		switch {
 		case ref != nil && f.Type.Pointer:
-			g.pf("%s  c.ref(at + %d + i * %d, i < %s.length ? %s[i] : null);\n", ind, offset, stride, expr, expr)
+			line := fmt.Sprintf("%s  c.ref(at + %d + i * %d, i < %s.length ? %s[i] : null);", ind, offset, stride, expr, expr)
+			if len(line) <= 80 {
+				g.pf("%s\n", line)
+			} else {
+				g.pf("%s  c.ref(\n%s    at + %d + i * %d,\n%s    i < %s.length ? %s[i] : null,\n%s  );\n", ind, ind, offset, stride, ind, expr, expr, ind)
+			}
 		case ref != nil:
 			// a DEAD slot holds the element's declared defaults, as the
 			// reference's storage does (§7.6)
