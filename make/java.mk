@@ -112,6 +112,10 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAP
 	./bin/schema generate --lang java --out build/tables-generated-java/a2 test/tables/A2.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/g1 test/tables/G1.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/messages tables/messages
+	# THE STREAM UNIT (tables/stream, the manifest's streamdemo): a message
+	# whose union carries a VARIABLE arm. Its Feed root is a root of the wire
+	# fuzzer's default roster, so tables-java-wire-fuzz-all opens it here.
+	./bin/schema generate --lang java --out build/tables-generated-java/stream tables/stream
 	./bin/schema generate --lang java --out build/tables-generated-java/wide examples-wide
 	# THE FIXED FORM's versioning pair (docs/SPEC-TABLES.md §3.4): FX1 is the
 	# old side and FX2 the new, and every edit between them lands through a
@@ -1299,6 +1303,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/maps/*.java build/tables-generated-java/arms/*.java \
 		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java \
 		build/tables-generated-java/messages/*.java build/tables-generated-java/wide/*.java \
+		build/tables-generated-java/lists/*.java build/tables-generated-java/stream/*.java \
 		build/tables-generated-java/block/*.java build/tables-generated-java/v1/*.java \
 		build/tables-generated-java/v2/*.java build/tables-generated-java/w1/*.java \
 		build/tables-generated-java/w2/*.java build/tables-generated-java/r1/*.java \
@@ -1564,7 +1569,7 @@ cards-java-wire-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.stam
 	@set -- $(CARDS_JAVA_FUZZ_SEEDS); \
 		while [ "$$#" -ge 2 ]; do \
 			seed=$$1; n=$$2; shift 2; \
-			timeout $(CARDS_JAVA_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+			timeout $(TABLES_JAVA_WIRE_FUZZ_ALL_TIME) ./build/conformance-harness wire-fuzz \
 				--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 				--driver "$(CURDIR)/build/cards-java-wire-fuzz/driver" --seed $$seed --n $$n \
 				>> build/cards-java-wire-fuzz.log 2>&1; \
@@ -1588,7 +1593,7 @@ cards-java-retain-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.st
 	@set -- $(CARDS_JAVA_FUZZ_SEEDS); \
 		while [ "$$#" -ge 2 ]; do \
 			seed=$$1; n=$$2; shift 2; \
-			timeout $(CARDS_JAVA_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+			timeout $(TABLES_JAVA_WIRE_FUZZ_ALL_TIME) ./build/conformance-harness wire-fuzz \
 				--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 				--driver "$(CURDIR)/build/cards-java-wire-fuzz/driver" --seed $$seed --n $$n --retain \
 				>> build/cards-java-retain-fuzz.log 2>&1; \
@@ -1601,6 +1606,28 @@ cards-java-retain-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.st
 	@grep -qE '[1-9][0-9]* mutants' build/cards-java-retain-fuzz.log
 
 test-java: cards-java-retain-fuzz
+
+# THE ALL-ROOT WIRE-FUZZ GATE (docs/SPEC-TABLES.md §4.2; test/conformance/
+# README.md, "The wire-fuzz driver"): the same fuzzer as cards-java-wire-fuzz,
+# over the harness's DEFAULT roster (testdata/conformance/tables/MANIFEST.txt,
+# no --manifest), answered by the conformance driver's wire-fuzz arm
+# (Driver.wireFuzz), which binds every form-1 root of the roster to its unit's
+# generated codec and fails by name on one it cannot open. The zero-coverage
+# greps make a roster that opens nothing fail.
+TABLES_JAVA_WIRE_FUZZ_ALL_TIME ?= 20m
+.PHONY: tables-java-wire-fuzz-all
+tables-java-wire-fuzz-all: build/conformance-harness build/tables-generated-java/.stamp build-conformance-java
+	@rm -f build/tables-java-wire-fuzz-all.log
+	timeout $(TABLES_JAVA_WIRE_FUZZ_ALL_TIME) ./build/conformance-harness wire-fuzz \
+		--driver 'test/conformance/java/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		> build/tables-java-wire-fuzz-all.log 2>&1; \
+	status=$$?; cat build/tables-java-wire-fuzz-all.log; \
+	[ $$status -eq 0 ] || exit $$status
+	@grep -q '0 divergences' build/tables-java-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-java-wire-fuzz-all.log
+	@grep -qE '[1-9][0-9]* mutants' build/tables-java-wire-fuzz-all.log
+
+test-java: tables-java-wire-fuzz-all
 
 # ---------------------------------------------------------------------------
 # THE CARD FACADE LEG (docs/SPEC-TABLES.md §2, §16; tables/cards/java,

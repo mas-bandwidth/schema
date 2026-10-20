@@ -3995,10 +3995,22 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		}
 		fmt.Fprintf(b, "                boolean selected=(%s);\n", condition)
 		if f.Array != ir.ArrayNone {
-			fmt.Fprintf(b, "                if(selected){TableVariable.Reader probe=new TableVariable.Reader(r.buf,r.ids,new TableVariable.Report());probe.off=r.off;probe.limit=r.limit;TableVariable.Reader ar=probe.body();selected=ar!=null&&ar.has(2)&&ar.get8()==%d;}\n", variableElemWireKind(f))
+			// AN OPTIONAL ARRAY is PRESENT when its body declares an element
+			// kind this declaration reads, which includes every kind that
+			// WIDENS to it (§4): the probe must not call a widened array
+			// absent and drop a value the oracle keeps.
+			fmt.Fprintf(b, "                if(selected){TableVariable.Reader probe=new TableVariable.Reader(r.buf,r.ids,new TableVariable.Report());probe.off=r.off;probe.limit=r.limit;TableVariable.Reader ar=probe.body();selected=ar!=null&&ar.has(2);if(selected){int pek=ar.get8();selected=%s;}}\n", variableCompatibleKinds(variableElemWireKind(f), "pek"))
 		}
 		writeFieldRead(b, u, st, &one, retain, ordinal, overlongNone)
-		fmt.Fprintf(b, "                if(selected&&!r.fail)v.%sPresent=true;\n", m)
+		if f.Array != ir.ArrayNone {
+			// AN OPTIONAL ARRAY IS PRESENT once its own body's header rode, even
+			// where the body is damaged: r.fail may already be set by an earlier
+			// field, and the oracle still marks the occurrence present (§2.3,
+			// §4). A LATER field's damage never takes an earlier PRESENT away.
+			fmt.Fprintf(b, "                if(selected)v.%sPresent=true;\n", m)
+		} else {
+			fmt.Fprintf(b, "                if(selected&&!r.fail)v.%sPresent=true;\n", m)
+		}
 		return
 	}
 	if f.IsMap() {
