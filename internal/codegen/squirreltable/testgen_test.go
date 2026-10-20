@@ -130,6 +130,7 @@ func TestSquirrelTestgenRoundTripAndDamage(t *testing.T) {
 
 	t.Run("sabotaged_runtime", func(t *testing.T) {
 		t.Parallel()
+		sq := sqrun.Require(t)
 		dir := t.TempDir()
 		runtime := squirreltable.Runtime()["schema_table_save.nut"]
 		anchor := regexp.MustCompile(`(?s)_M\.save <- function\(.*?\{\n`)
@@ -147,10 +148,6 @@ func TestSquirrelTestgenRoundTripAndDamage(t *testing.T) {
 			extra[name] = data
 		}
 		write(dir, extra)
-		sq, err := sqrun.Interpreter()
-		if err != nil {
-			t.Fatal(err)
-		}
 		cmd := exec.Command(sq, want[0])
 		cmd.Dir = dir
 		var stdout, stderr bytes.Buffer

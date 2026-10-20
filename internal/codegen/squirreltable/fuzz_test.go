@@ -233,10 +233,7 @@ type fuzzRoot struct {
 // the plain one, and sends it the roster; it answers which roots it carries.
 func startFuzzLeg(t *testing.T, dir string, builder bool, roster []fuzzRoot) (*fuzzLeg, []bool) {
 	t.Helper()
-	sq, err := sqrun.Interpreter()
-	if err != nil {
-		t.Fatalf("%v (run make dist-squirrel)", err)
-	}
+	sq := sqrun.Require(t)
 	repo, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
