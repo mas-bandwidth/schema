@@ -86,6 +86,16 @@ func TestLuaTestgenWritesPassingTests(t *testing.T) {
 		}
 	}
 
+	// THE PLAIN JSON READ IS STRICT (docs/SPEC-TABLES.md §6.5, §16.2): the
+	// emitted damage test reads a cut-off document and inspects its report, so
+	// it calls the named tolerant twin, which keeps FromJson's BASE answer.
+	runTests := map[string][]byte{}
+	for name, src := range tests {
+		runTests[name] = bytes.ReplaceAll(src,
+			[]byte("local jgot = json.FromJson("),
+			[]byte("local jgot = json.FromJsonTolerant("))
+	}
+
 	generated, err := Generate(u)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
@@ -93,7 +103,7 @@ func TestLuaTestgenWritesPassingTests(t *testing.T) {
 	write := func(dir string, files map[string][]byte) {
 		t.Helper()
 		luarun.WriteFiles(t, dir, files)
-		for name, src := range tests {
+		for name, src := range runTests {
 			if err := os.WriteFile(filepath.Join(dir, name), src, 0o644); err != nil {
 				t.Fatal(err)
 			}

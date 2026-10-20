@@ -205,8 +205,8 @@ func gateDeclaredFormsRuntime(name string, data []byte) []byte {
 	switch name {
 	case "json.lua":
 		replaceOnce(
-			"function J.FromJsonTolerant(T, name, text, report)\n  local desc = T.Tables[name]\n",
-			"function J.FromJsonTolerant(T, name, text, report)\n  local desc = T.Tables[name]\n  if desc ~= nil and desc.forms ~= nil and desc.forms.json ~= true then\n    error(\"json: table \" .. tostring(name) .. \" does not carry json (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
+			"function J.FromJson(T, name, text, report)\n  local desc = T.Tables[name]\n",
+			"function J.FromJson(T, name, text, report)\n  local desc = T.Tables[name]\n  if desc ~= nil and desc.forms ~= nil and desc.forms.json ~= true then\n    error(\"json: table \" .. tostring(name) .. \" does not carry json (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
 		)
 		replaceOnce(
 			"function J.ToJson(T, name, v)\n  local desc = T.Tables[name]\n",

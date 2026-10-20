@@ -742,7 +742,7 @@ function TF.Load(T, name, text, limits)
   local js = resolve_record(T, desc, root, false, {})
   local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
     clamped = 0, widened = 0, duplicate = 0 }
-  local v = J.FromJsonTolerant(T, name, js, report)
+  local v = J.FromJson(T, name, js, report)
   if v == nil or report.malformed then fail("text_syntax", 1) end
   if report.duplicate > 0 then fail("text_duplicate_key", 1) end
   if report.unknown > 0 then fail("text_unknown_key", 1) end

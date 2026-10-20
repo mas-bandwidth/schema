@@ -160,7 +160,7 @@ local cases = {
 	probe.WriteString(`}
 for _, c in ipairs(cases) do
   local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-  local v = J.FromJson(T, "Root", c[2], report)
+  local v = J.FromJsonTolerant(T, "Root", c[2], report)
   if v == nil or report.malformed then
     print(c[1] .. "\trefused\t" .. tostring(report.Reason or "-"))
   else

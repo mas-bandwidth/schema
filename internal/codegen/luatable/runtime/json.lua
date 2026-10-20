@@ -1682,6 +1682,7 @@ end
 -- (internal/codegen/gotable/refusal.go): missing_required once carried, then
 -- malformed, blob_shared, clamped and kind_mismatch.
 function J.FromJson(T, name, text, report)
+  local desc = T.Tables[name]
   local v = J.FromJsonTolerant(T, name, text, report)
   local reason = nil
   if report.MissingRequired ~= nil and report.MissingRequired > 0 then
