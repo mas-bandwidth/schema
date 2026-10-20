@@ -775,6 +775,21 @@ tables-java-fixed-t18: tables-fixedform-corpus
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT18OracleHostile'
 	@echo 'tables Java fixed t18: the shared byte oracle and hostile input rows pass (java/W13, java/R27, java/P3, java/P4)'
 
+# THE WHOLE JAVATABLE PACKAGE, ONCE, WITH THE CORPUS ALREADY BUILT. Ten of the
+# package's test files read the C++ reference's byte oracle out of
+# build/fixedform-corpus (corpusDir in fixedversioning_test.go), which only
+# `tables-fixedform-corpus` writes, so on a fresh clone every TestFixed* goes
+# red until that target is run by hand. `test-java` does depend on the corpus but
+# runs only named -run subsets, never the whole package; card gates and the
+# heavy reads run the whole package, and this is the one target that builds the
+# corpus first and then runs it all with SCHEMA_REQUIRE_CORPUS=1, so a missing
+# oracle can never pass silently.
+.PHONY: tables-java-package
+tables-java-package: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 900s
+	@echo 'tables Java package: the whole javatable package passes with the fixed-form corpus built first'
+
 
 # THE COMPRESSED-FLOAT FP-CONTRACT GATE (java/R30, T14): the witness that the
 # compressed float's dequantize is the SPEC's order in float32 — one rounding
