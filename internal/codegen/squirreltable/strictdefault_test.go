@@ -11,6 +11,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // strictDefaultPrelude is the strict-by-default probe (docs/SPEC-TABLES.md
@@ -102,6 +103,7 @@ func TestSquirrelDefaultReadIsStrict(t *testing.T) {
 	dir := t.TempDir()
 	mods := map[string]string{}
 	refused := map[string]bool{}
+	wide := map[string]bool{}
 	ensure := func(key string) bool {
 		if _, ok := mods[key]; ok {
 			return true
@@ -114,6 +116,10 @@ func TestSquirrelDefaultReadIsStrict(t *testing.T) {
 			t.Fatalf("a corpus row names unit %q, which the manifest does not declare", key)
 		}
 		u := loadUnit(t, root, ps)
+		// The wire codec carries kind 33 (docs/SPEC-TABLES.md §3), the text
+		// codec does not yet: a wide-text-bearing unit's corpus texts are left
+		// to the JSON card, while its wire rows still run below.
+		wide[key] = len(ir.TableWideTextFields(u)) > 0
 		files, err := squirrel.Generate(u)
 		if err != nil {
 			refused[key] = true
@@ -174,7 +180,7 @@ func TestSquirrelDefaultReadIsStrict(t *testing.T) {
 	type jsonCase struct{ key, unit, root, hostile, verdict string }
 	var jsonCases []jsonCase
 	for _, in := range jsonRows.instances {
-		if in.noText || !ensure(in.unit) {
+		if in.noText || !ensure(in.unit) || wide[in.unit] {
 			continue
 		}
 		key := "inst:" + in.name
@@ -183,7 +189,7 @@ func TestSquirrelDefaultReadIsStrict(t *testing.T) {
 		jsonCases = append(jsonCases, jsonCase{key: key, unit: in.unit, root: in.root})
 	}
 	for _, h := range jsonRows.hostile {
-		if !ensure(h.unit) {
+		if !ensure(h.unit) || wide[h.unit] {
 			continue
 		}
 		key := "host:" + h.name
