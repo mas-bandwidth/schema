@@ -1,4 +1,4 @@
-// save.lobster — the Lobster table runtime's VARIABLE FORM (form 1) save
+// schema_save.lobster — the Lobster table runtime's VARIABLE FORM (form 1) save
 // (docs/SPEC-TABLES.md §3, §3.1, §6.6; docs/PORT-LOBSTER.md, THE RUNTIME
 // LAYOUT and THE LOAD). A port of the Go reference engine's write half
 // (internal/tablewire encode.go, nodes.go, nodetable.go, leb.go) onto the
