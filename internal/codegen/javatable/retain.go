@@ -129,7 +129,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		}
 		first = false
 		fmt.Fprintf(&b, "if (id == %sVariable.F_%s) {\n", st.Name, varMember(f))
-		writeFieldRead(&b, u, st, f, true, i, false)
+		writeFieldRead(&b, u, st, f, true, i, false, "")
 	}
 	b.WriteString("            } else if (id == TableVariable.NODE_ID) {\n")
 	if st.FixedDeclared {

@@ -69,7 +69,7 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		// desynced tail fall out as malformed (the caller checks off!=limit);
 		// a body whose last key is bad leaves the mark for one kind_mismatch.
 		var keyRead strings.Builder
-		writeFieldRead(&keyRead, u, f.MapEntry, &rawKey, false, 0, false)
+		writeFieldRead(&keyRead, u, f.MapEntry, &rawKey, false, 0, false, "")
 		kr := keyRead.String()
 		// A mis-read key marks report.kindMismatch; the LAST occurrence of the
 		// key decides the map reset (§2.8). An exact-kind key clears the mark, a
@@ -156,7 +156,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
-	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long n=ar.leb();if(!ar.fail){if(ek!=13){report.kindMismatch++;}else if(n<0||n>0x7fffffffL||n>(long)(ar.limit-ar.off)/2){report.refused=true;}else {\n")
+	fmt.Fprintf(b, "                if(kind==14){long L=r.leb();if(r.fail||L<0||L>r.limit-r.off){report.malformed=true;r.fail=true;}else if(L<2){r.off+=(int)L;}else{int end=r.off+(int)L;int ek=r.get8();long n=r.leb();if(r.fail){r.fail=false;report.malformed=true;}else if(ek!=13){report.kindMismatch++;}else if(n<0||n>0x7fffffffL||n>(long)(end-r.off)/2){report.refused=true;}else {TableVariable.Reader ar=new TableVariable.Reader(r.buf,r.ids,r.report);ar.off=r.off;ar.limit=end;\n")
 	if retain {
 		fmt.Fprintf(b, "                    retain.discardField(path,depth,%d);\n", ordinal)
 	}
@@ -182,5 +182,5 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 		fmt.Fprintf(b, "                    %sVariable.readFields(er,decoded,nt,report);\n", f.MapEntry.Name)
 	}
 	fmt.Fprintf(b, "                    report.widened=priorWidened+Math.max(0,report.widened-priorWidened-keyReport.widened);if(er.off!=er.limit){report.malformed=true;}if(order==0){v.%s.set(v.%s.size()-1,decoded);report.duplicate++;}else v.%s.add(decoded);\n", m, m, m)
-	b.WriteString("                    } } } }}else{r.skip(kind);report.kindMismatch++;}\n")
+	b.WriteString("                    }}r.off=end;}}else{r.skip(kind);report.kindMismatch++;}\n")
 }

@@ -1618,7 +1618,7 @@ TABLES_JAVA_WIRE_FUZZ_ALL_TIME ?= 20m
 .PHONY: tables-java-wire-fuzz-all
 tables-java-wire-fuzz-all: build/conformance-harness build/tables-generated-java/.stamp build-conformance-java
 	@rm -f build/tables-java-wire-fuzz-all.log
-	timeout $(TABLES_JAVA_WIRE_FUZZ_ALL_TIME) ./build/conformance-harness wire-fuzz \
+	JAVA="$(JAVA)" JAVAC="$(JAVAC)" timeout $(TABLES_JAVA_WIRE_FUZZ_ALL_TIME) ./build/conformance-harness wire-fuzz \
 		--driver 'test/conformance/java/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-java-wire-fuzz-all.log 2>&1; \
 	status=$$?; cat build/tables-java-wire-fuzz-all.log; \

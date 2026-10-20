@@ -189,11 +189,23 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			if directText {
 				b.WriteString("TableVariable.Report parentReport=report;report=new TableVariable.Report();TableVariable.Reader textReader=new TableVariable.Reader(r.buf,r.ids,report);textReader.off=r.off;textReader.limit=r.limit;r=textReader;\n")
 			}
-			writeFieldRead(&b, u, st, &one, retaining, i, true)
+			b.WriteString("        boolean armOk=true;\n")
+			writeFieldRead(&b, u, st, &one, retaining, i, true, "armOk")
 			if directText {
 				b.WriteString("parentReport.clamped+=report.clamped;parentReport.malformed|=report.malformed;if(report.malformed)return new Value();report=parentReport;\n")
 			}
-			fmt.Fprintf(&b, "        if(r.fail||r.off!=r.limit){report.malformed=true;return new Value();}v.tag=%d;return v;}\n", i+1)
+			// A UNION ARM WHOSE PAYLOAD IS ITSELF A UNION is read by
+			// unionCell, which does NOT require the inner read to consume the
+			// whole arm `L`: an empty inner union (reference 0) is the whole
+			// payload and the bytes after it are ignored, so only a reader
+			// failure cancels this arm (internal/tablewire decode.go, arm ->
+			// unionCell). Every other payload is held to its own `L`.
+			nestedUnion := variableUnion(&one) != nil && one.Array == ir.ArrayNone
+			if nestedUnion {
+				fmt.Fprintf(&b, "        if(!armOk)return new Value();if(r.fail){report.malformed=true;return new Value();}v.tag=%d;return v;}\n", i+1)
+			} else {
+				fmt.Fprintf(&b, "        if(!armOk)return new Value();if(r.fail||r.off!=r.limit){report.malformed=true;return new Value();}v.tag=%d;return v;}\n", i+1)
+			}
 		}
 		b.WriteString("        report.unknown++;")
 		if retaining {
@@ -251,7 +263,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 	return b.String()
 }
 
-func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
+func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int, armFlag string) {
 	un := variableUnion(f)
 	m := varMember(f)
 	method, args := "readPayload", ""
@@ -266,8 +278,15 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		}
 		// A repeated field's last occurrence wins WHOLE, but a damaged occurrence
 		// whose header never became an arm leaves the earlier arm standing
-		// (docs/SPEC-TABLES.md §3, §4).
-		fmt.Fprintf(b, "%sVariable.Value read=%sVariable.%s(r,nt,report%s);if(read!=null)v.%s=read;}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m)
+		// (docs/SPEC-TABLES.md §3, §4). WHEN THIS NESTED UNION IS ITSELF AN
+		// ARM'S PAYLOAD, a null read is the inner union's header damage, which
+		// the oracle's arm() answers by cancelling the OUTER arm (decode.go
+		// unionCell -> arm -> unionCell false): armOk says so.
+		miss := ""
+		if armFlag != "" {
+			miss = "else " + armFlag + "=false;"
+		}
+		fmt.Fprintf(b, "%sVariable.Value read=%sVariable.%s(r,nt,report%s);if(read!=null)v.%s=read;%s}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m, miss)
 		return
 	}
 	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(ek!=15){report.kindMismatch++;}else{")
@@ -296,8 +315,11 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	}
 	// A damaged element is NOT kept: the oracle's arrayBody truncates the
 	// list to the prefix the body covered (§3, §4), so the failure is checked
-	// before the element is appended.
-	fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);if(ar.fail)break;v.%s.add(elem==null?new %sVariable.Value():elem);}"+closeExtra+"}}}}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m, un.Name)
+	// before the element is appended. readPayload answers null for every
+	// header that never became an arm (decode.go unionCell false), which is
+	// the same truncation point, so a null ENDS the array rather than adding
+	// an empty element the oracle does not have.
+	fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);if(ar.fail||elem==null)break;v.%s.add(elem);}"+closeExtra+"}}}}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m)
 
 }
 

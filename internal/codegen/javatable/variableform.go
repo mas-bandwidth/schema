@@ -1301,7 +1301,19 @@ public final class TableVariable {
             report.malformed = true;
             return null;
         }
-        return recs[(int) (index - 2)].value;
+        NodeRecord rec = recs[(int) (index - 2)];
+        if (rec.typeId == 0) {
+            // an unknown type was counted once, at the node (§3.1)
+            return null;
+        }
+        if (rec.typeId != STRING_ID) {
+            // a known record under the wrong blob kind is a KIND MISMATCH, not
+            // an unknown: a table, or a byte buffer, under a *string slot
+            // (docs/SPEC-TABLES.md §3.1; internal/tablewire decodenodes.go)
+            report.kindMismatch++;
+            return null;
+        }
+        return rec.value;
     }
 
     // resolveBytes resolves one *bytes pointer index against the numbering
@@ -1319,7 +1331,17 @@ public final class TableVariable {
             report.malformed = true;
             return null;
         }
-        return recs[(int) (index - 2)].bytes;
+        NodeRecord rec = recs[(int) (index - 2)];
+        if (rec.typeId == 0) {
+            return null;
+        }
+        if (rec.typeId != BYTES_ID) {
+            // a string blob or a table under a *bytes slot is a KIND MISMATCH
+            // (docs/SPEC-TABLES.md §3.1; internal/tablewire decodenodes.go)
+            report.kindMismatch++;
+            return null;
+        }
+        return rec.bytes;
     }
 
     // Wide values use UTF-16 code units in the public value API. Wire bytes
@@ -2784,8 +2806,18 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	// buildGraph
 	b.WriteString("    public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {\n")
 	b.WriteString("        if (v == null) { return true; }\n")
+	// A FIELD UNDER A FALSE GUARD IS NOT AN EDGE (docs/SPEC-TABLES.md §3.1,
+	// §2.2): the write walk skips it, so its target takes no node index.
+	guards := messageGuardExprs(st, "v")
 	for _, f := range st.Fields {
+		cond := guards[f.Name]
+		if cond != "" {
+			fmt.Fprintf(&b, "        if (%s) {\n", cond)
+		}
 		writeVariableGraphField(&b, f)
+		if cond != "" {
+			b.WriteString("        }\n")
+		}
 	}
 	b.WriteString("        return true;\n    }\n\n")
 
@@ -2808,7 +2840,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		}
 		first = false
 		fmt.Fprintf(&b, "if (id == F_%s) {\n", varMember(f))
-		writeFieldRead(&b, u, st, f, false, i, false)
+		writeFieldRead(&b, u, st, f, false, i, false, "")
 	}
 	b.WriteString("            } else if (id == TableVariable.NODE_ID) {\n")
 	if st.FixedDeclared {
@@ -2852,7 +2884,17 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	// writeFields
 	fmt.Fprintf(&b, "    public static void writeFields(TableVariable.Writer w, TableVariable.NodeGraph graph, Value v) {\n")
 	for _, f := range st.Fields {
+		cond := guards[f.Name]
+		if cond != "" {
+			// A FIELD UNDER A FALSE GUARD IS ELIDED on the write side (§3.1,
+			// §2.2); the READ still finds it by id whatever branch encloses it
+			// (§4.1), so only the two write walks gate.
+			fmt.Fprintf(&b, "        if (%s) {\n", cond)
+		}
 		writeFieldSave(&b, u, st, f)
+		if cond != "" {
+			b.WriteString("        }\n")
+		}
 	}
 	b.WriteString("    }\n\n")
 
@@ -3966,7 +4008,15 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	}
 }
 
-func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int, overlongNone bool) {
+func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int, overlongNone bool, armFlag string) {
+	// armMiss is emitted after an element-kind mismatch when this read IS a
+	// union arm's payload: the oracle's arm() answers "not this arm" on one
+	// (internal/tablewire decode.go, arrayBody), so the union cancels the arm
+	// while the kind mismatch still counts (docs/SPEC-TABLES.md §3, §3.3).
+	armMiss := ";"
+	if armFlag != "" {
+		armMiss = ";" + armFlag + "=false;"
+	}
 	if variableWide(f) && f.Array == ir.ArrayNone && !f.Type.Optional {
 		writeVariableWideRead(b, f)
 		return
@@ -3976,7 +4026,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		return
 	}
 	if variableUnion(f) != nil && !f.Type.Optional {
-		writeUnionFieldRead(b, u, st, f, retain, ordinal)
+		writeUnionFieldRead(b, u, st, f, retain, ordinal, armFlag)
 		return
 	}
 	if f.KeyEnum != "" && !f.Type.Optional {
@@ -3995,13 +4045,17 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		}
 		fmt.Fprintf(b, "                boolean selected=(%s);\n", condition)
 		if f.Array != ir.ArrayNone {
-			// AN OPTIONAL ARRAY is PRESENT when its body declares an element
-			// kind this declaration reads, which includes every kind that
-			// WIDENS to it (§4): the probe must not call a widened array
+			// AN OPTIONAL ARRAY is PRESENT when its body's L rode, which
+			// includes every element kind that WIDENS to the declared one (§4),
+			// and includes a body too short to carry even the element kind: a
+			// body short of its header is damage, and damage inside a field
+			// leaves that field PRESENT (§2.3, §4). Only a body that DOES carry
+			// a foreign element kind is the element-kind mismatch that leaves it
+			// absent. The probe must not call a widened or a truncated array
 			// absent and drop a value the oracle keeps.
-			fmt.Fprintf(b, "                if(selected){TableVariable.Reader probe=new TableVariable.Reader(r.buf,r.ids,new TableVariable.Report());probe.off=r.off;probe.limit=r.limit;TableVariable.Reader ar=probe.body();selected=ar!=null&&ar.has(2);if(selected){int pek=ar.get8();selected=%s;}}\n", variableCompatibleKinds(variableElemWireKind(f), "pek"))
+			fmt.Fprintf(b, "                if(selected){TableVariable.Reader probe=new TableVariable.Reader(r.buf,r.ids,new TableVariable.Report());probe.off=r.off;probe.limit=r.limit;TableVariable.Reader ar=probe.body();selected=ar!=null;if(selected&&ar.has(2)){int pek=ar.get8();int probeOff=ar.off;ar.leb();if(ar.fail){selected=true;}else{ar.off=probeOff;selected=%s;}}}\n", variableCompatibleKinds(variableElemWireKind(f), "pek"))
 		}
-		writeFieldRead(b, u, st, &one, retain, ordinal, overlongNone)
+		writeFieldRead(b, u, st, &one, retain, ordinal, overlongNone, armFlag)
 		if f.Array != ir.ArrayNone {
 			// AN OPTIONAL ARRAY IS PRESENT once its own body's header rode, even
 			// where the body is damaged: r.fail may already be set by an earlier
@@ -4026,7 +4080,12 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                    TableVariable.Reader ar = r.body();\n")
 		fmt.Fprintf(b, "                    if (ar != null && ar.has(2)) {\n")
 		fmt.Fprintf(b, "                        int ek = ar.get8();\n")
-		fmt.Fprintf(b, "                        if (ek == 17) {\n")
+		// THE COUNT IS READ BEFORE THE KIND IS COMPARED (docs/SPEC-TABLES.md
+		// §4): a count the body cannot carry is framing damage and counts
+		// malformed, never a kind mismatch. The probe reads it and puts the
+		// cursor back so the real read below keeps its single shape.
+		fmt.Fprintf(b, "                        { int probeOff = ar.off; ar.leb(); if (ar.fail) { report.malformed = true;%s } else { ar.off = probeOff; } }\n", armMiss)
+		fmt.Fprintf(b, "                        if (ar.fail) { } else if (ek == 17) {\n")
 		// EVERY DECODED POINTER SLOT KEEPS ITS ROW (docs/SPEC-TABLES.md §2.1,
 		// §3.1, §3.3): a bad node table makes every index resolve to null, but
 		// the array still decoded its slots, so the value list stays as long
@@ -4034,7 +4093,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		// struct-array read below already does.
 		fmt.Fprintf(b, "                            long n = ar.leb();\n")
 		if f.ArrayBound > 0 {
-			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else {\n")
+			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */%s } else {\n", armMiss)
 			fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
 			if f.Array != ir.ArrayFixed {
 				fmt.Fprintf(b, "                                v.%s.clear();\n", m)
@@ -4053,7 +4112,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                }\n")
 			fmt.Fprintf(b, "                            }\n")
 		} else {
-			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
+			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */%s } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n", armMiss)
 			fmt.Fprintf(b, "                                v.%s.clear();\n", m)
 			fmt.Fprintf(b, "                                v.%sIdx.clear();\n", m)
 			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
@@ -4064,7 +4123,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                }\n")
 			fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
 		}
-		fmt.Fprintf(b, "                        } else { report.kindMismatch++; }\n")
+		fmt.Fprintf(b, "                        } else { report.kindMismatch++%s }\n", armMiss)
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
 	case isStructArray(f):
@@ -4073,12 +4132,17 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                    TableVariable.Reader ar = r.body();\n")
 		fmt.Fprintf(b, "                    if (ar != null && ar.has(2)) {\n")
 		fmt.Fprintf(b, "                        int ek = ar.get8();\n")
-		fmt.Fprintf(b, "                        if (ek == 13) {\n")
+		// THE COUNT IS READ BEFORE THE KIND IS COMPARED (docs/SPEC-TABLES.md
+		// §4): a count the body cannot carry is framing damage and counts
+		// malformed, never a kind mismatch. The probe reads it and puts the
+		// cursor back so the real read below keeps its single shape.
+		fmt.Fprintf(b, "                        { int probeOff = ar.off; ar.leb(); if (ar.fail) { report.malformed = true;%s } else { ar.off = probeOff; } }\n", armMiss)
+		fmt.Fprintf(b, "                        if (ar.fail) { } else if (ek == 13) {\n")
 		fmt.Fprintf(b, "                            long n = ar.leb();\n")
 		if f.ArrayBound > 0 {
-			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else {\n")
+			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */%s } else {\n", armMiss)
 		} else {
-			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off) / 2) {\n")
+			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */%s } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off) / 2) {\n", armMiss)
 		}
 		if retain {
 			fmt.Fprintf(b, "                                retain.discardField(path, depth, %d);\n", ordinal)
@@ -4111,11 +4175,11 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		} else {
 			fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
 		}
-		fmt.Fprintf(b, "                        } else { report.kindMismatch++; }\n")
+		fmt.Fprintf(b, "                        } else { report.kindMismatch++%s }\n", armMiss)
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
 	case isScalarArray(f):
-		writeArrayFieldRead(b, u, st, f)
+		writeArrayFieldRead(b, u, st, f, armFlag)
 	case f.Type.Blob() || (f.Type.Pointer && isStruct(f)):
 		fmt.Fprintf(b, "                if (kind == 17) { v.%sIdx = r.leb(); }\n", m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
@@ -4150,7 +4214,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	// (docs/SPEC-TABLES.md §4, "Framing damage"): the field body's L says where
 	// the next field begins, so a short array loses only its missing tail.
 	case f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(b, "                if(kind==14){long L=r.leb();if(r.fail||L<0||L>r.limit-r.off){report.malformed=true;r.fail=true;}else if(L<2){r.off+=(int)L;}else {int end=r.off+(int)L;int ek=r.get8();long n=r.leb();if(r.fail){r.fail=false;report.malformed=true;}else if(ek!=6){report.kindMismatch++;}else {long keep=n;if(Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.clamped++;}int avail=end-r.off;if(avail<0)avail=0;int take=(int)keep<avail?(int)keep:avail;v.%s=java.util.Arrays.copyOfRange(r.buf,r.off,r.off+take);if(take<(int)keep)report.malformed=true;}r.off=end;}}else {r.skip(kind);report.kindMismatch++;}\n", f.Type.Size, f.Type.Size, m)
+		fmt.Fprintf(b, "                if(kind==14){long L=r.leb();if(r.fail||L<0||L>r.limit-r.off){report.malformed=true;r.fail=true;}else if(L<2){r.off+=(int)L;}else {int end=r.off+(int)L;int ek=r.get8();long n=r.leb();if(r.fail){r.fail=false;report.malformed=true;%s}else if(ek!=6){report.kindMismatch++%s}else {long keep=n;if(Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.clamped++;}int avail=end-r.off;if(avail<0)avail=0;int take=(int)keep<avail?(int)keep:avail;v.%s=java.util.Arrays.copyOfRange(r.buf,r.off,r.off+take);if(take<(int)keep)report.malformed=true;}r.off=end;}}else {r.skip(kind);report.kindMismatch++;}\n", armMiss, armMiss, f.Type.Size, f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = %s; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, variableDefault(f), f.Type.Size, f.Type.Size, m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
@@ -4183,7 +4247,11 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	}
 }
 
-func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, armFlag string) {
+	armMiss := ";"
+	if armFlag != "" {
+		armMiss = ";" + armFlag + "=false;"
+	}
 	m := varMember(f)
 	ek := variableElemWireKind(f)
 	cond := variableCompatibleKinds(ek, "ek")
@@ -4191,12 +4259,12 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	if f.ArrayBound > 0 {
 		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.clamped++; }", f.ArrayBound, f.ArrayBound)
 	}
-	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (%s) { long n = ar.leb(); if (ar.fail) { } %s if (ek != %d) { report.widened++; } ", cond, countCheck, ek)
+	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); { int probeOff = ar.off; ar.leb(); if (ar.fail) { report.malformed = true;%s } else { ar.off = probeOff; } } if (ar.fail) { } else if (%s) { long n = ar.leb(); if (ar.fail) {%s } %s if (ek != %d) { report.widened++; } ", armMiss, cond, armMiss, countCheck, ek)
 	if f.Array != ir.ArrayFixed {
 		fmt.Fprintf(b, "v.%s.clear(); ", m)
 	}
 	writeArrayElemRead(b, f, m)
-	fmt.Fprintf(b, " } } else { report.kindMismatch++; } } } }\n")
+	fmt.Fprintf(b, " } } else { report.kindMismatch++%s } } } }\n", armMiss)
 	fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 }
 
@@ -4245,7 +4313,12 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m string) {
 		case *ir.Enum:
 			fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long vref = ar.leb(); if (ar.fail) { break; } if (vref == 0) { %s; } else { long vid = ar.resolve(vref); if (!ar.fail) { %s; } } }", place("0"), place(fmt.Sprintf("%sEnum(vid, report)", m)))
 		case *ir.Flags:
-			fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(8)) { %s; } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("8"), place("ar.get64()"))
+			// A FLAGS ELEMENT ALSO WIDENS (§4): the array header may carry a
+			// narrower unsigned kind than the mask's declared u64, and every
+			// element is read at THAT kind's width and widened to the mask.
+			// Reading eight bytes whatever the header said turns the next
+			// element's bytes into this one (list_mixed, kind #111).
+			fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { java.math.BigInteger raw = TableVariable.readInteger(ar, ek); if (raw == null) break; %s; } }", refusePrefix("TableVariable.integerWidth(ek)"), place("raw.longValue()"))
 		}
 	}
 }
