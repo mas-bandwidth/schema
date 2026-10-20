@@ -594,12 +594,33 @@ end
 
 -- NUMBERING (docs/SPEC-TABLES.md §3.1, §3.3): the root is index 1, then every
 -- pointer target in declaration order, depth first, as the reference's own
--- numbering does. Aliases share one index.
+-- numbering does. Aliases share one index. A BLOB is a node too (§2.5), with
+-- no descent; A BLOB IS OWNED BY ONE SLOT, so a second naming refuses the
+-- message writer by name, blob_shared, exactly as the wire writers do.
 build_numbering = function(T, root, value)
   local order = { value }
   local names = { root }
+  local ids = { false }
   local index = { [value] = 1 }
-  local function scan(name, val)
+  local function add_pointer(target, target_name)
+    local d = T.Tables[target_name]
+    if d == nil then return false end
+    index[target] = #order + 1
+    order[#order + 1] = target
+    names[#names + 1] = target_name
+    ids[#ids + 1] = d.type_id
+    return true
+  end
+  local function add_blob(f, target)
+    if index[target] ~= nil then return false end
+    index[target] = #order + 1
+    order[#order + 1] = target
+    names[#names + 1] = false
+    ids[#ids + 1] = f.shape == "string_blob" and STRING_BLOB_ID or BYTES_BLOB_ID
+    return true
+  end
+  local scan
+  scan = function(name, val)
     local desc = T.Tables[name]
     if desc == nil then return false end
     for _, f in ipairs(desc.fields) do
@@ -609,28 +630,32 @@ build_numbering = function(T, root, value)
           local target = val[f.name]
           if target ~= nil then
             if index[target] == nil then
-              index[target] = #order + 1
-              order[#order + 1] = target
-              names[#names + 1] = f.target
-              if not scan(f.target, target) then return false end
+              if not add_pointer(target, f.target) then return false end
+              local ok, why = scan(f.target, target)
+              if not ok then return false, why end
             end
           end
+        elseif s == "string_blob" or s == "bytes_blob" then
+          if not add_blob(f, val[f.name]) then return false, "blob_shared" end
         elseif s == "table" then
-          if not scan(f.target, val[f.name]) then return false end
+          local ok, why = scan(f.target, val[f.name])
+          if not ok then return false, why end
         elseif s == "array" then
           local n = f.fixed and f.bound or #val[f.name]
           for i = 1, n do
             local ev = val[f.name][i]
             if ev ~= nil then
               if f.elem.shape == "table" then
-                if not scan(f.elem.target, ev) then return false end
+                local ok, why = scan(f.elem.target, ev)
+                if not ok then return false, why end
               elseif f.elem.shape == "pointer" then
                 if index[ev] == nil then
-                  index[ev] = #order + 1
-                  order[#order + 1] = ev
-                  names[#names + 1] = f.elem.target
-                  if not scan(f.elem.target, ev) then return false end
+                  if not add_pointer(ev, f.elem.target) then return false end
+                  local ok, why = scan(f.elem.target, ev)
+                  if not ok then return false, why end
                 end
+              elseif f.elem.shape == "string_blob" or f.elem.shape == "bytes_blob" then
+                if not add_blob(f.elem, ev) then return false, "blob_shared" end
               end
             end
           end
@@ -641,15 +666,17 @@ build_numbering = function(T, root, value)
             if arm.field ~= nil then
               local af = arm.field
               if af.shape == "table" then
-                if not scan(af.target, val[f.name][arm.name]) then return false end
+                local ok, why = scan(af.target, val[f.name][arm.name])
+                if not ok then return false, why end
               elseif af.shape == "pointer" then
                 local target = val[f.name][arm.name]
                 if target ~= nil and index[target] == nil then
-                  index[target] = #order + 1
-                  order[#order + 1] = target
-                  names[#names + 1] = af.target
-                  if not scan(af.target, target) then return false end
+                  if not add_pointer(target, af.target) then return false end
+                  local ok, why = scan(af.target, target)
+                  if not ok then return false, why end
                 end
+              elseif af.shape == "string_blob" or af.shape == "bytes_blob" then
+                if not add_blob(af, val[f.name][arm.name]) then return false, "blob_shared" end
               end
             end
           end
@@ -658,8 +685,9 @@ build_numbering = function(T, root, value)
     end
     return true
   end
-  if not scan(root, value) then return nil end
-  return { order = order, names = names, index = index }
+  local ok, why = scan(root, value)
+  if not ok then return nil, why end
+  return { order = order, names = names, ids = ids, index = index }
 end
 
 local function max_index_bits(n)
@@ -710,8 +738,8 @@ end
 
 local function save_one(W, T, root, value, vocab)
   local ctx = { vocab = vocab, refBits = T.MessageRefBits }
-  local num = build_numbering(T, root, value)
-  if num == nil then return false end
+  local num, why = build_numbering(T, root, value)
+  if num == nil then return false, why end
   local count = #num.order - 1
   ctx.index = num.index
   if count > 0 then
@@ -720,8 +748,15 @@ local function save_one(W, T, root, value, vocab)
     W:put(count, 32)
     for k = 2, #num.order do
       local name = num.names[k]
-      W:put(slot(T, T.Tables[name].type_id), ctx.refBits)
-      if not write_body(W, T, name, num.order[k], ctx) then return false end
+      W:put(slot(T, num.ids[k]), ctx.refBits)
+      if name == false then
+        -- A BLOB RECORD carries its length at thirty-two raw bits, then its
+        -- bytes (§3.3; the wire's blob node, §3.1).
+        local body = num.order[k]
+        local raw = type(body) == "table" and body.value or body
+        W:put(#raw, 32)
+        W:raw(raw)
+      elseif not write_body(W, T, name, num.order[k], ctx) then return false end
     end
   else
     ctx.indexBits = 1
@@ -1027,7 +1062,8 @@ function M.measureMessages(T, root, vocab, values)
   local W = new_writer(true)
   W:put(2, 8); W:put(#values - 1, 8)
   for i = 1, #values do
-    if not save_one(W, T, root, values[i], vocab) then return -1 end
+    local ok, why = save_one(W, T, root, values[i], vocab)
+    if not ok then return -1, why end
   end
   W:align()
   return (W.bits + 7) >> 3
@@ -1041,7 +1077,8 @@ function M.saveMessages(T, root, vocab, values)
   local W = new_writer(false)
   W:put(2, 8); W:put(#values - 1, 8)
   for i = 1, #values do
-    if not save_one(W, T, root, values[i], vocab) then return nil end
+    local ok, why = save_one(W, T, root, values[i], vocab)
+    if not ok then return nil, why end
   end
   W:align()
   return W:result()

@@ -168,7 +168,8 @@ instance stream_arm_pointer   streamdemo  Feed        testdata/wire/tables/strea
 instance blob_small           blobdemo    Catalog     testdata/wire/tables/blob_small.bin
 instance blob_empty           blobdemo    Catalog     testdata/wire/tables/blob_empty.bin
 instance blob_large           blobdemo    Catalog     testdata/wire/tables/blob_large.bin
-# The Go wire writer names its §2.5 refusal for this instance, and so does C.
+# The Go wire writer names its §2.5 refusal for this instance, and so do C
+# and Lua (Save, Measure and the message writer).
 instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_shared.bin  no-text go-refusal=blob_shared c-refusal=blob_shared
 # THE STRING TERMINATOR, at the two lengths that can see it (§6.3): a *string
 # node carries one zero byte after its data, and the node's extent is rounded
@@ -182,13 +183,13 @@ instance blob_str16           blobdemo    Catalog     testdata/wire/tables/blob_
 # and never per slot. blob_equal_bytes holds two DISTINCT *bytes nodes carrying
 # equal bytes — two records that a by-content numbering would merge into one.
 # blob_shared_string holds ONE *string node named from two map slots. A blob
-# belongs to one slot (§2.5), so Go and C refuse it by name: the Go writer's
-# MeasureReason names it (go-refusal=), and the C writer refuses it when it
-# measures the graph, the name read from the C runtime's load measure
-# (c-refusal=). Lua writes the one record once until
-# schema-lua-blob-named-twice-is-blob-shared-r ports the refusal, and the
-# golden pins those bytes. Both rows are `no-text`: a blob's text is a string
-# with no first key to carry `&node`, so a shared blob has no spelling (§16.7).
+# belongs to one slot (§2.5), so every writer refuses it by name: the Go
+# writer's MeasureReason names it (go-refusal=), and the C writer refuses it
+# when it measures the graph, the name read from the C runtime's load measure
+# (c-refusal=); Lua's Save, Measure and message writer answer the same name,
+# so the row is refused on every leg. Both rows are `no-text`: a blob's text
+# is a string with no first key to carry `&node`, so a shared blob has no
+# spelling (§16.7).
 instance blob_equal_bytes      blobdemo    Catalog     testdata/wire/tables/blob_equal_bytes.bin  no-text
 instance blob_shared_string    mapdemo     Docs        testdata/wire/tables/blob_shared_string.bin no-text go-refusal=blob_shared c-refusal=blob_shared
 

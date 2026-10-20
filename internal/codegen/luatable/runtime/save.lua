@@ -253,12 +253,14 @@ number_nodes = function(T, desc, root)
         -- the box load gave its node, so the index is keyed by the box and
         -- its bytes are the box's value: two distinct nodes with equal bytes
         -- stay two, and one box named from two slots is one node.
-        if nodes.index[e.val] == nil then
-          local tid = e.shape == "string_blob" and STRING_BLOB_ID or BYTES_BLOB_ID
-          local body = type(e.val) == "table" and e.val.value or e.val
-          nodes.list[#nodes.list + 1] = { typeId = tid, body = body }
-          nodes.index[e.val] = #nodes.list + 1
-        end
+        -- A BLOB IS OWNED BY ONE SLOT (§2.5, §16.7): the numbering walk meets
+        -- the second naming here, so the save refuses the graph by name,
+        -- blob_shared, and never writes a copy per slot.
+        if nodes.index[e.val] ~= nil then return nil, "blob_shared" end
+        local tid = e.shape == "string_blob" and STRING_BLOB_ID or BYTES_BLOB_ID
+        local body = type(e.val) == "table" and e.val.value or e.val
+        nodes.list[#nodes.list + 1] = { typeId = tid, body = body }
+        nodes.index[e.val] = #nodes.list + 1
       else
         if open[e.val] then return nil end
         if nodes.index[e.val] == nil then
@@ -698,8 +700,8 @@ function S.Save(T, name, v)
   if refused ~= nil then return nil, refused end
   local desc = T.Tables[name]
   if desc == nil then return nil end
-  local nodes = number_nodes(T, desc, v)
-  if nodes == nil then return nil end
+  local nodes, why = number_nodes(T, desc, v)
+  if nodes == nil then return nil, why end
   local idx = W()
   local ids = { list = {} }
   w_u8(idx, 1)
