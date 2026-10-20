@@ -22,7 +22,9 @@ const root = "../../.."
 // refused is every manifest unit the Lobster table surface refuses, with the
 // refusal it gives (docs/PORT-LOBSTER.md, THE CARD MAP). A unit that starts
 // or stops refusing turns this test red until the list says so.
-var refused = map[string]string{}
+var refused = map[string]string{
+	"listdemo": "schema file Save.schema collides with the Lobster runtime module save.lobster the target emits beside the generated modules; rename the file",
+}
 
 // TestLobsterTableDescriptorsLoad generates each unit of
 // testdata/conformance/tables/MANIFEST.txt for lobster, compiles and runs
