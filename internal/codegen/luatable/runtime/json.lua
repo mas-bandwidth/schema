@@ -669,6 +669,70 @@ local function wide_token_parts(token)
   return neg, digits, point
 end
 
+-- A FLOAT32 TOKEN IS ROUNDED AT ITS OWN WIDTH, NEVER TWICE (docs/SPEC-TABLES.md
+-- §16.2, the float kinds: "a value a float32 field cannot hold is
+-- kind_mismatch", and §3.3: every ordinary pattern, a subnormal included,
+-- reads back as itself). Parsing through a double and narrowing rounds twice;
+-- a token a hair above a subnormal midpoint (the corpus's
+-- num-float32-subnormal) lands on the midpoint and then rounds to zero. The
+-- subnormal midpoints are (2k+1)*2^-150, and 2^-150 is exactly
+-- 5^150 * 10^-150, so the token is compared against them as decimal digits,
+-- never as a double.
+local FIVE150 = "700649232162408535461864791644958065640130970938257885878534141944895541342930300743319094181060791015625"
+local midpoint_cache = {}
+
+local function midpoint_digits(odd)
+  local got = midpoint_cache[odd]
+  if got then return got end
+  got = dec_norm(dec_mul(FIVE150, odd))
+  midpoint_cache[odd] = got
+  return got
+end
+
+-- compare_token_midpoint returns the sign of |token| - odd*2^-150. Both are
+-- leading-zero-normalized decimals with a point position; equal orders compare
+-- digit by digit with implicit trailing zeros.
+local function compare_token_midpoint(digits, point, odd)
+  local m = midpoint_digits(odd)
+  local order = point - 1
+  local morder = #m - 151
+  if order ~= morder then return order < morder and -1 or 1 end
+  local n = math.max(#digits, #m)
+  for i = 1, n do
+    local a = i <= #digits and digits:byte(i) or 48
+    local b = i <= #m and m:byte(i) or 48
+    if a ~= b then return a < b and -1 or 1 end
+  end
+  return 0
+end
+
+-- round_subnormal re-lands an underflowed float32 token on the nearest
+-- subnormal (or zero) at tie-to-even, comparing the token's own digits with
+-- the midpoints around the narrow result.
+local function round_subnormal(token, f)
+  local neg, digits, point = wide_token_parts(token)
+  if digits == "" then return f end
+  local bits = string.unpack("<I4", string.pack("<f", math.abs(f)))
+  if bits >= 0x00800000 then return f end
+  local pick = bits
+  local cmp = compare_token_midpoint(digits, point, 2 * bits + 1)
+  if cmp > 0 then
+    pick = bits + 1
+  elseif cmp == 0 then
+    pick = bits % 2 == 0 and bits or bits + 1
+  elseif bits > 0 then
+    local low = compare_token_midpoint(digits, point, 2 * bits - 1)
+    if low < 0 then
+      pick = bits - 1
+    elseif low == 0 then
+      pick = (bits - 1) % 2 == 0 and bits - 1 or bits
+    end
+  end
+  local raw = pick
+  if neg then raw = raw | 0x80000000 end
+  return string.unpack("<f", string.pack("<I4", raw))
+end
+
 local function wide_mul_add(lo, hi, m, a)
   local l0, l1 = lo & 0xffffffff, (lo >> 32) & 0xffffffff
   local l2, l3 = hi & 0xffffffff, (hi >> 32) & 0xffffffff
@@ -1487,7 +1551,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
           return true
         end
       else
-        x = narrow
+        x = round_subnormal(token, narrow)
       end
     end
     holder[key] = x

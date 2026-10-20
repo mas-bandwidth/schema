@@ -130,6 +130,15 @@ each leg, and each is held by its own tests.
   pattern is moved by integer bit surgery between the float32 and float64
   layouts and never through a conversion. The type-wire cards own the helper
   and its corpus check.
+- **float32 text is rounded once, at float32.** A JSON token for a float32
+  field is not parsed as a double and then narrowed: that rounds twice, and a
+  token just above a subnormal midpoint (the shared corpus's
+  `num-float32-subnormal`) lands on the midpoint and then on zero. The reader
+  compares the token's own decimal digits with the subnormal midpoints
+  `(2k+1)*2^-150` — `2^-150` is exactly `5^150 * 10^-150` — and lands the
+  nearest subnormal (or zero) at tie-to-even, so the value is exactly the one
+  Go's reader lands and the writer spells the same shortest text
+  (docs/SPEC-TABLES.md §16.2, §3.3). Normals keep the double-then-narrow path.
 
 ## THE RUNTIME LAYOUT
 

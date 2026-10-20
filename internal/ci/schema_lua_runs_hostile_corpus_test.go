@@ -386,9 +386,6 @@ func luaHostileCarriedList(cases []luaHostileCase) map[string]luaHostileCarried 
 	// the count past the int32 cap damaged, not count_refusal.
 	out["message-batch-too-large"] = luaHostileCarried{"accept", "-", "schema-lua-message-honors-storage-bound-r"}
 	out["wire-count-refusal"] = luaHostileCarried{"refuse", "damaged", "schema-lua-wire-names-count-refusal-r"}
-	// Accepted by both, but the subnormal float's canonical text differs: a
-	// reader/writer spelling bug in the Lua float32 path.
-	out["conformance-num-float32-subnormal"] = luaHostileCarried{"accept", "-", "schema-lua-float32-subnormal-canonical-text-r"}
 	return out
 }
 

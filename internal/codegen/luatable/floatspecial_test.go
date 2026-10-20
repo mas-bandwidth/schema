@@ -21,9 +21,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"maps"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -281,5 +283,125 @@ func TestLuaPlainFloatSpecialValuesAgreeAcrossForms(t *testing.T) {
 				t.Errorf("%s text read: Lua landed %s, want the raw bits %s", c.name, got, want)
 			}
 		}
+	}
+}
+
+const fsSubnormalSchema = `package probe
+
+fixed table Sub
+{
+    a float32
+}
+`
+
+// fsGoFloatText is the generated Go table writer's spelling: C's %.*g at the
+// shortest precision that parses back at the field's own width
+// (internal/codegen/gotable/json.go, tableJsonWriteFloat; docs/SPEC-TABLES.md
+// §16.1, the float spelling).
+func fsGoFloatText(value float64, single bool) string {
+	bits, low, high := 64, 15, 17
+	if single {
+		bits, low, high = 32, 6, 9
+	}
+	for digits := low; ; digits++ {
+		text := strconv.FormatFloat(value, 'g', digits, bits)
+		if digits >= high {
+			return text
+		}
+		if back, err := strconv.ParseFloat(text, bits); err == nil && back == value {
+			return text
+		}
+	}
+}
+
+// TestLuaFloat32SubnormalCanonicalText pins the text form of every subnormal
+// edge and of the corpus token that sits just above the smallest subnormal's
+// midpoint: the smallest subnormal, the largest subnormal and the token
+// testdata/conformance/tables/json-hostile/num-float32-subnormal each spell as
+// the generated Go writer spells the value Go's reader lands (§16.2: a float32
+// token is read at the field's width, and a subnormal is an ordinary value).
+func TestLuaFloat32SubnormalCanonicalText(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	schemaPath := filepath.Join(dir, "Sub.schema")
+	if err := os.WriteFile(schemaPath, []byte(fsSubnormalSchema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := compiler.GatherPaths([]string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate the Lua unit: %v", err)
+	}
+	luaDir := t.TempDir()
+	luarun.WriteFiles(t, luaDir, files)
+	probe := `local T = require("` + ModuleName(u) + `")
+local J = require("json")
+local function f32(b) return string.unpack("<f", string.pack("<I4", b)) end
+local function oneline(s)
+  return (s:gsub("%s+", ""))
+end
+local function report()
+  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
+    clamped = 0, widened = 0, duplicate = 0 }
+end
+for _, c in ipairs({ { "smallest", 0x00000001 }, { "largest", 0x007fffff } }) do
+  local v = T.NewSub()
+  v.a = f32(c[2])
+  print(c[1] .. "|" .. oneline(assert(J.ToJson(T, "Sub", v))))
+end
+local r = report()
+local v = assert(J.FromJson(T, "Sub", '{"a":7.0064923216240853547e-46}', r))
+print("corpus|" .. oneline(assert(J.ToJson(T, "Sub", v))))
+r = report()
+v = assert(J.FromJson(T, "Sub", '{"a":-7.0064923216240853547e-46}', r))
+print("negcorpus|" .. oneline(assert(J.ToJson(T, "Sub", v))))
+`
+	if err := os.WriteFile(filepath.Join(luaDir, "main.lua"), []byte(probe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := string(luarun.Run(t, luaDir, "main.lua", nil))
+	got := map[string]string{}
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		part := strings.SplitN(line, "|", 2)
+		if len(part) != 2 {
+			t.Fatalf("Lua probe line %q, want name|text", line)
+		}
+		got[part[0]] = part[1]
+	}
+	for _, c := range []struct {
+		name string
+		bits uint32
+	}{
+		{"smallest", 0x00000001},
+		{"largest", 0x007fffff},
+	} {
+		want := `{"a":` + fsGoFloatText(float64(math.Float32frombits(c.bits)), true) + `}`
+		if got[c.name] != want {
+			t.Errorf("%s subnormal: Lua spells %s, Go spells %s", c.name, got[c.name], want)
+		}
+	}
+	const token = "7.0064923216240853547e-46"
+	value, err := strconv.ParseFloat(token, 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"a":` + fsGoFloatText(value, true) + `}`
+	if got["corpus"] != want {
+		t.Errorf("corpus %s: Lua spells %s, Go spells %s", token, got["corpus"], want)
+	}
+	negValue, err := strconv.ParseFloat("-"+token, 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	negWant := `{"a":` + fsGoFloatText(negValue, true) + `}`
+	if got["negcorpus"] != negWant {
+		t.Errorf("corpus -%s: Lua spells %s, Go spells %s", token, got["negcorpus"], negWant)
 	}
 }
