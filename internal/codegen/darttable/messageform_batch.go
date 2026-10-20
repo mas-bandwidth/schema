@@ -339,6 +339,38 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 	// Float32 NaNs narrow in software so the signalling bit survives; the
 	// bit width remains kind 10's own. Float64 keeps its original bit view.
 	if kind == ir.TableKindF32 {
+		// A COMPRESSED FLOAT CROSSES AS ITS STEP INDEX (docs/SPEC-TABLES.md
+		// §3.3, packing 2, ir.TableMessageQuantized): the writer clamps
+		// `(value - min) / delta` to [0, 1], multiplies by `count`, rounds the
+		// product to float32, adds 0.5 and floors, and clamps the integer to
+		// `count` — the oracle's order in float32
+		// (internal/tablewire/messageencode.go, ir.TableMessageQuantize). A raw
+		// f32 keeps the IEEE-754 path below.
+		if shape.Packing == ir.TableMessageQuantized {
+			count, delta, ok := ir.TableMessageQuantization(shape)
+			if ok {
+				countLit := fmt.Sprintf("%d", count)
+				g.pf("%s{\n", ind)
+				g.pf("%s  final f = %s;\n", ind, expr)
+				g.pf("%s  TableBitWriter._float32Cell[0] = f;\n", ind)
+				g.pf("%s  final f32 = TableBitWriter._float32Cell[0];\n", ind)
+				g.pf("%s  TableBitWriter._float32Cell[0] = f32 - %s;\n", ind, fixedFloatLit(float64(shape.QMin)))
+				g.pf("%s  final shifted = TableBitWriter._float32Cell[0];\n", ind)
+				g.pf("%s  TableBitWriter._float32Cell[0] = shifted / %s;\n", ind, fixedFloatLit(float64(delta)))
+				g.pf("%s  var ratio = TableBitWriter._float32Cell[0];\n", ind)
+				g.pf("%s  if (!(ratio >= 0)) { ratio = 0.0; } else if (!(ratio <= 1)) { ratio = 1.0; }\n", ind)
+				g.pf("%s  TableBitWriter._float32Cell[0] = %s.0;\n", ind, countLit)
+				g.pf("%s  final fc = TableBitWriter._float32Cell[0];\n", ind)
+				g.pf("%s  TableBitWriter._float32Cell[0] = ratio * fc;\n", ind)
+				g.pf("%s  final scaled = TableBitWriter._float32Cell[0];\n", ind)
+				g.pf("%s  TableBitWriter._float32Cell[0] = scaled + 0.5;\n", ind)
+				g.pf("%s  var index = TableBitWriter._float32Cell[0].floor();\n", ind)
+				g.pf("%s  if (index > %s) { index = %s; }\n", ind, countLit, countLit)
+				g.pf("%s  w.put(index, %d);\n", ind, shape.Bits)
+				g.pf("%s}\n", ind)
+				return
+			}
+		}
 		// The narrowing is AT THE ASSIGNMENT (issue 404, PORTING M3): under
 		// the JIT a double crossing an out-of-line conversion call is boxed.
 		g.pf("%s{\n", ind)
@@ -564,6 +596,47 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	// from its 64. Float32 NaNs widen in software; a hardware conversion would
 	// quiet a signalling NaN before a consumer could send it again.
 	if kind == ir.TableKindF32 {
+		// A COMPRESSED FLOAT RIDES AS ITS STEP INDEX (docs/SPEC-TABLES.md §3.3,
+		// packing 2, ir.TableMessageQuantized): the width is the announced
+		// shape's, an index above `count` is DAMAGE and is never reconstructed,
+		// and the float is `min + (index / count) * delta` with TWO float32
+		// roundings on each side, in the oracle's order
+		// (internal/tablewire/messagedecode.go, `float32` and
+		// ir.TableMessageDequantize). A raw f32 keeps the IEEE-754 path below.
+		if shape.Packing == ir.TableMessageQuantized {
+			count, delta, ok := ir.TableMessageQuantization(shape)
+			if ok {
+				countLit := fmt.Sprintf("%d", count)
+				g.pf("%s{\n", ind)
+				g.pf("%s  final index = r.bits.get(%d);\n", ind, shape.Bits)
+				g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+				g.pf("%s  if (index > %s) { r.report.Damage(); return false; }\n", ind, countLit)
+				// float32(index) / float32(count), the oracle's operands.
+				g.pf("%s  TableBitWriter._float32Cell[0] = index.toDouble();\n", ind)
+				g.pf("%s  final fi = TableBitWriter._float32Cell[0];\n", ind)
+				g.pf("%s  TableBitWriter._float32Cell[0] = %s.0;\n", ind, countLit)
+				g.pf("%s  final fc = TableBitWriter._float32Cell[0];\n", ind)
+				g.pf("%s  TableBitWriter._float32Cell[0] = fi / fc;\n", ind)
+				g.pf("%s  final normalized = TableBitWriter._float32Cell[0];\n", ind)
+				g.pf("%s  TableBitWriter._float32Cell[0] = normalized * %s;\n", ind, fixedFloatLit(float64(delta)))
+				g.pf("%s  final scaled = TableBitWriter._float32Cell[0];\n", ind)
+				g.pf("%s  TableBitWriter._float32Cell[0] = scaled + %s;\n", ind, fixedFloatLit(float64(shape.QMin)))
+				g.pf("%s  %s = TableBitWriter._float32Cell[0];\n", ind, expr)
+				g.pf("%s}\n", ind)
+				if f.HasFloatRange && f.Type.Kind == ir.TFloat32 {
+					// THE READER'S OWN RANGED FLOAT CLAMPS AND COUNTS, exactly
+					// as the oracle's float32 read does
+					// (internal/tablewire/messagedecode.go, `float32` and
+					// `clampFloat`; docs/SPEC-TABLES.md §3.3, §4) and as the
+					// file form's emitClamp does (fixeddart.go). The index check
+					// above is the damage rule and runs first.
+					lo, hi, _ := fixedFloatClampEnds(f)
+					g.pf("%sif (%s < %s) { %s = %s; r.report.clamped++; } else if (%s > %s) { %s = %s; r.report.clamped++; }\n",
+						ind, expr, lo, expr, lo, expr, hi, expr, hi)
+				}
+				return
+			}
+		}
 		// The widening is AT THE ASSIGNMENT (issue 404, PORTING M3); the bits
 		// are a NaN exactly when their magnitude exceeds infinity's.
 		g.pf("%s{\n", ind)
