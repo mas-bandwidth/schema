@@ -352,146 +352,12 @@ func fuzzTarget(t *testing.T, repo, dir string) string {
 	return bin
 }
 
-// THE WIDE-RANGE CLAMP. The emitted load in this tree leaves a 128-bit or
-// fixed 128-bit value at its raw storage where the reader declares a range
-// (docs/SPEC-TABLES.md §4 says such a value clamps in 128 bits); the runtime
-// source that would carry the fix is outside this card's PATHS, so the
-// differential reaches the driver's naming fix with the clamp applied to the
-// emitted copy in memory. The runtime change itself remains owed.
-const wideClampAnchor = `// THE §4 CLAMPS: a declared integer range, then a bits(N) ceiling.
-local clampScalar = function(fd, kind, x, report) {
-  if (x == null) return null;
-  if (typeof x == "array") return x; // a 128-bit value's range is the codec's
-`
-
-const wideClampReplacement = `// UNSIGNED 64-bit ORDER, which Squirrel's signed integer does not give: the
-// sign bit is flipped so the two's-complement pattern sorts as unsigned.
-local u64cmp = function(a, b) {
-  local MIN = 0x8000000000000000;
-  local au = a ^ MIN, bu = b ^ MIN;
-  return au < bu ? -1 : (au > bu ? 1 : 0);
-};
-
-// A 128-bit value and a declared bound on the same [low, high] pair. A bound
-// that fits 64 bits is sign-extended; the descriptor writes both forms.
-local widePair = function(v) {
-  if (typeof v == "array") return v;
-  return [v, v < 0 ? -1 : 0];
-};
-
-local wideCompare = function(a, b, signed) {
-  if (signed) {
-    local MIN = 0x8000000000000000;
-    local an = (a[1] & MIN) != 0, bn = (b[1] & MIN) != 0;
-    if (an != bn) return an ? -1 : 1;
-  }
-  local c = u64cmp(a[1], b[1]);
-  if (c != 0) return c;
-  return u64cmp(a[0], b[0]);
-};
-
-// THE §4 CLAMPS: a declared integer range, then a bits(N) ceiling.
-local clampScalar = function(fd, kind, x, report) {
-  if (x == null) return null;
-  if (typeof x == "array") {
-    if (fd.lo != null && fd.hi != null) {
-      local lo = widePair(fd.lo), hi = widePair(fd.hi);
-      if (wideCompare(x, lo, fd.signed) < 0) {
-        x = [lo[0], lo[1]];
-        report.clamped = report.clamped + 1;
-      } else if (wideCompare(x, hi, fd.signed) > 0) {
-        x = [hi[0], hi[1]];
-        report.clamped = report.clamped + 1;
-      }
-    }
-    return x;
-  }
-`
-
-// THE MAP ENTRY'S FRAMING. A terminator that does not consume the entry's
-// body, and a scan failure before a key was under the wrong kind, are framing
-// damage (malformed), not a key mismatch; the same runtime source owns this
-// and is outside PATHS.
-const mapScanAnchor = `    local ref = leb(scan);
-    if (scan.bad) return [true, widened];
-    if (ref == 0) return [bad, widened];
-    if (ref > table.len()) return [true, widened];
-    if (scan.at >= scan.end) return [true, widened];
-`
-
-const mapScanReplacement = `    local ref = leb(scan);
-    // A FRAMING FAILURE IS Malformed, NOT kind_mismatch, unless a key under
-    // the wrong kind was already seen (the engine's mapKey returns keyOk
-    // false and mapField checks the kind first).
-    if (scan.bad) return [bad, widened, false];
-    // THE TERMINATOR MUST CONSUME THE ENTRY'S L (the engine's mapKey): a
-    // body whose zero lands before its end is framing damage, not a key.
-    if (ref == 0) return [bad, widened, scan.at == scan.end];
-    if (ref > table.len()) return [bad, widened, false];
-    if (scan.at >= scan.end) return [bad, widened, false];
-`
-
-const mapSkipAnchor = `    if (!skipField(scan, kind)) return [true, widened];
-`
-
-const mapSkipReplacement = `    if (!skipField(scan, kind)) return [bad, widened, false];
-`
-
-const mapEntryAnchor = `    if (scan[0]) {
-      // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
-      // EMPTY, ONE kind_mismatch counts for it, and the rest skips by L.
-      report.kindMismatch = report.kindMismatch + 1;
-      arr = [];
-      break;
-    }
-    local ent = ed.make();
-`
-
-const mapEntryReplacement = `    if (scan[0]) {
-      // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
-      // EMPTY, ONE kind_mismatch counts for it, and the rest skips by L.
-      report.kindMismatch = report.kindMismatch + 1;
-      arr = [];
-      break;
-    }
-    if (!scan[2]) {
-      // the entry's terminator did not land on its end: framing damage, and
-      // the entry is not decoded, so no counter inside it is read
-      report.malformed = true;
-      break;
-    }
-    local ent = ed.make();
-`
-
-// patchEmittedLoad applies the two runtime corrections above to the emitted
-// load, if this is that file. Every anchor must appear exactly once: a
-// generated load that no longer carries one is a red, never a silent pass.
-func patchEmittedLoad(t *testing.T, name string, src []byte) []byte {
-	t.Helper()
-	if name != "schema_table_load.nut" {
-		return src
-	}
-	for _, p := range []struct{ anchor, replacement string }{
-		{wideClampAnchor, wideClampReplacement},
-		{mapScanAnchor, mapScanReplacement},
-		{mapSkipAnchor, mapSkipReplacement},
-		{mapEntryAnchor, mapEntryReplacement},
-	} {
-		if n := strings.Count(string(src), p.anchor); n != 1 {
-			t.Fatalf("the emitted %s carries an expected anchor %d times, want exactly once", name, n)
-		}
-		src = []byte(strings.Replace(string(src), p.anchor, p.replacement, 1))
-	}
-	return src
-}
-
 // runWireFuzzDifferential generates every manifest unit through the target,
 // one directory per unit key exactly as build/conformance-squirrel lays them
-// out (patchEmittedLoad corrects the emitted load, then edit patches each
-// file: the negative control), runs both arms of the driver over every instance
-// wire's mutants, and compares each reply with the engine. It returns the
-// mutant count and the first divergence, named by seed, unit, root and the
-// mutant's hex.
+// out (edit patches each emitted file first: the negative control), runs both
+// arms of the driver over every instance wire's mutants, and compares each
+// reply with the engine. It returns the mutant count and the first divergence,
+// named by seed, unit, root and the mutant's hex.
 func runWireFuzzDifferential(t *testing.T, edit func(name string, src []byte) []byte) (int, error) {
 	t.Helper()
 	repo, err := sqrun.RepoRoot()
@@ -521,21 +387,19 @@ func runWireFuzzDifferential(t *testing.T, edit func(name string, src []byte) []
 			refused = append(refused, mu.key)
 			continue
 		}
-		entries, err := os.ReadDir(out)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, e := range entries {
-			path := filepath.Join(out, e.Name())
-			src, err := os.ReadFile(path)
+		if edit != nil {
+			entries, err := os.ReadDir(out)
 			if err != nil {
 				t.Fatal(err)
 			}
-			src = patchEmittedLoad(t, e.Name(), src)
-			if edit != nil {
-				src = edit(e.Name(), src)
+			for _, e := range entries {
+				path := filepath.Join(out, e.Name())
+				src, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				writeFile(t, path, edit(e.Name(), src))
 			}
-			writeFile(t, path, src)
 		}
 		models[mu.key] = tabletext.NewModel(loadUnit(t, repo, mu.paths))
 		generated = append(generated, mu.key)
