@@ -12,46 +12,32 @@
 //   - `?T`, optional nested values and optional arrays (docs/SPEC-TABLES.md
 //     §2.3): the descriptor's `present` companion and the load/save walkers
 //     already carry these; this card's test holds them to the Go engine.
-//   - `?map[K]V` (docs/SPEC-TABLES.md §2.8): the load walker carries absent,
-//     present-empty and present (MapShape sets Slot.present through body_at).
-//     Save does NOT: its map branch in runtime/schema_save.lobster elides on
-//     `length(sl.entries) == 0` without consulting `f.present`, so an
-//     ABSENT and a PRESENT-EMPTY optional map write the same bytes. The
-//     generated Go writer does keep them apart: `HolderSaveBodyFields` is
-//     `if value.TagsPresent { ... kind-14 body ... }`, so a present empty map
-//     writes a count-0 body and an absent one writes nothing. (The
-//     compiler-side tabletext writer in internal/tablewire elides both, so
-//     it cannot serve as this construct's oracle; the generated Go is the
-//     reference, docs/SPEC-TABLES.md §2.3, §2.8.)
-//   - `| required` (docs/SPEC-TABLES.md §2.3): NOT reachable here. It is a
-//     property of the field's SLOT, not of its shape, and neither walker
-//     exposes a field-level hook: load must count a required field the body
-//     never NAMED and save must skip its default-elision when `f.required`.
-//     This card therefore does not register `carryRequired` for lobster: the
-//     central refusal keeps refusing it by name, which is the truth until the
-//     hooks land. LoadReport has no missing_required counter at all, so the
-//     load hook is a report field plus the body loop, not a one-liner.
+//   - `?map[K]V` (docs/SPEC-TABLES.md §2.8): absent, present-empty and
+//     present are three values. The load walker's MapShape already sets
+//     Slot.present; save did not consult it and elided every empty entry
+//     list. The map branch in runtime/schema_save.lobster now checks the
+//     presence companion first, so an ABSENT map elides while a
+//     PRESENT-EMPTY one writes its kind-14 body with count 0. (The
+//     compiler-side tablewriter in internal/tablewire elides both, so the
+//     test carries the present-empty row's expected bytes itself; the
+//     generated Go writer keeps them apart, `if value.TagsPresent { ... }`.)
+//   - `| required` (docs/SPEC-TABLES.md §2.3): load counts a required field
+//     the body never NAMED in LoadReport.missing_required, names it in
+//     reason, and refuses the record at any depth; save skips its
+//     default-elision for every `f.required` branch. Both are SLOT facts,
+//     not shape facts, so no Shape registration can reach them: this card
+//     added the two walker hooks in runtime/load.lobster and
+//     runtime/schema_save.lobster (the load hook is a report field, the seen
+//     flags and the terminator check; the save hook is `not f.required` on
+//     each elision). A required field inside an `if` guard is not demanded
+//     here, because FieldDescriptor does not carry the guard expression; the
+//     guard surface is a later card's.
 //
-// PATHS-PROPOSED (files this card does not edit; the walkers belong to
-// table-wire-load and table-wire-save):
-//
-//   - runtime/load.lobster: LoadReport gains `missing_required:int = 0`; in
-//     body_at's field loop mark the slot named when its shape returns, and
-//     after the body's terminator count every `f.required` slot not named,
-//     setting report.reason to "missing_required: " + f.name (off-branch
-//     fields stay undemanded; the refusal is the record's at any depth).
-//   - runtime/schema_save.lobster, in encode_field's "map" branch: check
-//     `f.present != "" and not sl.present` first (absent elides), then write
-//     a present-empty map's kind-14 body with count 0 instead of returning on
-//     `length(sl.entries) == 0`.
-//   - runtime/schema_save.lobster, at the final `if save_is_default(...)`:
-//     `if not f.required and save_is_default(f, sl.cell): return`, so a
-//     required field always rides. A required field the writer does not
-//     reach (an untaken branch) is already not demanded.
-//
-// With those hooks a later attempt extends TestLobsterOptionals' probe units
-// to `| required` and the present-empty optional map, holding both to the
-// generated Go writer.
+// The carried-construct registrations stay in compiler/carries_lobster_
+// optionals.go, which records why the lobster target still refuses each one
+// by name: the target refuses every string blob and every map (and so the
+// central probes for these constructs) until the collections and type-wire
+// cards lift those refusals.
 package lobstertable
 
 import (

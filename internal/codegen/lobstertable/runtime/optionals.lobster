@@ -8,14 +8,13 @@
 // is emitted by lobstertable/optionals.go from the descriptor facts
 // (§3.2), beside the keyed Shape this runtime family already registers.
 //
-// NOT carried, and why (docs/SPEC-TABLES.md §2.3, §2.8): `| required` is a
-// SLOT fact — load must count an unnamed required field (LoadReport has no
-// such counter yet) and save must skip its default-elision — and neither
-// walker has a field-level hook; and save's map branch does not consult the
-// presence companion, so an absent and a present-empty optional map write the
-// same bytes while the generated Go writer keeps them apart. Both need the
-// walker changes recorded in internal/codegen/lobstertable/optionals.go
-// (PATHS-PROPOSED); no shape can reach them.
+// `| required` and the present-empty `?map[K]V` are SLOT facts no Shape
+// registration can reach (docs/SPEC-TABLES.md §2.3, §2.8), so this card added
+// their walker hooks: runtime/load.lobster reports LoadReport.missing_required
+// and refuses the record at any depth, and runtime/schema_save.lobster
+// consults the map's presence companion and skips default-elision for a
+// required field. This file keeps the presence count the test names them
+// with.
 // SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 import .schema_tables
