@@ -1076,12 +1076,116 @@ local function read_base64(inp, bound, report)
   return table.concat(out)
 end
 
+-- A TEXT LIST (docs/SPEC-TABLES.md §2.13, §16.2) is stored as an array of its
+-- generated element record, whose text is the PLAIN array of strings: the
+-- record's one string field is each element, and an absent ?string element is
+-- `null`. The element record is the only generated entry reached through an
+-- array — it is tagged map_entry like a map's entry and holds exactly one
+-- field (`value`), while a map entry holds two (`key`, `value`).
+local function text_list_elem(T, fd)
+  if fd.shape ~= "array" or fd.elem == nil or fd.elem.shape ~= "table" then
+    return nil, nil
+  end
+  local d = T.Tables[fd.elem.target]
+  if d == nil or not d.map_entry or #d.fields ~= 1 then return nil, nil end
+  local vf = d.fields[1]
+  if vf == nil or vf.shape ~= "string" then return nil, nil end
+  return d, vf
+end
+
+-- A text list's TOTAL clamp names its field once, the first time (§2.13,
+-- §16.2), as the generated Go records it in the report's Reason; the element
+-- and count clamps are §2.13's ordinary counters and name no field here.
+local function text_list_clamped(report, table_name, field_name)
+  report.clamped = report.clamped + 1
+  if not report.Reason or report.Reason == "" then
+    report.Reason = "clamped: " .. table_name .. "." .. field_name
+  end
+end
+
+-- ONE text list's JSON array (§16.2): strings in INDEX order, `null` for an
+-- absent ?string element. A plain null, any other JSON type, an element past a
+-- [..N] count and an element past `| total = N` are the rows' own verdicts.
+local function read_text_list(T, fd, d, vf, inp, holder, key, depth, graph, report, table_name, field_name)
+  local out = {}
+  local bound = fd.list and 0x7fffffff or (fd.bound or 0)
+  local cap = vf.bound or -1
+  local total = fd.total or 0
+  local placed, spent, full = 0, 0, false
+  while true do
+    local c = peek(inp)
+    if c == ']' then inp.p = inp.p + 1; break end
+    if c == nil then inp.bad = true; return false end
+    if full then
+      if not skip_value(inp, depth + 1, graph) then return false end
+    elseif placed >= bound then
+      report.clamped = report.clamped + 1
+      if not skip_value(inp, depth + 1, graph) then return false end
+    else
+      local vs = value_shape(inp)
+      if vs == 'z' and vf.optional then
+        literal(inp, "null")
+        placed = placed + 1
+        out[placed] = zero_elem(T, fd.elem)
+      elseif vs ~= 's' then
+        report.kindMismatch = report.kindMismatch + 1
+        if not skip_value(inp, depth + 1, graph) then return false end
+        placed = placed + 1
+        out[placed] = zero_elem(T, fd.elem)
+      else
+        local txt, clamped, ok, nul = scan_string(inp, cap)
+        if not ok then return false end
+        -- §2.13.1: an unbounded element or key whose text decodes to U+0000
+        -- refuses the read too; scan_string flags a zero at every cap here.
+        if nul then
+          report.Reason = "text_holds_zero: " .. table_name .. "." .. field_name
+          inp.bad = true
+          return false
+        end
+        if clamped then report.clamped = report.clamped + 1 end
+        local rec = zero_elem(T, fd.elem)
+        rec[vf.name] = txt
+        if vf.optional then rec[vf.present] = true end
+        if total > 0 then
+          spent = spent + #txt
+          if spent > total then
+            text_list_clamped(report, table_name, field_name)
+            full = true
+          else
+            placed = placed + 1
+            out[placed] = rec
+          end
+        else
+          placed = placed + 1
+          out[placed] = rec
+        end
+      end
+    end
+    c = peek(inp)
+    if c == ',' then
+      inp.p = inp.p + 1
+    elseif c == ']' then
+      inp.p = inp.p + 1
+      break
+    else
+      inp.bad = true
+      return false
+    end
+  end
+  holder[key] = out
+  return true
+end
+
 local function read_array(T, fd, inp, holder, key, depth, graph, report, table_name, field_name)
   if peek(inp) ~= '[' then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out = {}
   if fd.fixed then
     for i = 1, fd.bound do out[i] = zero_elem(T, fd.elem) end
+  end
+  local td, tvf = text_list_elem(T, fd)
+  if td ~= nil then
+    return read_text_list(T, fd, td, tvf, inp, holder, key, depth, graph, report, table_name, field_name)
   end
   local bound = fd.list and 0x7fffffff or fd.bound
   local placed = 0
@@ -1135,7 +1239,12 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
     local c = peek(inp)
     if c == '}' then inp.p = inp.p + 1; break end
     if c == nil then inp.bad = true; return false end
-    local kraw, clamped, ok, nul = scan_string(inp, MAX_KEY)
+    -- §2.13.1: an UNBOUNDED map key has no length bound, so it is scanned
+    -- with none; a bounded key keeps the walker's own scratch cap and its
+    -- declared bound below.
+    local keycap = MAX_KEY
+    if string_key and kf.bound == nil then keycap = -1 end
+    local kraw, clamped, ok, nul = scan_string(inp, keycap)
     if not ok then return false end
     if peek(inp) ~= ':' then inp.bad = true; return false end
     inp.p = inp.p + 1
@@ -2067,7 +2176,51 @@ local function write_union(T, u, val, depth, g, w)
   return true
 end
 
+-- ONE text list written as its plain JSON array (§16.2): the element record's
+-- string, or `null` for an absent ?string element. The write-side bounds are
+-- §2.13's: the element past M, a zero byte or ill-formed UTF-8, and a sum past
+-- `| total = N` refuse the value (nil from ToJson), as the generated Go does.
+local function write_text_list(T, fd, d, vf, val, depth, g, w)
+  local n = count_of(fd, val)
+  local total = fd.total or 0
+  local spent = 0
+  local texts = {}
+  for i = 1, n do
+    local rec = val[i]
+    if rec == nil then rec = zero_elem(T, fd.elem) end
+    if vf.optional and rec[vf.present] ~= true then
+      texts[i] = false
+    else
+      local s = rec[vf.name]
+      if s == nil then s = "" end
+      if vf.bound ~= nil and vf.bound > 0 and #s > vf.bound then return false end
+      if s:find("\0", 1, true) ~= nil then return false end
+      local at = 1
+      while at <= #s do
+        local width = utf8_seq(s, at)
+        if width < 0 then return false end
+        at = at + width
+      end
+      spent = spent + #s
+      if total > 0 and spent > total then return false end
+      texts[i] = s
+    end
+  end
+  if n == 0 then raw(w, "[]"); return true end
+  put(w, '[')
+  for i = 1, n do
+    if i > 1 then put(w, ',') end
+    line(w, depth + 1)
+    if texts[i] == false then raw(w, "null") else write_string(w, texts[i]) end
+  end
+  line(w, depth)
+  put(w, ']')
+  return true
+end
+
 local function write_array(T, fd, val, depth, g, w)
+  local td, tvf = text_list_elem(T, fd)
+  if td ~= nil then return write_text_list(T, fd, td, tvf, val, depth, g, w) end
   local n = count_of(fd, val)
   if n == 0 then raw(w, "[]"); return true end
   put(w, '[')
