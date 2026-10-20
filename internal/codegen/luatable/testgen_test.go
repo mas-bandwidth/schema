@@ -114,6 +114,11 @@ func TestLuaTestgenWritesPassingTests(t *testing.T) {
 			if !bytes.Contains(out, []byte("PASS Test"+root+"GenRoundTrip")) {
 				t.Fatalf("%s did not run Test%sGenRoundTrip:\n%s", name, root, out)
 			}
+			// §16.11 registers a damage test beside every round trip: a file
+			// that quietly loses it must not stay green.
+			if !bytes.Contains(out, []byte("PASS Test"+root+"GenDamage")) {
+				t.Fatalf("%s did not run Test%sGenDamage:\n%s", name, root, out)
+			}
 		}
 		t.Logf("%s passes under the pinned interpreter", name)
 	}
@@ -144,6 +149,48 @@ func TestLuaTestgenWritesPassingTests(t *testing.T) {
 		}
 		if !bytes.Contains(out, []byte("FAIL")) {
 			t.Fatalf("a sabotaged load failed without a named FAIL:\n%s", out)
+		}
+	})
+
+	// A SABOTAGED TEXT LOAD IS CAUGHT: one anchor in the emitted text.lua,
+	// matched exactly once, makes LoadText read a damaged base64 body as an
+	// empty wire instead of refusing it, so the generated damage test must go
+	// red (§16.8).
+	t.Run("sabotaged_text", func(t *testing.T) {
+		t.Parallel()
+		const anchor = "  local wire = decode(text)\n  if wire == nil then error(\"base64_damaged\", 0) end"
+		const sabotaged = "  local wire = decode(text)\n  if wire == nil then wire = \"\" end"
+		src, ok := generated["text.lua"]
+		if !ok {
+			t.Fatal("the emitted unit has no text.lua")
+		}
+		if n := strings.Count(string(src), anchor); n != 1 {
+			t.Fatalf("the text anchor matches %d times, want 1", n)
+		}
+		files := map[string][]byte{}
+		for name, data := range generated {
+			files[name] = data
+		}
+		files["text.lua"] = []byte(strings.Replace(string(src), anchor, sabotaged, 1))
+		bad := t.TempDir()
+		write(bad, files)
+		const main = "GuardedTable_gen_test.lua"
+		out, err := runLuaFile(t, bad, main)
+		if err == nil {
+			t.Fatalf("a sabotaged text load went unnoticed by the generated damage test:\n%s", out)
+		}
+		var carried bool
+		for _, root := range fileRoots[main] {
+			if !bytes.Contains(tests[main], []byte("Test"+root+"GenDamage")) {
+				continue
+			}
+			carried = true
+			if !bytes.Contains(out, []byte("FAIL Test"+root+"GenDamage")) {
+				t.Fatalf("a sabotaged text load did not turn Test%sGenDamage red:\n%s", root, out)
+			}
+		}
+		if !carried {
+			t.Fatalf("%s carries no generated damage test", main)
 		}
 	})
 }
