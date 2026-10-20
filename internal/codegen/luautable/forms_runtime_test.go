@@ -5,27 +5,37 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"sort"
-	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 )
 
+// undeclaredSchemaModules are the emitted files whose bytes depend on the
+// schema of a one-table unit: its <Base>Table.luau and the unit view, whose
+// manifest emitUnitView templates from the unit (luautable.go:190).
+var undeclaredSchemaModules = []string{"ProbeTable.luau", "view.luau"}
+
 // TestLuauUndeclaredUnitKeepsTableAndRuntime holds docs/SPEC-TABLES.md §2.12
-// on the undeclared table: a table with no `forms` line generates exactly the
-// per-table module it generated before the declaration existed, and the
-// runtime modules it emits are byte-identical to their sources under
-// internal/codegen/luautable/runtime/.
+// on the undeclared table: a table with no `forms` line carries every form its
+// backend emits, exactly as before the declaration existed, and the runtime
+// modules it emits are byte-identical to their sources under
+// internal/codegen/luau/runtime/ and internal/codegen/luautable/runtime/.
 func TestLuauUndeclaredUnitKeepsTableAndRuntime(t *testing.T) {
 	t.Parallel()
 	defaultUnit := generateFiles(t, map[string]string{"Probe.schema": "package probe\ntable Pong { x int32 }\n"})
 
-	// (1) The per-table module(s) — the <Base>Table.luau files, whose bytes
-	// depend on the schema — are pinned by a digest over those files only, so
-	// a runtime fix never makes this test need editing (§2.12).
-	gotDigest := tableModuleDigest(defaultUnit.files)
-	if gotDigest != wantUndeclaredTableDigest {
-		t.Errorf("the undeclared unit's per-table bytes changed from BASE: got %s, want %s", gotDigest, wantUndeclaredTableDigest)
+	// (1) The schema-dependent modules — <Base>Table.luau and the unit's
+	// view.luau — are pinned by a digest over those files only, so a runtime
+	// fix never makes this test need editing (§2.12).
+	for _, name := range undeclaredSchemaModules {
+		if _, ok := defaultUnit.files[name]; !ok {
+			t.Errorf("undeclared unit lost its schema-dependent %s", name)
+		}
+	}
+	gotDigest := schemaModuleDigest(defaultUnit.files, undeclaredSchemaModules)
+	if gotDigest != wantUndeclaredSchemaDigest {
+		t.Errorf("the undeclared unit's schema-dependent bytes changed from BASE: got %s, want %s", gotDigest, wantUndeclaredSchemaDigest)
 	}
 	if bytes.Contains(defaultUnit.files["ProbeTable.luau"], []byte("forms = {")) {
 		t.Error("undeclared table gained a forms marker")
@@ -36,13 +46,15 @@ func TestLuauUndeclaredUnitKeepsTableAndRuntime(t *testing.T) {
 		}
 	}
 
-	// (2) Every emitted runtime file is byte-equal to its source under
-	// internal/codegen/luautable/runtime/, read through the package's own
-	// embed, so a runtime fix needs no edit here while a forms change that
-	// leaked into a runtime module still fails. view.luau carries the unit
-	// manifest templated by emitUnitView, so it is not a straight copy.
-	for name, src := range luautable.Runtime() {
-		if name == "view.luau" {
+	// (2) Every emitted runtime file is byte-equal to its source under the
+	// package's own embed, so a runtime fix needs no edit here while a forms
+	// change that leaked into a runtime module still fails. view.luau is the
+	// one runtime template the unit manifest rewrites, so it is pinned by the
+	// digest above, not by byte-equality.
+	tableRuntime := luautable.Runtime()
+	luauRuntime := luau.Runtime()
+	for name, src := range tableRuntime {
+		if containsName(undeclaredSchemaModules, name) {
 			continue
 		}
 		got, ok := defaultUnit.files[name]
@@ -51,30 +63,51 @@ func TestLuauUndeclaredUnitKeepsTableAndRuntime(t *testing.T) {
 			continue
 		}
 		if !bytes.Equal(got, src) {
-			t.Errorf("emitted %s differs from its source in runtime/", name)
+			t.Errorf("emitted %s differs from its source in luautable/runtime/", name)
 		}
+	}
+	for name, src := range luauRuntime {
+		got, ok := defaultUnit.files[name]
+		if !ok {
+			t.Errorf("emitted tree lacks the %s runtime", name)
+			continue
+		}
+		if !bytes.Equal(got, src) {
+			t.Errorf("emitted %s differs from its source in luau/runtime/", name)
+		}
+	}
+
+	// (3) Every emitted file is covered by one of the two checks above: a new
+	// file neither pinned nor copied from a source is a gap in this test, not
+	// an unchecked emission.
+	for name := range defaultUnit.files {
+		if containsName(undeclaredSchemaModules, name) {
+			continue
+		}
+		if _, ok := tableRuntime[name]; ok {
+			continue
+		}
+		if _, ok := luauRuntime[name]; ok {
+			continue
+		}
+		t.Errorf("emitted %s is neither a pinned schema module nor a runtime module copied from source", name)
 	}
 }
 
-// wantUndeclaredTableDigest is the sha256 over the per-table module(s) of an
-// undeclared table unit at this head, name and bytes in sorted order — the
-// <Base>Table.luau files, whose bytes depend on the schema. A table with no
-// declaration must generate exactly the module it generated before
-// (docs/SPEC-TABLES.md §2.12). Runtime modules are pinned separately, by
-// byte-equality to their sources in runtime/, so a runtime fix never edits
+// wantUndeclaredSchemaDigest is the sha256 over ProbeTable.luau and view.luau,
+// name then bytes in sorted order, at this head. Both depend on the schema (the
+// table descriptor and the unit manifest), so they are the modules a forms
+// change can alter; a table with no declaration must generate exactly what it
+// generated before (docs/SPEC-TABLES.md §2.12). Runtime modules are pinned
+// separately, by byte-equality to their sources, so a runtime fix never edits
 // this constant.
-const wantUndeclaredTableDigest = "931fe4c3bd8fdd3ae4fa4ae84700ee0dabf62428f23a0073ebe135664e41fd0d"
+const wantUndeclaredSchemaDigest = "348f447fa2d7d18049bf255c3e2a130227add52b8e41df6f81e7aea7ad56fa6e"
 
-// tableModuleDigest hashes the per-table module(s) of a unit — the
-// <Base>Table.luau files, name then bytes, in sorted name order — so an edit
-// to any generated table module is pinned (docs/SPEC-TABLES.md §2.12).
-func tableModuleDigest(files map[string][]byte) string {
-	var names []string
-	for name := range files {
-		if strings.HasSuffix(name, "Table.luau") {
-			names = append(names, name)
-		}
-	}
+// schemaModuleDigest hashes the named schema-dependent modules of a unit —
+// name then bytes, in sorted name order — so an edit to either is pinned
+// (docs/SPEC-TABLES.md §2.12).
+func schemaModuleDigest(files map[string][]byte, modules []string) string {
+	names := append([]string(nil), modules...)
 	sort.Strings(names)
 	h := sha256.New()
 	for _, name := range names {
@@ -82,4 +115,13 @@ func tableModuleDigest(files map[string][]byte) string {
 		h.Write(files[name])
 	}
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+func containsName(names []string, name string) bool {
+	for _, n := range names {
+		if n == name {
+			return true
+		}
+	}
+	return false
 }
