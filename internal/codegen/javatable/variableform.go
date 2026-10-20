@@ -2272,7 +2272,9 @@ public final class TableJson {
                             v = Long.parseUnsignedLong(tok);
                         } catch (NumberFormatException e) {
                             rep.clamped++; // past what sixty-four bits hold
-                            v = -1L; // the largest unsigned magnitude; the range checks below add a second clamp when the bound is narrower than uint64
+                            v = -1L; // the largest unsigned magnitude; the range checks below
+                            // add a second clamp when the bound is narrower than
+                            // uint64
                         }
                     }
                 }
@@ -3022,20 +3024,32 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("    // pointer-reachable TABLE types it can place, plus the two reserved\n")
 	b.WriteString("    // BLOB type ids this root's pointer closure names (docs/SPEC-TABLES.md\n")
 	b.WriteString("    // §2.5, §3.1, §6.5). A type id outside that set commands no region.\n")
-	b.WriteString("    private static final TableVariable.NodeSizer NODE_SIZER = new TableVariable.NodeSizer() {\n")
-	b.WriteString("        public long size(long typeId, TableVariable.Reader r, int off, int len, TableVariable.Measure m) {\n")
+	b.WriteString("    private static final TableVariable.NodeSizer NODE_SIZER =\n")
+	b.WriteString("            new TableVariable.NodeSizer() {\n")
+	b.WriteString("                public long size(\n")
+	b.WriteString("                        long typeId,\n")
+	b.WriteString("                        TableVariable.Reader r,\n")
+	b.WriteString("                        int off,\n")
+	b.WriteString("                        int len,\n")
+	b.WriteString("                        TableVariable.Measure m) {\n")
 	for _, reach := range ir.PointerReachable(st) {
-		fmt.Fprintf(b, "            if (typeId == %sVariable.TYPE_ID) { return %sVariable.measureNode(r, off, len); }\n", reach.Name, reach.Name)
+		fmt.Fprintf(b, "                    if (typeId == %sVariable.TYPE_ID) {\n", reach.Name)
+		fmt.Fprintf(b, "                        return %sVariable.measureNode(r, off, len);\n", reach.Name)
+		b.WriteString("                    }\n")
 	}
 	if strBlob {
-		b.WriteString("            if (typeId == TableVariable.STRING_ID) { return (8 + len + 1 + ALIGN - 1) & -ALIGN; }\n")
+		b.WriteString("                    if (typeId == TableVariable.STRING_ID) {\n")
+		b.WriteString("                        return (8 + len + 1 + ALIGN - 1) & -ALIGN;\n")
+		b.WriteString("                    }\n")
 	}
 	if bytesBlob {
-		b.WriteString("            if (typeId == TableVariable.BYTES_ID) { return (8 + len + ALIGN - 1) & -ALIGN; }\n")
+		b.WriteString("                    if (typeId == TableVariable.BYTES_ID) {\n")
+		b.WriteString("                        return (8 + len + ALIGN - 1) & -ALIGN;\n")
+		b.WriteString("                    }\n")
 	}
-	b.WriteString("            return 0;\n")
-	b.WriteString("        }\n")
-	b.WriteString("    };\n\n")
+	b.WriteString("                    return 0;\n")
+	b.WriteString("                }\n")
+	b.WriteString("            };\n\n")
 	b.WriteString("    // The one-argument form allocates ONE Measure handle per call; a caller\n")
 	b.WriteString("    // that keeps a Measure measures with no allocation at all: the walk reads\n")
 	b.WriteString("    // every nested body in place on the Measure's one reader (Reader.bodyEnd)\n")
@@ -3611,6 +3625,21 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	b.WriteString("        }\n")
 }
 
+// indentLines writes text one line at a time behind prefix, keeping blank
+// lines blank: a template that nests an existing block one level deeper in
+// the formatter's shape shifts the block whole.
+func indentLines(b *strings.Builder, text, prefix string) {
+	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+		if line == "" {
+			b.WriteString("\n")
+			continue
+		}
+		b.WriteString(prefix)
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+}
+
 func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
 	m := varMember(f)
 	fmt.Fprintf(b, "                if (in.peek() == '[') {\n")
@@ -3629,59 +3658,63 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	b.WriteString("                            in.rep.clamped++;\n")
 	b.WriteString("                            in.skipValue();\n")
 	b.WriteString("                        } else {\n")
+	var inner strings.Builder
+	ib := &inner
 	if variableWide(f) {
-		writeVariableWideJsonRead(b, f, "v."+m, true)
+		ib.WriteString(strings.Repeat(" ", 24))
+		writeVariableWideJsonRead(ib, f, "v."+m, true)
 	} else {
 		switch f.Type.Kind {
 		case ir.TBool:
-			fmt.Fprintf(b, "                        if (ec == 't') { in.lit(\"true\"); v.%s.add(true); }\n", m)
-			fmt.Fprintf(b, "                        else if (ec == 'f') { in.lit(\"false\"); v.%s.add(false); }\n", m)
-			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			fmt.Fprintf(ib, "                        if (ec == 't') { in.lit(\"true\"); v.%s.add(true); }\n", m)
+			fmt.Fprintf(ib, "                        else if (ec == 'f') { in.lit(\"false\"); v.%s.add(false); }\n", m)
+			ib.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
 		case ir.TInt:
 			min, max := jsonIntRange(f)
 			if f.Type.Width <= 32 {
-				fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add((int) in.integer(%t, %s, %s)); }\n", m, f.Type.Signed, min, max)
+				fmt.Fprintf(ib, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add((int) in.integer(%t, %s, %s)); }\n", m, f.Type.Signed, min, max)
 			} else {
-				fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(%t, %s, %s)); }\n", m, f.Type.Signed, min, max)
+				fmt.Fprintf(ib, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(%t, %s, %s)); }\n", m, f.Type.Signed, min, max)
 			}
-			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			ib.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
 		case ir.TBits:
 			min, max := jsonIntRange(f)
 			if f.Type.Width <= 32 {
-				fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add((int) in.integer(false, %s, %s)); }\n", m, min, max)
+				fmt.Fprintf(ib, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add((int) in.integer(false, %s, %s)); }\n", m, min, max)
 			} else {
-				fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(false, %s, %s)); }\n", m, min, max)
+				fmt.Fprintf(ib, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(false, %s, %s)); }\n", m, min, max)
 			}
-			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			ib.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
 		case ir.TFloat32:
-			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number32()); }\n", m)
-			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			fmt.Fprintf(ib, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number32()); }\n", m)
+			ib.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
 		case ir.TFloat64:
-			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number()); }\n", m)
-			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			fmt.Fprintf(ib, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number()); }\n", m)
+			ib.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
 		case ir.TString:
-			fmt.Fprintf(b, "                        if (ec == '\"') { v.%s.add(in.readString(%d)); }\n", m, f.Type.Size)
-			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
+			fmt.Fprintf(ib, "                        if (ec == '\"') { v.%s.add(in.readString(%d)); }\n", m, f.Type.Size)
+			ib.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
 		case ir.TNamed:
 			if un := variableUnion(f); un != nil {
-				fmt.Fprintf(b, "                        v.%s.add(%sVariable.readJson(in));\n", m, un.Name)
+				fmt.Fprintf(ib, "                        v.%s.add(%sVariable.readJson(in));\n", m, un.Name)
 			}
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
-				b.WriteString("                        if (ec == '\"') {\n")
-				b.WriteString("                            String s = in.scanString();\n")
-				b.WriteString("                            if(\"None\".equals(s)){v." + m + ".add(0);}else ")
+				ib.WriteString("                        if (ec == '\"') {\n")
+				ib.WriteString("                            String s = in.scanString();\n")
+				ib.WriteString("                            if(\"None\".equals(s)){v." + m + ".add(0);}else ")
 				for j := range ref.Variants {
-					fmt.Fprintf(b, "                            if (%q.equals(s)) { v.%s.add(%d); }\n", ref.Variants[j], m, j+1)
-					b.WriteString("                            else ")
+					fmt.Fprintf(ib, "                            if (%q.equals(s)) { v.%s.add(%d); }\n", ref.Variants[j], m, j+1)
+					ib.WriteString("                            else ")
 				}
-				fmt.Fprintf(b, "{ v.%s.add(0); in.rep.unknown++; }\n", m)
-				b.WriteString("                        } else { in.skipValue(); in.rep.kindMismatch++; }\n")
+				fmt.Fprintf(ib, "{ v.%s.add(0); in.rep.unknown++; }\n", m)
+				ib.WriteString("                        } else { in.skipValue(); in.rep.kindMismatch++; }\n")
 			case *ir.Flags:
-				fmt.Fprintf(b, "                        {Long bits=TableJson.readFlags(in,%s);v.%s.add(bits==null?0L:bits);}\n", variableFlagNames(ref), m)
+				fmt.Fprintf(ib, "                        {Long bits=TableJson.readFlags(in,%s);v.%s.add(bits==null?0L:bits);}\n", variableFlagNames(ref), m)
 			}
 		}
 	}
+	indentLines(b, inner.String(), "    ")
 	b.WriteString("                            idx++;\n")
 	b.WriteString("                        }\n")
 	b.WriteString("                        ec = in.peek();\n")
