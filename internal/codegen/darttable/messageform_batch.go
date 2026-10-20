@@ -460,8 +460,10 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		g.pf("%s  if (r.bits.failed) { %s; }\n", ind, bad)
 		g.pf("%s  var kept = n;\n", ind)
 		g.pf("%s  if (kept > %d) { kept = %d; r.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size)
-		g.pf("%s  for (var i = 0; i < n; i++) { final v = r.bits.get(16); if (i < kept) %s[i] = v; }\n", ind, expr)
+		g.pf("%s  final buf = List<int>(n);\n", ind)
+		g.pf("%s  for (var i = 0; i < n; i++) { buf[i] = r.bits.get(16); }\n", ind)
 		g.pf("%s  if (r.bits.failed) { %s; }\n", ind, bad)
+		g.pf("%s  for (var i = 0; i < kept; i++) { %s[i] = buf[i]; }\n", ind, expr)
 		g.pf("%s  %sLength = kept;\n", ind, expr)
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
@@ -469,8 +471,11 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		if f.Array == ir.ArrayCounted {
 			count = expr + "Count"
 			if ir.TableMessageCountBits(shape) > 0 {
-				g.pf("%s%s = r.bits.get(%d) + %d;\n", ind, count, ir.TableMessageCountBits(shape), shape.Min)
-				g.pf("%sif (r.bits.failed) { %s; }\n", ind, bad)
+				g.pf("%s{\n", ind)
+				g.pf("%s  final v = r.bits.get(%d) + %d;\n", ind, ir.TableMessageCountBits(shape), shape.Min)
+				g.pf("%s  if (r.bits.failed) { %s; }\n", ind, bad)
+				g.pf("%s  %s = v;\n", ind, count)
+				g.pf("%s}\n", ind)
 			}
 		} else if ir.TableMessageCountBits(shape) > 0 {
 			g.pf("%sr.bits.get(%d);\n", ind, ir.TableMessageCountBits(shape))
@@ -514,8 +519,11 @@ func (g *fixedModule) emitMessageReadElement(f *ir.Field, entry ir.TableVocabula
 func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
 	kind, shape := entry.Kind, entry.Shape
 	if kind == ir.TableKindBool {
-		g.pf("%s%s = r.bits.get(1) != 0;\n", ind, expr)
-		g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+		g.pf("%s{\n", ind)
+		g.pf("%s  final v = r.bits.get(1) != 0;\n", ind)
+		g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+		g.pf("%s  %s = v;\n", ind, expr)
+		g.pf("%s}\n", ind)
 		return
 	}
 	// A FLOAT IS READ BACK FROM ITS IEEE-754 BITS (docs/SPEC-TABLES.md §3.3,
@@ -527,6 +535,7 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		// are a NaN exactly when their magnitude exceeds infinity's.
 		g.pf("%s{\n", ind)
 		g.pf("%s  final b = r.bits.get(32);\n", ind)
+		g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 		g.pf("%s  if ((b & 0x7fffffff) <= 0x7f800000) {\n", ind)
 		g.pf("%s    TableBitWriter._float32Words[0] = b;\n", ind)
 		g.pf("%s    %s = TableBitWriter._float32Cell[0];\n", ind, expr)
@@ -540,8 +549,11 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		return
 	}
 	if kind == ir.TableKindF64 {
-		g.pf("%s%s = (ByteData(8)..setUint64(0, r.bits.get(64), Endian.little)).getFloat64(0, Endian.little);\n", ind, expr)
-		g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+		g.pf("%s{\n", ind)
+		g.pf("%s  final b = r.bits.get(64);\n", ind)
+		g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+		g.pf("%s  %s = (ByteData(8)..setUint64(0, b, Endian.little)).getFloat64(0, Endian.little);\n", ind, expr)
+		g.pf("%s}\n", ind)
 		return
 	}
 	bits := ir.TableMessageValueBits(kind, shape)
@@ -563,15 +575,17 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		g.pf("%s  %s = %s;\n%s}\n", ind, expr, value, ind)
 		return
 	}
-	g.pf("%s%s = r.bits.get(%d);\n", ind, expr, bits)
-	g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+	g.pf("%s{\n", ind)
+	g.pf("%s  final v = r.bits.get(%d);\n", ind, bits)
+	g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+	g.pf("%s  %s = v;\n", ind, expr)
 	if shape.Packing == ir.TableMessageRanged {
 		base := shape.Base
 		baseLit := "0"
 		if base != nil {
 			baseLit = fixedIntLit(base, 8)
 		}
-		g.pf("%s%s += %s;\n", ind, expr, baseLit)
+		g.pf("%s  %s += %s;\n", ind, expr, baseLit)
 	}
 	// THE VALUE IS RECONSTRUCTED AT ITS STORAGE WIDTH (the reference's
 	// tableMessageReadScalar writes the lane into the field's own bytes): a
@@ -580,8 +594,9 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	// 4294967289 in a 64-bit Dart int.
 	switch kind {
 	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32:
-		g.pf("%s%s = %s.toSigned(%d);\n", ind, expr, expr, 8*ir.TableKindWidth(int(kind)))
+		g.pf("%s  %s = %s.toSigned(%d);\n", ind, expr, expr, 8*ir.TableKindWidth(int(kind)))
 	}
+	g.pf("%s}\n", ind)
 }
 
 func (g *fixedModule) emitMessageReadEnum(e *ir.Enum, expr, ind string) {
