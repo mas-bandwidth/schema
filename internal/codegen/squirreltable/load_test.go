@@ -2,6 +2,7 @@ package squirreltable_test
 
 import (
 	"bufio"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -407,6 +410,126 @@ func TestSquirrelTableLoadNegativeControl(t *testing.T) {
 		t.Fatalf("the patched runtime reports %q, want the unknown counter gone", got)
 	}
 	t.Logf("unpatched %q, patched %q: the reports comparison goes red", want, got)
+}
+
+// TestSquirrelLoadClampsThe128BitRange is the 128-bit clamp's direct control
+// (docs/SPEC-TABLES.md §4: "A 128-bit integer clamps to its declared bounds in
+// 128 bits"). A form-1 body carries an int128 past its declared max; the load
+// clamps it to the bound, counts one `clamped` and saves the clamped value,
+// exactly as the Go engine does. With clampScalar's array branch reverted it
+// saves the raw value and reports no clamp, so this control goes red.
+func TestSquirrelLoadClampsThe128BitRange(t *testing.T) {
+	t.Parallel()
+	u := loadSource(t, "package wideprobe\n\ntable Root\n{\n    a int128 | min = 0, max = 100\n}\n")
+	dir := t.TempDir()
+	mod := emitUnit(t, dir, "wideprobe", u)
+	st, ok := u.Tables["Root"]
+	if !ok {
+		t.Fatal("the unit carries no table Root")
+	}
+	var a *ir.Field
+	for _, f := range st.Fields {
+		if f.Name == "a" {
+			a = f
+		}
+	}
+	if a == nil {
+		t.Fatal("wideprobe Root declares no field a")
+	}
+
+	// 1000 is past the declared max 100; the payload is the [lo, hi] pair.
+	wire := []byte{1}
+	wire = binary.AppendUvarint(wire, 1) // a's id reference
+	wire = append(wire, byte(ir.TableWireFieldKind(a)))
+	wire = binary.LittleEndian.AppendUint64(wire, 1000)
+	wire = binary.LittleEndian.AppendUint64(wire, 0)
+	wire = append(wire, 0)
+	wire = binary.LittleEndian.AppendUint64(wire, ir.TableFieldWireId(a))
+	wire = binary.LittleEndian.AppendUint64(wire, 1)
+
+	model := tabletext.NewModel(u)
+	inst := model.New(model.Lookup("Root"))
+	var report tabletext.Report
+	if _, err := tablewire.Decode(model, inst, wire, &report); err != nil {
+		t.Fatal(err)
+	}
+	want := reportOf(report)
+	if want != "0,0,0,1,0,false,read" {
+		t.Fatalf("the Go engine reports %q, want one clamp", want)
+	}
+	if got := squirrelReport(t, dir, "wideprobe", mod, string(wire)); got != want {
+		t.Fatalf("Squirrel reports %q, the Go engine %q: the 128-bit range did not clamp", got, want)
+	}
+	engineSaved, err := tablewire.Encode(model, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p strings.Builder
+	p.WriteString(savePrelude)
+	fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", "wideprobe", mod, "Root", "clamp")
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
+	saved := parseSaved(t, sqrun.Run(t, dir, "main.nut", map[string][]byte{"clamp": wire}))
+	row, ok := saved["clamp"]
+	if !ok || row.measure < 0 {
+		t.Fatalf("the clamped load did not save: %+v", row)
+	}
+	if row.hex != fmt.Sprintf("%x", engineSaved) {
+		t.Errorf("the clamped save is %s, the Go engine's %x", row.hex, engineSaved)
+	}
+	t.Logf("128-bit value 1000 clamped to 100: report %q, save %s", want, row.hex)
+}
+
+// TestSquirrelLoadFramesTheMapEntryTerminator is the map-entry framing's
+// direct control (docs/SPEC-TABLES.md §2.8, §3: "A map checks the entry's
+// terminator during the key scan ... malformed entry framing stops the map").
+// An entry whose body ends without its zero reference is damage, not a key
+// mismatch: the load counts `malformed` and saves the empty map, exactly as
+// the Go engine does. With the framing reverted the key scan calls the missing
+// terminator a key failure and counts kind_mismatch, so this control goes red.
+func TestSquirrelLoadFramesTheMapEntryTerminator(t *testing.T) {
+	t.Parallel()
+	u := loadSource(t, "package mapprobe\n\ntable Root\n{\n    entries map[int32]int32\n}\n")
+	dir := t.TempDir()
+	mod := emitUnit(t, dir, "mapprobe", u)
+
+	entriesID, keyID, valueID := ir.TableWireId("entries"), ir.MapKeyWireId, ir.MapValueWireId
+	var entry []byte
+	entry = binary.AppendUvarint(entry, 2) // key's id reference
+	entry = append(entry, byte(ir.TableKindI32))
+	entry = binary.LittleEndian.AppendUint32(entry, 7)
+	entry = binary.AppendUvarint(entry, 3) // value's id reference
+	entry = append(entry, byte(ir.TableKindI32))
+	entry = binary.LittleEndian.AppendUint32(entry, 9)
+	// NO ZERO REFERENCE: the entry's body ends after the value.
+	body := []byte{byte(ir.TableKindTable)}
+	body = binary.AppendUvarint(body, 1) // count
+	body = binary.AppendUvarint(body, uint64(len(entry)))
+	body = append(body, entry...)
+	wire := []byte{1}
+	wire = binary.AppendUvarint(wire, 1) // entries' id reference
+	wire = append(wire, byte(ir.TableKindArray))
+	wire = binary.AppendUvarint(wire, uint64(len(body)))
+	wire = append(wire, body...)
+	wire = append(wire, 0)
+	for _, id := range []uint64{entriesID, keyID, valueID} {
+		wire = binary.LittleEndian.AppendUint64(wire, id)
+	}
+	wire = binary.LittleEndian.AppendUint64(wire, 3)
+
+	model := tabletext.NewModel(u)
+	inst := model.New(model.Lookup("Root"))
+	var report tabletext.Report
+	if _, err := tablewire.Decode(model, inst, wire, &report); err != nil {
+		t.Fatal(err)
+	}
+	want := reportOf(report)
+	if want != "0,0,0,0,0,true,read" {
+		t.Fatalf("the Go engine reports %q, want the map entry's framing damage", want)
+	}
+	if got := squirrelReport(t, dir, "mapprobe", mod, string(wire)); got != want {
+		t.Fatalf("Squirrel reports %q, the Go engine %q: the entry terminator was not framing", got, want)
+	}
+	t.Logf("map entry without its terminator: report %q", want)
 }
 
 func refusedInstanceCount(instances []instanceRow, refused map[string]bool) int {

@@ -283,6 +283,9 @@ func startFuzzLeg(t *testing.T, dir string, builder bool, roster []fuzzRoot) (*f
 			t.Fatalf("the driver did not answer the roster: %v\n%s", err, leg.stderr.String())
 		}
 		known[i] = b != 0
+		if known[i] && roster[i].unit == "scalars" {
+			t.Logf("roster: scalars.%s answered 1 (builder arm %t)", roster[i].root, builder)
+		}
 	}
 	return leg, known
 }
