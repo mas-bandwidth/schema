@@ -266,10 +266,20 @@ func fixedFieldRefusal(st *ir.Struct, f *ir.Field) string {
 		return ": a pointer (docs/SPEC-TABLES.md §2.1) is not fixed"
 	case f.Array == ir.ArrayList:
 		return ": an unbounded array (docs/SPEC-TABLES.md §2.9) is not fixed"
+	case f.Type.Kind == ir.TFixed:
+		return ": a fixed/ufixed (docs/SPEC-TABLES.md §15) is not fixed"
+	case f.Type.Kind == ir.TInt && f.Type.Width == 128:
+		return ": an int128 (docs/SPEC-TABLES.md §3) is not fixed"
+	case f.Type.Kind == ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if v.F != nil && v.F.Type.Kind == ir.TFixed {
+					return ": a union arm holding a fixed/ufixed (docs/SPEC-TABLES.md §15) is not fixed"
+				}
+			}
+		}
 	}
-	// THE WIDE KINDS ARE CARRIED (docs/SPEC-TABLES.md §3.4, §15): the fixed
-	// form names no kind, so a 128-bit field is a sixteen-byte store and a
-	// fixed-point one its raw scaled integer at its declared width.
 	return ""
 }
 

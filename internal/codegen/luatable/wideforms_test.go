@@ -30,12 +30,17 @@ func TestLuaWideKindsFixedAndMessageForms(t *testing.T) {
 	repo := filepath.Join("..", "..", "..")
 	schema := `package wideforms
 
-fixed table Root
+type Wide
 {
     a int128 | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376
     b uint128
     c fixed(16, 16) | min = -8, max = 8
     d int128 | min = -1, max = 1000
+}
+
+fixed table Root
+{
+    w Wide
 }
 `
 	dir := t.TempDir()
@@ -55,10 +60,10 @@ fixed table Root
 	probe := fmt.Sprintf(`local T = require(%q)
 local hexline = require("hexline")
 local full = T.NewRoot()
-full.a = { lo = 0, hi = 0xFFFFFFFFFFFFFFFE }
-full.b = { lo = 0x0123456789abcdef, hi = 0xfedcba9876543210 }
-full.c = -98304
-full.d = { lo = 5, hi = 0 }
+full.w.a = { lo = 0, hi = 0xFFFFFFFFFFFFFFFE }
+full.w.b = { lo = 0x0123456789abcdef, hi = 0xfedcba9876543210 }
+full.w.c = -98304
+full.w.d = { lo = 5, hi = 0 }
 local empty = T.NewRoot()
 hexline(T.WriteFixed("Root", full))
 local vocab = {}
@@ -130,7 +135,7 @@ hexline(saved)
 local inputs = require("inputs")
 local function dump(v)
   return string.format("%%016x%%016x%%016x%%016x%%016x%%016x%%016x",
-    v.a.lo, v.a.hi, v.b.lo, v.b.hi, v.c, v.d.lo, v.d.hi)
+    v.w.a.lo, v.w.a.hi, v.w.b.lo, v.w.b.hi, v.w.c, v.w.d.lo, v.w.d.hi)
 end
 print(dump(T.ReadFixed("Root", inputs.fixed)))
 local vocab = {}
@@ -175,6 +180,8 @@ func Int128From64(v int64) Int128 {
 	return Int128{Lo: uint64(v)}
 }
 
+func Uint128From64(v uint64) Uint128 { return Uint128{Lo: v} }
+
 func (a Int128) Cmp(b Int128) int {
 	if int64(a.Hi) != int64(b.Hi) {
 		if int64(a.Hi) < int64(b.Hi) {
@@ -190,6 +197,32 @@ func (a Int128) Cmp(b Int128) int {
 	}
 	return 0
 }
+
+func (a Int128) Int128() Int128 { return a }
+func (a Uint128) Int128() Int128 { return Int128{Lo: a.Lo, Hi: a.Hi} }
+func (a Int128) Uint128() Uint128 { return Uint128{Lo: a.Lo, Hi: a.Hi} }
+
+type WriteStream struct{ err error }
+
+func (s *WriteStream) Err() error                                  { return s.err }
+func (s *WriteStream) SerializeAlign()                             {}
+func (s *WriteStream) SerializeBits(v *uint32, bits int)           {}
+func (s *WriteStream) SerializeBits64(v *uint64, bits int)         {}
+func (s *WriteStream) SerializeInt128(v *Int128, lo, hi Int128)    {}
+func (s *WriteStream) SerializeUint128(v *Uint128)                 {}
+func (s *WriteStream) SerializeFixed64(v *int64, i, f int, lo, hi int64) {}
+func (s *WriteStream) SerializeFixed128(v *Int128, i, f int, lo, hi Int128) {}
+
+type ReadStream struct{ err error }
+
+func (s *ReadStream) Err() error                                  { return s.err }
+func (s *ReadStream) SerializeAlign()                             {}
+func (s *ReadStream) SerializeBits(v *uint32, bits int)           {}
+func (s *ReadStream) SerializeBits64(v *uint64, bits int)         {}
+func (s *ReadStream) SerializeInt128(v *Int128, lo, hi Int128)    {}
+func (s *ReadStream) SerializeUint128(v *Uint128)                 {}
+func (s *ReadStream) SerializeFixed64(v *int64, i, f int, lo, hi int64) {}
+func (s *ReadStream) SerializeFixed128(v *Int128, i, f int, lo, hi Int128) {}
 `
 
 const wideFormsGoProbe = `package wideforms
@@ -204,10 +237,12 @@ import (
 
 func TestGoWideForms(t *testing.T) {
 	full := Root{
-		A: serialize.Int128{Lo: 0, Hi: 0xFFFFFFFFFFFFFFFE},
-		B: serialize.Uint128{Lo: 0x0123456789abcdef, Hi: 0xfedcba9876543210},
-		C: -98304,
-		D: serialize.Int128{Lo: 5},
+		W: Wide{
+			A: serialize.Int128{Lo: 0, Hi: 0xFFFFFFFFFFFFFFFE},
+			B: serialize.Uint128{Lo: 0x0123456789abcdef, Hi: 0xfedcba9876543210},
+			C: -98304,
+			D: serialize.Int128{Lo: 5},
+		},
 	}
 	empty := Root{}
 	fixed := make([]byte, RootFixedMeasure(1))
@@ -246,7 +281,7 @@ func TestGoWideForms(t *testing.T) {
 	}
 	dump := func(v Root) string {
 		return fmt.Sprintf("%016x%016x%016x%016x%016x%016x%016x",
-			v.A.Lo, v.A.Hi, v.B.Lo, v.B.Hi, uint64(int64(v.C)), v.D.Lo, v.D.Hi)
+			v.W.A.Lo, v.W.A.Hi, v.W.B.Lo, v.W.B.Hi, uint64(int64(v.W.C)), v.W.D.Lo, v.W.D.Hi)
 	}
 	out := dump(fixedBack[0]) + "\n" + dump(messageBack[0]) + "\n" + dump(messageBack[1]) + "\n"
 	if err := os.WriteFile("go_values.txt", []byte(out), 0o644); err != nil {

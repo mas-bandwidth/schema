@@ -933,3 +933,34 @@ func repeat(expr string, n int64) string {
 	}
 	return strings.Join(parts, ", ")
 }
+
+// init registers the closure-type storage pass: the fixed form's per-field
+// widths and a nested type's record size are emitted for every ROOT by the
+// fixed form's own pass, and a root's by-value `type` fields are walked
+// through descriptors whose size and field widths have to be there too
+// (docs/FIXED-FORM-ALGORITHM.md §3). The wide kinds reach the fixed form
+// through such a type (docs/SPEC-TABLES.md §3.4, §15): the fixed form names no
+// kind, so an int128 is a sixteen-byte store and a fixed-point value its raw
+// declared-width integer.
+func init() { RegisterPass(emitFixedClosureTypes) }
+
+func emitFixedClosureTypes(m *Module) error {
+	if len(fixedRoots(m.Unit)) == 0 {
+		return nil
+	}
+	for _, st := range m.Closure {
+		if st.IsTable || st.IsMapEntry() {
+			continue
+		}
+		m.Printf("_M.Tables[%q].fixed_size = %d\n", st.Name, fixedTypeBytesAt(st, 0))
+		m.Printf("_M.FixedFields[%q] = {", st.Name)
+		for i, f := range st.Fields {
+			if i > 0 {
+				m.Printf(",")
+			}
+			m.Printf(" { size = %d, elem = %d }", fixedFieldBytesAt(f, 0), fixedElementBytesAt(f, 0))
+		}
+		m.Printf(" }\n")
+	}
+	return nil
+}
