@@ -869,6 +869,18 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		// arm's slot at the arms' overlay offset. The Go reference's tableCook
 		// writer (internal/codegen/gotable/cookwrite.go) writes the tag, refuses
 		// a tag naming no arm, and writes the set arm's field at the same slot.
+		//
+		// A GUARDED union is storage under a guard like any other (§2, §7.2):
+		// its clear guard leaves every target its set arm reaches unnumbered
+		// (§3.1), so a union that still holds a reference there is a partial
+		// region and is refused exactly as the reference leg refuses it (§7,
+		// §7.6). An arm is a field line (§2.6), so the closure walk is the
+		// by-value walk taken through the set arm's tag.
+		if holds := guardHoldsCond(f, guardMember); holds != "" {
+			if refs := refClosureExpr(g.unit, f, expr); refs != "" {
+				g.pf("%sif (!(%s) && (%s)) return false;\n", ind, holds, refs)
+			}
+		}
 		un := unionRef(f)
 		_, _, cookTag, armOffset := ir.UnionLayout(g.unit, un)
 		writeTag := fmt.Sprintf("out.setUint64(%s, %s.armTag, order)", fmt.Sprintf("at + %d", offset), expr)

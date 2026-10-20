@@ -255,3 +255,86 @@ func cookEveryGuardedPointerArrayCountedMutate(t *testing.T, m *tabletext.Model,
 	arr.Count = 1
 	arr.Elems[0].Node = node
 }
+
+// A GUARDED UNION's clear guard leaves every target its set arm reaches
+// unnumbered (§3.1), so a set pointer arm that still holds a target is a
+// partial region and the cook refuses it exactly as the reference leg does
+// (§7, §7.6). A union's arm is a field line (§2.6), so the check is the same
+// by-value closure walk a guarded record gets, taken through the arm tag.
+func init() {
+	cookEveryFamilies = append(cookEveryFamilies,
+		cookEveryFamily{
+			name:   "guarded-union-reference-refused",
+			schema: cookEveryGuardedUnionRefSchema,
+			probe:  cookEveryGuardedUnionRefProbe,
+			refuse: "invalid_value",
+			mutate: cookEveryGuardedUnionRefMutate,
+		},
+	)
+}
+
+const cookEveryGuardedUnionRefSchema = `table RefTarget { v int32 }
+union Pick {
+  p *RefTarget
+  n int32 }
+table Root {
+  on bool
+  if on { u Pick } }
+`
+
+// cookEveryGuardedUnionRefProbe sets the guard CLEAR and the pointer arm SET:
+// the arm's target is never numbered (§3.1), so the cook must refuse with the
+// reference leg's word (§7.6), never write a delta to a node no directory
+// entry names.
+const cookEveryGuardedUnionRefProbe = `import 'dart:io';
+import 'dart:typed_data';
+import 'ProbeWire.dart' as w;
+import 'ProbeCook.dart' as c;
+void main(){
+ final value=w.Root()..on=false;
+ value.u.armTag=1;
+ value.u.p=w.RefTarget()..v=1;
+ final bytes=Uint8List(4096);
+ for(final order in [Endian.little,Endian.big]){
+  final report=c.TableCookWriteReport();
+  final ok=c.RootCook.cook(value,bytes,order,report:report);
+  stdout.writeln('${order==Endian.little?'cook-le':'cook-be'} ${ok?'ok':report.reason}');
+ }
+}
+`
+
+// guardedUnionArm selects one arm of a union field by name (§2.6): a
+// table-body arm's instance is Cell.Tab, an arm line is Cell.Arm.
+func guardedUnionArm(t *testing.T, m *tabletext.Model, holder *tabletext.Field, name string) *tabletext.Field {
+	t.Helper()
+	un := tabletext.UnionOf(holder.Def)
+	if un == nil {
+		t.Fatalf("%s is not a union field", holder.Def.Name)
+	}
+	for i, arm := range un.Variants {
+		if arm.Name != name {
+			continue
+		}
+		holder.Cell.U = uint64(i + 1)
+		holder.Cell.Arm, holder.Cell.Tab = nil, nil
+		if arm.Void() {
+			return holder
+		}
+		if arm.Body() {
+			holder.Cell.Tab = m.New(arm.Ref)
+			return holder
+		}
+		holder.Cell.Arm = m.NewArm(arm)
+		return holder
+	}
+	t.Fatalf("union %s has no arm %q", un.Name, name)
+	return nil
+}
+
+func cookEveryGuardedUnionRefMutate(t *testing.T, m *tabletext.Model, v *tabletext.Instance) {
+	t.Helper()
+	guardedField(t, v, "on").Cell.B = false
+	node := m.New(m.Unit.Tables["RefTarget"])
+	guardedField(t, node, "v").Cell.U = 1
+	guardedUnionArm(t, m, guardedField(t, v, "u"), "p").Cell.Arm.Cell.Node = node
+}
