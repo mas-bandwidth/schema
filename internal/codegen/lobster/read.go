@@ -43,8 +43,6 @@ func intRangePath(min, max *big.Int) string {
 	return "bits64"
 }
 
-var maxUint64 = new(big.Int).SetUint64(math.MaxUint64)
-
 // readPart is called once per module after its type surface.
 func readPart(g *Gen) error {
 	order := ir.EmissionOrder(g.File)
