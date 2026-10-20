@@ -115,7 +115,7 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 	}
 
 	cases := []refusalRow{
-		{"refuseWideText", "wide text", "package probe\n\ntable L\n{\n    w wstring(8)\n}\n", "L.w", false},
+		{"refuseWideText", "wide text", "package probe\n\ntable L\n{\n    w wstring(8)\n}\n", "L.w", true},
 		// this construct is LIFTED (compiler/target_squirrel_blobs.go): the
 		// tagged target carries the byte and string buffers, so the refusers
 		// accept squirrel and still refuse a target that has not registered
@@ -176,6 +176,9 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			}
 			if slices.Contains([]string{"refuseTableArms", "refuseVoidArms", "refuseUnionArrays"}, tc.refuser) {
 				registered = c != nil
+			}
+			if tc.refuser == "refuseWideText" {
+				registered = tableWideTextTargets["squirrel"]
 			}
 			if registered {
 				if err := refusers[tc.refuser](u, "squirrel"); err != nil {

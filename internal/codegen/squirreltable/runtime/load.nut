@@ -351,6 +351,42 @@ local utf8Decode = function(b, at, len) {
   return { s = s, ok = true, used = len };
 };
 
+// WIDE TEXT, kind 33 (docs/SPEC-TABLES.md §3): a length L in UTF-16 code
+// units and 2N bytes, two bytes each little-endian, no alignment anywhere. The
+// content rule is SPEC.md §4.12's read side: SURROGATES PAIRED and no zero code
+// unit among the units, checked as the payload ARRIVES, the same rule kind 12
+// takes for UTF-8 (wideBoundary in internal/tablewire/text.go).
+local wideUnit = function(b, at) {
+  return (b[at] & 0xff) | ((b[at + 1] & 0xff) << 8);
+};
+
+local wideDecode = function(b, at, len) {
+  local units = [];
+  local i = 0;
+  while (i < len) {
+    local u = wideUnit(b, at + i);
+    if (u == 0) return { units = units, ok = false };
+    if (u >= 0xD800 && u <= 0xDBFF) {
+      if (i + 2 >= len) return { units = units, ok = false };
+      local lo = wideUnit(b, at + i + 2);
+      if (lo < 0xDC00 || lo > 0xDFFF) return { units = units, ok = false };
+      units.append(u); units.append(lo);
+      i += 4;
+      continue;
+    }
+    if (u >= 0xDC00 && u <= 0xDFFF) return { units = units, ok = false };
+    units.append(u);
+    i += 2;
+  }
+  return { units = units, ok = true };
+};
+
+local wideSlice = function(arr, n) {
+  local out = [];
+  for (local i = 0; i < n && i < arr.len(); i++) out.append(arr[i]);
+  return out;
+};
+
 local blobOfRange = function(b, at, len) {
   local out = blob(0);
   for (local i = 0; i < len; i++) out.writen(b[at + i] & 0xff, 'b');
@@ -535,6 +571,41 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     } else {
       v[fd.member] = dec.s;
     }
+    r.at += L;
+    if (fd.optional) v[fd.member + "Present"] = true;
+    return true;
+  }
+  if (shape == "wstr") {
+    // WIDE TEXT (docs/SPEC-TABLES.md §3, §4; kind 33): L is the BYTE length,
+    // which is twice the code unit count. An odd L is framing damage and reads
+    // the declared default; ill-formed UTF-16 (an unpaired surrogate or a zero
+    // code unit) is damage and reads the default too; a payload longer than the
+    // bound clamps at a code-unit boundary that never splits a pair.
+    local L = leb(r);
+    if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
+    if ((L & 1) != 0) {
+      report.malformed = true;
+      v[fd.member] = fd.def;
+      r.at += L;
+      if (fd.optional) v[fd.member + "Present"] = true;
+      return true;
+    }
+    local dec = wideDecode(r.b, r.at, L);
+    if (!dec.ok) {
+      report.malformed = true;
+      v[fd.member] = fd.def;
+      r.at += L;
+      if (fd.optional) v[fd.member + "Present"] = true;
+      return true;
+    }
+    local units = dec.units;
+    if (units.len() > fd.bound) {
+      report.clamped = report.clamped + 1;
+      local cut = fd.bound;
+      if (cut > 0 && units[cut - 1] >= 0xD800 && units[cut - 1] <= 0xDBFF) cut--;
+      units = wideSlice(units, cut);
+    }
+    v[fd.member] = units;
     r.at += L;
     if (fd.optional) v[fd.member + "Present"] = true;
     return true;
@@ -1040,6 +1111,23 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
     } else {
       inst[p.member] = dec.s;
     }
+    sub.at = sub.end;
+    return true;
+  }
+  if (shape == "wstr") {
+    local L = sub.end - sub.at;
+    if ((L & 1) != 0) { report.malformed = true; inst.Type = 0; return true; }
+    local dec = wideDecode(sub.b, sub.at, L);
+    if (!dec.ok) { report.malformed = true; inst.Type = 0; return true; }
+    local units = dec.units;
+    if (units.len() > p.bound) {
+      report.clamped = report.clamped + 1;
+      local cut = p.bound;
+      if (cut > 0 && units[cut - 1] >= 0xD800 && units[cut - 1] <= 0xDBFF) cut--;
+      units = wideSlice(units, cut);
+    }
+    inst[p.member] = units;
+    if (p.optional) inst[p.member + "Present"] = true;
     sub.at = sub.end;
     return true;
   }
