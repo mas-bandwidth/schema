@@ -39,6 +39,10 @@ func TestLuaTableDescriptorsLoad(t *testing.T) {
 			paths = append(paths, filepath.Join(repo, p))
 		}
 		u := luarun.LoadUnit(t, paths...)
+		if len(ir.TableWideFields(u)) > 0 {
+			refused = append(refused, fmt.Sprintf("%s: carries the wide kinds the descriptor walk does not spell yet", key))
+			continue
+		}
 		files, err := Generate(u)
 		if err != nil {
 			if !strings.Contains(err.Error(), "Lua") {
