@@ -173,8 +173,9 @@ end
 local function widens(kind: number, declared: number): boolean
 	if declared == 3 or declared == 4 or declared == 5 then return kind >= 2 and kind < declared end
 	if declared == 7 or declared == 8 or declared == 9 then return kind >= 6 and kind < declared end
-	-- the 128-BIT RUNGS (§4): a reader that declares i128/u128 widens every
-	-- narrower kind on its own ladder, exactly as ir.TableKindWidens says
+	-- the 128-BIT RUNGS (docs/SPEC-TABLES.md §4): a reader that declares
+	-- i128/u128 widens every narrower kind on its own ladder, exactly as
+	-- ir.TableKindWidens says
 	if declared == 18 then return kind >= 2 and kind <= 5 end
 	if declared == 19 then return kind >= 6 and kind <= 9 end
 	if declared == 11 then return kind == 10 end
@@ -451,8 +452,8 @@ local function scalar_at(r: any, fd: any, kind: number, report: any): any
 	end
 	-- §4: a narrower value widens into this declaration's domain
 	if fd.dom == "integer" and typeof(x) == "number" then x = integer.create(x) end
-	-- A 128-BIT DECLARATION WIDENS A NARROWER WIRE KIND (§4): the value is
-	-- sign-extended on the signed ladder and zero-extended on the unsigned
+	-- A 128-BIT DECLARATION WIDENS A NARROWER WIRE KIND (docs/SPEC-TABLES.md
+	-- §4): the value is sign-extended on the signed ladder and zero-extended on the unsigned
 	-- one, so the declared bounds and the save see one 128-bit shape.
 	if fd.kw == 16 and not is128(x) then
 		local lo = if typeof(x) == "integer" then x else integer.create(x)
@@ -684,9 +685,10 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 		local count = r_leb(sub)
 		if sub.bad then report.malformed = true; r.at = endpos; return true end
 		if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
-		-- THE STORAGE CAP (internal/tablewire decode.go collectionCap): a
-		-- REGION read reports damage and resumes, while the strict read refuses
-		-- by name; the flag is what ReadStrict turns into count_refusal.
+		-- THE STORAGE CAP (docs/SPEC-TABLES.md §2.9, §2.2; internal/tablewire
+		-- decode.go collectionCap): a REGION read reports damage and resumes,
+		-- while the strict read refuses by name; the flag is what ReadStrict
+		-- turns into count_refusal.
 		if count > 0x7FFFFFFF then
 			_countRefused = true
 			report.malformed = true
@@ -870,7 +872,9 @@ read_array = function(fd: any, r: any, report: any, v: any): (boolean, boolean)
 	local endpos = r.at + n
 	local selected = true
 	if n >= 2 then
-		-- THE HEADER IS READ AGAINST THE PARENT BUFFER (§3): a canonical LEB128
+		-- THE HEADER IS READ AGAINST THE PARENT BUFFER (docs/SPEC-TABLES.md
+		-- §2.9, the decoding cursor reads the count against the enclosing
+		-- value buffer): a canonical LEB128
 		-- count may be ten bytes and a body's `L` as short as two, so the count
 		-- can finish past the body's own end while still sitting inside the
 		-- parent. The engine reads it there (r.leb) and then bounds the ELEMENTS
@@ -909,8 +913,9 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	local keep = count
 	if fd.array == "list" then
 		if count > 0x7FFFFFFF then
-			-- the REGION answer (collectionCap): one malformed event, the
-			-- prefix kept as far as the body covers, and the walk goes on.
+			-- the REGION answer (docs/SPEC-TABLES.md §2.9; collectionCap):
+			-- one malformed event, the prefix kept as far as the body covers,
+			-- and the walk goes on.
 			_countRefused = true
 			report.malformed = true
 			report.reason = "count_refusal"
@@ -1035,7 +1040,8 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		dst[i] = inst
 		return true
 	elseif e.s == "union" then
-		-- THE ELEMENT IS RESET THE MOMENT IT IS REACHED (§3, §4): a repeat
+		-- THE ELEMENT IS RESET THE MOMENT IT IS REACHED (docs/SPEC-TABLES.md
+		-- §3, §4): a repeat
 		-- under a COUNTED or FIXED array's field id must not leave an arm an
 		-- earlier occurrence decoded standing, even when its own framing is
 		-- damaged. The engine's element() clears U and Tab before unionCell.
@@ -1101,7 +1107,8 @@ end
 -- array body, everything else is what a field of that type carries.
 local function read_arm(arm: any, sub: any, u: any): boolean
 	local s = arm.s
-	-- A FIXED-WIDTH ARM'S L IS ITS KIND'S WIDTH (§3): an L that is not that
+	-- A FIXED-WIDTH ARM'S L IS ITS KIND'S WIDTH (docs/SPEC-TABLES.md §3): an
+	-- L that is not that
 	-- width is the arm's own framing damage, so the union reads None and the
 	-- parent reads on past L. The engine tests the same fact before reading
 	-- (internal/tablewire decode.go, arm: ArmWireFixedWidth).
@@ -1519,7 +1526,8 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 	read_body(desc, rootReader, v, false)
 	resolve(report)
 	-- A REGION READ KEEPS ITS RECOVERED VALUE under the explicit tolerant
-	-- name; ReadStrict is the caller that refuses a count_refusal by name.
+	-- name (docs/SPEC-TABLES.md §6.5); ReadStrict is the caller that refuses
+	-- a count_refusal by name.
 	return v
 end
 
@@ -1958,8 +1966,9 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 	end
 	local v = L.loadTolerant(root, b, rep)
 	if _countRefused then
-		-- the BUILDER-path storage refusal (Go tablewire.CountRefusal): the
-		-- tolerant region read kept its prefix, the strict read refuses whole
+		-- the BUILDER-path storage refusal (docs/SPEC-TABLES.md §6.5, Go
+		-- tablewire.CountRefusal): the tolerant region read kept its prefix,
+		-- the strict read refuses whole
 		rep.reason = "count_refusal"
 		return nil
 	end
