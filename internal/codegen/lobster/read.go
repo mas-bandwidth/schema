@@ -56,8 +56,21 @@ func readPart(g *Gen) error {
 		}
 	}
 	if hasRead {
-		// the read functions name the vendored serialize port's stream type
-		g.Runtimes = append(g.Runtimes, "serialize")
+		// The read functions name the vendored serialize port's stream type
+		// and its leaf families. Import the modules they use directly rather
+		// than the `serialize` entry: the entry also compiles serialize_bytes
+		// and serialize_compressed_float, whose compiler warnings would
+		// precede every generated program's stdout. This file emits the two
+		// pieces it needs from those families (emitReadStringValid,
+		// emitReadCompressedFloat) over the safe leaf modules below.
+		g.Runtimes = append(g.Runtimes,
+			"serialize_stream",
+			"serialize_bitpacker",
+			"serialize_int",
+			"serialize_int128",
+			"serialize_float",
+			"serialize_fixed",
+		)
 	}
 	for _, d := range order {
 		switch d := d.(type) {
@@ -67,7 +80,66 @@ func readPart(g *Gen) error {
 			emitReadUnion(g, d)
 		}
 	}
+	if hasRead {
+		emitReadStringValid(g)
+	}
 	return nil
+}
+
+// emitReadStringValid emits this module's own string checker: the string(N)
+// read refuses an interior NUL and malformed UTF-8 (SPEC §4.7, §4.3). It is
+// generated here rather than taken from serialize_bytes so the generated
+// modules never compile that family (its wstring writer emits a warning that
+// would precede every program's stdout); the rules and the byte-wise table are
+// the vendored port's, kept identical so the two agree.
+func emitReadStringValid(g *Gen) {
+	g.Pf("// %sReadStringValid is 's[0:n] has no NUL and is well-formed UTF-8' (SPEC §4.7).\n", g.File.Base)
+	g.Pf("def %sReadStringValid(s:string, n:int) -> bool:\n", g.File.Base)
+	g.Pf("    var i = 0\n")
+	g.Pf("    while i < n:\n")
+	g.Pf("        let lead = read_uint8_le(s, i)\n")
+	g.Pf("        if lead == 0:\n")
+	g.Pf("            return false\n")
+	g.Pf("        if lead < 0x80:\n")
+	g.Pf("            i += 1\n")
+	g.Pf("        elif (lead & 0xE0) == 0xC0:\n")
+	g.Pf("            if lead < 0xC2:\n")
+	g.Pf("                return false\n")
+	g.Pf("            if i + 1 >= n:\n")
+	g.Pf("                return false\n")
+	g.Pf("            if (read_uint8_le(s, i + 1) & 0xC0) != 0x80:\n")
+	g.Pf("                return false\n")
+	g.Pf("            i += 2\n")
+	g.Pf("        elif (lead & 0xF0) == 0xE0:\n")
+	g.Pf("            if i + 2 >= n:\n")
+	g.Pf("                return false\n")
+	g.Pf("            let b1 = read_uint8_le(s, i + 1)\n")
+	g.Pf("            let b2 = read_uint8_le(s, i + 2)\n")
+	g.Pf("            if (b1 & 0xC0) != 0x80 or (b2 & 0xC0) != 0x80:\n")
+	g.Pf("                return false\n")
+	g.Pf("            if lead == 0xE0 and b1 < 0xA0:\n")
+	g.Pf("                return false\n")
+	g.Pf("            if lead == 0xED and b1 >= 0xA0:\n")
+	g.Pf("                return false\n")
+	g.Pf("            i += 3\n")
+	g.Pf("        elif (lead & 0xF8) == 0xF0:\n")
+	g.Pf("            if lead > 0xF4:\n")
+	g.Pf("                return false\n")
+	g.Pf("            if i + 3 >= n:\n")
+	g.Pf("                return false\n")
+	g.Pf("            let b1 = read_uint8_le(s, i + 1)\n")
+	g.Pf("            let b2 = read_uint8_le(s, i + 2)\n")
+	g.Pf("            let b3 = read_uint8_le(s, i + 3)\n")
+	g.Pf("            if (b1 & 0xC0) != 0x80 or (b2 & 0xC0) != 0x80 or (b3 & 0xC0) != 0x80:\n")
+	g.Pf("                return false\n")
+	g.Pf("            if lead == 0xF0 and b1 < 0x90:\n")
+	g.Pf("                return false\n")
+	g.Pf("            if lead == 0xF4 and b1 >= 0x90:\n")
+	g.Pf("                return false\n")
+	g.Pf("            i += 4\n")
+	g.Pf("        else:\n")
+	g.Pf("            return false\n")
+	g.Pf("    return true\n\n")
 }
 
 // readBody accumulates one read function: its statements, and the scratch
@@ -78,6 +150,7 @@ type readBody struct {
 	needInt, needOK, needFloat bool
 	needBool, needString       bool
 	needInt128, needUint128    bool
+	needAlign, needBits        bool
 }
 
 func (r *readBody) int() string {
@@ -91,7 +164,7 @@ func (r *readBody) ok() string {
 }
 
 func (r *readBody) float() string {
-	r.needFloat, r.needOK = true, true
+	r.needFloat = true
 	return "rf"
 }
 
@@ -113,6 +186,16 @@ func (r *readBody) int128() string {
 func (r *readBody) uint128() string {
 	r.needUint128, r.needOK = true, true
 	return "ru"
+}
+
+func (r *readBody) align() string {
+	r.needAlign = true
+	return "ralign"
+}
+
+func (r *readBody) bits() string {
+	r.needBits = true
+	return "rbits"
 }
 
 func (r *readBody) pf(ind, format string, args ...any) {
@@ -144,6 +227,12 @@ func (r *readBody) decls() string {
 	}
 	if r.needUint128 {
 		b.WriteString("    var ru = serialize_uint128 { lo: 0, hi: 0 }\n")
+	}
+	if r.needAlign {
+		b.WriteString("    var ralign = 0\n")
+	}
+	if r.needBits {
+		b.WriteString("    var rbits = 0\n")
 	}
 	return b.String()
 }
@@ -337,11 +426,10 @@ func emitReadScalar(g *Gen, r *readBody, f *ir.Field, target, ind string) {
 	case ir.TFloat32:
 		v := r.float()
 		if f.HasFloatRange {
-			r.pf(ind, "%s, %s = stream.serialize_compressed_float(%s, %s, %s, %s)",
-				v, r.ok(), v, FormatFloat32(f.FMin), FormatFloat32(f.FMax), FormatFloat32(f.Resolution))
-		} else {
-			r.pf(ind, "%s, %s = stream.serialize_float(%s)", v, r.ok(), v)
+			emitReadCompressedFloat(g, r, f, target, ind)
+			return
 		}
+		r.pf(ind, "%s, %s = stream.serialize_float(%s)", v, r.ok(), v)
 		r.pf(ind, "if not %s: return false", r.ok())
 		r.pf(ind, "%s = %s", target, v)
 	case ir.TFloat64:
@@ -373,6 +461,35 @@ func emitReadScalar(g *Gen, r *readBody, f *ir.Field, target, ind string) {
 			r.pf(ind, "if not Read%s(stream, %s): return false", f.Type.Name, target)
 		}
 	}
+}
+
+// emitReadCompressedFloat folds the declaration's parameters at generation
+// time (ir.CompressedFloatParams, the same derivation the port makes per call)
+// and reads the quantized integer directly, so no module from the
+// serialize_compressed_float family is compiled (SPEC §4.3; STANDARD.md,
+// compressed_float). The dequantization keeps the port's two float32
+// roundings: a fused multiply-add would decode differently (docs/PORT-LOBSTER.md,
+// FLOAT32).
+func emitReadCompressedFloat(g *Gen, r *readBody, f *ir.Field, target, ind string) {
+	steps, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+	min32 := float32(f.FMin)
+	delta := float32(f.FMax) - min32
+	v := r.float()
+	b := r.bits()
+	r.pf(ind, "if stream.failed: return false")
+	r.pf(ind, "if not stream.read_gate(%d): return false", bits)
+	r.pf(ind, "%s = stream.unpack_bits(%d)", b, bits)
+	if steps != (uint64(1)<<uint(bits))-1 {
+		r.pf(ind, "if %s > %d: return false // a value in the bit headroom is refused (SPEC §4.3)", b, steps)
+	}
+	normalized := fmt.Sprintf("serialize_float32_round(float(%s) / float(%d))", b, steps)
+	scaled := fmt.Sprintf("serialize_float32_round(%s * %s)", normalized, FormatFloat32(float64(delta)))
+	if min32 == 0 {
+		r.pf(ind, "%s = %s", v, scaled)
+	} else {
+		r.pf(ind, "%s = serialize_float32_round(%s + %s)", v, scaled, FormatFloat32(float64(min32)))
+	}
+	r.pf(ind, "%s = %s", target, v)
 }
 
 // emitReadInt reads a bare or ranged integer of 64 bits or fewer.
@@ -456,15 +573,19 @@ func emitReadString(g *Gen, r *readBody, f *ir.Field, target, ind string) {
 	r.pf(ind, "if not %s: return false", r.ok())
 	r.pf(ind, "%sLength = %s", target, v)
 	r.pf(ind, "%s = ensure_size(\"\", %s, 0)", s, v)
-	r.pf(ind, "%s, %s = stream.serialize_bytes(%s, %s)", s, r.ok(), s, v)
-	r.pf(ind, "if not %s: return false", r.ok())
+	align := r.align()
+	r.pf(ind, "%s = stream.align_bits()", align)
+	r.pf(ind, "if not stream.read_gate(%s + %s * 8): return false", align, v)
+	r.pf(ind, "if %s > 0 and stream.unpack_bits(%s) != 0: return false // the align padding must be zero (SPEC §4.3)", align, align)
+	r.pf(ind, "if %s > 0:", v)
+	r.pf(ind+"    ", "stream.unpack_bytes(%s, 0, %s)", s, v)
 	if strings.Contains(target, "[") {
 		r.pf(ind, "write_substring(%s, 0, %s, false)", target, s)
 	} else {
 		r.pf(ind, "%s = write_substring(%s, 0, %s, false)", target, target, s)
 	}
 	if f.Type.Kind == ir.TString {
-		r.pf(ind, "if string_has_nul(%s, %s) or not string_utf8_valid(%s, %s): return false // SPEC §4.7", s, v, s, v)
+		r.pf(ind, "if not %sReadStringValid(%s, %s): return false // an interior NUL or malformed UTF-8 refuses (SPEC §4.7)", g.File.Base, s, v)
 	}
 }
 
