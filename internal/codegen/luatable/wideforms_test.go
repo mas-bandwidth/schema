@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
@@ -17,9 +18,13 @@ import (
 // TestLuaWideKindsFixedAndMessageForms pins the two constant-size forms'
 // carriage of the wide kinds (docs/SPEC-TABLES.md §3.3, §3.4, §15): a fixed
 // table declaring int128, uint128 and fixed(16, 16) writes the same form-3
-// record and form-2 batch as the generated Go code, byte for byte. The fixed
-// form names no kind — a wide field is its declared storage image — and the
-// message form carries the ranged packing the type wire gives it.
+// record and form-2 batch as the generated Go code, byte for byte, and reads
+// the generated Go's bytes back to the same values. The fixed form names no
+// kind — a wide field is its declared storage image — and the message form
+// carries the ranged packing the type wire gives it. The values exercise a
+// negative int128 with a nonzero high half, a uint128 with a nonzero high half,
+// a negative fixed(16, 16), and a ranged int128 whose base add carries across
+// the 64-bit halves on the read (§3.3, kinds 18/19 and 24/29).
 func TestLuaWideKindsFixedAndMessageForms(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -27,9 +32,10 @@ func TestLuaWideKindsFixedAndMessageForms(t *testing.T) {
 
 fixed table Root
 {
-    a int128 | min = -1000, max = 1000
+    a int128 | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376
     b uint128
     c fixed(16, 16) | min = -8, max = 8
+    d int128 | min = -1, max = 1000
 }
 `
 	dir := t.TempDir()
@@ -49,9 +55,10 @@ fixed table Root
 	probe := fmt.Sprintf(`local T = require(%q)
 local hexline = require("hexline")
 local full = T.NewRoot()
-full.a = { lo = 1000, hi = 0 }
+full.a = { lo = 0, hi = 0xFFFFFFFFFFFFFFFE }
 full.b = { lo = 0x0123456789abcdef, hi = 0xfedcba9876543210 }
-full.c = 196608
+full.c = -98304
+full.d = { lo = 5, hi = 0 }
 local empty = T.NewRoot()
 hexline(T.WriteFixed("Root", full))
 local vocab = {}
@@ -114,6 +121,37 @@ hexline(saved)
 	if !bytes.Equal(luaOut[1], message) {
 		t.Errorf("message form differs from the generated Go writer\n lua %x\n  go %x", luaOut[1], message)
 	}
+
+	// THE READ DIRECTION: the Lua runtime loads the generated Go's own bytes and
+	// answers the same values Go's reader does (§3.4 names no kind, so the fixed
+	// record is the raw storage image; §3.3 reconstructs the ranged wide value
+	// by adding the base, which carries across the halves).
+	readProbe := fmt.Sprintf(`local T = require(%q)
+local inputs = require("inputs")
+local function dump(v)
+  return string.format("%%016x%%016x%%016x%%016x%%016x%%016x%%016x",
+    v.a.lo, v.a.hi, v.b.lo, v.b.hi, v.c, v.d.lo, v.d.hi)
+end
+print(dump(T.ReadFixed("Root", inputs.fixed)))
+local vocab = {}
+for i = 1, T.MessageEntries do vocab[i] = {} end
+local report = { malformed = false, refused = 0 }
+assert(T.AnnounceRead(vocab, T.Announcement, report), "announcement refused")
+local values = assert(T.LoadMessages("Root", vocab, inputs.message, report), "message load refused")
+print(dump(values[1]))
+print(dump(values[2]))
+`, ModuleName(u))
+	if err := os.WriteFile(filepath.Join(luaDir, "read.lua"), []byte(readProbe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	luaRead := string(luarun.Run(t, luaDir, "read.lua", map[string][]byte{"fixed": fixed, "message": message}))
+	goRead, err := os.ReadFile(filepath.Join(goDir, "go_values.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimRight(luaRead, "\n") != strings.TrimRight(string(goRead), "\n") {
+		t.Errorf("the Lua reader differs from the generated Go reader\n lua %q\n  go %q", luaRead, goRead)
+	}
 }
 
 func mustAbs(t *testing.T, path string) string {
@@ -157,6 +195,7 @@ func (a Int128) Cmp(b Int128) int {
 const wideFormsGoProbe = `package wideforms
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -165,15 +204,17 @@ import (
 
 func TestGoWideForms(t *testing.T) {
 	full := Root{
-		A: serialize.Int128{Lo: 1000},
+		A: serialize.Int128{Lo: 0, Hi: 0xFFFFFFFFFFFFFFFE},
 		B: serialize.Uint128{Lo: 0x0123456789abcdef, Hi: 0xfedcba9876543210},
-		C: 196608,
+		C: -98304,
+		D: serialize.Int128{Lo: 5},
 	}
 	empty := Root{}
 	fixed := make([]byte, RootFixedMeasure(1))
-	if n := RootFixedSave([]Root{full}, fixed); n < 0 {
+	fixedN := RootFixedSave([]Root{full}, fixed)
+	if fixedN < 0 {
 		t.Fatal("the Go fixed writer refused")
-	} else if err := os.WriteFile("go_fixed.bin", fixed[:n], 0o644); err != nil {
+	} else if err := os.WriteFile("go_fixed.bin", fixed[:fixedN], 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var report TableReport
@@ -186,9 +227,29 @@ func TestGoWideForms(t *testing.T) {
 	}
 	values := []*Root{&full, &empty}
 	message := make([]byte, RootMeasureMessages(values, &report))
-	if n := RootSaveMessages(values, message, &report); n < 0 {
+	messageN := RootSaveMessages(values, message, &report)
+	if messageN < 0 {
 		t.Fatalf("the Go message writer refused: %+v", report)
-	} else if err := os.WriteFile("go_message.bin", message[:n], 0o644); err != nil {
+	} else if err := os.WriteFile("go_message.bin", message[:messageN], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan := make([]TableFixedEntry, RootFixedPlanMax)
+	var fixedReport TableReport
+	fixedBack := make([]Root, 1)
+	if n := RootFixedLoad(fixedBack, fixed[:fixedN], plan, &fixedReport); n != 1 || fixedReport != (TableReport{}) {
+		t.Fatalf("the Go fixed reader: n=%d report=%+v", n, fixedReport)
+	}
+	var messageReport TableReport
+	messageBack := make([]Root, 2)
+	if n, ok := RootLoadMessages(messageBack, &vocab, message[:messageN], &messageReport); !ok || n != 2 {
+		t.Fatalf("the Go message reader: n=%d ok=%v report=%+v", n, ok, messageReport)
+	}
+	dump := func(v Root) string {
+		return fmt.Sprintf("%016x%016x%016x%016x%016x%016x%016x",
+			v.A.Lo, v.A.Hi, v.B.Lo, v.B.Hi, uint64(int64(v.C)), v.D.Lo, v.D.Hi)
+	}
+	out := dump(fixedBack[0]) + "\n" + dump(messageBack[0]) + "\n" + dump(messageBack[1]) + "\n"
+	if err := os.WriteFile("go_values.txt", []byte(out), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
