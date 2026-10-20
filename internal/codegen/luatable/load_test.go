@@ -69,7 +69,7 @@ local load = require("load")
 local inputs = require("inputs")
 local wire = inputs.wire
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.Load(T, "` + root + `", wire, report)
+local v = load.LoadTolerant(T, "` + root + `", wire, report)
 local verdict
 if report.refused > 0 then verdict = "refused" else verdict = "read" end
 print(string.format("%d,%d,%d,%d,%d,%s,%s",

@@ -144,7 +144,7 @@ local function answer(entry, wire)
     measured = measure >= 0
   end
   if measured then
-    local v = L.Load(T, entry.root, wire, report)
+    local v = L.LoadTolerant(T, entry.root, wire, report)
     if v ~= nil then
       loaded = true
       saved = S.Save(T, entry.root, v)

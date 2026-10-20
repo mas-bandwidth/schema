@@ -85,7 +85,7 @@ hexline(wire); hexline(fixed); hexline(message); hexline(T.Announcement); hexlin
 
 -- THE REVERSED WITNESS: the same bytes read with Bomber LIVE yield Bomber.
 local r = fresh_report()
-local w = load.Load(T, "Root", wire, r)
+local w = load.LoadTolerant(T, "Root", wire, r)
 clean(r, "live wire")
 assert(w.ship == "Bomber" and #w.fleet == 1 and w.fleet[1] == "Bomber", "live wire witness")
 local fv = T.ReadFixed("Root", fixed)
@@ -107,7 +107,7 @@ local Text = require("text")
 -- element reads the ELEMENT default (None, false in a sequence), and nothing
 -- is unknown.
 local r = fresh_report()
-local v = assert(load.Load(T, "Root", inputs.wire, r), "deprecated wire refused")
+local v = assert(load.LoadTolerant(T, "Root", inputs.wire, r), "deprecated wire refused")
 clean(r, "deprecated wire")
 assert(v.ship == "Scout", "deprecated wire field: " .. tostring(v.ship))
 assert(#v.fleet == 1 and v.fleet[1] == false, "deprecated wire element: " .. tostring(v.fleet[1]))

@@ -126,7 +126,7 @@ function R.ReadStrict(T, name, bytes, integrity)
   }
   local first = {}
   local proxied, wrapped = instrument(T, report, first)
-  local root = load.Load(proxied, name, bytes, wrapped)
+  local root = load.LoadTolerant(proxied, name, bytes, wrapped)
 
   -- TableReport.Err()'s order (§6.5): unknown form, integrity mismatch, wire
   -- damage, missing_required, malformed, blob_shared, clamped, kind_mismatch,

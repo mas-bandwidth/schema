@@ -120,7 +120,7 @@ local function dump(v)
 end
 
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local wire = load.Load(T, root, inputs.wire, report)
+local wire = load.LoadTolerant(T, root, inputs.wire, report)
 local h, why = cook.Open(T, root, inputs.cook)
 if h == nil then error("cook refused: " .. tostring(why)) end
 local opened = uncook.Read(T, h)

@@ -156,7 +156,7 @@ local load = require("load")
 local save = require("save")
 local inputs = require("inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.Load(T, "Pong", inputs.wire, report)
+local v = load.LoadTolerant(T, "Pong", inputs.wire, report)
 local saved = save.Save(T, "Pong", v)
 assert(saved ~= nil, "Save refused a wire-carrying table")
 io.write((saved:gsub(".", function(c) return string.format("%02x", c:byte()) end)), "\n")
@@ -183,7 +183,7 @@ local load = require("load")
 local J = require("json")
 local inputs = require("inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.Load(T, "Pong", inputs.wire, report)
+local v = load.LoadTolerant(T, "Pong", inputs.wire, report)
 io.write(J.ToJson(T, "Pong", v))
 local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local back = J.FromJson(T, "Pong", inputs.text, r)

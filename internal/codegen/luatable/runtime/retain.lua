@@ -1244,7 +1244,7 @@ function S.LoadRetain(T, name, bytes, retain, report)
   local rep = report or { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, retained = 0, retainLost = 0 }
   rep.retained = rep.retained or 0
   rep.retainLost = rep.retainLost or 0
-  local v = load.Load(T, name, bytes, rep)
+  local v = load.LoadTolerant(T, name, bytes, rep)
   capture(T, name, bytes, retain, rep)
   return v
 end

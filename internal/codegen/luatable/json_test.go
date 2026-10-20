@@ -76,7 +76,7 @@ local r1 = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clam
 local v1 = J.FromJson(T, "` + root + `", inputs.text, r1)
 local saved = save.Save(T, "` + root + `", v1)
 local r2 = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v2 = load.Load(T, "` + root + `", inputs.wire, r2)
+local v2 = load.LoadTolerant(T, "` + root + `", inputs.wire, r2)
 local text = J.ToJson(T, "` + root + `", v2)
 print(hex(saved))
 print(hex(text))

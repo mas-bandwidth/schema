@@ -164,7 +164,7 @@ local v = T.NewRoot()
 local wire = save.Save(T, "Root", v)
 print((wire:gsub(".", function(c) return string.format("%02x", c:byte()) end)))
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local back = load.Load(T, "Root", inputs.wire, report)
+local back = load.LoadTolerant(T, "Root", inputs.wire, report)
 for _, name in ipairs({ "a", "b", "c", "d" }) do
   local x = back[name]
   print(string.format("%s %016x %016x", name, x.lo, x.hi))

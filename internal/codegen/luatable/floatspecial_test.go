@@ -104,7 +104,7 @@ for _, c in ipairs(cases) do
   local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
   local wire = assert(save.Save(T, "Root", v), "variable save")
   print(c.name .. "|var|" .. hex(wire))
-  local back = assert(load.Load(T, "Root", wire, report), "variable load")
+  local back = assert(load.LoadTolerant(T, "Root", wire, report), "variable load")
   print(c.name .. "|varback|" .. bits(back))
   local lrep = { malformed = false, refused = 0 }
   local msg = assert(T.SaveMessages("Root", vocab, { v }), "message save")

@@ -81,7 +81,7 @@ local save = require("save")
 local refusal = require("refusal")
 local inputs = require("inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.Load(T, "Ledger", inputs.go, report)
+local v = load.LoadTolerant(T, "Ledger", inputs.go, report)
 assert(v ~= nil, "the Go-written file did not load")
 assert(v.balance == 1000 and v.label == "ok" and v.count == 7, "the Go-written file read the wrong value")
 assert(not report.malformed and report.unknown == 0 and report.kindMismatch == 0 and report.clamped == 0 and report.duplicate == 0, "the Go-written file moved the report")
@@ -93,7 +93,7 @@ for _, name in ipairs({ "flip", "cut" }) do
   local ok, err = pcall(function() return refusal.ReadStrict(T, "Ledger", inputs[name]) end)
   assert(not ok and tostring(err):find("integrity_mismatch", 1, true), name .. ": want integrity_mismatch, got " .. tostring(err))
   local bad = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-  local got = load.Load(T, "Ledger", inputs[name], bad)
+  local got = load.LoadTolerant(T, "Ledger", inputs[name], bad)
   assert(got == nil and bad.malformed and bad.reason == "integrity_mismatch", name .. ": the tolerant read did not count integrity_mismatch")
 end
 local strict = refusal.ReadStrict(T, "Ledger", inputs.go)

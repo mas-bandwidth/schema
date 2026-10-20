@@ -124,7 +124,7 @@ end
 local function work(wire)
   local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
                    clamped = 0, widened = 0, duplicate = 0 }
-  local v = load.Load(T, "` + root + `", wire, report)
+  local v = load.LoadTolerant(T, "` + root + `", wire, report)
   local savedHex = "none"
   local loaded = 0
   if v ~= nil then
