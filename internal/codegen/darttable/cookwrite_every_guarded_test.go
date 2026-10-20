@@ -129,3 +129,129 @@ func cookEveryGuardedRecordMutate(t *testing.T, m *tabletext.Model, v *tabletext
 	guardedField(t, dead, "id").Cell.U = 9
 	guardedText(guardedField(t, dead, "tag"), "xx")
 }
+
+// The two REFUSAL families below pin the other half of a guard's rule: a
+// clear guard leaves every target it covers unnumbered (§3.1), so a guarded
+// by-value record that still holds a reference and a guarded array whose live
+// slot still holds one must refuse exactly as the reference leg does (§7.6).
+func init() {
+	cookEveryFamilies = append(cookEveryFamilies,
+		cookEveryFamily{
+			name:   "guarded-record-reference-refused",
+			schema: cookEveryGuardedRecordRefSchema,
+			probe:  cookEveryGuardedRecordRefProbe,
+			refuse: "invalid_value",
+			mutate: cookEveryGuardedRecordRefMutate,
+		},
+		cookEveryFamily{
+			name:   "guarded-pointer-array-fixed-refused",
+			schema: cookEveryGuardedPointerArraySchema,
+			probe:  cookEveryGuardedPointerArrayProbe,
+			refuse: "invalid_value",
+			mutate: cookEveryGuardedPointerArrayFixedMutate,
+		},
+		cookEveryFamily{
+			name:   "guarded-pointer-array-counted-refused",
+			schema: cookEveryGuardedPointerArrayCountedSchema,
+			probe:  cookEveryGuardedPointerArrayCountedProbe,
+			refuse: "invalid_value",
+			mutate: cookEveryGuardedPointerArrayCountedMutate,
+		},
+	)
+}
+
+const cookEveryGuardedRecordRefSchema = `table RefNode { v int32 }
+table RefDetail { x *RefNode }
+table Root {
+  on bool
+  if on { rec RefDetail } }
+`
+
+// cookEveryGuardedRecordRefProbe holds the guard clear and the by-value
+// record's reference non-null: the numbering never reaches it (§3.1), so the
+// cook refuses as the reference leg does (§7.6).
+const cookEveryGuardedRecordRefProbe = `import 'dart:io';
+import 'dart:typed_data';
+import 'ProbeWire.dart' as w;
+import 'ProbeCook.dart' as c;
+void main(){
+ final value=w.Root()..on=false;
+ value.rec.x=w.RefNode()..v=1;
+ final bytes=Uint8List(4096);
+ for(final order in [Endian.little,Endian.big]){
+  final report=c.TableCookWriteReport();
+  final ok=c.RootCook.cook(value,bytes,order,report:report);
+  stdout.writeln('${order==Endian.little?'cook-le':'cook-be'} ${ok?'ok':report.reason}');
+ }
+}
+`
+
+func cookEveryGuardedRecordRefMutate(t *testing.T, m *tabletext.Model, v *tabletext.Instance) {
+	t.Helper()
+	guardedField(t, v, "on").Cell.B = false
+	node := m.New(m.Unit.Tables["RefNode"])
+	guardedField(t, node, "v").Cell.U = 1
+	guardedField(t, guardedField(t, v, "rec").Cell.Tab, "x").Cell.Node = node
+}
+
+const cookEveryGuardedPointerArraySchema = `table RefNode { v int32 }
+table Root {
+  on bool
+  if on { arr [4]*RefNode } }
+`
+
+const cookEveryGuardedPointerArrayProbe = `import 'dart:io';
+import 'dart:typed_data';
+import 'ProbeWire.dart' as w;
+import 'ProbeCook.dart' as c;
+void main(){
+ final value=w.Root()..on=false;
+ value.arr[0]=w.RefNode()..v=1;
+ final bytes=Uint8List(4096);
+ for(final order in [Endian.little,Endian.big]){
+  final report=c.TableCookWriteReport();
+  final ok=c.RootCook.cook(value,bytes,order,report:report);
+  stdout.writeln('${order==Endian.little?'cook-le':'cook-be'} ${ok?'ok':report.reason}');
+ }
+}
+`
+
+const cookEveryGuardedPointerArrayCountedSchema = `table RefNode { v int32 }
+table Root {
+  on bool
+  if on { arr [..4]*RefNode } }
+`
+
+const cookEveryGuardedPointerArrayCountedProbe = `import 'dart:io';
+import 'dart:typed_data';
+import 'ProbeWire.dart' as w;
+import 'ProbeCook.dart' as c;
+void main(){
+ final value=w.Root()..on=false;
+ value.arr=[w.RefNode()..v=1];
+ final bytes=Uint8List(4096);
+ for(final order in [Endian.little,Endian.big]){
+  final report=c.TableCookWriteReport();
+  final ok=c.RootCook.cook(value,bytes,order,report:report);
+  stdout.writeln('${order==Endian.little?'cook-le':'cook-be'} ${ok?'ok':report.reason}');
+ }
+}
+`
+
+func cookEveryGuardedPointerArrayFixedMutate(t *testing.T, m *tabletext.Model, v *tabletext.Instance) {
+	t.Helper()
+	guardedField(t, v, "on").Cell.B = false
+	node := m.New(m.Unit.Tables["RefNode"])
+	guardedField(t, node, "v").Cell.U = 1
+	guardedField(t, v, "arr").Elems[0].Node = node
+}
+
+func cookEveryGuardedPointerArrayCountedMutate(t *testing.T, m *tabletext.Model, v *tabletext.Instance) {
+	t.Helper()
+	guardedField(t, v, "on").Cell.B = false
+	node := m.New(m.Unit.Tables["RefNode"])
+	guardedField(t, node, "v").Cell.U = 1
+	arr := guardedField(t, v, "arr")
+	arr.Count = 1
+	arr.Elems[0].Node = node
+}
