@@ -45,6 +45,7 @@ func TestJsonHostileReportClampCounterJava(t *testing.T) {
 		root string
 		text []byte
 		want tabletext.Report
+		ok   bool
 	}
 	var rows []row
 	loadedUnits := map[string]*ir.Unit{}
@@ -77,11 +78,11 @@ func TestJsonHostileReportClampCounterJava(t *testing.T) {
 		model := tabletext.NewModel(u)
 		inst := model.New(table)
 		rep := new(tabletext.Report)
-		model.Read(inst, text, rep)
+		okRead := model.Read(inst, text, rep)
 		if rep.Clamped == 0 {
 			continue
 		}
-		rows = append(rows, row{fields[1], key, root, text, *rep})
+		rows = append(rows, row{fields[1], key, root, text, *rep, okRead})
 	}
 	if len(rows) == 0 {
 		t.Fatal("manifest has no json-hostile row the oracle counts a clamp on")
@@ -180,23 +181,34 @@ public final class Driver {
 				t.Fatalf("java: %v\n%s", err, out)
 			}
 			var javaFields []string
+			javaValue := ""
 			for _, line := range strings.Split(string(out), "\n") {
 				if strings.HasPrefix(line, "R ") {
 					javaFields = strings.Split(strings.TrimPrefix(line, "R "), ",")
+				}
+				if strings.HasPrefix(line, "V ") {
+					javaValue = strings.TrimPrefix(line, "V ")
 				}
 			}
 			if len(javaFields) != 7 {
 				t.Fatalf("java report shape for %s: %q\n%s", r.name, strings.Join(javaFields, ","), out)
 			}
 			gotClamped := javaFields[3]
-			gotRefused := javaFields[6]
 			wantClamped := fmt.Sprintf("%d", r.want.Clamped)
-			wantRefused := fmt.Sprintf("%t", r.want.Refused)
 			if gotClamped != wantClamped {
 				t.Errorf("row %s: java clamped=%s oracle clamped=%s (java %q, oracle %+v)", r.name, gotClamped, wantClamped, strings.Join(javaFields, ","), r.want)
 			}
-			if gotRefused != wantRefused {
-				t.Errorf("row %s: java refused=%s oracle refused=%s (java %q, oracle %+v)", r.name, gotRefused, wantRefused, strings.Join(javaFields, ","), r.want)
+			// The oracle's verdict is Read's bool: on the text form a refusal
+			// is a malformed read (§16.2), not a form-byte Refused. The Java
+			// reader reports the same damage as malformed, so the two verdicts
+			// are `malformed == !ok`, and a read must also hand back a value.
+			gotMalformed := javaFields[5]
+			wantMalformed := fmt.Sprintf("%t", !r.ok)
+			if gotMalformed != wantMalformed {
+				t.Errorf("row %s: java malformed=%s, oracle read ok=%t (java %q, oracle %+v)", r.name, gotMalformed, r.ok, strings.Join(javaFields, ","), r.want)
+			}
+			if r.ok && javaValue != "ok" {
+				t.Errorf("row %s: oracle read a value but java returned %q (java %q, oracle %+v)", r.name, javaValue, strings.Join(javaFields, ","), r.want)
 			}
 		})
 	}
