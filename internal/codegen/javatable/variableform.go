@@ -1898,6 +1898,10 @@ public final class TableJson {
     }
 
     public static final class In {
+        // §16.2: the text walk's nesting cap, the same 128 the Go oracle
+        // uses (internal/tabletext maxJsonDepth), so a tree past it is
+        // refused rather than read.
+        static final int MAX_JSON_DEPTH = 128;
         public final java.util.Map<Long, LabelEntry> labels = new java.util.HashMap<>();
 
         final byte[] t;
@@ -1972,12 +1976,21 @@ public final class TableJson {
             if (bad || tok == null) {
                 return 0.0;
             }
+            double value;
             try {
-                return Double.parseDouble(tok);
+                value = Double.parseDouble(tok);
             } catch (NumberFormatException e) {
                 bad = true;
                 return 0.0;
             }
+            // §16.2, §16.3: a magnitude the format cannot hold is the wrong
+            // shape for the kind, never stored as an infinity the writer
+            // would refuse.
+            if (!Double.isFinite(value)) {
+                rep.kindMismatch++;
+                return 0.0;
+            }
+            return value;
         }
 
         // number32 reads one number as a float32 in ONE correctly-rounded
@@ -1991,12 +2004,21 @@ public final class TableJson {
             if (bad || tok == null) {
                 return 0.0f;
             }
+            float value;
             try {
-                return Float.parseFloat(tok);
+                value = Float.parseFloat(tok);
             } catch (NumberFormatException e) {
                 bad = true;
                 return 0.0f;
             }
+            // §16.2: the conversion at the field's own width turns a decimal
+            // at or past the float32 overflow midpoint into an infinity; that
+            // is the wrong shape for the kind (§16.3).
+            if (!Float.isFinite(value)) {
+                rep.kindMismatch++;
+                return 0.0f;
+            }
+            return value;
         }
 
         int peek() {
@@ -2359,13 +2381,17 @@ public final class TableJson {
         // skipValue steps over one value of any shape, so an unknown key's
         // value is dropped whole and never read as a field (§16.2, §4).
         public void skipValue() {
+            skipValue(0);
+        }
+
+        void skipValue(int depth) {
             int c = peek();
             switch (c) {
                 case '{':
-                    skipContainer('}');
+                    skipContainer('}', depth);
                     return;
                 case '[':
-                    skipContainer(']');
+                    skipContainer(']', depth);
                     return;
                 case '"':
                     scanString();
@@ -2390,7 +2416,11 @@ public final class TableJson {
             }
         }
 
-        void skipContainer(char closing) {
+        void skipContainer(char closing, int depth) {
+            if (depth > MAX_JSON_DEPTH) {
+                bad = true;
+                return;
+            }
             p++; // the opening bracket
             while (true) {
                 int c = peek();
@@ -2436,7 +2466,7 @@ public final class TableJson {
                         return;
                     }
                 }
-                skipValue();
+                skipValue(depth + 1);
                 if (bad) {
                     return;
                 }
@@ -3488,7 +3518,12 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	for i, f := range st.Fields {
 		fmt.Fprintf(b, "            if (%q.equals(key)) {\n", jsonKey(f))
 		fmt.Fprintf(b, "                if (seenField[%d]) { in.rep.duplicate++; } seenField[%d] = true;\n", i, i)
+		// §16.2: the wrong JSON type for the kind is skipped and counted
+		// kind_mismatch, never coerced; null goes to the field's own reader,
+		// which is where a `?T` and a pointer take their absence.
+		fmt.Fprintf(b, "                if (in.peek() != 'n' && !(%s)) { in.skipValue(); in.rep.kindMismatch++; } else {\n", variableJsonShape(f, "in.peek()"))
 		readJsonFieldValue(b, u, st, f)
+		b.WriteString("                }\n")
 		b.WriteString("            } else ")
 	}
 	b.WriteString("{\n")
@@ -3664,7 +3699,9 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			b.WriteString("                        else { in.skipValue(); in.rep.kindMismatch++; }\n")
 		case ir.TNamed:
 			if un := variableUnion(f); un != nil {
-				fmt.Fprintf(b, "                        v.%s.add(%sVariable.readJson(in));\n", m, un.Name)
+				// §16.2: an element of the wrong JSON shape is skipped and
+				// counted kind_mismatch, exactly as the field gate does.
+				fmt.Fprintf(b, "                        if (ec != '{') { in.skipValue(); in.rep.kindMismatch++; } else { v.%s.add(%sVariable.readJson(in)); }\n", m, un.Name)
 			}
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
@@ -3914,7 +3951,9 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TBytes && f.Type.Blob():
 		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
-		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); v.%s = java.util.Base64.getDecoder().decode(s); }\n", m)
+		// §16.2: a string that is not base64 is the wrong shape for *bytes —
+		// counted kind_mismatch and left null, never a broken read.
+		fmt.Fprintf(b, "                else if (in.peek() == '\"') { String s = in.scanString(); if (s != null) { try { v.%s = java.util.Base64.getDecoder().decode(s); } catch (IllegalArgumentException invalid) { in.rep.kindMismatch++; v.%s = null; } } }\n", m, m)
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Pointer && isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
