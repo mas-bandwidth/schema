@@ -81,8 +81,12 @@ func emitMessageForm(m *Module) error {
 	for _, st := range roots {
 		m.Printf("_M.MessageRoots[%q] = true\n", st.Name)
 	}
-	m.Printf("\nfunction _M.AnnounceRead(vocab, data, report)\n")
-	m.Printf("  return M.announceRead(_M, vocab, data, report)\n")
+	// THE RECEIVER BOUNDS ARE THE CALLER'S (docs/SPEC-TABLES.md §3.3): the
+	// vocabulary field's byte bound and the entry capacity. Both are optional;
+	// nil takes the conforming defaults, and the runner of the shared hostile
+	// corpus states the numbers its manifest records.
+	m.Printf("\nfunction _M.AnnounceRead(vocab, data, report, maxBytes, maxEntries)\n")
+	m.Printf("  return M.announceRead(_M, vocab, data, report, maxBytes, maxEntries)\n")
 	m.Printf("end\n\n")
 	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ IS NAMED
 	// (docs/SPEC-TABLES.md §6.5): LoadMessages passes the strict decision into

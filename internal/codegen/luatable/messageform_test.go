@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // THE MESSAGE FORM'S TESTS on the Lua leg (docs/SPEC-TABLES.md §3.3; the
@@ -238,4 +239,62 @@ func patchMessageRuntime(runtime []byte) []byte {
 		return runtime
 	}
 	return []byte(strings.Replace(s, anchor, repl, 1))
+}
+
+// TestLuaAnnouncementReadsTheEngineBytes pins the announcement reader to the
+// ENGINE's announcement, not the unit's compile-time constant alone
+// (docs/SPEC-TABLES.md §3.3): the corpus announcement carries the same
+// vocabulary at another build version and must read, and each receiver bound
+// with the announcement one past it refuses vocabulary_too_large. The corpus
+// is Go's and is never edited; the input is read from it as committed.
+func TestLuaAnnouncementReadsTheEngineBytes(t *testing.T) {
+	t.Parallel()
+	repo := filepath.Join("..", "..", "..")
+	unit := luarun.LoadUnit(t, filepath.Join(repo, "tables", "examples"))
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	announce := readFile(t, filepath.Join(repo, "internal", "ci", "hostilecorpus", "corpus", "inputs", "announcement.bin"))
+	vocab := ir.TableVocabulary(unit)
+	vocabBytes := len(ir.TableVocabularyBytes(vocab))
+	entries := len(vocab)
+	if vocabBytes == 0 || entries == 0 {
+		t.Fatal("the examples unit announces no vocabulary")
+	}
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	writeFile(t, filepath.Join(dir, "main.lua"), fmt.Sprintf(`
+local T = require(%q)
+local inputs = require("inputs")
+local function report() return { malformed = false, refused = 0 } end
+
+local vocab = {}
+local r = report()
+assert(T.AnnounceRead(vocab, inputs.announce, r), "the engine announcement was refused")
+assert(vocab.announced == true, "the engine announcement set no vocabulary")
+assert(vocab.count == %d, "announced entries: " .. tostring(vocab.count))
+
+local atByteBound = {}
+local rb = report()
+assert(T.AnnounceRead(atByteBound, inputs.announce, rb, %d),
+  "the announcement at its byte bound was refused")
+local overBytes = {}
+local ro = report()
+assert(not T.AnnounceRead(overBytes, inputs.announce, ro, %d),
+  "the announcement one past the byte bound was accepted")
+assert(ro.reason == "vocabulary_too_large", "byte bound reason: " .. tostring(ro.reason))
+
+local atEntryBound = {}
+local re = report()
+assert(T.AnnounceRead(atEntryBound, inputs.announce, re, nil, %d),
+  "the announcement at its entry bound was refused")
+local overEntries = {}
+local rx = report()
+assert(not T.AnnounceRead(overEntries, inputs.announce, rx, nil, %d),
+  "the announcement one past the entry bound was accepted")
+assert(rx.reason == "vocabulary_too_large", "entry bound reason: " .. tostring(rx.reason))
+print("announce-ok")
+`, ModuleName(unit), entries, vocabBytes, vocabBytes-1, entries, entries-1))
+	luarun.Run(t, dir, "main.lua", map[string][]byte{"announce": announce})
 }

@@ -729,7 +729,120 @@ local function save_one(W, T, root, value, vocab)
   return write_body(W, T, root, value, ctx)
 end
 
-function M.announceRead(T, vocab, data, report)
+-- THE ANNOUNCEMENT IS AN ORDINARY FORM-1 FILE (docs/SPEC-TABLES.md §3.3):
+-- a body carrying the build version and the vocabulary, then the trailer. The
+-- reader parses it as Go's AnnounceRead does rather than comparing it with the
+-- unit's own constant: the build version KEYS the vocabulary and gates nothing,
+-- so an engine announcement at another build reads like any other.
+local ANNOUNCE_BUILD_VERSION_ID = 0xfffffffffffffffe
+local ANNOUNCE_VOCABULARY_ID = 0xfffffffffffffffd
+
+-- read_leb is the file's one number shape (§3): unsigned LEB128, canonical.
+-- at is 1-based; nil is malformed.
+local function read_leb(s, at)
+  local v, shift, i = 0, 0, at
+  while true do
+    if i > #s then return nil end
+    local b = string.byte(s, i)
+    if i - at == 9 and b > 1 then return nil end
+    v = v | ((b & 0x7f) << shift)
+    i = i + 1
+    if (b & 0x80) == 0 then
+      if i - at > 1 and b == 0 then return nil end
+      return v, i
+    end
+    shift = shift + 7
+  end
+end
+
+-- known_kind is §3's closed set plus the 0 an entry takes when its framing is
+-- not an entry's to give (§3.3).
+local function known_kind(kind)
+  return kind == 0 or (kind >= 1 and kind <= 17) or (kind >= 18 and kind <= 29)
+    or (kind >= 30 and kind <= 33)
+end
+
+-- skip_shape steps over one announced shape, which is what makes the entry
+-- count readable before an entry is resolved (docs/SPEC-TABLES.md §3.3).
+local function skip_shape(kind, s, at)
+  local function leb(at)
+    local _, nextAt = read_leb(s, at)
+    return nextAt
+  end
+  if kind == 0 or kind == 1 or kind == 11 or kind == 13 or kind == 15
+      or kind == 17 or kind == 30 or kind == 31 or kind == 32 then
+    return at
+  elseif (kind >= 2 and kind <= 9) or kind == 18 or kind == 19 then
+    if at > #s then return nil end
+    local packing = string.byte(s, at); at = at + 1
+    if packing == 0 then return at end
+    if packing ~= 1 then return nil end
+    at = leb(at); if at == nil then return nil end
+    if kind == 18 or kind == 19 then
+      if at + 15 > #s then return nil end
+      return at + 16
+    end
+    return leb(at)
+  elseif kind == 10 then
+    if at > #s then return nil end
+    local packing = string.byte(s, at); at = at + 1
+    if packing == 0 then return at end
+    if packing ~= 2 or at + 11 > #s then return nil end
+    return at + 12
+  elseif kind >= 20 and kind <= 29 then
+    if at > #s then return nil end
+    local packing = string.byte(s, at); at = at + 1
+    if packing == 0 then return at end
+    if packing ~= 1 then return nil end
+    at = leb(at); if at == nil then return nil end
+    if at + 15 > #s then return nil end
+    return at + 16
+  elseif kind == 12 or kind == 33 then
+    return leb(at)
+  elseif kind == 14 then
+    at = leb(at); if at == nil then return nil end
+    at = leb(at); if at == nil then return nil end
+    if at > #s then return nil end
+    local elem = string.byte(s, at); at = at + 1
+    if elem == 12 or elem == 33 then return nil end
+    return skip_shape(elem, s, at)
+  elseif kind == 16 then
+    at = leb(at); if at == nil then return nil end
+    if at > #s then return nil end
+    local elem = string.byte(s, at); at = at + 1
+    if elem == 12 or elem == 33 then return nil end
+    return skip_shape(elem, s, at)
+  end
+  return nil
+end
+
+-- vocabulary_entries counts the announced entries without resolving them.
+-- tooLarge is the RECEIVER's capacity bound, refused at the entry that passes
+-- it (docs/SPEC-TABLES.md §3.3, "the entry bound is that capacity").
+local function vocabulary_entries(s, maxEntries)
+  local at, count = 1, 0
+  while at <= #s do
+    if at + 8 > #s then return nil, false end
+    local id = string.unpack("<I8", s, at)
+    local kind = string.byte(s, at + 8)
+    at = at + 9
+    if id == ANNOUNCE_BUILD_VERSION_ID or id == ANNOUNCE_VOCABULARY_ID then
+      return nil, false
+    end
+    if not known_kind(kind) then return nil, false end
+    at = skip_shape(kind, s, at)
+    if at == nil then return nil, false end
+    count = count + 1
+    if count > maxEntries then return nil, true end
+  end
+  return count, false
+end
+
+-- announceRead reads one announcement into the receiver's vocabulary
+-- (docs/SPEC-TABLES.md §3.3). maxBytes is the vocabulary field's byte bound,
+-- checked from its own length before an entry is touched; maxEntries is the
+-- receiver's entry capacity. Zero or nil takes the conforming defaults.
+function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
   report = report or {}
   if vocab.announced or vocab.refused then
     report.refused = 1; report.reason = "second_announcement"; return false
@@ -743,11 +856,69 @@ function M.announceRead(T, vocab, data, report)
     vocab.refused = true
     return false
   end
-  -- The announcement is the unit's compile-time constant (§3.3); a build that
-  -- talks to its own peers resolves the projection-order vocabulary it was
-  -- emitted with.
-  if data ~= T.Announcement then
+  if maxBytes == nil or maxBytes == 0 then maxBytes = 64 * 1024 end
+  if maxEntries == nil or maxEntries == 0 then maxEntries = 4096 end
+  local function damage()
     report.malformed = true; vocab.refused = true; return false
+  end
+  local function too_large(version)
+    if version ~= nil then vocab.buildVersion = version end
+    report.refused = 1; report.reason = "vocabulary_too_large"
+    vocab.refused = true
+    return false
+  end
+  if #data < 9 then return damage() end
+  local count = string.unpack("<I8", data, #data - 7)
+  if count < 0 or count > (#data // 8) then return damage() end
+  local span = count * 8 + 8
+  if span + 1 > #data then return damage() end
+  local first = #data - span + 1
+  local ids, seen = {}, {}
+  for i = 1, count do
+    local id = string.unpack("<I8", data, first + (i - 1) * 8)
+    if seen[id] then return damage() end
+    seen[id] = true
+    ids[i] = id
+  end
+  local body = data:sub(2, first - 1)
+  local at = 1
+  local version, vocabulary = nil, nil
+  local seenVersion, seenVocabulary = 0, 0
+  while true do
+    local ref, nextAt = read_leb(body, at)
+    if ref == nil then return damage() end
+    at = nextAt
+    if ref == 0 then break end
+    if ref > count or at > #body then return damage() end
+    local id = ids[ref]
+    local kind = string.byte(body, at); at = at + 1
+    if id == ANNOUNCE_BUILD_VERSION_ID then
+      if kind ~= 9 or at + 7 > #body then return damage() end
+      version = string.unpack("<I8", body, at); at = at + 8
+      seenVersion = seenVersion + 1
+    elseif id == ANNOUNCE_VOCABULARY_ID then
+      if kind ~= 14 then return damage() end
+      local n; n, at = read_leb(body, at)
+      if n == nil or at + n - 1 > #body then return damage() end
+      local field = body:sub(at, at + n - 1); at = at + n
+      if #field < 1 or string.byte(field, 1) ~= 6 then return damage() end
+      local length, nextAt2 = read_leb(field, 2)
+      if length == nil or nextAt2 + length - 1 ~= #field then return damage() end
+      vocabulary = field:sub(nextAt2, nextAt2 + length - 1)
+      if length > maxBytes then return too_large(version) end
+      seenVocabulary = seenVocabulary + 1
+    else
+      -- THE ANNOUNCEMENT READS TOLERANTLY (docs/SPEC-TABLES.md §3.3): an
+      -- unknown field this reader cannot skip is the one body it cannot read.
+      return damage()
+    end
+  end
+  if at <= #body then return damage() end
+  if seenVersion ~= 1 or seenVocabulary ~= 1 then return damage() end
+  local entries, tooLarge = vocabulary_entries(vocabulary, maxEntries)
+  if entries == nil then
+    if tooLarge then return too_large(version) end
+    return damage()
   end
   for i = 1, T.MessageEntries do
     local e = T.MessageVocabulary[i]
@@ -757,7 +928,7 @@ function M.announceRead(T, vocab, data, report)
   for i = T.MessageEntries + 1, #vocab do vocab[i] = nil end
   vocab.count = T.MessageEntries
   vocab.refBits = T.MessageRefBits
-  vocab.buildVersion = T.MessageVersionId
+  vocab.buildVersion = version
   vocab.announced = true
   return true
 end

@@ -250,10 +250,13 @@ local function caseResult(c)
     if M.announceRead(T, vocab, payload, second) then return "accept", "-", nil end
     return "refuse", second.reason ~= "" and second.reason or "damaged", nil
   elseif c[2] == "announce_bytes" or c[2] == "announce_entries" then
-    -- The generated announcement reader takes no receiver bound; report what
-    -- it actually does so the corpus comparison sees the gap.
+    -- THE RECEIVER'S TWO BOUNDS (docs/SPEC-TABLES.md §3.3): the manifest's
+    -- provenance states MaxBytes=8 and MaxEntries=1, the same numbers the
+    -- engine's hostile-corpus runner declares for these two carriers.
+    local maxBytes = c[2] == "announce_bytes" and 8 or nil
+    local maxEntries = c[2] == "announce_entries" and 1 or nil
     local vocab = {}
-    if not M.announceRead(T, vocab, payload, r) then
+    if not M.announceRead(T, vocab, payload, r, maxBytes, maxEntries) then
       return "refuse", r.reason ~= "" and r.reason or "damaged", nil
     end
     return "accept", "-", nil
@@ -365,14 +368,6 @@ func luaHostileCarriedList(cases []luaHostileCase) map[string]luaHostileCarried 
 			// Lua table backend refuses by name (docs/SPEC-TABLES.md §15).
 			out[c.Name] = luaHostileCarried{"refuse", "reader_unavailable", "schema-lua-carries-wide-table-kinds-r"}
 		}
-	}
-	// The committed announcement is the engine's; the Lua reader's compiled
-	// announcement constant does not match it, so every announcement read lands
-	// damaged before the receiver bounds can be reached.
-	for _, name := range []string{
-		"announce-bytes-too-large", "announce-entries-too-large", "announce-second",
-	} {
-		out[name] = luaHostileCarried{"refuse", "damaged", "schema-lua-announcement-bytes-match-engine-r"}
 	}
 	// The manifest says accept; SPEC-TABLES §16.3 refuses ill-formed UTF-8 at
 	// the bound. The stale verdict is the engine card's.
