@@ -39,7 +39,10 @@ var extraRefusalRows []refusalRow
 // The rows below are registered through the hooks, from a test-only init, the
 // same way a future card's own file adds a row. They exercise a construct the
 // literals already cover with a second schema, so they are real rows the table
-// checks run, not markers only this test can see.
+// checks run, not markers only this test can see. The refusal row is a PACKET
+// value default: the table-wire default is carried by the tagged Squirrel
+// compiler now (compiler/target_squirrel_defaults.go), while the packet-wire
+// default is not, so refuseUnported still refuses squirrel here.
 const (
 	hookCarriesConstruct = carryRequired
 	hookCarriesSchema    = "package probe\ntable Crate\n{\n    label string(16) | required\n}\n"
@@ -55,8 +58,8 @@ func init() {
 	})
 	extraRefusalRows = append(extraRefusalRows, refusalRow{
 		refuser: hookRefusalRefuser,
-		name:    "hook value default",
-		src:     "package probe\n\ntable L\n{\n    payload string(8) = \"hi\"\n}\n",
+		name:    "hook packet value default",
+		src:     "package probe\n\ntype L\n{\n    payload string(8) = \"hi\"\n}\n",
 		field:   hookRefusalField,
 		carried: false,
 	})

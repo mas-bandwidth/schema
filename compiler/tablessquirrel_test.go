@@ -155,7 +155,10 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		// docs/SPEC-TABLES.md §5: the tagged build registers squirrel as a
 		// carrier of the three `was` rows (target_squirrel_was.go), so the row
 		// literal's `carried` is read off that registration, not hand-set.
-		if wasCarried := tc.refuser == "refuseWasRows" && slices.Contains(wasRowTargets, "squirrel"); tc.carried || wasCarried {
+		// The value default (docs/SPEC-TABLES.md §4, §16.2) is read the same way off
+		// valueDefaultTargets, which compiler/target_squirrel_defaults.go
+		// (tagged) appends squirrel to.
+		if wasCarried := (tc.refuser == "refuseWasRows" && slices.Contains(wasRowTargets, "squirrel")) || (tc.refuser == "refuseValueDefaults" && slices.Contains(valueDefaultTargets, "squirrel")); tc.carried || wasCarried {
 			// a construct the Squirrel table codec now carries is accepted, not
 			// refused: the refuser's nil means it rides (docs/SPEC-TABLES.md
 			// §2.6, §2.8, §2.9). The registration is tagged for some constructs,
