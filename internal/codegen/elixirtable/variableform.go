@@ -2339,9 +2339,29 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # was "e19" where %g writes "e+19", and a trailing-zero trim ate an exponent's
   # zero ("e-20" written "e-2") (I13, docs/PORTING.md).
   defp json_float(v, width) do
-    {low, high} = json_float_digits(width)
-    json_float_at(v, width, low, high)
+    if json_float_plain_integer?(v) do
+      Integer.to_string(trunc(v))
+    else
+      {low, high} = json_float_digits(width)
+      json_float_at(v, width, low, high)
+    end
   end
+
+  # A non-negative integral float below 10^6 is %g's plain integer spelling at
+  # BOTH widths (docs/SPEC-TABLES.md §16, "The FLOAT SPELLING"): six significant
+  # digits and a decimal exponent below the precision keep %g out of exponent
+  # form, and every float32 of that magnitude is exact. The fast path spells the
+  # same text the read-back loop would, without the per-element binaries the
+  # audit counts (docs/PORTING.md I1, I14). The sign bit is read so -0.0 keeps
+  # the slow path's "-0".
+  defp json_float_plain_integer?(v) when v == trunc(v) and v >= 0.0 and v <= 999999.0 do
+    case <<v::float>> do
+      <<0::1, _::63>> -> true
+      _ -> false
+    end
+  end
+
+  defp json_float_plain_integer?(_v), do: false
 
   defp json_float_digits(4), do: {6, 9}
   defp json_float_digits(_), do: {15, 17}
