@@ -1811,12 +1811,436 @@ List<int> _fuzzReply({
   return out;
 }
 
+// THE ALL-ROOTS WIRE FUZZ ARM (docs/SPEC-TABLES.md §4.2): the harness's
+// default corpus names every instance and every report case, and each form-1
+// root this leg carries answers through its own generated measure, load and
+// save. The report classes are each unit home's own, so the five counters (and
+// the two verdict flags) are read through a closure.
+typedef FileFuzz = List<int> Function(Uint8List wire);
+
+FileFuzz _fileRow<T, R>({
+  required int Function(Uint8List) measure,
+  required T Function(Uint8List, R) load,
+  required Uint8List Function(T) save,
+  required R Function() report,
+  required (int, int, int, int, int, bool, bool) Function(R) counters,
+}) {
+  return (Uint8List wire) {
+    final rep = report();
+    final measure_ = measure(wire);
+    final value = load(wire, rep);
+    final (
+      unknown,
+      kindMismatch,
+      widened,
+      clamped,
+      duplicate,
+      malformed,
+      refused,
+    ) = counters(rep);
+    return _fuzzReply(
+      loaded: measure_ >= 0,
+      unknown: unknown,
+      kindMismatch: kindMismatch,
+      widened: widened,
+      clamped: clamped,
+      duplicate: duplicate,
+      malformed: malformed,
+      refused: refused,
+      measure: measure_,
+      saved: measure_ >= 0 ? save(value) : null,
+    );
+  };
+}
+
+final Map<String, FileFuzz> fileRuns = {
+  'backenddemo LoginRequest': _fileRow<backenddemo.LoginRequest, backenddemo.TableWireReport>(
+    measure: backenddemo.loginRequestWireMeasure,
+    load: (wire, rep) => backenddemo.loginRequestWireLoad(wire, rep),
+    save: backenddemo.loginRequestWireSave,
+    report: backenddemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'backenddemo MatchResult': _fileRow<backenddemo.MatchResult, backenddemo.TableWireReport>(
+    measure: backenddemo.matchResultWireMeasure,
+    load: (wire, rep) => backenddemo.matchResultWireLoad(wire, rep),
+    save: backenddemo.matchResultWireSave,
+    report: backenddemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'backenddemo StorePurchase': _fileRow<backenddemo.StorePurchase, backenddemo.TableWireReport>(
+    measure: backenddemo.storePurchaseWireMeasure,
+    load: (wire, rep) => backenddemo.storePurchaseWireLoad(wire, rep),
+    save: backenddemo.storePurchaseWireSave,
+    report: backenddemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'blobdemo Catalog': _fileRow<blobdemo.Catalog, blobdemo.TableWireReport>(
+    measure: blobdemo.catalogWireMeasure,
+    load: (wire, rep) => blobdemo.catalogWireLoad(wire, rep),
+    save: blobdemo.catalogWireSave,
+    report: blobdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'graphdemo Scene': _fileRow<graphdemo.Scene, graphdemo.TableWireReport>(
+    measure: graphdemo.sceneWireMeasure,
+    load: (wire, rep) => graphdemo.sceneWireLoad(wire, rep),
+    save: graphdemo.sceneWireSave,
+    report: graphdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'listdemo Album': _fileRow<listdemo.Album, listdemo.TableWireReport>(
+    measure: listdemo.albumWireMeasure,
+    load: (wire, rep) => listdemo.albumWireLoad(wire, rep),
+    save: listdemo.albumWireSave,
+    report: listdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'listdemo Army': _fileRow<listdemo.Army, listdemo.TableWireReport>(
+    measure: listdemo.armyWireMeasure,
+    load: (wire, rep) => listdemo.armyWireLoad(wire, rep),
+    save: listdemo.armyWireSave,
+    report: listdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'listdemo Mixed': _fileRow<listdemo.Mixed, listdemo.TableWireReport>(
+    measure: listdemo.mixedWireMeasure,
+    load: (wire, rep) => listdemo.mixedWireLoad(wire, rep),
+    save: listdemo.mixedWireSave,
+    report: listdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'listdemo Save': _fileRow<listdemo.Save, listdemo.TableWireReport>(
+    measure: listdemo.saveWireMeasure,
+    load: (wire, rep) => listdemo.saveWireLoad(wire, rep),
+    save: listdemo.saveWireSave,
+    report: listdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'listdemo Sheet': _fileRow<listdemo.Sheet, listdemo.TableWireReport>(
+    measure: listdemo.sheetWireMeasure,
+    load: (wire, rep) => listdemo.sheetWireLoad(wire, rep),
+    save: listdemo.sheetWireSave,
+    report: listdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'listdemo Unbounded': _fileRow<listdemo.Unbounded, listdemo.TableWireReport>(
+    measure: listdemo.unboundedWireMeasure,
+    load: (wire, rep) => listdemo.unboundedWireLoad(wire, rep),
+    save: listdemo.unboundedWireSave,
+    report: listdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'mapdemo Cells': _fileRow<mapdemo.Cells, mapdemo.TableWireReport>(
+    measure: mapdemo.cellsWireMeasure,
+    load: (wire, rep) => mapdemo.cellsWireLoad(wire, rep),
+    save: mapdemo.cellsWireSave,
+    report: mapdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'mapdemo Chunks': _fileRow<mapdemo.Chunks, mapdemo.TableWireReport>(
+    measure: mapdemo.chunksWireMeasure,
+    load: (wire, rep) => mapdemo.chunksWireLoad(wire, rep),
+    save: mapdemo.chunksWireSave,
+    report: mapdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'mapdemo Crews': _fileRow<mapdemo.Crews, mapdemo.TableWireReport>(
+    measure: mapdemo.crewsWireMeasure,
+    load: (wire, rep) => mapdemo.crewsWireLoad(wire, rep),
+    save: mapdemo.crewsWireSave,
+    report: mapdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'mapdemo Depth': _fileRow<mapdemo.Depth, mapdemo.TableWireReport>(
+    measure: mapdemo.depthWireMeasure,
+    load: (wire, rep) => mapdemo.depthWireLoad(wire, rep),
+    save: mapdemo.depthWireSave,
+    report: mapdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'mapdemo Docs': _fileRow<mapdemo.Docs, mapdemo.TableWireReport>(
+    measure: mapdemo.docsWireMeasure,
+    load: (wire, rep) => mapdemo.docsWireLoad(wire, rep),
+    save: mapdemo.docsWireSave,
+    report: mapdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'mapdemo Fleet': _fileRow<mapdemo.Fleet, mapdemo.TableWireReport>(
+    measure: mapdemo.fleetWireMeasure,
+    load: (wire, rep) => mapdemo.fleetWireLoad(wire, rep),
+    save: mapdemo.fleetWireSave,
+    report: mapdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'mapdemo Pairs': _fileRow<mapdemo.Pairs, mapdemo.TableWireReport>(
+    measure: mapdemo.pairsWireMeasure,
+    load: (wire, rep) => mapdemo.pairsWireLoad(wire, rep),
+    save: mapdemo.pairsWireSave,
+    report: mapdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'mapdemo Runs': _fileRow<mapdemo.Runs, mapdemo.TableWireReport>(
+    measure: mapdemo.runsWireMeasure,
+    load: (wire, rep) => mapdemo.runsWireLoad(wire, rep),
+    save: mapdemo.runsWireSave,
+    report: mapdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'mapdemo Slots': _fileRow<mapdemo.Slots, mapdemo.TableWireReport>(
+    measure: mapdemo.slotsWireMeasure,
+    load: (wire, rep) => mapdemo.slotsWireLoad(wire, rep),
+    save: mapdemo.slotsWireSave,
+    report: mapdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'mapdemo Spans': _fileRow<mapdemo.Spans, mapdemo.TableWireReport>(
+    measure: mapdemo.spansWireMeasure,
+    load: (wire, rep) => mapdemo.spansWireLoad(wire, rep),
+    save: mapdemo.spansWireSave,
+    report: mapdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'mapdemo Text': _fileRow<mapdemo.Text, mapdemo.TableWireReport>(
+    measure: mapdemo.textWireMeasure,
+    load: (wire, rep) => mapdemo.textWireLoad(wire, rep),
+    save: mapdemo.textWireSave,
+    report: mapdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'mapdemo Trails': _fileRow<mapdemo.Trails, mapdemo.TableWireReport>(
+    measure: mapdemo.trailsWireMeasure,
+    load: (wire, rep) => mapdemo.trailsWireLoad(wire, rep),
+    save: mapdemo.trailsWireSave,
+    report: mapdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'messagedemo ToolMessage': _fileRow<messagedemo.ToolMessage, messagedemo.TableWireReport>(
+    measure: messagedemo.toolMessageWireMeasure,
+    load: (wire, rep) => messagedemo.toolMessageWireLoad(wire, rep),
+    save: messagedemo.toolMessageWireSave,
+    report: messagedemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'scalars SimState': _fileRow<scalardemo.SimState, scalardemo.TableWireReport>(
+    measure: scalardemo.simStateWireMeasure,
+    load: (wire, rep) => scalardemo.simStateWireLoad(wire, rep),
+    save: scalardemo.simStateWireSave,
+    report: scalardemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'streamdemo Feed': _fileRow<streamdemo.Feed, streamdemo.TableWireReport>(
+    measure: streamdemo.feedWireMeasure,
+    load: (wire, rep) => streamdemo.feedWireLoad(wire, rep),
+    save: streamdemo.feedWireSave,
+    report: streamdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tabledemo ArchiveConfig': _fileRow<tabledemo.ArchiveConfig, tabledemo.TableWireReport>(
+    measure: tabledemo.archiveConfigWireMeasure,
+    load: (wire, rep) => tabledemo.archiveConfigWireLoad(wire, rep),
+    save: tabledemo.archiveConfigWireSave,
+    report: tabledemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tabledemo KeyedConfig': _fileRow<tabledemo.KeyedConfig, tabledemo.TableWireReport>(
+    measure: tabledemo.keyedConfigWireMeasure,
+    load: (wire, rep) => tabledemo.keyedConfigWireLoad(wire, rep),
+    save: tabledemo.keyedConfigWireSave,
+    report: tabledemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tabledemo LoadoutConfig': _fileRow<tabledemo.LoadoutConfig, tabledemo.TableWireReport>(
+    measure: tabledemo.loadoutConfigWireMeasure,
+    load: (wire, rep) => tabledemo.loadoutConfigWireLoad(wire, rep),
+    save: tabledemo.loadoutConfigWireSave,
+    report: tabledemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tabledemo ProfileConfig': _fileRow<tabledemo.ProfileConfig, tabledemo.TableWireReport>(
+    measure: tabledemo.profileConfigWireMeasure,
+    load: (wire, rep) => tabledemo.profileConfigWireLoad(wire, rep),
+    save: tabledemo.profileConfigWireSave,
+    report: tabledemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tabledemo RootConfig': _fileRow<tabledemo.RootConfig, tabledemo.TableWireReport>(
+    measure: tabledemo.rootConfigWireMeasure,
+    load: (wire, rep) => tabledemo.rootConfigWireLoad(wire, rep),
+    save: tabledemo.rootConfigWireSave,
+    report: tabledemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tabledemo WideBlob': _fileRow<tabledemo.WideBlob, tabledemo.TableWireReport>(
+    measure: tabledemo.wideBlobWireMeasure,
+    load: (wire, rep) => tabledemo.wideBlobWireLoad(wire, rep),
+    save: tabledemo.wideBlobWireSave,
+    report: tabledemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tbla2 Root': _fileRow<tbla2.Root, tbla2.TableWireReport>(
+    measure: tbla2.rootWireMeasure,
+    load: (wire, rep) => tbla2.rootWireLoad(wire, rep),
+    save: tbla2.rootWireSave,
+    report: tbla2.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblg1 Guarded': _fileRow<tblg1.Guarded, tblg1.TableWireReport>(
+    measure: tblg1.guardedWireMeasure,
+    load: (wire, rep) => tblg1.guardedWireLoad(wire, rep),
+    save: tblg1.guardedWireSave,
+    report: tblg1.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblk1 Root': _fileRow<tblk1.Root, tblk1.TableWireReport>(
+    measure: tblk1.rootWireMeasure,
+    load: (wire, rep) => tblk1.rootWireLoad(wire, rep),
+    save: tblk1.rootWireSave,
+    report: tblk1.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblk2 Root': _fileRow<tblk2.Root, tblk2.TableWireReport>(
+    measure: tblk2.rootWireMeasure,
+    load: (wire, rep) => tblk2.rootWireLoad(wire, rep),
+    save: tblk2.rootWireSave,
+    report: tblk2.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblm1 Msg': _fileRow<tblm1.Msg, tblm1.TableWireReport>(
+    measure: tblm1.msgWireMeasure,
+    load: (wire, rep) => tblm1.msgWireLoad(wire, rep),
+    save: tblm1.msgWireSave,
+    report: tblm1.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblm2 Msg': _fileRow<tblm2.Msg, tblm2.TableWireReport>(
+    measure: tblm2.msgWireMeasure,
+    load: (wire, rep) => tblm2.msgWireLoad(wire, rep),
+    save: tblm2.msgWireSave,
+    report: tblm2.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblp1 Chain': _fileRow<tblp1.Chain, tblp1.TableWireReport>(
+    measure: tblp1.chainWireMeasure,
+    load: (wire, rep) => tblp1.chainWireLoad(wire, rep),
+    save: tblp1.chainWireSave,
+    report: tblp1.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblp2 Chain': _fileRow<tblp2.Chain, tblp2.TableWireReport>(
+    measure: tblp2.chainWireMeasure,
+    load: (wire, rep) => tblp2.chainWireLoad(wire, rep),
+    save: tblp2.chainWireSave,
+    report: tblp2.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblp3 Chain': _fileRow<tblp3.Chain, tblp3.TableWireReport>(
+    measure: tblp3.chainWireMeasure,
+    load: (wire, rep) => tblp3.chainWireLoad(wire, rep),
+    save: tblp3.chainWireSave,
+    report: tblp3.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblr1 Cfg': _fileRow<tblr1.Cfg, tblr1.TableWireReport>(
+    measure: tblr1.cfgWireMeasure,
+    load: (wire, rep) => tblr1.cfgWireLoad(wire, rep),
+    save: tblr1.cfgWireSave,
+    report: tblr1.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblr2 Cfg': _fileRow<tblr2.Cfg, tblr2.TableWireReport>(
+    measure: tblr2.cfgWireMeasure,
+    load: (wire, rep) => tblr2.cfgWireLoad(wire, rep),
+    save: tblr2.cfgWireSave,
+    report: tblr2.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblscalars2 SimState': _fileRow<scalardemo2.SimState, scalardemo2.TableWireReport>(
+    measure: scalardemo2.simStateWireMeasure,
+    load: (wire, rep) => scalardemo2.simStateWireLoad(wire, rep),
+    save: scalardemo2.simStateWireSave,
+    report: scalardemo2.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblv1 Cfg': _fileRow<tblv1.Cfg, tblv1.TableWireReport>(
+    measure: tblv1.cfgWireMeasure,
+    load: (wire, rep) => tblv1.cfgWireLoad(wire, rep),
+    save: tblv1.cfgWireSave,
+    report: tblv1.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblv2 Cfg': _fileRow<tblv2.Cfg, tblv2.TableWireReport>(
+    measure: tblv2.cfgWireMeasure,
+    load: (wire, rep) => tblv2.cfgWireLoad(wire, rep),
+    save: tblv2.cfgWireSave,
+    report: tblv2.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblw1 Fleet': _fileRow<tblw1.Fleet, tblw1.TableWireReport>(
+    measure: tblw1.fleetWireMeasure,
+    load: (wire, rep) => tblw1.fleetWireLoad(wire, rep),
+    save: tblw1.fleetWireSave,
+    report: tblw1.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'tblw2 Fleet': _fileRow<tblw2.Fleet, tblw2.TableWireReport>(
+    measure: tblw2.fleetWireMeasure,
+    load: (wire, rep) => tblw2.fleetWireLoad(wire, rep),
+    save: tblw2.fleetWireSave,
+    report: tblw2.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'vocab9demo Wide00': _fileRow<vocab9demo.Wide00, vocab9demo.TableWireReport>(
+    measure: vocab9demo.wide00WireMeasure,
+    load: (wire, rep) => vocab9demo.wide00WireLoad(wire, rep),
+    save: vocab9demo.wide00WireSave,
+    report: vocab9demo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'vocab9demo Wide19': _fileRow<vocab9demo.Wide19, vocab9demo.TableWireReport>(
+    measure: vocab9demo.wide19WireMeasure,
+    load: (wire, rep) => vocab9demo.wide19WireLoad(wire, rep),
+    save: vocab9demo.wide19WireSave,
+    report: vocab9demo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'vocabdemo Wide00': _fileRow<vocabdemo.Wide00, vocabdemo.TableWireReport>(
+    measure: vocabdemo.wide00WireMeasure,
+    load: (wire, rep) => vocabdemo.wide00WireLoad(wire, rep),
+    save: vocabdemo.wide00WireSave,
+    report: vocabdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'vocabdemo Wide09': _fileRow<vocabdemo.Wide09, vocabdemo.TableWireReport>(
+    measure: vocabdemo.wide09WireMeasure,
+    load: (wire, rep) => vocabdemo.wide09WireLoad(wire, rep),
+    save: vocabdemo.wide09WireSave,
+    report: vocabdemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'widedemo Caption': _fileRow<widedemo.Caption, widedemo.TableWireReport>(
+    measure: widedemo.captionWireMeasure,
+    load: (wire, rep) => widedemo.captionWireLoad(wire, rep),
+    save: widedemo.captionWireSave,
+    report: widedemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+  'widedemo Stamp': _fileRow<widedemo.Stamp, widedemo.TableWireReport>(
+    measure: widedemo.stampWireMeasure,
+    load: (wire, rep) => widedemo.stampWireLoad(wire, rep),
+    save: widedemo.stampWireSave,
+    report: widedemo.TableWireReport.new,
+    counters: (r) => (r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused),
+  ),
+};
+
 Future<void> wireFuzz() async {
   final src = _ByteSource();
   final count = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
   final roster = <bool>[];
   final retains = <bool>[];
   final messages = <MessageFuzz?>[];
+  final files = <FileFuzz?>[];
   final available = <int>[];
   for (var i = 0; i < count; i++) {
     final unit = await _readString(src);
@@ -1828,10 +2252,14 @@ Future<void> wireFuzz() async {
     // it in test/conformance/go/wire_fuzz.go; a plain `table` carries no
     // message verbs and so answers absent, as the Go leg's does
     final message = form == 2 && retain == 0 ? messageRuns['$unit $root']?.fuzz : null;
+    // EVERY FORM-1 ROOT THIS LEG CARRIES rides the file arm (§4.2), so the
+    // default corpus fuzzes every root and not the Card alone.
+    final file = form == 1 && retain == 0 && !ok ? fileRuns['$unit $root'] : null;
     roster.add(ok);
     retains.add(ok && retain == 1);
-    messages.add(ok ? null : message);
-    available.add(ok || message != null ? 1 : 0);
+    messages.add(ok || file != null ? null : message);
+    files.add(ok || message != null ? null : file);
+    available.add(ok || file != null || message != null ? 1 : 0);
   }
   stdout.add(available);
   await stdout.flush();
@@ -1843,6 +2271,12 @@ Future<void> wireFuzz() async {
     final index = ByteData.sublistView(idxBytes).getUint32(0, Endian.little);
     final size = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
     final wire = await src.read(size);
+    final file = files[index];
+    if (file != null) {
+      stdout.add(file(wire));
+      await stdout.flush();
+      continue;
+    }
     final message = messages[index];
     if (message != null) {
       stdout.add(message(wire));

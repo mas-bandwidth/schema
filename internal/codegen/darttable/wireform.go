@@ -986,7 +986,9 @@ final class TableWireReader {
       rootObj = parent.rootObj,
       rootType = parent.rootType;
 
-  bool has(int n) => n >= 0 && pos + n <= limit;
+  // has is written as a subtraction so a length at the top of the signed
+  // range cannot wrap pos + n negative and pass a framing check (§3, §4).
+  bool has(int n) => n >= 0 && pos <= limit && n <= limit - pos;
 
   int readByte() {
     final v = data[pos];
@@ -1006,6 +1008,17 @@ final class TableWireReader {
       final b = data[p];
       p++;
       if (i == 9 && b > 1) return null;
+      if (i == 9 && b == 1) {
+        // A 64-bit ULEB at or past 2^63 has no non-negative Dart int: Dart's
+        // int is 64-bit two's complement, so shifting in bit 63 would spell a
+        // NEGATIVE length and a count of -1 would be read as a present prefix. No
+        // length, count or reference can be that large (the file is smaller),
+        // and every reader answers these values as too large: a bounded count
+        // clamps, an unbounded one and a length are damage, a reference is
+        // unknown. The largest int stands in for all of them.
+        pos = p;
+        return 0x7FFFFFFFFFFFFFFF;
+      }
       v |= (b & 0x7F) << (7 * i);
       if ((b & 0x80) == 0) {
         if (i > 0 && b == 0) return null;
@@ -2073,7 +2086,11 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		declWidth := ir.TableKindWidth(declKind)
 		signed := f.Type.Kind == ir.TInt && f.Type.Signed
 		g.pf("%s\t{\n", ind)
-		g.pf("%s\t\tvar value = 0;\n", ind)
+		// A KIND THIS FIELD DOES NOT TAKE LEAVES THE FIELD AT ITS DECLARED
+		// DEFAULT (§4): the value starts from what the fresh value already
+		// holds, so the mismatch branch's skip never overwrites an earlier
+		// occurrence or the constructor's default with zero.
+		g.pf("%s\t\tvar value = v.%s;\n", ind, name)
 		g.pf("%s\t\tswitch (kind) {\n", ind)
 		for _, wk := range widenKinds(declKind, signed) {
 			g.pf("%s\t\t\tcase %d:\n", ind, wk.k)
@@ -2154,7 +2171,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			declKind = wireKindF32
 		}
 		g.pf("%s\t{\n", ind)
-		g.pf("%s\t\tvar d = 0.0;\n", ind)
+		// A KIND THIS FIELD DOES NOT TAKE LEAVES THE FIELD AT ITS DECLARED
+		// DEFAULT (§4), including one a nested table's constructor set.
+		g.pf("%s\t\tvar d = v.%s;\n", ind, name)
 		g.pf("%s\t\tswitch (kind) {\n", ind)
 		g.pf("%s\t\t\tcase %d:\n", ind, declKind)
 		if f.Type.Kind == ir.TFloat64 {
