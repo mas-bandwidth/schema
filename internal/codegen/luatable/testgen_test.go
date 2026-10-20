@@ -1,0 +1,167 @@
+package luatable
+
+import (
+	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+)
+
+// TestLuaTestgenWritesPassingTests is the gate of `schema testgen --lang lua`
+// (docs/SPEC-TABLES.md §16.11): it generates tables/examples, writes the
+// generated tests beside the emitted module and runtime in a t.TempDir(), and
+// runs every generated file under the pinned interpreter. Every emitted test
+// RUNs and PASSes. Then it sabotages one byte of the emitted load and the
+// generated tests have to go red.
+func TestLuaTestgenWritesPassingTests(t *testing.T) {
+	t.Parallel()
+	repo := filepath.Join("..", "..", "..")
+	u := luarun.LoadUnit(t, filepath.Join(repo, "tables", "examples"))
+	tests, err := Testgen(u)
+	if err != nil {
+		t.Fatalf("testgen: %v", err)
+	}
+
+	// ONE FILE PER UNIT FILE THAT DECLARES A ROOT TABLE (§16.11).
+	var want []string
+	var roots []string
+	fileRoots := map[string][]string{}
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			if st.IsTable && !st.IsMapEntry() {
+				name := f.Base + "Table_gen_test.lua"
+				if fileRoots[name] == nil {
+					want = append(want, name)
+				}
+				fileRoots[name] = append(fileRoots[name], st.Name)
+				roots = append(roots, st.Name)
+			}
+		}
+	}
+	if len(tests) != len(want) {
+		t.Fatalf("testgen wrote %d files, want %d (%v)", len(tests), len(want), want)
+	}
+	for _, name := range want {
+		src, ok := tests[name]
+		if !ok {
+			t.Fatalf("testgen wrote no %s", name)
+		}
+		if !bytes.Contains(src, []byte(`require("`+ModuleName(u)+`")`)) {
+			t.Fatalf("%s does not require the unit's table module %s", name, ModuleName(u))
+		}
+		for _, banned := range []string{"os.time", "os.date", "os.clock", "socket", "io.open", "io.write", "math.random"} {
+			if bytes.Contains(src, []byte(banned)) {
+				t.Fatalf("%s uses %s: a generated test uses the generated API and no time, file or socket", name, banned)
+			}
+		}
+	}
+	for _, root := range roots {
+		var seen, skipped bool
+		for _, src := range tests {
+			if bytes.Contains(src, []byte("Test"+root+"GenRoundTrip")) && bytes.Contains(src, []byte("Test"+root+"GenDamage")) {
+				seen = true
+			}
+			if bytes.Contains(src, []byte("not generated: "+root+" —")) {
+				skipped = true
+			}
+		}
+		if !seen && !skipped {
+			t.Fatalf("no generated file carries Test%sGenRoundTrip and Test%sGenDamage, and no file writes down why", root, root)
+		}
+	}
+	if !strings.Contains(string(tests["RangesTable_gen_test.lua"]), "not generated: RangedUnsigned") {
+		t.Fatal("the unsigned 64-bit bounds the Lua reader cannot read are not written down")
+	}
+	again, err := Testgen(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, src := range tests {
+		if !bytes.Equal(again[name], src) {
+			t.Fatalf("%s is not deterministic", name)
+		}
+	}
+
+	generated, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	write := func(dir string, files map[string][]byte) {
+		t.Helper()
+		luarun.WriteFiles(t, dir, files)
+		for name, src := range tests {
+			if err := os.WriteFile(filepath.Join(dir, name), src, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	dir := t.TempDir()
+	write(dir, generated)
+	for _, name := range want {
+		out := luarun.Run(t, dir, name, nil)
+		if !bytes.Contains(out, []byte("PASS "+name)) {
+			t.Fatalf("%s did not pass:\n%s", name, out)
+		}
+		for _, root := range fileRoots[name] {
+			if !bytes.Contains(tests[name], []byte("Test"+root+"GenRoundTrip")) {
+				continue
+			}
+			if !bytes.Contains(out, []byte("PASS Test"+root+"GenRoundTrip")) {
+				t.Fatalf("%s did not run Test%sGenRoundTrip:\n%s", name, root, out)
+			}
+		}
+		t.Logf("%s passes under the pinned interpreter", name)
+	}
+
+	// A SABOTAGED LOAD IS CAUGHT: one anchor in the emitted load, matched
+	// exactly once, makes the generated round trip red.
+	t.Run("sabotaged_load", func(t *testing.T) {
+		t.Parallel()
+		const anchor = "local function r_u8(r)\n  if r.at >= r.lim then r.bad = true; return 0 end\n  local v = byteat(r)\n  r.at = r.at + 1\n  return v\nend"
+		const sabotaged = "local function r_u8(r)\n  if r.at >= r.lim then r.bad = true; return 0 end\n  local v = byteat(r)\n  r.at = r.at + 0\n  return v\nend"
+		src, ok := generated["load.lua"]
+		if !ok {
+			t.Fatal("the emitted unit has no load.lua")
+		}
+		if n := strings.Count(string(src), anchor); n != 1 {
+			t.Fatalf("the load anchor matches %d times, want 1", n)
+		}
+		files := map[string][]byte{}
+		for name, data := range generated {
+			files[name] = data
+		}
+		files["load.lua"] = []byte(strings.Replace(string(src), anchor, sabotaged, 1))
+		bad := t.TempDir()
+		write(bad, files)
+		out, err := runLuaFile(t, bad, "GuardedTable_gen_test.lua")
+		if err == nil {
+			t.Fatalf("a sabotaged load went unnoticed by the generated tests:\n%s", out)
+		}
+		if !bytes.Contains(out, []byte("FAIL")) {
+			t.Fatalf("a sabotaged load failed without a named FAIL:\n%s", out)
+		}
+	})
+}
+
+// runLuaFile runs one generated file under the pinned interpreter and returns
+// its output even when the process exits nonzero, for the negative control.
+func runLuaFile(t *testing.T, dir, main string) ([]byte, error) {
+	t.Helper()
+	lua := luarun.Interpreter(t)
+	cmd := exec.Command(lua, main)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "LUA_PATH="+filepath.Join(dir, "?.lua")+";;", "LUA_INIT=")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err != nil {
+		return append(stdout.Bytes(), stderr.Bytes()...), err
+	}
+	return stdout.Bytes(), nil
+}

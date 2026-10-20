@@ -18,3 +18,9 @@ option `runtime=standalone` embeds that machinery in the unit instead
 (`compiler.Options{"runtime": "standalone"}`; SPEC-TABLES.md §8.4). Any other
 `runtime` value is refused by name, and the refusal names shared as the
 default.
+
+`schema testgen --lang lua` writes `<Base>Table_gen_test.lua` beside the Lua
+table module `generate --lang lua` writes, in a build tagged `schema_leg_lua`
+(`make build/schema-lua`); the generated tests run under the pinned Lua 5.4.8
+interpreter (`make dist-lua`). The untagged build carries `--lang go` only and
+refuses every other testgen target by name (docs/SPEC-TABLES.md §16.11).
