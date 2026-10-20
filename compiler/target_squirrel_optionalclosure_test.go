@@ -127,7 +127,7 @@ local run = function(label, present) {
   if (saved == null) { print(label + " save null malformed\n"); return; }
   local report = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
     malformed = false, refused = false };
-  local back = L.load(T, "Outer", saved, report);
+  local back = L.loadTolerant(T, "Outer", saved, report);
   if (back == null) { print(label + " load null malformed\n"); return; }
   local again = S.save(T, "Outer", back);
   if (again == null) { print(label + " resave null malformed\n"); return; }

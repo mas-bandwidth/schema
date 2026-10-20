@@ -93,11 +93,11 @@ v.Grade = "Argent";
 local saved = S.save(T, "L", v);
 print("SAVE:" + hex(saved) + "\n");
 
-local back = L.load(T, "L", saved, report);
+local back = L.loadTolerant(T, "L", saved, report);
 print("LOADED:" + back.Grade + ":" + report.malformed + ":" + report.refused + "\n");
 print("RESAVE:" + hex(S.save(T, "L", back)) + "\n");
 
-local old = L.load(T, "L", inputs["old"], report);
+local old = L.loadTolerant(T, "L", inputs["old"], report);
 print("OLDLOADED:" + old.Grade + ":" + report.malformed + ":" + report.refused + "\n");
 print("OLDRESAVE:" + hex(S.save(T, "L", old)) + "\n");
 `

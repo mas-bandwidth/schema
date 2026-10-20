@@ -361,7 +361,7 @@ local fresh = function() {
   print("seed24_loadtext|" + nn(ltv) + "|" + nn(ltr.reason) + "|" + nn(ltr.field) + "|" + nn(("blobShared" in ltr) ? ltr.blobShared : 0) + "\n");
 
   local tr = fresh();
-  local tv = L.load(T, "Root", inputs["damaged"], tr);
+  local tv = L.loadTolerant(T, "Root", inputs["damaged"], tr);
   local sameNode = tv != null && tv.F2 != null && tv.F2.len() > 0 && tv.F2 == tv.U0.Ptr;
   local jm = J.ToJsonMeasure(T, "Root", tv);
   local jr = ("ToJsonReason" in J) ? J.ToJsonReason : null;
@@ -407,7 +407,7 @@ local fresh = function() {
   local qjm = qv == null ? -1 : J.ToJsonMeasure(T, "Root", qv);
   local qj = qv == null ? null : J.ToJson(T, "Root", qv);
   local qfr = fresh();
-  local qf = qj == null ? null : J.FromJson(T, "Root", qj, qfr);
+  local qf = qj == null ? null : J.FromJsonTolerant(T, "Root", qj, qfr);
   local qj2 = (qf == null || qfr.malformed) ? null : J.ToJson(T, "Root", qf);
   print("writers_two|" + qm + "|" + hexOf(qs) + "|" + nn(qst) + "|" + nn(qvr.reason) + "|" +
         hexOf(qvBack) + "|" + qjm + "|" + hexOf(qj) + "|" + hexOf(qj2) + "\n");
@@ -442,7 +442,7 @@ local fresh = function() {
   print("amp_strict|" + nn(sv) + "|" + nn(sr.reason) + "|" + nn(sr.field) + "|" + nn(("blobShared" in sr) ? sr.blobShared : 0) + "\n");
 
   local tr = fresh();
-  local tv = L.load(T, "Root", inputs["amp"], tr);
+  local tv = L.loadTolerant(T, "Root", inputs["amp"], tr);
   local allSame = tv != null && tv.Items.len() == 4096 && tv.Items[0].B != null && tv.Items[0].B.len() == 65536;
   if (allSame) {
     local first = tv.Items[0].B;

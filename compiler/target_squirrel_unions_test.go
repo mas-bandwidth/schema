@@ -33,11 +33,11 @@ local report = {
   unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
   duplicate = 0, malformed = false, refused = false
 };
-local v = L.load(T, "L", inputs["oracle"], report);
+local v = L.loadTolerant(T, "L", inputs["oracle"], report);
 if (v == null) { print("load-failed\n"); return; }
 local b = S.save(T, "L", v);
 if (b == null) { print("save-failed\n"); return; }
-local v2 = L.load(T, "L", b, report);
+local v2 = L.loadTolerant(T, "L", b, report);
 if (v2 == null) { print("reload-failed\n"); return; }
 local b2 = S.save(T, "L", v2);
 if (b2 == null) { print("resave-failed\n"); return; }

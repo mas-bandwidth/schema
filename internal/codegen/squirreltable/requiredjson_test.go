@@ -27,7 +27,7 @@ local cases = %s;
 foreach (c in cases) {
   local r = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
     malformed = false, refused = false };
-  local v = J.FromJson(M, c[0], inputs[c[1]], r);
+  local v = J.FromJsonTolerant(M, c[0], inputs[c[1]], r);
   local w = r.malformed ? null : J.ToJson(M, c[0], v);
   local out = "";
   if (w == null) out = "null";

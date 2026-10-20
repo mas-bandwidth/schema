@@ -44,7 +44,7 @@ local run = function(unit, mod, root, key) {
   local L = schema.require("schema_table_load");
   local S = schema.require("schema_table_save");
   local J = schema.require("schema_table_json");
-  local v = L.load(T, root, inputs[key], fresh());
+  local v = L.loadTolerant(T, root, inputs[key], fresh());
   if (v == null) { print("FAIL " + key + " load\n"); return; }
   local saved = S.save(T, root, v);
   if (saved == null) { print("FAIL " + key + " save\n"); return; }

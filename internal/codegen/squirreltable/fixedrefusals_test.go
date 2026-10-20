@@ -165,7 +165,7 @@ local names = [
 	}
 	sb.WriteString("];\nforeach (nm in names) {\n")
 	fmt.Fprintf(&sb, "  local v = [T.%s()];\n", recRoot)
-	fmt.Fprintf(&sb, "  T.%sFixedLoad(inputs[nm], v, null);\n", recRoot)
+	fmt.Fprintf(&sb, "  T.%sFixedLoadTolerant(inputs[nm], v, null);\n", recRoot)
 	sb.WriteString("  print(nm + \"=\" + T.FixedReason + \"\\n\");\n}\n")
 	if err := os.WriteFile(filepath.Join(sqDir, "load.nut"), []byte(sb.String()), 0o644); err != nil {
 		t.Fatal(err)
@@ -227,7 +227,7 @@ func TestOracleR(t *testing.T) {
 		plan := make([]TableFixedEntry, 64)
 		var rep TableReport
 		dst := make([]%s, 1)
-		n := %sFixedLoad(dst, data, plan, &rep)
+		n := %sFixedLoadTolerant(dst, data, plan, &rep)
 		r := ""
 		if n < 0 { r = rep.Reason }
 		name := strings.TrimSuffix(nm, ".bin")

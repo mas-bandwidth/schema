@@ -177,7 +177,7 @@ func TestSquirrelLoadTextRefusesNonCanonicalBase64(t *testing.T) {
   if (r.wire) {
     local L = schema.require("schema_table_load");
     local rep = { unknown=0, kindMismatch=0, widened=0, clamped=0, duplicate=0, malformed=false, refused=false };
-    v = L.load(T, r.root, inputs[r.key], rep);
+    v = L.loadTolerant(T, r.root, inputs[r.key], rep);
     if (v == null || rep.refused) { print("error|" + r.key + "|load\n"); continue; }
   } else {
     local C = T[r.root];

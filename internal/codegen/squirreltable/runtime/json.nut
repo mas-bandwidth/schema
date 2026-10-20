@@ -2267,8 +2267,9 @@ readUnion = function(T, u, r, holder, key, depth) {
 // instance holds what was placed before any stop; a text that is not JSON,
 // or whose labels do not resolve, is malformed. A VARIABLE root reads with
 // the label map; a fixed root has none, which is what makes "&node" a
-// refusal there (§16.7).
-_M.FromJson <- function(T, rootName, text, report) {
+// refusal there (§16.7). This is the TOLERANT read: it keeps the recovered
+// value and its counters; the plain FromJson is the strict read (§6.5).
+_M.FromJsonTolerant <- function(T, rootName, text, report) {
   foreach (k in ["unknown", "kindMismatch", "widened", "clamped", "duplicate"]) {
     if (!(k in report)) report[k] <- 0;
   }
@@ -2283,5 +2284,35 @@ _M.FromJson <- function(T, rootName, text, report) {
     if (r.p != r.n) r.bad = true; // trailing rubbish is not one text
   }
   if (r.bad || !ok) report.malformed = true;
+  return v;
+};
+
+// THE STRICT FromJson (docs/SPEC-TABLES.md §6.5): the plain name is the strict
+// read. It runs the tolerant read and refuses whatever ReadStrict refuses,
+// leaving the reason and the field in the report and answering null. A
+// missing | required field is named as ReadStrict names it: missing_required,
+// with the first missing field in report.field (§2.3, §16.2).
+_M.FromJson <- function(T, rootName, text, report) {
+  if (report == null) report = {};
+  local v = _M.FromJsonTolerant(T, rootName, text, report);
+  local reason = ("reason" in report) ? report.reason : null;
+  local field = null;
+  if (reason != null) {
+    local p = "missing_required: ";
+    if (reason.len() >= p.len() && reason.slice(0, p.len()) == p) {
+      local names = reason.slice(p.len());
+      local comma = names.find(",");
+      field = comma == null ? names : names.slice(0, comma);
+      reason = "missing_required";
+    }
+  }
+  if (reason == null && report.malformed) reason = "malformed";
+  if (reason == null && report.clamped > 0) reason = "clamped";
+  if (reason == null && report.kindMismatch > 0) reason = "kind_mismatch";
+  if (reason != null) {
+    report.reason <- reason;
+    report.field <- field;
+    return null;
+  }
   return v;
 };

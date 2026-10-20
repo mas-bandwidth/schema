@@ -84,13 +84,13 @@ local run = function(unit, mod) {
   };
   local fromJson = function(shape, text) {
     local r = fresh();
-    local v = J.FromJson(T, "M", text, r);
+    local v = J.FromJsonTolerant(T, "M", text, r);
     local b = r.malformed ? null : S.save(T, "M", v);
     print("json " + shape + " " + describe(v) + " " + hexOf(b) + "\n");
   };
   local fromWire = function(shape, data) {
     local r = fresh();
-    local v = L.load(T, "M", data, r);
+    local v = L.loadTolerant(T, "M", data, r);
     local b = r.malformed ? null : S.save(T, "M", v);
     print("wire " + shape + " " + describe(v) + " " + hexOf(b) + "\n");
   };

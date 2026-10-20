@@ -42,10 +42,10 @@ local report = function() {
   };
 };
 local firstReport = report();
-local value = L.load(T, "L", inputs["value"], firstReport);
+local value = L.loadTolerant(T, "L", inputs["value"], firstReport);
 local first = S.save(T, "L", value);
 local secondReport = report();
-local reloaded = L.load(T, "L", first, secondReport);
+local reloaded = L.loadTolerant(T, "L", first, secondReport);
 local second = S.save(T, "L", reloaded);
 local a = hex(first);
 local b = hex(second);

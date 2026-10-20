@@ -40,7 +40,7 @@ local report = {
   unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
   duplicate = 0, malformed = false, refused = false
 };
-local v = L.load(T, "OneSided", inputs.wire, report);
+local v = L.loadTolerant(T, "OneSided", inputs.wire, report);
 print("accepted " + ((v != null && !report.malformed && !report.refused) ? "true" : "false") + "\n");
 print("clamped " + report.clamped.tostring() + "\n");
 print("a " + v.A.tostring() + "\n");

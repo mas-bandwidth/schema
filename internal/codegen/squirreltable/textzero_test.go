@@ -225,12 +225,12 @@ local fresh = function() {
 };
 local run = function(key) {
   local r = fresh();
-  local v = J.FromJson(T, "Root", inputs[key], r);
+  local v = J.FromJsonTolerant(T, "Root", inputs[key], r);
   local reason = ("reason" in r && r.reason != null) ? r.reason : "-";
   if (r.malformed) { print(key + "|refused|" + reason + "\n"); return; }
   local t1 = J.ToJson(T, "Root", v);
   local r2 = fresh();
-  local v2 = J.FromJson(T, "Root", t1, r2);
+  local v2 = J.FromJsonTolerant(T, "Root", t1, r2);
   local t2 = r2.malformed ? null : J.ToJson(T, "Root", v2);
   print(key + "|read|" + hexOf(t1) + "|" + hexOf(t2) + "|" + reason + "\n");
 };
