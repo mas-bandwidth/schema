@@ -222,11 +222,15 @@ end
 -- the pointer and blob edges of one node's by-value closure, in the walk's
 -- order: fields in declaration order, array elements in index order. An absent
 -- by-value node (nil) holds only its declared defaults and no pointer or blob
--- edge (§3, §4.2).
+-- edge (§3, §4.2). AN ABSENT ?T OWNS NO NODE (§2.3): the numbering gates on
+-- the presence companion, so a value made absent after it was present writes
+-- no stale node for the edges its untouched storage still holds.
 edges = function(T, desc, v, out, cache)
   if v == nil then return out end
   for _, fd in ipairs(desc.fields) do
-    if guard_holds(fd, v) then edge_value(T, fd, v[fd.name], v, fd.name, out, cache) end
+    if guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
+      edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
+    end
   end
   return out
 end

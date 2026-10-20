@@ -7,5 +7,5 @@ func init() {
 	// declaration; luatable applies it to the wire, json, block and cook
 	// surfaces, and the fixed, view, message and retain surfaces stay
 	// governed by the surface list alone.
-	registerCarries("lua", carryForms)
+	registerCarries("lua", carryForms, carryOptionalVariableClosure)
 }
