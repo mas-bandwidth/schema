@@ -57,7 +57,7 @@ func saveProgram(g *loadUnit, roots []string) string {
 		fmt.Fprintf(&b, "import .%s\n", m)
 	}
 	b.WriteString("import .load\n")
-	b.WriteString("import .save\n")
+	b.WriteString("import .schema_save\n")
 	b.WriteString(keyedRegistrations(g.u))
 	b.WriteString(dumpLobster)
 	b.WriteString(saveDump)
@@ -131,7 +131,7 @@ func runSaveRows(t *testing.T, g *loadUnit, rows []loadRow) saveResult {
 }
 
 // TestLobsterTableSaveRoundTripsEveryInstance saves every instance of the
-// tables manifest through runtime/save.lobster (docs/SPEC-TABLES.md §3,
+// tables manifest through runtime/schema_save.lobster (docs/SPEC-TABLES.md §3,
 // §3.1; docs/PORT-LOBSTER.md, THE RUNTIME LAYOUT) and holds the bytes to the
 // Go reference engine's (internal/tablewire.Encode of the instance it
 // decoded), then loads the saved bytes back through runtime/load.lobster and
@@ -245,7 +245,7 @@ func TestLobsterTableSaveNegativeControl(t *testing.T) {
 	if got := runSaveRows(t, g, []loadRow{row}).saved[0]; got != hex.EncodeToString(want) {
 		t.Fatalf("the control, unpatched: got %s, want %x", got, want)
 	}
-	path := filepath.Join(g.dir, "save.lobster")
+	path := filepath.Join(g.dir, "schema_save.lobster")
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
