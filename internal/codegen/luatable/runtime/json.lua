@@ -920,6 +920,35 @@ end
 local read_value
 local parse_timestamp
 
+-- A REQUIRED FIELD MUST BE NAMED IN THE OBJECT (docs/SPEC-TABLES.md §2.3,
+-- §16.2): closing one object counts missing_required once, naming in
+-- declaration order every field marked required that the object did not name,
+-- exactly as the binary read's close does (load.lua, read_body). A required
+-- field inside an `if` guard is demanded only while its guard holds (§2.3,
+-- §3): with the branch off it is absent and no refusal is owed.
+local function require_seen(desc, v, seen, report)
+  local missing = nil
+  for _, f in ipairs(desc.fields) do
+    if f.required and not seen[f.name] then
+      local hold = true
+      if f.guard ~= nil then
+        for _, t in ipairs(f.guard) do if (v[t.field] == true) ~= t.want then hold = false; break end end
+      end
+      if hold then
+        if missing == nil then missing = "" end
+        if #missing > 0 then missing = missing .. ", " end
+        missing = missing .. f.name
+      end
+    end
+  end
+  if missing ~= nil then
+    report.missingRequired = (report.missingRequired or 0) + 1
+    report.reason = "missing_required: " .. missing
+    return false
+  end
+  return true
+end
+
 local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
   local seen = {}
   while true do
@@ -928,7 +957,10 @@ local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
       key, first_key = first_key, nil
     else
       local c = peek(inp)
-      if c == '}' then inp.p = inp.p + 1; return true end
+      if c == '}' then
+        inp.p = inp.p + 1
+        return require_seen(desc, v, seen, report)
+      end
       if c == nil then inp.bad = true; return false end
       local start = inp.p
       local _, _, ok = scan_string(inp, MAX_KEY)
@@ -973,7 +1005,7 @@ local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
       inp.p = inp.p + 1
     elseif c == '}' then
       inp.p = inp.p + 1
-      return true
+      return require_seen(desc, v, seen, report)
     else
       inp.bad = true
       return false
@@ -996,7 +1028,7 @@ local function read_pointer(T, d, inp, holder, key, depth, graph, report)
   if c == '}' then
     inp.p = inp.p + 1
     holder[key] = fresh(T, T.Tables[d.target])
-    return true
+    return require_seen(T.Tables[d.target], holder[key], {}, report)
   end
   if c == nil then inp.bad = true; return false end
   local start = inp.p
@@ -1995,6 +2027,10 @@ end
 local write_value, write_table, write_pointer, write_field, write_fields
 
 write_fields = function(T, desc, v, depth, g, w, any)
+  -- EVERY NAMED FIELD IS WRITTEN, defaults included (docs/SPEC-TABLES.md
+  -- §16.1), so a `| required` field is never omitted at its default (§2.3,
+  -- §16.2): the only skips are a false `if` guard and an absent optional,
+  -- and neither can hold for a required field (§2.3).
   for _, fd in ipairs(desc.fields) do
     if guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
       if not any then put(w, '{') else put(w, ',') end
