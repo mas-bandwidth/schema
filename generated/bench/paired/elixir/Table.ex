@@ -2137,9 +2137,11 @@ defmodule Bench.Table do
                     {:ok, payload, rest3} ->
                       if id == @node_id and transport do
                         # the reserved node id is a variable root's own transport
-                        # (§3.1): the body reads it as the node table, and a body
-                        # that carries it under another kind steps over it, never
-                        # counting it unknown. A fixed root has no such arm.
+                        # (§3.1): kind 12 carries the node table, and a body that
+                        # carries it under another kind makes the whole numbering
+                        # malformed — every pointer reads null and one event is
+                        # counted — while the root's other fields still decode.
+                        # A fixed root has no such arm.
                         if kind == 12 do
                           case node_table(payload, ids, string_blob) do
                             {:ok, ns} ->
@@ -2149,7 +2151,7 @@ defmodule Bench.Table do
                               {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
                           end
                         else
-                          entries(rest3, ids, string_blob, transport, acc, nodes)
+                          entries(rest3, ids, string_blob, transport, acc, nodes ++ [:malformed])
                         end
                       else
                         entries(
