@@ -261,7 +261,7 @@ def serialize_wstring(s:serialize_read_stream, value:[int], buffer_size:int):
     units, ok = s.serialize_int(units, 0, buffer_size - 1)
     if not ok:
         return value, false
-    var out:[int] = []
+    let out:[int] = []
     var i = 0
     while i < units:
         var c = 0
