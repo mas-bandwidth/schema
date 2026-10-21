@@ -130,14 +130,14 @@ func TestIssue710TableRecovery(t *testing.T) {
 	}{
 		{"default", "Text", issue710Wire(append([]byte{1, 12, 2, 'x', 0}, after...), fieldID("Text", 0), fieldID("Text", 1)), func(v *tabletext.Instance) bool {
 			return string(v.Fields[0].Cell.Str) == "untitled" && v.Fields[0].Count == 8
-		}, `Text v; TableReport r; if (!TextLoad(v, wire, sizeof(wire), &r) || !r.malformed || v.after!=42 || v.label_length!=8 || strcmp(v.label,"untitled")!=0) return 1;`},
+		}, `Text v; TableReport r; if (!TextLoadTolerant(v, wire, sizeof(wire), &r) || !r.malformed || v.after!=42 || v.label_length!=8 || strcmp(v.label,"untitled")!=0) return 1;`},
 		{"array", "Rows", issue710Wire(append([]byte{1, 14, 11, 13, 1, 8, 3, byte(ir.TableKindI32), 99, 0, 0, 0, 0, 0}, after...), fieldID("Rows", 0), fieldID("Rows", 1), fieldID("Element", 0)), func(v *tabletext.Instance) bool {
 			return v.Fields[0].Count == 1 && v.Fields[0].Elems[0].Tab.Fields[0].Cell.I == 7
-		}, `Rows v; TableReport r; if (!RowsLoad(v, wire, sizeof(wire), &r) || !r.malformed || v.after!=42 || v.items_count!=1 || v.items[0].value!=7) return 2;`},
-		{"map", "Mapping", issue710Wire(append([]byte{1, 14, 11, 13, 1, 8, 3, byte(ir.TableKindU32), 1, 0, 0, 0, 0, 0}, after...), fieldID("Mapping", 0), fieldID("Mapping", 1), ir.MapKeyWireId), func(v *tabletext.Instance) bool { return len(v.Fields[0].Entries) == 0 }, `MappingBuilder b; TableReport r; const bool ok=MappingLoadBuilder(b,wire,sizeof(wire),&r); const Mapping * v=b.GetRoot(); const bool pass=ok && r.malformed && v && v->after==42 && v->items.count==0; if(!pass) return 3;`},
+		}, `Rows v; TableReport r; if (!RowsLoadTolerant(v, wire, sizeof(wire), &r) || !r.malformed || v.after!=42 || v.items_count!=1 || v.items[0].value!=7) return 2;`},
+		{"map", "Mapping", issue710Wire(append([]byte{1, 14, 11, 13, 1, 8, 3, byte(ir.TableKindU32), 1, 0, 0, 0, 0, 0}, after...), fieldID("Mapping", 0), fieldID("Mapping", 1), ir.MapKeyWireId), func(v *tabletext.Instance) bool { return len(v.Fields[0].Entries) == 0 }, `MappingBuilder b; TableReport r; const bool ok=MappingLoadBuilderTolerant(b,wire,sizeof(wire),&r); const Mapping * v=b.GetRoot(); const bool pass=ok && r.malformed && v && v->after==42 && v->items.count==0; if(!pass) return 3;`},
 		{"keyed", "Keyed", issue710Wire(append([]byte{1, byte(ir.TableKindKeyed), 21, 13, 2, 4, 8, 3, byte(ir.TableKindI32), 99, 0, 0, 0, 0, 0, 5, 7, 3, byte(ir.TableKindI32), 55, 0, 0, 0, 0}, after...), fieldID("Keyed", 0), fieldID("Keyed", 1), fieldID("Element", 0), ir.TableWireId(u.Enums["Key"].VariantWireName(0)), ir.TableWireId(u.Enums["Key"].VariantWireName(1))), func(v *tabletext.Instance) bool {
 			return v.Fields[0].Elems[0].Tab.Fields[0].Cell.I == 7 && v.Fields[0].Elems[1].Tab.Fields[0].Cell.I == 55
-		}, `Keyed v; TableReport r; if (!KeyedLoad(v, wire, sizeof(wire), &r) || !r.malformed || v.after!=42 || v.items.slots[0].value!=7 || v.items.slots[1].value!=55) return 4;`},
+		}, `Keyed v; TableReport r; if (!KeyedLoadTolerant(v, wire, sizeof(wire), &r) || !r.malformed || v.after!=42 || v.items.slots[0].value!=7 || v.items.slots[1].value!=55) return 4;`},
 	}
 	c := New()
 	files, err := c.Generate(u, "cpp", Options{})

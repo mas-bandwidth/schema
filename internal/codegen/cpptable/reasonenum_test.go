@@ -285,17 +285,17 @@ func TestCPPGeneratedHeadersCompileUnderClangAndGxxWerror(t *testing.T) {
 		}
 	}
 
-	// THE REVERSED WITNESS. Put the BASE declaration back in a copy of the
-	// examples header — enum TableMessageReason with no underlying type — and
-	// clang must refuse the 0x40000001 constexpr, naming the variable.
+	// THE REVERSED WITNESS. Drop the underlying type from a copy of the
+	// examples header — enum TableRefuseReason with none — and clang must
+	// refuse the high-range constexpr cast, naming the variable.
 	files, header := cppReasonFiles(t, loadHeldUnitPaths(t, "../../..", []string{"tables/examples"}))
 	base := string(files[header])
-	unfixed := regexp.MustCompile(`enum\s+TableMessageReason\s*:\s*[A-Za-z_][A-Za-z0-9_:]*`).ReplaceAllString(base, "enum TableMessageReason")
+	unfixed := regexp.MustCompile(`enum\s+TableRefuseReason\s*:\s*[A-Za-z_][A-Za-z0-9_:]*`).ReplaceAllString(base, "enum TableRefuseReason")
 	if unfixed == base {
-		t.Fatalf("%s does not declare TableMessageReason's underlying type, so the witness has nothing to reverse", header)
+		t.Fatalf("%s does not declare TableRefuseReason's underlying type, so the witness has nothing to reverse", header)
 	}
-	if !strings.Contains(unfixed, "(TableMessageReason) 0x40000001") {
-		t.Fatalf("%s no longer carries the 0x40000001 cast the witness needs", header)
+	if !strings.Contains(unfixed, "(TableRefuseReason) 0x20000000") {
+		t.Fatalf("%s no longer carries the 0x20000000 cast the witness needs", header)
 	}
 	witness := map[string][]byte{}
 	maps.Copy(witness, files)
@@ -303,11 +303,11 @@ func TestCPPGeneratedHeadersCompileUnderClangAndGxxWerror(t *testing.T) {
 	dir := cppReasonStage(t, witness, header)
 	out, err := cppReasonCompile(clang, dir)
 	if err == nil {
-		t.Fatalf("the reversed witness compiled: clang accepted enum TableMessageReason with no underlying type and the 0x40000001 cast")
+		t.Fatalf("the reversed witness compiled: clang accepted enum TableRefuseReason with no underlying type and the 0x20000000 cast")
 	}
 	line := ""
 	for _, l := range strings.Split(string(out), "\n") {
-		if strings.Contains(l, "error: constexpr variable 'layout_unknown'") &&
+		if strings.Contains(l, "error: constexpr variable 'no_vocabulary'") &&
 			strings.Contains(l, "must be initialized by a constant expression") {
 			line = l
 			break

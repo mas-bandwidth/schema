@@ -160,7 +160,7 @@ const nestedTrailProbe = `
 
     TableReport report;
     memset( &report, 0, sizeof( report ) );
-    const Root * got = RootLoad( region, region_bytes, buffer, n, &report );
+    const Root * got = RootLoadTolerant( region, region_bytes, buffer, n, &report );
     if ( got == NULL ) { printf( "load returned NULL, malformed=%d\n", (int) report.malformed ); return 1; }
     if ( !report.malformed ) { printf( "a nested-union arm with a trailing byte is not malformed\n" ); return 1; }
     if ( got->pick.type != OuterType::None ) { printf( "the union did not read None: %d\n", (int) got->pick.type ); return 1; }
