@@ -72,7 +72,7 @@ func loadFixRootConfigParse(line string) (loadFixRootConfigCounts, []byte, error
 	n := []*int{&c.unknown, &c.kindMismatch, &c.widened, &c.clamped, &c.duplicate}
 	for i, p := range n {
 		if _, err := fmt.Sscanf(f[1+i], "%d", p); err != nil {
-			return c, nil, fmt.Errorf("probe line %q field %d: %v", line, 1+i, err)
+			return c, nil, fmt.Errorf("probe line %q field %d: %w", line, 1+i, err)
 		}
 	}
 	c.malformed = f[6] == "true"
@@ -81,7 +81,7 @@ func loadFixRootConfigParse(line string) (loadFixRootConfigCounts, []byte, error
 	}
 	saved, err := hex.DecodeString(f[8])
 	if err != nil {
-		return c, nil, fmt.Errorf("probe line %q saved bytes: %v", line, err)
+		return c, nil, fmt.Errorf("probe line %q saved bytes: %w", line, err)
 	}
 	return c, saved, nil
 }
@@ -102,7 +102,7 @@ func loadFixRootConfigEngine(m *tabletext.Model, def *ir.Struct, data []byte) (l
 	case tablewire.Refused(derr):
 		return loadFixRootConfigCounts{}, nil, fmt.Errorf("the engine refused the root")
 	case derr != nil:
-		return loadFixRootConfigCounts{}, nil, fmt.Errorf("the engine could not read the root: %v", derr)
+		return loadFixRootConfigCounts{}, nil, fmt.Errorf("the engine could not read the root: %w", derr)
 	}
 	c := loadFixRootConfigCounts{
 		unknown:      rep.Unknown,
@@ -114,7 +114,7 @@ func loadFixRootConfigEngine(m *tabletext.Model, def *ir.Struct, data []byte) (l
 	}
 	enc, err := tablewire.Encode(m, inst)
 	if err != nil {
-		return c, nil, fmt.Errorf("the engine refused to encode the value it read: %v", err)
+		return c, nil, fmt.Errorf("the engine refused to encode the value it read: %w", err)
 	}
 	return c, enc, nil
 }
