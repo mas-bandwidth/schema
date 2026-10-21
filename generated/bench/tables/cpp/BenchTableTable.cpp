@@ -1390,6 +1390,114 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
     return true;
 }
 
+// One CHARACTER of a base64 body, after the JSON layer has had its say
+// (docs/SPEC-TABLES.md §16.2): a bytes field is a JSON string whose DECODED
+// value is base64, so an escape is undone first and the character it names
+// is what the alphabet sees. The JSON layer decides FIRST, so a raw byte
+// below 0x20, a backslash that begins no escape and a byte at or above 0x80
+// that does not begin a well-formed UTF-8 sequence (string_not_utf8, §16.3)
+// make the read malformed: false, with in.bad set. A well-formed character
+// past ASCII is valid JSON and no base64 symbol, so it comes back as 0x80,
+// which the alphabet does not hold. *done is true at the closing quote,
+// which is consumed.
+inline bool TableJsonBase64Char( TableJsonIn & in, char * c, bool * done )
+{
+    *done = false;
+    *c = 0;
+    if ( in.pos >= in.size ) { in.bad = true; return false; }
+    const unsigned char lead = (unsigned char) in.text[in.pos];
+    if ( lead >= 0x80 )
+    {
+        const int64_t remaining = in.size - in.pos;
+        int32_t width = 0;
+        if ( TableJsonUtf8( in.text + in.pos, (int32_t) ( remaining < 4 ? remaining : 4 ), &width ) < 0 )
+        {
+            in.bad = true;
+            return false;
+        }
+        in.pos += width;
+        *c = (char) 0x80;
+        return true;
+    }
+    char unit[4];
+    int32_t unit_length = 0;
+    if ( !TableJsonScanUnit( in, unit, &unit_length ) ) { return false; }
+    if ( unit_length == 0 ) { *done = true; return true; }
+    *c = unit_length == 1 ? unit[0] : (char) 0x80;
+    return true;
+}
+
+// A base64 body's FIRST pass, the cursor just past its opening quote: the
+// JSON layer over every character, then the walk's grammar (§16.2):
+// standard-alphabet symbols, then zero, one or two '=', and nothing after; a
+// padded body's length is a multiple of four, and a lone final symbol is not
+// base64. false means the text is not JSON (in.bad says so); *base64 false
+// means a valid string that is not base64, the field's kind_mismatch. The
+// cursor ends past the closing quote either way, so the caller reads on.
+inline bool TableJsonScanBase64( TableJsonIn & in, int64_t * symbols_out, bool * base64 )
+{
+    int64_t symbols = 0;
+    int64_t pad = 0;
+    bool shape = true;
+    for ( ;; )
+    {
+        char c = 0;
+        bool done = false;
+        if ( !TableJsonBase64Char( in, &c, &done ) ) { return false; }
+        if ( done ) { break; }
+        if ( !shape ) { continue; }
+        if ( c == '=' ) { pad++; continue; }
+        if ( pad > 0 ) { shape = false; continue; }
+        if ( TableJsonBase64Value( (uint8_t) c ) < 0 ) { shape = false; continue; }
+        symbols++;
+    }
+    if ( shape )
+    {
+        if ( pad > 0 )
+        {
+            if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { shape = false; }
+        }
+        else if ( symbols % 4 == 1 )
+        {
+            shape = false;
+        }
+    }
+    *symbols_out = symbols;
+    *base64 = shape;
+    return true;
+}
+
+// The SECOND pass over a body the first pass called base64, from mark (just
+// past its opening quote): six bits a symbol into out, at most capacity
+// bytes placed, the count answered, and *clamped set when more were
+// spelled. The cursor is restored to where the first pass left it.
+inline int64_t TableJsonDecodeBase64( TableJsonIn & in, int64_t mark, uint8_t * out, int64_t capacity, bool * clamped )
+{
+    const int64_t end = in.pos;
+    in.pos = mark;
+    int64_t placed = 0;
+    uint32_t accumulator = 0;
+    int32_t held = 0;
+    *clamped = false;
+    for ( ;; )
+    {
+        char c = 0;
+        bool done = false;
+        if ( !TableJsonBase64Char( in, &c, &done ) || done || c == '=' ) { break; }
+        const int32_t symbol = TableJsonBase64Value( (uint8_t) c );
+        accumulator = ( accumulator << 6 ) | (uint32_t) symbol;
+        held += 6;
+        if ( held >= 8 )
+        {
+            held -= 8;
+            if ( placed < capacity ) { out[placed++] = (uint8_t) ( ( accumulator >> held ) & 0xff ); }
+            else { *clamped = true; }
+        }
+    }
+    in.pos = end;
+    return placed;
+}
+
 // One UTF-8 sequence back to its CODE POINT, over bytes TableJsonScanUnit
 // produced and therefore already well formed. It is the inverse of
 // TableJsonEncodeUtf8 and nothing more.
@@ -2473,39 +2581,15 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     }
     if ( TableJsonIsBytes( f ) )
     {
-        // A base64 body carries no escapes, so a backslash in one is simply
-        // not an alphabet character. Validate the stream and its padding before
-        // touching storage, so a malformed body leaves the declared default.
+        // Validate the whole body, JSON layer first, before touching storage,
+        // so a body that is not base64 leaves the declared default.
         if ( TableJsonPeek( in ) != '"' ) { in.bad = true; return false; }
         in.pos++;
         const int64_t mark = in.pos;
         int64_t symbols = 0;
-        int64_t pad = 0;
-        bool malformed = false;
-        for ( ;; )
-        {
-            if ( in.pos >= in.size ) { in.bad = true; return false; }
-            char c = in.text[in.pos++];
-            if ( c == '"' ) { break; }
-            if ( malformed ) { continue; }
-            if ( c == '=' ) { pad++; continue; }
-            if ( pad > 0 ) { malformed = true; continue; }
-            const int32_t at = TableJsonBase64Value( (uint8_t) c );
-            if ( at < 0 ) { malformed = true; continue; }
-            symbols++;
-        }
-        if ( !malformed )
-        {
-            if ( pad > 0 )
-            {
-                if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { malformed = true; }
-            }
-            else if ( symbols % 4 == 1 )
-            {
-                malformed = true;
-            }
-        }
-        if ( malformed )
+        bool base64 = false;
+        if ( !TableJsonScanBase64( in, &symbols, &base64 ) ) { return false; }
+        if ( !base64 )
         {
             // a body that is not base64 is the wrong shape for the kind: the
             // field keeps its default and the event is counted
@@ -2513,33 +2597,10 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             return true;
         }
         memset( storage, 0, (size_t) f->array_bound );
-        TableJsonSetCount( base, f, 0 );
-        int32_t placed = 0;
-        uint32_t accumulator = 0;
-        int32_t held = 0;
         bool clamped = false;
-        for ( int64_t at = mark; ; at++ )
-        {
-            char c = in.text[at];
-            if ( c == '"' || c == '=' ) { break; }
-            const int32_t symbol = TableJsonBase64Value( (uint8_t) c );
-            accumulator = ( accumulator << 6 ) | (uint32_t) symbol;
-            held += 6;
-            if ( held >= 8 )
-            {
-                held -= 8;
-                if ( placed < f->array_bound )
-                {
-                    storage[placed++] = (uint8_t) ( ( accumulator >> held ) & 0xff );
-                }
-                else
-                {
-                    clamped = true;
-                }
-            }
-        }
+        const int64_t placed = TableJsonDecodeBase64( in, mark, storage, (int64_t) f->array_bound, &clamped );
         if ( clamped ) { in.report->clamped++; }
-        TableJsonSetCount( base, f, placed );
+        TableJsonSetCount( base, f, (int32_t) placed );
         return true;
     }
     if ( TableJsonIsKeyed( f ) )
