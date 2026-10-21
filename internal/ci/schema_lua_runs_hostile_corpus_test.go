@@ -368,15 +368,8 @@ type luaHostileCarried struct {
 	fix     string
 }
 
-func luaHostileCarriedList(cases []luaHostileCase) map[string]luaHostileCarried {
+func luaHostileCarriedList(_ []luaHostileCase) map[string]luaHostileCarried {
 	out := map[string]luaHostileCarried{}
-	for _, c := range cases {
-		if c.Schema == "tables/scalars" {
-			// The whole unit declares fixed-point and 128-bit kinds, which the
-			// Lua table backend refuses by name (docs/SPEC-TABLES.md §15).
-			out[c.Name] = luaHostileCarried{"refuse", "reader_unavailable", "schema-lua-carries-wide-table-kinds-r"}
-		}
-	}
 	// The manifest says accept; SPEC-TABLES §16.3 refuses ill-formed UTF-8 at
 	// the bound. The stale verdict is the engine card's.
 	for _, name := range []string{
