@@ -1525,6 +1525,14 @@ All compile errors with positions:
   (`type`, `enum`, `flags`, `union`, `const`) and the package name keep
   refusing Go's words by name until the Go emitter carries the escape for
   them, and every other target keeps refusing its own words by name.
+  **The output never calls a predeclared function a carried name could
+  shadow**: a word another target reserves and Go does not (`new`, `class`,
+  `auto`, ...) is carried bare under `--lang go`, and a table so named is a
+  package-scope type that shadows a builtin of the same spelling, so the
+  emitted code allocates by composite literal (`&T{}`) and sizes by
+  `unsafe.Sizeof(*(*T)(nil))` rather than through `new`
+  (`TestGenerateGoCompilesNonGoReservedWords`, cmd/schema: every such word, in
+  every declaration form, builds).
 - **Package-name safety:** the package ident maps to every target's
   namespace/module/package concept verbatim (§6.1), which exposes it to three
   collision classes no declaration or field name can hit, each refused with a
