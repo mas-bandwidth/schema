@@ -467,7 +467,15 @@ func (v *viewGen) emitRegistry() {
 		if c.IsFloat {
 			real = viewFloat(c.Float)
 		} else if c.Int != nil {
-			intValue = int64(c.Int.Uint64())
+			// docs/SPEC-TABLES.md §8.3: int_value is the folded value, so a
+			// negative constant keeps its sign (Uint64 answers |x| for x < 0).
+			// A value outside int64 keeps the two's-complement pattern the
+			// column holds, as the Go and C++ emitters do.
+			if c.Int.IsInt64() {
+				intValue = c.Int.Int64()
+			} else {
+				intValue = int64(c.Int.Uint64())
+			}
 		}
 		v.pf("    { name: %s, file: %s, typeName: %s, isFloat: %v, intValue: %s, floatValue: %s, doc: %s, tags: %s },\n",
 			jsStr(n), jsStr(viewFileOf(u, n)), jsStr(c.Storage), c.IsFloat, viewBigInt(intValue), real, viewDoc(c.Doc), viewTags(c.Tags))
