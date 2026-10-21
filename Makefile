@@ -575,8 +575,8 @@ tables-doctags: bin/schema test/tables/doctags_main.cpp
 tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
 	@rm -rf build/doctags-null && mkdir -p build/doctags-null
 	./bin/schema generate --lang cpp --out build/doctags-null tables/examples
-	@sed -i.bak 's|", TableDocNone, 0, NULL }|", NULL, 0, NULL }|' build/doctags-null/TablesTable.h
-	@grep -q '", NULL, 0, NULL }' build/doctags-null/TablesTable.h || \
+	@sed -i.bak 's|", TableDocNone, 0, NULL, false }|", NULL, 0, NULL, false }|' build/doctags-null/TablesTable.h
+	@grep -q '", NULL, 0, NULL, false }' build/doctags-null/TablesTable.h || \
 		{ echo "NEGATIVE CONTROL: the NULL-doc sabotage did not apply"; exit 1; }
 	$(CXX) $(CXXFLAGS) -Ibuild/doctags-null -DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo \
 		test/tables/doctags_main.cpp build/doctags-null/TablesTable.cpp build/doctags-null/TabledemoView.cpp -o build/schema_test_doctags_null
@@ -586,8 +586,8 @@ tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
 	@echo "doc/tags negative control 1: a NULL doc column takes the gate down"
 	@rm -rf build/doctags-inline && mkdir -p build/doctags-inline
 	./bin/schema generate --lang cpp --out build/doctags-inline tables/examples
-	@sed -i.bak 's|, TableDocNone, 0, NULL }|, "", 0, NULL }|' build/doctags-inline/TablesTable.h
-	@grep -q ', "", 0, NULL }' build/doctags-inline/TablesTable.h || \
+	@sed -i.bak 's|, TableDocNone, 0, NULL, false }|, "", 0, NULL, false }|' build/doctags-inline/TablesTable.h
+	@grep -q ', "", 0, NULL, false }' build/doctags-inline/TablesTable.h || \
 		{ echo "NEGATIVE CONTROL: the inline-empty sabotage did not apply"; exit 1; }
 	$(CXX) $(CXXFLAGS) -Ibuild/doctags-inline -DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo \
 		test/tables/doctags_main.cpp build/doctags-inline/TablesTable.cpp build/doctags-inline/TabledemoView.cpp -o build/schema_test_doctags_inline
