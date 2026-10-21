@@ -170,7 +170,11 @@ jobs:
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     name: go-test (${{ matrix.group }})
-    runs-on: ubuntu-latest
+    # THE FLEET'S RUNNERS, as ci-fast's runs into main use (standing rule,
+    # 2026-10-21: every CI job on fleet runners, never GitHub-hosted). On a
+    # hosted two-core runner the SCHEMA_SLOW=1 gotable package passed the
+    # 10-minute test timeout; the gate is not loosened to fit that runner.
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 15
     # THREE PACKAGE GROUPS, ONE PER ROW, because this job was 650 s median
     # (2026-09-11) and a matrix row is a job: the emitter packages, everything
@@ -192,13 +196,20 @@ jobs:
 
       - name: Check out the C, C++, C# and Go serialize runtimes (pinned releases)
         run: |
+          set -euo pipefail
           cd ..
+          # A self-hosted runner's workspace PARENT persists between runs: the
+          # previous run's clones are removed and re-cloned at the pinned tag
+          # every time, never reused (as ci-fast's go-test-touched does).
+          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"   https://github.com/mas-bandwidth/serialize.git   serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
 
+      # the runner's own pinned go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
@@ -287,12 +298,15 @@ jobs:
       # emits, and it is the one place in this file where "the build did no
       # work" must not be an available explanation for a green.
       - name: where this runner keeps the Go build cache
+        if: runner.environment == 'github-hosted'
         shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
+      # On a self-hosted runner the build cache is the runner's own and warm.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -388,10 +402,8 @@ jobs:
       - name: the fixed form's versioning suite on the Rust leg
         if: matrix.group == 'versioning'
         run: |
-          if [ ! -d ../serialize.rs ]; then
-            git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
-              https://github.com/mas-bandwidth/serialize.rs.git ../serialize.rs
-          fi
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
+            https://github.com/mas-bandwidth/serialize.rs.git ../serialize.rs
           make tables-rust-versioning
 
       # THE SAME SUITE ON THE JAVA LEG (§5 of docs/FIXED-FORM-ALGORITHM.md), and
@@ -489,7 +501,7 @@ jobs:
       # `actions/cache/save` cannot redden a job: a key another run reserved
       # first is a logged warning and this step's success.
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: matrix.group == 'unit-rest'
+        if: matrix.group == 'unit-rest' && runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
