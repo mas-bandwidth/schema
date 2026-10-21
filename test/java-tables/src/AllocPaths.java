@@ -450,6 +450,11 @@ final class AllocPaths {
     //                2026-10-16), the highest floor seen plus one byte,
     //                rounded up to 64: C2's escape analysis moves a floor
     //                between launches by a Reader (32 to 64 bytes) on some rows.
+    //                Since 9f280fb4d (list count past body in a map value)
+    //                load runs the oracle walk first (loadMeasure(data), one
+    //                Measure, its Report and its Reader per call, 0 per node),
+    //                so every load floor rose by that handle: re-measured on
+    //                the pin (Temurin 21.0.12.1+1, amd-2, 2026-10-21).
     //   save         the answer alone through a kept Saver: one byte[] of the
     //                wire's size, 0 per node beyond it. Every body is written
     //                in place into the Saver's one buffer and framed after it
@@ -460,12 +465,12 @@ final class AllocPaths {
     //                per node and nested body: 4.2 MB to 277 MB per call.
     private static long loadCeiling(String wire) {
         switch (wire) {
-            case "graph_tree.bin": return 1728;     // floors 1696..1725.1
-            case "graph_deep.bin": return 43456;    // floor 43424 on every launch
-            case "graph_shared.bin": return 1344;   // floor 1280 on every launch
-            case "blob_small.bin": return 1408;     // floor 1376 on every launch
+            case "graph_tree.bin": return 1856;     // floors 1824..1832 (1696..1725.1 before 9f280fb4d)
+            case "graph_deep.bin": return 43584;    // floor 43560 (43424 before 9f280fb4d)
+            case "graph_shared.bin": return 1472;   // floor 1448 (1280 before 9f280fb4d)
+            case "blob_small.bin": return 1536;     // floor 1512 (1376 before 9f280fb4d)
             case "keyed_config.bin": return 4736; // floors 4000..4640 across pinned-JDK launches
-            case "arms_gate.bin": return 576;     // floor 536 on the pinned JDK
+            case "arms_gate.bin": return 768;     // floors 672..740.5 on the pinned JDK (536 before 9f280fb4d)
             default: return 0;
         }
     }
