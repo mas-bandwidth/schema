@@ -132,7 +132,18 @@ func main() {
 		if exp == "" {
 			exp = filepath.Join(*corpus, "expected")
 		}
-		ok, err := runCards(os.Stdout, *corpus, exp, *driver, *require, "build/cards-conformance", nil)
+		// ONE WORK DIRECTORY PER RUN: a negative control and the clean run
+		// it sits beside run at once under make -j, and a shared directory
+		// let one run's answers stand in for the other's.
+		if err := os.MkdirAll("build", 0o755); err != nil {
+			fatalf("%v", err)
+		}
+		cardsWork, err := os.MkdirTemp("build", "cards-conformance-")
+		if err != nil {
+			fatalf("%v", err)
+		}
+		ok, err := runCards(os.Stdout, *corpus, exp, *driver, *require, cardsWork, nil)
+		_ = os.RemoveAll(cardsWork)
 		if err != nil {
 			fatalf("%v", err)
 		}
