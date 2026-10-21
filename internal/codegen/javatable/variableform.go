@@ -3688,6 +3688,11 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	b.WriteString("                            in.rep.clamped++;\n")
 	b.WriteString("                            in.skipValue();\n")
 	b.WriteString("                        } else {\n")
+	// the element read is the else block's body, one level deeper than the
+	// templates below write it; it is indented whole on the way out so the
+	// formatter's shape holds (make tables-java-clean)
+	outer := b
+	b = &strings.Builder{}
 	if variableWide(f) {
 		writeVariableWideJsonRead(b, f, "v."+m, true)
 	} else {
@@ -3743,6 +3748,13 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			}
 		}
 	}
+	for _, line := range strings.SplitAfter(b.String(), "\n") {
+		if strings.TrimSpace(line) != "" && strings.HasPrefix(line, " ") {
+			outer.WriteString("    ")
+		}
+		outer.WriteString(line)
+	}
+	b = outer
 	b.WriteString("                            idx++;\n")
 	b.WriteString("                        }\n")
 	b.WriteString("                        ec = in.peek();\n")
