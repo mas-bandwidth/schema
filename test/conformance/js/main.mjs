@@ -840,9 +840,26 @@ async function surfaceWire(lines, outDir) {
     const v = codec.load(new Uint8Array(readFileSync(f[4])), codec.report());
     if (v === null) { fail(f[1] + ": load refused " + f[4]); }
     const saved = codec.save(v);
-    if (saved === null) { fail(f[1] + ": save refused the value"); }
+    if (saved === null) {
+      // THE NAMED WRITER REFUSAL (docs/SPEC-TABLES.md §2.5): an instance whose
+      // manifest line names go-refusal=<reason> and lists js in refused-by= is
+      // answered by that reason, the bytes nothing; any other refusal is a red
+      const reason = wireRefusal(f);
+      if (reason === null) { fail(f[1] + ": save refused the value"); }
+      writeFileSync(join(outDir, f[1] + ".absent"), reason);
+      continue;
+    }
     writeFileSync(join(outDir, f[1]), saved);
   }
+}
+
+// wireRefusal answers the named refusal an instance line owes this leg, or
+// null: go-refusal=<reason> with js among refused-by=<ports>.
+function wireRefusal(f) {
+  const marker = (p) => { const m = f.slice(5).find((x) => x.startsWith(p)); return m === undefined ? null : m.slice(p.length); };
+  const reason = marker("go-refusal="), by = marker("refused-by=");
+  if (reason === null || reason === "" || by === null || !by.split(",").includes("js")) { return null; }
+  return reason;
 }
 
 async function surfaceReport(lines, outDir) {
