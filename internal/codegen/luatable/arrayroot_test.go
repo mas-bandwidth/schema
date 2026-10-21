@@ -58,23 +58,23 @@ io.write(J.ToJson(T, "GoalList", v))
 
 -- THE ARRAY ROOT READ: a top-level array fills the field by its row
 local r1 = report()
-local g = J.FromJson(T, "GoalList", '["a","b"]', r1)
+local g = J.FromJsonTolerant(T, "GoalList", '["a","b"]', r1)
 print(#g.goals, g.goals[1].value, g.goals[2].value, r1.malformed)
 
 -- AN OBJECT AT AN ARRAY ROOT: refused by name
 local r2 = report()
-J.FromJson(T, "GoalList", '{"goals":["a"]}', r2)
+J.FromJsonTolerant(T, "GoalList", '{"goals":["a"]}', r2)
 print(r2.malformed, r2.Reason or "")
 
 -- NESTED (§16.10): a by-value field of the array-root table is the array
 local r3 = report()
-local h = J.FromJson(T, "Holder", '{"g":["x","y"]}', r3)
+local h = J.FromJsonTolerant(T, "Holder", '{"g":["x","y"]}', r3)
 print(h.g.goals[1].value, h.g.goals[2].value, r3.malformed)
 io.write(J.ToJson(T, "Holder", h))
 
 -- AN OBJECT WHERE THE NESTED ARRAY ROOT IS: the ordinary kind mismatch
 local r4 = report()
-J.FromJson(T, "Holder", '{"g":{"goals":["a"]}}', r4)
+J.FromJsonTolerant(T, "Holder", '{"g":{"goals":["a"]}}', r4)
 print(r4.kindMismatch, r4.malformed)
 `
 	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(main), 0o644); err != nil {

@@ -111,7 +111,7 @@ local function rep()
 end
 local function read(label, root, text)
   local r = rep()
-  local v = J.FromJson(T, root, text, r)
+  local v = J.FromJsonTolerant(T, root, text, r)
   print(string.format("%s|%d|%s|%s", label, r.missingRequired or 0,
     r.reason or "-", v == nil and "nil" or "read"))
 end
@@ -160,7 +160,7 @@ end
 do
   local text = J.ToJson(T, "Cur", T.NewCur())
   local r = rep()
-  local v = J.FromJson(T, "Cur", text, r)
+  local v = J.FromJsonTolerant(T, "Cur", text, r)
   print(string.format("roundtrip|%d|%s|%s", r.missingRequired or 0,
     r.reason or "-", tostring(v ~= nil and v.b == 0 and J.ToJson(T, "Cur", v) == text)))
 end

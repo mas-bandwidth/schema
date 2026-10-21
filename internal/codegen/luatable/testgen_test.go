@@ -168,8 +168,8 @@ func TestLuaTestgenWritesPassingTests(t *testing.T) {
 	// red (§16.8).
 	t.Run("sabotaged_text", func(t *testing.T) {
 		t.Parallel()
-		const anchor = "  local wire = decode(text)\n  if wire == nil then error(\"base64_damaged\", 0) end"
-		const sabotaged = "  local wire = decode(text)\n  if wire == nil then wire = \"\" end"
+		const anchor = "  local wire, why = decode(text)\n  if wire == nil then error(why, 0) end"
+		const sabotaged = "  local wire, why = decode(text)\n  if wire == nil then wire = \"\" end"
 		src, ok := generated["text.lua"]
 		if !ok {
 			t.Fatal("the emitted unit has no text.lua")

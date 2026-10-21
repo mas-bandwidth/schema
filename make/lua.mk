@@ -55,7 +55,8 @@ tables-lua-wire-fuzz-differential:
 		./internal/codegen/luatable -run '^TestLuaWireFuzz' -count=1 -timeout 600s
 
 .PHONY: test-lua update-goldens-lua
-test-lua: toolchain-lua tables-lua-wire-fuzz-differential
+# The fixed-form tests read the shared byte-oracle corpus, so it is built first.
+test-lua: toolchain-lua tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp
 	go test ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s
 update-goldens-lua: ;
 
