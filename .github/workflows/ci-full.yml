@@ -316,6 +316,14 @@ jobs:
         if: matrix.group == 'unit-rest'
         run: go vet ./...
 
+      # THE Squirrel PIN for the test steps below: internal/codegen/squirrel and
+      # internal/codegen/squirreltable run generated Squirrel under the pinned interpreter
+      # and fail, never skip, without it. make/squirrel.mk's dist-squirrel installs it
+      # at the sha256 it names, into the dist/ path the leg's default names.
+      - name: install the Squirrel pin
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest'
+        run: make dist-squirrel
+
       # THE EMITTERS' OWN TESTS, which are the slow half of `go test ./...`:
       # every codegen package generates and compiles something.
       # SCHEMA_SLOW=1 IS THE WHOLE OF THE SPLIT ON THIS LANE. internal/slowtest
@@ -638,6 +646,11 @@ jobs:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      # update-goldens ends in `go test ./...`, which runs the Squirrel packages
+      # under the pinned interpreter (make/squirrel.mk's dist-squirrel)
+      - name: install the Squirrel pin
+        run: make dist-squirrel
 
       - name: rewrite every pin under testdata/ from the reference
         run: make -j"$(nproc)" conformance-pin update-goldens
