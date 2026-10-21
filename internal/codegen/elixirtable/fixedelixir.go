@@ -99,15 +99,6 @@ func generateFixed(u *ir.Unit, ns string, lineage map[string][]FixedLineageEntry
 		"            acc = guarded(acc, guard ++ [{their_at, argw}], tag ++ [j + 1], {:const, aux_at, my_tag, k + 1})\n",
 		"            acc =\n              guarded(\n                acc,\n                guard ++ [{their_at, argw}],\n                tag ++ [j + 1],\n                {:const, aux_at, my_tag, k + 1}\n              )\n")
 	rt = strings.ReplaceAll(rt,
-		"  def text(used, _default, m), do: text(used, _default, m, true)\n\n  def text(used, _default, m, present) do\n    if present and not text_ok?(1, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}\n  end",
-		"  def text(used, default, m), do: text(used, default, m, true)\n\n  def text(used, default, m, present) do\n    if present and not text_ok?(1, used), do: {default, true}, else: {used, m}\n  end")
-	rt = strings.ReplaceAll(rt,
-		"  def wtext(used, _default, m), do: wtext(used, _default, m, true)\n\n  def wtext(used, _default, m, present) do\n    if present and not text_ok?(2, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}\n  end",
-		"  def wtext(used, default, m), do: wtext(used, default, m, true)\n\n  def wtext(used, default, m, present) do\n    if present and not text_ok?(2, used), do: {default, true}, else: {used, m}\n  end")
-	rt = strings.ReplaceAll(rt,
-		"          throw({:refuse, :text_ill_formed})",
-		"          step(rest, body, writes, %{report | malformed: true})")
-	rt = strings.ReplaceAll(rt,
 		"      entry = {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple([their_variants | remap])}\n",
 		"      entry =\n        {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi),\n         List.to_tuple([their_variants | remap])}\n")
 	out[FixedRuntimeModule+".ex"] = []byte(rt)
