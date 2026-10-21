@@ -42,9 +42,10 @@ toolchain-lobster:
 
 # test-lobster runs both Lobster packages: the type surface
 # (internal/codegen/lobster) and the table surface
-# (internal/codegen/lobstertable), each under the pinned toolchain.
+# (internal/codegen/lobstertable), each under the pinned toolchain. The
+# fixed-form tests read the shared byte-oracle corpus, so it is built first.
 .PHONY: test-lobster update-goldens-lobster
-test-lobster: toolchain-lobster
+test-lobster: toolchain-lobster build/fixedform-corpus/.stamp
 	go test -count=1 -timeout 600s ./internal/codegen/lobster/... ./internal/codegen/lobstertable/...
 update-goldens-lobster: ;
 
