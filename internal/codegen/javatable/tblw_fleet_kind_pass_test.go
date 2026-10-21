@@ -110,7 +110,7 @@ func TestJavaFixTblwFleetKindPass(t *testing.T) {
 				t.Fatalf("java: %v\n%s", err, out)
 			}
 			line := ""
-			for _, ln := range strings.Split(string(out), "\n") {
+			for ln := range strings.SplitSeq(string(out), "\n") {
 				ln = strings.TrimSpace(ln)
 				if ln == "" || strings.HasPrefix(ln, "Picked up") {
 					continue

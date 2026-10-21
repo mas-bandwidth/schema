@@ -55,6 +55,7 @@ import (
 	"fmt"
 	"math/big"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -1966,8 +1967,8 @@ func splitCases(l string) []string {
 		return nil
 	}
 	var out []string
-	labels := strings.Fields(strings.ReplaceAll(m[2], "case ", "case\x00"))
-	for _, lb := range labels {
+	labels := strings.FieldsSeq(strings.ReplaceAll(m[2], "case ", "case\x00"))
+	for lb := range labels {
 		out = append(out, m[1]+strings.ReplaceAll(lb, "\x00", " "))
 	}
 	return append(out, canonLine(m[1]+"    "+m[3])...)
@@ -3077,7 +3078,7 @@ func CommentText(src string) string {
 				return b.String()
 			}
 			body := src[i+2 : i+2+end]
-			for _, l := range strings.Split(body, "\n") {
+			for l := range strings.SplitSeq(body, "\n") {
 				l = strings.TrimSpace(l)
 				l = strings.TrimPrefix(l, "*")
 				l = strings.TrimPrefix(strings.TrimSpace(l), "<p>")
@@ -3407,10 +3408,7 @@ func (p *relayPrinter) emit(s string, label bool) { p.emitAt(s, label, 0) }
 
 func (p *relayPrinter) emitAt(s string, label bool, extra int) {
 	lv := p.level(label) + extra
-	ind := len(p.base) + 4*lv
-	if ind < 0 {
-		ind = 0
-	}
+	ind := max(len(p.base)+4*lv, 0)
 	p.out = append(p.out, strings.Repeat(" ", ind)+s)
 }
 
@@ -3558,12 +3556,12 @@ var (
 // contextIndent is the indentation a line written at column 0 takes from the
 // code line above it.
 func contextIndent(out []string) string {
-	for k := len(out) - 1; k >= 0; k-- {
-		t := strings.TrimSpace(out[k])
+	for _, o := range slices.Backward(out) {
+		t := strings.TrimSpace(o)
 		if t == "" || strings.HasPrefix(t, "//") || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "/*") {
 			continue
 		}
-		ind := indentOf(out[k])
+		ind := indentOf(o)
 		if strings.HasSuffix(t, "{") || ((strings.HasPrefix(t, "case ") || strings.HasPrefix(t, "default")) && strings.HasSuffix(t, ":")) {
 			return ind + "    "
 		}

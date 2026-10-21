@@ -137,12 +137,12 @@ public final class Driver {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
 	t.Logf("java output:\n%s", out)
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if strings.HasPrefix(line, "saved=") {
 			if line == "saved=null" {
 				t.Fatalf("Java load returned null:\n%s", out)
 			}
-			for _, rl := range strings.Split(string(out), "\n") {
+			for rl := range strings.SplitSeq(string(out), "\n") {
 				if strings.HasPrefix(rl, "malformed=") {
 					t.Logf("java report: %s", rl)
 				}

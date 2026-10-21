@@ -184,7 +184,7 @@ func javaDocRows(t *testing.T, javac, javaBin string, u *ir.Unit) []docRow {
 		t.Fatalf("run DocProbe %s: %v", u.Package, err)
 	}
 	var rows []docRow
-	for _, line := range strings.Split(strings.TrimSuffix(string(out), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSuffix(string(out), "\n"), "\n") {
 		if line == "" {
 			continue
 		}

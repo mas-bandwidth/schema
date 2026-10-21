@@ -279,9 +279,9 @@ func funcBody(t *testing.T, text, sig string) string {
 		t.Fatalf("function %q not found in generated text", sig)
 	}
 	rest := text[i:]
-	j := strings.Index(rest, "\n    }\n")
-	if j < 0 {
+	before, _, ok := strings.Cut(rest, "\n    }\n")
+	if !ok {
 		t.Fatalf("closing brace of %q not found", sig)
 	}
-	return rest[:j]
+	return before
 }

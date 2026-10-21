@@ -44,7 +44,7 @@ func TestFixedClassOnTableWireJava(t *testing.T) {
 	}
 	units := map[string]string{}
 	fixtures := map[string][]javaVariableFixture{}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) >= 3 && fields[0] == "unit" && selected[fields[1]] {
 			units[fields[1]] = filepath.Join(repo, fields[2])

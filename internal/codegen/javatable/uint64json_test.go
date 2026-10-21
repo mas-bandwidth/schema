@@ -117,7 +117,7 @@ table T
 
 	// Strip the JVM's banner line and keep only the driver's CASE, VAL, and HEX lines.
 	var lines []string
-	for _, ln := range strings.Split(string(out), "\n") {
+	for ln := range strings.SplitSeq(string(out), "\n") {
 		ln = strings.TrimSpace(ln)
 		if strings.HasPrefix(ln, "CASE ") || strings.HasPrefix(ln, "VAL ") || strings.HasPrefix(ln, "HEX ") {
 			lines = append(lines, ln)

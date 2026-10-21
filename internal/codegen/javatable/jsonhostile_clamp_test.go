@@ -32,7 +32,7 @@ func TestJsonHostileReportClampCounterJava(t *testing.T) {
 	// The manifest declares each unit's key and the directory (or single
 	// schema file) it is built from, above the rows that name the key.
 	unitPath := map[string]string{}
-	for _, line := range strings.Split(string(manifest), "\n") {
+	for line := range strings.SplitSeq(string(manifest), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) >= 3 && fields[0] == "unit" {
 			unitPath[fields[1]] = fields[2]
@@ -52,7 +52,7 @@ func TestJsonHostileReportClampCounterJava(t *testing.T) {
 
 	// The oracle is the authority on which rows count a clamp: read every
 	// row's text through tabletext and keep the ones whose report does.
-	for _, line := range strings.Split(string(manifest), "\n") {
+	for line := range strings.SplitSeq(string(manifest), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 6 || fields[0] != "json-hostile" {
 			continue
@@ -169,7 +169,6 @@ public final class Driver {
 	}
 
 	for _, r := range rows {
-		r := r
 		t.Run(r.name, func(t *testing.T) {
 			t.Parallel()
 			tp := filepath.Join(t.TempDir(), "row.json")
@@ -182,12 +181,12 @@ public final class Driver {
 			}
 			var javaFields []string
 			javaValue := ""
-			for _, line := range strings.Split(string(out), "\n") {
-				if strings.HasPrefix(line, "R ") {
-					javaFields = strings.Split(strings.TrimPrefix(line, "R "), ",")
+			for line := range strings.SplitSeq(string(out), "\n") {
+				if after, ok := strings.CutPrefix(line, "R "); ok {
+					javaFields = strings.Split(after, ",")
 				}
-				if strings.HasPrefix(line, "V ") {
-					javaValue = strings.TrimPrefix(line, "V ")
+				if after, ok := strings.CutPrefix(line, "V "); ok {
+					javaValue = after
 				}
 			}
 			if len(javaFields) != 7 {

@@ -9,6 +9,7 @@ package javatable
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"os"
@@ -116,7 +117,7 @@ func TestFixedJavaT18ManifestAndHeader(t *testing.T) {
 func buildFixedHeader(hash uint64, layout []byte) []byte {
 	b := make([]byte, 20+len(layout))
 	b[0] = 3
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		b[8+i] = byte(hash >> (8 * i))
 	}
 	lePut32(b[16:], uint32(len(layout)))
@@ -131,7 +132,7 @@ func parseFixedHeader(b []byte) (hash uint64, layout []byte, ok bool) {
 	if len(b) < 20 || b[0] != 3 {
 		return 0, nil, false
 	}
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		hash |= uint64(b[8+i]) << (8 * i)
 	}
 	l := uint64(le32(b[16:]))
@@ -622,9 +623,7 @@ func t18Needs128(files map[string][]byte) bool {
 // (`r0.aim@104`), which is not part of the path.
 func t18Expect(m manifestRow) map[string]string {
 	want := map[string]string{}
-	for k, v := range m.Values {
-		want[k] = v
-	}
+	maps.Copy(want, m.Values)
 	for k, v := range m.Forged {
 		path, _, _ := strings.Cut(k, "@")
 		want[path] = v

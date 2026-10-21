@@ -77,7 +77,6 @@ func TestMessageFormBatchJava(t *testing.T) {
 		}
 		t.Logf("plain-table message rows, absent by §3.3: %v", plain)
 		for _, unit := range names {
-			unit := unit
 			t.Run(unit, func(t *testing.T) {
 				t.Parallel()
 				carried := byUnit[unit]
@@ -300,7 +299,7 @@ func messageBatchManifest(t *testing.T, root string) []messageBatchRow {
 		t.Fatal(err)
 	}
 	var lines []string
-	for _, line := range strings.Split(string(raw), "\n") {
+	for line := range strings.SplitSeq(string(raw), "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" && !strings.HasPrefix(line, "#") {
 			lines = append(lines, line)
@@ -478,7 +477,7 @@ func runMessageBatchProbe(t *testing.T, u *ir.Unit, body string) string {
 
 func messageBatchLine(out, id string) string {
 	prefix := "BATCH " + id + " "
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(l, prefix) {
 			return l
 		}

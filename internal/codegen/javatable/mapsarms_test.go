@@ -30,7 +30,7 @@ func TestMapsAndUnionArmsOnTheTableWireJava(t *testing.T) {
 	selected := map[string]bool{"mapdemo": true, "messagedemo": true, "scalars": true, "widedemo": true}
 	units := map[string]string{}
 	fixtures := map[string][]javaVariableFixture{}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) >= 3 && fields[0] == "unit" && selected[fields[1]] {
 			units[fields[1]] = filepath.Join(repo, fields[2])
@@ -195,7 +195,7 @@ func TestJavaVariableMapCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	var rows []javaVariableFixture
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 5 && f[0] == "instance" && f[2] == "mapdemo" && f[3] != "Depth" {
 			rows = append(rows, javaVariableFixture{f[1], f[3], filepath.Join(repo, f[4]), filepath.Join(repo, "testdata", "conformance", "tables", "json", f[1]+".json")})

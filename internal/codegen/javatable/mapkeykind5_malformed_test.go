@@ -123,12 +123,12 @@ public final class Driver {
 				t.Fatalf("java: %v\n%s", err, out)
 			}
 			var javaReport, javaSaved string
-			for _, line := range strings.Split(string(out), "\n") {
-				if strings.HasPrefix(line, "R ") {
-					javaReport = strings.TrimPrefix(line, "R ")
+			for line := range strings.SplitSeq(string(out), "\n") {
+				if after, ok := strings.CutPrefix(line, "R "); ok {
+					javaReport = after
 				}
-				if strings.HasPrefix(line, "S ") {
-					javaSaved = strings.TrimPrefix(line, "S ")
+				if after, ok := strings.CutPrefix(line, "S "); ok {
+					javaSaved = after
 				}
 			}
 			if javaReport == "" || javaSaved == "" {

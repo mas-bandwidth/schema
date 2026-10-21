@@ -123,7 +123,7 @@ func runMessageJava(t *testing.T, u *ir.Unit, main string) string {
 	// The JVM prints a `Picked up JAVA_TOOL_OPTIONS: ...` banner on stderr
 	// when the variable is set; it is not part of the driver's output.
 	var lines []string
-	for _, l := range strings.Split(string(out), "\n") {
+	for l := range strings.SplitSeq(string(out), "\n") {
 		if strings.HasPrefix(l, "Picked up JAVA_TOOL_OPTIONS") {
 			continue
 		}

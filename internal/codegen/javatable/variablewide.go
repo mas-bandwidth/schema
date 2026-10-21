@@ -73,13 +73,14 @@ func variableRawBounds(f *ir.Field) (string, string) {
 	return fmt.Sprintf("new java.math.BigInteger(%q)", lo.String()), fmt.Sprintf("new java.math.BigInteger(%q)", hi.String())
 }
 func variableCompatibleKinds(kind int, expr string) string {
-	cond := fmt.Sprintf("%s==%d", expr, kind)
+	var cond strings.Builder
+	cond.WriteString(fmt.Sprintf("%s==%d", expr, kind))
 	for k := 1; k <= 33; k++ {
 		if ir.TableKindWidens(k, kind) {
-			cond += fmt.Sprintf("||%s==%d", expr, k)
+			cond.WriteString(fmt.Sprintf("||%s==%d", expr, k))
 		}
 	}
-	return cond
+	return cond.String()
 }
 func writeVariableWideRead(b *strings.Builder, f *ir.Field) {
 	m := varMember(f)

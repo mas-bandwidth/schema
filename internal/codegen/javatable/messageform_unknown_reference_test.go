@@ -97,7 +97,7 @@ func TestJavaFixMessageUnknownReference(t *testing.T) {
 `, hexOf(ann), mutantMatchUnknownRef)
 	out := runMessageBatchProbe(t, u, body)
 	line := ""
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(l, "C9 unknown=") {
 			line = l
 			break
@@ -125,7 +125,7 @@ func TestJavaFixMessageUnknownReference(t *testing.T) {
 func mustHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b := make([]byte, len(s)/2)
-	for i := 0; i < len(b); i++ {
+	for i := range b {
 		var v int
 		if _, err := fmt.Sscanf(s[2*i:2*i+2], "%02x", &v); err != nil {
 			t.Fatalf("hex: %v", err)

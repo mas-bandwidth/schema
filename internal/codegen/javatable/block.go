@@ -433,10 +433,7 @@ func (g *blockGen) emitBuild() {
 	g.f("        if (storage == null || base < 0 || (base & 63) != 0 || base > storage.length) { return null; }\n")
 	g.f("        long cursor = %dL;\n", g.bl.Projection.Size)
 	for _, a := range g.bl.Arrays {
-		align := a.ElemAlign()
-		if align < int64(ir.BlockAlign) {
-			align = int64(ir.BlockAlign)
-		}
+		align := max(a.ElemAlign(), int64(ir.BlockAlign))
 		g.f("        cursor = (cursor + %dL) & ~%dL;\n", align-1, align-1)
 		g.f("        long %sStart = cursor;\n", member(a.Field))
 		g.f("        cursor += (long) counts.%s * %dL;\n", member(a.Field), a.Stride)

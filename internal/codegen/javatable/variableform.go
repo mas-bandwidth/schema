@@ -3270,7 +3270,7 @@ func writeMeasureField(b *strings.Builder, u *ir.Unit, f *ir.Field, name string,
 		expected = ir.TableKindTable
 	}
 	var accepted []int
-	for k := 0; k < 256; k++ {
+	for k := range 256 {
 		if k == expected || ir.TableKindWidens(k, expected) {
 			accepted = append(accepted, k)
 		}
@@ -4070,13 +4070,14 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		m := varMember(f)
 		one := *f
 		one.Type.Optional = false
-		condition := fmt.Sprintf("kind==%d", variableWireKind(f))
+		var condition strings.Builder
+		condition.WriteString(fmt.Sprintf("kind==%d", variableWireKind(f)))
 		for kind := 1; kind <= 33; kind++ {
 			if ir.TableKindWidens(kind, variableWireKind(f)) {
-				condition += fmt.Sprintf("||kind==%d", kind)
+				condition.WriteString(fmt.Sprintf("||kind==%d", kind))
 			}
 		}
-		fmt.Fprintf(b, "                boolean selected=(%s);\n", condition)
+		fmt.Fprintf(b, "                boolean selected=(%s);\n", condition.String())
 		if f.Array != ir.ArrayNone {
 			fmt.Fprintf(b, "                if(selected){TableVariable.Reader probe=new TableVariable.Reader(r.buf,r.ids,new TableVariable.Report());probe.off=r.off;probe.limit=r.limit;TableVariable.Reader ar=probe.body();selected=ar!=null&&ar.has(2)&&ar.get8()==%d;}\n", variableElemWireKind(f))
 		}

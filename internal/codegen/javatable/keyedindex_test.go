@@ -30,6 +30,7 @@ import (
 	"bufio"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -689,9 +690,7 @@ func keyedFormJava(t *testing.T, javac, dir string, u *ir.Unit, files map[string
 		}
 	}
 	all := map[string][]byte{}
-	for name, data := range files {
-		all[name] = data
-	}
+	maps.Copy(all, files)
 	for _, name := range []string{"Int128.java", "UInt128.java"} {
 		if data := packet[name]; data != nil && all[name] == nil {
 			all[name] = data

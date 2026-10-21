@@ -196,7 +196,7 @@ func readCookManifest(t *testing.T) cookManifest {
 		t.Fatal(err)
 	}
 	m := cookManifest{instance: map[string][3]string{}, cook: map[string][2]string{}}
-	for _, line := range strings.Split(string(b), "\n") {
+	for line := range strings.SplitSeq(string(b), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
 			continue

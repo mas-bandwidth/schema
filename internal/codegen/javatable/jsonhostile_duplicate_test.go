@@ -155,7 +155,7 @@ func TestJsonHostileReportDuplicateCounterJava(t *testing.T) {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		fields := strings.Split(strings.TrimSpace(line), ",")
 		if len(fields) != 3 {
 			t.Fatalf("driver line %q: want name,duplicate,verdict", line)

@@ -596,7 +596,7 @@ fixed table T
 	r := parseProbe(t, t12RunJava(t, classes, "ProbeOptionalArrays"))
 	t09RequireClean(t, "optional-arrays", r, 4)
 
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		if got := r.fresh[fmt.Sprintf("f%d.xsPresent", i)]; got != "false" {
 			t.Errorf("optional-arrays: fresh xsPresent = %s, want false", got)
 		}

@@ -65,7 +65,6 @@ func TestJavaFixMeasureRenamedNodeTable(t *testing.T) {
 		{"maps-depth", "tables/maps", "", "Depth", "", 184,
 			"010b0d15020e110d010e030603040d07050421000000000000060e2e0d0215020e110d010e030601040d0705040b00000000000015020e110d010e030602040d070504160000000000000710190d010815020e110d010e030605040d07050437000000000000090f0a0d15020e110d010e030607040d0705044d0000000000000b040900000000af5cca2119aa081a424f4f300d39841cec105b36194ac93dea0ce83094fde47c74a279448ee2e5b102fca1cea259641f5df15095f21f55708be145c2cb04da4fb5cc700519c056e731633ed695bbc2d5e9ea716f0f0182bf0b00000000000000"},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var u *ir.Unit
@@ -166,7 +165,7 @@ public final class MeasureDriver {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
 	var got int64
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		if n, err := strconv.ParseInt(strings.TrimSpace(line), 10, 64); err == nil {
 			got = n
 		}

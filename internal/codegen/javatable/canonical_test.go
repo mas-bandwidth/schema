@@ -54,7 +54,7 @@ func TestCanonicalMovesLayoutNotTokens(t *testing.T) {
 // longer carries, the one token-level change the pass is allowed.
 func withoutDroppedImports(before, after string) string {
 	var out []string
-	for _, l := range strings.Split(before, "\n") {
+	for l := range strings.SplitSeq(before, "\n") {
 		if strings.HasPrefix(l, "import ") && !strings.Contains(after, l+"\n") {
 			continue
 		}

@@ -38,7 +38,6 @@ func TestJavaFixWidenLadderGap(t *testing.T) {
 	// u64 must count one `widened`, like the oracle.
 	kindWidth := map[int]int{6: 1, 7: 2, 8: 4}
 	for _, to := range []int{6, 7, 8} {
-		to := to
 		t.Run(fmt.Sprintf("kind%d", to), func(t *testing.T) {
 			t.Parallel()
 			w := kindWidth[to]
@@ -102,7 +101,7 @@ func TestJavaFixWidenLadderGap(t *testing.T) {
 				t.Fatalf("java: %v\n%s", err, out)
 			}
 			gotLine := ""
-			for _, line := range strings.Split(string(out), "\n") {
+			for line := range strings.SplitSeq(string(out), "\n") {
 				if line != "" && !strings.HasPrefix(line, "Picked up") {
 					gotLine = line
 					break

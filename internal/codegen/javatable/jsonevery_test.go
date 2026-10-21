@@ -60,7 +60,6 @@ func TestTableJsonEveryTableJava(t *testing.T) {
 	t.Parallel()
 	javac, javaBin := javaToolsRequired(t)
 	for _, dir := range []string{"examples", filepath.Join("tables", "arms"), filepath.Join("tables", "maps")} {
-		dir := dir
 		t.Run(strings.ReplaceAll(dir, string(os.PathSeparator), "-"), func(t *testing.T) {
 			t.Parallel()
 			u := unitFromDir(t, filepath.Join("..", "..", "..", dir))

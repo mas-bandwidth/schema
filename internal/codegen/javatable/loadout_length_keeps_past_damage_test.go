@@ -159,7 +159,7 @@ public final class Driver {
 	t.Logf("java output:\n%s", out)
 	var ans javaLoadoutAnswer
 	haveReport, haveSaved := false, false
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if strings.HasPrefix(line, "malformed=") {
 			fields := strings.Fields(line)
 			if len(fields) != 7 {

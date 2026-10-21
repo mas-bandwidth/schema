@@ -61,7 +61,6 @@ func TestJavaMessageSaveFitsItsMeasure(t *testing.T) {
 	}
 
 	for _, uc := range units {
-		uc := uc
 		t.Run(filepath.Base(uc.dir), func(t *testing.T) {
 			t.Parallel()
 			u := loadUnitDir(t, root, uc.dir)

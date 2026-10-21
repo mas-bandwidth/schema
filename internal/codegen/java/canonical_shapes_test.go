@@ -87,7 +87,7 @@ func TestCanonicalLeavesNestedGenericsWhole(t *testing.T) {
 	t.Parallel()
 	in := "class T {\n    void f() {\n        java.util.Map<java.lang.String, java.util.List<java.lang.String, java.lang.Integer>, VeryLongTypeName> someVariableName = make();\n    }\n}\n"
 	got := string(Canonical([]byte(in)))
-	for _, l := range strings.Split(got, "\n") {
+	for l := range strings.SplitSeq(got, "\n") {
 		if strings.HasSuffix(strings.TrimSpace(l), "List<java.lang.String,") {
 			t.Fatalf("a nested generic was split inside its brackets:\n%s", got)
 		}

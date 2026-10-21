@@ -41,7 +41,7 @@ func TestCanonicalMovesLayoutNotTokens(t *testing.T) {
 		for name, before := range raw {
 			after := canon[name]
 			kept := []string{}
-			for _, l := range strings.Split(string(before), "\n") {
+			for l := range strings.SplitSeq(string(before), "\n") {
 				if strings.HasPrefix(l, "import ") && !strings.Contains(string(after), l+"\n") {
 					continue
 				}

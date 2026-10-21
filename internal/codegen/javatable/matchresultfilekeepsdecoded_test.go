@@ -117,7 +117,7 @@ func TestJavaFixMatchResultFileKeepsDecoded(t *testing.T) {
 			line := strings.TrimSpace(string(out))
 			var savedHex string
 			javaKind, javaMalformed := -1, ""
-			for _, field := range strings.Fields(line) {
+			for field := range strings.FieldsSeq(line) {
 				switch {
 				case strings.HasPrefix(field, "saveHex="):
 					savedHex = strings.TrimPrefix(field, "saveHex=")

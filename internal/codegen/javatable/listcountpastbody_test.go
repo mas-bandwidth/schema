@@ -125,7 +125,7 @@ func TestJavaFixListCountPastBodyInMapValue(t *testing.T) {
 			t.Fatalf("%s: java: %v\n%s", tc.name, err, out)
 		}
 		line := ""
-		for _, ln := range strings.Split(string(out), "\n") {
+		for ln := range strings.SplitSeq(string(out), "\n") {
 			if ln = strings.TrimSpace(ln); strings.HasPrefix(ln, "measure=") {
 				line = ln
 				break

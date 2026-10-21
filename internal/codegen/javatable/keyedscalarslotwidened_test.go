@@ -114,19 +114,19 @@ public final class Driver {
 				t.Fatalf("java: %v\n%s", err, out)
 			}
 			var javaReport string
-			for _, line := range strings.Split(string(out), "\n") {
-				if strings.HasPrefix(line, "R ") {
-					javaReport = strings.TrimPrefix(line, "R ")
+			for line := range strings.SplitSeq(string(out), "\n") {
+				if after, ok := strings.CutPrefix(line, "R "); ok {
+					javaReport = after
 				}
 			}
 			if javaReport == "" {
 				t.Fatalf("no java report in:\n%s", out)
 			}
-			ji := bytes.Index(out, []byte("J "))
-			if ji < 0 {
+			_, after, ok0 := bytes.Cut(out, []byte("J "))
+			if !ok0 {
 				t.Fatalf("no java json in:\n%s", out)
 			}
-			javaJSON := string(out[ji+2:])
+			javaJSON := string(after)
 
 			model := tabletext.NewModel(u)
 			want := new(tabletext.Report)

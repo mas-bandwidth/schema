@@ -119,7 +119,7 @@ public final class Driver {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
 	seen := 0
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		switch {
 		case strings.HasPrefix(line, "M "):
 			measure, seen = strings.TrimPrefix(line, "M "), seen+1

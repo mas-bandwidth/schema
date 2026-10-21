@@ -168,15 +168,16 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			one := *arm.F
 			one.Name = mem[i]
 			expected := ir.TableWireFieldKind(&one)
-			condition := fmt.Sprintf("kind==%d", expected)
+			var condition strings.Builder
+			condition.WriteString(fmt.Sprintf("kind==%d", expected))
 			widenKinds := []int{}
 			for k := 1; k <= 33; k++ {
 				if ir.TableKindWidens(k, expected) {
-					condition += fmt.Sprintf("||kind==%d", k)
+					condition.WriteString(fmt.Sprintf("||kind==%d", k))
 					widenKinds = append(widenKinds, k)
 				}
 			}
-			fmt.Fprintf(&b, "        if(!(%s)){report.kindMismatch++;return v;}\n", condition)
+			fmt.Fprintf(&b, "        if(!(%s)){report.kindMismatch++;return v;}\n", condition.String())
 			if len(widenKinds) > 0 {
 				widthExpr := "0"
 				for _, k := range widenKinds {

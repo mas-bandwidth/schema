@@ -145,11 +145,11 @@ public final class Driver {
 }
 
 func parseReportDriver(s string) (loaded bool, rep string, saved []byte) {
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if strings.HasPrefix(line, "loaded=") {
 			loaded = strings.Contains(line, "loaded=true")
 			vals := map[string]string{}
-			for _, kv := range strings.Fields(strings.TrimPrefix(line, "loaded=")) {
+			for kv := range strings.FieldsSeq(strings.TrimPrefix(line, "loaded=")) {
 				parts := strings.SplitN(kv, "=", 2)
 				if len(parts) == 2 {
 					vals[parts[0]] = parts[1]
@@ -158,8 +158,8 @@ func parseReportDriver(s string) (loaded bool, rep string, saved []byte) {
 			rep = fmt.Sprintf("unknown=%s km=%s wid=%s cl=%s dup=%s mal=%s ref=%s",
 				vals["unknown"], vals["km"], vals["wid"], vals["cl"], vals["dup"], vals["mal"], vals["ref"])
 		}
-		if strings.HasPrefix(line, "BYTES ") {
-			h := strings.TrimPrefix(line, "BYTES ")
+		if after, ok := strings.CutPrefix(line, "BYTES "); ok {
+			h := after
 			if b, err := hex.DecodeString(h); err == nil {
 				saved = b
 			}
