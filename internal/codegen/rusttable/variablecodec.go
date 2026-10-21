@@ -1319,6 +1319,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut ids = IdTable::new();\n")
 	fmt.Fprintf(b, "    let mut g = TableNodeGraph::new();\n")
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
+	fmt.Fprintf(b, "    if g.blob_shared { ids.refused = Some(String::from(TableReason::BlobShared.name())); } // §2.5: a blob two slots name\n")
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	emitNodeTableWrite(b, false)
 	fmt.Fprintf(b, "    // A Vec cannot carry the writer's named refusal (§3): never return a truncated file.\n")
@@ -1341,6 +1342,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut ids = IdTable::new();\n")
 	fmt.Fprintf(b, "    let mut g = TableNodeGraph::new();\n")
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
+	fmt.Fprintf(b, "    if g.blob_shared { ids.refused = Some(String::from(TableReason::BlobShared.name())); } // §2.5: a blob two slots name\n")
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	fmt.Fprintf(b, "    // every node record's body rides too, and is checked by the same walk\n")
 	emitNodeTableWrite(b, false)
@@ -1367,6 +1369,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut ids = IdTable::new();\n")
 	fmt.Fprintf(b, "    let mut g = TableNodeGraph::new();\n")
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
+	fmt.Fprintf(b, "    if g.blob_shared { ids.refused = Some(String::from(TableReason::BlobShared.name())); } // §2.5: a blob two slots name\n")
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, Some(&mut *retain), Some(&mut *report), TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	fmt.Fprintf(b, "    retain_emit_tail(&mut out, &mut ids, retain, KNOWN_IDS, TableRetainPath::default(), report);\n")
 	emitNodeTableWrite(b, true)
@@ -1461,7 +1464,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let placeable: &[u64] = &[%s];\n", strings.Join(placeable, ", "))
 	if st.FixedDeclared {
 		fmt.Fprintf(b, "    // A fixed-class root does not own the node table: §4 reads it as an unknown field.\n")
-		fmt.Fprintf(b, "    let mut nodes = TableNodeReader { good: true, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new() };\n", ir.TableWireId(st.WireName()))
+		fmt.Fprintf(b, "    let mut nodes = TableNodeReader { good: true, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new() };\n", ir.TableWireId(st.WireName()))
 	} else {
 		fmt.Fprintf(b, "    let mut nodes = TableNodeReader::scan(wire, end, &ids, 0x%016x, placeable, %v, %v, retain.is_some(), retain.as_ref().map_or(0, |r| r.bytes.capacity()), report)?;\n", ir.TableWireId(st.WireName()), bytesEdge, stringEdge)
 	}

@@ -88,7 +88,8 @@ macro_rules! arm {
             reply.loaded = value.is_some();
             // THE REPORT ACCUMULATES ACROSS THE PAIR (§6.6): one report is
             // zeroed before the load and read after the save
-            if !report.cycle_on_save {
+            // a cycle, or a blob two slots name (§2.5), is a save refusal
+            if !report.cycle_on_save && report.blob_shared == 0 {
                 reply.saved = $save_retain(&value.unwrap_or_default(), &mut store, &mut report);
             } else {
                 reply.save_fail = true;
@@ -98,7 +99,8 @@ macro_rules! arm {
         } else {
             let value = $load(wire, &mut report);
             reply.loaded = value.is_some();
-            if !report.cycle_on_save {
+            // a cycle, or a blob two slots name (§2.5), is a save refusal
+            if !report.cycle_on_save && report.blob_shared == 0 {
                 reply.saved = $save(&value.unwrap_or_default());
             } else {
                 reply.save_fail = true;

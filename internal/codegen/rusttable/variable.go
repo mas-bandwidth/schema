@@ -289,6 +289,9 @@ pub struct TableNodeGraph {
     pub records: Vec<TableNodeRecord>,
     tables: HashMap<usize, u64>,
     blobs: HashMap<usize, u64>,
+    /// A blob two slots name (docs/SPEC-TABLES.md §2.5): the walk met its Rc
+    /// a second time, so every writer refuses the graph by name, blob_shared.
+    pub blob_shared: bool,
 }
 
 impl TableNodeGraph {
@@ -313,6 +316,9 @@ impl TableNodeGraph {
     /// key is the blob's identity, the address its Rc owns.
     pub fn visit_blob(&mut self, type_id: u64, key: usize, bytes: &[u8]) {
         if self.blobs.contains_key(&key) {
+            // A BLOB IS OWNED BY ONE SLOT (§2.5): the second naming is the
+            // writer's refusal, never a second record or a copy per slot
+            self.blob_shared = true;
             return;
         }
         self.records.push(TableNodeRecord::Blob(type_id, bytes.to_vec()));
@@ -363,6 +369,9 @@ pub struct TableNodeReader {
     pub retained: Vec<u8>,
     pub recs: Vec<(u64, usize, usize)>,
     pub slots: Vec<TableNodeSlot>,
+    /// which blob records a slot has already named (§2.5): each later naming
+    /// of the same record counts blob_shared on the tolerant read
+    pub blob_named: Vec<bool>,
 }
 
 impl TableNodeReader {
@@ -377,7 +386,7 @@ impl TableNodeReader {
     /// not well-formed text is malformed and its slots read null.
     #[allow(clippy::too_many_arguments)]
     pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
-        let mut reader = TableNodeReader { good: true, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new() };
+        let mut reader = TableNodeReader { good: true, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new() };
         let mut off = 1usize;
         while off < end {
             let Some(r) = leb_read(&wire[..end], &mut off) else { break; };
@@ -506,23 +515,42 @@ impl TableNodeReader {
         Some(&self.slots[(index - 2) as usize])
     }
 
-    /// Resolve a *bytes slot (§2.5, §3.1): the ONE blob every slot naming the
-    /// record shares; a *string record or a table record is a kind mismatch.
-    pub fn bytes_slot(&self, index: u64, report: &mut TableReport) -> Option<Rc<[u8]>> {
-        match self.blob_record(index, report)? {
-            TableNodeSlot::Null => None,
-            TableNodeSlot::Bytes(b) => Some(b.clone()),
-            _ => { report.kind_mismatch += 1; None }
+    /// Count a blob record's naming (§2.5): the tolerant read keeps the ONE
+    /// node every slot names and counts each naming after the first in the
+    /// report's blob_shared counter.
+    fn name_blob(&mut self, index: u64, report: &mut TableReport) {
+        let k = (index - 2) as usize;
+        if self.blob_named.len() < self.slots.len() {
+            self.blob_named.resize(self.slots.len(), false);
+        }
+        if self.blob_named[k] {
+            report.blob_shared += 1;
+        } else {
+            self.blob_named[k] = true;
         }
     }
 
+    /// Resolve a *bytes slot (§2.5, §3.1): the ONE blob every slot naming the
+    /// record shares; a *string record or a table record is a kind mismatch.
+    pub fn bytes_slot(&mut self, index: u64, report: &mut TableReport) -> Option<Rc<[u8]>> {
+        let b = match self.blob_record(index, report)? {
+            TableNodeSlot::Null => return None,
+            TableNodeSlot::Bytes(b) => b.clone(),
+            _ => { report.kind_mismatch += 1; return None; }
+        };
+        self.name_blob(index, report);
+        Some(b)
+    }
+
     /// Resolve a *string slot (§2.5, §3.1), the same way.
-    pub fn text_slot(&self, index: u64, report: &mut TableReport) -> Option<Rc<str>> {
-        match self.blob_record(index, report)? {
-            TableNodeSlot::Null => None,
-            TableNodeSlot::Text(s) => Some(s.clone()),
-            _ => { report.kind_mismatch += 1; None }
-        }
+    pub fn text_slot(&mut self, index: u64, report: &mut TableReport) -> Option<Rc<str>> {
+        let s = match self.blob_record(index, report)? {
+            TableNodeSlot::Null => return None,
+            TableNodeSlot::Text(s) => s.clone(),
+            _ => { report.kind_mismatch += 1; return None; }
+        };
+        self.name_blob(index, report);
+        Some(s)
     }
 }
 

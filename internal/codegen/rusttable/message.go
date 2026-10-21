@@ -787,6 +787,7 @@ pub enum TableReason {
     CountOverLength,
     CountOverExtentCap,
     BlobOverSizeCap,
+    BlobShared,
     DataCycle,
     InvalidValue,
     AllocationFailed,
@@ -820,6 +821,7 @@ impl TableReason {
             TableReason::CountOverLength => "count_over_length",
             TableReason::CountOverExtentCap => "count_over_extent_cap",
             TableReason::BlobOverSizeCap => "blob_over_size_cap",
+            TableReason::BlobShared => "blob_shared",
             TableReason::DataCycle => "data_cycle",
             TableReason::InvalidValue => "invalid_value",
             TableReason::AllocationFailed => "allocation_failed",
@@ -851,6 +853,10 @@ pub struct TableReport {
     pub refused: bool,
     /// Pointer cycles remain readable but cannot be serialized by the builder (§3.1).
     pub cycle_on_save: bool,
+    /// A BLOB NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5): the tolerant
+    /// read keeps the one node and counts each extra naming here; every writer
+    /// refuses that graph by name, blob_shared.
+    pub blob_shared: u64,
     /// RETAIN-UNKNOWN'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6): retained
     /// counts the unknown fields whose bytes were kept, retain_lost counts
     /// every unknown this load or save could not keep (capacity, an excluded

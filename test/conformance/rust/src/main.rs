@@ -1109,12 +1109,17 @@ fn surface_wire(manifest: &Manifest, out: &str) {
         let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, save, _to, _from| {
             let mut report = Default::default();
             match load(&data, &mut report) {
-                Some(v) => save(&v),
+                // A BLOB NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5): the
+                // tolerant read keeps it and counts it, and every writer
+                // refuses that graph by name, so the answer is the refusal
+                Some(_) if report.blob_shared > 0 => None,
+                Some(v) => Some(save(&v)),
                 None => fail(&format!("{}: load refused {}", f[1], f[4])),
             }
         });
         match answer {
-            Some(bytes) => spill(out, &f[1], &bytes),
+            Some(Some(bytes)) => spill(out, &f[1], &bytes),
+            Some(None) => spill(out, &format!("{}.absent", f[1]), b"blob_shared"),
             None => spill_absent(out, &f[1]),
         }
     }
