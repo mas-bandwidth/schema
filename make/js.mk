@@ -1058,13 +1058,13 @@ cards-js-test: cards-js-generate
 # cards-js-conformance runs the harness `cards` subcommand over the JS driver,
 # requiring all nine surfaces; each surface must answer with no absence.
 cards-js-conformance: build/conformance-harness cards-js-generate
-	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view
+	./build/conformance-harness cards --work build/cards-js-conformance --corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view
 
 # cards-js-conformance-negative-control runs the same check with the driver's
 # test-only render sabotage switch set, and requires render to go red while the
 # other eight surfaces stay green.
 cards-js-conformance-negative-control: build/conformance-harness cards-js-generate
-	@if CARDS_JS_SABOTAGE_RENDER=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-js-conformance-neg.log 2>&1; then \
+	@if CARDS_JS_SABOTAGE_RENDER=1 ./build/conformance-harness cards --work build/cards-js-conformance-negative-control --corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-js-conformance-neg.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; fi
 	@grep -qE 'cards render .*FAIL' build/cards-js-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-js-conformance-neg.log; exit 1; }
 	@grep -qE 'cards (load|save|parse|bounds|upgrade|edit|taskhash|view) pass' build/cards-js-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-js-conformance-neg.log; exit 1; }
@@ -1074,7 +1074,7 @@ cards-js-conformance-negative-control: build/conformance-harness cards-js-genera
 # byte must FAIL upgrade alone while the other eight surfaces stay green.
 .PHONY: cards-js-conformance-upgrade-negative-control
 cards-js-conformance-upgrade-negative-control: build/conformance-harness cards-js-generate
-	@if CARDS_JS_SABOTAGE_UPGRADE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-js-conformance-upgrade-neg.log 2>&1; then \
+	@if CARDS_JS_SABOTAGE_UPGRADE=1 ./build/conformance-harness cards --work build/cards-js-conformance-upgrade-negative-control --corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-js-conformance-upgrade-neg.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: upgrade stayed green with one retained byte dropped'; exit 1; fi
 	@grep -qE 'cards upgrade .*FAIL' build/cards-js-conformance-upgrade-neg.log || { echo 'NEGATIVE CONTROL FAILED: upgrade did not go red'; cat build/cards-js-conformance-upgrade-neg.log; exit 1; }
 	@grep -qE 'cards (load|save|render|parse|bounds|edit|taskhash|view) pass' build/cards-js-conformance-upgrade-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-js-conformance-upgrade-neg.log; exit 1; }
@@ -1084,7 +1084,7 @@ cards-js-conformance-upgrade-negative-control: build/conformance-harness cards-j
 # hash frame must FAIL taskhash alone while the other eight surfaces stay green.
 .PHONY: cards-js-conformance-hash-negative-control
 cards-js-conformance-hash-negative-control: build/conformance-harness cards-js-generate
-	@if CARDS_JS_SABOTAGE_HASH=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-js-conformance-hash-neg.log 2>&1; then \
+	@if CARDS_JS_SABOTAGE_HASH=1 ./build/conformance-harness cards --work build/cards-js-conformance-hash-negative-control --corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-js-conformance-hash-neg.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: taskhash stayed green with needs added to the frame'; exit 1; fi
 	@grep -qE 'cards taskhash .*FAIL' build/cards-js-conformance-hash-neg.log || { echo 'NEGATIVE CONTROL FAILED: taskhash did not go red'; cat build/cards-js-conformance-hash-neg.log; exit 1; }
 	@grep -qE 'cards (load|save|render|parse|bounds|upgrade|edit|view) pass' build/cards-js-conformance-hash-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-js-conformance-hash-neg.log; exit 1; }
