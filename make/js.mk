@@ -962,10 +962,16 @@ tables-js-fixed-optional-negative-control: bin/schema build/js-fixed-corpus/.sta
 .PHONY: cards-js-generate cards-js-wire-fuzz cards-js-retain-fuzz tables-js-wire-fuzz-all
 
 # cards-js-generate emits the JavaScript variable-form surface for tables/cards.
-cards-js-generate: bin/schema
+# The work is a STAMP, not the phony name: the six targets that read the unit
+# run side by side under -j and in sub-makes, and a phony rule's rm -rf re-ran
+# per make and emptied the directory under a sibling's driver mid-read.
+cards-js-generate: build/tables-generated-js/cards/.stamp
+
+build/tables-generated-js/cards/.stamp: bin/schema tables/cards/Card.schema tables/cards/schema.lock
 	@rm -rf build/tables-generated-js/cards
 	@mkdir -p build/tables-generated-js/cards
 	./bin/schema generate --lang js --out build/tables-generated-js/cards tables/cards
+	@touch $@
 
 # cards-js-wire-fuzz runs the conformance harness's wire fuzzer over the Card
 # root, comparing the JavaScript driver's reads and writes with the reference
