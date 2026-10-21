@@ -194,6 +194,7 @@ struct Report
     int unknown, kind_mismatch, widened, clamped, duplicate;
     bool malformed;
     bool refused;
+    int blob_shared; // the extra slots that named a blob another slot named (§2.5)
 };
 
 struct Codec
@@ -226,6 +227,7 @@ static void copy_report( const T & from, Report * to )
     to->duplicate = from.duplicate;
     to->malformed = from.malformed;
     to->refused = from.refused;
+    to->blob_shared = from.blob_shared;
 }
 
 template <typename T>
@@ -984,6 +986,17 @@ static int surface_wire( const std::string & out )
             const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
             if ( root == NULL ) return 1;
             int64_t size = variable->measure( root );
+            if ( size < 0 && report.blob_shared > 0 )
+            {
+                // A blob two slots name has one owner too many, and every
+                // writer refuses it by name (docs/SPEC-TABLES.md §2.5): the
+                // row's answer is that refusal, as the Go driver's is.
+                std::string path = out + "/" + f[1] + ".absent";
+                FILE * file = fopen( path.c_str(), "wb" );
+                if ( file == NULL || fputs( "blob_shared", file ) < 0 ) { if ( file ) fclose( file ); return 1; }
+                fclose( file );
+                continue;
+            }
             if ( size < 0 ) return 1;
             scratch.assign( (size_t) size, 0 );
             if ( variable->save( root, scratch.data(), size ) != size ) return 1;
