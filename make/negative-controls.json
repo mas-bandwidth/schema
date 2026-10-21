@@ -651,6 +651,10 @@
     {
       "target": "tables-c-big-endian-negative-control",
       "reason": "the C twin of tables-big-endian-negative-control: ci.yml's big-endian job runs it on every pull request already, after the C++ put16 control. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. Issue #684 owns the job's budget, so the control is named here rather than placed in a group."
+    },
+    {
+      "target": "schema-js-generated-checkjs-strict-eslint-gate-negative-control",
+      "reason": "the body of the card's own workflow, .github/workflows/schema-js-generated-checkjs-strict-eslint-gate.yml, which runs it on every push and pull request that touches the JS emitters or the generated trees, and nightly: it needs the pinned eslint 9.39.5 and TypeScript 5.9.3, which that workflow installs from the official npm registry and the shared js leg does not carry. It plants a new TS2741 type error, absent from the w3 per-code baseline, and lint violations into generated/js/Degenerate.js, header kept, and proves both checkers go red on it."
     }
   ]
 }

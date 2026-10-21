@@ -1,0 +1,92 @@
+name: schema-js generated checkJs strict + eslint gate
+
+# THE JAVASCRIPT LENS on the generated output (make/schema-js-generated-checkjs-
+# strict-eslint-gate.mk). Per push and pull request: the strict ESLint layer
+# over the committed generated trees and the negative control, which plants a
+# type error and a lint violation into generated/js/Degenerate.js (header kept)
+# and proves both checkers go red on it. Nightly and on demand: the whole
+# corpus, the build/tables-generated-js tree included, under both checkers.
+# Both tools come from the official npm registry at the make file's pins.
+
+on:
+  push:
+    paths:
+      - "make/schema-js-generated-checkjs-strict-eslint-gate.mk"
+      - "make/js.mk"
+      - "eslint.config.mjs"
+      - "internal/codegen/js/**"
+      - "internal/codegen/jstable/**"
+      - "generated/**"
+      - ".github/workflows/schema-js-generated-checkjs-strict-eslint-gate.yml"
+  pull_request:
+    paths:
+      - "make/schema-js-generated-checkjs-strict-eslint-gate.mk"
+      - "make/js.mk"
+      - "eslint.config.mjs"
+      - "internal/codegen/js/**"
+      - "internal/codegen/jstable/**"
+      - "generated/**"
+      - ".github/workflows/schema-js-generated-checkjs-strict-eslint-gate.yml"
+  schedule:
+    - cron: "41 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fast:
+    name: eslint strict over the committed trees + the planted control
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: false
+      - name: the pinned checkers, from the official npm registry
+        run: npm install --global --ignore-scripts eslint@9.39.5 typescript@5.9.3
+      - name: eslint strict over the committed generated trees
+        run: make schema-js-generated-checkjs-strict-eslint-gate-eslint SCHEMA_JS_GATE_DIRS="generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js"
+      - name: the negative control (plant in a real generated file, both checkers red)
+        run: make schema-js-generated-checkjs-strict-eslint-gate-negative-control
+      - name: the card's Go test (the pins and the registry entry)
+        run: go test ./internal/ci -run '^TestSchemaJS(GeneratedCheckJSEslintGate(Pins|PlantIsInARealFile|ControlIsRegistered)|CheckJSRatchetSelfTestCoversPartialFailureAndGrowth)$' -count=1 -timeout 600s -v
+
+  full:
+    name: both checkers over the whole corpus (nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: false
+      - name: the pinned checkers, from the official npm registry
+        run: npm install --global --ignore-scripts eslint@9.39.5 typescript@5.9.3
+      - name: generate the corpus (the directories make/js.mk's generate targets write)
+        run: |
+          make bin/schema
+          make build/tables-generated-js/.stamp generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/paired/js/.stamp
+      - name: the negative control
+        run: make schema-js-generated-checkjs-strict-eslint-gate-negative-control
+      - name: eslint strict and checkJs --strict over the whole corpus
+        run: make -k schema-js-generated-checkjs-strict-eslint-gate
+      - name: keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-js-gate
+          path: build/schema-js-gate
+          if-no-files-found: ignore
