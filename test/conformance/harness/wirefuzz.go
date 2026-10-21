@@ -189,6 +189,12 @@ type legReply struct {
 	measure  int64
 	saved    []byte
 	saveFail bool
+	// blobShared marks a save refused BY NAME as blob_shared (docs/SPEC-
+	// TABLES.md §2.5): a leg answers the saved length -2 for it. Every writer
+	// of the standard refuses a blob two slots name; the C++ reference still
+	// writes one, so a differential against it reads this refusal as the
+	// standard's answer and not as a divergence.
+	blobShared bool
 	// RETENTION'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6). They ride beside
 	// Counts rather than inside it, because Counts is the MANIFEST's own
 	// report spelling, which every port's `report` surface prints and which
@@ -455,6 +461,7 @@ func (l *wireLeg) receive() (legReply, error) {
 	n := int64(binary.LittleEndian.Uint64(head[39:]))
 	if n < 0 {
 		rep.saveFail = true
+		rep.blobShared = n == -2
 		return rep, nil
 	}
 	rep.saved = make([]byte, n)

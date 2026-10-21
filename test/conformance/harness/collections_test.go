@@ -105,7 +105,11 @@ func cCollectionDifferential(t *testing.T, mode string) {
 		if err != nil {
 			t.Fatalf("C++ died: %v\n%s", err, expected.stderr.String())
 		}
-		if a.loaded != e.loaded || a.measure != e.measure || a.report != e.report || (a.loaded && (a.saveFail != e.saveFail || !bytes.Equal(a.saved, e.saved))) {
+		// THE ONE NAMED DIFFERENCE (docs/SPEC-TABLES.md §2.5): C refuses to
+		// save a blob two slots name, by name, and the C++ reference still
+		// writes it. Everything before the save is still held equal.
+		standardRefusal := a.blobShared && !e.saveFail
+		if a.loaded != e.loaded || a.measure != e.measure || a.report != e.report || (a.loaded && !standardRefusal && (a.saveFail != e.saveFail || !bytes.Equal(a.saved, e.saved))) {
 			dir := filepath.Join("build", "c-collections-failures")
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				t.Fatal(err)
