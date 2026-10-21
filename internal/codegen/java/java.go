@@ -3371,7 +3371,7 @@ func blockOpens(t []jtok, i int) bool {
 		return true
 	}
 	p := t[i-1].s
-	return !(p == "]" || p == "=" || p == "," || p == "{" || p == "return")
+	return p != "]" && p != "=" && p != "," && p != "{" && p != "return"
 }
 
 type relayFrame struct {
@@ -3392,12 +3392,12 @@ type relayPrinter struct {
 
 func (p *relayPrinter) level(label bool) int {
 	n := 0
-	if p.rootCase && !(label && len(p.stack) == 0) {
+	if p.rootCase && (!label || len(p.stack) != 0) {
 		n++
 	}
 	for i, f := range p.stack {
 		n += 1 + f.extra
-		if f.isSwitch && f.inCase && !(label && i == len(p.stack)-1) {
+		if f.isSwitch && f.inCase && (!label || i != len(p.stack)-1) {
 			n++
 		}
 	}
