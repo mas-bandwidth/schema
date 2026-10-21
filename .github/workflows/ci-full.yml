@@ -224,7 +224,7 @@ jobs:
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -404,7 +404,7 @@ jobs:
         run: |
           git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
             https://github.com/mas-bandwidth/serialize.rs.git ../serialize.rs
-          make tables-rust-versioning
+          make tables-rust-versioning RUSTUP_BIN="$(dirname "$(command -v cargo)")"
 
       # THE SAME SUITE ON THE JAVA LEG (§5 of docs/FIXED-FORM-ALGORITHM.md), and
       # it is here rather than in a Java job for the reason the Go step above is:
@@ -431,7 +431,7 @@ jobs:
       # SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing SDK a
       # failure rather than a silent skip.
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
         with:
           sdk: 3.13.2
       - name: the Dart leg reads backward over every versioning row
@@ -460,7 +460,7 @@ jobs:
       # built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing
       # Elixir a failure rather than a silent skip.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
         with:
           otp-version: '27'
           elixir-version: '1.18'
