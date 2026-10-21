@@ -1536,6 +1536,12 @@ tables-cook-cli: bin/schema
 # in both arms — the comparison measures the block form's emission, not the id.
 BLOCKLESS_ROOT   := build/zero-cost-noblock
 BLOCKLESS_SCHEMA := $(BLOCKLESS_ROOT)/schema
+# The ordinary arm is generated fresh beside it, by the same macros, so both
+# arms hold exactly one unit set. The shared build/tables-generated* roots are
+# not that arm: other targets add units to them (cards-cs-generate writes
+# cards/, the C conformance build writes a1/ and a2/), and a unit the macros
+# never generate would read as one the block-less emitter "did not write".
+BLOCKFUL_ROOT    := build/zero-cost-block
 BLOCKLESS_SABOTAGE := blocks := (*ir.BlockUnit)(nil) // SABOTAGED: the block form removed (schema#331)
 
 $(BLOCKLESS_SCHEMA): $(GO_SOURCES) Makefile
@@ -1577,7 +1583,7 @@ if [ "$$d" = "0" ]; then echo "block zero-cost gate: $(1) $$n Table sources byte
 endef
 
 .PHONY: tables-block-zero-cost
-tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/.stamp build/tables-generated-c/.stamp $(BLOCKLESS_SCHEMA)
+tables-block-zero-cost: bin/schema build/tables-generated/.stamp build/tables-generated-cs/.stamp build/tables-generated-c/.stamp $(BLOCKLESS_SCHEMA)
 	@for f in build/tables-generated/*/*Table.h build/tables-generated/*/*Table.cpp \
 	          build/tables-generated-cs/*/*Table.cs; do \
 		if sed -E 's://.*$$::' $$f | grep -nE "TableBlock|[A-Za-z0-9_]Block"; then \
@@ -1602,8 +1608,12 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 		fi; \
 	done
 	@echo "block zero-cost gate: the C# Table sources declare no accelerator build-version constant"
-	@rm -rf $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c
-	@mkdir -p $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c
+	@rm -rf $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c $(BLOCKFUL_ROOT)
+	@mkdir -p $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c $(BLOCKFUL_ROOT)/cpp $(BLOCKFUL_ROOT)/cs $(BLOCKFUL_ROOT)/c
+	$(call tables_generate,./bin/schema,$(BLOCKFUL_ROOT)/cpp)
+	$(call tables_generate_cs,./bin/schema,$(BLOCKFUL_ROOT)/cs)
+	$(call tables_generate_c,./bin/schema,$(BLOCKFUL_ROOT)/c)
+	$(call tables_generate_c_collections,./bin/schema,$(BLOCKFUL_ROOT)/c)
 	$(call tables_generate,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cpp)
 	$(call tables_generate_cs,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cs)
 	$(call tables_generate_c,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
@@ -1612,9 +1622,9 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 		echo "ZERO-COST GATE FAILED: the block-less emitter still wrote a Block file — the sabotage did not take, and the comparison below would be a restatement"; \
 		find $(BLOCKLESS_ROOT) -name '*Block.*'; exit 1; \
 	fi
-	@$(call tables_byte_identical,cpp,build/tables-generated,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*Table.cpp',100)
-	@$(call tables_byte_identical,cs,build/tables-generated-cs,$(BLOCKLESS_ROOT)/cs,-name '*Table.cs',40)
-	@$(call tables_byte_identical,c,build/tables-generated-c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
+	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*Table.cpp',100)
+	@$(call tables_byte_identical,cs,$(BLOCKFUL_ROOT)/cs,$(BLOCKLESS_ROOT)/cs,-name '*Table.cs',40)
+	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
 
 # THE NEGATIVE CONTROL. The block-less comparison above is a gate with no blade
 # until it is shown able to refuse a Table source that moved: the nearest

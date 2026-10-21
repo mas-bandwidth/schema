@@ -157,7 +157,7 @@ func t10Discover(t *testing.T) {
 	if t10dotnet == "" {
 		t10dotnet = "dotnet"
 	}
-	real := t10dotnet
+	var real string
 	if resolved, err := exec.LookPath(t10dotnet); err != nil {
 		t10MissingToolchain(t, "no dotnet on PATH (set DOTNET): "+err.Error())
 		return

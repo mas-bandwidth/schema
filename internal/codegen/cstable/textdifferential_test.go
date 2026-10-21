@@ -30,6 +30,7 @@ package cstable
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"os/exec"
@@ -255,12 +256,8 @@ func runCsTextDifferential(t *testing.T, tc csTextDiffToolchain, edit func(map[s
 		t.Fatal(err)
 	}
 	files := map[string][]byte{}
-	for name, data := range pk {
-		files[name] = data
-	}
-	for name, data := range tb {
-		files[name] = data
-	}
+	maps.Copy(files, pk)
+	maps.Copy(files, tb)
 	if edit != nil {
 		edit(files)
 	}
