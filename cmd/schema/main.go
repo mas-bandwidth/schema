@@ -38,7 +38,6 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/version"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -833,7 +832,10 @@ func fail(err error) {
 		}
 		fmt.Fprintf(os.Stderr, "schema: %d error(s)\n", len(diags))
 		if diags.HasSection() {
-			fmt.Fprintf(os.Stderr, "schema %s\n", version.Version())
+			// the dating line is the last line Diagnostics.Error builds, so the
+			// CLI prints the one the public API composes rather than its own
+			s := diags.Error()
+			fmt.Fprintln(os.Stderr, s[strings.LastIndex(s, "\n")+1:])
 		}
 		os.Exit(1)
 	}

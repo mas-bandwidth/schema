@@ -105,7 +105,7 @@ func ParseVersion(s string) (Version, error) {
 	for i := range n {
 		v, err := strconv.ParseUint(m[i+1], 10, 64)
 		if err != nil {
-			return Version{}, fmt.Errorf("%w: %q: %v", ErrVersionGrammar, s, err)
+			return Version{}, fmt.Errorf("%w: %q: %w", ErrVersionGrammar, s, err)
 		}
 		n[i] = v
 	}
@@ -187,11 +187,11 @@ func Promote(g Git, rev string, push bool, out io.Writer) error {
 		return err
 	}
 	if skip {
-		fmt.Fprintf(out, "promotion-tag: %s already carries a promotion tag; skipped, not retagged\n", sha)
+		_, _ = fmt.Fprintf(out, "promotion-tag: %s already carries a promotion tag; skipped, not retagged\n", sha)
 		return nil
 	}
 	if !push {
-		fmt.Fprintf(out, "promotion-tag: would tag %s %s (dry run; PUSH=1 to tag and push)\n", tag, sha)
+		_, _ = fmt.Fprintf(out, "promotion-tag: would tag %s %s (dry run; PUSH=1 to tag and push)\n", tag, sha)
 		return nil
 	}
 	if _, err := g.Run("tag", tag, sha); err != nil {
@@ -200,7 +200,7 @@ func Promote(g Git, rev string, push bool, out io.Writer) error {
 	if _, err := g.Run("push", "origin", "refs/tags/"+tag); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "promotion-tag: tagged and pushed %s %s\n", tag, sha)
+	_, _ = fmt.Fprintf(out, "promotion-tag: tagged and pushed %s %s\n", tag, sha)
 	return nil
 }
 
@@ -228,7 +228,7 @@ func Release(g Git, version, rev, mainRef string, push bool, out io.Writer) erro
 		return err
 	}
 	if !push {
-		fmt.Fprintf(out, "release: would tag %s %s (dry run; PUSH=1 to tag and push)\n", tag, sha)
+		_, _ = fmt.Fprintf(out, "release: would tag %s %s (dry run; PUSH=1 to tag and push)\n", tag, sha)
 		return nil
 	}
 	if _, err := g.Run("tag", "-a", tag, "-m", "schema "+tag, sha); err != nil {
@@ -237,7 +237,7 @@ func Release(g Git, version, rev, mainRef string, push bool, out io.Writer) erro
 	if _, err := g.Run("push", "origin", "refs/tags/"+tag); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "release: tagged and pushed %s %s\n", tag, sha)
+	_, _ = fmt.Fprintf(out, "release: tagged and pushed %s %s\n", tag, sha)
 	return nil
 }
 

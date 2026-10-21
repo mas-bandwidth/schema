@@ -147,6 +147,7 @@ var catalog = []Entry{
 	// tools/
 	e("tools/agentsmap", "AGENTS.md generator and drift guard", "go test ./tools/agentsmap", "make map"),
 	e("tools/fixedtwin", "fixed-form twin", "go test ./tools/fixedtwin", "go test ./tools/fixedtwin"),
+	e("tools/hostilecorpus", "shared hostile-input corpus generator", "make schema-shared-hostile-corpus", "make schema-shared-hostile-corpus-generate"),
 	e("tools/matrix", "language matrix page", "make matrix-check", "make matrix"),
 	e("tools/negativecontrols", "negative-control enumerator", "go test ./tools/negativecontrols", "go run ./tools/negativecontrols check"),
 	e("tools/releasetag", "promotion and release tags", "go test ./tools/releasetag", "make release"),

@@ -495,7 +495,7 @@
     {
       "name": "js",
       "when": "pull-request",
-      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them \u2014 one byte off the write template, one off an optional's present byte, and \u00a75's own \u2014 the wrong name on a file outside the lineage \u2014 for thirteen controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash) and the fixed roadmap's layout-hash-collision control (the held layout's byte comparison dropped through go test -overlay, so the second layout under a held hash must red) ride here too: 6 s over 4 controls on the author's machine.",
+      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them — one byte off the write template, one off an optional's present byte, and §5's own — the wrong name on a file outside the lineage — for thirteen controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash) and the fixed roadmap's layout-hash-collision control (the held layout's byte comparison dropped through go test -overlay, so the second layout under a held hash must red) ride here too: 6 s over 4 controls on the author's machine.",
       "targets": [
         "cards-js-conformance-negative-control",
         "cards-js-conformance-upgrade-negative-control",
@@ -659,6 +659,10 @@
     {
       "target": "tables-c-big-endian-negative-control",
       "reason": "the C twin of tables-big-endian-negative-control, run on every pull request by ci.yml's `big-endian` job in the `c-control` row: issue #684 sharded that job by unit so the control is a job of its own. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. This leg does not cross-compile it a second time."
+    },
+    {
+      "target": "schema-shared-hostile-corpus-negative-control",
+      "reason": "the hostile-corpus card's own planted-bad-pattern control: .github/workflows/schema-shared-hostile-corpus.yml runs it on its schedule and on dispatch, beside the drift gate that job runs on every push and pull request, so this leg would run it a second time."
     }
   ]
 }

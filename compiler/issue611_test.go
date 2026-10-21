@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Issue #611: a json-hostile verdict is COUNTERS AND A VERDICT ONLY, so a port
@@ -19,6 +21,7 @@ import (
 // clamp and the domain bound is the other: two clamps, and 4294967295 on the
 // field. The Go and C# walkers carried the narrow and landed 0.
 func TestIssue611JsonUnsignedOverflowLandsCeiling(t *testing.T) {
+	slowtest.Gate(t, "the Go and .NET toolchains (it builds and runs the generated unit)")
 	src := `package p
 fixed table Ship
 {
@@ -29,7 +32,8 @@ fixed table Ship
 	c := New()
 
 	t.Run("go", func(t *testing.T) {
-		files, err := c.Generate(u, "go", Options{})
+		// standalone keeps the probe module self-contained (docs/SPEC-TABLES.md §8.4)
+		files, err := c.Generate(u, "go", Options{"runtime": "standalone"})
 		if err != nil {
 			t.Fatalf("generate go: %v", err)
 		}
@@ -51,8 +55,10 @@ func TestIssue611(t *testing.T) {
 	var s Ship
 	ShipReset(&s)
 	var r TableReport
-	if !ShipFromJson(&s, text, &r) {
-		t.Fatal("FromJson failed")
+	// the plain FromJson is the strict read and refuses a clamp
+	// (docs/SPEC-TABLES.md §16.11); the landed value is the tolerant read's
+	if !ShipFromJsonTolerant(&s, text, &r) {
+		t.Fatal("FromJsonTolerant failed")
 	}
 	if s.Experience != 4294967295 {
 		t.Fatalf("experience=%d, want 4294967295 (the ceiling, not the floor)", s.Experience)

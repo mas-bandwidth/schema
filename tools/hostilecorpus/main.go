@@ -54,7 +54,7 @@ func run(command, root, dir string) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }()
 	switch command {
 	case "verify":
 		return hostilecorpus.Verify(root, tmp, dir, manifest)

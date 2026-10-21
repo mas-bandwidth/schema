@@ -2339,8 +2339,10 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 	// SPEC §4.6: an unsigned integer's omitted min is zero when max is
 	// declared. Normalize before the range checks and projection so both
 	// spellings carry the same bounds and symbolic expressions. uint128 is
-	// still raw-only and is refused below; fixed-point still needs both.
-	if isInt && !out.Type.Signed && hasMax && !hasMin {
+	// still raw-only and is refused below; fixed-point still needs both. A
+	// table field takes the one-sided rule below instead, which fills the
+	// same zero and marks the field RangeOneSided (docs/SPEC-TABLES.md §4.3).
+	if !inTable && isInt && !out.Type.Signed && hasMax && !hasMin {
 		byKey["min"] = &ast.Attr{
 			Key: "min", Pos: f.Pos,
 			Value: &ast.IntLit{Pos: f.Pos, Value: new(big.Int), Text: "0"},
