@@ -194,11 +194,8 @@ console.log("cook-be " + cook(2));
 }
 
 func cookDiff(got, want []byte) string {
-	n := len(got)
-	if len(want) < n {
-		n = len(want)
-	}
-	for i := 0; i < n; i++ {
+	n := min(len(want), len(got))
+	for i := range n {
 		if got[i] != want[i] {
 			return fmt.Sprintf("byte %d got %02x want %02x (got %d bytes, want %d)", i, got[i], want[i], len(got), len(want))
 		}

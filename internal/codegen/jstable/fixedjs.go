@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -504,12 +505,7 @@ func fixedStructHasText(st *ir.Struct) bool {
 	if st == nil {
 		return false
 	}
-	for _, f := range st.Fields {
-		if fixedFieldHasText(f) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(st.Fields, fixedFieldHasText)
 }
 
 func fixedFieldHasText(f *ir.Field) bool {

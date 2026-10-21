@@ -34,7 +34,7 @@ func readCookWriteManifest(t *testing.T, repo string) (map[string][]string, []co
 	units := map[string][]string{}
 	instances := map[string]instInfo{}
 	var rows []cookWriteManifestRow
-	for _, raw := range strings.Split(string(data), "\n") {
+	for raw := range strings.SplitSeq(string(data), "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -187,7 +187,7 @@ for (const c of cases) {
 		t.Fatalf("node probe failed: %v\n%s", err, out)
 	}
 	results := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		parts := strings.SplitN(strings.TrimSpace(line), " ", 2)
 		if len(parts) == 2 {
 			results[parts[0]] = parts[1]
@@ -195,7 +195,6 @@ for (const c of cases) {
 	}
 
 	for _, row := range rows {
-		row := row
 		t.Run(row.instance, func(t *testing.T) {
 			res, ok := results[row.instance]
 			if !ok {

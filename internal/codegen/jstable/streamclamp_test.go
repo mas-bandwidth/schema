@@ -88,9 +88,9 @@ else { console.log("JS " + [rep.unknown, rep.kindMismatch, rep.widened, rep.clam
 		t.Fatalf("probe failed: %v\n%s", err, out)
 	}
 	jsLine := ""
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(line, "JS ") {
-			jsLine = strings.TrimPrefix(line, "JS ")
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if after, ok := strings.CutPrefix(line, "JS "); ok {
+			jsLine = after
 		}
 	}
 	if jsLine == "" {

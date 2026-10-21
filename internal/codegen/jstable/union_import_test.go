@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,9 +78,7 @@ func TestUnionClassesImportTheTablesTheyBuild(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: jstable.Generate: %v", cu.name, err)
 		}
-		for k, v := range tables {
-			files[k] = v
-		}
+		maps.Copy(files, tables)
 		for name, data := range files {
 			p := filepath.Join(dir, sub, filepath.FromSlash(name))
 			if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
@@ -93,9 +92,7 @@ func TestUnionClassesImportTheTablesTheyBuild(t *testing.T) {
 		if len(exp) == 0 {
 			continue
 		}
-		for k, v := range exp {
-			expected[k] = v
-		}
+		maps.Copy(expected, exp)
 		if err := os.WriteFile(filepath.Join(dir, sub, "probe.mjs"), []byte(probe), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -195,8 +192,8 @@ func jsUnionCorpus(t *testing.T) []unionCorpusUnit {
 		var line strings.Builder
 		for sc.Scan() {
 			s := sc.Text()
-			if strings.HasSuffix(s, "\\") {
-				line.WriteString(strings.TrimSuffix(s, "\\"))
+			if before, ok := strings.CutSuffix(s, "\\"); ok {
+				line.WriteString(before)
 				line.WriteString(" ")
 				continue
 			}
@@ -221,7 +218,7 @@ func jsUnionCorpus(t *testing.T) []unionCorpusUnit {
 				continue
 			}
 			var inputs []string
-			for _, tok := range strings.Fields(m[1]) {
+			for tok := range strings.FieldsSeq(m[1]) {
 				if strings.HasPrefix(tok, ">") || strings.HasPrefix(tok, "2>") || tok == "&&" || tok == ";" || tok == "||" || tok == "|" {
 					break
 				}
@@ -274,7 +271,7 @@ func jsExpandFilterOut(t *testing.T, line string) string {
 	return jsFilterOut.ReplaceAllStringFunc(line, func(m string) string {
 		parts := jsFilterOut.FindStringSubmatch(m)
 		drop := map[string]bool{}
-		for _, d := range strings.Split(parts[1], ",") {
+		for d := range strings.SplitSeq(parts[1], ",") {
 			drop[d] = true
 		}
 		matches, err := filepath.Glob(repoPath(parts[2]))
@@ -309,7 +306,7 @@ func jsViewCorpusInputs(t *testing.T) []string {
 	refused := map[string]bool{}
 	for line := range strings.SplitSeq(string(mk), "\n") {
 		if rest, ok := strings.CutPrefix(line, "JS_VIEW_REFUSED :="); ok {
-			for _, d := range strings.Fields(rest) {
+			for d := range strings.FieldsSeq(rest) {
 				refused[d] = true
 			}
 		}
@@ -614,10 +611,7 @@ func (b *unionVarBuilder) fieldValue(f *ir.Field, target *ir.Union, val string) 
 	case f.KeyEnum != "" || f.Array == ir.ArrayFixed:
 		return fmt.Sprintf("Array.from({ length: %d }, () => (%s))", f.ArrayBound, elem)
 	case f.Array != ir.ArrayNone:
-		n := f.ArrayMin
-		if n < 1 {
-			n = 1
-		}
+		n := max(f.ArrayMin, 1)
 		return fmt.Sprintf("Array.from({ length: %d }, () => (%s))", n, elem)
 	}
 	return elem

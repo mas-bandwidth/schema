@@ -32,7 +32,6 @@ func TestJsFlatCompressedFloatClampsTheTopOfRange(t *testing.T) {
 		{"16777215", "16777215.0", 16777215},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			flat := generateProbeFlat(t, tc.max)
@@ -47,9 +46,7 @@ func TestJsFlatCompressedFloatClampsTheTopOfRange(t *testing.T) {
 		slowtest.Gate(t, "node (it compiles and runs the generated flat codec)")
 		node := jsFlatNode(t)
 		for _, tc := range cases {
-			tc := tc
 			for _, production := range []bool{false, true} {
-				production := production
 				label := "checked"
 				if production {
 					label = "production"

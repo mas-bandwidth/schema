@@ -182,7 +182,7 @@ func TestMapsAndUnionArmsOnTheTableWireJavaScript(t *testing.T) {
 		t.Fatalf("the maps and arms probe did not run: %v\n%s", err, out)
 	}
 	got := map[string]bool{}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		got[strings.TrimSpace(line)] = true
 	}
 	for _, w := range want {

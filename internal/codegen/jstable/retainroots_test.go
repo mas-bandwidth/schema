@@ -118,7 +118,7 @@ process.stdout.write(JSON.stringify({
 		t.Fatal(err)
 	}
 	rows := 0
-	for _, raw := range strings.Split(string(manifest), "\n") {
+	for raw := range strings.SplitSeq(string(manifest), "\n") {
 		text := strings.TrimSpace(raw)
 		if text == "" || text[0] == '#' {
 			continue
@@ -155,7 +155,7 @@ process.stdout.write(JSON.stringify({
 				return
 			}
 			var want []byte
-			for _, path := range strings.Split(f[9], ",") {
+			for path := range strings.SplitSeq(f[9], ",") {
 				pinned, err := os.ReadFile(filepath.Join(repo, path))
 				if err != nil {
 					t.Fatal(err)

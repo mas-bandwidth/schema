@@ -296,8 +296,8 @@ fixed table Config {
 	if strings.Contains(load, "image.set(ConfigFixedPrefill)") {
 		t.Error("the load still prefills the whole image; holes are the bytes the plan does not write")
 	}
-	i := strings.Index(load, "for (let k = 0; k < n; k++)")
-	if i < 0 {
+	found := strings.Contains(load, "for (let k = 0; k < n; k++)")
+	if !found {
 		t.Fatal("the load has no record loop")
 	}
 	// an empty hole list is what skips the prefill; the only identity branch in

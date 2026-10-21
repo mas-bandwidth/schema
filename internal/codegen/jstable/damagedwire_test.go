@@ -43,7 +43,6 @@ func TestDamagedWireLoadsDefaultMalformedJavaScript(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			u := loadUnitForMeasure(t, repo, tc.unitDir)
@@ -130,9 +129,9 @@ console.log("JS loaded=" + loaded + "|measureOk=" + (measure >= 0) + "|" + [rep.
 					t.Fatalf("%s (%s): node probe failed: %v\n%s", tc.name, w.label, err, out)
 				}
 				jsLine := ""
-				for _, line := range strings.Split(string(out), "\n") {
-					if strings.HasPrefix(line, "JS ") {
-						jsLine = strings.TrimPrefix(line, "JS ")
+				for line := range strings.SplitSeq(string(out), "\n") {
+					if after, ok0 := strings.CutPrefix(line, "JS "); ok0 {
+						jsLine = after
 					}
 				}
 				if jsLine == "" {

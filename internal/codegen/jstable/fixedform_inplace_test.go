@@ -37,7 +37,7 @@ func specInPlaceLanguages(t *testing.T) map[string]bool {
 		t.Fatalf("read the spec: %v", err)
 	}
 	var lines []string
-	for _, ln := range strings.Split(string(data), "\n") {
+	for ln := range strings.SplitSeq(string(data), "\n") {
 		if strings.HasPrefix(strings.TrimSpace(ln), specInPlaceMarker) {
 			lines = append(lines, strings.TrimSpace(ln))
 		}
@@ -46,7 +46,7 @@ func specInPlaceLanguages(t *testing.T) map[string]bool {
 		t.Fatalf("docs/SPEC-TABLES.md §3.4 must carry exactly one %q line, found %d", specInPlaceMarker, len(lines))
 	}
 	set := map[string]bool{}
-	for _, l := range strings.Split(strings.TrimPrefix(lines[0], specInPlaceMarker), ",") {
+	for l := range strings.SplitSeq(strings.TrimPrefix(lines[0], specInPlaceMarker), ",") {
 		if l = strings.TrimSpace(l); l != "" {
 			set[l] = true
 		}
@@ -100,7 +100,7 @@ func jsIdentityDoor(t *testing.T, load, root string) {
 // jsCode is generated source with its line comments removed.
 func jsCode(src string) string {
 	var b strings.Builder
-	for _, ln := range strings.Split(src, "\n") {
+	for ln := range strings.SplitSeq(src, "\n") {
 		if i := strings.Index(ln, "//"); i >= 0 {
 			ln = ln[:i]
 		}

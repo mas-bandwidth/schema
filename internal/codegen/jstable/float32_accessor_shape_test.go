@@ -52,7 +52,7 @@ fixed table Shot
 		}
 		src := string(files[name])
 		definitions += strings.Count(src, "function "+reader+"(")
-		for _, line := range strings.Split(src, "\n") {
+		for line := range strings.SplitSeq(src, "\n") {
 			for member := range accessors {
 				if !strings.HasPrefix(line, "  function "+member+"(") {
 					continue

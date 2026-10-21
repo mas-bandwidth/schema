@@ -64,12 +64,12 @@ func TestEveryJavaScriptRoadmapTestIsRunByAMakeTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	var patterns []string
-	for _, line := range strings.Split(string(mk), "\n") {
+	for line := range strings.SplitSeq(string(mk), "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			continue
 		}
-		if i := strings.Index(line, "-run "); i >= 0 {
-			patterns = append(patterns, line[i+len("-run "):])
+		if _, after, ok := strings.Cut(line, "-run "); ok {
+			patterns = append(patterns, after)
 		}
 	}
 	run := strings.Join(patterns, "\n")
