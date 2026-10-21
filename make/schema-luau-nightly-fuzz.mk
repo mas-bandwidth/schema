@@ -593,12 +593,22 @@ $(LUAU_SRC)/.stamp:
 	@tar -xzf build/luau-src.tar.gz -C $(LUAU_SRC) --strip-components=1 && rm -f build/luau-src.tar.gz
 	@touch $@
 
+# THE STRICT FLAGS (zero warnings, Glenn 2026-10-20: vendored code included).
+# Our own host compiles with them as errors. The vendored Luau source compiles
+# with them too, warnings shown and counted rather than silenced: 1425 distinct
+# warning sites at 0.741 (gcc 13, mostly -Wshadow, -Wpedantic and
+# -Wsign-conversion) are the roadmap row schema-luau-fuzzhost-vendored-warnings,
+# and until it lands they are not errors. For the same reason the vendored
+# headers reach main.cpp as -isystem, so its own lines are held to -Werror.
+LUAU_NF_STRICT := -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion -Wcast-qual -Wformat=2 -Wundef -Wdouble-promotion
+
 $(LUAU_NF_HOST): tools/luaufuzzhost/main.cpp $(LUAU_SRC)/.stamp
 	@rm -rf $(LUAU_NF_HOST_OBJ) && mkdir -p $(LUAU_NF_HOST_OBJ)
 	@cd $(LUAU_SRC) && ls Common/src/*.cpp Ast/src/*.cpp Bytecode/src/*.cpp Compiler/src/*.cpp VM/src/*.cpp \
 		| xargs -P 4 -I{} sh -c 'o=$(CURDIR)/$(LUAU_NF_HOST_OBJ)/$$(echo {} | tr / _).o; \
-			nice -n 19 $(CXX) -std=c++17 -O2 -DNDEBUG -w $(patsubst -I%,-I$(CURDIR)/%,$(LUAU_NF_HOST_INC)) -c {} -o "$$o"'
-	@nice -n 19 $(CXX) -std=c++17 -O2 -DNDEBUG -Wall $(LUAU_NF_HOST_INC) -c tools/luaufuzzhost/main.cpp -o $(LUAU_NF_HOST_OBJ)/main.o
+			nice -n 19 $(CXX) -std=c++17 -O2 -DNDEBUG $(LUAU_NF_STRICT) $(patsubst -I%,-I$(CURDIR)/%,$(LUAU_NF_HOST_INC)) -c {} -o "$$o" 2>"$$o.log"'
+	@echo "luaufuzzhost: vendored Luau $(LUAU_VERSION): $$(cat $(LUAU_NF_HOST_OBJ)/*.log | grep -c 'warning:') warning lines (roadmap schema-luau-fuzzhost-vendored-warnings)"
+	@nice -n 19 $(CXX) -std=c++17 -O2 -DNDEBUG $(LUAU_NF_STRICT) -Werror $(patsubst -I%,-isystem %,$(LUAU_NF_HOST_INC)) -c tools/luaufuzzhost/main.cpp -o $(LUAU_NF_HOST_OBJ)/main.o
 	@$(CXX) -o $@ $(LUAU_NF_HOST_OBJ)/*.o -lm -lpthread
 	@echo "luaufuzzhost: built against Luau $(LUAU_VERSION) ($(LUAU_SRC_SHA))"
 

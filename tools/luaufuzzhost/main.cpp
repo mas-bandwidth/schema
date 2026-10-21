@@ -250,9 +250,9 @@ static int hostWrite(lua_State* L)
     size_t len = 0;
     const void* data = luaL_checkbuffer(L, 1, &len);
     if (len && fwrite(data, 1, len, stdout) != len)
-        luaL_error(L, "luaufuzzhost: write: stdout closed");
+        luaL_error(L, "%s", "luaufuzzhost: write: stdout closed");
     if (fflush(stdout) != 0)
-        luaL_error(L, "luaufuzzhost: write: stdout closed");
+        luaL_error(L, "%s", "luaufuzzhost: write: stdout closed");
     return 0;
 }
 
