@@ -403,7 +403,14 @@ func unitViewFor(u *ir.Unit, types, tables []*ir.Struct) string {
 		if c.IsFloat {
 			real = math.Float64bits(c.Float)
 		} else if c.Int != nil {
-			integer = int64(c.Int.Uint64())
+			// docs/SPEC-TABLES.md §8.3: int_value is the folded value, so a
+			// negative constant keeps its sign. A value outside int64 keeps the
+			// two's-complement pattern the column holds, as the C++ emitter does.
+			if c.Int.IsInt64() {
+				integer = c.Int.Int64()
+			} else {
+				integer = int64(c.Int.Uint64())
+			}
 		}
 		fmt.Fprintf(&b, "            constants[%d] = TableConstantInfo.of(%q, %s, %s, %v, %dL, Double.longBitsToDouble(0x%016xL), %s, %s);\n",
 			ci, n, javaString(viewFile(u, n)), javaString(c.Storage), c.IsFloat, integer, real, javaString(c.Doc), javaTags(c.Tags))
