@@ -529,8 +529,8 @@ tables-java-fuzz: build/java-tables/.stamp build/cook-open/.stamp
 # reader's own property and worth having written down; the control has to reach
 # past the layer to make the escape the oracle exists to catch.
 JAVA_FUZZ_SABOTAGE := build/java-fuzz-sabotage
-JAVA_FUZZ_SABOTAGE_SED := s|if (rows > bytes - offsetOf) { return null; }|if (rows > bytes - offsetOf) { } // SABOTAGED|
-JAVA_FUZZ_SABOTAGE_SED2 := s|if (padding > bytes - used) { return null; }|if (padding > bytes - used) { } // SABOTAGED|
+JAVA_FUZZ_SABOTAGE_SED := s|if (rows > bytes - offsetOf) { return -8; }|if (rows > bytes - offsetOf) { } // SABOTAGED|
+JAVA_FUZZ_SABOTAGE_SED2 := s|if (padding > bytes - used) { return -6; }|if (padding > bytes - used) { } // SABOTAGED|
 .PHONY: tables-java-fuzz-negative-control
 tables-java-fuzz-negative-control: build/cook-open/.stamp
 	@rm -rf $(JAVA_FUZZ_SABOTAGE) && mkdir -p $(JAVA_FUZZ_SABOTAGE)
@@ -571,7 +571,7 @@ tables-java-block-lead: build/java-tables/.stamp
 # ITS NEGATIVE CONTROL, on the EMITTER for the fuzz control's reason: drop the
 # residue check and the gate must go red at lead 1 naming the image.
 JAVA_BLOCK_LEAD_SABOTAGE := build/java-block-lead-sabotage
-JAVA_BLOCK_LEAD_SABOTAGE_SED := s|if ((offset %% TableBlockInfo.alignment) != 0) { return null; }|if ((offset %% TableBlockInfo.alignment) != 0) { } // SABOTAGED|
+JAVA_BLOCK_LEAD_SABOTAGE_SED := s|if ((offset %% TableBlockInfo.alignment) != 0) { return -7; }|if ((offset %% TableBlockInfo.alignment) != 0) { } // SABOTAGED|
 .PHONY: tables-java-block-lead-negative-control
 tables-java-block-lead-negative-control: build/java-tables/.stamp
 	@rm -rf $(JAVA_BLOCK_LEAD_SABOTAGE) && mkdir -p $(JAVA_BLOCK_LEAD_SABOTAGE)
@@ -1092,6 +1092,8 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/pointers tables/pointers
 	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/block tables/block
 	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/blobs tables/blobs
+	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/arms tables/arms
+	$(JAVA_EXTENT_SABOTAGE)/schema generate --lang java --out $(JAVA_EXTENT_SABOTAGE)/generated/lists tables/lists
 	@grep -lq SABOTAGED $(JAVA_EXTENT_SABOTAGE)/generated/pointers/SceneCook.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged at"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_EXTENT_SABOTAGE)/classes \
@@ -1340,7 +1342,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 # and open either way. A control that turned block red too would be proving the
 # reader was broken, not that it CHECKS.
 CONFORMANCE_NEGATIVE_JAVA_BLOCK := build/conformance-negative-java-block
-CONFORMANCE_NEGATIVE_JAVA_BLOCK_SED := s|if (stride != %sStride) { return null; }|if (stride != %sStride) { } // SABOTAGED|
+CONFORMANCE_NEGATIVE_JAVA_BLOCK_SED := s|if (stride != %sStride) { return -8; }|if (stride != %sStride) { } // SABOTAGED|
 .PHONY: conformance-negative-control-java-block
 conformance-negative-control-java-block: build/conformance-harness
 	@rm -rf $(CONFORMANCE_NEGATIVE_JAVA_BLOCK) && mkdir -p $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)
