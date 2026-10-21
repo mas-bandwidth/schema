@@ -1,22 +1,26 @@
 // Package elixirtable emits the Elixir TABLE surface (docs/SPEC-TABLES.md):
-// the BLOCK form's read side in <Base>Block.ex (§19) and the COOKED form's
-// read side in <Base>Cook.ex (§7), with their shared runtime modules and the
-// unit's BuildVersion module, emitted only when the unit declares tables.
+// the BLOCK form's read and build sides in <Base>Block.ex (§19, §19.1) and the
+// COOKED form's read and write sides in <Base>Cook.ex and <ns>.Table (§7, §7.6),
+// with their shared runtime modules and the unit's BuildVersion module, emitted
+// only when the unit declares tables.
 //
 // THE ACCELERATOR TIER. A block is POINTED AT and a cook is OPENED; neither
-// parses a wire, so both reach every fixed table of the unit. The TABLE WIRE
-// itself — the codecs, the reflection descriptors and the text form of
-// docs/SPEC-TABLES.md §3, §4, §8 and §16 in their id-table form — is not
-// emitted for Elixir. The port that once stood here wrote the form that
-// preceded the id-table wire, which the current specification does not
-// describe and the C++ reference does not open; it was removed rather than
-// carried (schema#515 is the row that brings the wire to Elixir). ROADMAP.md
-// marks the cells.
+// parses a wire, so both reach every fixed table of the unit. Beside them the
+// VARIABLE FORM is emitted for the whole variable class: the id-table wire's
+// codec, the reflection descriptors and the text form of docs/SPEC-TABLES.md
+// §3, §4, §8 and §16 in their id-table form — pointers to tables and the flat
+// node table, blobs (*bytes, *string), unbounded arrays of scalar, string and
+// enum elements and arrays of pointers, the remaining scalars, and nested
+// tables by value. A unit that is only a map or a union is refused by name
+// (§11). A unit that also carries unbounded arrays still generates: the roots
+// that reach a map, a union, or an enum-keyed array are uncarried and answer
+// an error, and the driver writes <case>.absent rather than a wrong byte.
 package elixirtable
 
 import (
 	"fmt"
 	"maps"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -75,21 +79,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	blocks := ir.Blocks(u)
 	ns := ir.GoExportName(u.Package)
 
-	// THE VARIABLE FORM'S BOUNDARY (docs/SPEC-TABLES.md §11): the card slice
-	// this backend carries is admitted; every other variable-class construct is
-	// refused by name rather than mis-encoded. THE REFUSAL IS THE VARIABLE
-	// FORM'S OWN. A unit the BLOCK, COOK or FIXED form already serves emits
-	// those forms as it did before — none of them reads or writes a form-`1`
-	// byte, so a variable table beside them is not mis-encoded by anything this
-	// leg writes, and refusing the whole unit would take the block and cook
-	// surfaces down with it (docs/SPEC-TABLES.md §2.7, §3.4). The boundary
-	// therefore binds a unit the variable form OWNS: one whose closure holds no
-	// fixed table, which is where the wire this card teaches is the only answer.
-	if !closureHoldsFixedTable(u, closure) {
-		if err := refuseCardUnsupportedVariableConstructs(u); err != nil {
-			return nil, err
-		}
-	}
+	// THE VARIABLE FORM'S BOUNDARY (docs/SPEC-TABLES.md §11) is the compiler's
+	// now: maps (§2.8), optional fields and arrays (§2.3), enum-keyed arrays
+	// (§2.4, §3.2), the fixed-point and 128-bit kinds (§3), and union arms of
+	// every field type (§2.6) are carried by the variable form, so the backend
+	// refuses none of them; the `was` rows this leg does not carry (§5) are
+	// refused by name in compiler/target_elixir.go.
 
 	// A DECLARATION LOWERS TO A MODULE under the unit's namespace, so one named
 	// for a generated file's module would merge two unrelated modules. The
@@ -132,9 +127,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 	}
 
-	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
-	// FIRST table WIRE. Form 1 is still deferred to schema#515 and nothing here
-	// reads or writes one.
+	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: the FIXED
+	// tables' wire. The variable form (form byte 1) is emitted below for the
+	// variable class; this is the fixed tables' own, laid out by the plan.
 	fixed, err := generateFixed(u, ns, lineage)
 	if err != nil {
 		return nil, err
@@ -143,14 +138,19 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 
 	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1: the id-table
 	// wire the card constructs read and write byte for byte as the Go, C, C++
-	// and C# backends do. It is emitted for the unit the variable form OWNS —
-	// one whose closure holds no fixed table, which is where the card's slice
-	// is the only answer — and not for a unit the fixed form already serves.
-	if !closureHoldsFixedTable(u, closure) {
-		maps.Copy(out, generateVariableForm(u, ns))
-	}
+	// and C# backends do. It is emitted for every unit whose closure holds a
+	// table, beside the fixed form. A mixed unit (graphdemo, listdemo) gets
+	// both. A fixed-only unit (tblp1, tblp3) gets it too: its conformance wire
+	// is form byte 1, and an optional and a by-value nest are one framing
+	// (§2.3), so those instances answer rather than write <case>.absent.
+	maps.Copy(out, generateVariableForm(u, ns))
 
+	// the id-table wire's shared framing (docs/SPEC-TABLES.md §3, §5): the
+	// primitives every variable table's codecs call, emitted once per unit the
+	// way the two accelerators' runtimes are.
+	out[TableRuntimeModule+".ex"] = tableRuntimeModule(u, ns)
 	out[BuildVersionModule+".ex"] = buildVersionModule(u, ns)
+	out[UnitViewModule+".ex"] = unitViewModule(u, ns)
 
 	// THE MESSAGE FORM'S ANNOUNCEMENT (docs/SPEC-TABLES.md §3.3): the surface a
 	// `fixed table` root owes. The form is a fixed table's and nobody else's, so
@@ -230,6 +230,78 @@ func header(base, pkg, what string) string {
 
 func moduleBase(base string) string { return ir.GoExportName(base) }
 
+// exLineLimit is the line length Elixir 1.20.4's `mix format` wraps past, and
+// the emitters wrap at the same column so the source they write is the source
+// the formatter would write (issue #547).
+const exLineLimit = 98
+
+// exInt spells a decimal integer the way `mix format` spells it: six digits or
+// more are grouped in threes by underscores.
+func exInt(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	sign := ""
+	if strings.HasPrefix(s, "-") {
+		sign, s = "-", s[1:]
+	}
+	if len(s) < 6 {
+		return sign + s
+	}
+	var b strings.Builder
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte('_')
+		}
+		b.WriteRune(c)
+	}
+	return sign + b.String()
+}
+
+// exWidth is a line's width in columns as the formatter counts them: runes.
+func exWidth(s string) int { return len([]rune(s)) }
+
+// exDefDo writes `def head, do: body` on one line at indent, and when that
+// passes the line limit, the formatter's wrap: the head, then `do:` on the
+// next line two columns in.
+func exDefDo(indent, head, body string) string {
+	if one := indent + head + ", do: " + body; exWidth(one) <= exLineLimit {
+		return one + "\n"
+	}
+	return indent + head + ",\n" + indent + "  do: " + body + "\n"
+}
+
+// exComma is the separator after element i of n in a multi-line list or map:
+// a comma, and none after the last, which the formatter drops.
+func exComma(i, n int) string {
+	if i == n-1 {
+		return ""
+	}
+	return ","
+}
+
+// exBlock joins the expressions of one block the way the formatter separates
+// them: an expression that spans more than one line gets a blank line on each
+// side, and single-line neighbours stay together. Each item is one expression
+// with any comment lines that lead it, and ends in a newline.
+func exBlock(items []string) string {
+	multi := func(s string) bool {
+		code := 0
+		for _, line := range strings.Split(strings.TrimSuffix(s, "\n"), "\n") {
+			if t := strings.TrimSpace(line); t != "" && !strings.HasPrefix(t, "#") {
+				code++
+			}
+		}
+		return code > 1
+	}
+	var b strings.Builder
+	for i, it := range items {
+		if i > 0 && (multi(it) || multi(items[i-1])) {
+			b.WriteString("\n")
+		}
+		b.WriteString(it)
+	}
+	return b.String()
+}
+
 func isStruct(f *ir.Field) bool {
 	if f.Type.Kind != ir.TNamed {
 		return false
@@ -287,4 +359,242 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 		}
 	}
 	return order
+}
+
+// THE DATA LITERALS THE VARIABLE FORM WRITES (@tables, @unions, @node_types,
+// @known_ids, @uncarried) are laid out in `mix format`'s shape as they are
+// emitted (issue #547). The descriptor builders spell each literal as one
+// flat term (maps, lists, tuples, binaries and leaves; whitespace between
+// tokens is free) and exTerm lays that term out by the formatter's rules for
+// those shapes and nothing else: a term that fits the line stays on it; a map
+// or a list breaks one entry per line two columns in, its closer back at the
+// opening line's indent, with no trailing comma; a binary fills greedily two
+// columns in and a tuple one column inside its brace; an entry that does not
+// fit opens a map or list value beside its key and moves any other value to
+// the next line two columns in. Numbers are spelled as the formatter spells
+// them (exNumber). It is not a formatter: it knows no code, only the literal
+// shapes these emitters write, and the raw-format gate
+// (tables-elixir-emit-format-clean) is what holds it to Elixir 1.20.4.
+type exTerm struct {
+	leaf        string // set for a leaf
+	open, close string // "%{" "}", "[" "]", "{" "}", "<<" ">>"
+	items       []exItem
+}
+
+// exItem is one entry of a container: key is "name: " or `"k" => `, or empty.
+type exItem struct {
+	key string
+	val *exTerm
+}
+
+// exParseLiteral reads the flat term a descriptor builder spells. It panics on
+// a term outside those shapes: that is an emitter bug, and the generator's own
+// tests reach every builder.
+func exParseLiteral(s string) *exTerm {
+	p := &exParser{s: s}
+	t := p.term()
+	p.space()
+	if p.i != len(p.s) {
+		panic(fmt.Sprintf("elixirtable: literal has trailing text at %d: %q", p.i, p.s[p.i:]))
+	}
+	return t
+}
+
+type exParser struct {
+	s string
+	i int
+}
+
+func (p *exParser) space() {
+	for p.i < len(p.s) && (p.s[p.i] == ' ' || p.s[p.i] == '\n') {
+		p.i++
+	}
+}
+
+func (p *exParser) term() *exTerm {
+	p.space()
+	for _, c := range [][2]string{{"%{", "}"}, {"<<", ">>"}, {"[", "]"}, {"{", "}"}} {
+		if strings.HasPrefix(p.s[p.i:], c[0]) {
+			p.i += len(c[0])
+			return p.container(c[0], c[1])
+		}
+	}
+	return &exTerm{leaf: exNumber(p.leaf())}
+}
+
+// leaf reads a string literal or a bare token up to the next separator.
+func (p *exParser) leaf() string {
+	start := p.i
+	if p.i < len(p.s) && p.s[p.i] == '"' {
+		p.i++
+		for p.i < len(p.s) && p.s[p.i] != '"' {
+			if p.s[p.i] == '\\' {
+				p.i++
+			}
+			p.i++
+		}
+		p.i++
+		return p.s[start:p.i]
+	}
+	for p.i < len(p.s) && !strings.ContainsRune(", \n}]>", rune(p.s[p.i])) {
+		p.i++
+	}
+	if p.i == start {
+		panic(fmt.Sprintf("elixirtable: literal has no term at %d: %q", p.i, p.s[p.i:]))
+	}
+	return p.s[start:p.i]
+}
+
+func exIdentByte(c byte) bool {
+	return c == '_' || c == '?' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+}
+
+func (p *exParser) container(open, close string) *exTerm {
+	t := &exTerm{open: open, close: close}
+	for {
+		p.space()
+		if strings.HasPrefix(p.s[p.i:], close) {
+			p.i += len(close)
+			return t
+		}
+		key := ""
+		// a keyword key: an identifier, then ": "
+		j := p.i
+		for j < len(p.s) && exIdentByte(p.s[j]) {
+			j++
+		}
+		if j > p.i && j+1 < len(p.s) && p.s[j] == ':' && p.s[j+1] == ' ' {
+			key = p.s[p.i:j] + ": "
+			p.i = j + 2
+		}
+		v := p.term()
+		p.space()
+		if key == "" && strings.HasPrefix(p.s[p.i:], "=>") {
+			p.i += 2
+			key = v.flat() + " => "
+			v = p.term()
+			p.space()
+		}
+		t.items = append(t.items, exItem{key: key, val: v})
+		if p.i < len(p.s) && p.s[p.i] == ',' {
+			p.i++
+		}
+	}
+}
+
+// exNumber spells a numeric leaf as the formatter does: a decimal integer of
+// six digits or more grouped by underscores (exInt), a float's integer part
+// the same way, hex digits upper case. Anything else is returned unchanged.
+func exNumber(s string) string {
+	body := strings.TrimPrefix(s, "-")
+	sign := s[:len(s)-len(body)]
+	if body == "" || body[0] < '0' || body[0] > '9' || strings.Contains(body, "_") {
+		return s
+	}
+	if strings.HasPrefix(body, "0x") {
+		return sign + "0x" + strings.ToUpper(body[2:])
+	}
+	if strings.ContainsAny(body, "eE") {
+		return s
+	}
+	intPart, frac := body, ""
+	if k := strings.IndexByte(body, '.'); k >= 0 {
+		intPart, frac = body[:k], body[k:]
+	}
+	if intPart == "" || strings.Trim(intPart, "0123456789") != "" {
+		return s
+	}
+	if len(intPart) < 6 {
+		return s
+	}
+	// grouped in threes from the right, the way exInt groups: an unsigned
+	// 64-bit bound is past int64, so the digits are grouped as text
+	var b strings.Builder
+	for i := range len(intPart) {
+		if i > 0 && (len(intPart)-i)%3 == 0 {
+			b.WriteByte('_')
+		}
+		b.WriteByte(intPart[i])
+	}
+	return sign + b.String() + frac
+}
+
+func (t *exTerm) flat() string {
+	if t.open == "" {
+		return t.leaf
+	}
+	parts := make([]string, len(t.items))
+	for i, it := range t.items {
+		parts[i] = it.key + it.val.flat()
+	}
+	return t.open + strings.Join(parts, ", ") + t.close
+}
+
+func exFits(col, tail int, s string) bool { return col+exWidth(s)+tail <= exLineLimit }
+
+// render lays the term out starting at column at, its broken lines indented
+// from column ind, with tail columns following its closer on that line.
+func (t *exTerm) render(at, ind, tail int) string {
+	one := t.flat()
+	if t.open == "" || len(t.items) == 0 || exFits(at, tail, one) {
+		return one
+	}
+	if t.open == "<<" || t.open == "{" {
+		cont := ind + 2
+		if t.open == "{" {
+			cont = at + 1
+		}
+		var b strings.Builder
+		first := t.items[0].key + t.items[0].val.flat()
+		b.WriteString(t.open + first)
+		line := at + len(t.open) + exWidth(first)
+		for i := 1; i < len(t.items); i++ {
+			s := t.items[i].key + t.items[i].val.flat()
+			after := 1
+			if i == len(t.items)-1 {
+				after = len(t.close) + tail
+			}
+			if line+2+exWidth(s)+after > exLineLimit {
+				b.WriteString(",\n" + strings.Repeat(" ", cont) + s)
+				line = cont + exWidth(s)
+				continue
+			}
+			b.WriteString(", " + s)
+			line += 2 + exWidth(s)
+		}
+		b.WriteString(t.close)
+		return b.String()
+	}
+	pad := strings.Repeat(" ", ind+2)
+	var b strings.Builder
+	b.WriteString(t.open + "\n")
+	for i, it := range t.items {
+		sep := exComma(i, len(t.items))
+		b.WriteString(pad + it.render(ind+2, len(sep)) + sep + "\n")
+	}
+	b.WriteString(strings.Repeat(" ", ind) + t.close)
+	return b.String()
+}
+
+// render lays one entry out at column ind: on one line where it fits; a map or
+// list value opened beside its key; any other value on the next line, two
+// columns in.
+func (it exItem) render(ind, tail int) string {
+	if one := it.key + it.val.flat(); exFits(ind, tail, one) || it.key == "" && it.val.open == "" {
+		return one
+	}
+	if it.key == "" {
+		return it.val.render(ind, ind, tail)
+	}
+	if it.val.open == "%{" || it.val.open == "[" {
+		return it.key + it.val.render(ind+exWidth(it.key), ind, tail)
+	}
+	return strings.TrimSuffix(it.key, " ") + "\n" + strings.Repeat(" ", ind+2) + it.val.render(ind+2, ind+2, tail)
+}
+
+// exAttribute writes `@name literal` at module indent, the literal laid out by
+// exTerm's rules.
+func exAttribute(name, literal string) string {
+	head := "  @" + name + " "
+	return head + exParseLiteral(literal).render(exWidth(head), 2, 0) + "\n"
 }

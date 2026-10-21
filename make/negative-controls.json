@@ -23,7 +23,9 @@
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-list-walk-negative-controls",
+        "tables-json-map-walk-negative-controls",
         "tables-json-negative-control",
+        "tables-py-packet-negative-control",
         "tables-ref-ordinal-negative-control",
         "tables-ref-ordinal-shared-negative-control",
         "tables-retain-fixed-class-negative-control",
@@ -78,6 +80,14 @@
         "tables-go-wire-fuzz-negative-control",
         "conformance-negative-control-reference-surface",
         "conformance-go-rows-negative-control"
+      ]
+    },
+    {
+      "name": "base-conformance-cpp",
+      "when": "pull-request",
+      "why": "The C++ reference's emitter-side conformance control, alone: it overlay-rebuilds the compiler, regenerates the whole C++ table tree through it and rebuilds the reference driver, which is the compile weight of a complete-driver rebuild. The driver-flip control in base-conformance shares a job with the harness controls; this one is the emitter rebuild they deliberately do not carry.",
+      "targets": [
+        "conformance-negative-control-cpp"
       ]
     },
     {
@@ -551,7 +561,7 @@
     {
       "name": "elixir",
       "when": "pull-request",
-      "why": "the Elixir port's controls and its three packet families. Measured 1 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (one rendered byte, one dropped retained field, extra needs in the task hash, each required to red exactly its own surface) ride here too: 16 s over 3 controls on the author's machine.",
+      "why": "the Elixir port's controls and its three packet families. Measured 1 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (one rendered byte, one dropped retained field, extra needs in the task hash, each required to red exactly its own surface) ride here too: 16 s over 3 controls on the author's machine. The allocation audit's two controls (issue #420: a sabotaged emitter whose every load allocates sixteen refc binaries and a thousand-cell list must red the heap-word and binary-call columns of every pinned case, and the audit on a pin nothing is running must refuse before it measures) ride here too: 45 s and under 1 s on a loaded 16-core Linux bench, over the derived manifest the fuzz control already builds. The I13 text differential's control (a float32 capped at six digits, red on the text comparison) adds 1.3 s on hetzner1.",
       "targets": [
         "cards-elixir-conformance-negative-control",
         "cards-elixir-conformance-upgrade-negative-control",
@@ -559,10 +569,20 @@
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
         "packet-wide-elixir-negative-control",
+        "tables-elixir-accessor-negative-control",
+        "tables-elixir-alloc-negative-control",
+        "tables-elixir-alloc-runtime-negative-control",
         "tables-elixir-block-lead-negative-control",
+        "tables-elixir-cook-negative-control",
+        "tables-elixir-emit-format-negative-control",
         "tables-elixir-fixed-form-negative-control",
         "tables-elixir-fuzz-negative-control",
+        "tables-elixir-json-differential-negative-control",
+        "tables-elixir-keyed-max-negative-control",
+        "tables-elixir-keyed-none-negative-control",
+        "tables-elixir-offsets-negative-control",
         "tables-elixir-runtime-pin-negative-control",
+        "tables-elixir-slot-negative-control",
         "tables-elixir-versioning-negative-control"
       ],
       "otp": "29.0.5",
@@ -644,11 +664,11 @@
     },
     {
       "target": "tables-big-endian-negative-control",
-      "reason": "the body of ci.yml's big-endian job, which runs it on every pull request already: the job cross-compiles the tables battery for s390x, runs it under qemu and then compiles it a second time for this control. Issue #684 owns moving that job, so the control is named here rather than placed in a group, and this leg does not cross-compile it a second time."
+      "reason": "the C++ byte-order control, run on every pull request by ci.yml's `big-endian` job in the `control` row as `tables-big-endian-control-only`: issue #684 sharded that job by unit so the control is its own job rather than the tail of the leg. The control cross-compiles the sabotaged tables battery for s390x and compiles it a second time; this leg does not cross-compile it a second time."
     },
     {
       "target": "tables-c-big-endian-negative-control",
-      "reason": "the C twin of tables-big-endian-negative-control: ci.yml's big-endian job runs it on every pull request already, after the C++ put16 control. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. Issue #684 owns the job's budget, so the control is named here rather than placed in a group."
+      "reason": "the C twin of tables-big-endian-negative-control, run on every pull request by ci.yml's `big-endian` job in the `c-control` row: issue #684 sharded that job by unit so the control is a job of its own. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. This leg does not cross-compile it a second time."
     }
   ]
 }

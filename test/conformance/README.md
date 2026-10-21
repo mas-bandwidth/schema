@@ -26,6 +26,7 @@ goes red everywhere localises nothing:
 | control | what it breaks | what must go red | what must stay green |
 |---|---|---|---|
 | `conformance-negative-control` | one byte of a C++ dump | `cpp / json-write` | `wire` |
+| `conformance-negative-control-cpp` | the C++ walk's field offset, in the emitter | `cpp / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-block-dump` | one byte INSIDE A ROW of the block image | `block-dump` | `block`, `forgery` |
 | `conformance-negative-control-cs` | the C# walker, in the emitter | `cs / json-read` | `json-write` |
 | `conformance-negative-control-go` | the Go leg, in the emitter | its own surface | the rest |
@@ -44,8 +45,8 @@ walker's break is the backend's and not the data's:
 `conformance-negative-control-go-walk` breaks the Go walk's offset arithmetic.
 It has the same second half as every control here, and it is the point:
 `json-read` goes red and `json-write` stays green, which is what says the
-break is the READER's. (Elixir emits no text form and has no walk control;
-schema#515 brings its wire.)
+break is the READER's. (Elixir's text form covers the variable class now;
+its walk control still arrives with the full conformance battery.)
 
 ## The shape
 

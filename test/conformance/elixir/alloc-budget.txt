@@ -1,0 +1,46 @@
+# THE ALLOCATION BUDGET of the Elixir table leg (docs/PORTING.md I1, I14),
+# pinned by `make tables-elixir-alloc-pin` on OTP 29.0.5 with Elixir 1.20.4
+# and read by `make tables-elixir-alloc-audit`. Re-pinning is deliberate, as a
+# wire golden is. Written by test/elixir-alloc/main.exs; do not hand-edit.
+#
+# <case> <heap words> <binary calls> <reductions>, all per iteration
+#
+# One iteration is one wire load, one wire save, one text read and one text
+# write of the instance through its <Unit>.Table codec (the wire half alone
+# for a no-text instance), averaged over 200; each figure is the largest of
+# five measurements. Heap words: per process, from :erlang.trace/3 on
+# :garbage_collection, gated at 64 + 1/10000 of the figure. Binary calls:
+# binary_alloc's VM-wide call counter, gated at + 8. Reductions: printed and
+# pinned, not gated. The floor is not zero and is not claimed to be.
+#
+# Re-pinned HEAP WORDS only, for the landed costs named beside each group; the
+# binary-call and reduction columns above stay as this budget pinned them.
+#   12003bfcd (landed 35af2ddb9): the JSON value/reflection rewrite; wide_blob,
+#     list_nested, and the first rise in every chain_/graph_/blob_/list_ case.
+#   ec08ae09e (landed 4011dc775): the %g float spelling; its per-element binary
+#     build is fixed in variableform.go, so the list_* binary budgets stand.
+#   b2a0bbcd5 + ffd4047ff (landed 6a4ca02e3): maps and union arms on the wire.
+#   1e05a5835 + 169b69b55 (landed e44a518f8): the report reason on every load.
+wide_blob 14773073 17 5677107
+chain_value 2569 5 1231
+chain_value_empty 1544 0 881
+chain_optional 2569 5 1231
+chain_optional_empty 1794 0 988
+graph_tree 15185 11 7203
+graph_shared 14053 11 6834
+graph_empty 4355 1 2260
+graph_deep 198644 2 262540
+blob_small 9159 14 4321
+blob_empty 3255 6 1576
+blob_large 618809 8 322308
+blob_shared 1159 2 554
+blob_str8 3528 7 1654
+blob_str16 3697 7 1680
+list_tables 9759 11 4546
+list_scalars 2214 1 1059
+list_empty 4269 5 2141
+list_erased 8145 13 4124
+list_shared 3885 3 1861
+list_before_pointer 4833 3 2304
+list_nested 12442 3 6274
+list_migrates 3598 3 1809

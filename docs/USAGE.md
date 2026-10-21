@@ -1684,8 +1684,8 @@ marks the cells.
 **What Elixir does with the two forms it has, and it is the language rather
 than the port:** it never PRODUCES a block or a cook. A BEAM term has no layout
 a producer could write. It OPENS one another build wrote and reads every slot
-at its offset — `ExampleBlock.block_open_render_frame(bytes)` and
-`ExampleCook.cook_open_scene(bytes)` — with a row handed back as a SUB-BINARY
+at its offset — `Blockdemo.RenderBlock.block_open_render_frame(bytes)` and
+`Graphdemo.GraphCook.cook_open_scene(bytes)` — with a row handed back as a SUB-BINARY
 the runtime shares rather than copies. Both answer `{:ok, handle}` or `:error`,
 the packet emitter's own reader verdict, and refuse a forged image rather than
 raising on it (`make tables-elixir-fuzz` is that oracle over mutated corpus
@@ -2085,12 +2085,10 @@ An ordinal-indexed array is a positional
 vocabulary, and a table has exactly one of those — `flags` — so the refusal is
 what keeps the closed class closed: you cannot reopen it by spelling the bound
 another way or folding it through a constant. `[E.Max]T` stays legal in
-a `type` no table reaches, where it is a plain array (SPEC-TABLES.md §2.4,
-§11). *Whether a `type` a table reaches keeps the spelling, or the table wire
-keys the array there too, is
-open ([#606](https://github.com/mas-bandwidth/schema/issues/606)), so a
-`type` a table reaches is not refused
-today.*
+a `type` no table reaches, where it is a plain array, and in a `type` a table
+reaches the table wire keys it: an enum-extent array rides under the keyed
+kind `16` wherever it is declared, so the closed class is closed one body away
+without a refusal (SPEC-TABLES.md §2.4, §11).
 
 A key enum counts as part of the table closure: it rides by variant name, so
 colliding variant names are refused for it too, with the diagnostic naming
@@ -4381,10 +4379,11 @@ the `#include` and `::GameVec2 p;`. A sibling that stays in `A.schema` beside
 at that one reference and rides at every other. What the refusal is of is a
 mapping that rides nowhere at all.
 
-**`cpp_native` names a GLOBAL type.** The value is an identifier and the
-emitted spelling is `::GameVec2`, so a namespaced engine type — `math::Vec2`,
-the common case — is named through a global alias you declare in your own
-header.
+**`cpp_native` names a C++ type.** The value is a type name and the emitted
+spelling is `::`-qualified: the bare `GameVec2` emits as `::GameVec2`, and a
+namespaced engine type — `math::Vec2`, the common case — is written
+`cpp_native = math::Vec2` and emits as `::math::Vec2`. No global alias in
+your own header is needed.
 
 **C#** — C# 9 / netstandard2.1-clean, so it runs on Unity-class runtimes.
 Reads scalars without boxing.
@@ -4580,6 +4579,35 @@ case Example.Types.read_ship_create(packet, byte_size(packet) * 8) do
   :error -> :drop # malformed or hostile
 end
 ```
+
+The same two accelerator readers as above, reached through the names the
+emitter writes — the package namespace, the file base and the form: a block is
+`Blockdemo.RenderBlock.block_open_render_frame(bytes)`, a cook is
+`Graphdemo.GraphCook.cook_open_scene(bytes)`. This fragment is compiled and run
+against the `tables/pointers` unit by `make tables-elixir-usage`:
+
+<!-- elixir-table-usage -->
+```elixir
+# open the cook another build wrote; :error is a foreign build, a corrupt
+# file or the other byte order — fall back to the tolerant wire
+case Graphdemo.GraphCook.cook_open_scene(bytes) do
+  {:ok, cook} ->
+    walk = fn walk, at ->
+      case at do
+        :null -> :ok
+        :error -> raise "the cook's head reference leaves the region"
+        {:ok, node} ->
+          IO.puts(Graphdemo.GraphCook.list_node_node_value(cook.region, node))
+          walk.(walk, Graphdemo.GraphCook.list_node_node_next(cook.region, node))
+      end
+    end
+
+    walk.(walk, Graphdemo.GraphCook.scene_node_head(cook.region, 0))
+  :error ->
+    raise "the Scene cook did not open — fall back to the tolerant wire"
+end
+```
+<!-- /elixir-table-usage -->
 
 **Java** — Java 17 on the JVM, built to issue #156's measured directives.
 Generated code is **self-contained**: it references only `java.lang`,
