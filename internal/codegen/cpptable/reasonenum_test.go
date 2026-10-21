@@ -307,8 +307,11 @@ func TestCPPGeneratedHeadersCompileUnderClangAndGxxWerror(t *testing.T) {
 	}
 	line := ""
 	for _, l := range strings.Split(string(out), "\n") {
-		if strings.Contains(l, "error: constexpr variable 'no_vocabulary'") &&
-			strings.Contains(l, "must be initialized by a constant expression") {
+		// clang 21 names the variable; clang 18 names the value and the enum
+		if (strings.Contains(l, "error: constexpr variable 'no_vocabulary'") &&
+			strings.Contains(l, "must be initialized by a constant expression")) ||
+			(strings.Contains(l, "error: integer value 536870912 is outside the valid range") &&
+				strings.Contains(l, "'TableRefuseReason'")) {
 			line = l
 			break
 		}
