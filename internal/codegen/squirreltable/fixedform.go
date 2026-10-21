@@ -248,19 +248,23 @@ func fixedEmitDeprecatedField(m *Module, f *ir.Field, expr, path, ind string) {
 func fixedEmitDeprecatedValue(m *Module, f *ir.Field, expr, path, ind string) {
 	switch {
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
+		// one loop variable per nesting depth: an array of records whose
+		// fields are arrays walks loops inside loops, and a shared `i` would
+		// index the outer array with the inner count
+		iv := fmt.Sprintf("i%d", len(ind)/2)
 		if e, ok := f.Type.Ref.(*ir.Enum); ok {
 			names, _ := deprecatedVariants(e)
 			for i := range names {
-				m.Printf("%sfor (local i = 0; i < %s.len(); i++) if (%s[i] == %s) return %q;\n",
-					ind, expr, expr, squirrel.StringLit([]byte(names[i])),
+				m.Printf("%sfor (local %s = 0; %s < %s.len(); %s++) if (%s[%s] == %s) return %q;\n",
+					ind, iv, iv, expr, iv, expr, iv, squirrel.StringLit([]byte(names[i])),
 					"invalid_value: "+path+" names the deprecated variant "+names[i])
 			}
 			return
 		}
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
-			m.Printf("%sfor (local i = 0; i < %s.len(); i++) {\n", ind, expr)
+			m.Printf("%sfor (local %s = 0; %s < %s.len(); %s++) {\n", ind, iv, iv, expr, iv)
 			for _, sub := range r.Fields {
-				fixedEmitDeprecatedField(m, sub, expr+"[i]."+squirrel.Member(sub), path+"."+sub.Name, ind+"  ")
+				fixedEmitDeprecatedField(m, sub, expr+"["+iv+"]."+squirrel.Member(sub), path+"."+sub.Name, ind+"  ")
 			}
 			m.Printf("%s}\n", ind)
 		}
