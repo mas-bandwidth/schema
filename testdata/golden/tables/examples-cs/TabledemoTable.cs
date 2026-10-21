@@ -1624,22 +1624,14 @@ namespace Tabledemo
                     if (!ScanString(text, ref input, data, true, out _)) { return false; }
                     f.SetChild(owner, index, new TableBlob(data)); return true;
                 }
-                if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
-                input.Pos++;
-                int mark = input.Pos;
+                if (!Base64Body(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
                 int symbols = 0;
                 int pad = 0;
                 bool malformed = false;
-                for (; ; )
+                foreach (byte c in body)
                 {
-                    if (input.Pos >= text.Length) { input.Bad = true; return false; }
-                    byte c = text[input.Pos++];
-                    if (c == '"') { break; }
-                    if (malformed) { continue; }
                     if (c == '=') { pad++; continue; }
-                    if (pad > 0) { malformed = true; continue; }
-                    int at = Base64Decode[c];
-                    if (at < 0) { malformed = true; continue; }
+                    if (pad > 0 || Base64Decode[c] < 0) { malformed = true; break; }
                     symbols++;
                 }
                 if (!malformed)
@@ -1657,10 +1649,9 @@ namespace Tabledemo
                 byte[] bytes = new byte[symbols * 6 / 8];
                 int count = 0, held = 0;
                 uint accumulator = 0;
-                for (int at = mark; ; at++)
+                foreach (byte c in body)
                 {
-                    byte c = text[at];
-                    if (c == '"' || c == '=') { break; }
+                    if (c == '=') { break; }
                     int symbol = Base64Decode[c];
                     accumulator = (accumulator << 6) | (uint)symbol;
                     held += 6;
@@ -1899,6 +1890,50 @@ namespace Tabledemo
             // C++'s NULL destination.
             static bool ScanString(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length)
             { return ScanText(text, ref input, destination, Span<char>.Empty, false, keep, out length); }
+            // The body of a bytes field's base64 string, as the JSON layer reads it
+            // (docs/SPEC-TABLES.md §16.2): the JSON layer decides FIRST, so a raw byte
+            // below 0x20, a backslash that begins no escape, a byte that is not UTF-8
+            // (string_not_utf8, §16.3; never replaced by U+FFFD here) and a text that
+            // ends inside the string each make the read malformed. A body of plain
+            // ASCII is its own decoding and is read in place; any other body is
+            // decoded once, so an escape spells what it spells and the base64 grammar
+            // judges the decoded string, as the Go reader does.
+            static bool Base64Body(ReadOnlySpan<byte> text, ref In input, out ReadOnlySpan<byte> body)
+            {
+                body = ReadOnlySpan<byte>.Empty;
+                if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
+                int open = input.Pos;
+                bool plain = true;
+                int at = open + 1;
+                for (; ; )
+                {
+                    if (at >= text.Length) { input.Bad = true; return false; }
+                    byte c = text[at];
+                    if (c == '"') { break; }
+                    if (c < 0x20) { input.Bad = true; return false; }
+                    if (c == '\\') { plain = false; at += 2; continue; }
+                    if (c >= 0x80)
+                    {
+                        plain = false;
+                        int want = c >= 0xc2 && c <= 0xdf ? 2 : c >= 0xe0 && c <= 0xef ? 3 : c >= 0xf0 && c <= 0xf4 ? 4 : 0;
+                        if (want == 0 || want > text.Length - at || !TableWire.TextValid(text.Slice(at, want))) { input.Bad = true; return false; }
+                        at += want; continue;
+                    }
+                    at++;
+                }
+                if (plain)
+                {
+                    body = text.Slice(open + 1, at - open - 1);
+                    input.Pos = at + 1;
+                    return true;
+                }
+                In probe = input;
+                if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true)) { input = probe; return false; }
+                byte[] decoded = new byte[size];
+                if (!ScanText(text, ref input, decoded, Span<char>.Empty, false, true, out int used)) { return false; }
+                body = new ReadOnlySpan<byte>(decoded, 0, used);
+                return true;
+            }
             static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, Span<char> chars, bool wide, bool keep, out int length, bool measure = false)
             {
                 length = 0;
@@ -2549,25 +2584,18 @@ namespace Tabledemo
                 }
                 if (IsBytes(f))
                 {
-                    // A base64 body carries no escapes, so a backslash in one is simply
-                    // not an alphabet character. Validate the stream and its padding before
-                    // touching storage, so a malformed body leaves the declared default.
-                    if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
-                    input.Pos++;
-                    int mark = input.Pos;
+                    // The JSON layer reads the string first (Base64Body); the base64
+                    // grammar then judges what it spells. Validate the stream and its
+                    // padding before touching storage, so a malformed body leaves the
+                    // declared default.
+                    if (!Base64Body(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
                     int symbols = 0;
                     int pad = 0;
                     bool malformed = false;
-                    for (; ; )
+                    foreach (byte c in body)
                     {
-                        if (input.Pos >= text.Length) { input.Bad = true; return false; }
-                        byte c = text[input.Pos++];
-                        if (c == '"') { break; }
-                        if (malformed) { continue; }
                         if (c == '=') { pad++; continue; }
-                        if (pad > 0) { malformed = true; continue; }
-                        int at = Base64Decode[c];
-                        if (at < 0) { malformed = true; continue; }
+                        if (pad > 0 || Base64Decode[c] < 0) { malformed = true; break; }
                         symbols++;
                     }
                     if (!malformed)
@@ -2595,10 +2623,9 @@ namespace Tabledemo
                     uint accumulator = 0;
                     int held = 0;
                     bool clamped = false;
-                    for (int at = mark; ; at++)
+                    foreach (byte c in body)
                     {
-                        byte c = text[at];
-                        if (c == '"' || c == '=') { break; }
+                        if (c == '=') { break; }
                         int symbol = Base64Decode[c];
                         accumulator = (accumulator << 6) | (uint)symbol;
                         held += 6;
