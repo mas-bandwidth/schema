@@ -1255,16 +1255,17 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
             {
                 unit[unit_length++] = in->text[in->pos++];
             }
-            // A SEQUENCE THAT IS NOT A CODE POINT READS AS U+FFFD, which is
-            // §16.3's rule at the point the defect ENTERS rather than at the
-            // point it leaves: a lone surrogate escape already reads that way
-            // above, RFC 8259 requires a JSON text to be valid UTF-8, and a
-            // kind 12 payload is well-formed UTF-8 (§3), so storage the text
-            // form built has to be storage the wire can carry (§5).
+            // A SEQUENCE THAT IS NOT A CODE POINT IS REFUSED BY NAME at every
+            // string site, before any clamp (docs/SPEC-TABLES.md §16.3,
+            // string_not_utf8): RFC 8259 requires a JSON text to be valid
+            // UTF-8, and a silent U+FFFD would make two different texts one
+            // value. The scan reads on past a clamp, so a byte at or past the
+            // bound is judged too (row str-illformed-at-bound).
             int32_t checked_width = 0;
             if ( table_json_utf8( unit, unit_length, &checked_width ) < 0 )
             {
-                unit_length = table_json_encode_utf8( 0xfffd, unit );
+                in->bad = 1;
+                return 0;
             }
         }
     }
@@ -1273,10 +1274,11 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
 }
 
 
-/* Scan decoded bytes independently of the field bound: escapes first, UTF-8
-   replacement next, then the caller's capacity. Report the used UTF-8 length;
-   this parser does not treat a byte buffer's contents as a table value. */
-static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, int32_t capacity, int32_t * length )
+/* Scan decoded bytes independently of the field bound: escapes first, the
+   UTF-8 refusal next, then the caller's capacity. Report the used UTF-8
+   length; text says the string is bound for text storage, where a zero
+   refuses. */
+static SCHEMA_UNUSED int table_json_scan_string_as( TableJsonIn * in, char * out, int32_t capacity, int32_t * length, int text )
 {
     int32_t placed = 0;
     int clamped = 0;
@@ -1288,6 +1290,7 @@ static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, i
         int32_t unit_length = 0;
         if ( !table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
         if ( unit_length == 0 ) { break; }
+        if ( text && unit[0] == 0 ) { in->bad = 1; return 0; } /* text_holds_zero (§16.3) */
         if ( out == NULL ) { placed += unit_length; }
         else
         {
@@ -1305,6 +1308,21 @@ static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, i
     if ( clamped ) { in->report->clamped++; }
     if ( length != NULL ) { *length = placed; }
     return 1;
+}
+
+/* A string the read only names or skips: an object key, an enum or flags
+   name, an arm key, a skipped value. A zero in one stores nothing. */
+static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, int32_t capacity, int32_t * length )
+{
+    return table_json_scan_string_as( in, out, capacity, length, 0 );
+}
+
+/* A string the read PLACES IN TEXT STORAGE: a string(N) or *string value, a
+   text-list element, a map key. NO READ STORES A ZERO (docs/SPEC-TABLES.md
+   §16.3, text_holds_zero): a \u0000 there refuses the read. */
+static SCHEMA_UNUSED int table_json_scan_text( TableJsonIn * in, char * out, int32_t capacity, int32_t * length )
+{
+    return table_json_scan_string_as( in, out, capacity, length, 1 );
 }
 
 
@@ -1341,6 +1359,7 @@ static SCHEMA_UNUSED int table_json_scan_w_string( TableJsonIn * in, uint16_t * 
         if ( !table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
         if ( unit_length == 0 ) { break; }
         const uint32_t code = table_json_decode_utf8( unit, unit_length );
+        if ( code == 0 ) { in->bad = 1; return 0; } /* a wstring value is text storage: text_holds_zero (§16.3) */
         uint16_t units[2];
         int32_t units_length = 1;
         if ( code < 0x10000 )
@@ -2062,7 +2081,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
     if ( f->kind == 12 )
     {
         int32_t length = 0;
-        if ( !table_json_scan_string( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
+        if ( !table_json_scan_text( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
         storage[length] = 0;
         table_json_set_count( base, f, length );
         return 1;

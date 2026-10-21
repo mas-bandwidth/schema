@@ -105,10 +105,10 @@ static SCHEMA_UNUSED int table_json_read_blob( TableJsonIn * in, void * slot, co
         int32_t count=0, written=0;
         char * text;
         mark=in->pos;
-        if(!table_json_scan_string(in,NULL,0,&count)) { return 0; }
+        if(!table_json_scan_text(in,NULL,0,&count)) { return 0; }
         in->pos=mark; text=table_string_emplace(graph->worker,ref,NULL,count);
         if(text==NULL) { in->bad=1; return 0; }
-        return table_json_scan_string(in,text,count,&written);
+        return table_json_scan_text(in,text,count,&written);
     }
     mark=++in->pos;
     for(;;)
@@ -443,7 +443,7 @@ static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,con
         char c=table_json_peek(in),token[kTableJsonMaxKey]; int32_t length=0,before; int64_t number=0; int place=1; void * entry;
         TableReport scratch={0}; TableJsonIn scan=*in; scan.report=&scratch;
         if(c=='}') { in->pos++; return 1; } if(c==0) { in->bad=1; return 0; }
-        if(!table_json_scan_string(&scan,token,kTableJsonMaxKey-1,&length)) { in->pos=scan.pos; in->bad=1; return 0; }
+        if(!table_json_scan_text(&scan,token,kTableJsonMaxKey-1,&length)) { in->pos=scan.pos; in->bad=1; return 0; }
         in->pos=scan.pos; token[length]=0;
         if(table_json_peek(in)!=':') { in->bad=1; return 0; } in->pos++;
         if(key->kind==12) {
