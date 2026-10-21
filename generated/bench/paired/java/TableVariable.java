@@ -1518,6 +1518,12 @@ public final class TableVariable {
             if (keyOpen[i]) {
                 return false;
             }
+            // A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): a second
+            // slot naming the same blob is blob_shared, and every writer
+            // refuses it rather than writing it once or a copy per slot.
+            if (isBlob && keyIndex[i] != 0) {
+                return false;
+            }
             keyUses[i]++;
             if (keyIndex[i] == 0) {
                 if (nodeCount == nodeValue.length) {
