@@ -1153,7 +1153,7 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
       return true;
     }
     case "ptr": w.leb(val === null ? 0 : nodes.index.get(val)); return true;
-    case "union":
+    case "union": {
       // a None element rides as the single zero byte: position is identity (§3)
       if (val === null) { w.leb(0); return true; }
       // THE ELEMENT'S OWN STEP (§6.6): repeated union elements retain under
@@ -1162,6 +1162,7 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
       const okU = TableVariableArmWrite(e.u, w, ids, nodes, val, retain, path, fd.o);
       if (path !== null) { path.pop(); }
       return okU;
+    }
     case "tab": {
       const body = new TableVariableWriter();
       path.push({ o: fd.o, i: i });
