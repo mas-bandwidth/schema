@@ -591,6 +591,16 @@ func elemDescriptor(u *ir.Unit, f *ir.Field) string {
 	var b strings.Builder
 	b.WriteString("{ ")
 	b.WriteString(valueDescriptor(f, false))
+	if f.Type.Kind == ir.TFixed || (f.Type.Kind == ir.TInt && f.Type.Width == 128) {
+		// A wide element's TEXT is its exact spelling (docs/SPEC-TABLES.md
+		// §16.2): a fixed/ufixed in whole units of its Q I.F, a 128-bit integer
+		// as a decimal integer. The JSON reader and writer take F from
+		// type_name and the wide path from kind, exactly as for a scalar field,
+		// so an element carries both, or its exact fractions read as the wrong
+		// shape (json-hostile row fixed-array-elements) and a 128-bit element
+		// is written as a float (hostile rows conformance-uint128-*).
+		fmt.Fprintf(&b, ", kind = %d, type_name = %q", ir.TableWireElemKind(f), ir.TableTypeSpelling(f))
+	}
 	if len(pieces) > 0 {
 		fmt.Fprintf(&b, ", at = %d", pieces[0].Offset)
 		if needsCompanion(elementField(f)) && len(pieces) > 1 {
