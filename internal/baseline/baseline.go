@@ -395,6 +395,12 @@ func renderField(f *ir.Field) Field {
 		// carries the verdict the token itself would have carried.
 		add("array", "unbounded")
 	}
+	if f.TextTotal > 0 {
+		// a TEXT LIST's TOTAL (docs/SPEC-TABLES.md §2.13, §18.1): a reader drops
+		// the elements past its own total and counts clamped, so it is an
+		// extent like a bound, judged by RuleShrink (§18.2)
+		add("total", strconv.FormatInt(f.TextTotal, 10))
+	}
 	if f.Type.Kind == ir.TFixed {
 		// a fixed field's SCALE. The kind fixes the width and the signedness;
 		// F is the one wire-invisible fact left, and a stored raw value under

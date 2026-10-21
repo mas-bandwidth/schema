@@ -6,7 +6,7 @@ func (g *tableGen) emitReadWString(f *ir.Field, expr, rdr, ind, bad string) {
 	g.pf("%sclear(%s[:]); %sLength=0\n", ind, expr, expr)
 	g.pf("%sif !tableUtf16Valid(%s.Buffer) { %s }\n", ind, rdr, bad)
 	g.pf("%skeep:=len(%s.Buffer)/2;if keep>%d {keep=tableUtf16Clamp(%s.Buffer,%d);r.Report.Clamped++}\n", ind, rdr, f.Type.Size, rdr, f.Type.Size)
-	g.pf("%sfor i:=0;i<keep;i++ {%s[i]=uint16(%s.Buffer[2*i])|uint16(%s.Buffer[2*i+1])<<8};%sLength=int32(keep)\n", ind, expr, rdr, rdr, expr)
+	g.pf("%sfor i := range keep {%s[i]=uint16(%s.Buffer[2*i])|uint16(%s.Buffer[2*i+1])<<8};%sLength=int32(keep)\n", ind, expr, rdr, rdr, expr)
 }
 
 const tableWStringSource = `

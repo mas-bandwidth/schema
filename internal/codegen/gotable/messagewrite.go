@@ -42,6 +42,16 @@ func (g *tableGen) emitMessageWrite(st *ir.Struct) {
 	}
 	n := st.Name
 	typ := g.storageName(n)
+	// THE MESSAGE FORM CARRIES THE TRAILER PER BATCH (docs/SPEC-TABLES.md
+	// §2.14, §3.3): the measure counts the four trailer bytes and the save
+	// appends the CRC-32C of the form byte, the count byte and the padded bit
+	// stream, using the variable form's seal. A table without the key emits
+	// the bytes it emitted before.
+	if st.Integrity != "" {
+		g.pf("func %sMeasureMessages(values []*%s,report *TableReport)int64 {if len(values)<1||len(values)>TableMessageBatchMax{if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){return -1}};w.Align();if w.Overflow{return -1};return 6+w.Bits/8}\n", n, typ, n)
+		g.pf("func %sSaveMessages(values []*%s,buffer []byte,report *TableReport)int64 {if len(values)<1||len(values)>TableMessageBatchMax {if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};if len(buffer)<6{return -1};buffer[0]=2;buffer[1]=byte(len(values)-1);w:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:buffer[2:len(buffer)-4]}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){return -1}};w.Align();if w.Overflow{return -1};if report!=nil{report.Clamped+=w.Clamped};return tableIntegritySeal(buffer,2+w.Bits/8)}\n", n, typ, n)
+		return
+	}
 	g.pf("func %sMeasureMessages(values []*%s,report *TableReport)int64 {if len(values)<1||len(values)>TableMessageBatchMax{if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){return -1}};w.Align();if w.Overflow{return -1};return 2+w.Bits/8}\n", n, typ, n)
 	g.pf("func %sSaveMessages(values []*%s,buffer []byte,report *TableReport)int64 {if len(values)<1||len(values)>TableMessageBatchMax {if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};if len(buffer)<2{return -1};buffer[0]=2;buffer[1]=byte(len(values)-1);w:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:buffer[2:]}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){return -1}};w.Align();if w.Overflow{return -1};if report!=nil{report.Clamped+=w.Clamped};return 2+w.Bits/8}\n", n, typ, n)
 }
@@ -63,6 +73,7 @@ func messageElement(f *ir.Field) *ir.Field {
 	e.KeyEnum = ""
 	e.KeyEnumRef = nil
 	e.Type.Optional = false
+	e.Required = false
 	if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 		e.Type = ir.FieldType{Kind: ir.TInt, Width: 8}
 	}
@@ -106,7 +117,7 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 		if f.KeyEnum != "" {
 			loopcount = fmt.Sprint(f.ArrayBound)
 		}
-		g.pf("%sfor i:=0;i<int(%s);i++ {\n", ind, loopcount)
+		g.pf("%sfor i := range int(%s) {\n", ind, loopcount)
 		e := messageElement(f)
 		if f.KeyEnum != "" {
 			cond := g.emitMessageRides(e, expr+"[i]", ind+"\t")
@@ -119,7 +130,7 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 	case f.Type.Kind == ir.TString:
 		g.pf("%sw.Put(uint64(%sLength),%d);w.Raw(%s[:%sLength])\n", ind, expr, ir.TableMessageCountBits(entry.Shape), expr, expr)
 	case f.Type.Kind == ir.TWString:
-		g.pf("%sw.Put(uint64(%sLength),%d);for i:=int32(0);i<%sLength;i++ {w.Put(uint64(%s[i]),16)}\n", ind, expr, ir.TableMessageCountBits(entry.Shape), expr, expr)
+		g.pf("%sw.Put(uint64(%sLength),%d);for i := range int32(%sLength) {w.Put(uint64(%s[i]),16)}\n", ind, expr, ir.TableMessageCountBits(entry.Shape), expr, expr)
 	case isStructRef(f.Type):
 		g.pf("%sif !%sSaveMessageBody(w,&%s){return false}\n", ind, f.Type.Name, expr)
 	case isUnionRef(f.Type):
@@ -134,6 +145,10 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 		}
 		g.pf("%sdefault:return false}\n", ind)
 	case enumRef(f) != nil:
+		if enumHasDeprecated(enumRef(f)) {
+			// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15).
+			g.pf("%sif %s.TableEnumDeprecated(){return false}\n", ind, expr)
+		}
 		g.pf("%sif %s==%sNone{w.Put(0,TableMessageRefBitsHere)}else{id,named:=%s.TableEnumId();if !named{return false};slot:=tableMessageNameSlot(id);if slot==0{return false};w.Put(slot,TableMessageRefBitsHere)}\n", ind, expr, f.Type.Name, expr)
 	default:
 		lo, hi := "uint64("+expr+")", "uint64(0)"

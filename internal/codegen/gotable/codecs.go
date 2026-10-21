@@ -6,7 +6,9 @@ package gotable
 
 import (
 	"fmt"
+	"math"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -116,11 +118,21 @@ func fieldDefaultExpr(f *ir.Field) string {
 		}
 		return "false"
 	case ir.TFloat32:
+		if f.HasDefault && !f.HasFloatRange && f.DefFloat == 0 && math.Signbit(f.DefFloat) {
+			// a declared -0 default (docs/SPEC-TABLES.md §3.3, "-0 IS A VALUE,
+			// AND IT RIDES", for a plain float; a compressed float's -0 is +0): Go
+			// folds the constant -0.0 to +0, so the plain default
+			// is spelled as an expression that keeps the sign bit
+			return "float32(math.Copysign(0, -1))"
+		}
 		if f.HasDefault {
 			return formatFloat32(f.DefFloat)
 		}
 		return "0.0"
 	case ir.TFloat64:
+		if f.HasDefault && !f.HasFloatRange && f.DefFloat == 0 && math.Signbit(f.DefFloat) {
+			return "math.Copysign(0, -1)" // a declared -0 default (§3.3), as for float32
+		}
 		if f.HasDefault {
 			return formatFloat64(f.DefFloat)
 		}
@@ -170,6 +182,48 @@ func enumRef(f *ir.Field) *ir.Enum {
 	}
 	e, _ := f.Type.Ref.(*ir.Enum)
 	return e
+}
+
+// enumHasDeprecated reports whether any variant of e carries `| deprecated`
+// (docs/SPEC-TABLES.md §2.15). A reader landing such a variant yields the
+// field's default and a writer refuses it, so the emitted code pays for the
+// rule only in an enum that carries one.
+func enumHasDeprecated(e *ir.Enum) bool {
+	if e == nil {
+		return false
+	}
+	for i := range e.Variants {
+		if variantDeprecatedIndex(e, i) {
+			return true
+		}
+	}
+	return false
+}
+
+// variantDeprecatedIndex reads one variant's marker from the IR's variant tags,
+// which are parallel to Variants (docs/SPEC-TABLES.md §2.15).
+func variantDeprecatedIndex(e *ir.Enum, i int) bool {
+	if i < 0 || i >= len(e.VariantTags) {
+		return false
+	}
+	return slices.Contains(e.VariantTags[i], "deprecated")
+}
+
+// enumDefaultOrdinal is the ordinal a deprecated variant lands on: the FIELD's
+// declared default, and the ELEMENT default (0, None) for an element of an
+// array, a list, a map or a keyed array (docs/SPEC-TABLES.md §2.15).
+func enumDefaultOrdinal(f *ir.Field, e *ir.Enum) uint64 {
+	if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsList() || f.IsMap() {
+		return 0
+	}
+	if f.HasDefault && f.DefVariant != "" {
+		for i, v := range e.Variants {
+			if v == f.DefVariant {
+				return uint64(i + 1)
+			}
+		}
+	}
+	return 0
 }
 
 // isStructRef reports a named reference whose Go storage is a generated struct.
@@ -233,6 +287,9 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	switch {
 	case f.Type.Kind == ir.TWString:
 		g.tf("\t%s [%d]uint16\n\t%sLength int32\n", name, f.Type.Size, name)
+	case f.Type.TextUnbounded():
+		// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): one slot naming a blob record
+		g.tf("\t%s TableRef // string: unbounded text, a blob record (docs/SPEC-TABLES.md §2.13.1)\n", name)
 	case f.Type.Kind == ir.TString:
 		g.tf("\t%s [%d]byte // string(%s): max length, used length beside it\n",
 			name, f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
@@ -304,6 +361,18 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 		g.pf("\tcase 0x%04x:\n\t\t*value = %s%s\n\t\treturn true\n", ir.TableWireId(e.VariantWireName(i)), e.Name, v)
 	}
 	g.pf("\t}\n\t*value = %sNone\n\treturn false // an id this build cannot name\n}\n\n", e.Name)
+	if enumHasDeprecated(e) {
+		g.pf("// TableEnumDeprecated reports whether value names a variant marked `| deprecated`\n")
+		g.pf("// (docs/SPEC-TABLES.md §2.15). A reader lands the field's default for it, and a\n")
+		g.pf("// strict writer refuses it; the constant itself stays for source compatibility.\n")
+		g.pf("func (value %s) TableEnumDeprecated() bool {\n\tswitch value {\n", e.Name)
+		for i, v := range e.Variants {
+			if variantDeprecatedIndex(e, i) {
+				g.pf("\tcase %s%s:\n\t\treturn true\n", e.Name, v)
+			}
+		}
+		g.pf("\t}\n\treturn false\n}\n\n")
+	}
 }
 
 // ---- guards ----
@@ -396,6 +465,8 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 
 	case f.Type.Kind == ir.TWString:
 		g.pf("clear(value.%s[:]);value.%sLength=0\n", name, name)
+	case f.Type.TextUnbounded():
+		g.pf("value.%s=0\n", name)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.pf("\tclear(value.%s[:])\n", name)
 		g.pf("\tvalue.%sLength = %d\n", name, len(f.DefBytes))
@@ -468,7 +539,7 @@ func tableFieldTypeName(f *ir.Field) string {
 	case ir.TBytes:
 		return "bytes"
 	case ir.TNamed:
-		return f.Type.Name
+		return f.Type.DeclaredName() // the schema name, never the Go escape (SPEC.md §4.6)
 	}
 	return "?"
 }
@@ -507,7 +578,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 		g.emitTagsStatic(tagsName(st.Name, ""), st.Tags)
 		g.pf("// %sTableInfo is %s's reflection descriptor (docs/SPEC-TABLES.md §8).\n", st.Name, st.Name)
 		g.pf("var %sTableInfo TableTypeInfo\nfunc init() { %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: 0, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s} }\n\n",
-			st.Name, st.Name, st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name), annotationColumns(st.Doc, st.Tags, tagsName(st.Name, ""))+g.typeCodecColumns(st))
+			st.Name, st.Name, st.DeclaredName(), g.storageName(st.Name), st.Name, g.storageName(st.Name), annotationColumns(st.Doc, st.Tags, tagsName(st.Name, ""))+g.typeCodecColumns(st))
 		g.pf("// %sTableType returns %s's reflection descriptor.\n", st.Name, st.Name)
 		g.pf("func %sTableType() *TableTypeInfo { return &%sTableInfo }\n\n", st.Name, st.Name)
 		return
@@ -527,9 +598,11 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	g.pf("}\n\n")
 	g.pf("// %sTableInfo is %s's reflection descriptor (docs/SPEC-TABLES.md §8).\n", st.Name, st.Name)
 	g.pf("var %sTableInfo TableTypeInfo\nfunc init() { %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: %d, Fields: %sTableFields, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s} }\n\n",
-		st.Name, st.Name, st.Name, g.storageName(st.Name), len(st.Fields), st.Name, st.Name, g.storageName(st.Name),
-		annotationColumns(st.Doc, st.Tags, tagsName(st.Name, ""))+g.typeCodecColumns(st))
-	g.into(&g.message, func() { g.emitMessageDescriptorInit(st) })
+		st.Name, st.Name, st.DeclaredName(), g.storageName(st.Name), len(st.Fields), st.Name, st.Name, g.storageName(st.Name),
+		jsonArrayColumn(st)+annotationColumns(st.Doc, st.Tags, tagsName(st.Name, ""))+g.typeCodecColumns(st))
+	if g.surfaces.Message && g.messageCarries(st) {
+		g.into(&g.message, func() { g.emitMessageDescriptorInit(st) })
+	}
 	g.pf("// %sTableType returns %s's reflection descriptor.\n", st.Name, st.Name)
 	g.pf("func %sTableType() *TableTypeInfo { return &%sTableInfo }\n\n", st.Name, st.Name)
 }
@@ -581,7 +654,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		kind = tkU8
 	}
 	isArray := f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer) || f.KeyEnum != ""
-	counted := f.Array == ir.ArrayCounted || !f.Type.Pointer && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
+	counted := f.Array == ir.ArrayCounted || !f.Type.Pointer && !f.Type.TextUnbounded() && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
 
 	// the count column, spelled the way the storage spells its own extent: a
 	// keyed array DERIVES it from the key enum, so nothing outside the array
@@ -633,9 +706,11 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		}
 	}
 	if f.IsList() || f.IsMap() {
-		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(*new(%s)))", containerElementType(g.unit, f))
+		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(*(*%s)(nil)))", containerElementType(g.unit, f))
 		counted = true
-		bound = "2147483647"
+		// no declared bound: ArrayBound 0, and the UnboundedContainer column
+		// below is the tell (docs/SPEC-TABLES.md §8.1)
+		bound = "0"
 		countOffset = "(" + offset + ")+8"
 	}
 	if f.IsMap() {
@@ -653,6 +728,8 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 
 	hasRange := "false"
 	rangeMin, rangeMax := "0.0", "0.0"
+	rangeIntMin, rangeIntMax := "0", "0"
+	rangeUintMin, rangeUintMax := "0", "0"
 	if f.Type.Kind == ir.TBits && !f.HasIntRange {
 		// bits(N) declares its range by its WIDTH: [0, 2^N - 1]. The codec has
 		// always clamped a read to it (docs/SPEC-TABLES.md §4); carrying it here is
@@ -661,10 +738,19 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
 		hasRange = "true"
 		rangeMin, rangeMax = "0.0", bigToDouble(max)
+		rangeUintMin, rangeUintMax = "0", max.String()
 	}
 	if f.HasIntRange {
 		hasRange = "true"
 		rangeMin, rangeMax = bigToDouble(f.IntMin), bigToDouble(f.IntMax)
+		// an integer field carries its EXACT range beside the float64 pair
+		// (docs/SPEC-TABLES.md §8.1): signed kinds as two int64s, unsigned as
+		// two uint64s
+		if f.Type.Signed {
+			rangeIntMin, rangeIntMax = f.IntMin.String(), f.IntMax.String()
+		} else {
+			rangeUintMin, rangeUintMax = f.IntMin.String(), f.IntMax.String()
+		}
 	} else if f.HasFloatRange {
 		hasRange = "true"
 		rangeMin, rangeMax = formatFloat64(f.FMin), formatFloat64(f.FMax)
@@ -678,6 +764,8 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	enumMax := "-1"
 	enumName := "nil"
 	variantId := "nil"
+	enumDefault := "0"
+	enumDeprecated := "nil"
 	arms := "nil"
 	switch ref := f.Type.Ref.(type) {
 	case *ir.Enum:
@@ -685,6 +773,12 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 			enumMax = fmt.Sprintf("%d", ref.Max)
 			enumName = fmt.Sprintf("func(v uint64) string { return EnumName%s(%s(v)) }", f.Type.Name, f.Type.Name)
 			variantId = fmt.Sprintf("func(v uint64) uint64 { id, _ := %s(v).TableEnumId(); return id }", f.Type.Name)
+			if enumHasDeprecated(ref) {
+				// docs/SPEC-TABLES.md §2.15: a deprecated variant reads as the
+				// field's default (the element default for an element).
+				enumDefault = fmt.Sprintf("%d", enumDefaultOrdinal(f, ref))
+				enumDeprecated = fmt.Sprintf("func(v uint64) bool { return %s(v).TableEnumDeprecated() }", f.Type.Name)
+			}
 		}
 	case *ir.Flags:
 		if f.Type.Kind == ir.TNamed {
@@ -718,10 +812,15 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if g.viewNoIds {
 		id = 0
 		json = ""
-		if variantId != "nil" {
+		// Every id column the view carries is keyed on the VOCABULARY, not on
+		// the field's owner (docs/SPEC-TABLES.md §8.2): a vocabulary a table
+		// closure reaches keeps its checked ids even when the field holding it
+		// is on a type no closure reaches, and one no closure reaches answers 0.
+		reached := ir.TableClosureVocabulary(g.unit)
+		if variantId != "nil" && !reached[f.Type.Name] {
 			variantId = "func(uint64)uint64{return 0}"
 		}
-		if keyId != "nil" {
+		if keyId != "nil" && !reached[f.KeyEnum] {
 			keyId = "func(uint64)uint64{return 0}"
 		}
 	}
@@ -732,12 +831,44 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	if g.viewPacket == nil {
 		g.emitCookFieldColumns(st, f)
 	}
-	g.pf("\t\tHasRange: %s, RangeMin: %s, RangeMax: %s, EnumMax: %s,\n", hasRange, rangeMin, rangeMax, enumMax)
+	// the EXACT integer-range pair (docs/SPEC-TABLES.md §8.1) rides only a
+	// field with an integer range, so a field that has none emits the same
+	// descriptor row as before
+	exact := ""
+	// the EXACT int64/uint64 pair rides only a kind whose narrow JSON path reads
+	// it — int8..int64, uint8..uint64 and bits (docs/SPEC-TABLES.md §8.1).
+	// The wide kinds (18–29: int128, uint128 and the fixed-point family) clamp
+	// via WideRange and their bounds may not fit 64 bits, so they emit no pair.
+	if (f.HasIntRange || f.Type.Kind == ir.TBits) && !ir.TableKindWide(kind) {
+		if f.Type.Signed {
+			exact = fmt.Sprintf(", RangeIntMin: %s, RangeIntMax: %s", rangeIntMin, rangeIntMax)
+		} else {
+			exact = fmt.Sprintf(", RangeUintMin: %s, RangeUintMax: %s", rangeUintMin, rangeUintMax)
+		}
+	}
+	g.pf("\t\tHasRange: %s, RangeMin: %s, RangeMax: %s%s, EnumMax: %s,\n", hasRange, rangeMin, rangeMax, exact, enumMax)
+	if f.IsTextList() {
+		// a TEXT LIST (docs/SPEC-TABLES.md §2.13): 1 for string(M) elements, 2 for ?string(M)
+		g.pf("TextList:%d,\n", textListCode(f))
+		if f.TextTotal > 0 {
+			// its total (§2.13): the JSON walk holds it, and names the field
+			g.pf("TextTotal:%d,TextTotalOf:%q,\n", f.TextTotal, f.TextListElem().MapEntryOf)
+		}
+	}
+	if f.Type.TextUnbounded() {
+		// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): the slot names a blob record
+		g.pf("Unbounded:true,\n")
+	}
 	if f.IsList() {
 		_, align := ir.ListElementLayout(g.unit, f)
 		g.pf("List:true,ElemAlign:%d,\n", align)
 	} else if f.IsMap() {
 		g.pf("Map:true,ElemAlign:%d,\n", ir.RecordLayout(g.unit, f.MapEntry).Align)
+	}
+	if f.IsList() || f.IsMap() {
+		// a CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1): the one
+		// tell, beside ArrayBound 0; not the §2.13.1 Unbounded (text) column
+		g.pf("UnboundedContainer:true,\n")
 	}
 	g.pf("\t\tFracBits:%d, Pointer:%v, TargetId:0x%016x,\n", f.Type.FracBits, f.Type.Pointer, pointerTargetId(f))
 	if ir.TableKindWide(kind) {
@@ -749,6 +880,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	}
 
 	g.pf("\t\tEnumName: %s,\n\t\tVariantId: %s,\n", enumName, variantId)
+	g.pf("\t\tEnumDefault: %s, EnumDeprecated: %s,\n", enumDefault, enumDeprecated)
 	g.pf("\t\tKeyTypeName: %s, KeyName: %s, KeyId: %s,\n", keyTypeName, keyName, keyId)
 	g.pf("\t\tArms: %s,\n", arms)
 	g.pf("\t\tGuard: %q, Table: %s,\n", guard, table)

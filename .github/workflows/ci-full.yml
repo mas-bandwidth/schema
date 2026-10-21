@@ -139,9 +139,13 @@ jobs:
   # The compiler's own test suite, and the only job in this file that reads a
   # Go source file. `go test ./...` covers internal/fuzz, whose seeded corpus
   # re-executes every crasher ever found — a short, bounded run, not a
-  # campaign. `go vet` rides here because an emitter codebase built almost
-  # entirely out of format strings is exactly where printf-verb mismatches
-  # live (issue #31).
+  # campaign (the unit-rest row runs it, with its property and oracle tests).
+  # The one campaign in that package, the random-schema table differential
+  # (TestRandomTableDifferential and its negative control), skips itself here:
+  # it runs only under SCHEMA_TABLE_DIFF=1, which only `make fuzz-tables-diff`
+  # sets, nightly in certify.yml. `go vet` rides here because an emitter
+  # codebase built almost entirely out of format strings is exactly where
+  # printf-verb mismatches live (issue #31).
   #
   # The two C sibling checkouts are not optional decoration: internal/fuzz's
   # compile check SKIPS ITSELF when ../serialize and ../serialize.c are absent,
@@ -166,7 +170,11 @@ jobs:
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     name: go-test (${{ matrix.group }})
-    runs-on: ubuntu-latest
+    # THE FLEET'S RUNNERS, as ci-fast's runs into main use (standing rule,
+    # 2026-10-21: every CI job on fleet runners, never GitHub-hosted). On a
+    # hosted two-core runner the SCHEMA_SLOW=1 gotable package passed the
+    # 10-minute test timeout; the gate is not loosened to fit that runner.
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 15
     # THREE PACKAGE GROUPS, ONE PER ROW, because this job was 650 s median
     # (2026-09-11) and a matrix row is a job: the emitter packages, everything
@@ -188,13 +196,20 @@ jobs:
 
       - name: Check out the C, C++, C# and Go serialize runtimes (pinned releases)
         run: |
+          set -euo pipefail
           cd ..
+          # A self-hosted runner's workspace PARENT persists between runs: the
+          # previous run's clones are removed and re-cloned at the pinned tag
+          # every time, never reused (as ci-fast's go-test-touched does).
+          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"   https://github.com/mas-bandwidth/serialize.git   serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
 
+      # the runner's own pinned go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
@@ -209,7 +224,7 @@ jobs:
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -283,12 +298,15 @@ jobs:
       # emits, and it is the one place in this file where "the build did no
       # work" must not be an available explanation for a green.
       - name: where this runner keeps the Go build cache
+        if: runner.environment == 'github-hosted'
         shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
+      # On a self-hosted runner the build cache is the runner's own and warm.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -331,6 +349,14 @@ jobs:
       - name: every slowtest gate is run by somebody, by name (schema#988)
         if: matrix.group == 'unit-rest'
         run: make slow-gate-coverage
+
+      # THE GO CONFORMANCE ROWS (docs/SPEC-CARD-CONTRACT.md): the rows in
+      # test/conformance/go/rows, which `go test ./...` never sees because they
+      # live in the test/conformance/go module. The gate self-provisions its
+      # build stamps and the C++ reference corpus.
+      - name: the Go conformance rows
+        if: matrix.group == 'versioning'
+        run: make conformance-go-rows
 
       # THE FIXED FORM'S VERSIONING SUITE (§5 of docs/FIXED-FORM-ALGORITHM.md),
       # which the step above does NOT run. Its harness reads the C++
@@ -376,11 +402,9 @@ jobs:
       - name: the fixed form's versioning suite on the Rust leg
         if: matrix.group == 'versioning'
         run: |
-          if [ ! -d ../serialize.rs ]; then
-            git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
-              https://github.com/mas-bandwidth/serialize.rs.git ../serialize.rs
-          fi
-          make tables-rust-versioning
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
+            https://github.com/mas-bandwidth/serialize.rs.git ../serialize.rs
+          make tables-rust-versioning RUSTUP_BIN="$(dirname "$(command -v cargo)")"
 
       # THE SAME SUITE ON THE JAVA LEG (§5 of docs/FIXED-FORM-ALGORITHM.md), and
       # it is here rather than in a Java job for the reason the Go step above is:
@@ -407,7 +431,7 @@ jobs:
       # SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing SDK a
       # failure rather than a silent skip.
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
         with:
           sdk: 3.13.2
       - name: the Dart leg reads backward over every versioning row
@@ -436,7 +460,7 @@ jobs:
       # built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing
       # Elixir a failure rather than a silent skip.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
         with:
           otp-version: '27'
           elixir-version: '1.18'
@@ -477,7 +501,7 @@ jobs:
       # `actions/cache/save` cannot redden a job: a key another run reserved
       # first is a logged warning and this step's success.
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: matrix.group == 'unit-rest'
+        if: matrix.group == 'unit-rest' && runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}

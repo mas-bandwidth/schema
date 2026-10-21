@@ -8,9 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
-
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
 )
 
 func TestGoUnitViewCorpus(t *testing.T) {
@@ -49,14 +48,13 @@ func TestGoUnitViewCorpus(t *testing.T) {
 			if u.Package != pkg {
 				t.Fatalf("VIEW_CORPUS package %s, generated %s", pkg, u.Package)
 			}
-			files, err := c.Generate(u, "go", Options{})
+			// the view gate compiles in a module wired only to serialize; the
+			// runtime packaging is not what it measures (docs/SPEC-TABLES.md §8.4)
+			files, err := c.Generate(u, "go", Options{"runtime": "standalone"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			runtime, err := filepath.Abs("../../serialize.go")
-			if err != nil {
-				t.Fatal(err)
-			}
+			runtime := slowtest.SerializeGo(t, "..")
 			files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 			files["view_test.go"] = []byte(strings.ReplaceAll(string(printer), "VIEW_PACKAGE", u.Package))
 			files["listing.want"] = []byte(viewlisting.Listing(u))

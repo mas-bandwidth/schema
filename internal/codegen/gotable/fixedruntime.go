@@ -19,39 +19,20 @@ const TableFixedForm uint8 = 3
 const TableFixedHeaderBytes = 16
 const TableFixedHashAt = 8
 
-// THE FIXED LOAD'S REFUSAL NAMES — EXPORTED (docs/FIXED-FORM-ALGORITHM.md
-// §5.3, docs/SPEC-TABLES.md §3.4). Every refusal of the fixed load has a name,
-// the framing-damage returns included, so an adopter's existing
-// report.Reason == "layout_newer" comparisons keep compiling against these
-// constants; the emitted <T>FixedLoad names every reason constant in place of
-// a string literal.
+// THE FIXED LOAD'S REFUSAL NAMES ARE THE ONE ENUM (docs/SPEC-TABLES.md
+// §6.5, §21.3): every fixed-form refusal is a TableRefuseReason member, and
+// the emitted <T>FixedLoad writes its snake_case name into report.Reason. The
+// fixed form keeps no vocabulary of its own.
 //
-// TableFixedReasonLayoutUnknown is the Reason of a file whose header hash no
-// entry of this build's lineage holds (docs/SPEC-TABLES.md §21.3, algorithm
-// §5.3 step 5). It says what the reader knows and not which way the file lies:
-// a newer writer's layout, an older one nobody locked and a damaged hash byte
+// TableRefuseLayoutUnknown is the Reason of a file whose header hash no entry
+// of this build's lineage holds (docs/SPEC-TABLES.md §21.3, algorithm §5.3
+// step 5). It says what the reader knows and not which way the file lies: a
+// newer writer's layout, an older one nobody locked and a damaged hash byte
 // read the same.
 //
-// TableFixedReasonLayoutNewer ("ship the reader") is RESERVED (SPEC-TABLES
-// §21.3) for a hash the lock lineage proves newer, which nothing on the wire or
-// in the lock does today, so no Go fixed load answers it; it stays exported so
-// an adopter's existing comparisons keep compiling.
-const (
-	TableFixedReasonPreviousForm         = "previous_form"
-	TableFixedReasonMessageFormAsFile    = "message_form_as_file"
-	TableFixedReasonNewerForm            = "newer_form"
-	TableFixedReasonLayoutMalformed      = "layout_malformed"
-	TableFixedReasonLayoutUnknown        = "layout_unknown"
-	TableFixedReasonLayoutNewer          = "layout_newer"
-	TableFixedReasonLayoutUnsupported    = "layout_unsupported"
-	TableFixedReasonLayoutRecordTooLarge = "layout_record_too_large"
-	TableFixedReasonPlanTooLarge         = "plan_too_large"
-	TableFixedReasonBatchTooLarge        = "batch_too_large"
-	TableFixedReasonNoLayout             = "no_layout"
-	TableFixedReasonTextIllFormed        = "text_ill_formed"
-	TableFixedReasonTruncated            = "truncated"
-	TableFixedReasonReservedNotZero      = "reserved_not_zero"
-)
+// TableRefuseLayoutNewer ("ship the reader") is RESERVED (SPEC-TABLES §21.3)
+// for a hash the lock lineage proves newer, which nothing on the wire or in the
+// lock does today, so no Go fixed load answers it.
 
 const (
 	tableFixedCopy uint8 = iota
@@ -145,7 +126,7 @@ func (p TableFixedEntry) chainHolds(plan []TableFixedEntry, src []byte) bool {
 	if p.GuardCount <= 2 {
 		return true
 	}
-	for j := uint32(0); j < p.GuardCount; j++ {
+	for j := range p.GuardCount {
 		l := p.guardLink(plan, j)
 		if tableFixedTagAt(src, l.Guard, l.ArgW) != l.Arg {
 			return false
@@ -158,6 +139,10 @@ type TableFixedDst struct {
 	Dst, Stride, Aux uint32
 	Counted, Arg, Meta uint8
 }
+
+// Arg's high bit marks a deprecated destination field: every compiled lineage
+// plan leaves it uncovered so the reset-image prefill supplies its default.
+const tableFixedDstDeprecated uint8 = 0x80
 
 type tableFixedPlan struct {
 	Entries []TableFixedEntry
@@ -281,7 +266,7 @@ func tableFixedArgWidth(w uint8) uint32 {
 func tableFixedTagAt(src []byte, at uint32, w uint8) uint64 {
 	n := tableFixedArgWidth(w)
 	var v uint64
-	for k := uint32(0); k < n; k++ {
+	for k := range n {
 		v |= uint64(src[at+k]) << (8 * k)
 	}
 	return v
@@ -300,7 +285,7 @@ func tableFixedTagAt(src []byte, at uint32, w uint8) uint64 {
 // has its split at the END, not at zero.
 func tableFixedPartition(plan []TableFixedEntry, n int32) int32 {
 	split := int32(0)
-	for i := int32(0); i < n; i++ {
+	for i := range n {
 		if plan[i].Guard == tableFixedNoGuard {
 			e := plan[i]
 			copy(plan[split+1:i+1], plan[split:i])
@@ -325,7 +310,7 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, u
 	written := emit(scratch, links, 0, 0)
 	var pool []TableFixedGuardLink
 	index := map[string]uint32{}
-	for i := 0; i < written; i++ {
+	for i := range written {
 		chain := links[i]
 		k := len(chain)
 		if k == 0 {
@@ -364,14 +349,14 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, u
 	if len(pool) > 0 {
 		base := uintptr(n * entryBytes)
 		copy(unsafe.Slice((*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&raw[0]), base)), len(pool)), pool)
-		for i := 0; i < written; i++ {
+		for i := range written {
 			if raw[i].GuardCount != 0 {
 				raw[i].GuardIndex = uint32(base) + raw[i].GuardIndex*uint32(linkBytes)
 			}
 		}
 	}
 	out := 0
-	for i := 0; i < written; i++ {
+	for i := range written {
 		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
 			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
 			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
@@ -429,18 +414,24 @@ func tableFixedCopyRun(d, s []byte, n uint32) {
 }
 
 func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) string {
+	// REFUSE is total even for direct callers of the runner: the generated load
+	// performs this pre-scan too, but the compiled-plan tests and any future
+	// internal caller must not observe the old clamp-and-write path.
+	if why := tableFixedTextRefusal(plan, count, src); why != "" {
+		return why
+	}
 	// READ(plan, split, ...) (docs/FIXED-FORM-ALGORITHM.md §4.4): the plan is
 	// partitioned unguarded-first (§4.1), so the split is the first guarded
 	// index; entries below it run WITHOUT a guard test and only the guarded
 	// half from split on tests one.
 	split := count
-	for i := int32(0); i < count; i++ {
+	for i := range count {
 		if plan[i].Guard != tableFixedNoGuard {
 			split = i
 			break
 		}
 	}
-	for i := int32(0); i < count; i++ {
+	for i := range count {
 		p := plan[i]
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2). Below the
 		// split there is no guard to test (§4.4).
@@ -467,14 +458,14 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// then decline to fill it — a value that is neither None nor an
 			// arm. Aux is the reader's own arm count.
 			var tag uint64
-			for k := uint32(0); k < p.Size; k++ {
+			for k := range p.Size {
 				tag |= uint64(src[p.Src+k]) << (8 * k)
 			}
 			if tag > uint64(p.Aux) {
 				tag = 0
 				report.Unknown++
 			}
-			for k := uint32(0); k < p.Size; k++ {
+			for k := range p.Size {
 				dst[p.Dst+k] = byte(tag >> (8 * k))
 			}
 		case tableFixedBool:
@@ -483,7 +474,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// 0 on arm64, so a hostile 2 reads true on one and false on the
 			// other. The wire says nonzero is true (docs/SPEC-TABLES.md §3);
 			// normalise here (byte != 0 -> 1) and never copy.
-			for k := uint32(0); k < p.Size; k++ {
+			for k := range p.Size {
 				v := byte(0)
 				if src[p.Src+k] != 0 {
 					v = 1
@@ -492,36 +483,16 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 {
-				v = 0
-				report.Clamped++
-			} else if v > int32(p.Size) {
-				v = int32(p.Size)
-				report.Clamped++
-			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 		case tableFixedText:
+			v := int32(tableFixedGet32(src[p.Src:]))
 			unit := uint32(1)
 			if p.Meta == tableFixedTextWide {
 				unit = 2
 			}
 			capn := p.Size / unit
-			v := int32(tableFixedGet32(src[p.Src:]))
-			if v < 0 {
-				v = 0
-				report.Clamped++
-			} else if uint32(v) > capn {
-				v = int32(capn)
-				report.Clamped++
-			}
-			// THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE, and a
-			// violation REFUSES BY NAME, the verdict the packet reader gives
-			// (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8): the
-			// length above CLAMPS and counts; the bytes it kept are checked now,
-			// over v units and never over the span.
-			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-				return TableFixedReasonTextIllFormed
-			}
+			// tableFixedTextRefusal above already proved the used extent and
+			// content; this path only lands the validated value and live bytes.
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 			tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
 			if p.Meta != tableFixedTextBytes && uint32(v) < capn {
@@ -559,7 +530,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 		case tableFixedWiden:
 			var raw uint64
-			for i := uint32(0); i < p.Size; i++ {
+			for i := range p.Size {
 				raw |= uint64(src[p.Src+i]) << (8 * i)
 			}
 			if p.Sign != 0 {
@@ -569,7 +540,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 					raw |= ^((top << 1) - 1)
 				}
 			}
-			for i := uint8(0); i < p.DstSize; i++ {
+			for i := range p.DstSize {
 				dst[p.Dst+uint32(i)] = byte(raw >> (8 * i))
 			}
 			report.Widened++
@@ -591,7 +562,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			report.Widened++
 		case tableFixedConst:
 			aux := p.Aux
-			for i := uint32(0); i < p.Size; i++ {
+			for i := range p.Size {
 				dst[p.Dst+i] = byte(aux >> (8 * i))
 			}
 			// THE OP MOVES NOTHING (§5.4): the unguarded None const lands None,
@@ -617,7 +588,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 // entry's DstSize — is why the count lives in the plan-aware pass here and not
 // in the op (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12).
 func tableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, report *TableReport) {
-	for i := int32(0); i < count; i++ {
+	for i := range count {
 		p := plan[i]
 		// THE GUARD AT ITS FULL WIDTH, matching tableFixedRun (§5.2): an entry
 		// whose guard does not match never lands, so it never counts.
@@ -643,7 +614,7 @@ func tableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, rep
 		case tableFixedConst:
 			if p.Aux == 0 && p.DstSize != 0 && p.Guard == tableFixedNoGuard {
 				var raw uint64
-				for k := uint32(0); k < p.Size; k++ {
+				for k := range p.Size {
 					raw |= uint64(src[p.Src+k]) << (8 * k)
 				}
 				if raw > uint64(p.DstSize) {
@@ -670,10 +641,8 @@ func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 		if !utf8.Valid(p[:used]) {
 			return true
 		}
-		for _, c := range p[:used] {
-			if c == 0 {
-				return true
-			}
+		if slices.Contains(p[:used], 0) {
+			return true
 		}
 	case tableFixedTextWide:
 		for i := uint32(0); i < used; i++ {
@@ -755,24 +724,20 @@ func tableFixedUnitsIllFormed(units []uint16) bool {
 	return false
 }
 
-// tableFixedTextRefusal is the text CONTENT refusal as a PRE-SCAN of the plan's
-// text entries, run before the caller's storage is touched. It walks each text
-// entry under its own guard, clamps its length exactly as the scatter will, and
-// answers the one name an ill-formed payload refuses with
-// (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8). §5.8: "REFUSE
-// is total: no counter moves, nothing is decoded, and not one destination byte
-// is written — the prefill included", so the check lives here rather than only
-// inside the scatter, where an earlier entry's write would already have landed.
-// It writes nothing and moves no counter.
+// tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count and
+// text entries, run before the caller's storage is touched. A count or a text
+// length past the PLAN's bound refuses by name — count_over_bound /
+// length_over_bound — and an ill-formed payload refuses text_ill_formed
+// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11,
+// §5.8 row 8). REFUSE is total: no counter moves, nothing is decoded, and not
+// one destination byte is written. It walks each entry under its own guards,
+// writes nothing and moves no counter.
 func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
-	for i := int32(0); i < count; i++ {
+	for i := range count {
 		p := plan[i]
-		if p.Op != tableFixedText {
-			continue
-		}
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
 		// entry runs only under its own tag, and one that does not run cannot
-		// refuse.
+		// refuse. An arm inside an arm answers the outer tag too (§4.1).
 		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
 			continue
 		}
@@ -783,19 +748,25 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
 			continue
 		}
+		switch p.Op {
+		case tableFixedCount:
+			v := int32(tableFixedGet32(src[p.Src:]))
+			if v < 0 || v > int32(p.Size) {
+				return TableRefuseCountOverBound.Error()
+			}
+		case tableFixedText:
 		unit := uint32(1)
 		if p.Meta == tableFixedTextWide {
 			unit = 2
 		}
 		capn := p.Size / unit
 		v := int32(tableFixedGet32(src[p.Src:]))
-		if v < 0 {
-			v = 0
-		} else if uint32(v) > capn {
-			v = int32(capn)
+		if v < 0 || uint32(v) > capn {
+			return TableRefuseLengthOverBound.Error()
 		}
 		if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
-			return TableFixedReasonTextIllFormed
+			return TableRefuseTextIllFormed.Error()
+		}
 		}
 	}
 	return ""
@@ -928,7 +899,7 @@ func tableFixedCheckEntry(c *tableFixedCheck, i, depth int32) int32 {
 	var widest, firstSize, secondSize, firstChildren uint32
 	var firstKind uint8
 	kidsAreVariants := true
-	for k := uint32(0); k < e.Children; k++ {
+	for k := range e.Children {
 		child := at
 		used := tableFixedCheckEntry(c, child, depth+1)
 		if c.why != "" {
@@ -1270,11 +1241,11 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	myChild := mi + 1
-	for k := uint32(0); k < me.Children; k++ {
+	for range me.Children {
 		mc := tableFixedEntryAt(mine, myChild)
 		theirChild := ti + 1
 		theirOff := theirAt
-		for j := uint32(0); j < te.Children; j++ {
+		for range te.Children {
 			tc := tableFixedEntryAt(theirs, theirChild)
 			if tc.Id == mc.Id {
 				tableFixedCompileEntry(c, theirs, theirChild, theirOff, mine, myChild, dst, myAt, guard, arg, census)
@@ -1286,11 +1257,11 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 		myChild += tableFixedSubtree(mine, myChild)
 	}
 	tcAt := ti + 1
-	for j := uint32(0); j < te.Children; j++ {
+	for range te.Children {
 		tc := tableFixedEntryAt(theirs, tcAt)
 		named := false
 		mcAt := mi + 1
-		for k := uint32(0); k < me.Children; k++ {
+		for range me.Children {
 			if tableFixedEntryAt(mine, mcAt).Id == tc.Id {
 				named = true
 				break
@@ -1308,6 +1279,9 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
+	if d.Arg&tableFixedDstDeprecated != 0 {
+		return
+	}
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
 	if te.Kind != me.Kind && !(me.Kind == 35) {
@@ -1360,9 +1334,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 		theirBase := theirAt + head
 		n := theirN
-		if myN < n {
-			n = myN
-		}
+		n = min(n, myN)
 		if d.Counted != 0 {
 			// THE COUNT'S BOUND IS THE WRITER'S their_n (§5.2 EMIT kind 14,
 			// §5.3 step 11: BOUNDS runs against the PLAN's bounds). The
@@ -1372,7 +1344,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// which is their_n itself on every legal widening.
 			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
-		for i := uint32(0); i < n; i++ {
+		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
 		}
 	case 16:
@@ -1381,9 +1353,9 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		tel := ti + 1 + tableFixedSubtree(theirs, ti+1)
 		mel := mi + 1 + tableFixedSubtree(mine, mi+1)
 		tee := tableFixedEntryAt(theirs, tel)
-		for k := uint32(0); k < mkey.Children; k++ {
+		for k := range mkey.Children {
 			keyId := tableFixedEntryAt(mine, mi+2+int32(k)).Id
-			for j := uint32(0); j < tkey.Children; j++ {
+			for j := range tkey.Children {
 				if tableFixedEntryAt(theirs, ti+2+int32(j)).Id != keyId {
 					continue
 				}
@@ -1419,10 +1391,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			c.argW = uint8(theirTag)
 		}
 		myArm := mi + 1
-		for k := uint32(0); k < me.Children; k++ {
+		for k := range me.Children {
 			ma := tableFixedEntryAt(mine, myArm)
 			theirArm := ti + 1
-			for j := uint32(0); j < te.Children; j++ {
+			for j := range te.Children {
 				ta := tableFixedEntryAt(theirs, theirArm)
 				if ta.Id == ma.Id {
 					// THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT
@@ -1464,10 +1436,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			return
 		}
 		m := make([]uint16, n)
-		for j := uint32(0); j < n; j++ {
+		for j := range n {
 			vid := tableFixedEntryAt(theirs, ti+1+int32(j)).Id
 			var landed uint16
-			for k := uint32(0); k < me.Children; k++ {
+			for k := range me.Children {
 				if tableFixedEntryAt(mine, mi+1+int32(k)).Id == vid {
 					landed = uint16(k + 1)
 					break
@@ -1480,9 +1452,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		tableFixedPush(c, e)
 	case 12, 33:
 		units := me.Size - 4
-		if te.Size-4 < units {
-			units = te.Size - 4
-		}
+		units = min(units, te.Size-4)
 		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: units, Aux: auxAt, Guard: guard, Op: tableFixedText, Arg: arg, Meta: d.Meta})
 	default:
 		e := TableFixedEntry{Src: theirAt, Dst: at, Guard: guard, Arg: arg}
@@ -1529,7 +1499,7 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 		return -1
 	}
 	out := int32(0)
-	for i := int32(0); i < c.count; i++ {
+	for i := range c.count {
 		if out > 0 && plan[out-1].Op == plan[i].Op && tableFixedRuns(plan[i].Op) &&
 			plan[out-1].Guard == plan[i].Guard && plan[out-1].Arg == plan[i].Arg &&
 			plan[out-1].ArgW == plan[i].ArgW && plan[out-1].Meta == plan[i].Meta &&
@@ -1571,9 +1541,7 @@ func tableFixedLand(cover []byte, off, n uint32) {
 		return
 	}
 	last := off + n
-	if last > end {
-		last = end
-	}
+	last = min(last, end)
 	for i := off; i < last; i++ {
 		cover[i] = 1
 	}
@@ -1587,7 +1555,7 @@ func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tabl
 		return nil
 	}
 	cover := make([]byte, dstSize)
-	for i := int32(0); i < count; i++ {
+	for i := range count {
 		p := plan[i]
 		if p.Guard != tableFixedNoGuard {
 			continue
@@ -1692,7 +1660,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 		if why != "" {
 			// A lineage entry that is not a layout is a bug in the LOCK, not a
 			// wire event; the reader still owes a name rather than a panic.
-			out[i].Why = TableFixedReasonLayoutMalformed
+			out[i].Why = TableRefuseLayoutMalformed.Error()
 			continue
 		}
 		for room := 256; ; room *= 4 {
@@ -1700,16 +1668,16 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 			var census TableReport
 			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
 			if made == -2 {
-				out[i].Why = TableFixedReasonLayoutMalformed
+				out[i].Why = TableRefuseLayoutMalformed.Error()
 				break
 			}
 			if made == -3 {
-				out[i].Why = TableFixedReasonLayoutRecordTooLarge
+				out[i].Why = TableRefuseLayoutRecordTooLarge.Error()
 				break
 			}
 			if made < 0 {
 				if room >= 1<<18 {
-					out[i].Why = TableFixedReasonPlanTooLarge
+					out[i].Why = TableRefusePlanTooLarge.Error()
 					break
 				}
 				continue
@@ -1735,6 +1703,7 @@ func tableFixedRefuse(report *TableReport, reason string) int64 {
 	*report = TableReport{}
 	report.LayoutHash = hash
 	report.Verdict = TableOpenRefused
+	report.FixedRaised = true
 	report.Reason = reason
 	return -1
 }

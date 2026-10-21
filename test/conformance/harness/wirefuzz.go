@@ -554,6 +554,31 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
 	return ""
 }
 
+// randomPass is the random pass (test/conformance/README.md, "The wire-fuzz
+// driver"; docs/SPEC-TABLES.md §4.2). It draws from the manifest seeds alone,
+// because a pinned vector is damaged bytes by construction and no basis for a
+// mutation; keeping it out also keeps the sequence a function of the corpus
+// and the seed alone, so pinning a vector never moves a red already there.
+//
+// An empty pool is a NAMED SKIP and not a panic: a leg (or a skip list) can
+// leave only pinned-vector roots live, and there is then nothing to mutate.
+// It answers the one line the run prints to stderr; no mutant is drawn.
+func randomPass(pool []*wireSeed, pinned int, seed uint64, n int, draw func(*wireMutant)) string {
+	if n <= 0 {
+		return ""
+	}
+	if len(pool) == 0 {
+		return fmt.Sprintf("wire-fuzz: random pass skipped: no manifest seed is live (%d pinned vectors only)", pinned)
+	}
+	for i := range n {
+		// randomMutant refuses an empty list; this caller never sends nil.
+		if mut := randomMutant(pool, seed, i); mut != nil {
+			draw(mut)
+		}
+	}
+	return ""
+}
+
 func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if opts.builder && (opts.retain || opts.message) {
 		return fmt.Errorf("--builder is a non-retaining file arm")
@@ -730,14 +755,10 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 					pass[name]++
 				})
 			}
-			// THE RANDOM PASS DRAWS FROM THE MANIFEST SEEDS ALONE. A pinned
-			// vector is damaged bytes by construction, so it is no basis for
-			// a mutation. Keeping it out also keeps the random sequence a
-			// function of the corpus and the seed alone, so pinning a vector
-			// never moves a red that was already there.
-			for i := 0; i < opts.n; i++ {
-				mut := randomMutant(pool, opts.seed, i)
+			if line := randomPass(pool, len(live)-len(pool), opts.seed, opts.n, func(mut *wireMutant) {
 				produced <- item{m: mut}
+			}); line != "" {
+				fmt.Fprintln(os.Stderr, line)
 			}
 		}
 		close(produced)

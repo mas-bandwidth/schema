@@ -20,7 +20,7 @@ func (g *tableJsonGraph) findLabel(key uint64)(int,bool) {if len(g.labels)==0{re
 func (g *tableJsonGraph) getLabel(key uint64)(tableJsonLabel,bool){i,ok:=g.findLabel(key);if !ok{return tableJsonLabel{},false};return g.labels[i],true}
 func (g *tableJsonGraph) setLabel(key uint64,entry tableJsonLabel)bool {
  if key==0{return false};i,exists:=g.findLabel(key)
- if !exists&&g.count*2>=len(g.labels){capacity:=len(g.labels)*2;if capacity<16{capacity=16};if g.allocate==nil{return false};memory:=g.allocate(int64(capacity)*int64(unsafe.Sizeof(tableJsonLabel{})));if memory==nil{return false};clear(memory);old,oldMemory:=g.labels,g.memory;g.memory=memory;g.labels=unsafe.Slice((*tableJsonLabel)(unsafe.Pointer(&memory[0])),capacity);for _,e:=range old {if e.key!=0{slot,_:=g.findLabel(e.key);g.labels[slot]=e}};if oldMemory!=nil{g.release(oldMemory)};i,_=g.findLabel(key)}
+ if !exists&&g.count*2>=len(g.labels){capacity:=len(g.labels)*2;capacity=max(capacity,16);if g.allocate==nil{return false};memory:=g.allocate(int64(capacity)*int64(unsafe.Sizeof(tableJsonLabel{})));if memory==nil{return false};clear(memory);old,oldMemory:=g.labels,g.memory;g.memory=memory;g.labels=unsafe.Slice((*tableJsonLabel)(unsafe.Pointer(&memory[0])),capacity);for _,e:=range old {if e.key!=0{slot,_:=g.findLabel(e.key);g.labels[slot]=e}};if oldMemory!=nil{g.release(oldMemory)};i,_=g.findLabel(key)}
  if !exists {g.count++};entry.key=key;g.labels[i]=entry;return true
 }
 func (g *tableJsonGraph) close(){if g.memory!=nil{g.release(g.memory);g.memory=nil;g.labels=nil}}
@@ -48,7 +48,7 @@ func tableJsonReadPointer(in *tableJsonIn,slot *int64,f *TableFieldInfo,depth in
  if f.Table==nil{return tableJsonReadBlob(in,slot,f)}
  if in.peek()!='{'{in.bad=true;return false}
  start:=in.pos;probe:=*in;probe.pos++;label:=uint64(0);hasLabel:=false
- if probe.peek()!='}' {var key [tableJsonMaxKey]byte;length,ok:=probe.scanString(key[:]);if !ok {in.bad=true;return false};if length>0&&key[0]=='&'{if string(key[:length])!="&node"||probe.peek()!=':'{in.bad=true;return false};probe.pos++;label,ok=tableJsonReadLabel(&probe);if !ok{in.bad=true;return false};hasLabel=true}}
+ if probe.peek()!='}' {var key [tableJsonMaxKey]byte;length,ok:=probe.scanKey(key[:]);if !ok {in.bad=true;return false};if length>0&&key[0]=='&'{if string(key[:length])!="&node"||probe.peek()!=':'{in.bad=true;return false};probe.pos++;label,ok=tableJsonReadLabel(&probe);if !ok{in.bad=true;return false};hasLabel=true}}
  if hasLabel {entry,exists:=in.graph.getLabel(label);if exists&&entry.open{in.bad=true;return false};if probe.peek()=='}'{if !exists{in.bad=true;return false};probe.pos++;in.pos=probe.pos;if entry.ref!=0 {if entry.target!=f.TargetId{in.report.KindMismatch++}else{*slot=entry.ref}};return true};if exists {in.bad=true;return false};probe.pos++;if probe.peek()=='}'{in.bad=true;return false}}
  p,ref:=in.graph.alloc(int64(f.Table().Size));if p==nil{in.bad=true;return false};*slot=ref;f.Table().Reset(p)
  if hasLabel {if !in.graph.setLabel(label,tableJsonLabel{ref:ref,target:f.TargetId,open:true}){in.bad=true;return false};in.pos=probe.pos;ok:=tableJsonReadTableFields(in,p,f.Table(),depth,false);if ok {entry,_:=in.graph.getLabel(label);entry.open=false;if !in.graph.setLabel(label,entry){in.bad=true;return false}};return ok}
@@ -68,6 +68,6 @@ func tableJsonReadBlob(in *tableJsonIn,slot *int64,f *TableFieldInfo) bool {
 // A skipped definition keeps its label, without imposing graph syntax on a
 // value this reader is skipping. The ordinary JSON scanner still validates it.
 func tableJsonDropLabel(in *tableJsonIn) {
- if in.graph==nil||in.peek()!='{'{return};probe:=*in;probe.pos++;var key [16]byte;n,ok:=probe.scanString(key[:]);if !ok||string(key[:n])!="&node"||probe.peek()!=':'{return};probe.pos++;label,ok:=tableJsonReadLabel(&probe);if !ok||probe.peek()!=','{return};if _,exists:=in.graph.getLabel(label);!exists{if !in.graph.setLabel(label,tableJsonLabel{}){in.bad=true}}
+ if in.graph==nil||in.peek()!='{'{return};probe:=*in;probe.pos++;var key [16]byte;n,ok:=probe.scanKey(key[:]);if !ok||string(key[:n])!="&node"||probe.peek()!=':'{return};probe.pos++;label,ok:=tableJsonReadLabel(&probe);if !ok||probe.peek()!=','{return};if _,exists:=in.graph.getLabel(label);!exists{if !in.graph.setLabel(label,tableJsonLabel{}){in.bad=true}}
 }
 `

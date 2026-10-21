@@ -43,7 +43,7 @@ func goReleaseSoak(t *testing.T, root string) time.Duration {
 func certifyJobTimeouts(data string) map[string]time.Duration {
 	out := map[string]time.Duration{}
 	var cur string
-	for _, raw := range strings.Split(data, "\n") {
+	for raw := range strings.SplitSeq(data, "\n") {
 		trimmed := strings.TrimSpace(raw)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue

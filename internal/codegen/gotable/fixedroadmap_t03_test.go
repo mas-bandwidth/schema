@@ -47,11 +47,11 @@ func t03GoTable(t *testing.T, u *ir.Unit, name string) *ir.Struct {
 	return st
 }
 
-// t03GoLoad is the emitted body of one `<T>FixedLoad(` up to its column-zero
+// t03GoLoad is the emitted body of one `<T>FixedLoadTolerant(` up to its column-zero
 // closing brace.
 func t03GoLoad(t *testing.T, src, name string) string {
 	t.Helper()
-	body := funcSource(src, "func "+name+"FixedLoad(")
+	body := funcSource(src, "func "+name+"FixedLoadTolerant(")
 	if body == "" {
 		t.Fatalf("the emitted module has no %sFixedLoad", name)
 	}
@@ -213,7 +213,7 @@ func t03GoR14(t *testing.T) {
 	t03GoHas(t, runtime, "c.tooLarge = true", "R14 the over-reach is recorded")
 	t03GoHas(t, runtime, "if c.tooLarge {", "R14 the plan is refused WHOLE")
 	t03GoHas(t, runtime, "return -3", "R14 the compile answers layout_record_too_large")
-	t03GoHas(t, runtime, `out[i].Why = TableFixedReasonLayoutRecordTooLarge`, "R14 the lane carries the name")
+	t03GoHas(t, runtime, `out[i].Why = TableRefuseLayoutRecordTooLarge.Error()`, "R14 the lane carries the name")
 	// The generated module carries the runtime, so the ban is on the emitted
 	// build and not on this package's constant alone.
 	t03GoHas(t, tableFile(generate(t, t03GoFlat())), "tableFixedSrcEnd", "R14 the emitted build carries the entry bound")
@@ -306,7 +306,7 @@ func t03GoR3(t *testing.T) {
 		t03GoHas(t, text, fmt.Sprintf("const LineageFixedFloor = %d", tc.want), "R3 1 + the highest retired index")
 		load := t03GoLoad(t, text, "Lineage")
 		t03GoHas(t, load, "if pick < LineageFixedFloor {", "R3 below the floor is a comparison of the index")
-		t03GoHas(t, load, `return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)`, "R3 below the floor is layout_unsupported")
+		t03GoHas(t, load, `return tableFixedRefuseHash(report, TableRefuseLayoutUnsupported.Error(), hash)`, "R3 below the floor is layout_unsupported")
 	}
 }
 
@@ -329,7 +329,7 @@ func t03GoR32(t *testing.T) {
 	at := strings.Index(load, "if pick < LineageFixedFloor {")
 	known := strings.Index(load, "known := &LineageFixedKnown[pick]")
 	bytes := strings.Index(load, "layout[i] != known.Layout[i]")
-	records := strings.Index(load, "for k := int64(0); k < n; k++")
+	records := strings.Index(load, "for k := range n {")
 	if at < 0 || known < 0 || bytes < 0 || records < 0 {
 		t.Fatalf("R32: the load's shape moved (%d, %d, %d, %d)", at, known, bytes, records)
 	}
@@ -363,7 +363,7 @@ func t03GoR10(t *testing.T) {
 	text, _ := t03GoRetire(t, 0)
 	load := t03GoLoad(t, text, "Lineage")
 	t03GoHas(t, load, "layout[i] != known.Layout[i]", "R10 the layout is a byte comparison")
-	t03GoHas(t, load, `return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)`, "R10 a lie about a known version is layout_malformed")
+	t03GoHas(t, load, `return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())`, "R10 a lie about a known version is layout_malformed")
 	t03GoHas(t, load, "hash := tableFixedGet64(data[TableFixedHashAt:])", "R10 the header's hash is taken as given")
 	t03GoHasNot(t, load, "tableFixedParseLayout(", "R10 the load walks a stranger's layout")
 	t03GoHasNot(t, load, "tableFixedCompile(", "R10 the load compiles on the load path")
@@ -403,8 +403,8 @@ func t03GoR15(t *testing.T) {
 	}
 	text, _ := t03GoRetire(t, 0)
 	load := t03GoLoad(t, text, "Lineage")
-	miss := strings.Index(load, `return tableFixedRefuseHash(report, TableFixedReasonLayoutUnknown, hash)`)
-	records := strings.Index(load, "for k := int64(0); k < n; k++")
+	miss := strings.Index(load, `return tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)`)
+	records := strings.Index(load, "for k := range n {")
 	if miss < 0 || records < 0 {
 		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)
 	}
@@ -690,7 +690,7 @@ func t03GoR29(t *testing.T) {
 	t03GoHas(t, runtime, "v > int32(p.Size)", "R29 the count clamps to the writer's bound")
 	t03GoHas(t, runtime, "uint32(v) > capn", "R29 the text clamps to the writer's span")
 	t03GoHas(t, runtime, "n := theirN", "R29 the count's bound is the writer's")
-	t03GoHas(t, runtime, "if myN < n {", "R29 the count's bound is held to the reader's storage")
+	t03GoHas(t, runtime, "n = min(n, myN)", "R29 the count's bound is held to the reader's storage")
 	t03GoHas(t, runtime, "Size: n,", "R29 the count entry carries the writer's bound")
 	// THE BAND EDGE IS ZERO-EXTENDED, NOT SIGN-EXTENDED: a u16 top widened
 	// into a u32 has the WRITER's kind 7, which is unsigned, so no sign bit is

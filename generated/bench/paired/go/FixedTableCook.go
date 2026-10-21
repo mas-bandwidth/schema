@@ -429,7 +429,7 @@ func FixedTableAt(slot *int64) *FixedTableRow {
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c FixedTableCook) Type() *TableCookInfo { return &tableCookRecords[1] }
 
-const tableCookBuildVersion uint64 = 0x12bc9e07fe351b2c
+const tableCookBuildVersion uint64 = 0x23753a84972a054e
 
 // TableByteOrder selects the target order, independently of the writing host.
 type TableByteOrder uint8
@@ -449,7 +449,7 @@ func (w *tableCookWriter) put(at int64, value uint64, width uint32) {
 	if w.buffer == nil {
 		return
 	}
-	for i := uint32(0); i < width; i++ {
+	for i := range width {
 		shift := i
 		if w.order == TableByteOrderBig {
 			shift = width - 1 - i
@@ -495,14 +495,14 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 	used := int32(1)
 	if f.Counted {
 		used = *(*int32)(unsafe.Add(base, f.CountOffset))
-		if used < 0 || used > f.ArrayBound {
+		if used < 0 || !f.UnboundedContainer && used > f.ArrayBound {
 			return false
 		}
 		w.put(at+int64(f.CookCountOffset), uint64(used), 4)
 	}
 	if !f.Pointer && (f.TypeName == "string" || f.TypeName == "bytes" || f.TypeName == "wstring") {
 		width := f.CookElemSize
-		for i := int32(0); i < used; i++ {
+		for i := range used {
 			v := tableJsonGetRaw(unsafe.Add(p, int64(i)*int64(width)), width)
 			w.put(dest+int64(i)*int64(width), v, width)
 		}
@@ -552,6 +552,9 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 		return true
 	}
 	value := tableJsonGetRaw(p, f.ElemSize)
+	if f.EnumDeprecated != nil && f.EnumDeprecated(value) {
+		return false
+	}
 	if f.Kind == 1 {
 		value = 0
 		if *(*bool)(p) {

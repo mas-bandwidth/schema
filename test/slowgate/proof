@@ -43,8 +43,9 @@ if [ -z "$required" ]; then
 	exit 2
 fi
 
-mkdir -p build/slowgate
-log="build/slowgate/$label.log"
+logdir="${SLOWGATE_LOG_DIR:-build/slowgate}"
+mkdir -p "$logdir"
+log="$logdir/$label.log"
 
 rc=0
 SCHEMA_SLOW=1 go test -v "$@" > "$log" 2>&1 || rc=$?
