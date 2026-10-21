@@ -957,7 +957,7 @@ tables-go-fixed-form-negative-control: bin/schema build/schema_test_bench_paired
 	@printf '{"Replace":{"%s/internal/codegen/gotable/fixedform.go":"%s/build/go-fixed-sabotage/fixedform.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/go-fixed-sabotage/overlay.json
 	@go build -overlay=build/go-fixed-sabotage/overlay.json -o build/go-fixed-sabotage/schema ./cmd/schema
-	@./build/go-fixed-sabotage/schema generate --lang go --out build/go-fixed-sabotage/gen bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@./build/go-fixed-sabotage/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out build/go-fixed-sabotage/gen bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => $(CURDIR)/$(SERIALIZE_GO)\n' > build/go-fixed-sabotage/gen/go.mod
 	@cp bench/paired/go/go.mod build/go-fixed-sabotage/table.mod
 	@cd bench/paired/go && go mod edit -modfile $(CURDIR)/build/go-fixed-sabotage/table.mod \
