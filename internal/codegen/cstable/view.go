@@ -53,7 +53,7 @@ func generateView(u *ir.Unit, closure map[string]bool) []byte {
 		for _, st := range set {
 			rows = append(rows, fmt.Sprintf("new ViewType { Name = %q, File = %q, Table = %t, TypeRef = %sTableType, %s }", st.Name, file(st.Name), st.IsTable, st.Name, annotation(st.Doc, st.Tags)))
 		}
-		return "new ViewType[] { " + strings.Join(rows, ",\n") + " }"
+		return "new ViewType[] " + csList(rows, ",\n")
 	}
 	reached := ir.TableClosureVocabulary(u)
 	id := func(owner, name string) uint64 {
@@ -63,7 +63,7 @@ func generateView(u *ir.Unit, closure map[string]bool) []byte {
 		return 0
 	}
 	vocab := func(name string, max int64, bits int, doc string, tags []string, rows []string) string {
-		return fmt.Sprintf("new ViewVocabulary { Name = %q, File = %q, Max = %d, StorageBits = %d, %s, Variants = new ViewVariant[] { %s } }", name, file(name), max, bits, annotation(doc, tags), strings.Join(rows, ",\n"))
+		return fmt.Sprintf("new ViewVocabulary { Name = %q, File = %q, Max = %d, StorageBits = %d, %s, Variants = new ViewVariant[] %s }", name, file(name), max, bits, annotation(doc, tags), csList(rows, ",\n"))
 	}
 	row := func(value int, name string, identity uint64, doc string, tags []string, extra string) string {
 		return fmt.Sprintf("new ViewVariant { Value = %d, Name = %q, Id = 0x%016xul, %s%s }", value, name, identity, annotation(doc, tags), extra)
@@ -144,9 +144,10 @@ func generateView(u *ir.Unit, closure map[string]bool) []byte {
 		}
 		constants = append(constants, fmt.Sprintf("new ViewConstant { Name = %q, File = %q, TypeName = %q, IsFloat = %t, IntValue = %s, FloatValue = %s, %s }", c.Name, file(c.Name), c.Storage, c.IsFloat, integer, floating, annotation(c.Doc, c.Tags)))
 	}
-	g.pf("private static readonly UnitViewInfo tableUnitView = new UnitViewInfo { Package = %q, ProtocolId = 0x%016xul,\n", u.Package, u.ProtocolId)
-	g.pf("Types = %s, Tables = %s,\n", typeRows(types), typeRows(tables))
-	g.pf("Enums = new ViewVocabulary[] { %s }, Flags = new ViewVocabulary[] { %s }, Unions = new ViewVocabulary[] { %s }, Constants = new ViewConstant[] { %s } };\n", strings.Join(enums, ",\n"), strings.Join(flags, ",\n"), strings.Join(unions, ",\n"), strings.Join(constants, ",\n"))
+	g.pf("private static readonly UnitViewInfo tableUnitView = new UnitViewInfo\n{\n")
+	g.pf("    Package = %q,\n    ProtocolId = 0x%016xul,\n", u.Package, u.ProtocolId)
+	g.pf("    Types = %s,\n    Tables = %s,\n", typeRows(types), typeRows(tables))
+	g.pf("    Enums = new ViewVocabulary[] %s,\n    Flags = new ViewVocabulary[] %s,\n    Unions = new ViewVocabulary[] %s,\n    Constants = new ViewConstant[] %s\n};\n", csList(enums, ",\n"), csList(flags, ",\n"), csList(unions, ",\n"), csList(constants, ",\n"))
 	g.pf("public static UnitViewInfo UnitView() { return tableUnitView; }\n")
 	return g.assemble()
 }

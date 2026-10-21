@@ -211,8 +211,19 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
     }
+    static Report Copy(Cards.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed };
+    }
     static readonly List<Codec> codecs = new List<Codec>
     {
+        // THE CARDS UNIT (tables/cards, docs/SPEC-TABLES.md §2): the sprint's own
+        // variable-table record, compiled from build/tables-generated-cs/cards so
+        // cards-cs-wire-fuzz and cards-cs-retain-fuzz hold the C# Card codec to
+        // the Go leg's bytes over tables/cards/fuzz/MANIFEST.txt.
+        Row<Cards.Card, Cards.TableReport>("cards", "Card", () => new Cards.TableReport(), Copy,
+            Cards.Schema.CardLoad, Cards.Schema.CardMeasure, Cards.Schema.CardSave,
+            Cards.Schema.CardFromJson, Cards.Schema.CardToJsonMeasure, Cards.Schema.CardToJson, Cards.Schema.CardLoadMeasure),
         Row<Tblr2.Cfg, Tblr2.TableReport>("tblr2", "Cfg", () => new Tblr2.TableReport(), Copy,
             Tblr2.Schema.CfgLoad, Tblr2.Schema.CfgMeasure, Tblr2.Schema.CfgSave,
             Tblr2.Schema.CfgFromJson, Tblr2.Schema.CfgToJsonMeasure, Tblr2.Schema.CfgToJson),

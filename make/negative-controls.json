@@ -14,6 +14,7 @@
         "tables-block-const-negative-control",
         "tables-block-fill-refuser-negative-control",
         "tables-block-race-negative-control",
+        "tables-block-zero-cost-negative-control",
         "tables-c-ref-ordinal-negative-control",
         "tables-clamp-limits-negative-control",
         "tables-doctags-negative-controls",
@@ -418,18 +419,34 @@
     {
       "name": "cs",
       "when": "pull-request",
-      "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
+      "why": "the C# port's conformance leg, its soak allocation-count negative control, its four packet families, the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
       "targets": [
         "cards-cs-conformance-negative-control",
         "conformance-negative-control-cs",
+        "cards-cs-retain-negative-control",
+        "tables-cs-alloc-runtime-negative-control",
+        "tables-cs-soak-negative-control",
         "tables-cs-retain-negative-control",
         "tables-cs-pack-negative-control",
         "tables-cs-message-blob-endian-negative-control",
         "tables-cs-fixedform-arm-negative-control",
+        "tables-cs-json-differential-negative-control",
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",
-        "packet-wide-cs-negative-control"
+        "packet-wide-cs-negative-control",
+        "packet-clean-cs-negative-control",
+        "tables-cs-clean-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-accessor",
+      "when": "pull-request",
+      "why": "the accessor/descriptor agreement controls, scalar and pointer slot: each sabotages one emitter line (codecs.go:826 and :814) through a go build -overlay and requires the agreement gate to go red on its own message. Measured 3.2 s and 3.6 s on the runner.",
+      "targets": [
+        "tables-cs-accessor-negative-control",
+        "tables-cs-slot-negative-control"
       ],
       "dotnet": "pin"
     },

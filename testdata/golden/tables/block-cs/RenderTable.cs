@@ -2109,23 +2109,23 @@ namespace Blockdemo
                 info.StorageSize = 7879320; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 256;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "version", Json = "version", TypeName = "uint64", Id = 0xbb62c62c9808ea37, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderFrame)o).Version; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderFrame)o).Version = unchecked((ulong)r); }, MessageSlot = 31, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderFrame)o; value.Version = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "cameras", Json = "cameras", TypeName = "RenderCamera", Id = 0x0f9222d2ba7aa2a7, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 1, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderCameraTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderFrame)o).Cameras[i]; }, GetCount = delegate(object o) { return ((global::Blockdemo.RenderFrame)o).CamerasCount; }, SetCount = delegate(object o, int n) { ((global::Blockdemo.RenderFrame)o).CamerasCount = n; }, MessageSlot = 32, Ordinal = 1, NativeOffset = 8, NativeElementSize = 72, NativeCountOffset = 80, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.Cameras.Length; i++) { TableReset(value.Cameras[i]); } value.CamerasCount = 0; } },
-                    new TableFieldInfo { Name = "ships", Json = "ships", TypeName = "RenderShip", Id = 0x294a5c4913e1ad44, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4096, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderShipTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderFrame)o).Ships[i]; }, GetCount = delegate(object o) { return ((global::Blockdemo.RenderFrame)o).ShipsCount; }, SetCount = delegate(object o, int n) { ((global::Blockdemo.RenderFrame)o).ShipsCount = n; }, MessageSlot = 33, Ordinal = 2, NativeOffset = 88, NativeElementSize = 88, NativeCountOffset = 360536, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.Ships.Length; i++) { TableReset(value.Ships[i]); } value.ShipsCount = 0; } },
-                    new TableFieldInfo { Name = "turrets", Json = "turrets", TypeName = "RenderTurret", Id = 0x84f8260bc283608c, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 1024, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderTurretTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderFrame)o).Turrets[i]; }, GetCount = delegate(object o) { return ((global::Blockdemo.RenderFrame)o).TurretsCount; }, SetCount = delegate(object o, int n) { ((global::Blockdemo.RenderFrame)o).TurretsCount = n; }, MessageSlot = 34, Ordinal = 3, NativeOffset = 360544, NativeElementSize = 64, NativeCountOffset = 426080, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.Turrets.Length; i++) { TableReset(value.Turrets[i]); } value.TurretsCount = 0; } },
-                    new TableFieldInfo { Name = "missiles", Json = "missiles", TypeName = "RenderMissile", Id = 0x1c3027194b1ba4d0, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4096, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderMissileTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderFrame)o).Missiles[i]; }, GetCount = delegate(object o) { return ((global::Blockdemo.RenderFrame)o).MissilesCount; }, SetCount = delegate(object o, int n) { ((global::Blockdemo.RenderFrame)o).MissilesCount = n; }, MessageSlot = 35, Ordinal = 4, NativeOffset = 426088, NativeElementSize = 72, NativeCountOffset = 721000, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.Missiles.Length; i++) { TableReset(value.Missiles[i]); } value.MissilesCount = 0; } },
-                    new TableFieldInfo { Name = "dynamic_props", Json = "dynamic_props", TypeName = "RenderDynamicProp", Id = 0x43125398a9903d27, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4096, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderDynamicPropTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderFrame)o).DynamicProps[i]; }, GetCount = delegate(object o) { return ((global::Blockdemo.RenderFrame)o).DynamicPropsCount; }, SetCount = delegate(object o, int n) { ((global::Blockdemo.RenderFrame)o).DynamicPropsCount = n; }, MessageSlot = 36, Ordinal = 5, NativeOffset = 721008, NativeElementSize = 72, NativeCountOffset = 1015920, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.DynamicProps.Length; i++) { TableReset(value.DynamicProps[i]); } value.DynamicPropsCount = 0; } },
-                    new TableFieldInfo { Name = "static_props", Json = "static_props", TypeName = "RenderStaticProp", Id = 0xc1f8d7edff7fcfd2, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 20000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderStaticPropTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderFrame)o).StaticProps[i]; }, GetCount = delegate(object o) { return ((global::Blockdemo.RenderFrame)o).StaticPropsCount; }, SetCount = delegate(object o, int n) { ((global::Blockdemo.RenderFrame)o).StaticPropsCount = n; }, MessageSlot = 37, Ordinal = 6, NativeOffset = 1015928, NativeElementSize = 80, NativeCountOffset = 2615928, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.StaticProps.Length; i++) { TableReset(value.StaticProps[i]); } value.StaticPropsCount = 0; } },
-                    new TableFieldInfo { Name = "cosmetic_props", Json = "cosmetic_props", TypeName = "RenderCosmeticProp", Id = 0x33408e39f5f480ff, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 8192, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderCosmeticPropTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderFrame)o).CosmeticProps[i]; }, GetCount = delegate(object o) { return ((global::Blockdemo.RenderFrame)o).CosmeticPropsCount; }, SetCount = delegate(object o, int n) { ((global::Blockdemo.RenderFrame)o).CosmeticPropsCount = n; }, MessageSlot = 38, Ordinal = 7, NativeOffset = 2615936, NativeElementSize = 80, NativeCountOffset = 3271296, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.CosmeticProps.Length; i++) { TableReset(value.CosmeticProps[i]); } value.CosmeticPropsCount = 0; } },
-                    new TableFieldInfo { Name = "lasers", Json = "lasers", TypeName = "RenderLaser", Id = 0xd982b77b3e92d16d, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderLaserTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderFrame)o).Lasers[i]; }, GetCount = delegate(object o) { return ((global::Blockdemo.RenderFrame)o).LasersCount; }, SetCount = delegate(object o, int n) { ((global::Blockdemo.RenderFrame)o).LasersCount = n; }, MessageSlot = 39, Ordinal = 8, NativeOffset = 3271304, NativeElementSize = 64, NativeCountOffset = 5319304, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.Lasers.Length; i++) { TableReset(value.Lasers[i]); } value.LasersCount = 0; } },
-                    new TableFieldInfo { Name = "explosions", Json = "explosions", TypeName = "RenderExplosion", Id = 0x876a8c1a85806a69, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderExplosionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderFrame)o).Explosions[i]; }, GetCount = delegate(object o) { return ((global::Blockdemo.RenderFrame)o).ExplosionsCount; }, SetCount = delegate(object o, int n) { ((global::Blockdemo.RenderFrame)o).ExplosionsCount = n; }, MessageSlot = 40, Ordinal = 9, NativeOffset = 5319312, NativeElementSize = 80, NativeCountOffset = 7879312, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.Explosions.Length; i++) { TableReset(value.Explosions[i]); } value.ExplosionsCount = 0; } },
+                    new TableFieldInfo { Name = "version", Json = "version", TypeName = "uint64", Id = 0xbb62c62c9808ea37, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderFrame)o).Version; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderFrame)o).Version = unchecked((ulong)r); }, MessageSlot = 31, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderFrame)o; value.Version = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "cameras", Json = "cameras", TypeName = "RenderCamera", Id = 0x0f9222d2ba7aa2a7, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 1, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderCameraTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderFrame)o).Cameras[i]; }, GetCount = delegate (object o) { return ((global::Blockdemo.RenderFrame)o).CamerasCount; }, SetCount = delegate (object o, int n) { ((global::Blockdemo.RenderFrame)o).CamerasCount = n; }, MessageSlot = 32, Ordinal = 1, NativeOffset = 8, NativeElementSize = 72, NativeCountOffset = 80, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.Cameras.Length; i++) { TableReset(value.Cameras[i]); } value.CamerasCount = 0; } },
+                    new TableFieldInfo { Name = "ships", Json = "ships", TypeName = "RenderShip", Id = 0x294a5c4913e1ad44, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4096, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderShipTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderFrame)o).Ships[i]; }, GetCount = delegate (object o) { return ((global::Blockdemo.RenderFrame)o).ShipsCount; }, SetCount = delegate (object o, int n) { ((global::Blockdemo.RenderFrame)o).ShipsCount = n; }, MessageSlot = 33, Ordinal = 2, NativeOffset = 88, NativeElementSize = 88, NativeCountOffset = 360536, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.Ships.Length; i++) { TableReset(value.Ships[i]); } value.ShipsCount = 0; } },
+                    new TableFieldInfo { Name = "turrets", Json = "turrets", TypeName = "RenderTurret", Id = 0x84f8260bc283608c, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 1024, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderTurretTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderFrame)o).Turrets[i]; }, GetCount = delegate (object o) { return ((global::Blockdemo.RenderFrame)o).TurretsCount; }, SetCount = delegate (object o, int n) { ((global::Blockdemo.RenderFrame)o).TurretsCount = n; }, MessageSlot = 34, Ordinal = 3, NativeOffset = 360544, NativeElementSize = 64, NativeCountOffset = 426080, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.Turrets.Length; i++) { TableReset(value.Turrets[i]); } value.TurretsCount = 0; } },
+                    new TableFieldInfo { Name = "missiles", Json = "missiles", TypeName = "RenderMissile", Id = 0x1c3027194b1ba4d0, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4096, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderMissileTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderFrame)o).Missiles[i]; }, GetCount = delegate (object o) { return ((global::Blockdemo.RenderFrame)o).MissilesCount; }, SetCount = delegate (object o, int n) { ((global::Blockdemo.RenderFrame)o).MissilesCount = n; }, MessageSlot = 35, Ordinal = 4, NativeOffset = 426088, NativeElementSize = 72, NativeCountOffset = 721000, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.Missiles.Length; i++) { TableReset(value.Missiles[i]); } value.MissilesCount = 0; } },
+                    new TableFieldInfo { Name = "dynamic_props", Json = "dynamic_props", TypeName = "RenderDynamicProp", Id = 0x43125398a9903d27, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4096, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderDynamicPropTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderFrame)o).DynamicProps[i]; }, GetCount = delegate (object o) { return ((global::Blockdemo.RenderFrame)o).DynamicPropsCount; }, SetCount = delegate (object o, int n) { ((global::Blockdemo.RenderFrame)o).DynamicPropsCount = n; }, MessageSlot = 36, Ordinal = 5, NativeOffset = 721008, NativeElementSize = 72, NativeCountOffset = 1015920, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.DynamicProps.Length; i++) { TableReset(value.DynamicProps[i]); } value.DynamicPropsCount = 0; } },
+                    new TableFieldInfo { Name = "static_props", Json = "static_props", TypeName = "RenderStaticProp", Id = 0xc1f8d7edff7fcfd2, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 20000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderStaticPropTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderFrame)o).StaticProps[i]; }, GetCount = delegate (object o) { return ((global::Blockdemo.RenderFrame)o).StaticPropsCount; }, SetCount = delegate (object o, int n) { ((global::Blockdemo.RenderFrame)o).StaticPropsCount = n; }, MessageSlot = 37, Ordinal = 6, NativeOffset = 1015928, NativeElementSize = 80, NativeCountOffset = 2615928, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.StaticProps.Length; i++) { TableReset(value.StaticProps[i]); } value.StaticPropsCount = 0; } },
+                    new TableFieldInfo { Name = "cosmetic_props", Json = "cosmetic_props", TypeName = "RenderCosmeticProp", Id = 0x33408e39f5f480ff, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 8192, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderCosmeticPropTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderFrame)o).CosmeticProps[i]; }, GetCount = delegate (object o) { return ((global::Blockdemo.RenderFrame)o).CosmeticPropsCount; }, SetCount = delegate (object o, int n) { ((global::Blockdemo.RenderFrame)o).CosmeticPropsCount = n; }, MessageSlot = 38, Ordinal = 7, NativeOffset = 2615936, NativeElementSize = 80, NativeCountOffset = 3271296, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.CosmeticProps.Length; i++) { TableReset(value.CosmeticProps[i]); } value.CosmeticPropsCount = 0; } },
+                    new TableFieldInfo { Name = "lasers", Json = "lasers", TypeName = "RenderLaser", Id = 0xd982b77b3e92d16d, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderLaserTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderFrame)o).Lasers[i]; }, GetCount = delegate (object o) { return ((global::Blockdemo.RenderFrame)o).LasersCount; }, SetCount = delegate (object o, int n) { ((global::Blockdemo.RenderFrame)o).LasersCount = n; }, MessageSlot = 39, Ordinal = 8, NativeOffset = 3271304, NativeElementSize = 64, NativeCountOffset = 5319304, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.Lasers.Length; i++) { TableReset(value.Lasers[i]); } value.LasersCount = 0; } },
+                    new TableFieldInfo { Name = "explosions", Json = "explosions", TypeName = "RenderExplosion", Id = 0x876a8c1a85806a69, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderExplosionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderFrame)o).Explosions[i]; }, GetCount = delegate (object o) { return ((global::Blockdemo.RenderFrame)o).ExplosionsCount; }, SetCount = delegate (object o, int n) { ((global::Blockdemo.RenderFrame)o).ExplosionsCount = n; }, MessageSlot = 40, Ordinal = 9, NativeOffset = 5319312, NativeElementSize = 80, NativeCountOffset = 7879312, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderFrame)o; for (int i = 0; i < value.Explosions.Length; i++) { TableReset(value.Explosions[i]); } value.ExplosionsCount = 0; } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Blockdemo.RenderFrame)o); };
+                info.Reset = delegate (object o) { TableReset((global::Blockdemo.RenderFrame)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -2153,19 +2153,19 @@ namespace Blockdemo
                 info.StorageSize = 72; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "position", Json = "position", TypeName = "RenderVector3", Id = 0x4cbf3a26fca1d74a, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderCamera)o).Position; }, MessageSlot = 13, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderCamera)o; TableReset(value.Position); } },
-                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderCamera)o).Rotation; }, MessageSlot = 14, Ordinal = 1, NativeOffset = 24, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderCamera)o; TableReset(value.Rotation); } },
-                    new TableFieldInfo { Name = "camera_id", Json = "camera_id", TypeName = "uint32", Id = 0x9f61700f084ab92e, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderCamera)o).CameraId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderCamera)o).CameraId = unchecked((uint)r); }, MessageSlot = 15, Ordinal = 2, NativeOffset = 56, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderCamera)o; value.CameraId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "camera_type", Json = "camera_type", TypeName = "uint32", Id = 0x336d3dc7fffd0c9b, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderCamera)o).CameraType; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderCamera)o).CameraType = unchecked((uint)r); }, MessageSlot = 16, Ordinal = 3, NativeOffset = 60, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderCamera)o; value.CameraType = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "target_object_id", Json = "target_object_id", TypeName = "uint32", Id = 0x6a0c6a156952b9c2, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderCamera)o).TargetObjectId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderCamera)o).TargetObjectId = unchecked((uint)r); }, MessageSlot = 17, Ordinal = 4, NativeOffset = 64, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderCamera)o; value.TargetObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "fov", Json = "fov", TypeName = "float32", Id = 0xdcb27c18fed9e15c, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Blockdemo.RenderCamera)o).Fov)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderCamera)o).Fov = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 18, Ordinal = 5, NativeOffset = 68, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderCamera)o; value.Fov = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), ClampRaw = delegate(ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
+                    new TableFieldInfo { Name = "position", Json = "position", TypeName = "RenderVector3", Id = 0x4cbf3a26fca1d74a, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderCamera)o).Position; }, MessageSlot = 13, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderCamera)o; TableReset(value.Position); } },
+                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderCamera)o).Rotation; }, MessageSlot = 14, Ordinal = 1, NativeOffset = 24, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderCamera)o; TableReset(value.Rotation); } },
+                    new TableFieldInfo { Name = "camera_id", Json = "camera_id", TypeName = "uint32", Id = 0x9f61700f084ab92e, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderCamera)o).CameraId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderCamera)o).CameraId = unchecked((uint)r); }, MessageSlot = 15, Ordinal = 2, NativeOffset = 56, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderCamera)o; value.CameraId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "camera_type", Json = "camera_type", TypeName = "uint32", Id = 0x336d3dc7fffd0c9b, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderCamera)o).CameraType; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderCamera)o).CameraType = unchecked((uint)r); }, MessageSlot = 16, Ordinal = 3, NativeOffset = 60, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderCamera)o; value.CameraType = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "target_object_id", Json = "target_object_id", TypeName = "uint32", Id = 0x6a0c6a156952b9c2, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderCamera)o).TargetObjectId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderCamera)o).TargetObjectId = unchecked((uint)r); }, MessageSlot = 17, Ordinal = 4, NativeOffset = 64, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderCamera)o; value.TargetObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "fov", Json = "fov", TypeName = "float32", Id = 0xdcb27c18fed9e15c, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Blockdemo.RenderCamera)o).Fov)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderCamera)o).Fov = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 18, Ordinal = 5, NativeOffset = 68, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderCamera)o; value.Fov = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), ClampRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Blockdemo.RenderCamera)o); };
+                info.Reset = delegate (object o) { TableReset((global::Blockdemo.RenderCamera)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -2193,24 +2193,24 @@ namespace Blockdemo
                 info.StorageSize = 88; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "position", Json = "position", TypeName = "RenderVector3", Id = 0x4cbf3a26fca1d74a, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderShip)o).Position; }, MessageSlot = 13, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderShip)o; TableReset(value.Position); } },
-                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderShip)o).Rotation; }, MessageSlot = 14, Ordinal = 1, NativeOffset = 24, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderShip)o; TableReset(value.Rotation); } },
-                    new TableFieldInfo { Name = "flags", Json = "flags", TypeName = "ShipFlags", Id = 0x17a3a1a985f75aec, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { return FlagNameShipFlags((int)v); }, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((global::Blockdemo.RenderShip)o).Flags; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).Flags = r; }, MessageSlot = 50, Ordinal = 2, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderShip)o; value.Flags = 0; }, DefaultRaw = 0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = raw; return v; } },
-                    new TableFieldInfo { Name = "object_id", Json = "object_id", TypeName = "uint32", Id = 0x0bdab42c07f19812, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderShip)o).ObjectId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).ObjectId = unchecked((uint)r); }, MessageSlot = 25, Ordinal = 3, NativeOffset = 64, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderShip)o; value.ObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "target_object_id", Json = "target_object_id", TypeName = "uint32", Id = 0x6a0c6a156952b9c2, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderShip)o).TargetObjectId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).TargetObjectId = unchecked((uint)r); }, MessageSlot = 17, Ordinal = 4, NativeOffset = 68, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderShip)o; value.TargetObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "thrust", Json = "thrust", TypeName = "float32", Id = 0xcfd587cb3100cd73, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Blockdemo.RenderShip)o).Thrust)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).Thrust = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 51, Ordinal = 5, NativeOffset = 72, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderShip)o; value.Thrust = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), ClampRaw = delegate(ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
-                    new TableFieldInfo { Name = "object_sequence", Json = "object_sequence", TypeName = "uint8", Id = 0x5de0015285763c46, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderShip)o).ObjectSequence; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).ObjectSequence = unchecked((byte)r); }, MessageSlot = 26, Ordinal = 6, NativeOffset = 76, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderShip)o; value.ObjectSequence = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "ship_type", Json = "ship_type", TypeName = "ShipType", Id = 0x1f7d2e86a2e77268, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { return EnumNameShipType(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.ShipType)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderShip)o).ShipType; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).ShipType = unchecked((ShipType)r); }, MessageSlot = 52, Ordinal = 7, NativeOffset = 77, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderShip)o; value.ShipType = global::Blockdemo.ShipType.None; }, DefaultRaw = (ulong)global::Blockdemo.ShipType.None },
-                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate(ulong v) { return EnumNameTeam(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderShip)o).Team; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 8, NativeOffset = 78, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderShip)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
-                    new TableFieldInfo { Name = "has_target_lock", Json = "has_target_lock", TypeName = "bool", Id = 0x1554fa45a1220171, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((global::Blockdemo.RenderShip)o).HasTargetLock ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).HasTargetLock = r != 0; }, MessageSlot = 53, Ordinal = 9, NativeOffset = 79, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderShip)o; value.HasTargetLock = false; }, DefaultRaw = false ? 1ul : 0ul },
-                    new TableFieldInfo { Name = "predicted_explode", Json = "predicted_explode", TypeName = "bool", Id = 0x4d5be97ba1b9cb81, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((global::Blockdemo.RenderShip)o).PredictedExplode ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).PredictedExplode = r != 0; }, MessageSlot = 54, Ordinal = 10, NativeOffset = 80, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderShip)o; value.PredictedExplode = false; }, DefaultRaw = false ? 1ul : 0ul },
+                    new TableFieldInfo { Name = "position", Json = "position", TypeName = "RenderVector3", Id = 0x4cbf3a26fca1d74a, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderShip)o).Position; }, MessageSlot = 13, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderShip)o; TableReset(value.Position); } },
+                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderShip)o).Rotation; }, MessageSlot = 14, Ordinal = 1, NativeOffset = 24, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderShip)o; TableReset(value.Rotation); } },
+                    new TableFieldInfo { Name = "flags", Json = "flags", TypeName = "ShipFlags", Id = 0x17a3a1a985f75aec, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate (ulong v) { return FlagNameShipFlags((int)v); }, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return ((global::Blockdemo.RenderShip)o).Flags; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).Flags = r; }, MessageSlot = 50, Ordinal = 2, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderShip)o; value.Flags = 0; }, DefaultRaw = 0, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = raw; return v; } },
+                    new TableFieldInfo { Name = "object_id", Json = "object_id", TypeName = "uint32", Id = 0x0bdab42c07f19812, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderShip)o).ObjectId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).ObjectId = unchecked((uint)r); }, MessageSlot = 25, Ordinal = 3, NativeOffset = 64, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderShip)o; value.ObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "target_object_id", Json = "target_object_id", TypeName = "uint32", Id = 0x6a0c6a156952b9c2, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderShip)o).TargetObjectId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).TargetObjectId = unchecked((uint)r); }, MessageSlot = 17, Ordinal = 4, NativeOffset = 68, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderShip)o; value.TargetObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "thrust", Json = "thrust", TypeName = "float32", Id = 0xcfd587cb3100cd73, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Blockdemo.RenderShip)o).Thrust)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).Thrust = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 51, Ordinal = 5, NativeOffset = 72, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderShip)o; value.Thrust = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), ClampRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
+                    new TableFieldInfo { Name = "object_sequence", Json = "object_sequence", TypeName = "uint8", Id = 0x5de0015285763c46, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderShip)o).ObjectSequence; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).ObjectSequence = unchecked((byte)r); }, MessageSlot = 26, Ordinal = 6, NativeOffset = 76, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderShip)o; value.ObjectSequence = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "ship_type", Json = "ship_type", TypeName = "ShipType", Id = 0x1f7d2e86a2e77268, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate (ulong v) { return EnumNameShipType(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.ShipType)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderShip)o).ShipType; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).ShipType = unchecked((ShipType)r); }, MessageSlot = 52, Ordinal = 7, NativeOffset = 77, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderShip)o; value.ShipType = global::Blockdemo.ShipType.None; }, DefaultRaw = (ulong)global::Blockdemo.ShipType.None },
+                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate (ulong v) { return EnumNameTeam(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderShip)o).Team; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 8, NativeOffset = 78, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderShip)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
+                    new TableFieldInfo { Name = "has_target_lock", Json = "has_target_lock", TypeName = "bool", Id = 0x1554fa45a1220171, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return ((global::Blockdemo.RenderShip)o).HasTargetLock ? 1ul : 0ul; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).HasTargetLock = r != 0; }, MessageSlot = 53, Ordinal = 9, NativeOffset = 79, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderShip)o; value.HasTargetLock = false; }, DefaultRaw = false ? 1ul : 0ul },
+                    new TableFieldInfo { Name = "predicted_explode", Json = "predicted_explode", TypeName = "bool", Id = 0x4d5be97ba1b9cb81, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return ((global::Blockdemo.RenderShip)o).PredictedExplode ? 1ul : 0ul; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderShip)o).PredictedExplode = r != 0; }, MessageSlot = 54, Ordinal = 10, NativeOffset = 80, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderShip)o; value.PredictedExplode = false; }, DefaultRaw = false ? 1ul : 0ul },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Blockdemo.RenderShip)o); };
+                info.Reset = delegate (object o) { TableReset((global::Blockdemo.RenderShip)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -2238,22 +2238,22 @@ namespace Blockdemo
                 info.StorageSize = 64; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderTurret)o).Rotation; }, MessageSlot = 14, Ordinal = 0, NativeOffset = 0, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderTurret)o; TableReset(value.Rotation); } },
-                    new TableFieldInfo { Name = "flags", Json = "flags", TypeName = "uint64", Id = 0x17a3a1a985f75aec, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderTurret)o).Flags; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).Flags = unchecked((ulong)r); }, MessageSlot = 20, Ordinal = 1, NativeOffset = 32, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderTurret)o; value.Flags = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "object_id", Json = "object_id", TypeName = "uint32", Id = 0x0bdab42c07f19812, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderTurret)o).ObjectId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).ObjectId = unchecked((uint)r); }, MessageSlot = 25, Ordinal = 2, NativeOffset = 40, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderTurret)o; value.ObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "parent_object_id", Json = "parent_object_id", TypeName = "uint32", Id = 0x0bee7b3cb4046c93, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderTurret)o).ParentObjectId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).ParentObjectId = unchecked((uint)r); }, MessageSlot = 29, Ordinal = 3, NativeOffset = 44, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderTurret)o; value.ParentObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "turret_index", Json = "turret_index", TypeName = "uint32", Id = 0x88a11a6aed541f54, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderTurret)o).TurretIndex; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).TurretIndex = unchecked((uint)r); }, MessageSlot = 56, Ordinal = 4, NativeOffset = 48, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderTurret)o; value.TurretIndex = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "target_object_id", Json = "target_object_id", TypeName = "uint32", Id = 0x6a0c6a156952b9c2, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderTurret)o).TargetObjectId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).TargetObjectId = unchecked((uint)r); }, MessageSlot = 17, Ordinal = 5, NativeOffset = 52, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderTurret)o; value.TargetObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "object_sequence", Json = "object_sequence", TypeName = "uint8", Id = 0x5de0015285763c46, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderTurret)o).ObjectSequence; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).ObjectSequence = unchecked((byte)r); }, MessageSlot = 26, Ordinal = 6, NativeOffset = 56, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderTurret)o; value.ObjectSequence = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate(ulong v) { return EnumNameTeam(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderTurret)o).Team; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 7, NativeOffset = 57, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderTurret)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
-                    new TableFieldInfo { Name = "has_target_lock", Json = "has_target_lock", TypeName = "bool", Id = 0x1554fa45a1220171, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((global::Blockdemo.RenderTurret)o).HasTargetLock ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).HasTargetLock = r != 0; }, MessageSlot = 53, Ordinal = 8, NativeOffset = 58, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderTurret)o; value.HasTargetLock = false; }, DefaultRaw = false ? 1ul : 0ul },
+                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderTurret)o).Rotation; }, MessageSlot = 14, Ordinal = 0, NativeOffset = 0, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderTurret)o; TableReset(value.Rotation); } },
+                    new TableFieldInfo { Name = "flags", Json = "flags", TypeName = "uint64", Id = 0x17a3a1a985f75aec, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderTurret)o).Flags; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).Flags = unchecked((ulong)r); }, MessageSlot = 20, Ordinal = 1, NativeOffset = 32, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderTurret)o; value.Flags = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "object_id", Json = "object_id", TypeName = "uint32", Id = 0x0bdab42c07f19812, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderTurret)o).ObjectId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).ObjectId = unchecked((uint)r); }, MessageSlot = 25, Ordinal = 2, NativeOffset = 40, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderTurret)o; value.ObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "parent_object_id", Json = "parent_object_id", TypeName = "uint32", Id = 0x0bee7b3cb4046c93, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderTurret)o).ParentObjectId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).ParentObjectId = unchecked((uint)r); }, MessageSlot = 29, Ordinal = 3, NativeOffset = 44, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderTurret)o; value.ParentObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "turret_index", Json = "turret_index", TypeName = "uint32", Id = 0x88a11a6aed541f54, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderTurret)o).TurretIndex; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).TurretIndex = unchecked((uint)r); }, MessageSlot = 56, Ordinal = 4, NativeOffset = 48, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderTurret)o; value.TurretIndex = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "target_object_id", Json = "target_object_id", TypeName = "uint32", Id = 0x6a0c6a156952b9c2, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderTurret)o).TargetObjectId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).TargetObjectId = unchecked((uint)r); }, MessageSlot = 17, Ordinal = 5, NativeOffset = 52, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderTurret)o; value.TargetObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "object_sequence", Json = "object_sequence", TypeName = "uint8", Id = 0x5de0015285763c46, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderTurret)o).ObjectSequence; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).ObjectSequence = unchecked((byte)r); }, MessageSlot = 26, Ordinal = 6, NativeOffset = 56, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderTurret)o; value.ObjectSequence = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate (ulong v) { return EnumNameTeam(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderTurret)o).Team; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 7, NativeOffset = 57, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderTurret)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
+                    new TableFieldInfo { Name = "has_target_lock", Json = "has_target_lock", TypeName = "bool", Id = 0x1554fa45a1220171, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return ((global::Blockdemo.RenderTurret)o).HasTargetLock ? 1ul : 0ul; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderTurret)o).HasTargetLock = r != 0; }, MessageSlot = 53, Ordinal = 8, NativeOffset = 58, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderTurret)o; value.HasTargetLock = false; }, DefaultRaw = false ? 1ul : 0ul },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Blockdemo.RenderTurret)o); };
+                info.Reset = delegate (object o) { TableReset((global::Blockdemo.RenderTurret)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -2281,20 +2281,20 @@ namespace Blockdemo
                 info.StorageSize = 72; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "position", Json = "position", TypeName = "RenderVector3", Id = 0x4cbf3a26fca1d74a, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderMissile)o).Position; }, MessageSlot = 13, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderMissile)o; TableReset(value.Position); } },
-                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderMissile)o).Rotation; }, MessageSlot = 14, Ordinal = 1, NativeOffset = 24, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderMissile)o; TableReset(value.Rotation); } },
-                    new TableFieldInfo { Name = "flags", Json = "flags", TypeName = "uint64", Id = 0x17a3a1a985f75aec, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderMissile)o).Flags; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderMissile)o).Flags = unchecked((ulong)r); }, MessageSlot = 20, Ordinal = 2, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderMissile)o; value.Flags = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "object_id", Json = "object_id", TypeName = "uint32", Id = 0x0bdab42c07f19812, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderMissile)o).ObjectId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderMissile)o).ObjectId = unchecked((uint)r); }, MessageSlot = 25, Ordinal = 3, NativeOffset = 64, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderMissile)o; value.ObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "object_sequence", Json = "object_sequence", TypeName = "uint8", Id = 0x5de0015285763c46, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderMissile)o).ObjectSequence; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderMissile)o).ObjectSequence = unchecked((byte)r); }, MessageSlot = 26, Ordinal = 4, NativeOffset = 68, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderMissile)o; value.ObjectSequence = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "missile_type", Json = "missile_type", TypeName = "MissileType", Id = 0x151b2a0e2c07b4bc, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 2, EnumName = delegate(ulong v) { return EnumNameMissileType(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.MissileType)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderMissile)o).MissileType; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderMissile)o).MissileType = unchecked((MissileType)r); }, MessageSlot = 45, Ordinal = 5, NativeOffset = 69, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderMissile)o; value.MissileType = global::Blockdemo.MissileType.None; }, DefaultRaw = (ulong)global::Blockdemo.MissileType.None },
-                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate(ulong v) { return EnumNameTeam(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderMissile)o).Team; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderMissile)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 6, NativeOffset = 70, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderMissile)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
+                    new TableFieldInfo { Name = "position", Json = "position", TypeName = "RenderVector3", Id = 0x4cbf3a26fca1d74a, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderMissile)o).Position; }, MessageSlot = 13, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderMissile)o; TableReset(value.Position); } },
+                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderMissile)o).Rotation; }, MessageSlot = 14, Ordinal = 1, NativeOffset = 24, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderMissile)o; TableReset(value.Rotation); } },
+                    new TableFieldInfo { Name = "flags", Json = "flags", TypeName = "uint64", Id = 0x17a3a1a985f75aec, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderMissile)o).Flags; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderMissile)o).Flags = unchecked((ulong)r); }, MessageSlot = 20, Ordinal = 2, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderMissile)o; value.Flags = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "object_id", Json = "object_id", TypeName = "uint32", Id = 0x0bdab42c07f19812, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderMissile)o).ObjectId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderMissile)o).ObjectId = unchecked((uint)r); }, MessageSlot = 25, Ordinal = 3, NativeOffset = 64, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderMissile)o; value.ObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "object_sequence", Json = "object_sequence", TypeName = "uint8", Id = 0x5de0015285763c46, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderMissile)o).ObjectSequence; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderMissile)o).ObjectSequence = unchecked((byte)r); }, MessageSlot = 26, Ordinal = 4, NativeOffset = 68, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderMissile)o; value.ObjectSequence = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "missile_type", Json = "missile_type", TypeName = "MissileType", Id = 0x151b2a0e2c07b4bc, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 2, EnumName = delegate (ulong v) { return EnumNameMissileType(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.MissileType)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderMissile)o).MissileType; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderMissile)o).MissileType = unchecked((MissileType)r); }, MessageSlot = 45, Ordinal = 5, NativeOffset = 69, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderMissile)o; value.MissileType = global::Blockdemo.MissileType.None; }, DefaultRaw = (ulong)global::Blockdemo.MissileType.None },
+                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate (ulong v) { return EnumNameTeam(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderMissile)o).Team; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderMissile)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 6, NativeOffset = 70, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderMissile)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Blockdemo.RenderMissile)o); };
+                info.Reset = delegate (object o) { TableReset((global::Blockdemo.RenderMissile)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -2322,20 +2322,20 @@ namespace Blockdemo
                 info.StorageSize = 72; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "position", Json = "position", TypeName = "RenderVector3", Id = 0x4cbf3a26fca1d74a, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderDynamicProp)o).Position; }, MessageSlot = 13, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderDynamicProp)o; TableReset(value.Position); } },
-                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderDynamicProp)o).Rotation; }, MessageSlot = 14, Ordinal = 1, NativeOffset = 24, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderDynamicProp)o; TableReset(value.Rotation); } },
-                    new TableFieldInfo { Name = "flags", Json = "flags", TypeName = "uint64", Id = 0x17a3a1a985f75aec, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderDynamicProp)o).Flags; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderDynamicProp)o).Flags = unchecked((ulong)r); }, MessageSlot = 20, Ordinal = 2, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderDynamicProp)o; value.Flags = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "object_id", Json = "object_id", TypeName = "uint32", Id = 0x0bdab42c07f19812, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderDynamicProp)o).ObjectId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderDynamicProp)o).ObjectId = unchecked((uint)r); }, MessageSlot = 25, Ordinal = 3, NativeOffset = 64, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderDynamicProp)o; value.ObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "object_sequence", Json = "object_sequence", TypeName = "uint8", Id = 0x5de0015285763c46, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderDynamicProp)o).ObjectSequence; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderDynamicProp)o).ObjectSequence = unchecked((byte)r); }, MessageSlot = 26, Ordinal = 4, NativeOffset = 68, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderDynamicProp)o; value.ObjectSequence = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "prop_type", Json = "prop_type", TypeName = "PropType", Id = 0xe5626f155e4c5dad, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { return EnumNamePropType(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.PropType)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderDynamicProp)o).PropType; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderDynamicProp)o).PropType = unchecked((PropType)r); }, MessageSlot = 23, Ordinal = 5, NativeOffset = 69, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderDynamicProp)o; value.PropType = global::Blockdemo.PropType.None; }, DefaultRaw = (ulong)global::Blockdemo.PropType.None },
-                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate(ulong v) { return EnumNameTeam(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderDynamicProp)o).Team; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderDynamicProp)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 6, NativeOffset = 70, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderDynamicProp)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
+                    new TableFieldInfo { Name = "position", Json = "position", TypeName = "RenderVector3", Id = 0x4cbf3a26fca1d74a, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderDynamicProp)o).Position; }, MessageSlot = 13, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderDynamicProp)o; TableReset(value.Position); } },
+                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderDynamicProp)o).Rotation; }, MessageSlot = 14, Ordinal = 1, NativeOffset = 24, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderDynamicProp)o; TableReset(value.Rotation); } },
+                    new TableFieldInfo { Name = "flags", Json = "flags", TypeName = "uint64", Id = 0x17a3a1a985f75aec, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderDynamicProp)o).Flags; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderDynamicProp)o).Flags = unchecked((ulong)r); }, MessageSlot = 20, Ordinal = 2, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderDynamicProp)o; value.Flags = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "object_id", Json = "object_id", TypeName = "uint32", Id = 0x0bdab42c07f19812, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderDynamicProp)o).ObjectId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderDynamicProp)o).ObjectId = unchecked((uint)r); }, MessageSlot = 25, Ordinal = 3, NativeOffset = 64, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderDynamicProp)o; value.ObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "object_sequence", Json = "object_sequence", TypeName = "uint8", Id = 0x5de0015285763c46, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderDynamicProp)o).ObjectSequence; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderDynamicProp)o).ObjectSequence = unchecked((byte)r); }, MessageSlot = 26, Ordinal = 4, NativeOffset = 68, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderDynamicProp)o; value.ObjectSequence = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "prop_type", Json = "prop_type", TypeName = "PropType", Id = 0xe5626f155e4c5dad, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate (ulong v) { return EnumNamePropType(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.PropType)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderDynamicProp)o).PropType; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderDynamicProp)o).PropType = unchecked((PropType)r); }, MessageSlot = 23, Ordinal = 5, NativeOffset = 69, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderDynamicProp)o; value.PropType = global::Blockdemo.PropType.None; }, DefaultRaw = (ulong)global::Blockdemo.PropType.None },
+                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate (ulong v) { return EnumNameTeam(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderDynamicProp)o).Team; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderDynamicProp)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 6, NativeOffset = 70, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderDynamicProp)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Blockdemo.RenderDynamicProp)o); };
+                info.Reset = delegate (object o) { TableReset((global::Blockdemo.RenderDynamicProp)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -2363,20 +2363,20 @@ namespace Blockdemo
                 info.StorageSize = 80; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "position", Json = "position", TypeName = "RenderVector3", Id = 0x4cbf3a26fca1d74a, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderStaticProp)o).Position; }, MessageSlot = 13, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderStaticProp)o; TableReset(value.Position); } },
-                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderStaticProp)o).Rotation; }, MessageSlot = 14, Ordinal = 1, NativeOffset = 24, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderStaticProp)o; TableReset(value.Rotation); } },
-                    new TableFieldInfo { Name = "scale", Json = "scale", TypeName = "float64", Id = 0x6aacb9fbb71a1d91, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderStaticProp)o).Scale)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderStaticProp)o).Scale = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 19, Ordinal = 2, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderStaticProp)o; value.Scale = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
-                    new TableFieldInfo { Name = "flags", Json = "flags", TypeName = "uint64", Id = 0x17a3a1a985f75aec, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderStaticProp)o).Flags; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderStaticProp)o).Flags = unchecked((ulong)r); }, MessageSlot = 20, Ordinal = 3, NativeOffset = 64, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderStaticProp)o; value.Flags = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "static_prop_id", Json = "static_prop_id", TypeName = "uint32", Id = 0xd23da7ab574b95c3, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderStaticProp)o).StaticPropId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderStaticProp)o).StaticPropId = unchecked((uint)r); }, MessageSlot = 55, Ordinal = 4, NativeOffset = 72, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderStaticProp)o; value.StaticPropId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "prop_type", Json = "prop_type", TypeName = "PropType", Id = 0xe5626f155e4c5dad, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { return EnumNamePropType(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.PropType)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderStaticProp)o).PropType; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderStaticProp)o).PropType = unchecked((PropType)r); }, MessageSlot = 23, Ordinal = 5, NativeOffset = 76, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderStaticProp)o; value.PropType = global::Blockdemo.PropType.None; }, DefaultRaw = (ulong)global::Blockdemo.PropType.None },
-                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate(ulong v) { return EnumNameTeam(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderStaticProp)o).Team; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderStaticProp)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 6, NativeOffset = 77, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderStaticProp)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
+                    new TableFieldInfo { Name = "position", Json = "position", TypeName = "RenderVector3", Id = 0x4cbf3a26fca1d74a, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderStaticProp)o).Position; }, MessageSlot = 13, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderStaticProp)o; TableReset(value.Position); } },
+                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderStaticProp)o).Rotation; }, MessageSlot = 14, Ordinal = 1, NativeOffset = 24, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderStaticProp)o; TableReset(value.Rotation); } },
+                    new TableFieldInfo { Name = "scale", Json = "scale", TypeName = "float64", Id = 0x6aacb9fbb71a1d91, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderStaticProp)o).Scale)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderStaticProp)o).Scale = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 19, Ordinal = 2, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderStaticProp)o; value.Scale = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "flags", Json = "flags", TypeName = "uint64", Id = 0x17a3a1a985f75aec, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderStaticProp)o).Flags; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderStaticProp)o).Flags = unchecked((ulong)r); }, MessageSlot = 20, Ordinal = 3, NativeOffset = 64, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderStaticProp)o; value.Flags = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "static_prop_id", Json = "static_prop_id", TypeName = "uint32", Id = 0xd23da7ab574b95c3, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderStaticProp)o).StaticPropId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderStaticProp)o).StaticPropId = unchecked((uint)r); }, MessageSlot = 55, Ordinal = 4, NativeOffset = 72, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderStaticProp)o; value.StaticPropId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "prop_type", Json = "prop_type", TypeName = "PropType", Id = 0xe5626f155e4c5dad, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate (ulong v) { return EnumNamePropType(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.PropType)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderStaticProp)o).PropType; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderStaticProp)o).PropType = unchecked((PropType)r); }, MessageSlot = 23, Ordinal = 5, NativeOffset = 76, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderStaticProp)o; value.PropType = global::Blockdemo.PropType.None; }, DefaultRaw = (ulong)global::Blockdemo.PropType.None },
+                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate (ulong v) { return EnumNameTeam(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderStaticProp)o).Team; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderStaticProp)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 6, NativeOffset = 77, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderStaticProp)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Blockdemo.RenderStaticProp)o); };
+                info.Reset = delegate (object o) { TableReset((global::Blockdemo.RenderStaticProp)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -2404,21 +2404,21 @@ namespace Blockdemo
                 info.StorageSize = 80; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "position", Json = "position", TypeName = "RenderVector3", Id = 0x4cbf3a26fca1d74a, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderCosmeticProp)o).Position; }, MessageSlot = 13, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; TableReset(value.Position); } },
-                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderCosmeticProp)o).Rotation; }, MessageSlot = 14, Ordinal = 1, NativeOffset = 24, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; TableReset(value.Rotation); } },
-                    new TableFieldInfo { Name = "scale", Json = "scale", TypeName = "float64", Id = 0x6aacb9fbb71a1d91, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderCosmeticProp)o).Scale)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderCosmeticProp)o).Scale = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 19, Ordinal = 2, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; value.Scale = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
-                    new TableFieldInfo { Name = "flags", Json = "flags", TypeName = "uint64", Id = 0x17a3a1a985f75aec, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderCosmeticProp)o).Flags; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderCosmeticProp)o).Flags = unchecked((ulong)r); }, MessageSlot = 20, Ordinal = 3, NativeOffset = 64, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; value.Flags = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "cosmetic_prop_id", Json = "cosmetic_prop_id", TypeName = "uint32", Id = 0xb66e4449e56b2e26, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderCosmeticProp)o).CosmeticPropId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderCosmeticProp)o).CosmeticPropId = unchecked((uint)r); }, MessageSlot = 21, Ordinal = 4, NativeOffset = 72, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; value.CosmeticPropId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "prop_sequence", Json = "prop_sequence", TypeName = "uint8", Id = 0x4d7bf73bcbddc228, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderCosmeticProp)o).PropSequence; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderCosmeticProp)o).PropSequence = unchecked((byte)r); }, MessageSlot = 22, Ordinal = 5, NativeOffset = 76, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; value.PropSequence = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "prop_type", Json = "prop_type", TypeName = "PropType", Id = 0xe5626f155e4c5dad, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { return EnumNamePropType(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.PropType)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderCosmeticProp)o).PropType; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderCosmeticProp)o).PropType = unchecked((PropType)r); }, MessageSlot = 23, Ordinal = 6, NativeOffset = 77, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; value.PropType = global::Blockdemo.PropType.None; }, DefaultRaw = (ulong)global::Blockdemo.PropType.None },
-                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate(ulong v) { return EnumNameTeam(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderCosmeticProp)o).Team; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderCosmeticProp)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 7, NativeOffset = 78, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
+                    new TableFieldInfo { Name = "position", Json = "position", TypeName = "RenderVector3", Id = 0x4cbf3a26fca1d74a, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderCosmeticProp)o).Position; }, MessageSlot = 13, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; TableReset(value.Position); } },
+                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderCosmeticProp)o).Rotation; }, MessageSlot = 14, Ordinal = 1, NativeOffset = 24, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; TableReset(value.Rotation); } },
+                    new TableFieldInfo { Name = "scale", Json = "scale", TypeName = "float64", Id = 0x6aacb9fbb71a1d91, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderCosmeticProp)o).Scale)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderCosmeticProp)o).Scale = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 19, Ordinal = 2, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; value.Scale = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "flags", Json = "flags", TypeName = "uint64", Id = 0x17a3a1a985f75aec, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderCosmeticProp)o).Flags; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderCosmeticProp)o).Flags = unchecked((ulong)r); }, MessageSlot = 20, Ordinal = 3, NativeOffset = 64, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; value.Flags = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "cosmetic_prop_id", Json = "cosmetic_prop_id", TypeName = "uint32", Id = 0xb66e4449e56b2e26, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderCosmeticProp)o).CosmeticPropId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderCosmeticProp)o).CosmeticPropId = unchecked((uint)r); }, MessageSlot = 21, Ordinal = 4, NativeOffset = 72, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; value.CosmeticPropId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "prop_sequence", Json = "prop_sequence", TypeName = "uint8", Id = 0x4d7bf73bcbddc228, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderCosmeticProp)o).PropSequence; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderCosmeticProp)o).PropSequence = unchecked((byte)r); }, MessageSlot = 22, Ordinal = 5, NativeOffset = 76, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; value.PropSequence = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "prop_type", Json = "prop_type", TypeName = "PropType", Id = 0xe5626f155e4c5dad, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate (ulong v) { return EnumNamePropType(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.PropType)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderCosmeticProp)o).PropType; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderCosmeticProp)o).PropType = unchecked((PropType)r); }, MessageSlot = 23, Ordinal = 6, NativeOffset = 77, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; value.PropType = global::Blockdemo.PropType.None; }, DefaultRaw = (ulong)global::Blockdemo.PropType.None },
+                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate (ulong v) { return EnumNameTeam(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderCosmeticProp)o).Team; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderCosmeticProp)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 7, NativeOffset = 78, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderCosmeticProp)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Blockdemo.RenderCosmeticProp)o); };
+                info.Reset = delegate (object o) { TableReset((global::Blockdemo.RenderCosmeticProp)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -2446,19 +2446,19 @@ namespace Blockdemo
                 info.StorageSize = 64; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "start", Json = "start", TypeName = "RenderVector3", Id = 0xee5d97ad45ad251f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderLaser)o).Start; }, MessageSlot = 41, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderLaser)o; TableReset(value.Start); } },
-                    new TableFieldInfo { Name = "finish", Json = "finish", TypeName = "RenderVector3", Id = 0x6917a5bab91540f2, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderLaser)o).Finish; }, MessageSlot = 42, Ordinal = 1, NativeOffset = 24, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderLaser)o; TableReset(value.Finish); } },
-                    new TableFieldInfo { Name = "t", Json = "t", TypeName = "float64", Id = 0xaf63e94c860202a3, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderLaser)o).T)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderLaser)o).T = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 27, Ordinal = 2, NativeOffset = 48, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderLaser)o; value.T = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
-                    new TableFieldInfo { Name = "laser_id", Json = "laser_id", TypeName = "uint32", Id = 0xcd29c05f390294ec, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderLaser)o).LaserId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderLaser)o).LaserId = unchecked((uint)r); }, MessageSlot = 43, Ordinal = 3, NativeOffset = 56, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderLaser)o; value.LaserId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "laser_type", Json = "laser_type", TypeName = "LaserType", Id = 0x96b593c242133841, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 2, EnumName = delegate(ulong v) { return EnumNameLaserType(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.LaserType)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderLaser)o).LaserType; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderLaser)o).LaserType = unchecked((LaserType)r); }, MessageSlot = 44, Ordinal = 4, NativeOffset = 60, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderLaser)o; value.LaserType = global::Blockdemo.LaserType.None; }, DefaultRaw = (ulong)global::Blockdemo.LaserType.None },
-                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate(ulong v) { return EnumNameTeam(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderLaser)o).Team; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderLaser)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 5, NativeOffset = 61, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderLaser)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
+                    new TableFieldInfo { Name = "start", Json = "start", TypeName = "RenderVector3", Id = 0xee5d97ad45ad251f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderLaser)o).Start; }, MessageSlot = 41, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderLaser)o; TableReset(value.Start); } },
+                    new TableFieldInfo { Name = "finish", Json = "finish", TypeName = "RenderVector3", Id = 0x6917a5bab91540f2, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderLaser)o).Finish; }, MessageSlot = 42, Ordinal = 1, NativeOffset = 24, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderLaser)o; TableReset(value.Finish); } },
+                    new TableFieldInfo { Name = "t", Json = "t", TypeName = "float64", Id = 0xaf63e94c860202a3, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderLaser)o).T)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderLaser)o).T = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 27, Ordinal = 2, NativeOffset = 48, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderLaser)o; value.T = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "laser_id", Json = "laser_id", TypeName = "uint32", Id = 0xcd29c05f390294ec, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderLaser)o).LaserId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderLaser)o).LaserId = unchecked((uint)r); }, MessageSlot = 43, Ordinal = 3, NativeOffset = 56, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderLaser)o; value.LaserId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "laser_type", Json = "laser_type", TypeName = "LaserType", Id = 0x96b593c242133841, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 2, EnumName = delegate (ulong v) { return EnumNameLaserType(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.LaserType)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderLaser)o).LaserType; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderLaser)o).LaserType = unchecked((LaserType)r); }, MessageSlot = 44, Ordinal = 4, NativeOffset = 60, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderLaser)o; value.LaserType = global::Blockdemo.LaserType.None; }, DefaultRaw = (ulong)global::Blockdemo.LaserType.None },
+                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate (ulong v) { return EnumNameTeam(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderLaser)o).Team; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderLaser)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 5, NativeOffset = 61, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderLaser)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Blockdemo.RenderLaser)o); };
+                info.Reset = delegate (object o) { TableReset((global::Blockdemo.RenderLaser)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -2486,20 +2486,20 @@ namespace Blockdemo
                 info.StorageSize = 80; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "position", Json = "position", TypeName = "RenderVector3", Id = 0x4cbf3a26fca1d74a, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderExplosion)o).Position; }, MessageSlot = 13, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderExplosion)o; TableReset(value.Position); } },
-                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Blockdemo.RenderExplosion)o).Rotation; }, MessageSlot = 14, Ordinal = 1, NativeOffset = 24, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderExplosion)o; TableReset(value.Rotation); } },
-                    new TableFieldInfo { Name = "t", Json = "t", TypeName = "float64", Id = 0xaf63e94c860202a3, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderExplosion)o).T)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderExplosion)o).T = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 27, Ordinal = 2, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderExplosion)o; value.T = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
-                    new TableFieldInfo { Name = "explosion_id", Json = "explosion_id", TypeName = "uint32", Id = 0xfd7f3fa0b16ed778, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderExplosion)o).ExplosionId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderExplosion)o).ExplosionId = unchecked((uint)r); }, MessageSlot = 28, Ordinal = 3, NativeOffset = 64, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderExplosion)o; value.ExplosionId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "parent_object_id", Json = "parent_object_id", TypeName = "uint32", Id = 0x0bee7b3cb4046c93, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderExplosion)o).ParentObjectId; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderExplosion)o).ParentObjectId = unchecked((uint)r); }, MessageSlot = 29, Ordinal = 4, NativeOffset = 68, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderExplosion)o; value.ParentObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "explosion_type", Json = "explosion_type", TypeName = "ExplosionType", Id = 0xdc89eb9cd3393be5, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 2, EnumName = delegate(ulong v) { return EnumNameExplosionType(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.ExplosionType)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderExplosion)o).ExplosionType; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderExplosion)o).ExplosionType = unchecked((ExplosionType)r); }, MessageSlot = 30, Ordinal = 5, NativeOffset = 72, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderExplosion)o; value.ExplosionType = global::Blockdemo.ExplosionType.None; }, DefaultRaw = (ulong)global::Blockdemo.ExplosionType.None },
-                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate(ulong v) { return EnumNameTeam(v); }, VariantId = delegate(ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Blockdemo.RenderExplosion)o).Team; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderExplosion)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 6, NativeOffset = 73, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderExplosion)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
+                    new TableFieldInfo { Name = "position", Json = "position", TypeName = "RenderVector3", Id = 0x4cbf3a26fca1d74a, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderVector3TableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderExplosion)o).Position; }, MessageSlot = 13, Ordinal = 0, NativeOffset = 0, NativeElementSize = 24, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderExplosion)o; TableReset(value.Position); } },
+                    new TableFieldInfo { Name = "rotation", Json = "rotation", TypeName = "RenderQuaternion", Id = 0xb51afb05cd34709f, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RenderQuaternionTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Blockdemo.RenderExplosion)o).Rotation; }, MessageSlot = 14, Ordinal = 1, NativeOffset = 24, NativeElementSize = 32, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderExplosion)o; TableReset(value.Rotation); } },
+                    new TableFieldInfo { Name = "t", Json = "t", TypeName = "float64", Id = 0xaf63e94c860202a3, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderExplosion)o).T)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderExplosion)o).T = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 27, Ordinal = 2, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderExplosion)o; value.T = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "explosion_id", Json = "explosion_id", TypeName = "uint32", Id = 0xfd7f3fa0b16ed778, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderExplosion)o).ExplosionId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderExplosion)o).ExplosionId = unchecked((uint)r); }, MessageSlot = 28, Ordinal = 3, NativeOffset = 64, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderExplosion)o; value.ExplosionId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "parent_object_id", Json = "parent_object_id", TypeName = "uint32", Id = 0x0bee7b3cb4046c93, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderExplosion)o).ParentObjectId; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderExplosion)o).ParentObjectId = unchecked((uint)r); }, MessageSlot = 29, Ordinal = 4, NativeOffset = 68, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderExplosion)o; value.ParentObjectId = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "explosion_type", Json = "explosion_type", TypeName = "ExplosionType", Id = 0xdc89eb9cd3393be5, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 2, EnumName = delegate (ulong v) { return EnumNameExplosionType(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.ExplosionType)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderExplosion)o).ExplosionType; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderExplosion)o).ExplosionType = unchecked((ExplosionType)r); }, MessageSlot = 30, Ordinal = 5, NativeOffset = 72, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderExplosion)o; value.ExplosionType = global::Blockdemo.ExplosionType.None; }, DefaultRaw = (ulong)global::Blockdemo.ExplosionType.None },
+                    new TableFieldInfo { Name = "team", Json = "team", TypeName = "Team", Id = 0xfa23d9ef19afc32c, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 4, EnumName = delegate (ulong v) { return EnumNameTeam(v); }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Blockdemo.Team)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.RenderExplosion)o).Team; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderExplosion)o).Team = unchecked((Team)r); }, MessageSlot = 24, Ordinal = 6, NativeOffset = 73, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderExplosion)o; value.Team = global::Blockdemo.Team.None; }, DefaultRaw = (ulong)global::Blockdemo.Team.None },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Blockdemo.RenderExplosion)o); };
+                info.Reset = delegate (object o) { TableReset((global::Blockdemo.RenderExplosion)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -2527,16 +2527,16 @@ namespace Blockdemo
                 info.StorageSize = 24; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "x", Json = "x", TypeName = "float64", Id = 0xaf63f54c86021707, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderVector3)o).X)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderVector3)o).X = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 46, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderVector3)o; value.X = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
-                    new TableFieldInfo { Name = "y", Json = "y", TypeName = "float64", Id = 0xaf63f44c86021554, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderVector3)o).Y)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderVector3)o).Y = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 47, Ordinal = 1, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderVector3)o; value.Y = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
-                    new TableFieldInfo { Name = "z", Json = "z", TypeName = "float64", Id = 0xaf63f74c86021a6d, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderVector3)o).Z)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderVector3)o).Z = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 48, Ordinal = 2, NativeOffset = 16, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderVector3)o; value.Z = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "x", Json = "x", TypeName = "float64", Id = 0xaf63f54c86021707, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderVector3)o).X)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderVector3)o).X = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 46, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderVector3)o; value.X = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "y", Json = "y", TypeName = "float64", Id = 0xaf63f44c86021554, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderVector3)o).Y)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderVector3)o).Y = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 47, Ordinal = 1, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderVector3)o; value.Y = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "z", Json = "z", TypeName = "float64", Id = 0xaf63f74c86021a6d, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderVector3)o).Z)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderVector3)o).Z = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 48, Ordinal = 2, NativeOffset = 16, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderVector3)o; value.Z = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Blockdemo.RenderVector3)o); };
+                info.Reset = delegate (object o) { TableReset((global::Blockdemo.RenderVector3)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -2564,17 +2564,17 @@ namespace Blockdemo
                 info.StorageSize = 32; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "x", Json = "x", TypeName = "float64", Id = 0xaf63f54c86021707, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderQuaternion)o).X)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderQuaternion)o).X = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 46, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderQuaternion)o; value.X = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
-                    new TableFieldInfo { Name = "y", Json = "y", TypeName = "float64", Id = 0xaf63f44c86021554, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderQuaternion)o).Y)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderQuaternion)o).Y = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 47, Ordinal = 1, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderQuaternion)o; value.Y = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
-                    new TableFieldInfo { Name = "z", Json = "z", TypeName = "float64", Id = 0xaf63f74c86021a6d, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderQuaternion)o).Z)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderQuaternion)o).Z = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 48, Ordinal = 2, NativeOffset = 16, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderQuaternion)o; value.Z = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
-                    new TableFieldInfo { Name = "w", Json = "w", TypeName = "float64", Id = 0xaf63ea4c86020456, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderQuaternion)o).W)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Blockdemo.RenderQuaternion)o).W = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 49, Ordinal = 3, NativeOffset = 24, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Blockdemo.RenderQuaternion)o; value.W = 1.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(1.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "x", Json = "x", TypeName = "float64", Id = 0xaf63f54c86021707, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderQuaternion)o).X)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderQuaternion)o).X = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 46, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderQuaternion)o; value.X = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "y", Json = "y", TypeName = "float64", Id = 0xaf63f44c86021554, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderQuaternion)o).Y)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderQuaternion)o).Y = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 47, Ordinal = 1, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderQuaternion)o; value.Y = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "z", Json = "z", TypeName = "float64", Id = 0xaf63f74c86021a6d, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderQuaternion)o).Z)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderQuaternion)o).Z = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 48, Ordinal = 2, NativeOffset = 16, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderQuaternion)o; value.Z = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "w", Json = "w", TypeName = "float64", Id = 0xaf63ea4c86020456, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.RenderQuaternion)o).W)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.RenderQuaternion)o).W = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 49, Ordinal = 3, NativeOffset = 24, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.RenderQuaternion)o; value.W = 1.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(1.0)), ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Blockdemo.RenderQuaternion)o); };
+                info.Reset = delegate (object o) { TableReset((global::Blockdemo.RenderQuaternion)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -3074,6 +3074,273 @@ namespace Blockdemo
             new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Fov = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Fov = (float)d, reset: (t) => { t.Fov = 0.0f; }),
         };
 
+        private static void RenderCameraFixedSetRaw(RenderCamera t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Position.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Position.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.CameraId = unchecked((uint)v); break;
+                case 8: t.CameraType = unchecked((uint)v); break;
+                case 9: t.TargetObjectId = unchecked((uint)v); break;
+                case 10: t.Fov = BitConverter.UInt32BitsToSingle((uint)v); break;
+                default: break;
+            }
+        }
+
+        private static void RenderCameraFixedSetDouble(RenderCamera t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = d; break;
+                case 1: t.Position.Y = d; break;
+                case 2: t.Position.Z = d; break;
+                case 3: t.Rotation.X = d; break;
+                case 4: t.Rotation.Y = d; break;
+                case 5: t.Rotation.Z = d; break;
+                case 6: t.Rotation.W = d; break;
+                case 10: t.Fov = (float)d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderCameraFixedSetWide(RenderCamera t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderCameraFixedSetBytes(RenderCamera t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderCameraFixedSetChars(RenderCamera t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderCameraFixedResetSlot(RenderCamera t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Position.X = 0.0; } break;
+                case 1: { t.Position.Y = 0.0; } break;
+                case 2: { t.Position.Z = 0.0; } break;
+                case 3: { t.Rotation.X = 0.0; } break;
+                case 4: { t.Rotation.Y = 0.0; } break;
+                case 5: { t.Rotation.Z = 0.0; } break;
+                case 6: { t.Rotation.W = 1.0; } break;
+                case 7: { t.CameraId = 0; } break;
+                case 8: { t.CameraType = 0; } break;
+                case 9: { t.TargetObjectId = 0; } break;
+                case 10: { t.Fov = 0.0f; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderCameraFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderCamera dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderCameraFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderCameraFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderCamera dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderCameraFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderCameraFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderCameraFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderCameraFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderCameraFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderCameraFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderCameraFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderCameraFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderCameraFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderCameraFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderCameraFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderCameraFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderCameraFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderCameraFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderCameraFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderCameraFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderCameraFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
+
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
         // identity plan it is empty and the identity read writes no slot twice.
@@ -3248,7 +3515,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != RenderCameraFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = RenderCameraFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -3301,9 +3568,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderCamera(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCameraFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCameraFixedSlots, values[k]); }
+                RenderCameraFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderCameraFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderCameraFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderCameraFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -3341,7 +3610,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderCameraFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderCameraFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -3443,6 +3712,283 @@ namespace Blockdemo
             new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.HasTargetLock = v != 0, reset: (t) => { t.HasTargetLock = false; }),
             new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.PredictedExplode = v != 0, reset: (t) => { t.PredictedExplode = false; }),
         };
+
+        private static void RenderShipFixedSetRaw(RenderShip t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Position.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Position.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.Flags = v; break;
+                case 8: t.ObjectId = unchecked((uint)v); break;
+                case 9: t.TargetObjectId = unchecked((uint)v); break;
+                case 10: t.Thrust = BitConverter.UInt32BitsToSingle((uint)v); break;
+                case 11: t.ObjectSequence = unchecked((byte)v); break;
+                case 12: { t.ShipType = (ShipType)v; } break;
+                case 13: { t.Team = (Team)v; } break;
+                case 14: t.HasTargetLock = v != 0; break;
+                case 15: t.PredictedExplode = v != 0; break;
+                default: break;
+            }
+        }
+
+        private static void RenderShipFixedSetDouble(RenderShip t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = d; break;
+                case 1: t.Position.Y = d; break;
+                case 2: t.Position.Z = d; break;
+                case 3: t.Rotation.X = d; break;
+                case 4: t.Rotation.Y = d; break;
+                case 5: t.Rotation.Z = d; break;
+                case 6: t.Rotation.W = d; break;
+                case 10: t.Thrust = (float)d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderShipFixedSetWide(RenderShip t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderShipFixedSetBytes(RenderShip t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderShipFixedSetChars(RenderShip t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderShipFixedResetSlot(RenderShip t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Position.X = 0.0; } break;
+                case 1: { t.Position.Y = 0.0; } break;
+                case 2: { t.Position.Z = 0.0; } break;
+                case 3: { t.Rotation.X = 0.0; } break;
+                case 4: { t.Rotation.Y = 0.0; } break;
+                case 5: { t.Rotation.Z = 0.0; } break;
+                case 6: { t.Rotation.W = 1.0; } break;
+                case 7: { t.Flags = 0; } break;
+                case 8: { t.ObjectId = 0; } break;
+                case 9: { t.TargetObjectId = 0; } break;
+                case 10: { t.Thrust = 0.0f; } break;
+                case 11: { t.ObjectSequence = 0; } break;
+                case 12: { t.ShipType = global::Blockdemo.ShipType.None; } break;
+                case 13: { t.Team = global::Blockdemo.Team.None; } break;
+                case 14: { t.HasTargetLock = false; } break;
+                case 15: { t.PredictedExplode = false; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderShipFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderShip dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderShipFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderShipFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderShip dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderShipFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderShipFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderShipFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderShipFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderShipFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderShipFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderShipFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderShipFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderShipFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderShipFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderShipFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderShipFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderShipFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderShipFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderShipFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderShipFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderShipFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -3635,7 +4181,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != RenderShipFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = RenderShipFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -3688,9 +4234,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderShip(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderShipFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderShipFixedSlots, values[k]); }
+                RenderShipFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderShipFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderShipFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderShipFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -3729,7 +4277,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderShipFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderShipFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -3811,6 +4359,271 @@ namespace Blockdemo
             new TableFixedSlot<RenderTurret>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
             new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.HasTargetLock = v != 0, reset: (t) => { t.HasTargetLock = false; }),
         };
+
+        private static void RenderTurretFixedSetRaw(RenderTurret t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Flags = unchecked((ulong)v); break;
+                case 5: t.ObjectId = unchecked((uint)v); break;
+                case 6: t.ParentObjectId = unchecked((uint)v); break;
+                case 7: t.TurretIndex = unchecked((uint)v); break;
+                case 8: t.TargetObjectId = unchecked((uint)v); break;
+                case 9: t.ObjectSequence = unchecked((byte)v); break;
+                case 10: { t.Team = (Team)v; } break;
+                case 11: t.HasTargetLock = v != 0; break;
+                default: break;
+            }
+        }
+
+        private static void RenderTurretFixedSetDouble(RenderTurret t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Rotation.X = d; break;
+                case 1: t.Rotation.Y = d; break;
+                case 2: t.Rotation.Z = d; break;
+                case 3: t.Rotation.W = d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderTurretFixedSetWide(RenderTurret t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderTurretFixedSetBytes(RenderTurret t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderTurretFixedSetChars(RenderTurret t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderTurretFixedResetSlot(RenderTurret t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Rotation.X = 0.0; } break;
+                case 1: { t.Rotation.Y = 0.0; } break;
+                case 2: { t.Rotation.Z = 0.0; } break;
+                case 3: { t.Rotation.W = 1.0; } break;
+                case 4: { t.Flags = 0; } break;
+                case 5: { t.ObjectId = 0; } break;
+                case 6: { t.ParentObjectId = 0; } break;
+                case 7: { t.TurretIndex = 0; } break;
+                case 8: { t.TargetObjectId = 0; } break;
+                case 9: { t.ObjectSequence = 0; } break;
+                case 10: { t.Team = global::Blockdemo.Team.None; } break;
+                case 11: { t.HasTargetLock = false; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderTurretFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderTurret dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderTurretFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderTurretFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderTurret dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderTurretFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderTurretFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderTurretFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderTurretFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderTurretFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderTurretFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderTurretFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderTurretFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderTurretFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderTurretFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderTurretFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderTurretFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderTurretFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderTurretFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderTurretFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderTurretFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderTurretFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -3991,7 +4804,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != RenderTurretFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = RenderTurretFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -4044,9 +4857,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderTurret(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderTurretFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderTurretFixedSlots, values[k]); }
+                RenderTurretFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderTurretFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderTurretFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderTurretFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -4085,7 +4900,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderTurretFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderTurretFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -4173,6 +4988,274 @@ namespace Blockdemo
             new TableFixedSlot<RenderMissile>(setRawReport: (t, v, rep) => { t.MissileType = (MissileType)v; }, reset: (t) => { t.MissileType = global::Blockdemo.MissileType.None; }),
             new TableFixedSlot<RenderMissile>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
+
+        private static void RenderMissileFixedSetRaw(RenderMissile t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Position.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Position.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.Flags = unchecked((ulong)v); break;
+                case 8: t.ObjectId = unchecked((uint)v); break;
+                case 9: t.ObjectSequence = unchecked((byte)v); break;
+                case 10: { t.MissileType = (MissileType)v; } break;
+                case 11: { t.Team = (Team)v; } break;
+                default: break;
+            }
+        }
+
+        private static void RenderMissileFixedSetDouble(RenderMissile t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = d; break;
+                case 1: t.Position.Y = d; break;
+                case 2: t.Position.Z = d; break;
+                case 3: t.Rotation.X = d; break;
+                case 4: t.Rotation.Y = d; break;
+                case 5: t.Rotation.Z = d; break;
+                case 6: t.Rotation.W = d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderMissileFixedSetWide(RenderMissile t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderMissileFixedSetBytes(RenderMissile t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderMissileFixedSetChars(RenderMissile t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderMissileFixedResetSlot(RenderMissile t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Position.X = 0.0; } break;
+                case 1: { t.Position.Y = 0.0; } break;
+                case 2: { t.Position.Z = 0.0; } break;
+                case 3: { t.Rotation.X = 0.0; } break;
+                case 4: { t.Rotation.Y = 0.0; } break;
+                case 5: { t.Rotation.Z = 0.0; } break;
+                case 6: { t.Rotation.W = 1.0; } break;
+                case 7: { t.Flags = 0; } break;
+                case 8: { t.ObjectId = 0; } break;
+                case 9: { t.ObjectSequence = 0; } break;
+                case 10: { t.MissileType = global::Blockdemo.MissileType.None; } break;
+                case 11: { t.Team = global::Blockdemo.Team.None; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderMissileFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderMissile dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderMissileFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderMissileFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderMissile dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderMissileFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderMissileFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderMissileFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderMissileFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderMissileFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderMissileFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderMissileFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderMissileFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderMissileFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderMissileFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderMissileFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderMissileFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderMissileFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderMissileFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderMissileFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderMissileFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderMissileFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -4356,7 +5439,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != RenderMissileFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = RenderMissileFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -4409,9 +5492,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderMissile(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderMissileFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderMissileFixedSlots, values[k]); }
+                RenderMissileFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderMissileFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderMissileFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderMissileFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -4450,7 +5535,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderMissileFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderMissileFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -4540,6 +5625,274 @@ namespace Blockdemo
             new TableFixedSlot<RenderDynamicProp>(setRawReport: (t, v, rep) => { t.PropType = (PropType)v; }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
             new TableFixedSlot<RenderDynamicProp>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
+
+        private static void RenderDynamicPropFixedSetRaw(RenderDynamicProp t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Position.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Position.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.Flags = unchecked((ulong)v); break;
+                case 8: t.ObjectId = unchecked((uint)v); break;
+                case 9: t.ObjectSequence = unchecked((byte)v); break;
+                case 10: { t.PropType = (PropType)v; } break;
+                case 11: { t.Team = (Team)v; } break;
+                default: break;
+            }
+        }
+
+        private static void RenderDynamicPropFixedSetDouble(RenderDynamicProp t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = d; break;
+                case 1: t.Position.Y = d; break;
+                case 2: t.Position.Z = d; break;
+                case 3: t.Rotation.X = d; break;
+                case 4: t.Rotation.Y = d; break;
+                case 5: t.Rotation.Z = d; break;
+                case 6: t.Rotation.W = d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderDynamicPropFixedSetWide(RenderDynamicProp t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderDynamicPropFixedSetBytes(RenderDynamicProp t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderDynamicPropFixedSetChars(RenderDynamicProp t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderDynamicPropFixedResetSlot(RenderDynamicProp t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Position.X = 0.0; } break;
+                case 1: { t.Position.Y = 0.0; } break;
+                case 2: { t.Position.Z = 0.0; } break;
+                case 3: { t.Rotation.X = 0.0; } break;
+                case 4: { t.Rotation.Y = 0.0; } break;
+                case 5: { t.Rotation.Z = 0.0; } break;
+                case 6: { t.Rotation.W = 1.0; } break;
+                case 7: { t.Flags = 0; } break;
+                case 8: { t.ObjectId = 0; } break;
+                case 9: { t.ObjectSequence = 0; } break;
+                case 10: { t.PropType = global::Blockdemo.PropType.None; } break;
+                case 11: { t.Team = global::Blockdemo.Team.None; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderDynamicPropFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderDynamicProp dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderDynamicPropFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderDynamicPropFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderDynamicProp dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderDynamicPropFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderDynamicPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderDynamicPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderDynamicPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderDynamicPropFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderDynamicPropFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderDynamicPropFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderDynamicPropFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderDynamicPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderDynamicPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderDynamicPropFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderDynamicPropFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderDynamicPropFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderDynamicPropFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderDynamicPropFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderDynamicPropFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderDynamicPropFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -4724,7 +6077,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != RenderDynamicPropFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = RenderDynamicPropFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -4777,9 +6130,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderDynamicProp(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderDynamicPropFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderDynamicPropFixedSlots, values[k]); }
+                RenderDynamicPropFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderDynamicPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderDynamicPropFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderDynamicPropFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -4818,7 +6173,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderDynamicPropFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderDynamicPropFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -4908,6 +6263,275 @@ namespace Blockdemo
             new TableFixedSlot<RenderStaticProp>(setRawReport: (t, v, rep) => { t.PropType = (PropType)v; }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
             new TableFixedSlot<RenderStaticProp>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
+
+        private static void RenderStaticPropFixedSetRaw(RenderStaticProp t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Position.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Position.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.Scale = BitConverter.UInt64BitsToDouble(v); break;
+                case 8: t.Flags = unchecked((ulong)v); break;
+                case 9: t.StaticPropId = unchecked((uint)v); break;
+                case 10: { t.PropType = (PropType)v; } break;
+                case 11: { t.Team = (Team)v; } break;
+                default: break;
+            }
+        }
+
+        private static void RenderStaticPropFixedSetDouble(RenderStaticProp t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = d; break;
+                case 1: t.Position.Y = d; break;
+                case 2: t.Position.Z = d; break;
+                case 3: t.Rotation.X = d; break;
+                case 4: t.Rotation.Y = d; break;
+                case 5: t.Rotation.Z = d; break;
+                case 6: t.Rotation.W = d; break;
+                case 7: t.Scale = d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderStaticPropFixedSetWide(RenderStaticProp t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderStaticPropFixedSetBytes(RenderStaticProp t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderStaticPropFixedSetChars(RenderStaticProp t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderStaticPropFixedResetSlot(RenderStaticProp t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Position.X = 0.0; } break;
+                case 1: { t.Position.Y = 0.0; } break;
+                case 2: { t.Position.Z = 0.0; } break;
+                case 3: { t.Rotation.X = 0.0; } break;
+                case 4: { t.Rotation.Y = 0.0; } break;
+                case 5: { t.Rotation.Z = 0.0; } break;
+                case 6: { t.Rotation.W = 1.0; } break;
+                case 7: { t.Scale = 0.0; } break;
+                case 8: { t.Flags = 0; } break;
+                case 9: { t.StaticPropId = 0; } break;
+                case 10: { t.PropType = global::Blockdemo.PropType.None; } break;
+                case 11: { t.Team = global::Blockdemo.Team.None; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderStaticPropFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderStaticProp dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderStaticPropFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderStaticPropFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderStaticProp dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderStaticPropFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderStaticPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderStaticPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderStaticPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderStaticPropFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderStaticPropFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderStaticPropFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderStaticPropFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderStaticPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderStaticPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderStaticPropFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderStaticPropFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderStaticPropFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderStaticPropFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderStaticPropFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderStaticPropFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderStaticPropFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -5092,7 +6716,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != RenderStaticPropFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = RenderStaticPropFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -5145,9 +6769,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderStaticProp(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderStaticPropFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderStaticPropFixedSlots, values[k]); }
+                RenderStaticPropFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderStaticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderStaticPropFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderStaticPropFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -5186,7 +6812,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderStaticPropFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderStaticPropFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -5279,6 +6905,277 @@ namespace Blockdemo
             new TableFixedSlot<RenderCosmeticProp>(setRawReport: (t, v, rep) => { t.PropType = (PropType)v; }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
             new TableFixedSlot<RenderCosmeticProp>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
+
+        private static void RenderCosmeticPropFixedSetRaw(RenderCosmeticProp t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Position.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Position.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.Scale = BitConverter.UInt64BitsToDouble(v); break;
+                case 8: t.Flags = unchecked((ulong)v); break;
+                case 9: t.CosmeticPropId = unchecked((uint)v); break;
+                case 10: t.PropSequence = unchecked((byte)v); break;
+                case 11: { t.PropType = (PropType)v; } break;
+                case 12: { t.Team = (Team)v; } break;
+                default: break;
+            }
+        }
+
+        private static void RenderCosmeticPropFixedSetDouble(RenderCosmeticProp t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = d; break;
+                case 1: t.Position.Y = d; break;
+                case 2: t.Position.Z = d; break;
+                case 3: t.Rotation.X = d; break;
+                case 4: t.Rotation.Y = d; break;
+                case 5: t.Rotation.Z = d; break;
+                case 6: t.Rotation.W = d; break;
+                case 7: t.Scale = d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderCosmeticPropFixedSetWide(RenderCosmeticProp t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderCosmeticPropFixedSetBytes(RenderCosmeticProp t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderCosmeticPropFixedSetChars(RenderCosmeticProp t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderCosmeticPropFixedResetSlot(RenderCosmeticProp t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Position.X = 0.0; } break;
+                case 1: { t.Position.Y = 0.0; } break;
+                case 2: { t.Position.Z = 0.0; } break;
+                case 3: { t.Rotation.X = 0.0; } break;
+                case 4: { t.Rotation.Y = 0.0; } break;
+                case 5: { t.Rotation.Z = 0.0; } break;
+                case 6: { t.Rotation.W = 1.0; } break;
+                case 7: { t.Scale = 0.0; } break;
+                case 8: { t.Flags = 0; } break;
+                case 9: { t.CosmeticPropId = 0; } break;
+                case 10: { t.PropSequence = 0; } break;
+                case 11: { t.PropType = global::Blockdemo.PropType.None; } break;
+                case 12: { t.Team = global::Blockdemo.Team.None; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderCosmeticPropFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderCosmeticProp dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderCosmeticPropFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderCosmeticPropFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderCosmeticProp dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderCosmeticPropFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderCosmeticPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderCosmeticPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderCosmeticPropFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderCosmeticPropFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderCosmeticPropFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderCosmeticPropFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderCosmeticPropFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderCosmeticPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderCosmeticPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderCosmeticPropFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderCosmeticPropFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderCosmeticPropFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderCosmeticPropFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderCosmeticPropFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderCosmeticPropFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderCosmeticPropFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -5465,7 +7362,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != RenderCosmeticPropFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = RenderCosmeticPropFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -5518,9 +7415,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderCosmeticProp(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCosmeticPropFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCosmeticPropFixedSlots, values[k]); }
+                RenderCosmeticPropFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderCosmeticPropFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderCosmeticPropFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderCosmeticPropFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -5559,7 +7458,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderCosmeticPropFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderCosmeticPropFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -5641,6 +7540,270 @@ namespace Blockdemo
             new TableFixedSlot<RenderLaser>(setRawReport: (t, v, rep) => { t.LaserType = (LaserType)v; }, reset: (t) => { t.LaserType = global::Blockdemo.LaserType.None; }),
             new TableFixedSlot<RenderLaser>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
+
+        private static void RenderLaserFixedSetRaw(RenderLaser t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Start.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Start.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Start.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Finish.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Finish.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Finish.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.T = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.LaserId = unchecked((uint)v); break;
+                case 8: { t.LaserType = (LaserType)v; } break;
+                case 9: { t.Team = (Team)v; } break;
+                default: break;
+            }
+        }
+
+        private static void RenderLaserFixedSetDouble(RenderLaser t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Start.X = d; break;
+                case 1: t.Start.Y = d; break;
+                case 2: t.Start.Z = d; break;
+                case 3: t.Finish.X = d; break;
+                case 4: t.Finish.Y = d; break;
+                case 5: t.Finish.Z = d; break;
+                case 6: t.T = d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderLaserFixedSetWide(RenderLaser t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderLaserFixedSetBytes(RenderLaser t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderLaserFixedSetChars(RenderLaser t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderLaserFixedResetSlot(RenderLaser t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Start.X = 0.0; } break;
+                case 1: { t.Start.Y = 0.0; } break;
+                case 2: { t.Start.Z = 0.0; } break;
+                case 3: { t.Finish.X = 0.0; } break;
+                case 4: { t.Finish.Y = 0.0; } break;
+                case 5: { t.Finish.Z = 0.0; } break;
+                case 6: { t.T = 0.0; } break;
+                case 7: { t.LaserId = 0; } break;
+                case 8: { t.LaserType = global::Blockdemo.LaserType.None; } break;
+                case 9: { t.Team = global::Blockdemo.Team.None; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderLaserFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderLaser dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderLaserFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderLaserFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderLaser dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderLaserFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderLaserFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderLaserFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderLaserFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderLaserFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderLaserFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderLaserFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderLaserFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderLaserFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderLaserFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderLaserFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderLaserFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderLaserFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderLaserFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderLaserFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderLaserFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderLaserFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -5820,7 +7983,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != RenderLaserFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = RenderLaserFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -5873,9 +8036,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderLaser(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderLaserFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderLaserFixedSlots, values[k]); }
+                RenderLaserFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderLaserFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderLaserFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderLaserFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -5914,7 +8079,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderLaserFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderLaserFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -6002,6 +8167,275 @@ namespace Blockdemo
             new TableFixedSlot<RenderExplosion>(setRawReport: (t, v, rep) => { t.ExplosionType = (ExplosionType)v; }, reset: (t) => { t.ExplosionType = global::Blockdemo.ExplosionType.None; }),
             new TableFixedSlot<RenderExplosion>(setRawReport: (t, v, rep) => { t.Team = (Team)v; }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
         };
+
+        private static void RenderExplosionFixedSetRaw(RenderExplosion t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 1: t.Position.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 2: t.Position.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 3: t.Rotation.X = BitConverter.UInt64BitsToDouble(v); break;
+                case 4: t.Rotation.Y = BitConverter.UInt64BitsToDouble(v); break;
+                case 5: t.Rotation.Z = BitConverter.UInt64BitsToDouble(v); break;
+                case 6: t.Rotation.W = BitConverter.UInt64BitsToDouble(v); break;
+                case 7: t.T = BitConverter.UInt64BitsToDouble(v); break;
+                case 8: t.ExplosionId = unchecked((uint)v); break;
+                case 9: t.ParentObjectId = unchecked((uint)v); break;
+                case 10: { t.ExplosionType = (ExplosionType)v; } break;
+                case 11: { t.Team = (Team)v; } break;
+                default: break;
+            }
+        }
+
+        private static void RenderExplosionFixedSetDouble(RenderExplosion t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                case 0: t.Position.X = d; break;
+                case 1: t.Position.Y = d; break;
+                case 2: t.Position.Z = d; break;
+                case 3: t.Rotation.X = d; break;
+                case 4: t.Rotation.Y = d; break;
+                case 5: t.Rotation.Z = d; break;
+                case 6: t.Rotation.W = d; break;
+                case 7: t.T = d; break;
+                default: break;
+            }
+        }
+
+        private static void RenderExplosionFixedSetWide(RenderExplosion t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderExplosionFixedSetBytes(RenderExplosion t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderExplosionFixedSetChars(RenderExplosion t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RenderExplosionFixedResetSlot(RenderExplosion t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.Position.X = 0.0; } break;
+                case 1: { t.Position.Y = 0.0; } break;
+                case 2: { t.Position.Z = 0.0; } break;
+                case 3: { t.Rotation.X = 0.0; } break;
+                case 4: { t.Rotation.Y = 0.0; } break;
+                case 5: { t.Rotation.Z = 0.0; } break;
+                case 6: { t.Rotation.W = 1.0; } break;
+                case 7: { t.T = 0.0; } break;
+                case 8: { t.ExplosionId = 0; } break;
+                case 9: { t.ParentObjectId = 0; } break;
+                case 10: { t.ExplosionType = global::Blockdemo.ExplosionType.None; } break;
+                case 11: { t.Team = global::Blockdemo.Team.None; } break;
+                default: break;
+            }
+        }
+
+        public static void RenderExplosionFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RenderExplosion dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RenderExplosionFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RenderExplosionFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderExplosion dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                    {
+                        if (p.Size == 1) { RenderExplosionFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                        else if (p.Size == 2) { RenderExplosionFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 4) { RenderExplosionFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 8) { RenderExplosionFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                        else if (p.Size == 16)
+                        {
+                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            RenderExplosionFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                        }
+                        else { RenderExplosionFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                        break;
+                    }
+                    case TableFixedWire.Flat:
+                    {
+                        RenderExplosionFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case TableFixedWire.FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        int need = runs * dw;
+                        if (widenScratch == null || widenScratch.Length < need)
+                        {
+                            widenScratch = new byte[need];
+                        }
+                        Span<byte> wide = widenScratch.AsSpan(0, need);
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            Span<byte> cell = wide.Slice(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        RenderExplosionFixedSetBytes(dst, p.Dst, wide, need);
+                        if (report != null) { report.Widened += runs; }
+                        break;
+                    }
+                    case TableFixedWire.Count:
+                    {
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                        RenderExplosionFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        break;
+                    }
+                    case TableFixedWire.Text:
+                    {
+                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                        uint cap = p.Size / unit;
+                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                        {
+                            return "text_ill_formed";
+                        }
+                        RenderExplosionFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                        if (p.Meta == TableFixedWire.TextWide)
+                        {
+                            RenderExplosionFixedSetChars(dst, p.Aux, textBytes, v);
+                        }
+                        else
+                        {
+                            RenderExplosionFixedSetBytes(dst, p.Aux, textBytes, v);
+                        }
+                        break;
+                    }
+                    case TableFixedWire.Ordinal:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        uint v = 0;
+                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                        {
+                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            if (raw != 0 && raw <= count)
+                            {
+                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                            }
+                            if (raw > count) { forgedOrdinal++; }
+                        }
+                        RenderExplosionFixedSetRaw(dst, p.Dst, v, report);
+                        break;
+                    }
+                    case TableFixedWire.Widen:
+                    {
+                        ulong raw = 0;
+                        if (p.Size == 1) raw = src[(int)p.Src];
+                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        if (p.Sign != 0)
+                        {
+                            int bits = (int)p.Size * 8;
+                            ulong top = 1UL << (bits - 1);
+                            if ((raw & top) != 0)
+                            {
+                                raw |= ~((top << 1) - 1UL);
+                            }
+                        }
+                        if (p.DstSize == 16)
+                        {
+                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            RenderExplosionFixedSetWide(dst, p.Dst, w);
+                        }
+                        else
+                        {
+                            RenderExplosionFixedSetRaw(dst, p.Dst, raw, report);
+                        }
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.WidenF:
+                    {
+                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        RenderExplosionFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                        if (report != null) { report.Widened++; }
+                        break;
+                    }
+                    case TableFixedWire.Const:
+                    {
+                        RenderExplosionFixedSetRaw(dst, p.Dst, p.Aux, report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -6185,7 +8619,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != RenderExplosionFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = RenderExplosionFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -6238,9 +8672,11 @@ namespace Blockdemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RenderExplosion(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderExplosionFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderExplosionFixedSlots, values[k]); }
+                RenderExplosionFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RenderExplosionFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RenderExplosionFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RenderExplosionFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -6279,7 +8715,7 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RenderExplosionFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RenderExplosionFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
