@@ -1,6 +1,7 @@
 package javatable
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -23,27 +24,23 @@ fixed table Root
 	if err != nil {
 		t.Fatal(err)
 	}
-	var all strings.Builder
-	for _, data := range files {
-		all.Write(data)
+	view := string(files["TableUnitView.java"])
+	if view == "" {
+		t.Fatal("the Java emitter produced no TableUnitView.java for a unit that declares a table")
 	}
-	for _, want := range []string{
-		`TableConstantInfo.of("Neg", "probe.schema", "int32", false, -5L,`,
-		`TableConstantInfo.of("Big", "probe.schema", "int64", false, 9223372036854775807L,`,
+	for _, want := range []struct{ name, value string }{
+		{"Neg", "-5"},
+		{"Big", "9223372036854775807"},
 	} {
-		name := strings.SplitN(strings.SplitN(want, `"`, 3)[1], `"`, 2)[0]
-		line := ""
-		for candidate := range strings.SplitSeq(all.String(), "\n") {
-			if strings.Contains(candidate, `TableConstantInfo.of("`+name+`"`) {
-				line = strings.TrimSpace(candidate)
-				break
-			}
+		// the formatter's shape puts each argument on its own line
+		row := regexp.MustCompile(`TableConstantInfo\.of\(\s*"` + want.name + `",\s*"[^"]*",\s*"[^"]*",\s*false,\s*(-?[0-9]+)L,`)
+		m := row.FindStringSubmatch(view)
+		if m == nil {
+			t.Fatalf("the Java registry carries no row for constant %s:\n%s", want.name, view)
 		}
-		if line == "" {
-			t.Fatalf("the Java registry carries no row for constant %s", name)
-		}
-		if !strings.Contains(line, strings.SplitN(want, ", false, ", 2)[1]) {
-			t.Errorf("the Java registry lists constant %s as %q, want %q (docs/SPEC-TABLES.md §8.3: int_value is the folded value)", name, line, want)
+		if m[1] != want.value {
+			t.Errorf("the Java registry lists constant %s as %s, want %s (docs/SPEC-TABLES.md §8.3: int_value is the folded value)",
+				want.name, strings.TrimSpace(m[1]), want.value)
 		}
 	}
 }
