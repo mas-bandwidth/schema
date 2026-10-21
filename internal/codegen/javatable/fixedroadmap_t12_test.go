@@ -49,7 +49,7 @@ func t12SchemaBinary(t *testing.T) string {
 		bin := filepath.Join(dir, "schema")
 		cmd := exec.Command("go", "build", "-o", bin, "../../../cmd/schema")
 		if out, err := cmd.CombinedOutput(); err != nil {
-			t12SchemaErr = fmt.Errorf("go build cmd/schema: %v\n%s", err, out)
+			t12SchemaErr = fmt.Errorf("go build cmd/schema: %w\n%s", err, out)
 			return
 		}
 		t12SchemaPath = bin

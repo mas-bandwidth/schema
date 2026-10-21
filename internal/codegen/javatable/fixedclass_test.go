@@ -402,7 +402,7 @@ func testFixedClassCrossGenerationReports(t *testing.T, repo string) {
 			sources = append(sources, p)
 		}
 	}
-	driver := fmt.Sprintf(`import java.nio.file.Files;
+	driver := `import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
 
@@ -501,7 +501,7 @@ public final class RenameDriver {
         System.out.println("ok");
     }
 }
-`)
+`
 	driverPath := filepath.Join(dir, "RenameDriver.java")
 	if err := os.WriteFile(driverPath, []byte(driver), 0o644); err != nil {
 		t.Fatal(err)

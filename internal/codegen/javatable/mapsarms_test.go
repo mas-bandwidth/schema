@@ -143,7 +143,7 @@ func javaVariableFixtures(t *testing.T, schema string, fixtures []javaVariableFi
 		if err != nil || !strings.Contains(string(out), "ok") {
 			t.Errorf("%s: %v\n%s", row.name, err, out)
 		} else {
-			t.Log(fmt.Sprintf("%s: wire and JSON match the reference", row.name))
+			t.Logf("%s: wire and JSON match the reference", row.name)
 		}
 	}
 }

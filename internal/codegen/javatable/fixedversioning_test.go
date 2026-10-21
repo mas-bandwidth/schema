@@ -131,7 +131,7 @@ type manifestRow struct {
 func readManifest(corpus string) (map[string]manifestRow, error) {
 	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
 	if err != nil {
-		return nil, fmt.Errorf("the corpus manifest is not readable, so this row has no oracle: %v", err)
+		return nil, fmt.Errorf("the corpus manifest is not readable, so this row has no oracle: %w", err)
 	}
 	out := map[string]manifestRow{}
 	for line := range strings.SplitSeq(string(data), "\n") {

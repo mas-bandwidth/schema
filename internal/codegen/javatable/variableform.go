@@ -4272,11 +4272,6 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 }
 
 func writeArrayElemRead(b *strings.Builder, f *ir.Field, m string) {
-	ek := variableElemWireKind(f)
-	w := ir.TableKindWidth(ek)
-	if w <= 0 {
-		w = 1
-	}
 	refusePrefix := func(widthExpr string) string {
 		if f.Array == ir.ArrayList {
 			return fmt.Sprintf("if (n > (long) (ar.limit - ar.off) / (%s)) { report.refused = true; } else ", widthExpr)

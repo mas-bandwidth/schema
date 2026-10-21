@@ -55,7 +55,7 @@ func TestFixedJavaT18ManifestAndHeader(t *testing.T) {
 	if plain.Values["a"] != "7" || plain.Values["b"] != "8" || plain.Values["c"] != "9" {
 		t.Errorf("plain row's values = %v, want the declared values", plain.Values)
 	}
-	if plain.Forged != nil && len(plain.Forged) != 0 {
+	if len(plain.Forged) != 0 {
 		t.Errorf("plain row carries forged values %v, want none", plain.Forged)
 	}
 

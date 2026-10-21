@@ -160,7 +160,7 @@ public final class Driver {
 					t.Errorf("report field %d: java=%s oracle=%s (java report %q, oracle %+v)", i, gotFields[i], wantFields[i], javaReport, want)
 				}
 			}
-			if string(javaJSON) != string(wantJSON)+"\n" {
+			if javaJSON != string(wantJSON)+"\n" {
 				t.Errorf("json mismatch:\njava:\n%s\noracle:\n%s", javaJSON, wantJSON)
 			}
 		})

@@ -1382,9 +1382,10 @@ func splitStatements(s string) []string {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if quote != 0 {
-			if c == '\\' {
+			switch c {
+			case '\\':
 				i++
-			} else if c == quote {
+			case quote:
 				quote = 0
 			}
 			continue
@@ -1530,7 +1531,7 @@ func wrapCall(l string) []string {
 		if i == len(args)-1 {
 			end = ");"
 		}
-		if javaWidth(argInd+a+end) > javaColumnLimit && !(strings.HasPrefix(a, "\"") && strings.HasSuffix(a, "\"")) {
+		if javaWidth(argInd+a+end) > javaColumnLimit && (!strings.HasPrefix(a, "\"") || !strings.HasSuffix(a, "\"")) {
 			w := breakArg(argInd, a, end)
 			if w == nil {
 				return nil
@@ -1663,9 +1664,10 @@ func splitArgs(s string) ([]string, bool) {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if quote != 0 {
-			if c == '\\' {
+			switch c {
+			case '\\':
 				i++
-			} else if c == quote {
+			case quote:
 				quote = 0
 			}
 			continue
@@ -1773,9 +1775,10 @@ func parenDepth(s string) int {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if quote != 0 {
-			if c == '\\' {
+			switch c {
+			case '\\':
 				i++
-			} else if c == quote {
+			case quote:
 				quote = 0
 			}
 			continue
@@ -1861,9 +1864,10 @@ func handBroken(l string) bool {
 	for i := 0; i < len(t); i++ {
 		c := t[i]
 		if quote != 0 {
-			if c == '\\' {
+			switch c {
+			case '\\':
 				i++
-			} else if c == quote {
+			case quote:
 				quote = 0
 			}
 			continue
@@ -1962,7 +1966,7 @@ func splitCases(l string) []string {
 		return nil
 	}
 	var out []string
-	labels := strings.Fields(strings.ReplaceAll(strings.ReplaceAll(m[2], "case ", "case\x00"), "default:", "default:"))
+	labels := strings.Fields(strings.ReplaceAll(m[2], "case ", "case\x00"))
 	for _, lb := range labels {
 		out = append(out, m[1]+strings.ReplaceAll(lb, "\x00", " "))
 	}
@@ -2148,16 +2152,16 @@ func splitBinary(expr string) ([]string, bool) {
 		at int
 		op string
 	}
-	var found [][]cut
-	found = make([][]cut, len(javaBinaryOps))
+	found := make([][]cut, len(javaBinaryOps))
 	depth := 0
 	var quote byte
 	for i := 0; i < len(expr); i++ {
 		c := expr[i]
 		if quote != 0 {
-			if c == '\\' {
+			switch c {
+			case '\\':
 				i++
-			} else if c == quote {
+			case quote:
 				quote = 0
 			}
 			continue
@@ -2279,12 +2283,13 @@ func memberBlankLines(lines []string) []string {
 				lastMemberEnd = "block"
 			}
 		}
-		if strings.HasSuffix(code, "{") && !strings.HasPrefix(t, "*") && !strings.HasPrefix(t, "//") {
+		switch {
+		case strings.HasSuffix(code, "{") && !strings.HasPrefix(t, "*") && !strings.HasPrefix(t, "//"):
 			stack = append(stack, frame{class: javaTypeHeader.MatchString(code), member: len(indentOf(l)) + 4})
 			lastMemberEnd = ""
-		} else if atMember(l) && strings.HasSuffix(code, ";") && !strings.HasPrefix(t, "*") {
+		case atMember(l) && strings.HasSuffix(code, ";") && !strings.HasPrefix(t, "*"):
 			lastMemberEnd = "field"
-		} else if atMember(l) && strings.HasSuffix(code, "{}") && !strings.HasPrefix(t, "*") {
+		case atMember(l) && strings.HasSuffix(code, "{}") && !strings.HasPrefix(t, "*"):
 			lastMemberEnd = "block" // a member whose body is empty, on one line
 		}
 	}
@@ -2351,7 +2356,7 @@ func refillInitializers(lines []string) []string {
 	for i := 0; i < len(lines); i++ {
 		l := lines[i]
 		t := strings.TrimSpace(l)
-		if !(strings.HasSuffix(t, "= {") || strings.HasSuffix(t, "[] {")) || strings.HasPrefix(t, "//") {
+		if (!strings.HasSuffix(t, "= {") && !strings.HasSuffix(t, "[] {")) || strings.HasPrefix(t, "//") {
 			out = append(out, l)
 			continue
 		}
@@ -2415,9 +2420,10 @@ func matchParen(s string, open int) int {
 	for i := open; i < len(s); i++ {
 		c := s[i]
 		if quote != 0 {
-			if c == '\\' {
+			switch c {
+			case '\\':
 				i++
-			} else if c == quote {
+			case quote:
 				quote = 0
 			}
 			continue
@@ -2516,9 +2522,10 @@ func topAssign(s string) int {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if quote != 0 {
-			if c == '\\' {
+			switch c {
+			case '\\':
 				i++
-			} else if c == quote {
+			case quote:
 				quote = 0
 			}
 			continue
@@ -2659,9 +2666,10 @@ func splitTernary(e string) (c, a, b string, ok bool) {
 	for i := 0; i < len(e); i++ {
 		ch := e[i]
 		if quote != 0 {
-			if ch == '\\' {
+			switch ch {
+			case '\\':
 				i++
-			} else if ch == quote {
+			case quote:
 				quote = 0
 			}
 			continue
@@ -2905,9 +2913,10 @@ func chainSegments(rhs string) []string {
 	for i := 0; i < len(rhs); i++ {
 		c := rhs[i]
 		if quote != 0 {
-			if c == '\\' {
+			switch c {
+			case '\\':
 				i++
-			} else if c == quote {
+			case quote:
 				quote = 0
 			}
 			continue
@@ -3044,9 +3053,10 @@ func CommentText(src string) string {
 	for i := 0; i < len(src); i++ {
 		c := src[i]
 		if quote != 0 {
-			if c == '\\' {
+			switch c {
+			case '\\':
 				i++
-			} else if c == quote {
+			case quote:
 				quote = 0
 			}
 			continue
@@ -3275,7 +3285,7 @@ func joinTokens(t []jtok) string {
 				return true
 			}
 			q := t[j-1]
-			if q.kind == 'o' && q.s != ")" && q.s != "]" && q.s != "++" && q.s != "--" && !(q.s == ">" && gen[j-1]) {
+			if q.kind == 'o' && q.s != ")" && q.s != "]" && q.s != "++" && q.s != "--" && (q.s != ">" || !gen[j-1]) {
 				return true
 			}
 			return q.kind == 'i' && (q.s == "return" || q.s == "case" || q.s == "throw")
@@ -3584,12 +3594,13 @@ func printRegion(base string, toks []jtok, blank map[int]bool) []string {
 		}
 		switch {
 		case k.kind == 'c':
-			if len(p.cur) > 0 {
+			switch {
+			case len(p.cur) > 0:
 				p.cur = append(p.cur, k)
 				p.flush(false)
-			} else if len(p.out) > 0 && i > 0 && toks[i-1].line == k.line {
+			case len(p.out) > 0 && i > 0 && toks[i-1].line == k.line:
 				p.out[len(p.out)-1] += " " + k.s
-			} else {
+			default:
 				p.emit(k.s, false)
 			}
 		case k.s == "(" || k.s == "[":
@@ -3668,11 +3679,12 @@ func printRegion(base string, toks []jtok, blank map[int]bool) []string {
 				closeExtra = f.extra
 			}
 			n := next()
-			if n == "else" || n == "catch" || n == "finally" || (n == "while" && f.isDo) {
+			switch {
+			case n == "else" || n == "catch" || n == "finally" || (n == "while" && f.isDo):
 				p.cur = []jtok{k}
-			} else if n == ";" || n == ")" || n == "," {
+			case n == ";" || n == ")" || n == ",":
 				p.cur = []jtok{k}
-			} else {
+			default:
 				p.emitAt("}", false, closeExtra)
 			}
 		default:
