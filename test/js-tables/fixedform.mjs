@@ -202,11 +202,14 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     ["entities count", AT_ENTITIES, 9999, 8, (v) => v.EntitiesCount],
     ["entities count, negative", AT_ENTITIES, -1, 0, (v) => v.EntitiesCount],
     ["stats count", AT_STATS, 0x7fffffff, 80, (v) => v.StatsCount],
-    ["player_name length", AT_NAME, 9999, 15, (v) => v.PlayerNameLength],
+    ["player_name length", AT_NAME, 9999, 15, (v) => v.PlayerNameLength, (bytes) => {
+      bytes.fill(0x41, BODY + AT_NAME + 4, BODY + AT_NAME + 4 + 15);
+    }],
     ["payload length", AT_PAYLOAD, 9999, 16, (v) => v.PayloadLength],
   ];
-  for (const [what, at, plant, bound, get] of forged) {
+  for (const [what, at, plant, bound, get, prep] of forged) {
     const bytes = oneRecord();
+    if (prep) { prep(bytes); }
     new DataView(bytes.buffer).setInt32(BODY + at, plant, true);
     // A text field clamped to its bound reads that many UNITS as content, and a zero
     // byte there is damage (the runtime refuses text_ill_formed): fill the bound so the
@@ -219,6 +222,21 @@ function forgedCounts(check, bench, fixed, corpusDir) {
       `IDENTITY CLAMP: a forged ${what} of ${plant} reaches the consumer as this reader's bound ${bound} (got ${get(r.v)})`);
     check(r.report.clamped === 1,
       `IDENTITY CLAMP: a forged ${what} moves clamped exactly once (got ${r.report.clamped})`);
+  }
+
+  // §4.5 fix 11 and §5.3: a forged player_name length over the writer's zero
+  // bytes clamps to 15 and then fails the content check over those 15 used
+  // units; REFUSE is total, so no counter moves and PlayerNameLength stays 0.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setInt32(BODY + AT_NAME, 9999, true);
+    const r = read(bytes);
+    check(r.n === -1 && r.report.refused === bench.TableFixedRefusal.TextIllFormed && !r.report.malformed,
+      `IDENTITY REFUSE: a forged player_name length over the writer's zero bytes refuses with TextIllFormed (n=${r.n} refused=${r.report.refused} malformed=${r.report.malformed})`);
+    check(r.report.clamped === 0 && r.report.widened === 0,
+      `IDENTITY REFUSE: REFUSE is total — clamped and widened stay 0 on player_name length over the writer's zero bytes (clamped=${r.report.clamped} widened=${r.report.widened})`);
+    check(r.v.PlayerNameLength === 0,
+      `IDENTITY REFUSE: REFUSE is total — destination PlayerNameLength stays 0 on player_name length over the writer's zero bytes (got ${r.v.PlayerNameLength})`);
   }
 
   // A COUNT ALREADY IN BOUNDS IS NOT TOUCHED, and the counter does not move
@@ -455,7 +473,7 @@ async function pairedCorpus(check, bench, fixed, corpusDir) {
   // the hash the same number and the record positional against the same layout.
   let blockSame = true;
   for (let i = 0; i < blockBytes; i++) {
-    if (corpus[LAYOUT_AT + i] !== fixed.FixedTableFixedLayout[i]) { blockSame = false; break; }
+    if (corpus[LAYOUT_AT + i] !== fixed.FixedTableFixedLayoutCopy()[i]) { blockSame = false; break; }
   }
   check(blockSame, "fixed form: the layout is byte-identical to the C++ reference's");
 
@@ -687,7 +705,7 @@ function partitionIsHeld(check, home, layout, bodyBytes, who) {
 export function planPartition(check, ut1, ut1home, fx1, fx1home) {
   // A PLAN WITH BOTH HALVES: UT1 carries a union, so its arms' entries are
   // guarded and the scalars around them are not.
-  const u = partitionIsHeld(check, ut1home, ut1.UtRootFixedLayout, ut1.UtRootFixedBodyBytes, "UT1 plan");
+  const u = partitionIsHeld(check, ut1home, ut1.UtRootFixedLayoutCopy(), ut1.UtRootFixedBodyBytes, "UT1 plan");
   if (u !== null) {
     check(u.split > 0 && u.split < u.count,
       `W6: UT1's plan really has BOTH halves, so the case is not vacuous (split ${u.split} of ${u.count})`);
@@ -696,7 +714,7 @@ export function planPartition(check, ut1, ut1home, fx1, fx1home) {
   // A PLAN WITH NO GUARDED ENTRY AT ALL: the split is then the whole plan, and
   // `split` being a count of UNGUARDED entries rather than of guarded ones is
   // what makes that come out right.
-  const f = partitionIsHeld(check, fx1home, fx1.FxRootFixedLayout, fx1.FxRootFixedBodyBytes, "FX1 plan");
+  const f = partitionIsHeld(check, fx1home, fx1.FxRootFixedLayoutCopy(), fx1.FxRootFixedBodyBytes, "FX1 plan");
   if (f !== null) {
     check(f.split === f.count,
       `W6: a plan with no guarded entry has its split at the END, not at zero (split ${f.split} of ${f.count})`);

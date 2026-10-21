@@ -136,15 +136,16 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	g.emitRuntime()
 	g.emitRetainRuntime()
 	g.pf("%s", jsVariableCodecRuntime)
+	g.pf("%s", jsVariableArmsRuntime)
 	g.pf("%s", jsVariableTextRuntime)
 	g.emitDescriptors(closure)
 	for _, st := range closure {
 		g.emitTableClass(st)
 	}
 	g.emitCodecs(closure)
-	for _, st := range closure {
-		g.emitExtentWalk(st)
-	}
+	// Cook write runs after the codecs: variableMeasure calls
+	// TableVariableNumber and TableVariableCodecs (docs/SPEC-TABLES.md §7.6).
+	g.emitVariableCookWrite(roots)
 	for _, r := range roots {
 		g.emitRootCodec(r)
 		g.emitRetainMember(r)
@@ -186,6 +187,29 @@ func tableOf(f *ir.Field) *ir.Struct {
 // listElement returns the table an unbounded []T field's elements are, held
 // BY VALUE, or nil: the elements whose storage the region measure lays out
 // (§6.5).
+// extentWalked is every struct a LoadMeasure's region walk reaches: the roots,
+// and through their unbounded lists of tables the element types, transitively.
+// Only these get an <T>Extent; one nothing calls would be dead code (eslint
+// no-unused-vars).
+func extentWalked(roots []*ir.Struct) map[*ir.Struct]bool {
+	walked := map[*ir.Struct]bool{}
+	work := append([]*ir.Struct(nil), roots...)
+	for len(work) > 0 {
+		st := work[len(work)-1]
+		work = work[:len(work)-1]
+		if walked[st] {
+			continue
+		}
+		walked[st] = true
+		for _, f := range st.Fields {
+			if el := listElement(f); el != nil {
+				work = append(work, el)
+			}
+		}
+	}
+	return walked
+}
+
 func listElement(f *ir.Field) *ir.Struct {
 	if !f.IsList() || f.Type.Pointer {
 		return nil
@@ -224,8 +248,16 @@ function TableVariableRound(n, a) {
 
 // THE REPORT (docs/SPEC-TABLES.md §4): the six counters and the refusal. The
 // caller owns it; the codec never makes one.
+//
+// reason is WHY A READ WAS REFUSED, spelled as the reference leg's report spells
+// it (Go's TableReport.Reason, docs/SPEC-TABLES.md §3, §6.5): a refused form
+// byte answers message_form_as_file for form 2 and newer_form for any other.
+// A read that WIDENS is not a refusal: the value lands in the wider field, the
+// widened counter counts it (§4.1), and reason stays empty, exactly as Go's
+// does for a file read. Damage is the malformed flag, never a reason.
 export class TableVariableReport {
   constructor() {
+    this.reason = "";
     this.malformed = false;
     this.refused = 0;
     this.unknown = 0;
@@ -280,6 +312,7 @@ class TableVariableWriter {
   u32(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff); }
   i32(v) { this.u32(v | 0); }
   u64(v) { for (let i = 0; i < 8; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
+  u128(v) { for (let i = 0; i < 16; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
   f64(v) {
     const d = TableVariableScratch;
     d.setFloat64(0, v, true);
@@ -297,6 +330,7 @@ class TableVariableReader {
     // A FAILED LEB LEAVES THE CURSOR WHERE IT STARTED (docs/SPEC-TABLES.md §3),
     // as the engine's readLeb does: one value has one spelling, and a number
     // that is not one is not consumed.
+    this.bad = false;
     let r = 0, s = 0;
     const start = this.at;
     for (let i = 0; i < 10; i++) {
@@ -329,6 +363,13 @@ class TableVariableReader {
     return v;
   }
   i64() { return BigInt.asIntN(64, this.u64()); }
+  u128() {
+    let v = 0n;
+    for (let i = 0; i < 16; i++) { v |= BigInt(this.b[this.at + i]) << BigInt(8 * i); }
+    this.at += 16;
+    return v;
+  }
+  i128() { return BigInt.asIntN(128, this.u128()); }
   f64() {
     const d = TableVariableScratch;
     for (let i = 0; i < 8; i++) { d.setUint8(i, this.b[this.at + i]); }
@@ -377,9 +418,57 @@ function TableVariableUtf8Decode(bytes) {
   return { s, ok: true };
 }
 
+// ---- WIDE TEXT, kind 33 (docs/SPEC-TABLES.md §3, §4; SPEC.md §4.12) --------
+//
+// A wstring(N) is held as a JavaScript string, which IS a sequence of UTF-16
+// code units, so the wire's units are the string's own char codes: two bytes
+// each, LITTLE-ENDIAN, under a byte length L that is twice the unit count
+// (internal/tablewire text.go wideUnits, wideBytes).
+
+// the units onto the wire, or false for a value past its N units: wide text is
+// never truncated on the way out (SPEC.md §4.12) — the save is refused (null)
+function TableVariableWideWrite(w, s, bound) {
+  if (s.length > bound) { return false; }
+  for (let i = 0; i < s.length; i++) { const u = s.charCodeAt(i); w.u8(u & 0xff); w.u8(u >>> 8); }
+  return true;
+}
+
+// a kind 33 payload's text (wideUnits + wideValid): null for an odd L or for
+// content that is not paired UTF-16 with no zero unit — the reader's damage
+function TableVariableWideDecode(bytes) {
+  if ((bytes.length & 1) !== 0) { return null; }
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 2) {
+    const u = bytes[i] | (bytes[i + 1] << 8);
+    if (u === 0) { return null; }
+    if (u >= 0xd800 && u <= 0xdbff) {
+      if (i + 3 >= bytes.length) { return null; } // a high surrogate with no low half
+      const lo = bytes[i + 2] | (bytes[i + 3] << 8);
+      if (lo < 0xdc00 || lo > 0xdfff) { return null; }
+    } else if (u >= 0xdc00 && u <= 0xdfff) {
+      const hi = i >= 2 ? bytes[i - 2] | (bytes[i - 1] << 8) : 0;
+      if (hi < 0xd800 || hi > 0xdbff) { return null; } // a low surrogate first
+    }
+    s += String.fromCharCode(u);
+  }
+  return s;
+}
+
+// THE CLAMP (wideBoundary, §3, §16.2): the first N units, and where the last
+// kept unit is a high surrogate whose low half did not fit, that unit goes too,
+// so a clamp never invents an unpaired surrogate. Over well-formed text this is
+// the longest prefix of whole code points within N, which is the text form's
+// rule as well (internal/tabletext read.go scanWString).
+function TableVariableWideClamp(s, bound) {
+  if (s.length <= bound) { return s; }
+  let cut = bound;
+  if (cut > 0) { const u = s.charCodeAt(cut - 1); if (u >= 0xd800 && u <= 0xdbff) { cut--; } }
+  return s.slice(0, cut);
+}
+
 // ---- skipping a field the reader cannot name (docs/SPEC-TABLES.md §3) ------
 
-function TableVariableSkip(r, kind, report) {
+function TableVariableSkip(r, kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: { if (r.at + 1 > r.end) return false; r.at += 1; return true; }
     case 3: case 7: case 21: case 26: { if (r.at + 2 > r.end) return false; r.at += 2; return true; }
@@ -520,8 +609,10 @@ func fieldBound(f *ir.Field) int64 {
 // struct; nothing else of §8 is claimed.
 func (g *variableGen) emitDescriptors(closure []*ir.Struct) {
 	for _, st := range closure {
+		layout := ir.RecordLayout(g.unit, st)
 		g.pf("export const %sTableType = {\n", st.Name)
 		g.pf("  name: %q,\n", st.Name)
+		g.pf("  sz: %d, al: %d,\n", layout.Size, layout.Align)
 		g.pf("  fields: [\n")
 		for _, f := range st.Fields {
 			g.pf("    { name: %q, kind: %d, shape: %q, bound: %d },\n",
@@ -558,6 +649,18 @@ func (g *variableGen) emitTableClass(st *ir.Struct) {
 // defaultExpr is a field's declared default in JavaScript storage.
 func (g *variableGen) defaultExpr(f *ir.Field) string {
 	switch {
+	case f.Type.Optional:
+		// ABSENT is null (docs/SPEC-TABLES.md §2.3): presence is the value
+		return "null"
+	case f.IsMap():
+		// a map is a JavaScript Map from key to value (§2.8)
+		return "new Map()"
+	case unionOf(f) != nil && f.Array == ir.ArrayNone:
+		// None is null; an arm is { arm: "<name>", value } (§2.6)
+		return "null"
+	case f.KeyEnum != "" || f.Array == ir.ArrayFixed:
+		// one slot per keyed variant or fixed bound, each at the element's default (§2.4, §2.9)
+		return fmt.Sprintf("Array.from({ length: %d }, () => %s)", f.ArrayBound, g.elemDefaultExpr(f))
 	case f.Array != ir.ArrayNone:
 		return "[]"
 	case f.Type.Pointer:
@@ -575,12 +678,104 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 		return "false"
 	case ir.TString:
 		return jsStr(string(f.DefBytes))
+	case ir.TWString:
+		// a JavaScript string IS UTF-16 code units, so the storage is one; wide
+		// text takes no declared default (SPEC.md §4.12), so it is empty
+		return `""`
 	case ir.TBytes:
 		return "new Uint8Array(" + jsByteList(f.DefBytes) + ")"
 	case ir.TFloat32, ir.TFloat64:
 		return floatDefault(f)
 	}
 	return intDefault(f)
+}
+
+// elemDefaultExpr is one keyed or fixed-array slot's declared default: the
+// field's own default, which every slot holds until a value is placed (§2.4).
+func (g *variableGen) elemDefaultExpr(f *ir.Field) string {
+	if !f.Type.Pointer && tableOf(f) != nil {
+		return "new " + tableOf(f).Name + "()"
+	}
+	plain := *f
+	plain.KeyEnum, plain.KeyEnumRef = "", nil
+	plain.Array, plain.ArrayBound = ir.ArrayNone, 0
+	return g.defaultExpr(&plain)
+}
+
+// unionOf returns the union a field names — as a field or as an array's
+// element — or nil.
+func unionOf(f *ir.Field) *ir.Union {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	if un, ok := f.Type.Ref.(*ir.Union); ok {
+		return un
+	}
+	return nil
+}
+
+// flagsOf returns the flags declaration a field names, or nil.
+func flagsOf(f *ir.Field) *ir.Flags {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	if fl, ok := f.Type.Ref.(*ir.Flags); ok {
+		return fl
+	}
+	return nil
+}
+
+func flagsVariants(fl *ir.Flags) string {
+	parts := make([]string, len(fl.Variants))
+	for i, v := range fl.Variants {
+		parts[i] = jsStr(v)
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+type guardStep struct {
+	Name string
+	Want bool
+}
+
+func structGuards(st *ir.Struct) map[string][]guardStep {
+	out := map[string][]guardStep{}
+	for _, f := range st.Fields {
+		if f.Guard == "" {
+			continue
+		}
+		var chain []guardStep
+		cur := f.Guard
+		for cur != "" {
+			want := true
+			if strings.HasPrefix(cur, "!") {
+				want = false
+				cur = cur[1:]
+			}
+			chain = append([]guardStep{{Name: cur, Want: want}}, chain...)
+			var gf *ir.Field
+			for _, cand := range st.Fields {
+				if cand.Name == cur {
+					gf = cand
+					break
+				}
+			}
+			if gf == nil {
+				break
+			}
+			cur = gf.Guard
+		}
+		out[f.Name] = chain
+	}
+	return out
+}
+
+func jsGuards(steps []guardStep) string {
+	parts := make([]string, len(steps))
+	for i, s := range steps {
+		parts[i] = fmt.Sprintf("[%s, %v]", jsStr(s.Name), s.Want)
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
 }
 
 // jsStr renders a JavaScript string literal: JSON's spelling, which is a
@@ -615,6 +810,14 @@ func floatDefault(f *ir.Field) string {
 	return jsFloat(f.DefFloat)
 }
 
+func floatProps(f *ir.Field) string {
+	lo, hi := "null", "null"
+	if f.HasFloatRange {
+		lo, hi = jsFloat(f.FMin), jsFloat(f.FMax)
+	}
+	return fmt.Sprintf("f32: %v, lo: %s, hi: %s", f.Type.Kind == ir.TFloat32, lo, hi)
+}
+
 func jsFloat(v float64) string {
 	switch {
 	case math.IsNaN(v):
@@ -630,7 +833,7 @@ func jsFloat(v float64) string {
 // intIsBig reports whether an integer-shaped field (an int or a bits(N)) is
 // stored as a BigInt: exactly when its wire kind is eight bytes wide, the one
 // width a JavaScript number cannot hold whole.
-func intIsBig(f *ir.Field) bool { return ir.TableKindWidth(ir.TableWireScalarKind(f)) == 8 }
+func intIsBig(f *ir.Field) bool { return ir.TableKindWidth(ir.TableWireScalarKind(f)) >= 8 }
 
 // intLit renders an integer literal in the field's storage: a BigInt for an
 // eight-byte kind and a number otherwise.
@@ -659,16 +862,23 @@ func intDefault(f *ir.Field) string {
 // the node types a load rooted at it can PLACE — the tables a pointer below it
 // targets and the blob kinds below it (decodenodes.go's placeable set).
 func (g *variableGen) emitCodecs(closure []*ir.Struct) {
+	g.emitUnionDescriptors(closure)
 	g.pf("const TableVariableCodecs = {\n")
 	for _, st := range closure {
+		guards := structGuards(st)
 		g.pf("  %s: {\n", st.Name)
 		g.pf("    name: %s,\n", jsStr(st.Name))
 		g.pf("    make: () => new %s(),\n", st.Name)
 		g.pf("    typeId: %s,\n", jsId(ir.TableWireId(st.WireName())))
 		g.pf("    variable: %v,\n", g.variable[st.Name])
+		layout := ir.RecordLayout(g.unit, st)
+		g.pf("    sz: %d, al: %d,\n", layout.Size, layout.Align)
+		// a map's generated entry (§2.8): its key's widening is the MAP's one
+		// count, never the entry's (internal/tablewire bodyAt)
+		g.pf("    entry: %v,\n", st.IsMapEntry())
 		g.pf("    fields: [\n")
 		for i, f := range st.Fields {
-			g.pf("      %s,\n", g.fieldDesc(f, i))
+			g.pf("      %s,\n", g.fieldDesc(f, i, guards[f.Name]))
 		}
 		g.pf("    ],\n")
 		var placeable []string
@@ -681,21 +891,66 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 		g.pf("  },\n")
 	}
 	g.pf("};\n")
-	g.pf("TableVariableLink(TableVariableCodecs);\n\n")
+	g.pf("TableVariableLink(TableVariableCodecs, TableVariableUnions);\n\n")
 }
 
 // fieldDesc renders one field's descriptor: its property name, its text key,
 // its wire id, its ordinal (the retain path's step, §6.6), the kind its header
 // carries, its shape and the JSON shape its text takes (§16.2), and what the
-// shape needs.
-func (g *variableGen) fieldDesc(f *ir.Field, ordinal int) string {
+// shape needs. An OPTIONAL ?T (§2.3) is its value's descriptor with `opt`.
+func (g *variableGen) fieldDesc(f *ir.Field, ordinal int, guards []guardStep) string {
+	return g.fieldDescNamed(f, f.Name, ordinal, guards)
+}
+
+// fieldDescNamed is fieldDesc under the property name the storage holds the
+// value at: the field's own, or "value" for a union arm's field line, whose
+// holder is the arm object { arm, value } (§2.6).
+func (g *variableGen) fieldDescNamed(f *ir.Field, prop string, ordinal int, guards []guardStep) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "{ n: %s, key: %s, id: %s, o: %d, k: %d, ",
-		jsStr(f.Name), jsStr(ir.TableFieldJsonKey(f)), jsId(ir.TableFieldWireId(f)), ordinal, ir.TableWireFieldKind(f))
+	tail := g.fieldDescTail(f)
+	fmt.Fprintf(&b, "{ n: %s, key: %s, id: %s, o: %d, ",
+		jsStr(prop), jsStr(ir.TableFieldJsonKey(f)), jsId(ir.TableFieldWireId(f)), ordinal)
+	// An integer's descriptor carries its scalar kind among intProps; a second
+	// `k` here would be a duplicate key whose value the later one overwrites
+	// (eslint no-dupe-keys), so only the other shapes name the field kind here.
+	if !strings.HasPrefix(tail, intShapePrefix) {
+		fmt.Fprintf(&b, "k: %d, ", ir.TableWireFieldKind(f))
+	}
+	if f.Type.Optional {
+		b.WriteString("opt: true, ")
+	}
+	if len(guards) > 0 {
+		fmt.Fprintf(&b, "g: %s, ", jsGuards(guards))
+	}
+	b.WriteString(tail)
+	return b.String()
+}
+
+// intShapePrefix opens an integer field's descriptor tail (fieldDescTail's
+// default arm), whose intProps carry the scalar kind `k` themselves.
+const intShapePrefix = "s: \"int\", "
+
+// fieldDescTail renders a field descriptor's shape-specific properties, from
+// `s:` to the closing brace.
+func (g *variableGen) fieldDescTail(f *ir.Field) string {
+	var b strings.Builder
 	switch {
+	case f.IsMap():
+		// kind 14 over element kind 13, an array of the generated entry (§2.8)
+		key := ir.MapKeyField(f)
+		ml := ir.RecordLayout(g.unit, f.MapEntry)
+		fmt.Fprintf(&b, "s: \"map\", js: \"o\", t: %s, ks: %v, kb: %d, esz: %d, eal: %d }",
+			jsStr(f.MapEntry.Name), key.Type.Kind == ir.TString, key.Type.Size, ml.Size, ml.Align)
+	case f.KeyEnum != "":
+		// kind 16: (key reference, L, element) per present slot (§2.4, §3.2)
+		fmt.Fprintf(&b, "s: \"keyed\", js: \"o\", ek: %d, slots: %s, e: %s }",
+			ir.TableWireElemKind(f), keyedSlots(f), g.keyedElemDesc(f))
+	case unionOf(f) != nil && f.Array == ir.ArrayNone:
+		fmt.Fprintf(&b, "s: \"union\", js: \"o\", un: %s }", jsStr(unionOf(f).Name))
 	case f.Array != ir.ArrayNone:
-		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, bound: %d, ek: %d, e: %s }",
-			f.Array == ir.ArrayList, f.ArrayBound, ir.TableWireElemKind(f), g.elemDesc(f))
+		lsize, lalign := ir.ListElementLayout(g.unit, f)
+		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, fixed: %v, bound: %d, ek: %d, esz: %d, eal: %d, e: %s }",
+			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayBound, ir.TableWireElemKind(f), lsize, lalign, g.keyedElemDesc(f))
 	case f.Type.Pointer && f.Type.Blob() && f.Type.Kind == ir.TString:
 		b.WriteString("s: \"sblob\", js: \"s\" }")
 	case f.Type.Pointer && f.Type.Blob():
@@ -704,10 +959,17 @@ func (g *variableGen) fieldDesc(f *ir.Field, ordinal int) string {
 		fmt.Fprintf(&b, "s: \"ptr\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
 	case enumOf(f) != nil:
 		fmt.Fprintf(&b, "s: \"enum\", js: \"s\", vs: %s, def: %s }", enumVariants(enumOf(f)), enumDefault(f))
+	case flagsOf(f) != nil:
+		fmt.Fprintf(&b, "s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: %s, def: %s }",
+			flagsVariants(flagsOf(f)), intDefault(f))
 	case tableOf(f) != nil:
 		fmt.Fprintf(&b, "s: \"tab\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(&b, "s: \"str\", js: \"s\", bound: %d, def: %s }", f.Type.Size, jsStr(string(f.DefBytes)))
+	case f.Type.Kind == ir.TWString:
+		// kind 33 (docs/SPEC-TABLES.md §3; SPEC.md §4.12): the bound is N CODE
+		// UNITS, and the empty text is the default an absent field reads
+		fmt.Fprintf(&b, "s: \"wstr\", js: \"s\", bound: %d, def: \"\" }", f.Type.Size)
 	case f.Type.Kind == ir.TBytes:
 		fmt.Fprintf(&b, "s: \"bytes\", js: \"s\", list: false, bound: %d, ek: %d, def: new Uint8Array(%s) }",
 			f.Type.Size, ir.TableKindU8, jsByteList(f.DefBytes))
@@ -718,7 +980,7 @@ func (g *variableGen) fieldDesc(f *ir.Field, ordinal int) string {
 		}
 		fmt.Fprintf(&b, "s: \"bool\", js: \"b\", def: %s }", def)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		fmt.Fprintf(&b, "s: \"float\", js: \"n\", f32: %v, def: %s }", f.Type.Kind == ir.TFloat32, floatDefault(f))
+		fmt.Fprintf(&b, "s: \"float\", js: \"n\", %s, def: %s }", floatProps(f), floatDefault(f))
 	default:
 		fmt.Fprintf(&b, "s: \"int\", js: \"n\", %s, def: %s }", intProps(f), intDefault(f))
 	}
@@ -729,16 +991,22 @@ func (g *variableGen) fieldDesc(f *ir.Field, ordinal int) string {
 // the element's type carries, at its zero (§2.9; tabletext elementZero).
 func (g *variableGen) elemDesc(f *ir.Field) string {
 	switch {
+	case unionOf(f) != nil:
+		// an element of an array of unions is an arm header in its place (§3)
+		return fmt.Sprintf("{ s: \"union\", js: \"o\", un: %s }", jsStr(unionOf(f).Name))
 	case f.Type.Pointer:
 		return fmt.Sprintf("{ s: \"ptr\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
 	case enumOf(f) != nil:
 		return fmt.Sprintf("{ s: \"enum\", js: \"s\", vs: %s }", enumVariants(enumOf(f)))
+	case flagsOf(f) != nil:
+		return fmt.Sprintf("{ s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: %s }",
+			flagsVariants(flagsOf(f)))
 	case tableOf(f) != nil:
 		return fmt.Sprintf("{ s: \"tab\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
 	case f.Type.Kind == ir.TBool:
 		return "{ s: \"bool\", js: \"b\" }"
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		return fmt.Sprintf("{ s: \"float\", js: \"n\", f32: %v }", f.Type.Kind == ir.TFloat32)
+		return fmt.Sprintf("{ s: \"float\", js: \"n\", %s }", floatProps(f))
 	}
 	return fmt.Sprintf("{ s: \"int\", js: \"n\", %s }", intProps(f))
 }
@@ -763,9 +1031,9 @@ func intProps(f *ir.Field) string {
 	kind := ir.TableWireScalarKind(f)
 	lo, hi := "null", "null"
 	tlo, thi := "null", "null"
-	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
-		lo, hi = intLit(f.IntMin, isBig), intLit(f.IntMax, isBig)
-		tlo, thi = f.IntMin.String()+"n", f.IntMax.String()+"n"
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		lo, hi = intLit(rlo, isBig), intLit(rhi, isBig)
+		tlo, thi = rlo.String()+"n", rhi.String()+"n"
 	}
 	bits, bmax := 0, "0"
 	if f.Type.Kind == ir.TBits {
@@ -795,8 +1063,8 @@ func intProps(f *ir.Field) string {
 		dlo = big.NewInt(0)
 		dhi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(storage*8)), big.NewInt(1))
 	}
-	return fmt.Sprintf("big: %v, kw: %d, lo: %s, hi: %s, bits: %d, bmax: %s, tlo: %s, thi: %s, dlo: %sn, dhi: %sn",
-		isBig, ir.TableKindWidth(kind), lo, hi, bits, bmax, tlo, thi, dlo.String(), dhi.String())
+	return fmt.Sprintf("k: %d, big: %v, kw: %d, lo: %s, hi: %s, bits: %d, bmax: %s, frac: %d, tlo: %s, thi: %s, dlo: %sn, dhi: %sn",
+		kind, isBig, ir.TableKindWidth(kind), lo, hi, bits, bmax, f.Type.FracBits, tlo, thi, dlo.String(), dhi.String())
 }
 
 // ---------------------------------------------------------------------------
@@ -813,11 +1081,11 @@ func intProps(f *ir.Field) string {
 func (g *variableGen) emitRootCodec(st *ir.Struct) {
 	c := "TableVariableCodecs." + st.Name
 	g.pf("export function %sMeasure(v) {\n", st.Name)
-	g.pf("  const b = TableVariableSave(%s, v, null, null);\n", c)
+	g.pf("  const b = TableVariableSave(%s, v, null);\n", c)
 	g.pf("  return b === null ? -1 : b.length;\n")
 	g.pf("}\n\n")
 	g.pf("export function %sSave(v) {\n", st.Name)
-	g.pf("  return TableVariableSave(%s, v, null, null);\n", c)
+	g.pf("  return TableVariableSave(%s, v, null);\n", c)
 	g.pf("}\n\n")
 	g.pf("export function %sLoad(bytes, report) {\n", st.Name)
 	g.pf("  return TableVariableLoad(%s, bytes, report, null);\n", c)
@@ -843,13 +1111,27 @@ func (g *variableGen) emitExtentWalk(st *ir.Struct) {
 	g.pf("    const ref = r.leb();\n")
 	g.pf("    if (r.bad || ref === 0 || ref > ids.length) { break; }\n")
 	g.pf("    if (r.at >= r.end) { break; }\n")
+	var lists []*ir.Field
+	for _, f := range st.Fields {
+		if listElement(f) != nil {
+			lists = append(lists, f)
+		}
+	}
+	if len(lists) == 0 {
+		// No list adds storage here: every field is framing to skip, so the
+		// walk names no id (an unread binding would be eslint no-unused-vars).
+		g.pf("    const kind = r.u8();\n")
+		g.pf("    if (!TableVariableSkip(r, kind)) { break; }\n")
+		g.pf("  }\n")
+		g.pf("  return at;\n")
+		g.pf("}\n\n")
+		return
+	}
 	g.pf("    const id = ids[ref - 1];\n")
 	g.pf("    const kind = r.u8();\n")
 	g.pf("    let named = false;\n")
-	for _, f := range st.Fields {
-		if el := listElement(f); el != nil {
-			g.emitExtentListField(st, f, el)
-		}
+	for _, f := range lists {
+		g.emitExtentListField(st, f, listElement(f))
 	}
 	g.pf("    if (!named) {\n")
 	g.pf("      if (!TableVariableSkip(r, kind)) { break; }\n")
@@ -901,19 +1183,25 @@ func (g *variableGen) emitExtentListField(st *ir.Struct, f *ir.Field, el *ir.Str
 func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	align := ir.TableRegionAlign(g.unit)
 	rootSize := (ir.RecordLayout(g.unit, st).Size + align - 1) & -align
-	_, strBlob := ir.PointerReachableBlobs(st)
+	// A fixed-class root needs no variable region: even on a wire whose framing
+	// is damaged or refused before any field decodes, a non-variable read starts
+	// at its declared defaults and answers that root (docs/SPEC-TABLES.md §3, §4).
+	refused := "-1"
+	if !g.variable[st.Name] {
+		refused = fmt.Sprintf("%d", rootSize+16)
+	}
 	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
-	g.pf("  if (bytes.length < 9) { return -1; }\n")
-	g.pf("  if (bytes[0] !== TableVariableForm) { return -1; }\n")
+	g.pf("  if (bytes.length < 9) { return %s; }\n", refused)
+	g.pf("  if (bytes[0] !== TableVariableForm) { return %s; }\n", refused)
 	g.pf("  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);\n")
 	g.pf("  const count = dv.getBigUint64(bytes.length - 8, true);\n")
-	g.pf("  if (count > BigInt(Math.floor((bytes.length - 9) / 8))) { return -1; }\n")
+	g.pf("  if (count > BigInt(Math.floor((bytes.length - 9) / 8))) { return %s; }\n", refused)
 	g.pf("  const first = bytes.length - 8 - Number(count) * 8;\n")
 	g.pf("  const ids = [];\n")
 	g.pf("  const seen = new Set();\n")
 	g.pf("  for (let i = 0; i < Number(count); i++) {\n")
 	g.pf("    const id = dv.getBigUint64(first + i * 8, true);\n")
-	g.pf("    if (seen.has(id)) { return -1; }\n")
+	g.pf("    if (seen.has(id)) { return %s; }\n", refused)
 	g.pf("    seen.add(id);\n")
 	g.pf("    ids.push(id);\n")
 	g.pf("  }\n")
@@ -922,7 +1210,7 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("    while (true) {\n")
 	g.pf("      const ref = w.leb();\n")
 	g.pf("      if (w.bad) { break; }\n")
-	g.pf("      if (ref === 0) { if (w.at !== w.end) { return -1; } break; }\n")
+	g.pf("      if (ref === 0) { if (w.at !== w.end) { return %s; } break; }\n", refused)
 	g.pf("      if (ref > ids.length) { break; }\n")
 	g.pf("      if (w.at >= w.end) { break; }\n")
 	g.pf("      const kind = w.u8();\n")
@@ -930,8 +1218,8 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("    }\n")
 	g.pf("  }\n")
 	g.pf("  const r = new TableVariableReader(bytes, 1, first);\n")
-	g.pf("  const at = %sExtent(r, ids, 0);\n", st.Name)
-	g.pf("  if (at < 0) { return -1; }\n")
+	g.pf("  const at = TableVariableExtent(TableVariableCodecs.%s, r, ids, 0);\n", st.Name)
+	g.pf("  if (at < 0) { return %s; }\n", refused)
 	g.pf("  let data = TableVariableRound(%d + at, %d);\n", rootSize, align)
 	g.pf("  const nr = new TableVariableReader(bytes, 1, first);\n")
 	g.pf("  let present = false, bad = false, payload = null;\n")
@@ -953,6 +1241,8 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("    }\n")
 	g.pf("    if (!TableVariableSkip(nr, kind)) { break; }\n")
 	g.pf("  }\n")
+	g.pf("  const place = TableVariableCodecs.%s.place;\n", st.Name)
+	g.pf("  const byType = place.byType;\n")
 	g.pf("  let records = 0;\n")
 	g.pf("  if (present && !bad) { payload.leb(); }\n")
 	g.pf("  while (!bad && present && payload !== null && payload.at < payload.end) {\n")
@@ -961,13 +1251,20 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("    const tlen = payload.leb();\n")
 	g.pf("    if (payload.at + tlen > payload.end) { break; }\n")
 	g.pf("    const tid = ids[tref - 1];\n")
+	g.pf("    const cc = byType.get(tid);\n")
+	g.pf("    if (cc !== undefined) {\n")
+	g.pf("      const br = new TableVariableReader(bytes, payload.at, payload.at + tlen);\n")
+	g.pf("      const ba = TableVariableExtent(cc, br, ids, 0);\n")
+	g.pf("      if (ba < 0) { return -1; }\n")
+	g.pf("      data += TableVariableRound(cc.sz + ba, %d);\n", align)
+	g.pf("    } else if (tid === TableStringBlobId && place.str) {\n")
+	g.pf("      if (tlen > 0xffffffff) { return -1; }\n")
+	g.pf("      data += TableVariableRound(8 + tlen + 1, %d);\n", align)
+	g.pf("    } else if (tid === TableBytesBlobId && place.bytes) {\n")
+	g.pf("      if (tlen > 0xffffffff) { return -1; }\n")
+	g.pf("      data += TableVariableRound(8 + tlen, %d);\n", align)
+	g.pf("    }\n")
 	g.pf("    payload.at += tlen;\n")
-	if strBlob {
-		g.pf("    if (tid === TableStringBlobId) {\n")
-		g.pf("      if (tlen > 0xffffffff) { return -1; }\n")
-		g.pf("      data += TableVariableRound(8 + tlen + 1, %d);\n", align)
-		g.pf("    }\n")
-	}
 	g.pf("    records++;\n")
 	g.pf("  }\n")
 	g.pf("  return data + (records + 1) * 16;\n")

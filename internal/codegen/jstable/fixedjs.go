@@ -41,48 +41,7 @@ import (
 // table, which field and why, so a consumer reaching for Save gets a missing
 // name from its own tooling beside a file that says why.
 func fixedRefusal(st *ir.Struct) string {
-	// THE WALK'S DEPTH BOUND GOES FIRST, AND IT IS ITS OWN SENTENCE. This leg
-	// held a private closure test with `16` written into it, so a table nested 17
-	// deep lost the form here while C++ emitted it — and the line this function
-	// wrote blamed the CLOSURE, naming a pointer or a map in a schema that has
-	// neither. The bound is read through ir now, and the reason it gives is the
-	// bound's own: past ir.TableFixedMaxDepth no conforming reader takes the walk
-	// (docs/FIXED-FORM-ALGORITHM.md §5.2's `layout_malformed`).
-	if !ir.TableFixedWithinDepth(st) {
-		return fmt.Sprintf("its layout nests %d deep, past the form's %d-entry depth bound, so no conforming reader takes the walk (`layout_malformed`) — it keeps form 1 (docs/FIXED-FORM-ALGORITHM.md §5.2, docs/SPEC-TABLES.md §3.4)",
-			ir.TableFixedTypeDepth(st), ir.TableFixedMaxDepth)
-	}
-	if !ir.TableFixedSupported(st, 0) {
-		return "its closure carries a construct the fixed class refuses — a pointer, a map, an unbounded array or a guarded branch (docs/SPEC-TABLES.md §3.4)"
-	}
-	// AN OPTIONAL IS NOT A REFUSAL. §3.4's kind table CARRIES `?T` — kind 35,
-	// a present byte in front of a payload that rides WHOLE — so the leg that
-	// refused it was refusing a wire the form already spells.
-	//
-	// WHAT THE OLD REFUSAL SAID was that the JavaScript packet classes had
-	// nowhere to land the present byte, and that inventing a member in one
-	// would be this backend inventing storage for a class another emitter
-	// owns. THE PREMISE WAS WRONG, in the port's own favour: `?T` is a TABLE
-	// construct — a `type`'s wire is positional and every field of one always
-	// rides, so the compiler refuses the `?` there outright (§2.3) — and
-	// internal/codegen/js emits a class for every `type` and NONE for a
-	// `table`. So the only class that can ever hold a present flag is the one
-	// THIS FILE emits (emitTableClass), and there was never another emitter's
-	// storage to invent.
-	//
-	// §3.4's 65536-BYTE CEILING IS A REFUSAL OF THE FORM, and it belongs here
-	// rather than in the roots loop, because the refusal IS the filter
-	// (fixedRoots): a ceiling the filter knew and this function did not would be
-	// a module that carries a 280020-byte record and says nothing about it. The
-	// compiler already warns, naming the table and the size — *"THE FIXED FORM
-	// IS NOT EMITTED FOR IT, because no conforming reader decodes a record that
-	// size"* (ir.TableFixedRecordBounds) — and the class is untouched: the table
-	// keeps form 1, its by-value storage, its cook and its block form. So this
-	// is not a refusal of the TABLE and never of the unit.
-	if fixedTypeBytes(st) > ir.TableFixedRecordMaxBytes {
-		return "its record body is past §3.4's 65536-byte ceiling, so no conforming reader would decode a record that size — it keeps form 1 (docs/SPEC-TABLES.md §3.4)"
-	}
-	return ""
+	return ir.TableFixedJSRefusal(st)
 }
 
 // ---------------------------------------------------------------------------
@@ -128,8 +87,6 @@ func fixedSetter(t ir.FieldType) (string, bool) {
 	switch t.Kind {
 	case ir.TBool:
 		return "setUint8", false
-	case ir.TFloat32:
-		return "setFloat32", true
 	case ir.TFloat64:
 		return "setFloat64", true
 	}
@@ -180,6 +137,22 @@ type fixedGen struct {
 	// an absent optional lands its payload's declared default, and for a
 	// nested type that default is that type's own Init.
 	need func(cls, typeName string)
+	// loops is how deep the decode's emitted loops nest. A nested struct is
+	// INLINED into its parent's projection (one straight function, the way the
+	// flat packet reader is), so a loop inside an inlined element must not
+	// shadow the loop variable its base offset is written in.
+	loops int
+	// inl numbers the locals an inlined struct element binds.
+	inl int
+}
+
+// loopVar names the loop variable at the current decode nesting depth: `i` at
+// the top, so a flat type's emission is unchanged, then i1, i2, ...
+func (g *fixedGen) loopVar() string {
+	if g.loops == 0 {
+		return "i"
+	}
+	return fmt.Sprintf("i%d", g.loops)
 }
 
 func (g *fixedGen) require(cls, typeName string) {
@@ -201,6 +174,27 @@ func (g *fixedGen) store(ind, view, at string, t ir.FieldType, expr string) {
 		g.pf("%s%s.setBigUint64(%s, BigInt.asUintN(64, %s >> 64n), true);\n", ind, view, off(at, 8), expr)
 		return
 	}
+	if t.Kind == ir.TFloat32 {
+		// SPEC-TABLES.md §3.4, §14: carry a float32 NaN's sign and 23-bit payload
+		// bit for bit rather than through setFloat32, which sets the quiet bit on
+		// a signalling NaN.
+		g.pf("%s{\n", ind)
+		g.pf("%s  const v = %s;\n", ind, expr)
+		g.pf("%s  let bits;\n", ind)
+		g.pf("%s  if (v !== v) {\n", ind)
+		g.pf("%s    TableFixedConv.setFloat64(0, v, true);\n", ind)
+		g.pf("%s    const lo = TableFixedConv.getUint32(0, true), hi = TableFixedConv.getUint32(4, true);\n", ind)
+		g.pf("%s    let payload = (((hi & 0xfffff) << 3) | (lo >>> 29)) & 0x7fffff;\n", ind)
+		g.pf("%s    if (payload === 0) { payload = 0x400000; }\n", ind)
+		g.pf("%s    bits = ((hi & 0x80000000) | 0x7f800000 | payload) >>> 0;\n", ind)
+		g.pf("%s  } else {\n", ind)
+		g.pf("%s    TableFixedConv.setFloat32(0, v, true);\n", ind)
+		g.pf("%s    bits = TableFixedConv.getUint32(0, true);\n", ind)
+		g.pf("%s  }\n", ind)
+		g.pf("%s  %s.setUint32(%s, bits, true);\n", ind, view, at)
+		g.pf("%s}\n", ind)
+		return
+	}
 	call, le := fixedSetter(t)
 	if call == "" {
 		g.pf("%s// no storage image for this leaf\n", ind)
@@ -219,11 +213,34 @@ func (g *fixedGen) store(ind, view, at string, t ir.FieldType, expr string) {
 
 func (g *fixedGen) load(ind, lhs, view, at string, t ir.FieldType) {
 	if fixedStorageBytes(t) == 16 {
-		g.pf("%s%s = %s.getBigUint64(%s, true) | (%s.getBigUint64(%s, true) << 64n);\n",
-			ind, lhs, view, at, view, off(at, 8))
+		// A ZERO HIGH HALF IS THE LOW HALF, with no shift and no OR: two BigInts
+		// fewer per field. Otherwise a signed value takes its high half SIGNED,
+		// which is the same number BigInt.asIntN(128, ...) made, one BigInt sooner.
+		hi := "getBigUint64"
 		if fixedSigned(t) {
-			g.pf("%s%s = BigInt.asIntN(128, %s);\n", ind, lhs, lhs)
+			hi = "getBigInt64"
 		}
+		g.pf("%s%s = (%s.getUint32(%s, true) | %s.getUint32(%s, true)) === 0\n", ind, lhs, view, off(at, 8), view, off(at, 12))
+		g.pf("%s  ? %s.getBigUint64(%s, true)\n", ind, view, at)
+		g.pf("%s  : (%s.%s(%s, true) << 64n) | %s.getBigUint64(%s, true);\n", ind, view, hi, off(at, 8), view, at)
+		return
+	}
+	if t.Kind == ir.TFloat32 {
+		// SPEC-TABLES.md §3.4, §14: widen a float32 NaN's sign and 23-bit payload
+		// into the top of the double's mantissa by bit surgery rather than through
+		// getFloat32, which sets the quiet bit on a signalling NaN.
+		g.pf("%s{\n", ind)
+		g.pf("%s  const bits = %s.getUint32(%s, true);\n", ind, view, at)
+		g.pf("%s  if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {\n", ind)
+		g.pf("%s    const payload = bits & 0x007fffff;\n", ind)
+		g.pf("%s    TableFixedConv.setUint32(4, ((bits & 0x80000000) | 0x7ff00000 | (payload >>> 3)) >>> 0, true);\n", ind)
+		g.pf("%s    TableFixedConv.setUint32(0, ((payload & 7) << 29) >>> 0, true);\n", ind)
+		g.pf("%s    %s = TableFixedConv.getFloat64(0, true);\n", ind, lhs)
+		g.pf("%s  } else {\n", ind)
+		g.pf("%s    TableFixedConv.setUint32(0, bits, true);\n", ind)
+		g.pf("%s    %s = TableFixedConv.getFloat32(0, true);\n", ind, lhs)
+		g.pf("%s  }\n", ind)
+		g.pf("%s}\n", ind)
 		return
 	}
 	call, le := fixedGetter(t)
@@ -367,7 +384,11 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 			for i, v := range r.Variants {
 				g.pf("%s  case %d: {\n", ind, i+1)
 				if v.F != nil {
-					g.emitWriteElement(v.F, off(base, at+tag), 0, expr+"."+ir.GoExportName(v.Name), ind+"    ")
+					// A DIRECT ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6):
+					// a text, bytes or array arm writes through the SAME payload
+					// emitters a field of its type does, with the arm's own name
+					// as the member and the union object as the owner.
+					g.emitWritePayload(v.F, base, at+tag, expr, ind+"    ")
 				}
 				g.pf("%s    break;\n%s  }\n", ind, ind)
 			}
@@ -450,13 +471,154 @@ func (g *fixedGen) loadTag(ind, lhs, at string, width int64) {
 func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("// %s's loads, out of the reader's own image and into the value the\n", st.Name)
 	g.pf("// caller handed in — filled, never returned, exactly as Read<Name>Flat is.\n")
-	g.pf("export function %sFixedDecode(value, view, at, report) {\n", st.Name)
+	// The body is emitted first so the signature can name `report` only where
+	// the body reads it: a type with no text and no nested decode never
+	// refuses, and an unread parameter is eslint no-unused-vars. A caller's
+	// report argument is accepted either way.
+	outer := g.body.String()
+	g.body.Reset()
+	// THE CONTENT RULES APPLY TO THE USED UNITS BEFORE ANY DESTINATION WRITE
+	// (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.3): REFUSE is total, so a
+	// text violation in the image refuses by name before a single property of
+	// value is touched.
+	g.emitCheckTextStruct(st, "at", 0, "  ")
+	g.inl, g.loops = 0, 0
 	var cur int64
 	for _, f := range st.Fields {
 		g.emitDecodeField(f, "at", cur, "value", "  ")
 		cur += fixedFieldBytes(f)
 	}
+	inner := g.body.String()
+	g.body.Reset()
+	g.body.WriteString(outer)
+	if jsIdentifiers(inner)["report"] {
+		g.pf("export function %sFixedDecode(value, view, at, report) {\n", st.Name)
+	} else {
+		g.pf("export function %sFixedDecode(value, view, at) {\n", st.Name)
+	}
+	g.body.WriteString(inner)
 	g.pf("}\n\n")
+}
+
+func fixedStructHasText(st *ir.Struct) bool {
+	if st == nil {
+		return false
+	}
+	for _, f := range st.Fields {
+		if fixedFieldHasText(f) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedFieldHasText(f *ir.Field) bool {
+	if f == nil {
+		return false
+	}
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString {
+		return true
+	}
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return fixedStructHasText(r)
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if v.F != nil && fixedFieldHasText(v.F) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// emitCheckTextStruct walks st's text fields in view before emitDecodeField
+// writes anything into value (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.3).
+func (g *fixedGen) emitCheckTextStruct(st *ir.Struct, base string, at int64, ind string) {
+	if !fixedStructHasText(st) {
+		return
+	}
+	cur := at
+	for _, f := range st.Fields {
+		if fixedFieldHasText(f) {
+			g.emitCheckTextField(f, base, cur, ind)
+		}
+		cur += fixedFieldBytes(f)
+	}
+}
+
+func (g *fixedGen) emitCheckTextField(f *ir.Field, base string, at int64, ind string) {
+	if f.Type.Optional {
+		g.pf("%sif (view.getUint8(%s) !== 0) {\n", ind, off(base, at))
+		g.emitCheckTextPayload(f, base, at+fixedPresentBytes, ind+"  ")
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitCheckTextPayload(f, base, at, ind)
+}
+
+func (g *fixedGen) emitCheckTextPayload(f *ir.Field, base string, at int64, ind string) {
+	switch {
+	case f.KeyEnum != "":
+		g.emitCheckTextLoop(f, base, at, strconv.FormatInt(f.KeyEnumRef.Max, 10), ind)
+	case f.Array == ir.ArrayFixed:
+		g.emitCheckTextLoop(f, base, at, strconv.FormatInt(f.ArrayBound, 10), ind)
+	case f.Array == ir.ArrayCounted:
+		g.pf("%s{\n", ind)
+		g.pf("%s  let n = view.getInt32(%s, true);\n", ind, off(base, at))
+		g.pf("%s  if (n < 0) { n = 0; } else if (n > %d) { n = %d; }\n", ind, f.ArrayBound, f.ArrayBound)
+		g.emitCheckTextLoop(f, base, at+fixedCountBytes, "n", ind+"  ")
+		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TString:
+		g.pf("%s{\n", ind)
+		g.pf("%s  let n = view.getInt32(%s, true);\n", ind, off(base, at))
+		g.pf("%s  if (n < 0) { n = 0; } else if (n > %d) { n = %d; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s  if (!TableFixedTextOk(TableFixedTextUtf8, view, %s, n)) { report.refused = TableFixedRefusal.TextIllFormed; return; }\n",
+			ind, off(base, at+fixedCountBytes))
+		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TWString:
+		g.pf("%s{\n", ind)
+		g.pf("%s  let n = view.getInt32(%s, true);\n", ind, off(base, at))
+		g.pf("%s  if (n < 0) { n = 0; } else if (n > %d) { n = %d; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s  if (!TableFixedTextOk(TableFixedTextWide, view, %s, n * 2)) { report.refused = TableFixedRefusal.TextIllFormed; return; }\n",
+			ind, off(base, at+fixedCountBytes))
+		g.pf("%s}\n", ind)
+	default:
+		g.emitCheckTextElement(f, base, at, ind)
+	}
+}
+
+func (g *fixedGen) emitCheckTextLoop(f *ir.Field, base string, at int64, count, ind string) {
+	elem := fixedElementBytes(f)
+	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
+	g.emitCheckTextElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, ind+"  ")
+	g.pf("%s}\n", ind)
+}
+
+func (g *fixedGen) emitCheckTextElement(f *ir.Field, base string, at int64, ind string) {
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.emitCheckTextStruct(r, base, at, ind)
+		case *ir.Union:
+			tag := fixedUnionTagBytes(r)
+			g.pf("%s{\n", ind)
+			g.pf("%s  let tag = 0;\n", ind)
+			g.loadTag(ind+"  ", "tag", off(base, at), tag)
+			g.pf("%s  switch (tag) {\n", ind)
+			for i, v := range r.Variants {
+				if v.F != nil && fixedFieldHasText(v.F) {
+					g.pf("%s    case %d: {\n", ind, i+1)
+					g.emitCheckTextPayload(v.F, base, at+tag, ind+"      ")
+					g.pf("%s      break;\n%s    }\n", ind, ind)
+				}
+			}
+			g.pf("%s    default: break;\n%s  }\n", ind, ind)
+			g.pf("%s}\n", ind)
+		}
+	}
 }
 
 // emitDecodeField projects one FIELD out of the image, through the optional
@@ -500,26 +662,24 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 		// array into the image; this loop is the pass both paths share.
 		g.emitDecodeLoop(f, base, at+fixedCountBytes, val+"."+name+"Count", val+"."+name, ind)
 	case f.Type.Kind == ir.TString:
+		// Content validity over the used units was checked before any write to
+		// value in emitCheckTextStruct (§4.5 fix 11, §5.3).
 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
-		// THE CONTENT RULES APPLY TO THE USED UNITS (§4.5 fix 11): UTF-8
-		// validity over the stated length, never over N; a violation refuses by
-		// name, writing nothing past it.
-		g.pf("%sif (!TableFixedTextOk(TableFixedTextUtf8, view, %s, %s.%sLength)) { report.refused = TableFixedRefusal.TextIllFormed; return; }\n",
-			ind, off(base, at+fixedCountBytes), val, name)
-		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint8(%s + i); }\n",
-			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
+		iv := g.loopVar()
+		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint8(%s + %s); }\n",
+			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
 	case f.Type.Kind == ir.TBytes:
 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
-		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint8(%s + i); }\n",
-			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
+		iv := g.loopVar()
+		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint8(%s + %s); }\n",
+			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
 	case f.Type.Kind == ir.TWString:
+		// Content validity over the used units was checked before any write to
+		// value in emitCheckTextStruct (§4.5 fix 11, §5.3).
 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
-		// THE CONTENT RULES APPLY TO THE USED UNITS (§4.5 fix 11): paired
-		// UTF-16 with no zero unit over the stated length, never over 2N.
-		g.pf("%sif (!TableFixedTextOk(TableFixedTextWide, view, %s, %s.%sLength * 2)) { report.refused = TableFixedRefusal.TextIllFormed; return; }\n",
-			ind, off(base, at+fixedCountBytes), val, name)
-		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint16(%s + i * 2, true); }\n",
-			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
+		iv := g.loopVar()
+		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint16(%s + %s * 2, true); }\n",
+			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
 	default:
 		g.emitDecodeElement(f, base, at, val+"."+name, ind)
 	}
@@ -549,8 +709,26 @@ func (g *fixedGen) emitDecodeCount(ind, dst, at string, bound int64) {
 
 func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at int64, count, expr, ind string) {
 	elem := fixedElementBytes(f)
-	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
-	g.emitDecodeElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, expr+"[i]", ind+"  ")
+	iv := g.loopVar()
+	if _, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
+		// AN ARRAY OF STRUCTS IS WALKED WITH ITS ARRAY AND ITS COUNT IN LOCALS
+		// and a RUNNING offset, so the inlined element body reads the image at
+		// o + k: no property load per element for the array or the bound, and
+		// no multiply per field.
+		g.pf("%s{\n", ind)
+		g.pf("%s  const a%s = %s, n%s = %s;\n", ind, iv, expr, iv, count)
+		g.pf("%s  for (let %s = 0, o%s = %s; %s < n%s; %s++, o%s += %d) {\n", ind, iv, iv, off(base, at), iv, iv, iv, iv, elem)
+		g.loops++
+		g.emitDecodeElement(f, "o"+iv, 0, "a"+iv+"["+iv+"]", ind+"    ")
+		g.loops--
+		g.pf("%s  }\n", ind)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
+	g.loops++
+	g.emitDecodeElement(f, fmt.Sprintf("%s + %s * %d", off(base, at), iv, elem), 0, expr+"["+iv+"]", ind+"  ")
+	g.loops--
 	g.pf("%s}\n", ind)
 }
 
@@ -558,7 +736,22 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			g.pf("%s%sFixedDecode(%s, view, %s, report);\n", ind, r.Name, expr, off(base, at))
+			// A NESTED STRUCT IS INLINED, not called: the projection is ONE
+			// straight function, the way the flat packet reader is written. The
+			// content check already ran over this element's text at the top of
+			// the outermost decode (emitCheckTextStruct recurses), so the inlined
+			// fields are the loads alone and nothing is validated twice.
+			// <T>FixedDecode is still emitted per struct for any other caller.
+			g.inl++
+			v := fmt.Sprintf("e%d", g.inl)
+			g.pf("%s{\n", ind)
+			g.pf("%s  const %s = %s;\n", ind, v, expr)
+			cur := at
+			for _, sf := range r.Fields {
+				g.emitDecodeField(sf, base, cur, v, ind+"  ")
+				cur += fixedFieldBytes(sf)
+			}
+			g.pf("%s}\n", ind)
 			return
 		case *ir.Union:
 			tag := fixedUnionTagBytes(r)
@@ -590,7 +783,11 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			for i, v := range r.Variants {
 				g.pf("%s  case %d: {\n", ind, i+1)
 				if v.F != nil {
-					g.emitDecodeElement(v.F, off(base, at+tag), 0, expr+"."+ir.GoExportName(v.Name), ind+"    ")
+					// A DIRECT ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6):
+					// a text, bytes or array arm projects through the SAME
+					// payload emitters a field of its type does, with the arm's
+					// own name as the member and the union object as the owner.
+					g.emitDecodePayload(v.F, base, at+tag, expr, ind+"    ")
 				}
 				g.pf("%s    break;\n%s  }\n", ind, ind)
 			}
@@ -610,8 +807,107 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			return
 		}
 	}
+	if g.emitBigClampLanes(ind, expr, off(base, at), f) {
+		return
+	}
 	g.load(ind, expr, "view", off(base, at), f.Type)
 	g.emitDecodeBounds(ind, expr, f)
+}
+
+// emitBigClampLanes is §4.6's ranged clamp for a 64- or 128-bit integer,
+// decided on the image's u32 LANES AS A NUMBER before any BigInt exists: a
+// clamped value lands its bound's literal and an in-range one is loaded once,
+// so no BigInt is made only to be compared and no BigInt comparison runs.
+//
+// THE DECISION IS EXACT. The Number is hi * 2^32 + lo (for 128 bits, the high
+// 64-bit half), which rounds MONOTONICALLY, and it is only used when every
+// bound it is compared against is an integer below 2^53 in magnitude: a value
+// past such a bound rounds to a Number at or past it, never back across it,
+// and a value at the bound is exact. A 128-bit bound must also be a whole
+// multiple of 2^64 so the low half decides only the one tie it can. Anything
+// else answers false and takes the BigInt path unchanged.
+func (g *fixedGen) emitBigClampLanes(ind, expr, at string, f *ir.Field) bool {
+	if !fixedIsBig(f.Type) {
+		return false
+	}
+	if _, _, ok := fixedFloatClampEnds(f); ok {
+		return false
+	}
+	w := fixedStorageBytes(f.Type)
+	rlo, rhi, ok := ir.TableRawRange(f)
+	var low, high bool
+	switch {
+	case f.Type.Kind == ir.TBits:
+		// a bits(N) that does not fill its storage clamps at 2^N - 1 and only
+		// there (emitDecodeBounds' last case); one with a declared range too is
+		// left to the BigInt path
+		if ok || int64(f.Type.Width) >= 8*w {
+			return false
+		}
+		rlo = big.NewInt(0)
+		rhi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+		low, high = false, true
+	case ok:
+		low, high = fixedClampEnds(f)
+	default:
+		return false
+	}
+	if !low && !high {
+		return false
+	}
+	safe := new(big.Int).Lsh(big.NewInt(1), 53)
+	inSafe := func(n *big.Int) bool { return new(big.Int).Abs(n).Cmp(safe) < 0 }
+	hiGet := "getUint32"
+	if fixedSigned(f.Type) {
+		hiGet = "getInt32"
+	}
+	var nExpr, loCond, hiCond string
+	switch w {
+	case 8:
+		if (low && !inSafe(rlo)) || (high && !inSafe(rhi)) {
+			return false
+		}
+		nExpr = fmt.Sprintf("view.%s(%s, true) * 4294967296 + view.getUint32(%s, true)", hiGet, off(at, 4), at)
+		loCond = fmt.Sprintf("n < %s", rlo.String())
+		hiCond = fmt.Sprintf("n > %s", rhi.String())
+	case 16:
+		two64 := new(big.Int).Lsh(big.NewInt(1), 64)
+		ql, rl := new(big.Int), new(big.Int)
+		qh, rh := new(big.Int), new(big.Int)
+		ql.DivMod(rlo, two64, rl) // Euclidean: the remainder is in [0, 2^64)
+		qh.DivMod(rhi, two64, rh)
+		if (low && (rl.Sign() != 0 || !inSafe(ql))) || (high && (rh.Sign() != 0 || !inSafe(qh))) {
+			return false
+		}
+		nExpr = fmt.Sprintf("view.%s(%s, true) * 4294967296 + view.getUint32(%s, true)", hiGet, off(at, 12), off(at, 8))
+		// below L = qL * 2^64 exactly when the high half is below qL; above
+		// H = qH * 2^64 when the high half is past qH, or equal with a low half
+		// that is not zero
+		loCond = fmt.Sprintf("n < %s", ql.String())
+		hiCond = fmt.Sprintf("n > %s || (n === %s && (view.getUint32(%s, true) | view.getUint32(%s, true)) !== 0)",
+			qh.String(), qh.String(), at, off(at, 4))
+	default:
+		return false
+	}
+	g.pf("%s{\n", ind)
+	g.pf("%s  const n = %s;\n", ind, nExpr)
+	first := true
+	if low {
+		g.pf("%s  if (%s) { %s = %s; report.clamped++; }\n", ind, loCond, expr, jsIntLit(rlo, true))
+		first = false
+	}
+	if high {
+		kw := "if"
+		if !first {
+			kw = "else if"
+		}
+		g.pf("%s  %s (%s) { %s = %s; report.clamped++; }\n", ind, kw, hiCond, expr, jsIntLit(rhi, true))
+	}
+	g.pf("%s  else {\n", ind)
+	g.load(ind+"    ", expr, "view", at, f.Type)
+	g.pf("%s  }\n", ind)
+	g.pf("%s}\n", ind)
+	return true
 }
 
 // emitDecodeBounds is §4.6's ranged-scalar clamp, inline: a declared min/max
@@ -729,6 +1025,8 @@ func jsIntLit(n *big.Int, asBig bool) string {
 // packet classes and the reason a read can fill a value rather than return one.
 
 // fixedDeclaredUnion answers whether a unit declares this name as a UNION.
+// A table-closure union (docs/SPEC-TABLES.md §2.6) assembles beside the decl
+// stream in File.TableUnions, so both lists are searched.
 func fixedDeclaredUnion(u *ir.Unit, name string) bool {
 	for _, f := range u.Files {
 		for _, d := range f.Decls {
@@ -736,11 +1034,8 @@ func fixedDeclaredUnion(u *ir.Unit, name string) bool {
 				return true
 			}
 		}
-		// A UNION WHOSE ARM IS A UNION (a table union, ir.File.TableUnions) is a
-		// union too, declared by internal/codegen/js beside the file's decls
-		// (docs/FIXED-FORM-ALGORITHM.md §4.1).
-		for _, un := range f.TableUnions {
-			if un.Name == name && fixedUnionHasUnionArm(un) {
+		for _, r := range f.TableUnions {
+			if r.Name == name {
 				return true
 			}
 		}
@@ -749,7 +1044,8 @@ func fixedDeclaredUnion(u *ir.Unit, name string) bool {
 }
 
 // fixedDeclaringFile answers the module basename that declares a non-table
-// named type, so its class can be imported rather than emitted twice.
+// named type, so its class can be imported rather than emitted twice. A
+// table-closure union lives in File.TableUnions, so it is searched too.
 func fixedDeclaringFile(u *ir.Unit, name string) string {
 	for _, f := range u.Files {
 		for _, d := range f.Decls {
@@ -764,10 +1060,8 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 				}
 			}
 		}
-		// A TABLE UNION's class is internal/codegen/js's too, emitted after the
-		// file's decls, so it is imported from the same module.
-		for _, un := range f.TableUnions {
-			if un.Name == name && fixedUnionHasUnionArm(un) {
+		for _, r := range f.TableUnions {
+			if r.Name == name {
 				return f.Base
 			}
 		}
