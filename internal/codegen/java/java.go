@@ -3530,7 +3530,7 @@ func relayNeeded(l string, toks []jtok) bool {
 		if k.s == "{" && blockOpens(toks, i) && i+1 < len(toks) && toks[i+1].s != "}" {
 			return true
 		}
-		if k.s == "}" && i > 0 && i+1 < len(toks) && !(toks[i+1].s == "else" || toks[i+1].s == "catch" || toks[i+1].s == "finally" || toks[i+1].s == "while" || toks[i+1].s == ";" || toks[i+1].s == ")" || toks[i+1].s == ",") {
+		if k.s == "}" && i > 0 && i+1 < len(toks) && toks[i+1].s != "else" && toks[i+1].s != "catch" && toks[i+1].s != "finally" && toks[i+1].s != "while" && toks[i+1].s != ";" && toks[i+1].s != ")" && toks[i+1].s != "," {
 			if toks[i-1].s != "{" {
 				return true
 			}
@@ -3640,7 +3640,7 @@ func printRegion(base string, toks []jtok, blank map[int]bool) []string {
 				p.flush(false)
 			}
 			p.stack = append(p.stack, relayFrame{isSwitch: isSwitch, isDo: isDo, extra: extra})
-			if next() == "}" && !(i+2 < len(toks) && (toks[i+2].s == "else" || toks[i+2].s == "catch" || toks[i+2].s == "finally")) {
+			if next() == "}" && (i+2 >= len(toks) || (toks[i+2].s != "else" && toks[i+2].s != "catch" && toks[i+2].s != "finally")) {
 				// an empty block closes on its opening line
 				p.stack = p.stack[:len(p.stack)-1]
 				p.out[len(p.out)-1] += "}"

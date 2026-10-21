@@ -1319,7 +1319,7 @@ func splitCallCondition(line string) (ind, neg, call, rest string, ok bool) {
 		return "", "", "", "", false
 	}
 	for _, c := range t[:open] {
-		if !(c == '.' || c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+		if c != '.' && c != '_' && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') {
 			return "", "", "", "", false
 		}
 	}

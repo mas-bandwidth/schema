@@ -3259,7 +3259,7 @@ func writeMeasureField(b *strings.Builder, u *ir.Unit, f *ir.Field, name string,
 		b.WriteString("    }\n\n")
 		return
 	}
-	if !(f.IsMap() || f.IsList() || f.Array != ir.ArrayNone || f.KeyEnum != "") {
+	if !f.IsMap() && !f.IsList() && f.Array == ir.ArrayNone && f.KeyEnum == "" {
 		st := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        return %sVariable.measureAt(r, report, at);\n", st.Name)
 		b.WriteString("    }\n\n")
