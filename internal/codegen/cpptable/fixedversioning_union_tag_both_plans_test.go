@@ -65,7 +65,7 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 
 	body := `
     if ( n != 1 ) { printf( "the forged file reads one record, not %lld\n", (long long) n ); return 1; }
-    if ( r.refused || r.malformed || r.reason != TableMessageReason::newer_form )
+    if ( r.refused || r.malformed )
         { printf( "the forged read is not a refusal: refused=%d malformed=%d reason=%d\n", (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
     if ( back[0].pick.type != PickType::None ) { printf( "the forged tag lands None (0), not %d\n", (int) back[0].pick.type ); return 1; }
     if ( back[0].seq != 15 ) { printf( "the scalar after the union must stand at 15, not %d\n", (int) back[0].seq ); return 1; }

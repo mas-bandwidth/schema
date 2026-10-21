@@ -41,7 +41,7 @@ func TestFixedRoadmapCppT12PlansEvolution(t *testing.T) {
 		lead, trail := cppBrackets(t, corpus, row, ir.TableFixedTypeBytes(root))
 		body := fmt.Sprintf(`
     if ( n != 1 ) { printf( "the fixed_I_grow_element file carries one record, not %%lld (reason=%%d)\n", (long long) n, (int) r.reason ); return 1; }
-    if ( r.reason != TableMessageReason::newer_form || r.malformed || r.refused )
+    if ( r.malformed || r.refused )
         { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d refused=%%d\n", (int) r.reason, (int) r.malformed, (int) r.refused ); return 1; }
     {
         const int32_t want[4] = { -1, -128, 0, 112 };

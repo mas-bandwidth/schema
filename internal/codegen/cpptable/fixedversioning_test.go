@@ -287,8 +287,8 @@ var cppVersionRows = []cppVersionRow{
 // ---- NEW-READS-OLD ----------------------------------------------------------
 //
 // The shared body is the C leg's, translated to this leg's spellings: a clean
-// read is `r.reason != TableMessageReason::newer_form` (never 0 — see
-// fixedversioning_count_clamp_ends_test.go), and the counters r.unknown,
+// read is neither refused nor malformed (the reason is read only on a
+// refusal, docs/SPEC-TABLES.md §3.3), and the counters r.unknown,
 // r.kind_mismatch, r.clamped, r.duplicate must all stay zero. The widened
 // counter is zero for an APPEND and nonzero for a WIDEN — an append the reader
 // knows is not an event (§5.9 #10). Every row whose ROOT declares the
@@ -314,7 +314,7 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 			}
 			body := fmt.Sprintf(`
     if ( n < 1 ) { printf( "the newer reader refused the older writer's file: n=%%lld reason=%%d\n", (long long) n, (int) r.reason ); return 1; }
-    if ( r.reason != TableMessageReason::newer_form || r.malformed || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d\n", (int) r.reason, (int) r.malformed ); return 1; }
+    if ( r.malformed || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d\n", (int) r.reason, (int) r.malformed ); return 1; }
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
         { printf( "counters moved on a clean backward read: u=%%d km=%%d c=%%d d=%%d\n", r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
     %s

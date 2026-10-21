@@ -580,7 +580,7 @@ const tableRefuseReasonLaterValues = `
     // THE FORM AND FIXED-FORM NAMES (§3, §3.3, §3.4, §6.5), which the C++ port
     // once kept in a second, message-path enum. Go appended them here, in
     // this order, and the one vocabulary is one enum in every target.
-    previous_form,           // a FORM BYTE this form is ahead of: form 1 handed to a fixed reader is the older variable form (§3, §3.4)
+    previous_form,           // a FORM BYTE this form is ahead of: form 1 handed to a fixed reader is the OLDER form, not a newer one (§3, §3.4)
     newer_form,              // a FORM BYTE this reader does not carry (§3)
     message_form_as_file,    // a form 2 wire where a FILE was expected: its table is somewhere else
     layout_unknown,          // a fixed-form file whose layout hash this reader has no lineage for (§3.4, §21.3)
@@ -622,6 +622,32 @@ func tableRefuseReason() string {
 	}
 	body = body[:nl+1] + strings.Replace(line, "data_cycle ", "data_cycle,", 1)
 	return body + tableRefuseReasonLaterValues + "};"
+}
+
+// tableMessageReasonMembers spells TableMessageReason's static members: every
+// TableRefuseReason value under its own name, and the three high-range message
+// constants, so a qualified spelling names the one vocabulary's value.
+func tableMessageReasonMembers(refuseReason, pkg string) string {
+	open := strings.IndexByte(refuseReason, '{')
+	end := strings.LastIndex(refuseReason, "};")
+	if open < 0 || end < open {
+		panic("cpptable: the refusal enum has no body")
+	}
+	var b strings.Builder
+	for _, line := range strings.Split(refuseReason[open+1:end], "\n") {
+		if i := strings.Index(line, "//"); i >= 0 {
+			line = line[:i]
+		}
+		name := strings.TrimSuffix(strings.TrimSpace(line), ",")
+		if name == "" {
+			continue
+		}
+		b.WriteString("    static constexpr TableRefuseReason " + name + " = TableRefuseReason::" + name + ";\n")
+	}
+	for _, name := range []string{"no_vocabulary", "second_announcement", "vocabulary_too_large"} {
+		b.WriteString("    static constexpr TableRefuseReason " + name + " = ::" + pkg + "::" + name + ";\n")
+	}
+	return b.String()
 }
 
 func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool, anyWide bool, has128 bool, widen widenCensus, idCap int, u *ir.Unit) string {
@@ -694,6 +720,7 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	// is asking one question whichever call refused it. Written on the
 	// refusal path only.
 	refuseReason := tableRefuseReason()
+	messageReasonMembers := tableMessageReasonMembers(refuseReason, pkg)
 	if anyExtent {
 		placeMember = "\n    // an OUT-OF-LINE array (docs/SPEC-TABLES.md §8.1): place one element and\n" +
 			"    // hand it back at its defaults. A MAP places BY KEY, a string key comes\n" +
@@ -751,11 +778,6 @@ namespace ` + pkg + ` {
 // read prints too and only the verdict tells them apart. The reason says which
 // refusal it was.
 //
-// THE MESSAGE PATH SPEAKS THE ONE VOCABULARY (§6.5): its form, fixed-form and
-// layout names are TableRefuseReason's own values, in Go's order, so this is
-// the same type and not a second enum spelling the same names.
-typedef TableRefuseReason TableMessageReason;
-
 // THE MESSAGE VOCABULARY'S THREE (§3.3, §11): no_vocabulary,
 // second_announcement and vocabulary_too_large, which Go names in its report's
 // reason text rather than in the enum. They sit in a private high range so a
@@ -764,6 +786,18 @@ typedef TableRefuseReason TableMessageReason;
 constexpr TableRefuseReason no_vocabulary        = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
 constexpr TableRefuseReason second_announcement  = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
 constexpr TableRefuseReason vocabulary_too_large = (TableRefuseReason) 0x20000002; // an announcement above the receiver's declared bound, refused before an entry is touched
+
+// THE MESSAGE PATH SPEAKS THE ONE VOCABULARY (§6.5): TableMessageReason is a
+// TableRefuseReason, converting both ways, and not a second enum. It is a
+// struct only so the message path's qualified spellings
+// (TableMessageReason::newer_form, ::no_vocabulary) keep naming the one
+// vocabulary's values; a refusal reason is read only when refused is set.
+struct TableMessageReason
+{
+    TableRefuseReason value;
+    constexpr TableMessageReason( TableRefuseReason v = TableRefuseReason::newer_form ) : value( v ) {}
+    constexpr operator TableRefuseReason() const { return value; }
+` + messageReasonMembers + `};
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
 #define SCHEMA_HAS_LAYOUT_NEWER 1

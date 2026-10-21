@@ -1,16 +1,15 @@
 package cpptable
 
-// THE MESSAGE-PATH ENUM MUST HOLD ITS OWN FIXED REASON CONSTANTS
-// (docs/SPEC-TABLES.md §3.3, §3.4, §11).
+// THE ONE REFUSAL ENUM MUST HOLD ITS OWN HIGH-RANGE CONSTANTS
+// (docs/SPEC-TABLES.md §3.3, §3.4, §6.5, §11).
 //
-// TableFixedReason's three values are a private high range so a name another
-// card appends to TableMessageReason cannot collide with them. In an unscoped
-// enum with no fixed underlying type C++ gives the enum a range of values and
-// clang 21 refuses a constexpr cast that lands outside it — the generated
-// headers stopped compiling under every sanitizer target. The emitter now
-// declares the enum's underlying type; these tests pin that the declaration is
-// wide enough for the values and that the emitted headers compile under both
-// compilers with -Werror.
+// The three message-vocabulary names Go spells only in its report's reason
+// text sit in a private high range of TableRefuseReason, so a name Go appends
+// cannot collide with them. In an unscoped enum with no fixed underlying type
+// C++ gives the enum a range of values and clang 21 refuses a constexpr cast
+// that lands outside it. The emitter declares the underlying type; these tests
+// pin that the declaration is wide enough for the values and that the emitted
+// headers compile under both compilers with -Werror.
 
 import (
 	"maps"
@@ -81,8 +80,8 @@ func cppReasonFiles(t *testing.T, u *ir.Unit) (map[string][]byte, string) {
 }
 
 var (
-	cppReasonEnumRE    = regexp.MustCompile(`(?s)enum\s+TableMessageReason\s*(?::\s*([A-Za-z_][A-Za-z0-9_:]*))?\s*\{(.*?)\}\s*;`)
-	cppReasonFixedRE   = regexp.MustCompile(`static\s+constexpr\s+TableMessageReason\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\(\s*TableMessageReason\s*\)\s*(0[xX][0-9A-Fa-f]+|[0-9]+)`)
+	cppReasonEnumRE    = regexp.MustCompile(`(?s)enum\s+TableRefuseReason\s*(?::\s*([A-Za-z_][A-Za-z0-9_:]*))?\s*\{(.*?)\}\s*;`)
+	cppReasonFixedRE   = regexp.MustCompile(`constexpr\s+TableRefuseReason\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\(\s*TableRefuseReason\s*\)\s*(0[xX][0-9A-Fa-f]+|[0-9]+)`)
 	cppReasonCommentRE = regexp.MustCompile(`//[^\n]*`)
 )
 
@@ -145,7 +144,13 @@ func cppReasonEnumValues(body string) (map[string]uint64, bool) {
 	return values, true
 }
 
-func TestCPPMessageReasonEnumHoldsTheFixedReasonConstants(t *testing.T) {
+// TestCPPRefuseReasonEnumHoldsItsHighRangeConstants pins the one vocabulary's
+// shape (docs/SPEC-TABLES.md §6.5): TableRefuseReason declares a fixed
+// underlying type wide enough for the private high range the three
+// message-vocabulary constants sit in, TableFixedReason's three names are the
+// enum's own values, and TableMessageReason is the message path's spelling of
+// the same type rather than a second enum.
+func TestCPPRefuseReasonEnumHoldsItsHighRangeConstants(t *testing.T) {
 	t.Parallel()
 
 	files, header := cppReasonFiles(t, cppReasonFixedUnit(t))
@@ -153,50 +158,19 @@ func TestCPPMessageReasonEnumHoldsTheFixedReasonConstants(t *testing.T) {
 
 	m := cppReasonEnumRE.FindStringSubmatch(text)
 	if m == nil {
-		t.Fatalf("%s carries no enum TableMessageReason", header)
+		t.Fatalf("%s carries no enum TableRefuseReason", header)
 	}
 	underlying, body := m[1], m[2]
 	enumerators, ok := cppReasonEnumValues(body)
 	if !ok {
-		t.Fatalf("%s: TableMessageReason's enumerators are not the plain list this test reads", header)
+		t.Fatalf("%s: TableRefuseReason's enumerators are not the plain list this test reads", header)
 	}
-
-	constants := map[string]uint64{}
-	for _, c := range cppReasonFixedRE.FindAllStringSubmatch(text, -1) {
-		v, err := strconv.ParseUint(c[2], 0, 64)
-		if err != nil {
-			t.Fatalf("%s: TableFixedReason::%s value %q: %v", header, c[1], c[2], err)
-		}
-		constants[c[1]] = v
-	}
-	for _, name := range []string{"layout_unknown", "truncated", "reserved_not_zero"} {
-		if _, ok := constants[name]; !ok {
-			t.Fatalf("%s carries no TableFixedReason::%s constant", header, name)
-		}
-	}
-
 	if underlying == "" {
-		for name, value := range constants {
-			if _, ok := enumerators[name]; ok {
-				continue
-			}
-			inRange := false
-			for _, ev := range enumerators {
-				if ev == value {
-					inRange = true
-					break
-				}
-			}
-			if !inRange {
-				t.Fatalf("TableMessageReason has no fixed underlying type and TableFixedReason::%s = 0x%x is outside its enumerators; clang 21 refuses the constexpr cast", name, value)
-			}
-		}
-		return
+		t.Fatalf("%s: TableRefuseReason declares no underlying type; clang 21 refuses a constexpr cast into the high range", header)
 	}
-
 	bits, signed, ok := cppReasonEnumUnderlying(underlying)
 	if !ok {
-		t.Fatalf("TableMessageReason's underlying type %q is one this test cannot measure", underlying)
+		t.Fatalf("TableRefuseReason's underlying type %q is one this test cannot measure", underlying)
 	}
 	var max uint64 = ^uint64(0)
 	if bits < 64 {
@@ -205,10 +179,47 @@ func TestCPPMessageReasonEnumHoldsTheFixedReasonConstants(t *testing.T) {
 	if signed {
 		max >>= 1
 	}
-	for name, value := range constants {
-		if value > max {
-			t.Fatalf("TableMessageReason : %s (max 0x%x) cannot hold TableFixedReason::%s = 0x%x", underlying, max, name, value)
+
+	constants := map[string]uint64{}
+	for _, c := range cppReasonFixedRE.FindAllStringSubmatch(text, -1) {
+		v, err := strconv.ParseUint(c[2], 0, 64)
+		if err != nil {
+			t.Fatalf("%s: %s value %q: %v", header, c[1], c[2], err)
 		}
+		constants[c[1]] = v
+	}
+	for _, name := range []string{"no_vocabulary", "second_announcement", "vocabulary_too_large"} {
+		v, ok := constants[name]
+		if !ok {
+			t.Fatalf("%s carries no high-range constant %s", header, name)
+		}
+		if _, clash := enumerators[name]; clash {
+			t.Fatalf("%s: %s is both an enumerator and a high-range constant", header, name)
+		}
+		if v > max {
+			t.Fatalf("TableRefuseReason : %s (max 0x%x) cannot hold %s = 0x%x", underlying, max, name, v)
+		}
+		for en, ev := range enumerators {
+			if ev == v {
+				t.Fatalf("%s = 0x%x collides with enumerator %s", name, v, en)
+			}
+		}
+	}
+	for _, name := range []string{"layout_unknown", "truncated", "reserved_not_zero"} {
+		if _, ok := enumerators[name]; !ok {
+			t.Fatalf("TableRefuseReason carries no %s", name)
+		}
+		alias := "static constexpr TableRefuseReason " + name
+		at := strings.Index(text, alias)
+		if at < 0 || !strings.Contains(text[at:at+len(alias)+64], "= TableRefuseReason::"+name+";") {
+			t.Fatalf("%s: TableFixedReason::%s is not the enum's own value", header, name)
+		}
+	}
+	if !strings.Contains(text, "struct TableMessageReason") {
+		t.Fatalf("%s carries no TableMessageReason over the one enum", header)
+	}
+	if regexp.MustCompile(`enum\s+TableMessageReason\b`).MatchString(text) {
+		t.Fatalf("%s still declares TableMessageReason as a second enum", header)
 	}
 }
 
