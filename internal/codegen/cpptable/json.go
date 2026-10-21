@@ -2030,8 +2030,9 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
 // below 0x20, a backslash that begins no escape and a byte at or above 0x80
 // that does not begin a well-formed UTF-8 sequence (string_not_utf8, §16.3)
 // make the read malformed: false, with in.bad set. A well-formed character
-// past ASCII is valid JSON and no base64 symbol, so it comes back as 0x80,
-// which the alphabet does not hold. *done is true at the closing quote,
+// past ASCII is valid JSON and no base64 symbol, so it comes back as 0x7f,
+// which is neither in the alphabet nor '=' (a char-typed marker that every
+// compiler holds without a truncating cast). *done is true at the closing quote,
 // which is consumed.
 inline bool TableJsonBase64Char( TableJsonIn & in, char * c, bool * done )
 {
@@ -2049,14 +2050,14 @@ inline bool TableJsonBase64Char( TableJsonIn & in, char * c, bool * done )
             return false;
         }
         in.pos += width;
-        *c = (char) 0x80;
+        *c = '\x7f';
         return true;
     }
     char unit[4];
     int32_t unit_length = 0;
     if ( !TableJsonScanUnit( in, unit, &unit_length ) ) { return false; }
     if ( unit_length == 0 ) { *done = true; return true; }
-    *c = unit_length == 1 ? unit[0] : (char) 0x80;
+    *c = unit_length == 1 ? unit[0] : '\x7f';
     return true;
 }
 
