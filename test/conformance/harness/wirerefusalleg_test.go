@@ -41,6 +41,26 @@ func TestWireRefusalIsPerLeg(t *testing.T) {
 		}
 	})
 
+	t.Run("any leg's marker parses to that leg", func(t *testing.T) {
+		t.Parallel()
+		m, err := readRow(t, "go-refusal=blob_shared c-refusal=blob_shared lua-refusal=blob_shared")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := m.Instances[0].WireRefusals["lua"]; got != "blob_shared" {
+			t.Fatalf("lua refusal = %q, per leg %v", got, m.Instances[0].WireRefusals)
+		}
+	})
+
+	for _, bad := range []string{"lua-refusal=", "-refusal=blob_shared", "Lua-refusal=blob_shared"} {
+		t.Run("an ill-formed marker is refused: "+bad, func(t *testing.T) {
+			t.Parallel()
+			if _, err := readRow(t, bad); err == nil || !strings.Contains(err.Error(), "is not a valid instance marker") {
+				t.Fatalf("%q: err %v", bad, err)
+			}
+		})
+	}
+
 	t.Run("a duplicate C marker is refused", func(t *testing.T) {
 		t.Parallel()
 		_, err := readRow(t, "c-refusal=blob_shared c-refusal=blob_shared")

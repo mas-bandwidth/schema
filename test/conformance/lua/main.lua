@@ -106,8 +106,15 @@ local function surfaceWire(manifest, outdir)
         if v == nil then
           error("load refused " .. f[5])
         end
-        local saved = save.Save(T, f[4], v)
-        writeBytes(outdir .. "/" .. f[2], saved)
+        -- A writer refusal is a NAMED absence (the manifest's lua-refusal=
+        -- marker): Save answers nil and the refusal's name, e.g. blob_shared
+        -- for one blob two slots name (docs/SPEC-TABLES.md §2.5).
+        local saved, why = save.Save(T, f[4], v)
+        if saved == nil then
+          writeBytes(outdir .. "/" .. f[2] .. ".absent", assert(why, "Save refused " .. f[5] .. " without a name"))
+        else
+          writeBytes(outdir .. "/" .. f[2], saved)
+        end
       end
     end
   end

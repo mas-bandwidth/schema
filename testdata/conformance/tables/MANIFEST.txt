@@ -170,7 +170,7 @@ instance blob_empty           blobdemo    Catalog     testdata/wire/tables/blob_
 instance blob_large           blobdemo    Catalog     testdata/wire/tables/blob_large.bin
 # The Go wire writer names its §2.5 refusal for this instance, and so do C
 # and Lua (Save, Measure and the message writer).
-instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_shared.bin  no-text go-refusal=blob_shared c-refusal=blob_shared
+instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_shared.bin  no-text go-refusal=blob_shared c-refusal=blob_shared lua-refusal=blob_shared
 # THE STRING TERMINATOR, at the two lengths that can see it (§6.3): a *string
 # node carries one zero byte after its data, and the node's extent is rounded
 # to the arena's alignment like every node's. At a length that is not a
@@ -191,7 +191,7 @@ instance blob_str16           blobdemo    Catalog     testdata/wire/tables/blob_
 # is a string with no first key to carry `&node`, so a shared blob has no
 # spelling (§16.7).
 instance blob_equal_bytes      blobdemo    Catalog     testdata/wire/tables/blob_equal_bytes.bin  no-text
-instance blob_shared_string    mapdemo     Docs        testdata/wire/tables/blob_shared_string.bin no-text go-refusal=blob_shared c-refusal=blob_shared
+instance blob_shared_string    mapdemo     Docs        testdata/wire/tables/blob_shared_string.bin no-text go-refusal=blob_shared c-refusal=blob_shared lua-refusal=blob_shared
 
 # WIDE TEXT, kind 33 (§3). wide_empty is the ELISION: wide text takes no
 # specified default (SPEC.md §4.12), so an empty wstring writes no line at all.
