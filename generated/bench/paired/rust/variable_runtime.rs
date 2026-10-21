@@ -11,13 +11,89 @@ use std::rc::Rc;
 /// header is the form byte alone. Nothing is aligned and nothing is padded.
 pub const TABLE_WIRE_FORM: u8 = 1;
 
-/// The tolerant read report (docs/SPEC-TABLES.md §4, §5): a field this build
-/// cannot name is skipped and counted, a field it can name but that arrives at
-/// another kind is a kind mismatch, and an absent field reads its default.
-/// widened counts a kind that GREW since the writer (§4), duplicate a repeated
-/// id (zero on the card's wire: no maps), and refused is the form byte this
-/// reader does not carry (§3) — the verdict, not one of §4's events.
-#[derive(Default, Clone, Copy)]
+// ---- the report -------------------------------------------------------------
+
+/// Refusals of the variable and message forms, each by name (§3.3, §5).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum TableReason {
+    #[default]
+    None,
+    NewerForm,
+    MessageFormAsFile,
+    NoVocabulary,
+    SecondAnnouncement,
+    BuildVersionMismatch,
+    VocabularyTooLarge,
+    BatchTooLarge,
+    Ok,
+    NotACook,
+    ForeignOrder,
+    WrongBuildVersion,
+    ReservedNotZero,
+    BadAlignment,
+    Truncated,
+    UnalignedBase,
+    BadLayout,
+    UnknownForm,
+    CountOverLength,
+    CountOverExtentCap,
+    BlobOverSizeCap,
+    BlobShared,
+    DataCycle,
+    InvalidValue,
+    AllocationFailed,
+    WireDamaged,
+}
+
+/// The variable reader uses the Go reference's refusal vocabulary (§5).
+pub type TableRefuseReason = TableReason;
+
+impl TableReason {
+    pub fn name(&self) -> &'static str {
+        match self {
+            TableReason::None => "none",
+            TableReason::NewerForm => "newer_form",
+            TableReason::MessageFormAsFile => "message_form_as_file",
+            TableReason::NoVocabulary => "no_vocabulary",
+            TableReason::SecondAnnouncement => "second_announcement",
+            TableReason::BuildVersionMismatch => "build_version_mismatch",
+            TableReason::VocabularyTooLarge => "vocabulary_too_large",
+            TableReason::BatchTooLarge => "batch_too_large",
+            TableReason::Ok => "ok",
+            TableReason::NotACook => "not_a_cook",
+            TableReason::ForeignOrder => "foreign_order",
+            TableReason::WrongBuildVersion => "wrong_build_version",
+            TableReason::ReservedNotZero => "reserved_not_zero",
+            TableReason::BadAlignment => "bad_alignment",
+            TableReason::Truncated => "truncated",
+            TableReason::UnalignedBase => "unaligned_base",
+            TableReason::BadLayout => "bad_layout",
+            TableReason::UnknownForm => "unknown_form",
+            TableReason::CountOverLength => "count_over_length",
+            TableReason::CountOverExtentCap => "count_over_extent_cap",
+            TableReason::BlobOverSizeCap => "blob_over_size_cap",
+            TableReason::BlobShared => "blob_shared",
+            TableReason::DataCycle => "data_cycle",
+            TableReason::InvalidValue => "invalid_value",
+            TableReason::AllocationFailed => "allocation_failed",
+            TableReason::WireDamaged => "wire_damaged",
+        }
+    }
+}
+
+/// THE ONE READ REPORT (docs/SPEC-TABLES.md §4, §5, §3.3): the variable form's
+/// tolerant read and the message form's batch fill the same type, so a crate
+/// carrying both forms exports one TableReport and never two.
+///
+/// A field this build cannot name is skipped and counted, a field it can name
+/// but that arrives at another kind is a kind mismatch, and an absent field
+/// reads its default. widened counts a kind that GREW since the writer (§4),
+/// clamped a value clamped into a narrower declaration, duplicate a repeated
+/// id (zero on the card's wire: no maps), and refused is a verdict, not one of
+/// §4's events: the form byte this reader does not carry (§3), or one of the
+/// message form's refusals BY NAME, whose reason the message form records
+/// (nothing is decoded, no counter moves, and malformed does not fire, §3.3).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct TableReport {
     pub unknown: u64,
     pub kind_mismatch: u64,
@@ -26,6 +102,12 @@ pub struct TableReport {
     pub duplicate: u64,
     pub malformed: bool,
     pub refused: bool,
+    /// Pointer cycles remain readable but cannot be serialized by the builder (§3.1).
+    pub cycle_on_save: bool,
+    /// A BLOB NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5): the tolerant
+    /// read keeps the one node and counts each extra naming here; every writer
+    /// refuses that graph by name, blob_shared.
+    pub blob_shared: u64,
     /// RETAIN-UNKNOWN'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6): retained
     /// counts the unknown fields whose bytes were kept, retain_lost counts
     /// every unknown this load or save could not keep (capacity, an excluded
@@ -34,7 +116,22 @@ pub struct TableReport {
     /// duplicate does (§4).
     pub retained: u64,
     pub retain_lost: u64,
+    /// The message form's refusal by name and the two build versions its
+    /// strict check compared (§3.3); None and zero on the variable form.
+    pub reason: TableReason,
+    pub build_version_peer: u64,
+    pub build_version_own: u64,
 }
+
+impl TableReport {
+    pub fn refuse(&mut self, reason: TableReason) -> bool {
+        self.malformed = false;
+        self.refused = true;
+        self.reason = reason;
+        false
+    }
+}
+
 
 /// Read one canonical LEB128 u64 from the cursor; None when it overruns, runs
 /// past ten bytes, or is NON-MINIMAL — a redundant continuation byte, or a tenth
@@ -211,6 +308,9 @@ pub struct TableNodeGraph {
     pub records: Vec<TableNodeRecord>,
     tables: HashMap<usize, u64>,
     blobs: HashMap<usize, u64>,
+    /// A blob two slots name (docs/SPEC-TABLES.md §2.5): the walk met its Rc
+    /// a second time, so every writer refuses the graph by name, blob_shared.
+    pub blob_shared: bool,
 }
 
 impl TableNodeGraph {
@@ -235,6 +335,9 @@ impl TableNodeGraph {
     /// key is the blob's identity, the address its Rc owns.
     pub fn visit_blob(&mut self, type_id: u64, key: usize, bytes: &[u8]) {
         if self.blobs.contains_key(&key) {
+            // A BLOB IS OWNED BY ONE SLOT (§2.5): the second naming is the
+            // writer's refusal, never a second record or a copy per slot
+            self.blob_shared = true;
             return;
         }
         self.records.push(TableNodeRecord::Blob(type_id, bytes.to_vec()));
@@ -281,8 +384,13 @@ pub struct TableNodeReader {
     pub good: bool,
     pub root_type: u64,
     pub retaining: bool,
+    pub retain_capacity: usize,
+    pub retained: Vec<u8>,
     pub recs: Vec<(u64, usize, usize)>,
     pub slots: Vec<TableNodeSlot>,
+    /// which blob records a slot has already named (§2.5): each later naming
+    /// of the same record counts blob_shared on the tolerant read
+    pub blob_named: Vec<bool>,
 }
 
 impl TableNodeReader {
@@ -296,11 +404,11 @@ impl TableNodeReader {
     /// place keeps its index and counts unknown once; a *string blob that is
     /// not well-formed text is malformed and its slots read null.
     #[allow(clippy::too_many_arguments)]
-    pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, report: &mut TableReport) -> Option<TableNodeReader> {
-        let mut reader = TableNodeReader { good: true, root_type, retaining, recs: Vec::new(), slots: Vec::new() };
+    pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
+        let mut reader = TableNodeReader { good: true, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new() };
         let mut off = 1usize;
         while off < end {
-            let Some(r) = leb_read(wire, &mut off) else { report.malformed = true; return None; };
+            let Some(r) = leb_read(&wire[..end], &mut off) else { break; };
             if r == 0 { break; }
             if off >= end { report.malformed = true; return None; }
             let kind = wire[off]; off += 1;
@@ -316,18 +424,20 @@ impl TableNodeReader {
                 if !leb_skip(wire, &mut off, end, kind) { return None; }
                 continue;
             }
-            let Some(l) = leb_read(wire, &mut off) else { report.malformed = true; return None; };
-            if l > (end - off) as u64 { report.malformed = true; return None; }
+            // A truncated node-table length cannot borrow trailer bytes. The
+            // root body still decodes its preceding fields with null nodes.
+            let Some(l) = leb_read(&wire[..end], &mut off) else { report.malformed = true; reader.good = false; reader.recs.clear(); break; };
+            if off > end || l > (end - off) as u64 { report.malformed = true; reader.good = false; reader.recs.clear(); break; }
             let sub = off + l as usize;
             let mut recs = Vec::new();
             let mut scan_ok = true;
-            match leb_read(wire, &mut off) {
+            match leb_read(&wire[..sub], &mut off) {
                 None => scan_ok = false,
                 Some(declared) => {
                     while off < sub {
-                        let Some(tref) = leb_read(wire, &mut off) else { scan_ok = false; break; };
+                        let Some(tref) = leb_read(&wire[..sub], &mut off) else { scan_ok = false; break; };
                         if tref == 0 || tref as usize > ids.len() { scan_ok = false; break; }
-                        let Some(bl) = leb_read(wire, &mut off) else { scan_ok = false; break; };
+                        let Some(bl) = leb_read(&wire[..sub], &mut off) else { scan_ok = false; break; };
                         if off > sub || bl > (sub - off) as u64 { scan_ok = false; break; }
                         recs.push((ids[tref as usize - 1], off, off + bl as usize));
                         off += bl as usize;
@@ -336,7 +446,6 @@ impl TableNodeReader {
                 }
             }
             if !scan_ok {
-                report.malformed = true;
                 reader.good = false;
                 reader.recs.clear();
             } else {
@@ -368,6 +477,7 @@ impl TableNodeReader {
                 }
             }
         } else {
+            report.malformed = true;
             reader.recs.clear();
         }
         Some(reader)
@@ -424,23 +534,42 @@ impl TableNodeReader {
         Some(&self.slots[(index - 2) as usize])
     }
 
-    /// Resolve a *bytes slot (§2.5, §3.1): the ONE blob every slot naming the
-    /// record shares; a *string record or a table record is a kind mismatch.
-    pub fn bytes_slot(&self, index: u64, report: &mut TableReport) -> Option<Rc<[u8]>> {
-        match self.blob_record(index, report)? {
-            TableNodeSlot::Null => None,
-            TableNodeSlot::Bytes(b) => Some(b.clone()),
-            _ => { report.kind_mismatch += 1; None }
+    /// Count a blob record's naming (§2.5): the tolerant read keeps the ONE
+    /// node every slot names and counts each naming after the first in the
+    /// report's blob_shared counter.
+    fn name_blob(&mut self, index: u64, report: &mut TableReport) {
+        let k = (index - 2) as usize;
+        if self.blob_named.len() < self.slots.len() {
+            self.blob_named.resize(self.slots.len(), false);
+        }
+        if self.blob_named[k] {
+            report.blob_shared += 1;
+        } else {
+            self.blob_named[k] = true;
         }
     }
 
+    /// Resolve a *bytes slot (§2.5, §3.1): the ONE blob every slot naming the
+    /// record shares; a *string record or a table record is a kind mismatch.
+    pub fn bytes_slot(&mut self, index: u64, report: &mut TableReport) -> Option<Rc<[u8]>> {
+        let b = match self.blob_record(index, report)? {
+            TableNodeSlot::Null => return None,
+            TableNodeSlot::Bytes(b) => b.clone(),
+            _ => { report.kind_mismatch += 1; return None; }
+        };
+        self.name_blob(index, report);
+        Some(b)
+    }
+
     /// Resolve a *string slot (§2.5, §3.1), the same way.
-    pub fn text_slot(&self, index: u64, report: &mut TableReport) -> Option<Rc<str>> {
-        match self.blob_record(index, report)? {
-            TableNodeSlot::Null => None,
-            TableNodeSlot::Text(s) => Some(s.clone()),
-            _ => { report.kind_mismatch += 1; None }
-        }
+    pub fn text_slot(&mut self, index: u64, report: &mut TableReport) -> Option<Rc<str>> {
+        let s = match self.blob_record(index, report)? {
+            TableNodeSlot::Null => return None,
+            TableNodeSlot::Text(s) => s.clone(),
+            _ => { report.kind_mismatch += 1; return None; }
+        };
+        self.name_blob(index, report);
+        Some(s)
     }
 }
 
@@ -528,8 +657,12 @@ pub fn table_widen_f32(bits: u32) -> f64 {
 /// one LEB128; a union reads its arm header and L. A kind the reader does not
 /// know at all is framing damage and returns false (§3).
 pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
+    // A nested body has its own byte boundary (§3, §4). Parse every LEB from
+    // that slice so a truncated header cannot consume the parent's next byte.
+    if end > buf.len() { return false; }
+    let bounded = &buf[..end];
     let fixed = |o: &mut usize, w: usize| -> bool {
-        if *o + w > end { return false; }
+        if *o > end || w > end - *o { return false; }
         *o += w;
         true
     };
@@ -540,23 +673,23 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         5 | 9 | 11 | 23 | 28 => fixed(off, 8),
         18 | 19 | 24 | 29 => fixed(off, 16),
         17 | 30 => {
-            if let Some(_) = leb_read(buf, off) { *off <= end } else { false }
+            if let Some(_) = leb_read(bounded, off) { *off <= end } else { false }
         }
         12 | 13 | 14 | 16 | 31 | 32 | 33 => {
-            let Some(n) = leb_read(buf, off) else { return false; };
+            let Some(n) = leb_read(bounded, off) else { return false; };
             let n = n as usize;
-            if *off + n > end { return false; }
+            if *off > end || n > end - *off { return false; }
             *off += n;
             true
         }
         15 => {
-            let Some(arm) = leb_read(buf, off) else { return false; };
+            let Some(arm) = leb_read(bounded, off) else { return false; };
             if arm == 0 { return true; }
-            if *off + 1 > end { return false; }
+            if *off >= end { return false; }
             *off += 1;
-            let Some(n) = leb_read(buf, off) else { return false; };
+            let Some(n) = leb_read(bounded, off) else { return false; };
             let n = n as usize;
-            if *off + n > end { return false; }
+            if *off > end || n > end - *off { return false; }
             *off += n;
             true
         }
@@ -610,13 +743,59 @@ impl TableRetainPath {
     }
 }
 
+/// A retained node body's address follows the Rc through save numbering.
+/// Input node indices may change when the save visits the reachable graph;
+/// the pointer identity is stable for this load/save pair and fits in the
+/// path's existing two words without growing either caller-owned store.
+pub fn retain_node_path(node: &Rc<dyn Any>) -> TableRetainPath {
+    let key = Rc::as_ptr(node) as *const () as usize as u64;
+    TableRetainPath::default().step(key as u32, (key >> 32) as u32)
+}
+
+pub fn retain_bind_node(retain: &mut TableRetain, node: &Rc<dyn Any>) {
+    let path = retain_node_path(node);
+    let mut at = 0usize;
+    while at + 17 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[at..]);
+        if len < 17 || len > retain.bytes.len() - at { break; }
+        let depth = retain_record_depth(&retain.bytes[at..]);
+        if depth > 0 && 17 + 8 * depth <= len {
+            retain.bytes[at + 17..at + 21].copy_from_slice(&path.steps[0].0.to_le_bytes());
+            retain.bytes[at + 21..at + 25].copy_from_slice(&path.steps[0].1.to_le_bytes());
+        }
+        at += len;
+    }
+}
+
 /// ONE RETAINED RECORD is
 /// [u32 len][u32 depth][u64 field id][u8 kind][depth × (u32 ordinal, u32 index)][resolved payload],
 /// len = 17 + 8×depth + payload.len(). The payload is READER-PRIVATE (§6.6):
 /// every reference is the eight-byte id it names and every framed length is
 /// eight bytes, so a save re-interns references against a different id table.
 pub fn retain_record_len(rec: &[u8]) -> usize {
-    u32::from_le_bytes(rec[..4].try_into().unwrap()) as usize
+    (u32::from_le_bytes(rec[..4].try_into().unwrap()) & 0x7fff_ffff) as usize
+}
+
+/// The high bit of the private record length is a per-save placement mark
+/// (§6.6). Each save clears it, then counts records no body visited.
+pub fn retain_clear_placed(retain: &mut TableRetain) {
+    let mut at = 0usize;
+    while at + 4 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[at..]);
+        if len < 17 || len > retain.bytes.len() - at { break; }
+        retain.bytes[at + 3] &= 0x7f;
+        at += len;
+    }
+}
+
+pub fn retain_count_unplaced(retain: &TableRetain, report: &mut TableReport) {
+    let mut at = 0usize;
+    while at + 4 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[at..]);
+        if len < 17 || len > retain.bytes.len() - at { break; }
+        if retain.bytes[at + 3] & 0x80 == 0 { report.retain_lost += 1; }
+        at += len;
+    }
 }
 
 /// The record's path depth (docs/SPEC-TABLES.md §6.6), read from the four bytes
@@ -936,6 +1115,7 @@ pub fn retain_emit_tail(out: &mut Vec<u8>, ids: &mut IdTable, retain: &mut Table
         let field_id = u64::from_le_bytes(rec[8..16].try_into().unwrap());
         let kind = rec[16];
         let payload = rec[17 + 8 * depth..len].to_vec();
+        retain.bytes[at - len + 3] |= 0x80;
         let mut bad = false;
         let slot = retain_ref(ids, retain, known, field_id);
         if slot == 0 {
@@ -984,6 +1164,27 @@ pub fn retain_discard(retain: &mut TableRetain, path: TableRetainPath, ordinal: 
     retain.bytes.truncate(write);
 }
 
+/// A repeated map key replaces one entry occurrence (§6.6), including the
+/// unknown fields retained directly in that entry and its nested bodies.
+pub fn retain_discard_body(retain: &mut TableRetain, path: TableRetainPath) {
+    let mut read = 0usize;
+    let mut write = 0usize;
+    while read + 4 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[read..]);
+        if len < 17 || len > retain.bytes.len() - read { break; }
+        let rec = &retain.bytes[read..read + len];
+        let depth = retain_record_depth(rec);
+        let drop = depth <= TABLE_RETAIN_DEPTH_CAP && 17 + 8 * depth <= len
+            && (retain_path_eq(rec, depth, &path) || retain_under(rec, depth, &path, false, 0));
+        if !drop {
+            if write != read { retain.bytes.copy_within(read..read + len, write); }
+            write += len;
+        }
+        read += len;
+    }
+    retain.bytes.truncate(write);
+}
+
 fn retain_emit_ref(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], bad: &mut bool) -> u64 {
     if c.off + 8 > c.buf.len() {
         *bad = true;
@@ -991,6 +1192,8 @@ fn retain_emit_ref(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetai
     }
     let id = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap());
     c.off += 8;
+    // The zero reference is a union/enum None, not an id to intern (§3, §6.6).
+    if id == 0 { return 0; }
     retain_ref(ids, retain, known, id)
 }
 
@@ -1423,11 +1626,15 @@ pub struct Jw {
 pub const JSON_DEPTH_CAP: usize = 128;
 
 /// A label the reader has met (docs/SPEC-TABLES.md §16.7): Open while its
-/// definition's object is still being read, then the node it defined.
+/// definition's object is still being read, then the node it defined — or
+/// Dropped, a definition inside a value the walk skipped (past a bound, under
+/// an unknown key). A dropped definition KEEPS its label and its reference
+/// reads null, the wire's rule for an unnameable node (§3.1).
 #[allow(dead_code)]
 pub enum JsonLabel {
     Open,
     Node(Rc<dyn Any>),
+    Dropped,
 }
 
 /// The tolerant JSON cursor (docs/SPEC-TABLES.md §16.2): it skips whitespace,
@@ -1437,6 +1644,7 @@ pub enum JsonLabel {
 pub struct Jr<'a> {
     pub b: &'a [u8],
     pub p: usize,
+    pub depth: usize,
     pub unknown: u64,
     pub kind_mismatch: u64,
     pub clamped: u64,
@@ -1448,12 +1656,39 @@ pub struct Jr<'a> {
 #[allow(dead_code)]
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
-        Jr { b, p: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, labels: HashMap::new() }
+        Jr { b, p: 0, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
             match self.b[self.p] {
                 b' ' | b'\t' | b'\n' | b'\r' => self.p += 1,
+                b'/' if self.p + 1 < self.b.len() && self.b[self.p + 1] == b'/' => {
+                    self.p += 2;
+                    while self.p < self.b.len() && self.b[self.p] != b'\n' {
+                        self.p += 1;
+                    }
+                }
+                b'/' if self.p + 1 < self.b.len() && self.b[self.p + 1] == b'*' => {
+                    self.p += 2;
+                    let mut closed = false;
+                    while self.p + 1 < self.b.len() {
+                        if self.b[self.p] == b'*' && self.b[self.p + 1] == b'/' {
+                            self.p += 2;
+                            closed = true;
+                            break;
+                        }
+                        self.p += 1;
+                    }
+                    if !closed {
+                        self.malformed = true;
+                        self.p = self.b.len();
+                        return;
+                    }
+                }
+                b'/' => {
+                    self.malformed = true;
+                    return;
+                }
                 _ => break,
             }
         }
@@ -1501,6 +1736,10 @@ impl<'a> Jr<'a> {
             if c == b'"' {
                 self.p += 1;
                 break;
+            }
+            if c < 0x20 {
+                self.malformed = true;
+                return None;
             }
             if c == b'\\' {
                 self.p += 1;
@@ -1616,30 +1855,56 @@ impl<'a> Jr<'a> {
         Some(String::from_utf8_lossy(&b[s..p]).into_owned())
     }
     /// An integer field's value (docs/SPEC-TABLES.md §16.2): any token whose
-    /// VALUE is integral, saturating past what 128 bits hold; a fractional one
+    /// VALUE is integral, saturating past what 64 bits hold; a fractional one
     /// is kind_mismatch, and a value of another JSON type is kind_mismatch,
     /// skipped.
     pub fn read_int(&mut self) -> Option<i128> {
         let c = self.peek();
-        if c != b'-' && !c.is_ascii_digit() {
+        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
             self.kind_mismatch += 1;
             self.skip_value();
             return None;
         }
         let t = self.number_token()?;
         if !t.contains(['.', 'e', 'E']) {
-            return Some(t.parse::<i128>().unwrap_or(if t.starts_with('-') { i128::MIN } else { i128::MAX }));
+            let neg = t.starts_with('-');
+            let digits = t.strip_prefix('-').unwrap_or(&t);
+            let mut mag: u64 = 0;
+            for b in digits.bytes() {
+                let d = (b - b'0') as u64;
+                if mag > (u64::MAX - d) / 10 {
+                    mag = u64::MAX;
+                    self.clamped += 1;
+                    break;
+                }
+                mag = mag * 10 + d;
+            }
+            if mag == 0 {
+                return Some(0);
+            }
+            return Some(if neg { -(mag as i128) } else { mag as i128 });
         }
         let f: f64 = t.parse().ok()?;
-        if f.fract() != 0.0 {
+        if !f.is_finite() || f.fract() != 0.0 {
             self.kind_mismatch += 1;
             return None;
         }
-        Some(f as i128)
+        let neg = f.is_sign_negative();
+        let whole = f.abs();
+        let mag = if whole >= 18446744073709551616.0 {
+            self.clamped += 1;
+            u64::MAX
+        } else {
+            whole as u64
+        };
+        if mag == 0 {
+            return Some(0);
+        }
+        Some(if neg { -(mag as i128) } else { mag as i128 })
     }
     pub fn read_i128(&mut self) -> Option<i128> {
         let c = self.peek();
-        if c != b'-' && !c.is_ascii_digit() {
+        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
             self.kind_mismatch += 1;
             self.skip_value();
             return None;
@@ -1663,7 +1928,7 @@ impl<'a> Jr<'a> {
     }
     pub fn read_u128(&mut self) -> Option<u128> {
         let c = self.peek();
-        if c != b'-' && !c.is_ascii_digit() {
+        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
             self.kind_mismatch += 1;
             self.skip_value();
             return None;
@@ -1699,13 +1964,24 @@ impl<'a> Jr<'a> {
     /// A float field's value (docs/SPEC-TABLES.md §16.2).
     pub fn read_float(&mut self) -> Option<f64> {
         let c = self.peek();
-        if c != b'-' && !c.is_ascii_digit() {
+        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
             self.kind_mismatch += 1;
             self.skip_value();
             return None;
         }
         let t = self.number_token()?;
         t.parse::<f64>().ok()
+    }
+    /// A float32 field's value, converted once at single width (§16.2).
+    pub fn read_f32(&mut self) -> Option<f32> {
+        let c = self.peek();
+        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
+            self.kind_mismatch += 1;
+            self.skip_value();
+            return None;
+        }
+        let t = self.number_token()?;
+        t.parse::<f32>().ok()
     }
     /// A label (docs/SPEC-TABLES.md §16.7): a positive integer spelled as one —
     /// digits, no sign, no fraction, no exponent, no leading zero.
@@ -1720,7 +1996,7 @@ impl<'a> Jr<'a> {
         while p < b.len() && b[p].is_ascii_digit() {
             p += 1;
         }
-        if p < b.len() && !matches!(b[p], b' ' | b'\t' | b'\n' | b'\r' | b',' | b'}') {
+        if p < b.len() && !matches!(b[p], b' ' | b'\t' | b'\n' | b'\r' | b',' | b'}' | b'/') {
             return None;
         }
         let v = std::str::from_utf8(&b[s..p]).ok()?.parse::<u64>().ok()?;
@@ -1740,6 +2016,9 @@ impl<'a> Jr<'a> {
                     None
                 }
             },
+            // a definition the walk dropped reads null, and counts nothing
+            // past what dropping it already counted (§16.7)
+            Some(JsonLabel::Dropped) => None,
             _ => {
                 self.malformed = true;
                 None
@@ -1757,27 +2036,52 @@ impl<'a> Jr<'a> {
                 let _ = self.read_string();
             }
             b'{' => {
+                if self.depth > JSON_DEPTH_CAP {
+                    self.malformed = true;
+                    return;
+                }
                 self.p += 1;
+                self.depth += 1;
                 loop {
                     self.space();
                     if self.p >= self.b.len() {
                         self.malformed = true;
+                        self.depth -= 1;
                         return;
                     }
                     if self.b[self.p] == b'}' {
                         self.p += 1;
+                        self.depth -= 1;
                         return;
                     }
-                    let _ = self.read_string();
+                    let key = self.read_string();
                     if self.malformed {
+                        self.depth -= 1;
                         return;
                     }
                     self.space();
                     if self.p < self.b.len() && self.b[self.p] == b':' {
                         self.p += 1;
                     }
-                    self.skip_value();
+                    // A DEFINITION INSIDE A SKIPPED VALUE (§16.7): an &node
+                    // label followed by a field keeps its label as Dropped, so a
+                    // reference to it reads null; an &node alone is a reference
+                    // and defines nothing.
+                    let mut labelled = false;
+                    if key.as_deref() == Some("&node") {
+                        if let Some(label) = self.read_label() {
+                            labelled = true;
+                            self.space();
+                            if self.p < self.b.len() && self.b[self.p] == b',' {
+                                self.labels.entry(label).or_insert(JsonLabel::Dropped);
+                            }
+                        }
+                    }
+                    if !labelled {
+                        self.skip_value();
+                    }
                     if self.malformed {
+                        self.depth -= 1;
                         return;
                     }
                     self.space();
@@ -1787,19 +2091,27 @@ impl<'a> Jr<'a> {
                 }
             }
             b'[' => {
+                if self.depth > JSON_DEPTH_CAP {
+                    self.malformed = true;
+                    return;
+                }
                 self.p += 1;
+                self.depth += 1;
                 loop {
                     self.space();
                     if self.p >= self.b.len() {
                         self.malformed = true;
+                        self.depth -= 1;
                         return;
                     }
                     if self.b[self.p] == b']' {
                         self.p += 1;
+                        self.depth -= 1;
                         return;
                     }
                     self.skip_value();
                     if self.malformed {
+                        self.depth -= 1;
                         return;
                     }
                     self.space();
@@ -1808,12 +2120,25 @@ impl<'a> Jr<'a> {
                     }
                 }
             }
-            _ => {
-                while self.p < self.b.len()
-                    && !matches!(self.b[self.p], b' ' | b'\t' | b'\n' | b'\r' | b',' | b'}' | b']')
-                {
-                    self.p += 1;
+            b't' => {
+                if self.b[self.p..].starts_with(b"true") {
+                    self.p += 4;
+                } else {
+                    self.malformed = true;
                 }
+            }
+            b'f' => {
+                if self.b[self.p..].starts_with(b"false") {
+                    self.p += 5;
+                } else {
+                    self.malformed = true;
+                }
+            }
+            b'n' => {
+                let _ = self.read_null();
+            }
+            _ => {
+                let _ = self.number_token();
             }
         }
     }

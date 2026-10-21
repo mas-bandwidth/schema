@@ -12,6 +12,12 @@ use std::collections::HashMap;
 #[allow(unused_imports)]
 use std::rc::Rc;
 
+/// The reader's id-table distinctness bound and open-addressing probe capacity (docs/SPEC-TABLES.md §3).
+#[allow(dead_code)]
+const ID_TABLE_PROBE_BOUND: usize = 4096;
+#[allow(dead_code)]
+const ID_TABLE_PROBE_SLOTS: usize = 8192;
+
 /// MixedWeapon — an enum on the variable wire (docs/SPEC-TABLES.md §3, §5).
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub enum MixedWeapon {
@@ -334,6 +340,9 @@ pub fn mixed_stat_save_body(v: &MixedStat, out: &mut Vec<u8>, ids: &mut IdTable,
 /// the plain path.
 #[allow(unused_variables, unused_mut, clippy::too_many_arguments)]
 pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64], v: &mut MixedChatEvent, nodes: &mut TableNodeReader, report: &mut TableReport, path: TableRetainPath, mut retain: Option<&mut TableRetain>, nested: bool) -> bool {
+    if end > wire.len() { report.malformed = true; return false; }
+    // LEBs in this body cannot borrow a byte from the enclosing body.
+    let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.malformed = true; return false; };
         if r == 0 { return true; }
@@ -343,8 +352,8 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.malformed = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
             // the reserved id inside a NESTED body is malformed (§3.1); a
-            // VARIABLE-class root steps over its own node table and never
-            // counts it unknown, because the root gathered it first
+            // variable-class root steps over its own node table (§3.1).
+            // A fixed-class root has no numbering and sees it as unknown (§4).
             if nested { report.malformed = true; return false; }
             if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
             continue;
@@ -405,6 +414,9 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
 /// the plain path.
 #[allow(unused_variables, unused_mut, clippy::too_many_arguments)]
 pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64], v: &mut MixedEntity, nodes: &mut TableNodeReader, report: &mut TableReport, path: TableRetainPath, mut retain: Option<&mut TableRetain>, nested: bool) -> bool {
+    if end > wire.len() { report.malformed = true; return false; }
+    // LEBs in this body cannot borrow a byte from the enclosing body.
+    let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.malformed = true; return false; };
         if r == 0 { return true; }
@@ -414,8 +426,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.malformed = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
             // the reserved id inside a NESTED body is malformed (§3.1); a
-            // VARIABLE-class root steps over its own node table and never
-            // counts it unknown, because the root gathered it first
+            // variable-class root steps over its own node table (§3.1).
+            // A fixed-class root has no numbering and sees it as unknown (§4).
             if nested { report.malformed = true; return false; }
             if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
             continue;
@@ -599,6 +611,9 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
 /// the plain path.
 #[allow(unused_variables, unused_mut, clippy::too_many_arguments)]
 pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64], v: &mut MixedHitEvent, nodes: &mut TableNodeReader, report: &mut TableReport, path: TableRetainPath, mut retain: Option<&mut TableRetain>, nested: bool) -> bool {
+    if end > wire.len() { report.malformed = true; return false; }
+    // LEBs in this body cannot borrow a byte from the enclosing body.
+    let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.malformed = true; return false; };
         if r == 0 { return true; }
@@ -608,8 +623,8 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.malformed = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
             // the reserved id inside a NESTED body is malformed (§3.1); a
-            // VARIABLE-class root steps over its own node table and never
-            // counts it unknown, because the root gathered it first
+            // variable-class root steps over its own node table (§3.1).
+            // A fixed-class root has no numbering and sees it as unknown (§4).
             if nested { report.malformed = true; return false; }
             if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
             continue;
@@ -686,6 +701,9 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
 /// the plain path.
 #[allow(unused_variables, unused_mut, clippy::too_many_arguments)]
 pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64], v: &mut MixedPickupEvent, nodes: &mut TableNodeReader, report: &mut TableReport, path: TableRetainPath, mut retain: Option<&mut TableRetain>, nested: bool) -> bool {
+    if end > wire.len() { report.malformed = true; return false; }
+    // LEBs in this body cannot borrow a byte from the enclosing body.
+    let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.malformed = true; return false; };
         if r == 0 { return true; }
@@ -695,8 +713,8 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.malformed = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
             // the reserved id inside a NESTED body is malformed (§3.1); a
-            // VARIABLE-class root steps over its own node table and never
-            // counts it unknown, because the root gathered it first
+            // variable-class root steps over its own node table (§3.1).
+            // A fixed-class root has no numbering and sees it as unknown (§4).
             if nested { report.malformed = true; return false; }
             if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
             continue;
@@ -757,6 +775,9 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
 /// the plain path.
 #[allow(unused_variables, unused_mut, clippy::too_many_arguments)]
 pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64], v: &mut MixedStat, nodes: &mut TableNodeReader, report: &mut TableReport, path: TableRetainPath, mut retain: Option<&mut TableRetain>, nested: bool) -> bool {
+    if end > wire.len() { report.malformed = true; return false; }
+    // LEBs in this body cannot borrow a byte from the enclosing body.
+    let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.malformed = true; return false; };
         if r == 0 { return true; }
@@ -766,8 +787,8 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.malformed = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
             // the reserved id inside a NESTED body is malformed (§3.1); a
-            // VARIABLE-class root steps over its own node table and never
-            // counts it unknown, because the root gathered it first
+            // variable-class root steps over its own node table (§3.1).
+            // A fixed-class root has no numbering and sees it as unknown (§4).
             if nested { report.malformed = true; return false; }
             if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
             continue;
@@ -823,8 +844,8 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
 }
 
 /// The body of one table record of the numbering, by its type id (docs/SPEC-TABLES.md §3.1).
-#[allow(dead_code, unused_variables)]
-fn variable_record_save(type_id: u64, node: &Rc<dyn Any>, out: &mut Vec<u8>, ids: &mut IdTable, g: &TableNodeGraph) {
+#[allow(dead_code, unused_variables, unused_mut)]
+fn variable_record_save(type_id: u64, node: &Rc<dyn Any>, out: &mut Vec<u8>, ids: &mut IdTable, g: &TableNodeGraph, mut retain: Option<&mut TableRetain>, mut report: Option<&mut TableReport>, path: TableRetainPath) {
     match type_id {
         _ => {}
     }
@@ -842,17 +863,19 @@ fn variable_node_build(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k:
     match &nodes.slots[k] {
         TableNodeSlot::Built(_, n) => return Some(n.clone()),
         TableNodeSlot::Table(_) => {}
-        TableNodeSlot::Building => { report.malformed = true; return None; }
+        TableNodeSlot::Building => { report.cycle_on_save = true; return None; }
         _ => return None,
     }
     let (type_id, start, end) = nodes.recs[k];
     nodes.slots[k] = TableNodeSlot::Building;
-    let mut sink = TableRetain::default();
+    let mut sink = TableRetain { bytes: Vec::with_capacity(nodes.retain_capacity), ids: Vec::new() };
     let retaining = nodes.retaining;
     let node: Option<Rc<dyn Any>> = match type_id {
         _ => None,
     };
     nodes.slots[k] = match &node { Some(n) => TableNodeSlot::Built(type_id, n.clone()), None => TableNodeSlot::Null };
+    if let Some(n) = &node { retain_bind_node(&mut sink, n); }
+    nodes.retained.extend_from_slice(&sink.bytes);
     node
 }
 
@@ -1173,8 +1196,11 @@ pub fn mixed_stat_json_write(v: &MixedStat, w: &mut Jw, depth: usize, label: u64
 pub fn mixed_chat_event_json_read(jr: &mut Jr, v: &mut MixedChatEvent) {
     jr.space();
     if jr.peek() != b'{' { jr.malformed = true; return; }
+    if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
     jr.p += 1;
+    jr.depth += 1;
     let _ = mixed_chat_event_json_fields(jr, v, None);
+    jr.depth -= 1;
 }
 
 /// The keys of one MixedChatEvent object, the opening brace already read; `first` is a
@@ -1183,6 +1209,7 @@ pub fn mixed_chat_event_json_read(jr: &mut Jr, v: &mut MixedChatEvent) {
 pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: Option<String>) -> usize {
     let mut pending = first;
     let mut n = 0usize;
+    let mut seen = [false; 2];
     loop {
         let key = match pending.take() {
             Some(k) => k,
@@ -1199,6 +1226,8 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
         n += 1;
         match key.as_str() {
             "channel" => {
+                if seen[0] { jr.duplicate += 1; }
+                seen[0] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 3i128 { x = 3i128; jr.clamped += 1; }
@@ -1206,6 +1235,8 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
                 }
             }
             "speaker" => {
+                if seen[1] { jr.duplicate += 1; }
+                seen[1] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 4095i128 { x = 4095i128; jr.clamped += 1; }
@@ -1235,6 +1266,7 @@ pub fn mixed_chat_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedChatEvent>> {
     match jr.peek() {
         b'n' => { jr.read_null(); None }
         b'{' => {
+            if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
             if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedChatEvent::default())); }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
@@ -1242,7 +1274,9 @@ pub fn mixed_chat_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedChatEvent>> {
             jr.p += 1;
             if key != "&node" {
                 let mut v = MixedChatEvent::default();
+                jr.depth += 1;
                 let _ = mixed_chat_event_json_fields(jr, &mut v, Some(key));
+                jr.depth -= 1;
                 return Some(Rc::new(v));
             }
             let Some(label) = jr.read_label() else { jr.malformed = true; return None; };
@@ -1255,7 +1289,10 @@ pub fn mixed_chat_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedChatEvent>> {
                     jr.labels.insert(label, JsonLabel::Open);
                     let mut v = MixedChatEvent::default();
                     // a definition carries at least one field
-                    if mixed_chat_event_json_fields(jr, &mut v, None) == 0 { jr.malformed = true; return None; }
+                    jr.depth += 1;
+                    let count = mixed_chat_event_json_fields(jr, &mut v, None);
+                    jr.depth -= 1;
+                    if count == 0 { jr.malformed = true; return None; }
                     let n = Rc::new(v);
                     jr.labels.insert(label, JsonLabel::Node(n.clone()));
                     Some(n)
@@ -1271,8 +1308,11 @@ pub fn mixed_chat_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedChatEvent>> {
 pub fn mixed_entity_json_read(jr: &mut Jr, v: &mut MixedEntity) {
     jr.space();
     if jr.peek() != b'{' { jr.malformed = true; return; }
+    if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
     jr.p += 1;
+    jr.depth += 1;
     let _ = mixed_entity_json_fields(jr, v, None);
+    jr.depth -= 1;
 }
 
 /// The keys of one MixedEntity object, the opening brace already read; `first` is a
@@ -1281,6 +1321,7 @@ pub fn mixed_entity_json_read(jr: &mut Jr, v: &mut MixedEntity) {
 pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<String>) -> usize {
     let mut pending = first;
     let mut n = 0usize;
+    let mut seen = [false; 14];
     loop {
         let key = match pending.take() {
             Some(k) => k,
@@ -1297,6 +1338,8 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
         n += 1;
         match key.as_str() {
             "entity_id" => {
+                if seen[0] { jr.duplicate += 1; }
+                seen[0] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 4095i128 { x = 4095i128; jr.clamped += 1; }
@@ -1304,6 +1347,8 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 }
             }
             "pos_x" => {
+                if seen[1] { jr.duplicate += 1; }
+                seen[1] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < -16383i128 { x = -16383i128; jr.clamped += 1; } else if x > 16383i128 { x = 16383i128; jr.clamped += 1; }
@@ -1311,6 +1356,8 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 }
             }
             "pos_y" => {
+                if seen[2] { jr.duplicate += 1; }
+                seen[2] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < -16383i128 { x = -16383i128; jr.clamped += 1; } else if x > 16383i128 { x = 16383i128; jr.clamped += 1; }
@@ -1318,6 +1365,8 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 }
             }
             "pos_z" => {
+                if seen[3] { jr.duplicate += 1; }
+                seen[3] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < -16383i128 { x = -16383i128; jr.clamped += 1; } else if x > 16383i128 { x = 16383i128; jr.clamped += 1; }
@@ -1325,6 +1374,8 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 }
             }
             "yaw" => {
+                if seen[4] { jr.duplicate += 1; }
+                seen[4] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 511i128 { x = 511i128; jr.clamped += 1; }
@@ -1332,6 +1383,8 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 }
             }
             "pitch" => {
+                if seen[5] { jr.duplicate += 1; }
+                seen[5] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 511i128 { x = 511i128; jr.clamped += 1; }
@@ -1339,6 +1392,8 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 }
             }
             "vel_x" => {
+                if seen[6] { jr.duplicate += 1; }
+                seen[6] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < -2048i128 { x = -2048i128; jr.clamped += 1; } else if x > 2047i128 { x = 2047i128; jr.clamped += 1; }
@@ -1346,6 +1401,8 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 }
             }
             "vel_y" => {
+                if seen[7] { jr.duplicate += 1; }
+                seen[7] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < -2048i128 { x = -2048i128; jr.clamped += 1; } else if x > 2047i128 { x = 2047i128; jr.clamped += 1; }
@@ -1353,6 +1410,8 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 }
             }
             "vel_z" => {
+                if seen[8] { jr.duplicate += 1; }
+                seen[8] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < -2048i128 { x = -2048i128; jr.clamped += 1; } else if x > 2047i128 { x = 2047i128; jr.clamped += 1; }
@@ -1360,6 +1419,8 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 }
             }
             "health" => {
+                if seen[9] { jr.duplicate += 1; }
+                seen[9] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 1000i128 { x = 1000i128; jr.clamped += 1; }
@@ -1367,6 +1428,8 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 }
             }
             "weapon" => {
+                if seen[10] { jr.duplicate += 1; }
+                seen[10] = true;
                 if jr.peek() == b'"' {
                     if let Some(s) = jr.read_string() {
                         v.weapon = match mixed_weapon_from_json_name(&s) {
@@ -1377,6 +1440,8 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 } else { jr.kind_mismatch += 1; jr.skip_value(); }
             }
             "damage" => {
+                if seen[11] { jr.duplicate += 1; }
+                seen[11] = true;
                 if jr.peek() == b'[' {
                     jr.p += 1;
                     let mut bits: u64 = 0;
@@ -1406,11 +1471,15 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 } else { jr.kind_mismatch += 1; jr.skip_value(); }
             }
             "moving" => {
+                if seen[12] { jr.duplicate += 1; }
+                seen[12] = true;
                 if jr.peek() == b't' && jr.b[jr.p..].starts_with(b"true") { jr.p += 4; v.moving = true; }
                 else if jr.peek() == b'f' && jr.b[jr.p..].starts_with(b"false") { jr.p += 5; v.moving = false; }
                 else { jr.kind_mismatch += 1; jr.skip_value(); }
             }
             "firing" => {
+                if seen[13] { jr.duplicate += 1; }
+                seen[13] = true;
                 if jr.peek() == b't' && jr.b[jr.p..].starts_with(b"true") { jr.p += 4; v.firing = true; }
                 else if jr.peek() == b'f' && jr.b[jr.p..].starts_with(b"false") { jr.p += 5; v.firing = false; }
                 else { jr.kind_mismatch += 1; jr.skip_value(); }
@@ -1438,6 +1507,7 @@ pub fn mixed_entity_json_ptr(jr: &mut Jr) -> Option<Rc<MixedEntity>> {
     match jr.peek() {
         b'n' => { jr.read_null(); None }
         b'{' => {
+            if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
             if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedEntity::default())); }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
@@ -1445,7 +1515,9 @@ pub fn mixed_entity_json_ptr(jr: &mut Jr) -> Option<Rc<MixedEntity>> {
             jr.p += 1;
             if key != "&node" {
                 let mut v = MixedEntity::default();
+                jr.depth += 1;
                 let _ = mixed_entity_json_fields(jr, &mut v, Some(key));
+                jr.depth -= 1;
                 return Some(Rc::new(v));
             }
             let Some(label) = jr.read_label() else { jr.malformed = true; return None; };
@@ -1458,7 +1530,10 @@ pub fn mixed_entity_json_ptr(jr: &mut Jr) -> Option<Rc<MixedEntity>> {
                     jr.labels.insert(label, JsonLabel::Open);
                     let mut v = MixedEntity::default();
                     // a definition carries at least one field
-                    if mixed_entity_json_fields(jr, &mut v, None) == 0 { jr.malformed = true; return None; }
+                    jr.depth += 1;
+                    let count = mixed_entity_json_fields(jr, &mut v, None);
+                    jr.depth -= 1;
+                    if count == 0 { jr.malformed = true; return None; }
                     let n = Rc::new(v);
                     jr.labels.insert(label, JsonLabel::Node(n.clone()));
                     Some(n)
@@ -1474,8 +1549,11 @@ pub fn mixed_entity_json_ptr(jr: &mut Jr) -> Option<Rc<MixedEntity>> {
 pub fn mixed_hit_event_json_read(jr: &mut Jr, v: &mut MixedHitEvent) {
     jr.space();
     if jr.peek() != b'{' { jr.malformed = true; return; }
+    if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
     jr.p += 1;
+    jr.depth += 1;
     let _ = mixed_hit_event_json_fields(jr, v, None);
+    jr.depth -= 1;
 }
 
 /// The keys of one MixedHitEvent object, the opening brace already read; `first` is a
@@ -1484,6 +1562,7 @@ pub fn mixed_hit_event_json_read(jr: &mut Jr, v: &mut MixedHitEvent) {
 pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Option<String>) -> usize {
     let mut pending = first;
     let mut n = 0usize;
+    let mut seen = [false; 4];
     loop {
         let key = match pending.take() {
             Some(k) => k,
@@ -1500,6 +1579,8 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
         n += 1;
         match key.as_str() {
             "target_id" => {
+                if seen[0] { jr.duplicate += 1; }
+                seen[0] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 4095i128 { x = 4095i128; jr.clamped += 1; }
@@ -1507,6 +1588,8 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
                 }
             }
             "damage" => {
+                if seen[1] { jr.duplicate += 1; }
+                seen[1] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 4095i128 { x = 4095i128; jr.clamped += 1; }
@@ -1514,6 +1597,8 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
                 }
             }
             "hit_kind" => {
+                if seen[2] { jr.duplicate += 1; }
+                seen[2] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 7i128 { x = 7i128; jr.clamped += 1; }
@@ -1521,6 +1606,8 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
                 }
             }
             "crit" => {
+                if seen[3] { jr.duplicate += 1; }
+                seen[3] = true;
                 if jr.peek() == b't' && jr.b[jr.p..].starts_with(b"true") { jr.p += 4; v.crit = true; }
                 else if jr.peek() == b'f' && jr.b[jr.p..].starts_with(b"false") { jr.p += 5; v.crit = false; }
                 else { jr.kind_mismatch += 1; jr.skip_value(); }
@@ -1548,6 +1635,7 @@ pub fn mixed_hit_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedHitEvent>> {
     match jr.peek() {
         b'n' => { jr.read_null(); None }
         b'{' => {
+            if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
             if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedHitEvent::default())); }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
@@ -1555,7 +1643,9 @@ pub fn mixed_hit_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedHitEvent>> {
             jr.p += 1;
             if key != "&node" {
                 let mut v = MixedHitEvent::default();
+                jr.depth += 1;
                 let _ = mixed_hit_event_json_fields(jr, &mut v, Some(key));
+                jr.depth -= 1;
                 return Some(Rc::new(v));
             }
             let Some(label) = jr.read_label() else { jr.malformed = true; return None; };
@@ -1568,7 +1658,10 @@ pub fn mixed_hit_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedHitEvent>> {
                     jr.labels.insert(label, JsonLabel::Open);
                     let mut v = MixedHitEvent::default();
                     // a definition carries at least one field
-                    if mixed_hit_event_json_fields(jr, &mut v, None) == 0 { jr.malformed = true; return None; }
+                    jr.depth += 1;
+                    let count = mixed_hit_event_json_fields(jr, &mut v, None);
+                    jr.depth -= 1;
+                    if count == 0 { jr.malformed = true; return None; }
                     let n = Rc::new(v);
                     jr.labels.insert(label, JsonLabel::Node(n.clone()));
                     Some(n)
@@ -1584,8 +1677,11 @@ pub fn mixed_hit_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedHitEvent>> {
 pub fn mixed_pickup_event_json_read(jr: &mut Jr, v: &mut MixedPickupEvent) {
     jr.space();
     if jr.peek() != b'{' { jr.malformed = true; return; }
+    if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
     jr.p += 1;
+    jr.depth += 1;
     let _ = mixed_pickup_event_json_fields(jr, v, None);
+    jr.depth -= 1;
 }
 
 /// The keys of one MixedPickupEvent object, the opening brace already read; `first` is a
@@ -1594,6 +1690,7 @@ pub fn mixed_pickup_event_json_read(jr: &mut Jr, v: &mut MixedPickupEvent) {
 pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, first: Option<String>) -> usize {
     let mut pending = first;
     let mut n = 0usize;
+    let mut seen = [false; 2];
     loop {
         let key = match pending.take() {
             Some(k) => k,
@@ -1610,6 +1707,8 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
         n += 1;
         match key.as_str() {
             "item_id" => {
+                if seen[0] { jr.duplicate += 1; }
+                seen[0] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 1023i128 { x = 1023i128; jr.clamped += 1; }
@@ -1617,6 +1716,8 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
                 }
             }
             "amount" => {
+                if seen[1] { jr.duplicate += 1; }
+                seen[1] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 255i128 { x = 255i128; jr.clamped += 1; }
@@ -1646,6 +1747,7 @@ pub fn mixed_pickup_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedPickupEvent>> 
     match jr.peek() {
         b'n' => { jr.read_null(); None }
         b'{' => {
+            if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
             if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedPickupEvent::default())); }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
@@ -1653,7 +1755,9 @@ pub fn mixed_pickup_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedPickupEvent>> 
             jr.p += 1;
             if key != "&node" {
                 let mut v = MixedPickupEvent::default();
+                jr.depth += 1;
                 let _ = mixed_pickup_event_json_fields(jr, &mut v, Some(key));
+                jr.depth -= 1;
                 return Some(Rc::new(v));
             }
             let Some(label) = jr.read_label() else { jr.malformed = true; return None; };
@@ -1666,7 +1770,10 @@ pub fn mixed_pickup_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedPickupEvent>> 
                     jr.labels.insert(label, JsonLabel::Open);
                     let mut v = MixedPickupEvent::default();
                     // a definition carries at least one field
-                    if mixed_pickup_event_json_fields(jr, &mut v, None) == 0 { jr.malformed = true; return None; }
+                    jr.depth += 1;
+                    let count = mixed_pickup_event_json_fields(jr, &mut v, None);
+                    jr.depth -= 1;
+                    if count == 0 { jr.malformed = true; return None; }
                     let n = Rc::new(v);
                     jr.labels.insert(label, JsonLabel::Node(n.clone()));
                     Some(n)
@@ -1682,8 +1789,11 @@ pub fn mixed_pickup_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedPickupEvent>> 
 pub fn mixed_stat_json_read(jr: &mut Jr, v: &mut MixedStat) {
     jr.space();
     if jr.peek() != b'{' { jr.malformed = true; return; }
+    if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
     jr.p += 1;
+    jr.depth += 1;
     let _ = mixed_stat_json_fields(jr, v, None);
+    jr.depth -= 1;
 }
 
 /// The keys of one MixedStat object, the opening brace already read; `first` is a
@@ -1692,6 +1802,7 @@ pub fn mixed_stat_json_read(jr: &mut Jr, v: &mut MixedStat) {
 pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<String>) -> usize {
     let mut pending = first;
     let mut n = 0usize;
+    let mut seen = [false; 2];
     loop {
         let key = match pending.take() {
             Some(k) => k,
@@ -1708,6 +1819,8 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
         n += 1;
         match key.as_str() {
             "stat_id" => {
+                if seen[0] { jr.duplicate += 1; }
+                seen[0] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 255i128 { x = 255i128; jr.clamped += 1; }
@@ -1715,6 +1828,8 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
                 }
             }
             "delta" => {
+                if seen[1] { jr.duplicate += 1; }
+                seen[1] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
                     if x < -512i128 { x = -512i128; jr.clamped += 1; } else if x > 511i128 { x = 511i128; jr.clamped += 1; }
@@ -1744,6 +1859,7 @@ pub fn mixed_stat_json_ptr(jr: &mut Jr) -> Option<Rc<MixedStat>> {
     match jr.peek() {
         b'n' => { jr.read_null(); None }
         b'{' => {
+            if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
             if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedStat::default())); }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
@@ -1751,7 +1867,9 @@ pub fn mixed_stat_json_ptr(jr: &mut Jr) -> Option<Rc<MixedStat>> {
             jr.p += 1;
             if key != "&node" {
                 let mut v = MixedStat::default();
+                jr.depth += 1;
                 let _ = mixed_stat_json_fields(jr, &mut v, Some(key));
+                jr.depth -= 1;
                 return Some(Rc::new(v));
             }
             let Some(label) = jr.read_label() else { jr.malformed = true; return None; };
@@ -1764,7 +1882,10 @@ pub fn mixed_stat_json_ptr(jr: &mut Jr) -> Option<Rc<MixedStat>> {
                     jr.labels.insert(label, JsonLabel::Open);
                     let mut v = MixedStat::default();
                     // a definition carries at least one field
-                    if mixed_stat_json_fields(jr, &mut v, None) == 0 { jr.malformed = true; return None; }
+                    jr.depth += 1;
+                    let count = mixed_stat_json_fields(jr, &mut v, None);
+                    jr.depth -= 1;
+                    if count == 0 { jr.malformed = true; return None; }
                     let n = Rc::new(v);
                     jr.labels.insert(label, JsonLabel::Node(n.clone()));
                     Some(n)
