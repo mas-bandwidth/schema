@@ -3594,7 +3594,7 @@ func PatrolToJson(value *Patrol, buffer []byte, allocator ...TableAllocator) int
 func PatrolFromJsonWith(builder *PatrolBuilder, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -3721,7 +3721,7 @@ func TeamConfigToJson(value *TeamConfig, buffer []byte) int64 {
 func TeamConfigFromJsonWith(value *TeamConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -3839,7 +3839,7 @@ func GunnerConfigToJson(value *GunnerConfig, buffer []byte) int64 {
 func GunnerConfigFromJsonWith(value *GunnerConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -3957,7 +3957,7 @@ func TurretConfigToJson(value *TurretConfig, buffer []byte) int64 {
 func TurretConfigFromJsonWith(value *TurretConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4075,7 +4075,7 @@ func HullConfigToJson(value *HullConfig, buffer []byte) int64 {
 func HullConfigFromJsonWith(value *HullConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4193,7 +4193,7 @@ func KeyedConfigToJson(value *KeyedConfig, buffer []byte) int64 {
 func KeyedConfigFromJsonWith(value *KeyedConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4311,7 +4311,7 @@ func ScoreBoardToJson(value *ScoreBoardRow, buffer []byte) int64 {
 func ScoreBoardFromJsonWith(value *ScoreBoardRow, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4429,7 +4429,7 @@ func ArchiveConfigToJson(value *ArchiveConfig, buffer []byte) int64 {
 func ArchiveConfigFromJsonWith(value *ArchiveConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4547,7 +4547,7 @@ func GunnerSettingsToJson(value *GunnerSettings, buffer []byte) int64 {
 func GunnerSettingsFromJsonWith(value *GunnerSettings, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4665,7 +4665,7 @@ func ShipEntryToJson(value *ShipEntry, buffer []byte) int64 {
 func ShipEntryFromJsonWith(value *ShipEntry, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4783,7 +4783,7 @@ func GlobalSettingsToJson(value *GlobalSettings, buffer []byte) int64 {
 func GlobalSettingsFromJsonWith(value *GlobalSettings, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4901,7 +4901,7 @@ func PackConfigToJson(value *PackConfig, buffer []byte) int64 {
 func PackConfigFromJsonWith(value *PackConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5019,7 +5019,7 @@ func RangedSignedToJson(value *RangedSigned, buffer []byte) int64 {
 func RangedSignedFromJsonWith(value *RangedSigned, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5137,7 +5137,7 @@ func RangedUnsignedToJson(value *RangedUnsigned, buffer []byte) int64 {
 func RangedUnsignedFromJsonWith(value *RangedUnsigned, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5255,7 +5255,7 @@ func RangedWidthsToJson(value *RangedWidths, buffer []byte) int64 {
 func RangedWidthsFromJsonWith(value *RangedWidths, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5373,7 +5373,7 @@ func RootConfigToJson(value *RootConfig, buffer []byte) int64 {
 func RootConfigFromJsonWith(value *RootConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5491,7 +5491,7 @@ func WeaponConfigToJson(value *WeaponConfig, buffer []byte) int64 {
 func WeaponConfigFromJsonWith(value *WeaponConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5609,7 +5609,7 @@ func LoadoutConfigToJson(value *LoadoutConfig, buffer []byte) int64 {
 func LoadoutConfigFromJsonWith(value *LoadoutConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5727,7 +5727,7 @@ func ProfileConfigToJson(value *ProfileConfig, buffer []byte) int64 {
 func ProfileConfigFromJsonWith(value *ProfileConfig, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5845,7 +5845,7 @@ func AttachmentToJson(value *AttachmentRow, buffer []byte) int64 {
 func AttachmentFromJsonWith(value *AttachmentRow, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5963,7 +5963,7 @@ func BuffToJson(value *BuffRow, buffer []byte) int64 {
 func BuffFromJsonWith(value *BuffRow, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -6081,7 +6081,7 @@ func DebuffToJson(value *DebuffRow, buffer []byte) int64 {
 func DebuffFromJsonWith(value *DebuffRow, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -6199,7 +6199,7 @@ func WideBlobToJson(value *WideBlob, buffer []byte) int64 {
 func WideBlobFromJsonWith(value *WideBlob, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

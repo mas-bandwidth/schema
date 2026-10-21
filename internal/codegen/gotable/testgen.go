@@ -658,7 +658,7 @@ func testgenSampleAt(b *strings.Builder, in, n string, variable bool, text strin
 		fmt.Fprintf(b, "%s\tt.Fatalf(\"FromJson of the sample: report %%+v\", r)\n%s}\n%sv := sb.AsConst()\n", in, in, in)
 		return
 	}
-	fmt.Fprintf(b, "%sv := new(%s)\n%sif !%sFromJson(v, []byte(%s), &r) || r != (TableReport{}) {\n", in, n, in, n, text)
+	fmt.Fprintf(b, "%sv := &%s{}\n%sif !%sFromJson(v, []byte(%s), &r) || r != (TableReport{}) {\n", in, n, in, n, text)
 	fmt.Fprintf(b, "%s\tt.Fatalf(\"FromJson of the sample: report %%+v\", r)\n%s}\n", in, in)
 }
 
@@ -680,9 +680,9 @@ func testgenFromJsonAt(b *strings.Builder, in, n string, variable bool, text, v,
 	}
 	target := v
 	if target == "" {
-		target = "new(" + n + ")"
+		target = "&" + n + "{}"
 	} else {
-		fmt.Fprintf(b, "%s%s := new(%s)\n", in, v, n)
+		fmt.Fprintf(b, "%s%s := &%s{}\n", in, v, n)
 	}
 	fmt.Fprintf(b, "%sok := %sFromJson(%s, %s, &%s)\n", in, n, target, text, jr)
 }

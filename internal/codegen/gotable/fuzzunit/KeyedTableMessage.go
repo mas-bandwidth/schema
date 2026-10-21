@@ -320,7 +320,7 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 func TeamConfigLoadMessages(values []TeamConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -642,7 +642,7 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 func GunnerConfigLoadMessages(values []GunnerConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -1015,7 +1015,7 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 func TurretConfigLoadMessages(values []TurretConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -1497,7 +1497,7 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 func HullConfigLoadMessages(values []HullConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -2048,7 +2048,7 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 func KeyedConfigLoadMessages(values []KeyedConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

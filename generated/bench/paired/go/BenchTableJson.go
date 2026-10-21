@@ -3539,7 +3539,7 @@ func MixedEntityToJson(value *MixedEntity, buffer []byte) int64 {
 func MixedEntityFromJsonWith(value *MixedEntity, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -3657,7 +3657,7 @@ func MixedStatToJson(value *MixedStat, buffer []byte) int64 {
 func MixedStatFromJsonWith(value *MixedStat, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -3775,7 +3775,7 @@ func MixedHitEventToJson(value *MixedHitEvent, buffer []byte) int64 {
 func MixedHitEventFromJsonWith(value *MixedHitEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -3893,7 +3893,7 @@ func MixedChatEventToJson(value *MixedChatEvent, buffer []byte) int64 {
 func MixedChatEventFromJsonWith(value *MixedChatEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4011,7 +4011,7 @@ func MixedPickupEventToJson(value *MixedPickupEvent, buffer []byte) int64 {
 func MixedPickupEventFromJsonWith(value *MixedPickupEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4129,7 +4129,7 @@ func BenchMixedToJson(value *BenchMixed, buffer []byte) int64 {
 func BenchMixedFromJsonWith(value *BenchMixed, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4247,7 +4247,7 @@ func FixedTableToJson(value *FixedTable, buffer []byte) int64 {
 func FixedTableFromJsonWith(value *FixedTable, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

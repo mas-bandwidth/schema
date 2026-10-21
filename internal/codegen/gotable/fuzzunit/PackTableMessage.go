@@ -400,7 +400,7 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 func GunnerSettingsLoadMessages(values []GunnerSettings, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -1049,7 +1049,7 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 func ShipEntryLoadMessages(values []ShipEntry, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -1651,7 +1651,7 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 func GlobalSettingsLoadMessages(values []GlobalSettings, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -2437,7 +2437,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 func PackConfigLoadMessages(values []PackConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

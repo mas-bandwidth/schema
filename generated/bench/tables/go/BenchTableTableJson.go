@@ -3539,7 +3539,7 @@ func TableEntityToJson(value *TableEntity, buffer []byte) int64 {
 func TableEntityFromJsonWith(value *TableEntity, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -3657,7 +3657,7 @@ func TableStatToJson(value *TableStat, buffer []byte) int64 {
 func TableStatFromJsonWith(value *TableStat, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -3775,7 +3775,7 @@ func TableMixedToJson(value *TableMixed, buffer []byte) int64 {
 func TableMixedFromJsonWith(value *TableMixed, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -3893,7 +3893,7 @@ func TableHitEventToJson(value *TableHitEvent, buffer []byte) int64 {
 func TableHitEventFromJsonWith(value *TableHitEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4011,7 +4011,7 @@ func TableChatEventToJson(value *TableChatEvent, buffer []byte) int64 {
 func TableChatEventFromJsonWith(value *TableChatEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4129,7 +4129,7 @@ func TablePickupEventToJson(value *TablePickupEvent, buffer []byte) int64 {
 func TablePickupEventFromJsonWith(value *TablePickupEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

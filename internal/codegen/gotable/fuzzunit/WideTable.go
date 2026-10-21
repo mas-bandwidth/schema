@@ -452,7 +452,7 @@ func WideBlobLoadTolerant(value *WideBlob, data []byte, report *TableReport) boo
 func WideBlobLoad(value *WideBlob, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -466,7 +466,7 @@ func WideBlobLoad(value *WideBlob, data []byte, report *TableReport) bool {
 
 // WideBlobReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func WideBlobReadStrict(wire []byte) (*WideBlob, error) {
-	value := new(WideBlob)
+	value := &WideBlob{}
 	var report TableReport
 	ok := WideBlobLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {

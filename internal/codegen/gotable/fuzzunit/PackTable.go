@@ -409,7 +409,7 @@ func GunnerSettingsLoadTolerant(value *GunnerSettings, data []byte, report *Tabl
 func GunnerSettingsLoad(value *GunnerSettings, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -423,7 +423,7 @@ func GunnerSettingsLoad(value *GunnerSettings, data []byte, report *TableReport)
 
 // GunnerSettingsReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func GunnerSettingsReadStrict(wire []byte) (*GunnerSettings, error) {
-	value := new(GunnerSettings)
+	value := &GunnerSettings{}
 	var report TableReport
 	ok := GunnerSettingsLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -1115,7 +1115,7 @@ func ShipEntryLoadTolerant(value *ShipEntry, data []byte, report *TableReport) b
 func ShipEntryLoad(value *ShipEntry, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -1129,7 +1129,7 @@ func ShipEntryLoad(value *ShipEntry, data []byte, report *TableReport) bool {
 
 // ShipEntryReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func ShipEntryReadStrict(wire []byte) (*ShipEntry, error) {
-	value := new(ShipEntry)
+	value := &ShipEntry{}
 	var report TableReport
 	ok := ShipEntryLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -1993,7 +1993,7 @@ func GlobalSettingsLoadTolerant(value *GlobalSettings, data []byte, report *Tabl
 func GlobalSettingsLoad(value *GlobalSettings, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -2007,7 +2007,7 @@ func GlobalSettingsLoad(value *GlobalSettings, data []byte, report *TableReport)
 
 // GlobalSettingsReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func GlobalSettingsReadStrict(wire []byte) (*GlobalSettings, error) {
-	value := new(GlobalSettings)
+	value := &GlobalSettings{}
 	var report TableReport
 	ok := GlobalSettingsLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -3309,7 +3309,7 @@ func PackConfigLoadTolerant(value *PackConfig, data []byte, report *TableReport)
 func PackConfigLoad(value *PackConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -3323,7 +3323,7 @@ func PackConfigLoad(value *PackConfig, data []byte, report *TableReport) bool {
 
 // PackConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func PackConfigReadStrict(wire []byte) (*PackConfig, error) {
-	value := new(PackConfig)
+	value := &PackConfig{}
 	var report TableReport
 	ok := PackConfigLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -4867,7 +4867,7 @@ func GunnerSettingsFixedSaveReason(values []GunnerSettings, buffer []byte) (int6
 func GunnerSettingsFixedLoad(values []GunnerSettings, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5164,7 +5164,7 @@ func ShipEntryFixedSaveReason(values []ShipEntry, buffer []byte) (int64, error) 
 func ShipEntryFixedLoad(values []ShipEntry, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5455,7 +5455,7 @@ func GlobalSettingsFixedSaveReason(values []GlobalSettings, buffer []byte) (int6
 func GlobalSettingsFixedLoad(values []GlobalSettings, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5860,7 +5860,7 @@ func PackConfigFixedSaveReason(values []PackConfig, buffer []byte) (int64, error
 func PackConfigFixedLoad(values []PackConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

@@ -706,7 +706,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		}
 	}
 	if f.IsList() || f.IsMap() {
-		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(*new(%s)))", containerElementType(g.unit, f))
+		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(*(*%s)(nil)))", containerElementType(g.unit, f))
 		counted = true
 		// no declared bound: ArrayBound 0, and the UnboundedContainer column
 		// below is the tell (docs/SPEC-TABLES.md §8.1)

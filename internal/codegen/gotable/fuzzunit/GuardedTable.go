@@ -734,7 +734,7 @@ func PatrolLoadBuilderTolerant(b *PatrolBuilder, wire []byte, report *TableRepor
 func PatrolLoad(region, wire []byte, report *TableReport) *Patrol {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -751,7 +751,7 @@ func PatrolLoad(region, wire []byte, report *TableReport) *Patrol {
 func PatrolLoadBuilder(b *PatrolBuilder, wire []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

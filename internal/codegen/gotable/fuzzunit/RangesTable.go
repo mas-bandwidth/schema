@@ -1141,7 +1141,7 @@ func RangedSignedLoadTolerant(value *RangedSigned, data []byte, report *TableRep
 func RangedSignedLoad(value *RangedSigned, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -1155,7 +1155,7 @@ func RangedSignedLoad(value *RangedSigned, data []byte, report *TableReport) boo
 
 // RangedSignedReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func RangedSignedReadStrict(wire []byte) (*RangedSigned, error) {
-	value := new(RangedSigned)
+	value := &RangedSigned{}
 	var report TableReport
 	ok := RangedSignedLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -3297,7 +3297,7 @@ func RangedUnsignedLoadTolerant(value *RangedUnsigned, data []byte, report *Tabl
 func RangedUnsignedLoad(value *RangedUnsigned, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -3311,7 +3311,7 @@ func RangedUnsignedLoad(value *RangedUnsigned, data []byte, report *TableReport)
 
 // RangedUnsignedReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func RangedUnsignedReadStrict(wire []byte) (*RangedUnsigned, error) {
-	value := new(RangedUnsigned)
+	value := &RangedUnsigned{}
 	var report TableReport
 	ok := RangedUnsignedLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -4796,7 +4796,7 @@ func RangedWidthsLoadTolerant(value *RangedWidths, data []byte, report *TableRep
 func RangedWidthsLoad(value *RangedWidths, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4810,7 +4810,7 @@ func RangedWidthsLoad(value *RangedWidths, data []byte, report *TableReport) boo
 
 // RangedWidthsReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func RangedWidthsReadStrict(wire []byte) (*RangedWidths, error) {
-	value := new(RangedWidths)
+	value := &RangedWidths{}
 	var report TableReport
 	ok := RangedWidthsLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -5928,7 +5928,7 @@ func RangedSignedFixedSaveReason(values []RangedSigned, buffer []byte) (int64, e
 func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -6251,7 +6251,7 @@ func RangedUnsignedFixedSaveReason(values []RangedUnsigned, buffer []byte) (int6
 func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -6536,7 +6536,7 @@ func RangedWidthsFixedSaveReason(values []RangedWidths, buffer []byte) (int64, e
 func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

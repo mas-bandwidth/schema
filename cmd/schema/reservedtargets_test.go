@@ -140,6 +140,12 @@ func TestGenerateGoCompilesNonGoReservedWords(t *testing.T) {
 	}
 	sort.Strings(words)
 
+	// The checkout, for the shared Go runtime a table unit imports
+	// (tables/goruntime: shared is the default, docs/SPEC-TABLES.md §8.4).
+	checkout, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
 	// A stub for the serialize.go runtime the generated Go imports.
 	runtime := filepath.Join(work, "serialize")
 	if err := os.MkdirAll(runtime, 0o755); err != nil {
@@ -219,7 +225,7 @@ func (s *ReadStream) Err() error { return s.err }
 					fail("generate failed for non-Go word %q: %s", w, outBytes)
 					return
 				}
-				mod := fmt.Sprintf("module t\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %s\n", runtime)
+				mod := fmt.Sprintf("module t\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %s\n\tgithub.com/mas-bandwidth/serialize.go => %s\n)\n", checkout, runtime)
 				if err := os.WriteFile(filepath.Join(out, "go.mod"), []byte(mod), 0o644); err != nil {
 					fail("%v", err)
 					return

@@ -441,7 +441,7 @@ func TeamConfigLoadTolerant(value *TeamConfig, data []byte, report *TableReport)
 func TeamConfigLoad(value *TeamConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -455,7 +455,7 @@ func TeamConfigLoad(value *TeamConfig, data []byte, report *TableReport) bool {
 
 // TeamConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func TeamConfigReadStrict(wire []byte) (*TeamConfig, error) {
-	value := new(TeamConfig)
+	value := &TeamConfig{}
 	var report TableReport
 	ok := TeamConfigLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -906,7 +906,7 @@ func GunnerConfigLoadTolerant(value *GunnerConfig, data []byte, report *TableRep
 func GunnerConfigLoad(value *GunnerConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -920,7 +920,7 @@ func GunnerConfigLoad(value *GunnerConfig, data []byte, report *TableReport) boo
 
 // GunnerConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func GunnerConfigReadStrict(wire []byte) (*GunnerConfig, error) {
-	value := new(GunnerConfig)
+	value := &GunnerConfig{}
 	var report TableReport
 	ok := GunnerConfigLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -1341,7 +1341,7 @@ func TurretConfigLoadTolerant(value *TurretConfig, data []byte, report *TableRep
 func TurretConfigLoad(value *TurretConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -1355,7 +1355,7 @@ func TurretConfigLoad(value *TurretConfig, data []byte, report *TableReport) boo
 
 // TurretConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func TurretConfigReadStrict(wire []byte) (*TurretConfig, error) {
-	value := new(TurretConfig)
+	value := &TurretConfig{}
 	var report TableReport
 	ok := TurretConfigLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -2076,7 +2076,7 @@ func HullConfigLoadTolerant(value *HullConfig, data []byte, report *TableReport)
 func HullConfigLoad(value *HullConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -2090,7 +2090,7 @@ func HullConfigLoad(value *HullConfig, data []byte, report *TableReport) bool {
 
 // HullConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func HullConfigReadStrict(wire []byte) (*HullConfig, error) {
-	value := new(HullConfig)
+	value := &HullConfig{}
 	var report TableReport
 	ok := HullConfigLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -3287,7 +3287,7 @@ func KeyedConfigLoadTolerant(value *KeyedConfig, data []byte, report *TableRepor
 func KeyedConfigLoad(value *KeyedConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -3301,7 +3301,7 @@ func KeyedConfigLoad(value *KeyedConfig, data []byte, report *TableReport) bool 
 
 // KeyedConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func KeyedConfigReadStrict(wire []byte) (*KeyedConfig, error) {
-	value := new(KeyedConfig)
+	value := &KeyedConfig{}
 	var report TableReport
 	ok := KeyedConfigLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -4541,7 +4541,7 @@ func ScoreBoardLoadTolerant(value *ScoreBoardRow, data []byte, report *TableRepo
 func ScoreBoardLoad(value *ScoreBoardRow, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4555,7 +4555,7 @@ func ScoreBoardLoad(value *ScoreBoardRow, data []byte, report *TableReport) bool
 
 // ScoreBoardReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func ScoreBoardReadStrict(wire []byte) (*ScoreBoardRow, error) {
-	value := new(ScoreBoardRow)
+	value := &ScoreBoardRow{}
 	var report TableReport
 	ok := ScoreBoardLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -5342,7 +5342,7 @@ func TeamConfigFixedSaveReason(values []TeamConfig, buffer []byte) (int64, error
 func TeamConfigFixedLoad(values []TeamConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5596,7 +5596,7 @@ func GunnerConfigFixedSaveReason(values []GunnerConfig, buffer []byte) (int64, e
 func GunnerConfigFixedLoad(values []GunnerConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5859,7 +5859,7 @@ func TurretConfigFixedSaveReason(values []TurretConfig, buffer []byte) (int64, e
 func TurretConfigFixedLoad(values []TurretConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -6148,7 +6148,7 @@ func HullConfigFixedSaveReason(values []HullConfig, buffer []byte) (int64, error
 func HullConfigFixedLoad(values []HullConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -6521,7 +6521,7 @@ func KeyedConfigFixedSaveReason(values []KeyedConfig, buffer []byte) (int64, err
 func KeyedConfigFixedLoad(values []KeyedConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

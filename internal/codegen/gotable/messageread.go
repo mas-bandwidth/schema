@@ -41,7 +41,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	// THE PLAIN NAME IS THE STRICT READ, THE TOLERANT ONE IS NAMED (docs/SPEC-TABLES.md §6.5).
 	g.pf("// %sLoadMessagesTolerant is the TOLERANT message read (docs/SPEC-TABLES.md §6.5, §3.3): it keeps every\n// recovered value, with the counters counted onto the report passed.\n", st.Name)
 	g.pf("// %sLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever\n// %sReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every\n// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.\n", st.Name, st.Name)
-	g.pf("func %sLoadMessages(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {read:=report;if read==nil{read=new(TableReport)}else{*read=TableReport{}};count,ok:=%sLoadMessagesTolerant(values,vocabulary,data,read);if !ok{return count,false};if read.Err()!=nil{for i := range count {%sReset(&values[i])};return 0,false};return count,true}\n", st.Name, g.storageName(st.Name), st.Name, st.Name)
+	g.pf("func %sLoadMessages(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {read:=report;if read==nil{read=&TableReport{}}else{*read=TableReport{}};count,ok:=%sLoadMessagesTolerant(values,vocabulary,data,read);if !ok{return count,false};if read.Err()!=nil{for i := range count {%sReset(&values[i])};return 0,false};return count,true}\n", st.Name, g.storageName(st.Name), st.Name, st.Name)
 	// THE READER CHECKS THE BATCH TRAILER BEFORE IT DECODES ANY BODY
 	// (docs/SPEC-TABLES.md §2.14, §3.3): a declaring root opens through the
 	// sealed open; in a unit where no table declares the key the original open

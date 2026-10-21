@@ -1808,7 +1808,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 func RangedSignedLoadMessages(values []RangedSigned, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -3637,7 +3637,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 func RangedUnsignedLoadMessages(values []RangedUnsigned, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4291,7 +4291,7 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 func RangedWidthsLoadMessages(values []RangedWidths, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

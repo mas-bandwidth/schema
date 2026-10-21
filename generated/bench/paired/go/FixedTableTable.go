@@ -232,7 +232,7 @@ func FixedTableLoadTolerant(value *FixedTable, data []byte, report *TableReport)
 func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -246,7 +246,7 @@ func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 
 // FixedTableReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func FixedTableReadStrict(wire []byte) (*FixedTable, error) {
-	value := new(FixedTable)
+	value := &FixedTable{}
 	var report TableReport
 	ok := FixedTableLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -1677,7 +1677,7 @@ func FixedTableFixedSaveReason(values []FixedTable, buffer []byte) (int64, error
 func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

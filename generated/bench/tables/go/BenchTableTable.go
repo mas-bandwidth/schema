@@ -4405,7 +4405,7 @@ func TableEntityLoadTolerant(value *TableEntity, data []byte, report *TableRepor
 func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4419,7 +4419,7 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 
 // TableEntityReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func TableEntityReadStrict(wire []byte) (*TableEntity, error) {
-	value := new(TableEntity)
+	value := &TableEntity{}
 	var report TableReport
 	ok := TableEntityLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -4704,7 +4704,7 @@ func TableStatLoadTolerant(value *TableStat, data []byte, report *TableReport) b
 func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4718,7 +4718,7 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 
 // TableStatReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func TableStatReadStrict(wire []byte) (*TableStat, error) {
-	value := new(TableStat)
+	value := &TableStat{}
 	var report TableReport
 	ok := TableStatLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -6583,7 +6583,7 @@ func TableMixedLoadTolerant(value *TableMixed, data []byte, report *TableReport)
 func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -6597,7 +6597,7 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 
 // TableMixedReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func TableMixedReadStrict(wire []byte) (*TableMixed, error) {
-	value := new(TableMixed)
+	value := &TableMixed{}
 	var report TableReport
 	ok := TableMixedLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -6999,7 +6999,7 @@ func TableHitEventLoadTolerant(value *TableHitEvent, data []byte, report *TableR
 func TableHitEventLoad(value *TableHitEvent, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -7013,7 +7013,7 @@ func TableHitEventLoad(value *TableHitEvent, data []byte, report *TableReport) b
 
 // TableHitEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func TableHitEventReadStrict(wire []byte) (*TableHitEvent, error) {
-	value := new(TableHitEvent)
+	value := &TableHitEvent{}
 	var report TableReport
 	ok := TableHitEventLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -7304,7 +7304,7 @@ func TableChatEventLoadTolerant(value *TableChatEvent, data []byte, report *Tabl
 func TableChatEventLoad(value *TableChatEvent, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -7318,7 +7318,7 @@ func TableChatEventLoad(value *TableChatEvent, data []byte, report *TableReport)
 
 // TableChatEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func TableChatEventReadStrict(wire []byte) (*TableChatEvent, error) {
-	value := new(TableChatEvent)
+	value := &TableChatEvent{}
 	var report TableReport
 	ok := TableChatEventLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -7609,7 +7609,7 @@ func TablePickupEventLoadTolerant(value *TablePickupEvent, data []byte, report *
 func TablePickupEventLoad(value *TablePickupEvent, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -7623,7 +7623,7 @@ func TablePickupEventLoad(value *TablePickupEvent, data []byte, report *TableRep
 
 // TablePickupEventReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func TablePickupEventReadStrict(wire []byte) (*TablePickupEvent, error) {
-	value := new(TablePickupEvent)
+	value := &TablePickupEvent{}
 	var report TableReport
 	ok := TablePickupEventLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -8912,7 +8912,7 @@ func TableEntityFixedSaveReason(values []TableEntity, buffer []byte) (int64, err
 func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -9185,7 +9185,7 @@ func TableStatFixedSaveReason(values []TableStat, buffer []byte) (int64, error) 
 func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -9683,7 +9683,7 @@ func TableMixedFixedSaveReason(values []TableMixed, buffer []byte) (int64, error
 func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

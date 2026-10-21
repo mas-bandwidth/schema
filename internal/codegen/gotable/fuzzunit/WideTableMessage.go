@@ -477,7 +477,7 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 func WideBlobLoadMessages(values []WideBlob, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

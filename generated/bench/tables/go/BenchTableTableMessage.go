@@ -1505,7 +1505,7 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 func TableEntityLoadMessages(values []TableEntity, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -1722,7 +1722,7 @@ func TableStatLoadMessageBody(r *TableMessageReader, value *TableStat) bool {
 func TableStatLoadMessages(values []TableStat, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -3419,7 +3419,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 func TableMixedLoadMessages(values []TableMixed, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

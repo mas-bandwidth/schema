@@ -20,13 +20,13 @@ func (g *tableGen) emitListSurface(st *ir.Struct, f *ir.Field) {
 	name := st.Name + ir.GoExportName(f.Name)
 	typ := containerElementType(g.unit, f)
 	holder := "*TableList[" + typ + "]"
-	g.pf("func %sAdd(worker *TableWorker,holder %s)*%s {p:=(*%s)(tableContainerAppend(worker,(*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(*new(%s)))));if p==nil{return nil};", name, holder, typ, typ, typ)
+	g.pf("func %sAdd(worker *TableWorker,holder %s)*%s {p:=(*%s)(tableContainerAppend(worker,(*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(*(*%s)(nil)))));if p==nil{return nil};", name, holder, typ, typ, typ)
 	if isStructRef(f.Type) && !f.Type.Pointer {
 		g.pf("%sReset(p);", f.Type.Name)
 	}
 	g.pf("return p}\n")
 	g.pf("func %sErase(arena *TableArena,holder %s,element *%s)bool {return tableContainerErase(arena,(*tableContainer)(unsafe.Pointer(holder)),unsafe.Pointer(element),int64(unsafe.Sizeof(*element)))}\n", name, holder, typ)
-	g.pf("func %sEach(holder %s,visit func(*%s)bool,arena ...*TableArena)bool {cursor:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(*new(%s))),tableOptionalArena(arena));for range holder.Count {p:=(*%s)(cursor.Next());if p==nil||!visit(p){return false}};return true}\n", name, holder, typ, typ, typ)
+	g.pf("func %sEach(holder %s,visit func(*%s)bool,arena ...*TableArena)bool {cursor:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(*(*%s)(nil))),tableOptionalArena(arena));for range holder.Count {p:=(*%s)(cursor.Next());if p==nil||!visit(p){return false}};return true}\n", name, holder, typ, typ, typ)
 }
 
 func (g *tableGen) emitListRead(f *ir.Field, ind string) {
@@ -39,11 +39,11 @@ func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 	g.pf("%sheader:=sub;header.Buffer=r.Buffer[r.Offset-int64(len(sub.Buffer)):];elemKind:=header.Get8();count,ok:=header.Leb();sub.Offset=header.Offset\n", i)
 	g.pf("%sif !ok {r.Report.Malformed=true;break};if elemKind!=%d { if !tableKindWidens(elemKind,%d) {r.Report.KindMismatch++;break};r.Report.Widened++ }\n", i, kind, kind)
 	g.retainDiscard("r")
-	g.pf("%sslot:=(*tableContainer)(unsafe.Pointer(&%s));if !tableContainerFill(&sub.Nodes.Carve,slot,count,int64(unsafe.Sizeof(*new(%s))),%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};r.Report.Malformed=true;break};slot.Count=0\n", i, expr, typ, align)
+	g.pf("%sslot:=(*tableContainer)(unsafe.Pointer(&%s));if !tableContainerFill(&sub.Nodes.Carve,slot,count,int64(unsafe.Sizeof(*(*%s)(nil))),%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};r.Report.Malformed=true;break};slot.Count=0\n", i, expr, typ, align)
 	if f.TextTotal > 0 {
 		g.pf("%sspent:=int64(0)\n", i)
 	}
-	g.pf("%sfor i:=uint64(0);i<count;i++ { p:=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,slot,int32(i),int64(unsafe.Sizeof(*new(%s)))));if p==nil {r.Report.Malformed=true;break};landed:=false;for once:=true;once;once=false {\n", i, typ, typ)
+	g.pf("%sfor i:=uint64(0);i<count;i++ { p:=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,slot,int32(i),int64(unsafe.Sizeof(*(*%s)(nil)))));if p==nil {r.Report.Malformed=true;break};landed:=false;for once:=true;once;once=false {\n", i, typ, typ)
 	j := i + "\t"
 	switch kind {
 	case tkString:
@@ -78,7 +78,7 @@ func (g *tableGen) emitListWrite(f *ir.Field, expr, writer, ind string, framed b
 		if f.IsMap() {
 			g.pf("%s cursor:=tableMapCursor((*tableContainer)(unsafe.Pointer(&%s)),%s,%s.Ids.Numbering.arena);defer cursor.Release()\n", ind, expr, g.mapDescriptor(f), writer)
 		} else {
-			g.pf("%s cursor:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&%s)),int64(unsafe.Sizeof(*new(%s))),%s.Ids.Numbering.arena)\n", ind, expr, typ, writer)
+			g.pf("%s cursor:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&%s)),int64(unsafe.Sizeof(*(*%s)(nil))),%s.Ids.Numbering.arena)\n", ind, expr, typ, writer)
 		}
 		g.pf("%s for i:=int32(0);i<%s.Count;i++ { p:=(*%s)(cursor.Next());if p==nil {return false};\n", ind, expr, typ)
 		element := f

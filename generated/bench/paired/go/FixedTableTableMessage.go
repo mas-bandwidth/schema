@@ -133,7 +133,7 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 func FixedTableLoadMessages(values []FixedTable, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}

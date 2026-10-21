@@ -137,7 +137,7 @@ func (g *tableGen) textBytesBlock(f *ir.Field, expr, arena, start, fail string) 
 	add += "p." + val + "Length>0{spent+=int64(p." + val + "Length)}"
 	if f.IsList() {
 		elem := containerElementType(g.unit, f)
-		return fmt.Sprintf("{spent:=%s;c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&%s)),int64(unsafe.Sizeof(*new(%s))),%s);for range int32(%s.Count) {p:=(*%s)(c.Next());if p==nil{%s};%s};if spent>%d{%s}};",
+		return fmt.Sprintf("{spent:=%s;c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&%s)),int64(unsafe.Sizeof(*(*%s)(nil))),%s);for range int32(%s.Count) {p:=(*%s)(c.Next());if p==nil{%s};%s};if spent>%d{%s}};",
 			start, expr, elem, arena, expr, elem, fail, add, f.TextTotal, fail)
 	}
 	return fmt.Sprintf("{spent:=%s;for i:=int32(0);i<%sCount&&i<%d;i++{p:=&%s[i];%s};if spent>%d{%s}};",

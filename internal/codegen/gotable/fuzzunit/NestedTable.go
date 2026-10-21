@@ -286,7 +286,7 @@ func ArchiveConfigLoadTolerant(value *ArchiveConfig, data []byte, report *TableR
 func ArchiveConfigLoad(value *ArchiveConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -300,7 +300,7 @@ func ArchiveConfigLoad(value *ArchiveConfig, data []byte, report *TableReport) b
 
 // ArchiveConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func ArchiveConfigReadStrict(wire []byte) (*ArchiveConfig, error) {
-	value := new(ArchiveConfig)
+	value := &ArchiveConfig{}
 	var report TableReport
 	ok := ArchiveConfigLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {

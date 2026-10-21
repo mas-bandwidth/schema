@@ -567,7 +567,7 @@ func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport)
 func RootConfigLoad(value *RootConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -581,7 +581,7 @@ func RootConfigLoad(value *RootConfig, data []byte, report *TableReport) bool {
 
 // RootConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func RootConfigReadStrict(wire []byte) (*RootConfig, error) {
-	value := new(RootConfig)
+	value := &RootConfig{}
 	var report TableReport
 	ok := RootConfigLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -1497,7 +1497,7 @@ func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableRep
 func WeaponConfigLoad(value *WeaponConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -1511,7 +1511,7 @@ func WeaponConfigLoad(value *WeaponConfig, data []byte, report *TableReport) boo
 
 // WeaponConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func WeaponConfigReadStrict(wire []byte) (*WeaponConfig, error) {
-	value := new(WeaponConfig)
+	value := &WeaponConfig{}
 	var report TableReport
 	ok := WeaponConfigLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -2721,7 +2721,7 @@ func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableR
 func LoadoutConfigLoad(value *LoadoutConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -2735,7 +2735,7 @@ func LoadoutConfigLoad(value *LoadoutConfig, data []byte, report *TableReport) b
 
 // LoadoutConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func LoadoutConfigReadStrict(wire []byte) (*LoadoutConfig, error) {
-	value := new(LoadoutConfig)
+	value := &LoadoutConfig{}
 	var report TableReport
 	ok := LoadoutConfigLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -4321,7 +4321,7 @@ func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableR
 func ProfileConfigLoad(value *ProfileConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -4335,7 +4335,7 @@ func ProfileConfigLoad(value *ProfileConfig, data []byte, report *TableReport) b
 
 // ProfileConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func ProfileConfigReadStrict(wire []byte) (*ProfileConfig, error) {
-	value := new(ProfileConfig)
+	value := &ProfileConfig{}
 	var report TableReport
 	ok := ProfileConfigLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -5338,7 +5338,7 @@ func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableRepo
 func AttachmentLoad(value *AttachmentRow, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5352,7 +5352,7 @@ func AttachmentLoad(value *AttachmentRow, data []byte, report *TableReport) bool
 
 // AttachmentReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func AttachmentReadStrict(wire []byte) (*AttachmentRow, error) {
-	value := new(AttachmentRow)
+	value := &AttachmentRow{}
 	var report TableReport
 	ok := AttachmentLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -5703,7 +5703,7 @@ func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
 func BuffLoad(value *BuffRow, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -5717,7 +5717,7 @@ func BuffLoad(value *BuffRow, data []byte, report *TableReport) bool {
 
 // BuffReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func BuffReadStrict(wire []byte) (*BuffRow, error) {
-	value := new(BuffRow)
+	value := &BuffRow{}
 	var report TableReport
 	ok := BuffLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {
@@ -6043,7 +6043,7 @@ func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool
 func DebuffLoad(value *DebuffRow, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
-		read = new(TableReport)
+		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
@@ -6057,7 +6057,7 @@ func DebuffLoad(value *DebuffRow, data []byte, report *TableReport) bool {
 
 // DebuffReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
 func DebuffReadStrict(wire []byte) (*DebuffRow, error) {
-	value := new(DebuffRow)
+	value := &DebuffRow{}
 	var report TableReport
 	ok := DebuffLoadTolerant(value, wire, &report)
 	if err := report.Err(); err != nil || !ok {

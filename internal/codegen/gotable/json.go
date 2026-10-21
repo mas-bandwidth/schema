@@ -107,7 +107,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 				// docs/SPEC-TABLES.md §16.2: the three options, as call arguments;
 				// <T>FromJsonWith is <T>FromJson under the options, so STRICT too,
 				// and <T>FromJsonTolerantWith is its tolerant twin (§6.5)
-				fmt.Fprintf(&b, "func %sFromJsonWith(builder *%sBuilder,text []byte,report *TableReport,options TableJsonOptions) bool {read:=report;if read==nil{read=new(TableReport)}else{*read=TableReport{}};ok:=%sFromJsonTolerantWith(builder,text,read,options);return ok&&read.Err()==nil}\n", n, n, n)
+				fmt.Fprintf(&b, "func %sFromJsonWith(builder *%sBuilder,text []byte,report *TableReport,options TableJsonOptions) bool {read:=report;if read==nil{read=&TableReport{}}else{*read=TableReport{}};ok:=%sFromJsonTolerantWith(builder,text,read,options);return ok&&read.Err()==nil}\n", n, n, n)
 				fmt.Fprintf(&b, "func %sFromJsonTolerantWith(builder *%sBuilder,text []byte,report *TableReport,options TableJsonOptions) bool { if builder.Arena.Locked {return false};return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()),%sTableType(),&builder.Main,text,report,options) }\n", n, n, n)
 				fmt.Fprintf(&b, "func %sToJsonMeasureWith(value *%s,options TableJsonOptions,allocator ...TableAllocator) int64 {n,_:=tableRegionToJson(unsafe.Pointer(value),%sTableType(),nil,options,allocator...);return n}\n", n, storageName(u, n), n)
 				fmt.Fprintf(&b, "func %sToJsonWith(value *%s,buffer []byte,options TableJsonOptions,allocator ...TableAllocator) int64 {n,_:=tableRegionToJson(unsafe.Pointer(value),%sTableType(),buffer,options,allocator...);return n}\n", n, storageName(u, n), n)
@@ -143,7 +143,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "// %sFromJsonWith is %sFromJson under TableJsonOptions (docs/SPEC-TABLES.md §16.2),\n", n, n)
 			b.WriteString("// so it is STRICT too (§6.5).\n")
 			fmt.Fprintf(&b, "func %sFromJsonWith(value *%s, text []byte, report *TableReport, options TableJsonOptions) bool {\n", n, storageName(u, n))
-			fmt.Fprintf(&b, "\tread := report\n\tif read == nil {\n\t\tread = new(TableReport)\n\t} else {\n\t\t*read = TableReport{}\n\t}\n\tok := %sFromJsonTolerantWith(value, text, read, options)\n", n)
+			fmt.Fprintf(&b, "\tread := report\n\tif read == nil {\n\t\tread = &TableReport{}\n\t} else {\n\t\t*read = TableReport{}\n\t}\n\tok := %sFromJsonTolerantWith(value, text, read, options)\n", n)
 			fmt.Fprintf(&b, "\tif !ok || read.Err() != nil { %sReset(value); return false }\n\treturn true\n}\n\n", n)
 			fmt.Fprintf(&b, "// %sFromJsonTolerantWith is %sFromJsonTolerant under TableJsonOptions (docs/SPEC-TABLES.md\n", n, n)
 			b.WriteString("// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.\n")
