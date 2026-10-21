@@ -1563,13 +1563,14 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 		return true
 	}
 	if f.HasFloatRange {
-		if value < f.FMin {
+		switch {
+		case value < f.FMin:
 			value = f.FMin
 			in.report.Clamped++
-		} else if value > f.FMax {
+		case value > f.FMax:
 			value = f.FMax
 			in.report.Clamped++
-		} else if value == 0 {
+		case value == 0:
 			// a compressed float's -0 lands as +0, uncounted (§3.3, the
 			// special values); a NaN or an infinity never reaches here
 			value = 0
@@ -2084,12 +2085,13 @@ func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bo
 	in.byteOrderMark() // §16.2, §16.12: a whole text, so its leading mark is skipped
 	fv.Elems[slot] = m.elementZero(fv.Def)
 	var ok bool
-	if fv.Def.IsTextList() {
+	switch {
+	case fv.Def.IsTextList():
 		ok = in.readTextListElement(fv, slot, 0)
-	} else if in.valueShape() != ElementShape(fv.Def) {
+	case in.valueShape() != ElementShape(fv.Def):
 		report.KindMismatch++
 		ok = in.skipValue(0)
-	} else {
+	default:
 		ok = in.readScalar(&fv.Elems[slot], fv.Def, 0)
 	}
 	if ok {

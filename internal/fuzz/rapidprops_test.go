@@ -118,7 +118,7 @@ func rapidDrawUnit(rt *rapid.T) (string, *ir.Unit, []string) {
 	rng := rand.New(rapidRand{t: rt})
 	src, u := randomSchema(rng)
 	unit := rapidUnit(rt, src)
-	n := 1 + int(rapid.IntRange(0, 2).Draw(rt, "values"))
+	n := 1 + rapid.IntRange(0, 2).Draw(rt, "values")
 	vals := make([]string, n)
 	for i := range vals {
 		vals[i] = randomJSON(rng, u, i)

@@ -39,7 +39,8 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("\tmissingBefore := r.Report.MissingRequired\n")
 	}
 	g.pf("\tfor {\n\t\tref, ok := r.lebPair(); if !ok { ref, ok = r.lebWide() }; if !ok { r.Report.Malformed = true; return false }\n")
-	if len(req) > 0 {
+	switch {
+	case len(req) > 0:
 		g.pf("\t\tif ref == 0 {\n")
 		parts := make([]string, len(req))
 		for i := range req {
@@ -64,7 +65,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("\t\t\t}\n")
 		g.pf("\t\t\treturn r.Report.MissingRequired == missingBefore\n")
 		g.pf("\t\t}\n")
-	} else if unitHasRequired(g.unit) {
+	case unitHasRequired(g.unit):
 		// A BODY BELOW THIS ONE that was refused for a missing required field
 		// refuses this one too (docs/SPEC-TABLES.md §2.3): the report is shared
 		// down the walk, so a nested table, an element, a map entry or a node
@@ -72,7 +73,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		// whole record is refused naming the field — never read as a parent
 		// with a defaulted child. A unit with no required field pays nothing.
 		g.pf("\t\tif ref == 0 { return r.Report.MissingRequired == missingBefore }\n")
-	} else {
+	default:
 		g.pf("\t\tif ref == 0 { return true }\n")
 	}
 	g.pf("\t\tfieldID, ok := r.Resolve(ref); if !ok || !r.Has(1) { r.Report.Malformed = true; return false }\n")

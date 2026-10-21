@@ -1462,13 +1462,14 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 			return true
 		}
 		if f.HasFloatRange {
-			if v < f.FMin {
+			switch {
+			case v < f.FMin:
 				v = f.FMin
 				r.report.Clamped++
-			} else if v > f.FMax {
+			case v > f.FMax:
 				v = f.FMax
 				r.report.Clamped++
-			} else if v == 0 {
+			case v == 0:
 				v = 0 // a -0 lands as +0, uncounted (§3.3, the special values)
 			}
 		}

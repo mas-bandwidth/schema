@@ -1,6 +1,7 @@
 package tablewire
 
 import (
+	"errors"
 	"math"
 	"math/big"
 	"os"
@@ -875,7 +876,7 @@ func TestAnnouncementRefusals(t *testing.T) {
 	}
 	var again tabletext.Report
 	err := second.AnnounceRead(Announce(m.Unit), &again)
-	if refusal, ok := err.(*MessageRefusal); !ok || refusal.Reason != ReasonSecondAnnouncement || !again.Refused {
+	if refusal, ok := errors.AsType[*MessageRefusal](err); !ok || refusal.Reason != ReasonSecondAnnouncement || !again.Refused {
 		t.Fatalf("second announcement = %v %+v", err, again)
 	}
 	cases := []struct {
@@ -895,7 +896,7 @@ func TestAnnouncementRefusals(t *testing.T) {
 		v := &Vocabulary{}
 		err := v.AnnounceRead(c.data, &r)
 		if c.ok {
-			refusal, isRefusal := err.(*MessageRefusal)
+			refusal, isRefusal := errors.AsType[*MessageRefusal](err)
 			if !isRefusal || refusal.Reason != c.want {
 				t.Errorf("%s: %v, want refusal %v", c.name, err, c.want)
 			}

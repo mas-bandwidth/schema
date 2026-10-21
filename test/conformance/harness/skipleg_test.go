@@ -36,7 +36,8 @@ func TestSkippedLegIsNotAConformancePrerequisite(t *testing.T) {
 				env = append(env, kv)
 			}
 		}
-		mk.Env = append(env, "SCHEMA_SKIP_LEGS="+skip)
+		env = append(env, "SCHEMA_SKIP_LEGS="+skip)
+		mk.Env = env
 		out, err := mk.Output()
 		if err != nil {
 			t.Fatalf("make -s registry SCHEMA_SKIP_LEGS=%q: %v", skip, err)

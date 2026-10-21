@@ -2395,11 +2395,12 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 	}
 	if hasMin && hasMax {
 		if !isInt && !isFixed {
-			if out.Type.Timestamp {
+			switch {
+			case out.Type.Timestamp:
 				c.errf(byKey["min"].Pos, "min/max are not valid on timestamp — every count of nanoseconds is a legal time and the zero time is its fresh value, so a range would clamp a time the wire can carry (SPEC §4.13)")
-			} else if out.Type.Kind == ir.TNamed {
+			case out.Type.Kind == ir.TNamed:
 				c.errf(byKey["min"].Pos, "min/max are not valid on %s — a field that indexes a declared set derives its range from the set (SPEC §4.2)", out.Type.Name)
-			} else {
+			default:
 				c.errf(byKey["min"].Pos, "min/max apply to integer fields (SPEC §4.6)")
 			}
 			return

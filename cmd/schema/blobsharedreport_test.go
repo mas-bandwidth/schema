@@ -13,6 +13,7 @@
 package main
 
 import (
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -26,7 +27,7 @@ func runExit(t *testing.T, bin string, args ...string) (int, string) {
 	out, err := exec.Command(bin, args...).CombinedOutput()
 	code := 0
 	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 			code = ee.ExitCode()
 		} else {
 			t.Fatalf("schema %s: %v\n%s", strings.Join(args, " "), err, out)

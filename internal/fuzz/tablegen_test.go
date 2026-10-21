@@ -83,7 +83,6 @@ type genField struct {
 	UnionName  string    // union name for gUnion
 	MapKey     *genField // key field for gMap
 
-	variable bool // the construct needs a variable table (map/pointer/union/open array)
 }
 
 type genTable struct {
@@ -243,48 +242,6 @@ func randUintInRange(r *rand.Rand, lo, hi uint64) uint64 {
 	return lo + r.Uint64()%span
 }
 
-// randomScalar returns a scalar element (for arrays, map values and optional
-// payloads). It never produces bytes or timestamp, which arrays refuse.
-func randomScalar(r *rand.Rand, enumVars []string) *genField {
-	f := &genField{Name: "e"}
-	switch r.Intn(7) {
-	case 0:
-		f.Kind = gInt
-		f.Bits = []int{8, 32, 64}[r.Intn(3)]
-		f.Imin, f.Imax, f.IDef, _ = intBounds(f.Bits, mNone)
-	case 1:
-		f.Kind = gUint
-		f.Bits = []int{8, 32, 64}[r.Intn(3)]
-	case 2:
-		f.Kind = gFloat32
-	case 3:
-		f.Kind = gFloat64
-	case 4:
-		f.Kind = gBool
-	case 5:
-		f.Kind = gEnum
-		f.EnumVar = enumVars[r.Intn(len(enumVars))]
-		f.EnumVal = enumPool[r.Intn(len(enumPool))]
-	default:
-		f.Kind = gString
-		f.StrN = 2 + r.Intn(16)
-	}
-	return f
-}
-
-// randomMapValue returns a map value: a scalar or a nested (inner) table.
-func randomMapValue(r *rand.Rand, enumVars []string, tables []*genTable) *genField {
-	if len(tables) > 0 && r.Intn(3) == 0 {
-		t := tables[r.Intn(len(tables))]
-		f := &genField{Kind: gNested, NestedName: t.Name, Elem: nil}
-		if !t.Fixed {
-			f.variable = true
-		}
-		return f
-	}
-	return randomScalar(r, enumVars)
-}
-
 // randomKey returns a map key field (string or integer).
 // randomArrayElem returns an element for a fixed or bounded array. The checker
 // refuses arrays of bytes, timestamp and string (a [N]string(N) is a text
@@ -335,23 +292,6 @@ func randomOptScalar(r *rand.Rand, enumVars []string) *genField {
 		f.Kind = gEnum
 		f.EnumVar = enumVars[r.Intn(len(enumVars))]
 		f.EnumVal = enumPool[r.Intn(len(enumPool))]
-	}
-	return f
-}
-
-func randomKey(r *rand.Rand) *genField {
-	f := &genField{Name: "k"}
-	switch r.Intn(3) {
-	case 0:
-		f.Kind = gString
-		f.StrN = 2 + r.Intn(16)
-	case 1:
-		f.Kind = gInt
-		f.Bits = []int{8, 32, 64}[r.Intn(3)]
-		f.Imin, f.Imax, _, _ = intBounds(f.Bits, mNone)
-	default:
-		f.Kind = gUint
-		f.Bits = []int{8, 32, 64}[r.Intn(3)]
 	}
 	return f
 }
@@ -556,7 +496,7 @@ func randomSchema(r *rand.Rand) (string, *genUnit) {
 	var b strings.Builder
 	b.WriteString("package probe\n")
 	for _, en := range u.Enums {
-		b.WriteString(fmt.Sprintf("enum %s { %s }\n", en, strings.Join(enumPool, ", ")))
+		fmt.Fprintf(&b, "enum %s { %s }\n", en, strings.Join(enumPool, ", "))
 	}
 	// inner tables (always fixed), referenced by value from Root or a field
 	ni := r.Intn(3)
@@ -771,11 +711,9 @@ func (u *genUnit) randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 		// NUMBER token is a kind mismatch, and the strict read refuses it).
 		fmt.Fprintf(b, "%q", time.Unix(0, r.Int63n(1<<40)).UTC().Format(time.RFC3339Nano))
 	case gScalarArray, gFixedArray, gOpenArray:
-		m := 1
+		m := f.MaxN
 		if f.Kind == gScalarArray || f.Kind == gOpenArray {
 			m = 1 + r.Intn(f.MaxN)
-		} else {
-			m = f.MaxN
 		}
 		b.WriteString("[")
 		for i := 0; i < m; i++ {

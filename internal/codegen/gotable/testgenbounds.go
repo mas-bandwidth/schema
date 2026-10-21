@@ -378,7 +378,7 @@ func (g *tgBounds) value(f *ir.Field, where string) ([]tgVal, error) {
 			return nil, nil
 		}
 		n := t.Size
-		size := int64(12 + n + 1)
+		size := 12 + n + 1
 		return []tgVal{{
 			name: ":above",
 			payload: tgFramed(size, func(b *strings.Builder, w string, d int) {

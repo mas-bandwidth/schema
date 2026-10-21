@@ -85,7 +85,7 @@ func TestEveryEmittedGoSuffixIsClaimed(t *testing.T) {
 	})
 }
 
-var packageSuffixDeclaration = regexp.MustCompile("\\b(func|var|type|const) %(\\[1\\])?s([A-Z][A-Za-z0-9_]*)")
+var packageSuffixDeclaration = regexp.MustCompile(`\b(func|var|type|const) %(\[1\])?s([A-Z][A-Za-z0-9_]*)`)
 
 func packageLevelGoSuffixes(source string) []string {
 	matches := packageSuffixDeclaration.FindAllStringSubmatch(source, -1)

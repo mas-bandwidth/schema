@@ -628,7 +628,7 @@ func runSeedFull(t *testing.T, r *rand.Rand, seed int, sabotage, sabotageIntegri
 	outClean, errClean := runGeneratedTableUnit(t, unit, tableDifferentialProbe, env, "-race")
 	env["SCHEMA_TABLE_DIFF_PHASE"] = "damage"
 	outDamage, errDamage := runGeneratedTableUnit(t, unit, tableDifferentialProbe, env, "-race")
-	out := append(outClean, outDamage...)
+	out := append(append([]byte(nil), outClean...), outDamage...)
 	err := errClean
 	if err == nil {
 		err = errDamage

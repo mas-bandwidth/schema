@@ -141,13 +141,13 @@ func checkRefusalUnchanged(gen generateFunc, targets []string, p unchangedProbe)
 func unitFromText(src string) (*ir.Unit, error) {
 	f, perrs := parser.Parse("Probe.schema", []byte(src))
 	if len(perrs) > 0 {
-		return nil, fmt.Errorf("parse: %v", perrs[0])
+		return nil, fmt.Errorf("parse: %w", perrs[0])
 	}
 	u, cerrs := check.Unit([]check.SourceFile{{
 		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
 	}})
 	if len(cerrs) > 0 {
-		return nil, fmt.Errorf("check: %v", cerrs[0])
+		return nil, fmt.Errorf("check: %w", cerrs[0])
 	}
 	return u, nil
 }
@@ -206,7 +206,7 @@ func keepDecls(files map[string][]byte, keep []string) (map[string][]byte, error
 		fs := token.NewFileSet()
 		f, err := goparser.ParseFile(fs, name, src, goparser.ParseComments)
 		if err != nil {
-			return nil, fmt.Errorf("generated %s does not parse: %v", name, err)
+			return nil, fmt.Errorf("generated %s does not parse: %w", name, err)
 		}
 		for _, d := range f.Decls {
 			var keys []string

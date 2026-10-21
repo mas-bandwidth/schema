@@ -16,6 +16,7 @@ package gotable
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -55,7 +56,7 @@ func strictJSON(text []byte) error {
 	if !json.Valid(body) {
 		var v any
 		off := int64(0)
-		if se, ok := json.Unmarshal(body, &v).(*json.SyntaxError); ok {
+		if se, ok := errors.AsType[*json.SyntaxError](json.Unmarshal(body, &v)); ok {
 			off = se.Offset
 		}
 		return fmt.Errorf("not valid JSON at offset %d", off)

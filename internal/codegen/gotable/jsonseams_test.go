@@ -35,7 +35,7 @@ table Root {
 		{"unbounded-read-key", "if key.Kind==12 {if n>key.ArrayBound {in.report.Clamped++;in.pos=probe.pos;good=false}else{", func(u *ir.Unit, s string) string { return unboundedTextJson(u, s, true) }},
 		{"unbounded-map-store", "entry.Reset(slot);tableMapStoreKey(slot,key,k);", func(u *ir.Unit, s string) string { return unboundedTextJson(u, s, true) }},
 		{"unbounded-source", "// ---- json walk: end ----", func(u *ir.Unit, s string) string { return unboundedTextJson(u, s, true) }},
-		{"optional-map-reset", "\t\t\t\tif f.Table != nil {\n\t\t\t\t\tf.Table().Reset(unsafe.Add(base, uintptr(f.Offset)))", func(u *ir.Unit, s string) string { return optionalMapJson(u, s) }},
+		{"optional-map-reset", "\t\t\t\tif f.Table != nil {\n\t\t\t\t\tf.Table().Reset(unsafe.Add(base, uintptr(f.Offset)))", optionalMapJson},
 	}
 
 	for _, sm := range seams {

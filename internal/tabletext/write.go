@@ -621,16 +621,18 @@ func utf8Sequence(s []byte) int {
 		want = 2
 	case lead >= 0xe0 && lead <= 0xef:
 		want = 3
-		if lead == 0xe0 {
+		switch lead {
+		case 0xe0:
 			lo = 0xa0
-		} else if lead == 0xed {
+		case 0xed:
 			hi = 0x9f
 		}
 	case lead >= 0xf0 && lead <= 0xf4:
 		want = 4
-		if lead == 0xf0 {
+		switch lead {
+		case 0xf0:
 			lo = 0x90
-		} else if lead == 0xf4 {
+		case 0xf4:
 			hi = 0x8f
 		}
 	default:

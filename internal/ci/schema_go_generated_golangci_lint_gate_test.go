@@ -12,8 +12,9 @@ import (
 // The generated-Go golangci-lint gate (schema-per-language-lenses). These tests
 // pin the gate's shape: its refusal to auto-annotate, the generated-exclusion
 // switch that makes the REAL corpus visible, and the ratchet that carries the
-// measured residue. A reader cannot silently widen the lens into a blanket
-// nolint/nosec disabler, nor turn the ratchet back into a vacuous "zero".
+// measured residue. A reader cannot silently widen the lens into a
+// blanket nolint/nosec disabler, nor turn the ratchet back into a vacuous
+// "zero".
 func TestSchemaGoGeneratedGolangciGateTargetExists(t *testing.T) {
 	t.Parallel()
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "schema-go-generated-golangci-lint-gate.mk"))
