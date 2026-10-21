@@ -209,7 +209,8 @@ type runPatternException struct {
 // until `make cards-generate` builds it; six run inside test/go-tables, a
 // separate Go module whose generated replacements do not exist until `make`
 // builds them; and one is a $(3) template with no value until the caller
-// expands it.
+// expands it; two pair an empty -run '^$' with -fuzz so only the fuzz target
+// runs.
 var runPatternExceptions = []runPatternException{
 	{"make/go.mk:312", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root"},
 	{"make/go.mk:409", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'"},
@@ -219,6 +220,8 @@ var runPatternExceptions = []runPatternException{
 	{"make/go.mk:547", "same separate test/go-tables module, and it runs under a -overlay built at recipe time"},
 	{"make/go.mk:866", "same separate test/go-tables module, -run '^TestSoak$$'"},
 	{"make/go.mk:979", "same separate test/go-tables module, -run '^TestUsage$$'"},
+	{"make/go.mk:489", "-run '^$$' beside -fuzz '^FuzzTableFrontEnd$$': the empty pattern runs no unit test on purpose, so only the fuzz target runs"},
+	{"make/go.mk:503", "-run '^$$' beside -fuzz in ./internal/codegen/gotable/fuzzunit: the empty pattern runs no unit test on purpose, so only the fuzz target runs"},
 	{"Makefile:5269", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
 }
 
