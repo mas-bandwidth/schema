@@ -805,6 +805,12 @@ fn upgrade_seam(wire: &[u8], retain_bytes: usize, retain_ids: usize) -> Result<(
         None => return Err("cards: upgrade: wire is malformed".to_string()),
     };
     check_card(&card)?;
+    // A BLOB TWO SLOTS NAME is read and counted, and every writer refuses it
+    // by name (docs/SPEC-TABLES.md §2.5): the rewrite answers the refusal
+    // rather than the save's panic on a hostile card
+    if report.blob_shared > 0 {
+        return Err("cards: upgrade: blob_shared".to_string());
+    }
     let out = card_save_retain(&card, &mut retain, &mut report);
     if let Some(e) = loss_err(&report) {
         return Err(e);
