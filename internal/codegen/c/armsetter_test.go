@@ -12,6 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -249,6 +250,14 @@ func loadExamplesUnit(t *testing.T) *ir.Unit {
 // and runs the probe.
 func runSetterProbe(t *testing.T, u *ir.Unit, files map[string][]byte, edit func(string, []byte) []byte) ([]byte, error) {
 	t.Helper()
+	slowtest.Gate(t, "the c compiler and the serialize.c sibling")
+	serialize, ok := setterSerializeDir(t)
+	if !ok {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout); SCHEMA_REQUIRE_CORPUS says this probe must run", serialize)
+		}
+		t.Skipf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout): the selector probe cannot compile", serialize)
+	}
 	dir := t.TempDir()
 	var includes []string
 	for name, data := range files {
@@ -303,10 +312,6 @@ func runSetterProbe(t *testing.T, u *ir.Unit, files map[string][]byte, edit func
 	if cc == "" {
 		cc = "cc"
 	}
-	serialize, err := filepath.Abs(filepath.Join("..", "..", "..", "..", "serialize.c"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wtype-limits", "-O2", "-ffp-contract=off",
 		"-I" + dir, "-I" + serialize, filepath.Join(dir, "probe.c"), filepath.Join(serialize, "serialize.c"),
 		"-o", filepath.Join(dir, "probe"), "-lm"}
@@ -314,6 +319,25 @@ func runSetterProbe(t *testing.T, u *ir.Unit, files map[string][]byte, edit func
 		return out, fmt.Errorf("the selector probe did not compile: %w", err)
 	}
 	return exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+}
+
+// setterSerializeDir is the serialize.c checkout the probe compiles against:
+// SERIALIZE_C when the environment names it (make/c.mk:6), else the sibling
+// beside this checkout. ok is false when serialize.h is not staged there.
+func setterSerializeDir(t *testing.T) (string, bool) {
+	t.Helper()
+	dir := os.Getenv("SERIALIZE_C")
+	if dir == "" {
+		var err error
+		dir, err = filepath.Abs(filepath.Join("..", "..", "..", "..", "serialize.c"))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "serialize.h")); err != nil {
+		return dir, false
+	}
+	return dir, true
 }
 
 const setterProbePrelude = `
