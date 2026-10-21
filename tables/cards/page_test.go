@@ -301,4 +301,3 @@ func languageSections(doc string) map[string]string {
 	flush()
 	return out
 }
-
