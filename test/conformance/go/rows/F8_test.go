@@ -103,10 +103,10 @@ func TestRaggedTail(t *testing.T) {
 	pkgDir := genDir
 
 	// Find serialize.go runtime.
-	runtimePath := filepath.Join(repoRoot, "serialize.go")
+	runtimePath := f8SerializeGo(t, repoRoot)
 
 	// Write go.mod.
-	goMod := fmt.Sprintf("module probe\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtimePath)
+	goMod := fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go => %q\n)\n", repoRoot, runtimePath)
 	if err := os.WriteFile(filepath.Join(pkgDir, "go.mod"), []byte(goMod), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -207,8 +207,8 @@ func TestRaggedTail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runtimePath := filepath.Join(repoRoot, "serialize.go")
-	goMod := fmt.Sprintf("module probe\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtimePath)
+	runtimePath := f8SerializeGo(t, repoRoot)
+	goMod := fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go => %q\n)\n", repoRoot, runtimePath)
 	if err := os.WriteFile(filepath.Join(pkgDir, "go.mod"), []byte(goMod), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -312,10 +312,10 @@ func TestRaggedTailByName(t *testing.T) {
 	pkgDir := genDir
 
 	// Find serialize.go runtime.
-	runtimePath := filepath.Join(repoRoot, "serialize.go")
+	runtimePath := f8SerializeGo(t, repoRoot)
 
 	// Write go.mod.
-	goMod := fmt.Sprintf("module probe\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtimePath)
+	goMod := fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go => %q\n)\n", repoRoot, runtimePath)
 	if err := os.WriteFile(filepath.Join(pkgDir, "go.mod"), []byte(goMod), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -332,4 +332,29 @@ func TestRaggedTailByName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("go test: %v\n%s", err, out)
 	}
+}
+
+// f8SerializeGo is the serialize.go runtime the probe module replaces its
+// import with: $SERIALIZE_GO when it is set (relative to the repo root, as the
+// Makefile reads it), else the sibling checkout make/go.mk defaults to
+// (../serialize.go), else one staged inside the checkout. A runtime that is not
+// there fails by name rather than as a go.mod read error inside the probe.
+func f8SerializeGo(t *testing.T, repoRoot string) string {
+	t.Helper()
+	var candidates []string
+	if v := os.Getenv("SERIALIZE_GO"); v != "" {
+		if !filepath.IsAbs(v) {
+			v = filepath.Join(repoRoot, v)
+		}
+		candidates = append(candidates, v)
+	} else {
+		candidates = append(candidates, filepath.Join(repoRoot, "..", "serialize.go"), filepath.Join(repoRoot, "serialize.go"))
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(filepath.Join(c, "go.mod")); err == nil {
+			return filepath.Clean(c)
+		}
+	}
+	t.Fatalf("no serialize.go runtime with a go.mod at %v (make deps provisions the sibling)", candidates)
+	return ""
 }
