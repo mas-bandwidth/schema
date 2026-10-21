@@ -2376,6 +2376,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 200.0) + 0.5).floor();
+    if (v > 200) v = 200;
   }
   scratch |= v << scratchBits;
   scratchBits += 8;
@@ -2395,6 +2396,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 200.0) + 0.5).floor();
+    if (v > 200) v = 200;
   }
   scratch |= v << scratchBits;
   scratchBits += 8;
@@ -2414,6 +2416,7 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 200.0) + 0.5).floor();
+    if (v > 200) v = 200;
   }
   scratch |= v << scratchBits;
   scratchBits += 8;
