@@ -16,7 +16,7 @@ local J = {}
 
 -- one JSON text under the reader's cursor: p is the next byte, bad latches a
 -- malformed text (§16.1)
-type Input = { t: string, p: number, bad: boolean, zero: boolean? }
+type Input = { t: string, p: number, bad: boolean, zero: boolean?, notutf8: boolean? }
 
 local MAX_DEPTH = 128
 local MAX_KEY = 255
@@ -189,8 +189,9 @@ local function scan_unit(inp: Input): (string?, boolean, boolean)
     return unit, false, true
   end
   if c < 0x20 then inp.bad = true; return nil, false, false end
-  -- a raw UTF-8 sequence, consumed whole; anything that is not a code point
-  -- reads as U+FFFD, one per sequence (§16.3)
+  -- a raw UTF-8 sequence, consumed whole; bytes that are not a well-formed
+  -- sequence spell no code point, and the read REFUSES them by name at every
+  -- string site, string_not_utf8, before any clamp (§16.3), never U+FFFD
   local want = 1
   if c >= 0xc2 and c <= 0xdf then want = 2
   elseif c >= 0xe0 and c <= 0xef then want = 3
@@ -204,7 +205,11 @@ local function scan_unit(inp: Input): (string?, boolean, boolean)
     inp.p = inp.p + 1
   end
   local unit = inp.t:sub(start, inp.p - 1)
-  if utf8_seq(unit, 1) ~= #unit then unit = utf8_encode(0xfffd) end
+  if utf8_seq(unit, 1) ~= #unit then
+    inp.notutf8 = true
+    inp.bad = true
+    return nil, false, false
+  end
   return unit, false, true
 end
 
@@ -991,6 +996,8 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
             -- the refusal; a nested table names its own field first.
             if inp.zero and report.reason == nil then
               report.reason = "text_holds_zero: " .. desc.name .. "." .. (fd.raw.name or fd.key)
+            elseif inp.notutf8 and report.reason == nil then
+              report.reason = "string_not_utf8: " .. desc.name .. "." .. (fd.raw.name or fd.key)
             end
             return false
           end

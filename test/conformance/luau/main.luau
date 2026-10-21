@@ -122,16 +122,22 @@ local function surfaceWire(manifest: { { string } })
 			if u == nil or wire == nil then
 				say(f[2], nil)
 			else
+				-- the TOLERANT read, as the reference leg's driver reads (§6.5)
 				local r = report()
-				local v = u.load.load(f[4], wire, r)
+				local v = u.load.loadTolerant(f[4], wire, r)
 				if v == nil then
 					error("load refused " .. f[5])
 				end
-				local saved = u.save.save(u.S.lookup(f[4]), v)
-				if saved == nil then
+				local saved, why = u.save.save(u.S.lookup(f[4]), v)
+				if saved == nil and why ~= nil and why.name == "blob_shared" then
+					-- every writer refuses one blob named from two slots
+					-- (docs/SPEC-TABLES.md §2.5): the case is a named absence
+					say(f[2], nil)
+				elseif saved == nil then
 					error("save refused " .. f[5])
+				else
+					say(f[2], saved)
 				end
-				say(f[2], saved)
 			end
 		end
 	end
@@ -146,7 +152,7 @@ local function surfaceReport(manifest: { { string } })
 				say(f[2], nil)
 			else
 				local r = report()
-				u.load.load(f[4], inputs[f[5]], r)
+				u.load.loadTolerant(f[4], inputs[f[5]], r)
 				local verdict = r.refused > 0 and "refused" or "read"
 				local text = string.format("%d,%d,%d,%d,%d,%s,%s\n",
 					r.unknown, r.kindMismatch, r.widened, r.clamped,

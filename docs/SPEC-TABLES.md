@@ -17428,7 +17428,7 @@ the ports that carry it, `carried-by=<ports>`, and the verdict every other
 port still answers, `uncarried=<counters>`. A port's runner reads the row as
 the standard's verdict when its own name is listed and as the `uncarried`
 counters otherwise, and the row moves to the plain form when every port
-carries it. Go carries, today: `str-illformed-at-bound` (`refused`,
+carries it. Go and Luau carry, today: `str-illformed-at-bound` (`refused`,
 `string_not_utf8` before any clamp, §16.3), `str-zero-escape-value` and
 `str-zero-escape-map-key` (`refused`, `text_holds_zero`, §16.3).
 

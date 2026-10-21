@@ -316,6 +316,15 @@ jobs:
         if: matrix.group == 'unit-rest'
         run: go vet ./...
 
+      # THE LUAU PIN for the two test steps below: internal/codegen/luau,
+      # internal/codegen/luautable and compiler's testgen gate run generated
+      # Luau under the pinned interpreter and fail, never skip, without it
+      # (internal/codegen/luau/luaurun). Installed as make/luau.mk's dist-luau
+      # does, sha256 refused before unpacking, into dist/luau-<version>/.
+      - name: install the Luau pin
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest'
+        run: make dist-luau
+
       # THE EMITTERS' OWN TESTS, which are the slow half of `go test ./...`:
       # every codegen package generates and compiles something.
       # SCHEMA_SLOW=1 IS THE WHOLE OF THE SPLIT ON THIS LANE. internal/slowtest
