@@ -118,11 +118,11 @@ func textRun(t *testing.T, g *generatedUnit, wire []byte, rootName string) (text
 	}
 	fromWire, err := hex.DecodeString(lines[0])
 	if err != nil {
-		return textOutput{}, fmt.Errorf("bad saved-wire line %q: %v", lines[0], err)
+		return textOutput{}, fmt.Errorf("bad saved-wire line %q: %w", lines[0], err)
 	}
 	fromText, err := hex.DecodeString(lines[2])
 	if err != nil {
-		return textOutput{}, fmt.Errorf("bad reloaded-wire line %q: %v", lines[2], err)
+		return textOutput{}, fmt.Errorf("bad reloaded-wire line %q: %w", lines[2], err)
 	}
 	return textOutput{fromWire: fromWire, text: lines[1], fromText: fromText, damaged: lines[3]}, nil
 }

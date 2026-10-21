@@ -241,7 +241,7 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 		case *ir.Enum:
 			g.Pf("%sif type(%s) ~= \"number\" or %s %% 1 ~= 0 or %s < 0 or %s > %d then return false end\n",
 				indent, val, val, val, val, ref.Max)
-			emitBitsOrSkip(g, indent, val, ir.BitsRequired(big.NewInt(0), big.NewInt(int64(ref.Max))), "the enum value")
+			emitBitsOrSkip(g, indent, val, ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max)), "the enum value")
 		case *ir.Flags:
 			g.Pf("%sif typeof(%s) ~= \"integer\" then return false end\n", indent, val)
 			if ref.WireBits < 64 {
@@ -291,7 +291,7 @@ func emitWriteUnion(g *Gen, un *ir.Union) {
 	g.Pf("function %s.Write%s(stream: any, v: any)\n", g.Self, un.Name)
 	g.Pf("  if type(v.Type) ~= \"number\" or v.Type %% 1 ~= 0 or v.Type < 0 or v.Type > %d then return false end\n", un.Max)
 	if un.Max > 0 {
-		bits := ir.BitsRequired(big.NewInt(0), big.NewInt(int64(un.Max)))
+		bits := ir.BitsRequired(big.NewInt(0), big.NewInt(un.Max))
 		emitBitsOrSkip(g, "  ", "v.Type", bits, "the union tag")
 	}
 	for i, arm := range un.Variants {

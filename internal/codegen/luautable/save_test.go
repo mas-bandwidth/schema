@@ -68,11 +68,11 @@ func saveRoot(t *testing.T, g *generatedUnit, wire []byte, root string) ([]byte,
 	}
 	saved, err := hex.DecodeString(strings.TrimPrefix(lines[0], "x"))
 	if err != nil {
-		return nil, 0, fmt.Errorf("bad hex line %q: %v", lines[0], err)
+		return nil, 0, fmt.Errorf("bad hex line %q: %w", lines[0], err)
 	}
 	measure, err := strconv.Atoi(lines[1])
 	if err != nil {
-		return nil, 0, fmt.Errorf("bad measure line %q: %v", lines[1], err)
+		return nil, 0, fmt.Errorf("bad measure line %q: %w", lines[1], err)
 	}
 	return saved, measure, nil
 }
