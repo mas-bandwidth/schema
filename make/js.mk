@@ -282,8 +282,8 @@ tables-js-fuzz: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 .PHONY: tables-js-fuzz-negative-control
 tables-js-fuzz-negative-control: bin/schema build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 	@rm -rf build/js-fuzz-sabotage && mkdir -p build/js-fuzz-sabotage
-	@sed -e 's|g.pf("      if (rows > extent - offsetOf) { return null; }\\n")|// SABOTAGED: no row bound|' \
-	     -e 's|g.pf("    if (padding > extent - used) { return null; }\\n")|// SABOTAGED: no padding bound|' \
+	@sed -e 's|g.pf("      if (rows > extent - offsetOf) { return \\"bad_layout\\"; }\\n")|// SABOTAGED: no row bound|' \
+	     -e 's|g.pf("    if (padding > extent - used) { return \\"truncated\\"; }\\n")|// SABOTAGED: no padding bound|' \
 		internal/codegen/jstable/block.go > build/js-fuzz-sabotage/block.go.txt
 	@[ "$$(grep -c SABOTAGED build/js-fuzz-sabotage/block.go.txt)" = "2" ] || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not remove both extent bounds"; exit 1; }
