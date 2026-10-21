@@ -655,6 +655,49 @@ public final class Driver {
         return f.length > 5 && "no-text".equals(f[5]);
     }
 
+    // sharesABlob answers whether two slots of the value graph hold the SAME
+    // String or byte[] instance: the one node a tolerant load keeps for a blob
+    // two slots name (docs/SPEC-TABLES.md §2.5), which every writer refuses.
+    private static boolean sharesABlob(Object root) {
+        java.util.IdentityHashMap<Object, Boolean> seen = new java.util.IdentityHashMap<>();
+        java.util.IdentityHashMap<Object, Boolean> blobs = new java.util.IdentityHashMap<>();
+        java.util.ArrayDeque<Object> work = new java.util.ArrayDeque<>();
+        work.push(root);
+        while (!work.isEmpty()) {
+            Object o = work.pop();
+            if (seen.put(o, Boolean.TRUE) != null) {
+                continue;
+            }
+            if (o instanceof java.util.List) {
+                for (Object e : (java.util.List<?>) o) {
+                    if (e instanceof String || e instanceof byte[]) {
+                        if (!"".equals(e) && blobs.put(e, Boolean.TRUE) != null) return true;
+                    } else if (e != null) {
+                        work.push(e);
+                    }
+                }
+                continue;
+            }
+            if (o instanceof java.util.Map || o.getClass().isArray() || o.getClass().getName().startsWith("java.")) {
+                continue;
+            }
+            for (java.lang.reflect.Field fd : o.getClass().getFields()) {
+                if (java.lang.reflect.Modifier.isStatic(fd.getModifiers())) continue;
+                Object v;
+                try { v = fd.get(o); } catch (IllegalAccessException e) { continue; }
+                if (v == null) continue;
+                if (v instanceof String || v instanceof byte[]) {
+                    // an empty String is the shared "" default literal, never a
+                    // node the load handed out, so it is not counted
+                    if (!"".equals(v) && blobs.put(v, Boolean.TRUE) != null) return true;
+                } else if (!fd.getType().isPrimitive()) {
+                    work.push(v);
+                }
+            }
+        }
+        return false;
+    }
+
     private static void spillAbsent(String out, String name) throws IOException {
         Files.write(Path.of(out, name + ".absent"), new byte[0]);
     }
@@ -753,7 +796,7 @@ public final class Driver {
                 Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
                 if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
                 byte[] saved = codec.save(value);
-                if (saved == null && f.length > 5 && java.util.Arrays.asList(f).contains("go-refusal=blob_shared")) {
+                if (saved == null && sharesABlob(value)) {
                     // §2.5: a blob two slots name is refused by every writer; the
                     // tolerant load kept the one node, so the save refuses it by
                     // name rather than writing the reference's bytes
