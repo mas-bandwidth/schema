@@ -174,13 +174,17 @@ func TestNewLegLuaYieldsABuildingTestingSkeleton(t *testing.T) {
 	// the compiler's Go sources, tests left behind: the question is whether
 	// the skeleton builds beside them, not whether their suites pass in a copy.
 	// tables/goruntime is the shared Go runtime the generated fuzz unit under
-	// internal/ imports (docs/SPEC-TABLES.md §8.4), so it comes along.
+	// internal/ imports (docs/SPEC-TABLES.md §8.4), so it comes along, and so
+	// does every port's runtime/ directory, which its package embeds.
 	for _, dir := range []string{"cmd", "compiler", "internal", "ir", filepath.Join("tables", "goruntime")} {
 		copyScaffoldTree(t, filepath.Join(root, dir), filepath.Join(tree, dir), func(rel string) bool {
-			return strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go")
+			if strings.HasSuffix(rel, "_test.go") || luaLegPath(dir+"/"+rel) {
+				return false
+			}
+			return strings.HasSuffix(rel, ".go") || strings.Contains("/"+rel, "/runtime/")
 		})
 	}
-	copyScaffoldTree(t, filepath.Join(root, "make"), filepath.Join(tree, "make"), func(string) bool { return true })
+	copyScaffoldTree(t, filepath.Join(root, "make"), filepath.Join(tree, "make"), func(rel string) bool { return !luaLegPath("make/" + rel) })
 
 	// the leg is not registered before the verb runs, or the discovery below
 	// would not be doing the work
@@ -253,6 +257,35 @@ func runInErr(t *testing.T, dir, name string, args ...string) (string, error) {
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod")
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// luaLegPath reports a path the live Lua leg owns: its codegen packages, and
+// every compiler, cmd or make file whose name carries the word lua (target_lua.go,
+// carries_lua_*.go, testgen_lua.go, make/lua.mk, make/schema-lua-*.mk,
+// make/checks/lua-*.mk, internal/tablenames/lua.go). The copy leaves them out
+// so the tree is the one before Lua was a leg, which is the tree `new-leg lua`
+// is for. Luau is another language and stays (lua followed by u is not lua).
+func luaLegPath(rel string) bool {
+	segments := strings.Split(rel, "/")
+	for _, seg := range segments[:len(segments)-1] {
+		if seg == "lua" || seg == "luatable" {
+			return true
+		}
+	}
+	base := segments[len(segments)-1]
+	for i := strings.Index(base, "lua"); i >= 0; {
+		before := i == 0 || base[i-1] == '_' || base[i-1] == '-'
+		after := i+3 == len(base) || base[i+3] == '_' || base[i+3] == '-' || base[i+3] == '.'
+		if before && after {
+			return true
+		}
+		next := strings.Index(base[i+1:], "lua")
+		if next < 0 {
+			break
+		}
+		i += 1 + next
+	}
+	return false
 }
 
 func copyScaffoldTree(t *testing.T, from, to string, keep func(rel string) bool) {
