@@ -142,14 +142,14 @@ func TestSquirrelResourceBoundsAllocationCounter(t *testing.T) {
 	t.Parallel()
 	bounded := func(n int) []int {
 		out := make([]int, 0, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			out = append(out, i)
 		}
 		return out
 	}
 	unbounded := func(n int) []int {
 		var out []int
-		for i := 0; i < n; i++ {
+		for i := range n {
 			out = append(out, i)
 		}
 		return out
@@ -164,12 +164,12 @@ func TestSquirrelResourceBoundsAllocationCounter(t *testing.T) {
 		return after.TotalAlloc - before.TotalAlloc
 	}
 	ab := measure(func() {
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			bounded(10000)
 		}
 	})
 	au := measure(func() {
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			unbounded(10000)
 		}
 	})

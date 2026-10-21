@@ -322,7 +322,7 @@ local hostileNull = function(T, name, root) {
 	sections := map[string][]string{}
 	var hostileLines []string
 	current := ""
-	for _, line := range strings.Split(strings.TrimRight(string(stdout), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(stdout), "\n"), "\n") {
 		switch {
 		case strings.HasPrefix(line, "BEGIN "):
 			current = strings.TrimPrefix(line, "BEGIN ")

@@ -134,7 +134,7 @@ func TestSquirrelMapPresence(t *testing.T) {
 	}
 	out := sqrun.Run(t, dir, "main.nut", inputs)
 	rows := map[string][]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		f := strings.Fields(line)
 		if len(f) != 4 {
 			t.Fatalf("probe line %q is not a case, a shape and its bytes", line)

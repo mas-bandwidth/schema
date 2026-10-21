@@ -43,7 +43,7 @@ type savedRow struct {
 func parseSaved(t *testing.T, out []byte) map[string]savedRow {
 	t.Helper()
 	rows := map[string]savedRow{}
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 3 {
 			t.Fatalf("save probe line %q is not a case, a measure and hex", line)

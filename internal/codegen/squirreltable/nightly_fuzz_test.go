@@ -26,7 +26,7 @@ func nightlyFuzzCorpus(t *testing.T, path string) []string {
 		t.Fatalf("the corpus file is unreadable: %v", err)
 	}
 	var paths []string
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

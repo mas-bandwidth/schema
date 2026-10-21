@@ -257,7 +257,7 @@ func TestSquirrelBlockBuilderMatchesTheCorpus(t *testing.T) {
 	got := map[string]string{}
 	count := 0
 	claimed := 0
-	for _, line := range strings.Split(strings.TrimRight(string(stdout), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(stdout), "\n"), "\n") {
 		fields := strings.Fields(line)
 		switch {
 		case len(fields) == 4 && fields[0] == "BLOCK":
@@ -280,10 +280,7 @@ func TestSquirrelBlockBuilderMatchesTheCorpus(t *testing.T) {
 		}
 		if got[table] != fmt.Sprintf("%x", want) {
 			first := -1
-			shown := len(want)
-			if len(got[table])/2 < shown {
-				shown = len(got[table]) / 2
-			}
+			shown := min(len(got[table])/2, len(want))
 			for i := 0; i < shown; i++ {
 				if got[table][2*i:2*i+2] != fmt.Sprintf("%02x", want[i]) {
 					first = i

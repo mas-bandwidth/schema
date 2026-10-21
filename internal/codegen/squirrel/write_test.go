@@ -3,6 +3,7 @@ package squirrel_test
 import (
 	"bytes"
 	"encoding/hex"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,9 +114,7 @@ func squirrelTypeWireFiles(t *testing.T, root string) map[string][]byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range squirrel.Serialize() {
-		files[name] = data
-	}
+	maps.Copy(files, squirrel.Serialize())
 	return files
 }
 
@@ -135,7 +134,7 @@ func writeSquirrelTypeWire(t *testing.T, files map[string][]byte) map[string][]b
 	}
 	out := sqrun.Run(t, dir, "main.nut", nil)
 	got := map[string][]byte{}
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		name, text, ok := strings.Cut(line, " ")
 		if !ok {
 			t.Fatalf("probe line %q is not a golden name and hex", line)

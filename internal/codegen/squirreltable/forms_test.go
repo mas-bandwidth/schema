@@ -115,7 +115,6 @@ func TestSquirrelTableEmitsOnlyItsDeclaredForms(t *testing.T) {
 	}
 
 	for _, tc := range subsets {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			src := fmt.Sprintf("package probe\ntable Pong%s\n{\n    x int32\n    rate float32 | min = 0.0, max = 10.0, resolution = 0.25\n    items [..4]int32\n}\n", tc.decl)

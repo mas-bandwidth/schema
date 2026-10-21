@@ -153,7 +153,7 @@ func readSquirrelTypeWire(t *testing.T, root string, u *ir.Unit, files map[strin
 	results := map[string]readResult{}
 	var cur *readResult
 	var curName string
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		if rest, ok := strings.CutPrefix(line, "  mismatch "); ok {
 			if cur == nil {
 				t.Fatalf("a mismatch line before any golden line: %q", line)

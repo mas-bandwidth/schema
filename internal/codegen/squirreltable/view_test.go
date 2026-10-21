@@ -2,6 +2,7 @@ package squirreltable_test
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -257,7 +258,7 @@ table UnboundedProbe {
 // viewLines splits a probe's output into sorted-edge-preserving rows.
 func viewLines(out []byte) []string {
 	var lines []string
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		if strings.HasPrefix(line, "INFO|") || strings.HasPrefix(line, "VIEW|") {
 			lines = append(lines, line)
 		}
@@ -277,9 +278,7 @@ func runGoView(t *testing.T, root string, gu viewUnit) []string {
 	if err != nil {
 		t.Fatalf("unit %s: gotable refused: %v", gu.key, err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	dir := filepath.Join(t.TempDir(), gu.key)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)

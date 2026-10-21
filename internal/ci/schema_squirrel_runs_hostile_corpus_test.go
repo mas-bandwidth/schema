@@ -381,7 +381,7 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 	got := map[string]hostileResult{}
 	if len(units) > 0 {
 		out := string(sqrun.Run(t, dir, "main.nut", inputs))
-		for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 			if line == "" {
 				continue
 			}

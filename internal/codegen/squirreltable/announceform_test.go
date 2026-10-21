@@ -19,8 +19,7 @@ func goAnnounceVerdict(data []byte) (malformed, refused bool, reason string) {
 	var v tablewire.Vocabulary
 	var report tabletext.Report
 	err := v.AnnounceRead(data, &report)
-	var refusal *tablewire.MessageRefusal
-	if errors.As(err, &refusal) {
+	if refusal, ok := errors.AsType[*tablewire.MessageRefusal](err); ok {
 		reason = refusal.Reason.String()
 	}
 	return report.Malformed, report.Refused, reason
@@ -71,7 +70,7 @@ func TestSquirrelAnnounceReadsFormBeforeLength(t *testing.T) {
 	}
 	out := string(sqrun.Run(t, dir, "main.nut", blobs))
 	lines := map[string]string{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if name, rest, ok := strings.Cut(line, "|"); ok {
 			lines[name] = rest
 		}

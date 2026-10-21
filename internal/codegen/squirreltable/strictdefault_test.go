@@ -223,7 +223,7 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
 	out := string(sqrun.Run(t, dir, "main.nut", inputs))
 	got := map[string][]string{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		if line == "" {
 			continue
 		}

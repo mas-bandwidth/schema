@@ -157,7 +157,7 @@ func checkWireGuards(t *testing.T, unit *ir.Unit, rootName string, cases []wireG
 		t.Fatalf("probe printed %d rows for %d cases: %q", len(lines), len(cases)*2, lines)
 	}
 	for i, c := range cases {
-		for phase := 0; phase < 2; phase++ {
+		for phase := range 2 {
 			got, ok := unhex(lines[2*i+phase])
 			if !ok {
 				t.Errorf("%s phase %d returned non-hex %q", c.name, phase, lines[2*i+phase])

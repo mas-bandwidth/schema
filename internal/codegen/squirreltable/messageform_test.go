@@ -26,7 +26,7 @@ func readMessageRows(t *testing.T, root string) (map[string]squirrelMessageConne
 	}
 	connections := map[string]squirrelMessageConnection{}
 	var rows []squirrelMessageRow
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
 			continue
@@ -95,7 +95,7 @@ func messageBatchTwoUnknownString(refBits int, slot uint64, value string, bound 
 	out := []byte{2, 1}
 	bits := 16
 	put := func(value uint64, width int) {
-		for i := 0; i < width; i++ {
+		for i := range width {
 			at := bits / 8
 			if at == len(out) {
 				out = append(out, 0)
@@ -129,7 +129,7 @@ func messageBatchEnumField(refBits int, fieldSlot, variantSlot uint64) []byte {
 	out := []byte{2, 0}
 	bits := 16
 	put := func(value uint64, width int) {
-		for i := 0; i < width; i++ {
+		for i := range width {
 			at := bits / 8
 			if at == len(out) {
 				out = append(out, 0)
@@ -152,7 +152,7 @@ func messageBatchRefs(refBits int, refs ...uint64) []byte {
 	out := []byte{2, 0}
 	bits := 16
 	put := func(value uint64, width int) {
-		for i := 0; i < width; i++ {
+		for i := range width {
 			at := bits / 8
 			if at == len(out) {
 				out = append(out, 0)
@@ -175,7 +175,7 @@ func messageBatchWithInnerRef(refBits int, slot, inner uint64) []byte {
 	out := []byte{2, 0}
 	bits := 16
 	put := func(value uint64, width int) {
-		for i := 0; i < width; i++ {
+		for i := range width {
 			at := bits / 8
 			if at == len(out) {
 				out = append(out, 0)
@@ -198,7 +198,7 @@ func messageBatchWithUnknownString(refBits int, slot uint64, value string, bound
 	out := []byte{2, 0}
 	bits := 16
 	put := func(value uint64, width int) {
-		for i := 0; i < width; i++ {
+		for i := range width {
 			at := bits / 8
 			if at == len(out) {
 				out = append(out, 0)
@@ -716,7 +716,7 @@ func messageBatchScalar(refBits int, slot uint64, value uint64, width int) []byt
 	out := []byte{2, 0}
 	bit := 16
 	put := func(x uint64, n int) {
-		for i := 0; i < n; i++ {
+		for i := range n {
 			at := bit / 8
 			if at == len(out) {
 				out = append(out, 0)
@@ -824,7 +824,7 @@ func messageBatchArrayElements(refBits int, slot uint64, values []uint64) []byte
 	out := []byte{2, 0}
 	bit := 16
 	put := func(x uint64, n int) {
-		for i := 0; i < n; i++ {
+		for i := range n {
 			at := bit / 8
 			if at == len(out) {
 				out = append(out, 0)

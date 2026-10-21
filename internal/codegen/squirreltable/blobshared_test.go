@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,16 +42,12 @@ func TestSquirrelBlobSharedMutantMatchesGo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for k, v := range sf {
-		files[k] = v
-	}
+	maps.Copy(files, sf)
 	tf, err := squirreltable.Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for k, v := range tf {
-		files[k] = v
-	}
+	maps.Copy(files, tf)
 	for name, data := range files {
 		writeFile(t, filepath.Join(out, name), data)
 	}
@@ -163,7 +160,7 @@ func appendLeb(dst []byte, v uint64) []byte {
 }
 
 func appendU64LE(dst []byte, v uint64) []byte {
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		dst = append(dst, byte(v>>(8*i)))
 	}
 	return dst
@@ -475,7 +472,7 @@ local fresh = function() {
 	}
 	stdout := sqrun.Run(t, dir, "main.nut", inputs)
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(stdout), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(stdout), "\n"), "\n") {
 		k, v, ok := strings.Cut(line, "|")
 		if !ok {
 			t.Fatalf("unexpected probe line %q", line)

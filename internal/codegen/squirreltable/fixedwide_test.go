@@ -113,7 +113,7 @@ print("RESAVE:" + h2 + "\n");
 
 	var saveHex, resaveHex string
 	count := -1
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		if rest, ok := strings.CutPrefix(line, "SAVE:"); ok {
 			saveHex = rest
 		} else if rest, ok := strings.CutPrefix(line, "RESAVE:"); ok {

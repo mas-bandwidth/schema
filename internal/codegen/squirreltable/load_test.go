@@ -233,7 +233,7 @@ func TestSquirrelTableLoadMatchesTheReports(t *testing.T) {
 
 	got := map[string]string{}
 	stdout := sqrun.Run(t, dir, "main.nut", inputs)
-	for _, line := range strings.Split(strings.TrimRight(string(stdout), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(stdout), "\n"), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
 			t.Fatalf("probe line %q is not a case and a report", line)
@@ -286,7 +286,7 @@ func TestSquirrelTableLoadMatchesTheReports(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(dir, "inst.nut"), []byte(ip.String()))
 	instStdout := sqrun.Run(t, dir, "inst.nut", instInputs)
-	for _, line := range strings.Split(strings.TrimRight(string(instStdout), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(instStdout), "\n"), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
 			t.Fatalf("instance probe line %q is not a case and a report", line)
@@ -361,7 +361,7 @@ func TestSquirrelTableLoadNegativeControl(t *testing.T) {
 	wire = append(wire, 1, kind, 1, 0, 0, 0)
 	wire = append(wire, 1, kind, 2, 0, 0, 0)
 	wire = append(wire, 0)
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		wire = append(wire, byte(id>>(8*i)))
 	}
 	wire = append(wire, 1, 0, 0, 0, 0, 0, 0, 0)
@@ -369,7 +369,7 @@ func TestSquirrelTableLoadNegativeControl(t *testing.T) {
 	// counted unknown (§4), the counter the control removes
 	const unknownId = uint64(0x1122334455667788)
 	unk := []byte{1, 1, kind, 1, 0, 0, 0, 0}
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		unk = append(unk, byte(unknownId>>(8*i)))
 	}
 	unk = append(unk, 1, 0, 0, 0, 0, 0, 0, 0)

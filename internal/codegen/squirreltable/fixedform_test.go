@@ -3,6 +3,7 @@ package squirreltable_test
 import (
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -39,13 +40,13 @@ func fixedRecords(t *testing.T, corpus string) map[string]int {
 		t.Fatal(err)
 	}
 	out := map[string]int{}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if !strings.HasPrefix(line, "file=") {
 			continue
 		}
 		var file string
 		n := -1
-		for _, f := range strings.Fields(line) {
+		for f := range strings.FieldsSeq(line) {
 			k, v, ok := strings.Cut(f, "=")
 			if !ok {
 				continue
@@ -98,9 +99,7 @@ func writeGenerated(t *testing.T, dir string, u *ir.Unit) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
 			t.Fatal(err)
@@ -286,7 +285,7 @@ func fixedSynthetic(t *testing.T, src string) *ir.Unit {
 
 func decodeHex(s string) ([]byte, error) {
 	out := make([]byte, len(s)/2)
-	for i := 0; i < len(out); i++ {
+	for i := range out {
 		v, err := strconv.ParseUint(s[i*2:i*2+2], 16, 8)
 		if err != nil {
 			return nil, err
@@ -311,9 +310,7 @@ func TestSquirrelFixedFormNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	for _, side := range []string{"plain", "patched"} {
 		if err := os.MkdirAll(filepath.Join(dir, side), 0o755); err != nil {

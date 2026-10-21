@@ -2,6 +2,7 @@ package squirreltable_test
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,7 +38,6 @@ func TestSquirrelFixedReadsItsLineage(t *testing.T) {
 		{"float-now-int", "package vr\nfixed table VR { a float32 = 1.5 }\n", "package vr\nfixed table VR { a int32 = 5 }\n", "", "5"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			oldU := fixedSynthetic(t, c.old)
@@ -61,9 +61,7 @@ func TestSquirrelFixedReadsItsLineage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for k, v := range oldTables {
-				oldFiles[k] = v
-			}
+			maps.Copy(oldFiles, oldTables)
 			for k, v := range oldFiles {
 				if err := os.WriteFile(filepath.Join(dir, "old", k), v, 0o644); err != nil {
 					t.Fatal(err)
@@ -80,9 +78,7 @@ func TestSquirrelFixedReadsItsLineage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for k, v := range newTables {
-				newFiles[k] = v
-			}
+			maps.Copy(newFiles, newTables)
 			for k, v := range newFiles {
 				if err := os.WriteFile(filepath.Join(dir, "new", k), v, 0o644); err != nil {
 					t.Fatal(err)
@@ -101,7 +97,7 @@ print("LINEAGE:%s:" + got + ":" + (N.FixedReason == null ? "" : N.FixedReason) +
 			}
 			out := string(sqrun.Run(t, dir, "main.nut", nil))
 			var line string
-			for _, l := range strings.Split(out, "\n") {
+			for l := range strings.SplitSeq(out, "\n") {
 				if strings.HasPrefix(l, "LINEAGE:") {
 					line = l
 					break

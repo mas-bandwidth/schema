@@ -3,6 +3,7 @@ package squirreltable_test
 import (
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -90,7 +91,7 @@ print("\n");
 	out := strings.TrimRight(string(sqrun.Run(t, sqDir, "clean.nut", nil)), "\n")
 	var n int
 	var hexline string
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(line, "CLEAN-N=") {
 			fmt.Sscanf(line, "CLEAN-N=%d", &n)
 		} else if line != "" {
@@ -180,7 +181,7 @@ local names = [
 	}
 	out := string(sqrun.Run(t, sqDir, "load.nut", inputs))
 	res := map[string]string{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if line == "" {
 			continue
 		}
@@ -204,16 +205,12 @@ func goFixedOracleReasons(t *testing.T, root, schemaRel, pkg, recRoot, hostileDi
 	if err != nil {
 		t.Fatal(err)
 	}
-	for k, v := range pkt {
-		files[k] = v
-	}
+	maps.Copy(files, pkt)
 	tbl, err := gotable.Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for k, v := range tbl {
-		files[k] = v
-	}
+	maps.Copy(files, tbl)
 	probe := fmt.Sprintf(`package %s
 import ("os"; "sort"; "strings"; "testing")
 func TestOracleR(t *testing.T) {
@@ -258,7 +255,7 @@ func TestOracleR(t *testing.T) {
 		t.Fatalf("go oracle build/run: %v\n%s", err, out)
 	}
 	res := map[string]string{}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if line == "" {
 			continue
 		}

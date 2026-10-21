@@ -177,7 +177,7 @@ func TestSquirrelCookWriterMatchesTheCorpus(t *testing.T) {
 	stdout := sqrun.Run(t, dir, "main.nut", inputs)
 	results := map[string]string{}
 	detail := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(stdout), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(stdout), "\n"), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 3 && len(fields) != 8 {
 			t.Errorf("cook-write probe line %q is not a case and a verdict", line)

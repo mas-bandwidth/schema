@@ -143,7 +143,7 @@ func TestSquirrelNightlyFuzzStrict(t *testing.T) {
 	inputs := map[string][]byte{}
 	n := 0
 	for si, s := range seeds {
-		for j := 0; j < mutantsPer; j++ {
+		for j := range mutantsPer {
 			if time.Now().After(deadline) {
 				t.Fatalf("the strict-read budget expired after %d mutants; raise SCHEMA_SQUIRREL_FUZZ_SECONDS", n)
 			}
@@ -179,7 +179,7 @@ func TestSquirrelNightlyFuzzTextJSON(t *testing.T) {
 	inputs := map[string][]byte{}
 	n, textSeeds, jsonSeeds := 0, 0, 0
 	for si, s := range seeds {
-		for j := 0; j < mutantsPer; j++ {
+		for j := range mutantsPer {
 			if time.Now().After(deadline) {
 				t.Fatalf("the text/json budget expired after %d mutants; raise SCHEMA_SQUIRREL_FUZZ_SECONDS", n)
 			}

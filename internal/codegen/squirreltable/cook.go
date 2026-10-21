@@ -146,7 +146,7 @@ func cookStorage(f *ir.Field) string {
 // byte array the header comparison is done against (docs/SPEC-TABLES.md §7.1).
 func littleEndianBytes(v uint64) string {
 	parts := make([]string, 8)
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		parts[i] = fmt.Sprintf("%d", (v>>uint(i*8))&0xff)
 	}
 	return strings.Join(parts, ", ")

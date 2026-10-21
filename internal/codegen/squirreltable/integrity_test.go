@@ -164,7 +164,7 @@ func TestSquirrelWireIntegrityCheck(t *testing.T) {
 		hex     string
 	}{}
 	damaged := ""
-	for _, line := range strings.Split(strings.TrimRight(string(stdout), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(stdout), "\n"), "\n") {
 		f := strings.Fields(line)
 		if len(f) < 2 {
 			t.Fatalf("probe line %q is not a row", line)

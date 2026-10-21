@@ -127,7 +127,7 @@ func TestSquirrelTableDescriptorsLoad(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(sqrun.Run(t, dir, "main.nut", nil)), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(sqrun.Run(t, dir, "main.nut", nil)), "\n"), "\n") {
 		k, v, ok := strings.Cut(line, "=")
 		if !ok {
 			t.Fatalf("probe line %q has no key", line)

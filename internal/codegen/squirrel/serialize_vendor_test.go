@@ -3,6 +3,7 @@ package squirrel_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,7 +105,7 @@ func readPin(path string) (struct {
 			sha256 string
 		}
 	}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -147,9 +148,7 @@ func roundTripSerialize(t *testing.T, root string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range squirrel.Serialize() {
-		files[name] = data
-	}
+	maps.Copy(files, squirrel.Serialize())
 	dir := t.TempDir()
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {

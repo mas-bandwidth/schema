@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"os"
@@ -394,7 +395,7 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 	stdout := sqrun.Run(t, dir, "main.nut", inputs)
 
 	got := map[string]probeLine{}
-	for _, line := range strings.Split(strings.TrimRight(string(stdout), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(stdout), "\n"), "\n") {
 		f := strings.Fields(line)
 		if len(f) < 2 {
 			t.Fatalf("probe line %q is not a case and a result", line)
@@ -440,9 +441,7 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 			t.Errorf("%s: the rewrite is not the input byte for byte:\n%q", stem, rewrite)
 		}
 		want := map[string]any{}
-		for k, e := range defaults {
-			want[k] = e
-		}
+		maps.Copy(want, defaults)
 		o := decodeJSON(t, vector(stem+".value.json"))
 		for k, e := range o["explicit_fields"].(map[string]any) {
 			if stem == "kinds" && k == "wide" {
@@ -486,7 +485,7 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 		count++
 	}
 	refusal("bound", "text_bound", nil)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		refusal(fmt.Sprintf("conflict-%d", i), "text_edit_conflict", nil)
 	}
 	refusal("conflict-twice", "text_edit_conflict", nil)
@@ -523,7 +522,7 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 	}
 
 	// the limits
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		refusal(fmt.Sprintf("limit-%d", i), "text_limit", nil)
 	}
 	refusal("limit-alloc", "text_limit", nil)

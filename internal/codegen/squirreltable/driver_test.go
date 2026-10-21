@@ -44,7 +44,7 @@ func TestSquirrelDriverListsItsSurfaces(t *testing.T) {
 		t.Fatalf("`%s list` failed: %v\n%s", driver, err, stderr.String())
 	}
 	seen := map[string]bool{}
-	for _, line := range strings.Split(stdout.String(), "\n") {
+	for line := range strings.SplitSeq(stdout.String(), "\n") {
 		s := strings.TrimSpace(line)
 		if s == "" {
 			continue

@@ -190,7 +190,7 @@ func TestSquirrelLoadTextRefusesNonCanonicalBase64(t *testing.T) {
 `)
 	writeFile(t, filepath.Join(dir, "save.nut"), []byte(save.String()))
 	canonical := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(sqrun.Run(t, dir, "save.nut", inputs)), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(sqrun.Run(t, dir, "save.nut", inputs)), "\n"), "\n") {
 		f := strings.SplitN(line, "|", 3)
 		if len(f) != 3 {
 			t.Fatalf("save probe line %q is not kind|key|text", line)
@@ -249,7 +249,7 @@ foreach (c in cases) {
 `)
 	writeFile(t, filepath.Join(dir, "load.nut"), []byte(load.String()))
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(sqrun.Run(t, dir, "load.nut", inputs)), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(sqrun.Run(t, dir, "load.nut", inputs)), "\n"), "\n") {
 		f := strings.SplitN(line, "|", 4)
 		if len(f) != 4 || f[0] != "reason" {
 			t.Fatalf("load probe line %q is not reason|key|label|name", line)

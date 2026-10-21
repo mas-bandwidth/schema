@@ -43,7 +43,7 @@ func TestEveryPortBackendBitIsItsOwn(t *testing.T) {
 }
 
 func bitShift(b Backend) int {
-	for i := 0; i < 32; i++ {
+	for i := range 32 {
 		if b&(1<<uint(i)) != 0 {
 			return i
 		}

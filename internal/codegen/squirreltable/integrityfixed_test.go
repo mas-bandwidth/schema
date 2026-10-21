@@ -11,6 +11,7 @@ package squirreltable_test
 import (
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,9 +138,7 @@ func TestSquirrelWireIntegrityFixedForm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	if err := os.MkdirAll(filepath.Join(dir, "probe"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +157,7 @@ func TestSquirrelWireIntegrityFixedForm(t *testing.T) {
 	flips := map[string]string{}
 	truncs := map[string]string{}
 	noTrailer, round := "", ""
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 {
 			continue

@@ -233,7 +233,7 @@ func runJsonProbe(t *testing.T) *jsonProbe {
 		pr.hostile = append(pr.hostile, h)
 	}
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
-	for _, line := range strings.Split(strings.TrimRight(string(sqrun.Run(t, dir, "main.nut", inputs)), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(sqrun.Run(t, dir, "main.nut", inputs)), "\n"), "\n") {
 		f := strings.Fields(line)
 		if len(f) < 3 {
 			t.Fatalf("probe line %q is not a row", line)
@@ -583,7 +583,7 @@ func TestSquirrelJsonGuardedGroupsElide(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "main.nut"),
 		[]byte(fmt.Sprintf(guardedPrelude, squirreltable.ModuleName(unit), "["+strings.Join(keys, ", ")+"]")))
 	got := map[string][]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(sqrun.Run(t, dir, "main.nut", inputs)), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(sqrun.Run(t, dir, "main.nut", inputs)), "\n"), "\n") {
 		f := strings.Fields(line)
 		if len(f) != 3 {
 			t.Fatalf("probe line %q is not a row", line)

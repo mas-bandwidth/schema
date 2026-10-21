@@ -429,7 +429,7 @@ func (e expect) String() string {
 func parseProbe(t *testing.T, out []byte) map[string]string {
 	t.Helper()
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		k, v, ok := strings.Cut(line, "=")
 		if !ok {
 			t.Fatalf("probe line %q has no key", line)

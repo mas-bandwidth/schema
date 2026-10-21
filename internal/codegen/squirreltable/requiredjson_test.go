@@ -122,7 +122,7 @@ table Guarded
 	writeFile(t, filepath.Join(dir, "main.nut"),
 		[]byte(fmt.Sprintf(requiredPrelude, squirreltable.ModuleName(unit), "["+strings.Join(pairs, ", ")+"]")))
 	got := map[string][]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(sqrun.Run(t, dir, "main.nut", inputs)), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(sqrun.Run(t, dir, "main.nut", inputs)), "\n"), "\n") {
 		f := strings.SplitN(line, " ", 3)
 		if len(f) < 2 {
 			t.Fatalf("probe line %q is not a row", line)

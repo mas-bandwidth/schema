@@ -150,10 +150,7 @@ func portAnswer(dir, surface, name string) ([]byte, bool) {
 // firstDifference names the first byte two answers disagree on, so the report
 // localises the plant rather than printing two blobs.
 func firstDifference(a, b []byte) string {
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
-	}
+	n := min(len(b), len(a))
 	for i := 0; i < n; i++ {
 		if a[i] != b[i] {
 			return fmt.Sprintf(": first difference at byte %d", i)

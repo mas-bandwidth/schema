@@ -151,7 +151,7 @@ func InputsModule(inputs map[string][]byte) []byte {
 // HexLines decodes a probe's output, one lowercase hex line per byte string.
 func HexLines(out []byte) ([][]byte, error) {
 	var lines [][]byte
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		b, err := hex.DecodeString(line)
 		if err != nil {
 			return nil, fmt.Errorf("probe line %q is not hex: %w", line, err)

@@ -93,7 +93,7 @@ func (r *splitmix64) next() uint64 {
 func fuzzMutant(base []byte, r *splitmix64) []byte {
 	w := append([]byte(nil), base...)
 	edits := 1 + int(r.next()%4)
-	for k := 0; k < edits; k++ {
+	for range edits {
 		op := r.next() % 7
 		if len(w) == 0 {
 			op = 4
@@ -451,7 +451,7 @@ func runWireFuzzDifferential(t *testing.T, edit func(name string, src []byte) []
 			if variable != builder {
 				return mutants, fmt.Errorf("the driver carried %s.%s (variable=%t) in the builder=%t arm", r.unit, r.root, variable, builder)
 			}
-			for j := 0; j < fuzzMutantsPerInstance; j++ {
+			for j := range fuzzMutantsPerInstance {
 				if !fuzzDeadline.IsZero() && time.Now().After(fuzzDeadline) {
 					return mutants, fmt.Errorf("the nightly budget expired after %d agreeing mutants; raise SCHEMA_SQUIRREL_FUZZ_SECONDS", mutants)
 				}

@@ -2,6 +2,7 @@ package squirreltable_test
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -102,12 +103,8 @@ func TestSquirrelTestgenRoundTripAndDamage(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for name, data := range tabs {
-			files[name] = data
-		}
-		for name, data := range extra {
-			files[name] = data
-		}
+		maps.Copy(files, tabs)
+		maps.Copy(files, extra)
 		for name, data := range files {
 			if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
 				t.Fatal(err)
@@ -144,9 +141,7 @@ func TestSquirrelTestgenRoundTripAndDamage(t *testing.T) {
 		patched = append(patched, []byte("  return null;\n")...)
 		patched = append(patched, runtime[end:]...)
 		extra := map[string][]byte{"schema_table_save.nut": patched}
-		for name, data := range tests {
-			extra[name] = data
-		}
+		maps.Copy(extra, tests)
 		write(dir, extra)
 		cmd := exec.Command(sq, want[0])
 		cmd.Dir = dir

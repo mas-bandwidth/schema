@@ -221,12 +221,12 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 	idTable := func(ids ...uint64) []byte {
 		var b []byte
 		for _, x := range ids {
-			for i := 0; i < 8; i++ {
+			for i := range 8 {
 				b = append(b, byte(x>>(8*i)))
 			}
 		}
 		n := uint64(len(ids))
-		for i := 0; i < 8; i++ {
+		for i := range 8 {
 			b = append(b, byte(n>>(8*i)))
 		}
 		return b
@@ -638,12 +638,12 @@ table Root
 	finish := func(b *wb) []byte {
 		out := append([]byte{1}, b.body...)
 		for _, id := range b.ids {
-			for i := 0; i < 8; i++ {
+			for i := range 8 {
 				out = append(out, byte(id>>(8*i)))
 			}
 		}
 		n := uint64(len(b.ids))
-		for i := 0; i < 8; i++ {
+		for i := range 8 {
 			out = append(out, byte(n>>(8*i)))
 		}
 		return out

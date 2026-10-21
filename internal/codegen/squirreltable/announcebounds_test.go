@@ -59,7 +59,7 @@ check("bytes"); check("entries"); check("none");
 	out := sqrun.Run(t, dir, "main.nut", map[string][]byte{"ann": ann})
 
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		p := strings.SplitN(line, ":", 2)
 		if len(p) == 2 {
 			got[p[0]] = p[1]

@@ -48,8 +48,7 @@ func TestSquirrelWireCountRefusalNamesCountRefusal(t *testing.T) {
 	if _, err := tablewire.Decode(model, model.New(model.Lookup("Root")), raw, &report); err == nil {
 		t.Fatal("the wire oracle read a count past the cap without refusing")
 	} else {
-		var refusal *tablewire.CountRefusal
-		if !errors.As(err, &refusal) {
+		if _, ok := errors.AsType[*tablewire.CountRefusal](err); !ok {
 			t.Fatalf("the wire oracle refuses %T, want *tablewire.CountRefusal", err)
 		}
 	}

@@ -81,7 +81,7 @@ table Root { keys map[int8]int32
 
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
 	got := map[string][]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(sqrun.Run(t, dir, "main.nut", inputs)), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(sqrun.Run(t, dir, "main.nut", inputs)), "\n"), "\n") {
 		f := strings.Fields(line)
 		if len(f) != 4 || f[0] != "row" {
 			t.Fatalf("probe line %q is not a row", line)
