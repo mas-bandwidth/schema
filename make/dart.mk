@@ -770,7 +770,7 @@ tables-dart-keyed-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/darttable/fixeddart.go":"%s/build/dart-keyed-nc/fixeddart.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/dart-keyed-nc/overlay.json
-	@if go test -count=1 -overlay build/dart-keyed-nc/overlay.json -run TestDartKeyedArraysAreHeldAtBothEnds \
+	@if SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test -count=1 -overlay build/dart-keyed-nc/overlay.json -run TestDartKeyedArraysAreHeldAtBothEnds \
 			./internal/codegen/dart/ > build/dart-keyed-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: an extra keyed slot left the extent test green"; \
 		cat build/dart-keyed-nc/log; exit 1; \
