@@ -383,7 +383,7 @@ struct Codec
     static bool load( const uint8_t * wire, int64_t bytes )
     {
         Report report{};
-        return LoadTolerant( value, wire, bytes, &report ) && report.malformed == 0;
+        return Load( value, wire, bytes, &report ) && report.malformed == 0;
     }
     static uint64_t read() { return Read( value ); }
     static int64_t measure() { return Measure( value ); }
@@ -409,7 +409,7 @@ template <typename T, typename Report,
 T Codec<T, Report, Load, Read, Measure, Save, TextMeasure, Text, FromText>::value;
 
 #define SOAK_CODEC( ns, Root, read )                                                         \
-    &Codec<ns::Root, ns::TableReport, ns::Root##Load, read, ns::Root##Measure, ns::Root##Save, \
+    &Codec<ns::Root, ns::TableReport, ns::Root##LoadTolerant, read, ns::Root##Measure, ns::Root##Save, \
            ns::Root##ToJsonMeasure, ns::Root##ToJson, ns::Root##FromJson>::ops
 
 struct Case

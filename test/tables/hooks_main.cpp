@@ -275,7 +275,13 @@ static void test_blob_read_path_allocates_nothing()
         CHECK( !small.null() );
         for ( int i = 0; i < 24; i++ ) { small.data[i] = (uint8_t) i; }
         root->thumb = small;
-        root->alias = small; // one node, two names
+        // A blob is owned by one slot: every writer refuses one named twice,
+        // blob_shared (docs/SPEC-TABLES.md §2.5), so alias holds its own
+        // copy of the same bytes.
+        blobdemo::TableBytesSlot copy = builder.AllocBytes( 24 );
+        CHECK( !copy.null() );
+        for ( int i = 0; i < 24; i++ ) { copy.data[i] = (uint8_t) i; }
+        root->alias = copy;
         blobdemo::TableStringSlot note = builder.AllocString( 5 );
         CHECK( !note.null() );
         memcpy( (void *) note.data, "blobs", 5 );
@@ -311,7 +317,8 @@ static void test_blob_read_path_allocates_nothing()
     blobdemo::TableStringView note = blobdemo::TableStringAt( loaded->note );
     const blobdemo::Asset * asset = blobdemo::AssetAt( blobdemo::TableRegionCtx{}, loaded->head );
     CHECK( asset != NULL );
-    CHECK( thumb.data != NULL && thumb.length == 24 && thumb.data == alias.data );
+    CHECK( thumb.data != NULL && thumb.length == 24 && alias.data != NULL && alias.length == 24 &&
+           memcmp( thumb.data, alias.data, 24 ) == 0 );
     CHECK( note.data != NULL && note.length == 5 && strcmp( note.data, "blobs" ) == 0 );
     if ( asset != NULL )
     {
