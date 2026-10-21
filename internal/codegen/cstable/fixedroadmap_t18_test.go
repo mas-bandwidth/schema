@@ -91,20 +91,19 @@ func TestFixedCSharpT18ArmLines(t *testing.T) {
 	}
 	for _, arm := range []string{"Quiet", "Signal"} {
 		sig := "case PickType." + arm + ":"
-		i := strings.Index(free, sig)
-		if i < 0 {
+		_, rest, found := strings.Cut(free, sig)
+		if !found {
 			t.Errorf("PAYLOADFREE TFixedWriteBody: missing %q", sig)
 			continue
 		}
-		rest := free[i+len(sig):]
-		j := strings.Index(rest, "break;")
-		if j < 0 {
+		stored, _, found := strings.Cut(rest, "break;")
+		if !found {
 			t.Errorf("PAYLOADFREE TFixedWriteBody: %s case has no break", arm)
 			continue
 		}
 		// THE TAG ALONE IS ITS WHOLE STORAGE (§2.6): a payload-free arm's case
 		// carries no store, only the break.
-		if body := strings.TrimSpace(rest[:j]); body != "" {
+		if body := strings.TrimSpace(stored); body != "" {
 			t.Errorf("PAYLOADFREE TFixedWriteBody: %s case stores %q", arm, body)
 		}
 	}
@@ -411,11 +410,10 @@ func TestFixedRoadmapCSharpT18UnionArms(t *testing.T) {
 		}},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			out := t08RunCS(t, c.schema, c.body)
-			for _, line := range strings.Split(out, "\n") {
+			for line := range strings.SplitSeq(out, "\n") {
 				if line = strings.TrimSpace(line); strings.HasPrefix(line, "T18 ") {
 					t.Log(line)
 				}

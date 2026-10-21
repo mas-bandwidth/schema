@@ -69,12 +69,11 @@ func csMkTarget(mk, name string) (string, bool) {
 
 // csMkRunPattern extracts the -run regex from a make recipe line.
 func csMkRunPattern(recipe string) *regexp.Regexp {
-	for _, ln := range strings.Split(recipe, "\n") {
-		i := strings.Index(ln, "-run")
-		if i < 0 {
+	for ln := range strings.SplitSeq(recipe, "\n") {
+		_, rest, found := strings.Cut(ln, "-run")
+		if !found {
 			continue
 		}
-		rest := ln[i+len("-run"):]
 		rest = strings.TrimLeft(rest, " \t=")
 		if len(rest) >= 2 && rest[0] == '\'' {
 			end := strings.IndexByte(rest[1:], '\'')
@@ -108,7 +107,7 @@ func csRoadmapTestNames(t *testing.T, root string) []string {
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
 		}
-		for _, ln := range strings.Split(string(b), "\n") {
+		for ln := range strings.SplitSeq(string(b), "\n") {
 			if m := re.FindStringSubmatch(ln); m != nil {
 				names = append(names, m[1])
 			}
