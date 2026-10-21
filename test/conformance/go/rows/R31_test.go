@@ -6,7 +6,6 @@
 package main
 
 import (
-	"os"
 	"path/filepath"
 	"regexp"
 	"testing"
@@ -28,16 +27,11 @@ func TestRowR31(t *testing.T) {
 	// runtime is emitted into Tblm1Table.go (the per-package runtime file), not
 	// M1Table.go.
 	root := findRepoRoot(t)
-	codePath := filepath.Join(root, "build", "tables-generated-go", "m1", "Tblm1Table.go")
-	code, err := os.ReadFile(codePath)
-	if err != nil {
-		t.Fatalf("failed to read M1Table.go: %v", err)
-	}
-	codeStr := string(code)
+	codeStr := generatedRuntimeSource(t, filepath.Join(root, "build", "tables-generated-go", "m1", "Tblm1Table.go"))
 
 	// Verify tableFixedTagAt loads at full width into uint64
 	// The function should return uint64 and read the full width, not just first byte
-	tagAtRegex := regexp.MustCompile(`func tableFixedTagAt\([^)]*\)\s+uint64\s*\{[^}]*var\s+v\s+uint64[^}]*}`)
+	tagAtRegex := regexp.MustCompile(`func [Tt]ableFixedTagAt\([^)]*\)\s+uint64\s*\{[^}]*var\s+v\s+uint64[^}]*}`)
 	if !tagAtRegex.MatchString(codeStr) {
 		t.Error("tableFixedTagAt should return uint64 and use uint64 variable for full-width read")
 	}
@@ -45,14 +39,14 @@ func TestRowR31(t *testing.T) {
 	// Verify the guard comparison happens at full width (not byte lane)
 	// In tableFixedRun, we should see: tableFixedTagAt(...) != uint64(p.Arg)
 	// This shows the comparison uses full-width tag against full-width arg
-	guardCompare := regexp.MustCompile(`tableFixedTagAt\s*\([^)]+\)\s*!=\s*uint64\s*\(\s*p\.Arg\s*\)`)
+	guardCompare := regexp.MustCompile(`[Tt]ableFixedTagAt\s*\([^)]+\)\s*!=\s*uint64\s*\(\s*p\.Arg\s*\)`)
 	if !guardCompare.MatchString(codeStr) {
 		t.Error("guard comparison should be at full width using uint64(p.Arg)")
 	}
 
 	// Verify ArgW is used for the tag width (not hardcoded to byte)
 	// This proves the compare is at the tag's own width
-	argWRegex := regexp.MustCompile(`tableFixedTagAt\s*\([^)]+,.*,\s*p\.ArgW\s*\)`)
+	argWRegex := regexp.MustCompile(`[Tt]ableFixedTagAt\s*\([^)]+,.*,\s*p\.ArgW\s*\)`)
 	if !argWRegex.MatchString(codeStr) {
 		t.Error("compare should use p.ArgW for tag's own width")
 	}
