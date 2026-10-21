@@ -571,11 +571,13 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120, and the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control). The message form's four blades run on the pull request, so what moves nightly is those passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
+      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120; the squirrel nightly fuzz control patches the emitted load, regenerates every conformance unit and runs the differential, which is the same minutes-long campaign its positive target carries; and the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control). The message form's four blades run on the pull request, so what moves nightly is those passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries, and schema-squirrel-nightly-fuzz.yml runs the squirrel one on its own nightly schedule. schema-squirrel-runs-hostile-corpus-negative-control is nightly because it needs the pinned sq interpreter and regenerates the hostile corpus.",
       "targets": [
         "tables-message-form-negative-control",
+        "schema-squirrel-nightly-fuzz-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control",
-        "schema-go-generated-golangci-lint-gate-negative-control-ratchet"
+        "schema-go-generated-golangci-lint-gate-negative-control-ratchet",
+        "schema-squirrel-runs-hostile-corpus-negative-control"
       ]
     },
     {
@@ -618,6 +620,16 @@
       "why": "the compiled Go unit registry and packet descriptor boundary controls",
       "targets": [
         "tables-go-view-negative-controls"
+      ]
+    },
+    {
+      "name": "squirrel",
+      "when": "pull-request",
+      "why": "the Squirrel port's load-sabotage conformance control: it neutralizes the emitted kind-mismatch counter, so the report surface must go red while the wire surface (answered absent) stays green. Rebuilds the tagged compiler under the overlay and regenerates the corpus. Beside it, the all-port differential's planted-bad-pattern control changes one byte of a scratch answer tree and requires the comparison to go red and name wire/Scene; both halves of that control run on a t.TempDir(), with no toolchain, so the Squirrel lens still has a blade on a host carrying none of the other ports. It costs milliseconds. Beside them, the resource-bounds negative control (make/schema-squirrel-resource-bounds.mk) runs the planted-pattern gate over the port's allocation counter and depth cap: pure Go, no sq interpreter, so it is another pull-request blade for the Squirrel lens.",
+      "targets": [
+        "conformance-negative-control-squirrel",
+        "schema-squirrel-all-port-differential-negative-control",
+        "schema-squirrel-resource-bounds-negative-control"
       ]
     }
   ],

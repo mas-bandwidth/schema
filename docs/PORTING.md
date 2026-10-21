@@ -127,9 +127,9 @@ red on the one row it was planted in.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:178-187` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ❌ #517 | ❌ #516 | ❌ #514 | — a decoded BEAM term is an allocation and no buffer is caller-owned (docs/SPEC-TABLES.md); the leg that pinned a per-case count went with the table wire (#515) |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:178-187` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ❌ #517 | ❌ #516 | ❌ #514 | — a decoded BEAM term is an allocation and no buffer is caller-owned (docs/SPEC-TABLES.md); the leg that pinned a per-case count went with the table wire (#515) | — not yet, no codec on the skeleton: schema-squirrel-table-wire-load carries the read into caller-owned instances; a table string is an interned VM string, which allocates (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### M2 — 64-bit values without boxing
 
@@ -156,9 +156,9 @@ per edge to 0.7 bytes per iteration (ceiling 8) once the delta was composed.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:513` | ✅ `internal/codegen/ctable/ctable.go:514-518` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:152` | ✅ `internal/codegen/cstable/cstable.go:986-991` | ❌ #517 | — the accelerator paths compose (`internal/codegen/jstable/block.go:384`, `cook.go:513`); a 64-bit wire FIELD's value is a BigInt or loses precision, so those rows read one under a stated ceiling (`test/js-tables/main.mjs`, the RootConfig rows) | — an `int` is a 64-bit machine word and nothing boxes (`internal/codegen/darttable/block.go:213`) | ❌ #403 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/cpptable.go:513` | ✅ `internal/codegen/ctable/ctable.go:514-518` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:152` | ✅ `internal/codegen/cstable/cstable.go:986-991` | ❌ #517 | — the accelerator paths compose (`internal/codegen/jstable/block.go:384`, `cook.go:513`); a 64-bit wire FIELD's value is a BigInt or loses precision, so those rows read one under a stated ceiling (`test/js-tables/main.mjs`, the RootConfig rows) | — an `int` is a 64-bit machine word and nothing boxes (`internal/codegen/darttable/block.go:213`) | ❌ #403 | — the sq64 integer is a 64-bit value in the object slot and nothing boxes (docs/PORT-SQUIRREL.md, 64-BIT AND 128-BIT INTEGERS) |
 
 ### M3 — A float never crosses a call
 
@@ -183,9 +183,9 @@ reads as bytes per iteration on the pinned runtime.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:572-573` | ✅ `internal/codegen/ctable/ctable.go:565-568` | ❌ #518 | ✅ `internal/codegen/gotable/read.go` (`emitReadScalar`) | ✅ `TestCsFloatBitCastIsAtTheAssignment` (`BitConverter` at the store; helpers `[MethodImpl(AggressiveInlining)]`) | ❌ #517 | ❌ #516 | ❌ #404 | — a BEAM float is a boxed term whatever the call shape; `R.f32_bits` costs what the term costs |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/cpptable.go:572-573` | ✅ `internal/codegen/ctable/ctable.go:565-568` | ❌ #518 | ✅ `internal/codegen/gotable/read.go` (`emitReadScalar`) | ✅ `TestCsFloatBitCastIsAtTheAssignment` (`BitConverter` at the store; helpers `[MethodImpl(AggressiveInlining)]`) | ❌ #517 | ❌ #516 | ❌ #404 | — a BEAM float is a boxed term whatever the call shape; `R.f32_bits` costs what the term costs | — a SQUSEDOUBLE float is an unboxed value in the object slot, so a call costs it nothing |
 
 ### M4 — The codec is shaped for the optimizer
 
@@ -215,9 +215,9 @@ from a fixed one, is red.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:358-364` `TestPointerSurfaceEmitted` | ✅ `internal/codegen/ctable/ctable.go:275-283` `TestCForceInlineStopsAtTheVariableClass` | ❌ #518 | ❌ #362 | ❌ #405 | — the JIT takes no inlining directive and no aliasing qualifier; M4b is the shape | — no inlining directive and no aliasing qualifier for V8; M4b is the shape | — no inlining directive and no aliasing qualifier for the AOT compiler; M4b is the shape | — no inlining directive and no aliasing qualifier for the BEAM; M4b is the shape |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/cpptable.go:358-364` `TestPointerSurfaceEmitted` | ✅ `internal/codegen/ctable/ctable.go:275-283` `TestCForceInlineStopsAtTheVariableClass` | ❌ #518 | ❌ #362 | ❌ #405 | — the JIT takes no inlining directive and no aliasing qualifier; M4b is the shape | — no inlining directive and no aliasing qualifier for V8; M4b is the shape | — no inlining directive and no aliasing qualifier for the AOT compiler; M4b is the shape | — no inlining directive and no aliasing qualifier for the BEAM; M4b is the shape | — an interpreter with no inlining directive and no aliasing qualifier; M4b is the shape |
 
 ### M4b — The codec is self-contained
 
@@ -244,9 +244,9 @@ floors of I1 are measured over the unit it holds.
 
 **Targets:** standalone
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| — native class: the primitives are force-inlined instead (M4) | — native class: the primitives are force-inlined instead (M4) | — native class: `#[inline(always)]` on the primitives instead (M4) | ✅ `tables-go-standalone` | ✅ `tables-cs-standalone` | ✅ `tables-java-standalone` | ✅ `tables-js-standalone` | ✅ `tables-dart-standalone` `tables-dart-standalone-negative-control` | ❌ #406 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| — native class: the primitives are force-inlined instead (M4) | — native class: the primitives are force-inlined instead (M4) | — native class: `#[inline(always)]` on the primitives instead (M4) | ✅ `tables-go-standalone` | ✅ `tables-cs-standalone` | ✅ `tables-java-standalone` | ✅ `tables-js-standalone` | ✅ `tables-dart-standalone` `tables-dart-standalone-negative-control` | ❌ #406 | — not yet, no codec on the skeleton: schema-squirrel-conformance-leg carries the standalone gate; a module requires only the runtime emitted beside it (docs/PORT-SQUIRREL.md, THE RUNTIME LAYOUT) (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### M5 — Keyed arrays index by key, refused at both ends
 
@@ -274,9 +274,9 @@ enum answered `undefined` before the guard was made symmetric.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-ndebug` `tables-c-keyed-max-refusal-ndebug` | ❌ #518 | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `TestCsKeyedAccessorCoversBothEnds` (`RefuseKey`, both ends) | ❌ #407 (refuses both ends; no test holds it) | ❌ #516 | ❌ #407 (refuses both ends; no test holds it) | ❌ #407 (guards refuse both ends; no test holds it) |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-ndebug` `tables-c-keyed-max-refusal-ndebug` | ❌ #518 | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `TestCsKeyedAccessorCoversBothEnds` (`RefuseKey`, both ends) | ❌ #407 (refuses both ends; no test holds it) | ❌ #516 | ❌ #407 (refuses both ends; no test holds it) | ❌ #407 (guards refuse both ends; no test holds it) | — not yet, no codec on the skeleton: schema-squirrel-table-wire-load carries the keyed read and schema-squirrel-table-wire-save the keyed write (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### M6 — The variable class on the wire: a flat node table and an identity map
 
@@ -307,9 +307,9 @@ in post-order in the emitter and requires the lock red;
 
 **Targets:** flat-wire
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` | ✅ `tables-cs-leg` `tables-cs-region-fuzz` (flat native and managed graphs) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` | ✅ `tables-cs-leg` `tables-cs-region-fuzz` (flat native and managed graphs) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | — not yet, no codec on the skeleton: schema-squirrel-table-wire-load carries the node table and schema-squirrel-table-wire-save the identity map (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### M7 — A block row is reached by stride, with no per-row object
 
@@ -337,9 +337,9 @@ table and 0.0 bytes per iteration in JavaScript's (`RenderFrame ships walk`).
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/block.go:120` | ✅ `internal/codegen/ctable/block.go:109-125` | ✅ `internal/codegen/rusttable/block.go:583-598` (a slice over the region) | ✅ `internal/codegen/gotable/block.go:243-256` | ✅ `internal/codegen/cstable/block.go:781-790` | ✅ `internal/codegen/javatable/block.go:420-432` | ✅ `internal/codegen/jstable/block.go:382-386` | ✅ `internal/codegen/darttable/block.go:217-247` | ❌ #409 (an eager list of `count` sub-binaries per call) |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/block.go:120` | ✅ `internal/codegen/ctable/block.go:109-125` | ✅ `internal/codegen/rusttable/block.go:583-598` (a slice over the region) | ✅ `internal/codegen/gotable/block.go:243-256` | ✅ `internal/codegen/cstable/block.go:781-790` | ✅ `internal/codegen/javatable/block.go:420-432` | ✅ `internal/codegen/jstable/block.go:382-386` | ✅ `internal/codegen/darttable/block.go:217-247` | ❌ #409 (an eager list of `count` sub-binaries per call) | — not carded: no block reader is in the schema-squirrel stream (docs/PORT-SQUIRREL.md, THE REGISTER) |
 
 ### M8 — The cook opens in O(1)
 
@@ -365,9 +365,9 @@ the harness's cook forgery battery (111 rows) holds every port.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cook.go:150-173` `tables-cook-open` | ✅ `internal/codegen/ctable/cook.go:157-178` | ✅ `internal/codegen/rusttable/cook.go:206` | ✅ `internal/codegen/gotable/cook.go:542-624` | ✅ `internal/codegen/cstable/cook.go:575-660` `tables-cook-open-cs` | ✅ `internal/codegen/javatable/cook.go:372-455` (an offset residue; the deref bounded to the record) | ✅ `internal/codegen/jstable/cook.go:438-483` | ✅ `internal/codegen/darttable/cook.go:390-446` (an offset residue) | ✅ `internal/codegen/elixirtable/cook.go:145` (a `lead` parameter; a binary has no address) |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/cook.go:150-173` `tables-cook-open` | ✅ `internal/codegen/ctable/cook.go:157-178` | ✅ `internal/codegen/rusttable/cook.go:206` | ✅ `internal/codegen/gotable/cook.go:542-624` | ✅ `internal/codegen/cstable/cook.go:575-660` `tables-cook-open-cs` | ✅ `internal/codegen/javatable/cook.go:372-455` (an offset residue; the deref bounded to the record) | ✅ `internal/codegen/jstable/cook.go:438-483` | ✅ `internal/codegen/darttable/cook.go:390-446` (an offset residue) | ✅ `internal/codegen/elixirtable/cook.go:145` (a `lead` parameter; a binary has no address) | — not carded: no cook reader is in the schema-squirrel stream (docs/PORT-SQUIRREL.md, THE REGISTER) |
 
 ### M9 — One text walk for the whole unit
 
@@ -390,9 +390,9 @@ offset arithmetic and requires red.
 
 **Targets:** json-walk
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-json-walk` `tables-json-graph-walk` | ✅ `tables-c-json-walk` | ❌ #518 | ✅ `tables-go-json-walk` | ✅ `tables-cs-json-walk` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-json-walk` `tables-json-graph-walk` | ✅ `tables-c-json-walk` | ❌ #518 | ✅ `tables-go-json-walk` | ✅ `tables-cs-json-walk` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 | — not yet, no codec on the skeleton: schema-squirrel-json-text-form carries it (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### M10 — Hooks and the allocator contract
 
@@ -436,9 +436,9 @@ id table: 2,240 bytes for the lists unit, rather than a fixed byte cost per
 object. The three ownership controls remove the
 original-slice guarantee, bypass the pair, and add a managed allocation.
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-hooks` | ✅ `TestCTableWireAllocatorFailures` `tables-c-soak` | — no allocating path exists: a pointered unit's wire is refused and the fixed class allocates nothing (`tables-rust-alloc-audit`) | ✅ `tables-go-allocator` `tables-go-allocator-negative-controls` (typed activation frames stated below) | ✅ `tables-cs-leg` (`TableAllocator` pairs, growth failures and native scratch ownership) | ❌ #517 | — the runtime allocates inside itself and says so; every unavoidable allocation is named in the floor (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the BEAM allocates every term; the count is pinned instead (docs/SPEC-TABLES.md) |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-hooks` | ✅ `TestCTableWireAllocatorFailures` `tables-c-soak` | — no allocating path exists: a pointered unit's wire is refused and the fixed class allocates nothing (`tables-rust-alloc-audit`) | ✅ `tables-go-allocator` `tables-go-allocator-negative-controls` (typed activation frames stated below) | ✅ `tables-cs-leg` (`TableAllocator` pairs, growth failures and native scratch ownership) | ❌ #517 | — the runtime allocates inside itself and says so; every unavoidable allocation is named in the floor (docs/SPEC-TABLES.md) | — the runtime allocates inside itself and says so (docs/SPEC-TABLES.md) | — the BEAM allocates every term; the count is pinned instead (docs/SPEC-TABLES.md) | — the VM allocates inside itself and offers a script no allocator to hook |
 
 ### M11 — The layout contract is asserted in generated code
 
@@ -462,9 +462,9 @@ asserts on a foreign target.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cook.go:334-336` | ✅ `internal/codegen/ctable/ctable.go:291-293` | ✅ `internal/codegen/rusttable/block.go:87-93` `TestCookLayoutIsAssertedAtCompileTime` | ✅ `internal/codegen/gotable/block.go:491-572` (at package init) | ✅ `internal/codegen/cstable/block.go:431-437` | ✅ `internal/codegen/javatable/block.go:479` | ✅ `internal/codegen/jstable/block.go:610-639` | — no second model to check against: the generated offsets ARE the model and the build version refuses a producer that disagrees (docs/SPEC-TABLES.md) | — no struct layout control, so the accelerators are read-only at the compiler's offsets and the build version is the contract (`internal/codegen/elixirtable/elixirtable.go:15-18`) |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/cook.go:334-336` | ✅ `internal/codegen/ctable/ctable.go:291-293` | ✅ `internal/codegen/rusttable/block.go:87-93` `TestCookLayoutIsAssertedAtCompileTime` | ✅ `internal/codegen/gotable/block.go:491-572` (at package init) | ✅ `internal/codegen/cstable/block.go:431-437` | ✅ `internal/codegen/javatable/block.go:479` | ✅ `internal/codegen/jstable/block.go:610-639` | — no second model to check against: the generated offsets ARE the model and the build version refuses a producer that disagrees (docs/SPEC-TABLES.md) | — no struct layout control, so the accelerators are read-only at the compiler's offsets and the build version is the contract (`internal/codegen/elixirtable/elixirtable.go:15-18`) | — not carded: the layout contract rides the accelerator readers, which no card carries (docs/PORT-SQUIRREL.md, THE REGISTER) |
 
 ### M12 — Byte order is the reader's, not the host's
 
@@ -488,9 +488,9 @@ host order and requires red on the target while green on the host.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:513-538` | ✅ `internal/codegen/ctable/ctable.go:503-518` | ✅ `internal/codegen/rusttable/block.go:105` `internal/codegen/rusttable/cook.go:174` (`TABLE_BLOCK_BYTE_ORDER` and `TABLE_COOK_BYTE_ORDER`) | ✅ `internal/codegen/gotable/wire.go:149-152` | ✅ `internal/codegen/cstable/cstable.go:971-991` | ✅ `internal/codegen/javatable/block.go:101-117` | ✅ `internal/codegen/jstable/jstable.go` (every DataView read passes `true`) | ✅ `internal/codegen/darttable/block.go` `internal/codegen/darttable/cook.go` (`Endian.little` on every read) | ✅ `internal/codegen/elixirtable/block.go:242` (every segment names `little`) |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/cpptable.go:513-538` | ✅ `internal/codegen/ctable/ctable.go:503-518` | ✅ `internal/codegen/rusttable/block.go:105` `internal/codegen/rusttable/cook.go:174` (`TABLE_BLOCK_BYTE_ORDER` and `TABLE_COOK_BYTE_ORDER`) | ✅ `internal/codegen/gotable/wire.go:149-152` | ✅ `internal/codegen/cstable/cstable.go:971-991` | ✅ `internal/codegen/javatable/block.go:101-117` | ✅ `internal/codegen/jstable/jstable.go` (every DataView read passes `true`) | ✅ `internal/codegen/darttable/block.go` `internal/codegen/darttable/cook.go` (`Endian.little` on every read) | ✅ `internal/codegen/elixirtable/block.go:242` (every segment names `little`) | — not yet, no codec on the skeleton: schema-squirrel-table-wire-load carries it; a blob's readn is the HOST's order, so the codec composes bytes (docs/PORT-SQUIRREL.md, BYTE BUFFERS) (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### M13 — Descriptors are constants
 
@@ -516,9 +516,9 @@ plain-cache line.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ❌ #518 | ✅ `internal/codegen/gotable/codecs.go` (`emitTableDescriptor`) | ❌ #411 (the plain-cache idiom) | ✅ `TestJavaDescriptorsAreSafelyPublished` | ❌ #516 | ❌ #514 | ❌ #515 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ❌ #518 | ✅ `internal/codegen/gotable/codecs.go` (`emitTableDescriptor`) | ❌ #411 (the plain-cache idiom) | ✅ `TestJavaDescriptorsAreSafelyPublished` | ❌ #516 | ❌ #514 | ❌ #515 | — Squirrel has no immutable table: the descriptors are tables built once when the module loads, never lazily (`internal/codegen/squirreltable/squirreltable.go`) |
 
 **C# Table Serialization Contract.** In C#, generated typed `<Name>Save` entry points read fields directly and use compile-time ordinal indexing: scalar leaves and child scalar arrays are typed; everything else is descriptor-driven. For those direct-read paths (scalar leaves and child scalar arrays), typed `<Name>Save` does not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors (such as getter swapping, custom defaults, guard overrides, or field id alterations). Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations across all fields.
 
@@ -540,9 +540,9 @@ adapters; `tables-json-graph-walk`.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-json-graph-walk` | ✅ `TestCTableWireGraphIdentity` `TestCTableWireBlobIdentity` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-json-walk` | ✅ `tables-cs-leg` (shared graph labels and forward references) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-json-graph-walk` | ✅ `TestCTableWireGraphIdentity` `TestCTableWireBlobIdentity` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-json-walk` | ✅ `tables-cs-leg` (shared graph labels and forward references) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | — not yet, no codec on the skeleton: schema-squirrel-json-text-form carries it (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### M15 — One walk for the numbering, the pack measure and the pack
 
@@ -581,9 +581,9 @@ post-order numbering the same way.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ✅ `internal/codegen/ctable/graph.go:24` `TestCTableCookCanonical` `tables-c-wire-fuzz` | ❌ #349 | ✅ `internal/codegen/gotable/regions.go` (`tableRegionEdges`, `tableNumber`) `TestAllocatorOwnershipAndStandaloneWriters` `tables-go-builders` | ✅ `tables-cs-pack-negative-control` `tables-cs-leg` (root and node extent equality) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ✅ `internal/codegen/ctable/graph.go:24` `TestCTableCookCanonical` `tables-c-wire-fuzz` | ❌ #349 | ✅ `internal/codegen/gotable/regions.go` (`tableRegionEdges`, `tableNumber`) `TestAllocatorOwnershipAndStandaloneWriters` `tables-go-builders` | ✅ `tables-cs-pack-negative-control` `tables-cs-leg` (root and node extent equality) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | — not yet, no codec on the skeleton: schema-squirrel-table-wire-save carries it (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### M16 — The presence companion rides beside the array walks
 
@@ -622,9 +622,9 @@ on the corpus rows that carry it.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go:588` `test/tables/main.cpp:6814` `TestReportRowsDecodeThroughTheEngine` | ✅ `TestCTableWireDefaultRecovery` `tables-c-wire-fuzz` | ❌ #392 | ✅ `TestDefaultsAndOptionalArrays` `conformance` | ✅ `tables-cs-leg` (optional arrays across file, message and cook walks) | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/codecs.go:588` `test/tables/main.cpp:6814` `TestReportRowsDecodeThroughTheEngine` | ✅ `TestCTableWireDefaultRecovery` `tables-c-wire-fuzz` | ❌ #392 | ✅ `TestDefaultsAndOptionalArrays` `conformance` | ✅ `tables-cs-leg` (optional arrays across file, message and cook walks) | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | — not yet, no codec on the skeleton: schema-squirrel-table-wire-load carries the presence companion with schema-squirrel-table-wire-save (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 ### M17 — A node larger than a slab takes a span of the address space
 
 **Method.** An arena hands out nodes by bumping inside a fixed-size slab, and a
@@ -658,9 +658,9 @@ reads it back after the nodes allocated behind it and the bytes are gone.
 
 **Targets:** blob-span-negative-control
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-blob-span-negative-control` | ✅ `internal/codegen/ctable/arena.go:312` `TestCTableWireBlobIdentity` | ❌ #259 | ✅ `TestBlobSpanHoldsAfterLaterAllocations` `tables-go-blob-span-negative-control` | ✅ `tables-cs-leg` (large spans, descending addresses and failed blob allocation) | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-blob-span-negative-control` | ✅ `internal/codegen/ctable/arena.go:312` `TestCTableWireBlobIdentity` | ❌ #259 | ✅ `TestBlobSpanHoldsAfterLaterAllocations` `tables-go-blob-span-negative-control` | ✅ `tables-cs-leg` (large spans, descending addresses and failed blob allocation) | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | — not carded: the large-node span is the cook's, and no cook card is in the stream (docs/PORT-SQUIRREL.md, THE REGISTER) |
 
 
 ### M18 — A union arm is a field line
@@ -712,9 +712,9 @@ payload's last byte, decodes a body that ends inside its own length.
 
 **Targets:** wire-fuzz-arm-width-negative-control wire-fuzz-arm-terminator-negative-control
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/arms.go` `tables-wire-fuzz-arm-width-negative-control` `tables-wire-fuzz-arm-terminator-negative-control` | ✅ `tables-c-collections-fuzz` `tables-c-wire-fuzz` | ❌ #392 | ✅ `TestRegionUnionAndBlobValues` `TestUnionPointerArrayReaders` `tables-go-measure-negative-controls` `tables-go-wire-fuzz` | ✅ `tables-cs-leg` `conformance-negative-control-cs` (all field-shaped arms) | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/arms.go` `tables-wire-fuzz-arm-width-negative-control` `tables-wire-fuzz-arm-terminator-negative-control` | ✅ `tables-c-collections-fuzz` `tables-c-wire-fuzz` | ❌ #392 | ✅ `TestRegionUnionAndBlobValues` `TestUnionPointerArrayReaders` `tables-go-measure-negative-controls` `tables-go-wire-fuzz` | ✅ `tables-cs-leg` `conformance-negative-control-cs` (all field-shaped arms) | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | — not yet, no codec on the skeleton: schema-squirrel-table-wire-load carries the arm read; the descriptors already describe an arm as a field line (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 C# carries the same field-shaped arm descriptors through file, message, JSON,
 native region and cook walks. `tables-cs-leg` and the three ordinary read
@@ -786,9 +786,9 @@ shared control.
 
 **Targets:** maps, json-map-walk, maps-sort-negative-control, maps-dead-entry-negative-control, maps-ascending-negative-control, maps-duplicate-negative-control, maps-key-kind-negative-control, maps-clamp-negative-control, maps-fit-negative-control, maps-depth-negative-control, maps-text-order-negative-control, maps-unreached-negative-control, maps-cook-check-negative-control
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` `tables-maps-cook-check-negative-control`, and the TOOL's wire and text halves and its cook-check clause (`TestTheToolWritesTheReferencesMapBytes`, `TestCookCheckMapSlot`) | ✅ `TestCTableWireMaps` `TestCTableMapWideningCount` `tables-c-collections-fuzz` | ❌ #502 | ✅ `tables-go-containers` `tables-go-containers-negative-controls` `tables-go-wire-fuzz` | ✅ `tables-cs-leg` `tables-cs-wire-fuzz` `tables-cs-builder-fuzz` (stable sorted entries and native holder extents) | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` `tables-maps-cook-check-negative-control`, and the TOOL's wire and text halves and its cook-check clause (`TestTheToolWritesTheReferencesMapBytes`, `TestCookCheckMapSlot`) | ✅ `TestCTableWireMaps` `TestCTableMapWideningCount` `tables-c-collections-fuzz` | ❌ #502 | ✅ `tables-go-containers` `tables-go-containers-negative-controls` `tables-go-wire-fuzz` | ✅ `tables-cs-leg` `tables-cs-wire-fuzz` `tables-cs-builder-fuzz` (stable sorted entries and native holder extents) | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | — not carded: no card carries maps, and the table surface refuses one by name (docs/PORT-SQUIRREL.md, THE REGISTER) |
 
 ### M20 — The id-table wire
 
@@ -867,9 +867,9 @@ through `go build -overlay` and each turning the fuzzer red on its own verdict.
 
 **Targets:** tables-wire-fuzz, tables-wire-fuzz-negative-control, tables-message-form-negative-control, tables-vocab-schema
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ file and message forms: `tables-c-wire-fuzz`, `tables-c-wire-fuzz-negative-control`, `tables-c-message-negative-control` | ❌ #518 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-retain-wire-fuzz` (fixed and variable file/message forms) | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ file and message forms: `tables-c-wire-fuzz`, `tables-c-wire-fuzz-negative-control`, `tables-c-message-negative-control` | ❌ #518 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-retain-wire-fuzz` (fixed and variable file/message forms) | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 | — not yet, no codec on the skeleton: schema-squirrel-table-wire-load carries the id table with schema-squirrel-table-wire-save (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 C# carries the complete id-table file and message surface, native regions,
 mutable builders and retaining reads. Its storage choices and allocator
@@ -925,9 +925,9 @@ read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
 
 **Targets:** tables-float-nan, tables-float-nan-negative-control
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-float-nan` `tables-float-nan-negative-control`, and the TOOL's two engines (`TestOracleCarriesTheFloatBitPattern`, `TestOracleWidensTheFloatBitPattern`, `TestACookCarriesAFloatBitPattern`) | ✅ `TestCTableWireWidening` `tables-c-wire-fuzz` | ❌ #366 | ✅ `internal/codegen/gotable/wire.go` (`tableWidenFloat`), `TestWireSignalingNaNWideningAndLEBOverflow`; hardware-conversion and tenth-byte-guard overlays both fail the regression | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-float-nan` `tables-float-nan-negative-control`, and the TOOL's two engines (`TestOracleCarriesTheFloatBitPattern`, `TestOracleWidensTheFloatBitPattern`, `TestACookCarriesAFloatBitPattern`) | ✅ `TestCTableWireWidening` `tables-c-wire-fuzz` | ❌ #366 | ✅ `internal/codegen/gotable/wire.go` (`tableWidenFloat`), `TestWireSignalingNaNWideningAndLEBOverflow`; hardware-conversion and tenth-byte-guard overlays both fail the regression | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | — not yet, no codec on the skeleton: schema-squirrel-type-wire-read carries it with schema-squirrel-type-wire-write, through castf2i and casti2f (docs/PORT-SQUIRREL.md, 64-BIT AND 128-BIT INTEGERS) (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### M22 — Typed table serialization fast path
 
@@ -943,9 +943,9 @@ read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go` | ✅ `internal/codegen/ctable/wire.go` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go` | ✅ `internal/codegen/cstable/wire.go` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/codecs.go` | ✅ `internal/codegen/ctable/wire.go` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go` | ✅ `internal/codegen/cstable/wire.go` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 | — not yet, no codec on the skeleton: schema-squirrel-table-wire-save carries it (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### I1 — The independent allocation gate
 
@@ -983,9 +983,9 @@ wire-save green until it went with the previous-form wire; Go's
 
 **Targets:** alloc, alloc-negative-control
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ❌ #412 (the cook WRITE is counted under `tables-cook-write`; the read path is a static scan) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ❌ #412 | ❌ #517 | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ❌ #514 | ❌ #515 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ❌ #412 (the cook WRITE is counted under `tables-cook-write`; the read path is a static scan) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ❌ #412 | ❌ #517 | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ❌ #514 | ❌ #515 | — no allocation count: sq offers a script none, so no gate can read one |
 
 ### I2 — Emitter sabotage through `go build -overlay`
 
@@ -1011,9 +1011,9 @@ reader controls share.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-flat-wire-negative-control` | ✅ `conformance-negative-control-c` | ✅ `tables-rust-names-negative-control` | ✅ `tables-go-fuzz-extent-negative-control` | ✅ `conformance-negative-control-cs` | ✅ `tables-java-fuzz-negative-control` | ✅ `tables-js-accessor-negative-control` | ✅ `tables-dart-fuzz-negative-control` | ✅ `tables-elixir-fuzz-negative-control` `tables-elixir-block-lead-negative-control` (`ELIXIR_SABOTAGED_BUILD`) |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-flat-wire-negative-control` | ✅ `conformance-negative-control-c` | ✅ `tables-rust-names-negative-control` | ✅ `tables-go-fuzz-extent-negative-control` | ✅ `conformance-negative-control-cs` | ✅ `tables-java-fuzz-negative-control` | ✅ `tables-js-accessor-negative-control` | ✅ `tables-dart-fuzz-negative-control` | ✅ `tables-elixir-fuzz-negative-control` `tables-elixir-block-lead-negative-control` (`ELIXIR_SABOTAGED_BUILD`) | — not yet, no codec on the skeleton: schema-squirrel-conformance-leg carries the overlay control (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### I3 — The forgery fuzz oracle walks what it opened
 
@@ -1041,9 +1041,9 @@ walk finding (or under ASan as a `heap-buffer-overflow` in C).
 
 **Targets:** fuzz, fuzz-negative-control
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-c-fuzz` `tables-c-fuzz-negative-control` | ❌ #413 (the oracle and both-bounds sabotage exist in `tables-rust-fuzz`; nothing runs it) | ✅ `tables-go-fuzz` `tables-go-fuzz-extent-negative-control` | ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-java-fuzz` `tables-java-fuzz-negative-control` | ✅ `tables-js-fuzz` `tables-js-fuzz-negative-control` | ❌ #413 (the oracle runs; the control removes one bound) | ✅ `tables-elixir-fuzz` `tables-elixir-fuzz-negative-control` |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-c-fuzz` `tables-c-fuzz-negative-control` | ❌ #413 (the oracle and both-bounds sabotage exist in `tables-rust-fuzz`; nothing runs it) | ✅ `tables-go-fuzz` `tables-go-fuzz-extent-negative-control` | ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-java-fuzz` `tables-java-fuzz-negative-control` | ✅ `tables-js-fuzz` `tables-js-fuzz-negative-control` | ❌ #413 (the oracle runs; the control removes one bound) | ✅ `tables-elixir-fuzz` `tables-elixir-fuzz-negative-control` | — not yet, no codec on the skeleton: schema-squirrel-fuzz-differential carries it (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### I4 — Per-case absent
 
@@ -1068,9 +1068,9 @@ reference leg never registers.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| — the reference leg may not answer absent (`test/conformance/README.md`) | ✅ `test/conformance/c/main.c:224-230` | ✅ `test/conformance/rust/src/main.rs:337-342` | ✅ `test/conformance/go/main.go:147` | ✅ `test/conformance/cs/src/Program.cs:54` | ✅ `test/conformance/java/src/Driver.java:646-649` (the five wire surfaces, absent at the `list` grain) | ✅ `test/conformance/js/main.mjs:74-76` | ✅ `test/conformance/dart/main.dart:337` | ❌ #515 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| — the reference leg may not answer absent (`test/conformance/README.md`) | ✅ `test/conformance/c/main.c:224-230` | ✅ `test/conformance/rust/src/main.rs:337-342` | ✅ `test/conformance/go/main.go:147` | ✅ `test/conformance/cs/src/Program.cs:54` | ✅ `test/conformance/java/src/Driver.java:646-649` (the five wire surfaces, absent at the `list` grain) | ✅ `test/conformance/js/main.mjs:74-76` | ✅ `test/conformance/dart/main.dart:337` | ❌ #515 | — not yet, no codec on the skeleton: schema-squirrel-conformance-leg carries per-case absent in main.nut (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### I5 — The block lead gate
 
@@ -1096,9 +1096,9 @@ lead 1 answered open, wanted refuse".
 
 **Targets:** block-lead
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-block-fuzz` (the enumerated 1..63 pass, `test/tables/block_fuzz_main.cpp:939`) | ✅ `tables-c-fuzz` (the enumerated 1..63 pass, `test/c-tables/fuzz_main.c:165`) | ❌ #387 (enumerated in the unreached `tables-rust-fuzz`) | ✅ `tables-go-fuzz` (the enumerated 1..63 pass, `test/go-tables/fuzz_test.go:205`) | ✅ `tables-block-fuzz` (`test/cs-block/src/Fuzz.cs:749-753`) | ❌ #387 (every `open` in the leg passes offset 0) | ❌ #387 (the block battery's pointer column is 0) | ❌ #387 (same) | ✅ `tables-elixir-block-lead` `tables-elixir-block-lead-negative-control` |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-block-fuzz` (the enumerated 1..63 pass, `test/tables/block_fuzz_main.cpp:939`) | ✅ `tables-c-fuzz` (the enumerated 1..63 pass, `test/c-tables/fuzz_main.c:165`) | ❌ #387 (enumerated in the unreached `tables-rust-fuzz`) | ✅ `tables-go-fuzz` (the enumerated 1..63 pass, `test/go-tables/fuzz_test.go:205`) | ✅ `tables-block-fuzz` (`test/cs-block/src/Fuzz.cs:749-753`) | ❌ #387 (every `open` in the leg passes offset 0) | ❌ #387 (the block battery's pointer column is 0) | ❌ #387 (same) | ✅ `tables-elixir-block-lead` `tables-elixir-block-lead-negative-control` | — not carded: no block reader is in the schema-squirrel stream (docs/PORT-SQUIRREL.md, THE REGISTER) |
 
 ### I6 — Claimed names, both ways, with a control
 
@@ -1127,9 +1127,9 @@ the claim loop emptied.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ❌ #414 (the scan, no control) | ❌ #414 (the scan, no control) | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ❌ #414 (the scan, no control) | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ❌ #414 (the scan, no control) | ❌ #414 (the scan, no control) | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ❌ #414 (the scan, no control) | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` | — not yet, no codec on the skeleton: schema-squirrel-refusals-by-name carries the claimed names and their control (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### I7 — Cross-endian refusal as a named gate
 
@@ -1157,9 +1157,9 @@ both foreign rows red with `cook` and `block` green.
 
 **Targets:** order
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-big-endian` | ✅ `tables-c-big-endian` `conformance-negative-control-c-foreign` | ✅ `tables-rust-big-endian` (a `cargo check` for s390x; skips cleanly without the target) | ✅ `conformance-big-endian` (the Go driver under qemu-s390x) | ✅ `tables-cook-open-cs` (the refuse half; the native big-endian half is stated unproven until a big-endian .NET exists) | ✅ `tables-java-order` | ✅ `tables-js-leg` | ❌ #415 (reads `Endian.little`; the order word is untested and no sentence says why) | — the host's order is never consulted and no platform query exists for a gate to catch; the two foreign surfaces hold it (docs/SPEC-TABLES.md) |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-big-endian` | ✅ `tables-c-big-endian` `conformance-negative-control-c-foreign` | ✅ `tables-rust-big-endian` (a `cargo check` for s390x; skips cleanly without the target) | ✅ `conformance-big-endian` (the Go driver under qemu-s390x) | ✅ `tables-cook-open-cs` (the refuse half; the native big-endian half is stated unproven until a big-endian .NET exists) | ✅ `tables-java-order` | ✅ `tables-js-leg` | ❌ #415 (reads `Endian.little`; the order word is untested and no sentence says why) | — the host's order is never consulted and no platform query exists for a gate to catch; the two foreign surfaces hold it (docs/SPEC-TABLES.md) | — not yet, no codec on the skeleton: schema-squirrel-table-wire-load carries it (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### I8 — A bench row is labeled a pairing check
 
@@ -1179,9 +1179,9 @@ the reference on the same numbers; a sitting on the box is what certifies.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-c-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-go2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-java-port-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-js2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-dart-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-elixir-arm64-macbook.md` |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-c-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-go2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-java-port-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-js2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-dart-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-elixir-arm64-macbook.md` | — no table-wire bench |
 
 ### I9 — The soak is gated on the allocation count or a floor
 
@@ -1208,9 +1208,9 @@ goes red.
 
 **Targets:** soak
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 | — no allocation count to gate a soak on (I1) |
 
 ### I10 — The zero-cost gate
 
@@ -1231,9 +1231,9 @@ symbol scan over the generated tree.
 
 **Targets:** zero-cost
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-zero-cost` `tables-block-zero-cost` `TestTablesMoveNoGeneratedPacketByte` | ✅ `tables-c-zero-cost` `TestCEmitsTableSources` | ✅ `tables-rust-features` `TestTableFreeUnitEmitsNothing` | ✅ `TestTablesMoveNoGeneratedGoByte` `TestGoEmitsTableSources` | ✅ `tables-block-zero-cost` `TestCsEmitsTableSources` | ✅ `tables-java-zero-cost` `TestJavaTablesMoveNoGeneratedPacketByte` | ✅ `TestJsEmitsTableSources` `tables-js-standalone` | ✅ `tables-block-zero-cost` `TestDartEmitsTableSources` | ✅ `TestElixirEmitsTableModules` |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-zero-cost` `tables-block-zero-cost` `TestTablesMoveNoGeneratedPacketByte` | ✅ `tables-c-zero-cost` `TestCEmitsTableSources` | ✅ `tables-rust-features` `TestTableFreeUnitEmitsNothing` | ✅ `TestTablesMoveNoGeneratedGoByte` `TestGoEmitsTableSources` | ✅ `tables-block-zero-cost` `TestCsEmitsTableSources` | ✅ `tables-java-zero-cost` `TestJavaTablesMoveNoGeneratedPacketByte` | ✅ `TestJsEmitsTableSources` `tables-js-standalone` | ✅ `tables-block-zero-cost` `TestDartEmitsTableSources` | ✅ `TestElixirEmitsTableModules` | — not carded: a table-free unit emits no table module, and no test pins it yet (docs/PORT-SQUIRREL.md, THE REGISTER) |
 
 ### I11 — The conformance negative control sabotages the emitter
 
@@ -1255,9 +1255,9 @@ table of controls.
 
 **Targets:** conformance-negative-control
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ❌ #417 (`conformance-negative-control` sabotages a copy of the driver) | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ❌ #417 (`conformance-negative-control` sabotages a copy of the driver) | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 | — not yet, no codec on the skeleton: schema-squirrel-conformance-leg carries it (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### I12 — The documented surface compiles and runs
 
@@ -1278,9 +1278,9 @@ found a module name the packet emitter refuses — the drift a gate catches.
 
 **Targets:** usage
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ❌ #418 | ❌ #418 | ❌ #514 | ❌ #418 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ❌ #418 | ❌ #418 | ❌ #514 | ❌ #418 | — not carded: docs/USAGE.md has no Squirrel section yet (docs/PORT-SQUIRREL.md, THE REGISTER) |
 
 ### I13 — The text differential against a third implementation
 
@@ -1302,9 +1302,9 @@ a float32 at `-266744.625` rendering as an eight-digit tie.
 
 **Targets:** json-differential
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #516 | ❌ #419 | ❌ #419 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #516 | ❌ #419 | ❌ #419 | — not yet, no codec on the skeleton: schema-squirrel-json-text-form carries it (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### I14 — The allocation gate refuses to certify off the pinned runtime
 
@@ -1330,9 +1330,9 @@ prints observations without certification. The default requires Go 1.26.0.
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) | — no allocation gate to refuse with (I1); make dist-squirrel refuses any tarball but the pinned sha256 |
 
 ### I15 — The tolerant wire's differential fuzzer with an independent oracle
 
@@ -1364,9 +1364,9 @@ check removed reds on the report.
 
 **Targets:** wire-fuzz, wire-fuzz-negative-control
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #492 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-builders` `tables-go-retain-wire-fuzz` | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-builder-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #492 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-builders` `tables-go-retain-wire-fuzz` | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-builder-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | — not yet, no codec on the skeleton: schema-squirrel-fuzz-differential carries it (docs/PORT-SQUIRREL.md, THE CARD MAP) |
 
 ### J1 — Accessor and descriptor agreement
 
@@ -1389,9 +1389,9 @@ each through `go build -overlay`; each must turn the leg red.
 
 **Targets:** accessor-negative-control
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ❌ #421 | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ❌ #421 | ❌ #421 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ❌ #421 | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ❌ #421 | ❌ #421 | — not carded: the accessors are the accelerator readers', which no card carries (docs/PORT-SQUIRREL.md, THE REGISTER) |
 
 ### J2 — The runtime home, with a file-order control
 
@@ -1414,9 +1414,9 @@ lines of correct output into a diff nobody could read (#347).
 
 **Targets:** runtime-home
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ❌ #422 | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ❌ #422 | ❌ #422 |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ❌ #422 | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ❌ #422 | ❌ #422 | — not carded: the unit's table runtime lives in one module, <Package>Tables.nut, whatever the file order; no file-order control yet (docs/PORT-SQUIRREL.md, THE REGISTER) |
 
 ### J3 — The release tier
 
@@ -1440,9 +1440,9 @@ so and passes.
 
 **Targets:** release
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ❌ #423 | ❌ #423 | ❌ #423 | ✅ `tables-go-release` | ❌ #423 | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ❌ #423 | ❌ #423 | ❌ #423 | ✅ `tables-go-release` | ❌ #423 | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` | — not carded: no release-tier target yet (docs/PORT-SQUIRREL.md, THE REGISTER) |
 
 ### J4 — Emitted text is analyzer-clean and format-canonical
 
@@ -1462,9 +1462,9 @@ diff rather than on a reviewer.
 
 **Targets:** clean
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ❌ #424 | ❌ #424 | ❌ #424 | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ❌ #424 | ❌ #424 | ❌ #424 | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) | — not carded: no Squirrel analyzer or formatter is pinned (docs/PORT-SQUIRREL.md, THE REGISTER) |
 
 ### J5 — The bench leg's golden gate runs before the clock
 
@@ -1483,6 +1483,6 @@ technique in and lost the leg with its table wire (#515).
 
 **Targets:** none
 
-| cpp | c | rust | go | cs | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|
-| ❌ #425 | ❌ #425 | — no table-wire bench | ✅ `tables-go-bench-gate` | ❌ #425 | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench |
+| cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
+|---|---|---|---|---|---|---|---|---|---|
+| ❌ #425 | ❌ #425 | — no table-wire bench | ✅ `tables-go-bench-gate` | ❌ #425 | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench |

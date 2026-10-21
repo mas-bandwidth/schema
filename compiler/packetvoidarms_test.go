@@ -65,7 +65,7 @@ func TestVoidArmInTypeBodyIsCheckedAndCarried(t *testing.T) {
 	c := New()
 	carried := map[string]bool{
 		"c": true, "cpp": true, "cs": true, "dart": true, "elixir": true, "go": true,
-		"java": true, "js": true, "rust": true,
+		"java": true, "js": true, "rust": true, "squirrel": true,
 	}
 	for _, target := range c.Targets() {
 		_, err := c.Generate(u, target, Options{})
