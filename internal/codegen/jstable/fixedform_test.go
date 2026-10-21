@@ -346,7 +346,7 @@ func TestFixedGuardComparedAtArgW(t *testing.T) {
 	}
 	{
 		load := ""
-		for _, b := range files {
+		for _, b := range guardProbeFiles(t) {
 			if f := jsFn(string(b), "RootFixedLoad"); f != "" {
 				load = f
 			}
@@ -378,14 +378,7 @@ func TestFixedIdentityPlanIsElevenLanes(t *testing.T) {
 // shared runtime and the table's fixed surface.
 func guardProbeSource(t *testing.T) string {
 	t.Helper()
-	u := unitFrom(t, `package probe
-table Root { n int32 }
-`)
-	files, err := Generate(u)
-	if err != nil {
-		t.Fatalf("generate: %v", err)
-	}
-	for _, b := range files {
+	for _, b := range guardProbeFiles(t) {
 		s := string(b)
 		if strings.Contains(s, "function TableFixedRun(") {
 			return s
@@ -393,6 +386,21 @@ table Root { n int32 }
 	}
 	t.Fatal("no TableFixedRun in the generated unit")
 	return ""
+}
+
+// guardProbeFiles generates that one-field fixed root and answers every file
+// of the unit: the runtime module guardProbeSource picks out, and the table
+// module that carries RootFixedLoad.
+func guardProbeFiles(t *testing.T) map[string][]byte {
+	t.Helper()
+	u := unitFrom(t, `package probe
+table Root { n int32 }
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	return files
 }
 
 func unitFrom(t *testing.T, src string) *ir.Unit {
