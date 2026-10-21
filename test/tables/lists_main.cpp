@@ -16,7 +16,7 @@
 
 #include <new>
 
-#include "SaveTable.h"
+#include "SaveGameTable.h"
 #include "SharedTable.h"
 #include "HoldersTable.h"
 #include "MigrateTable.h"

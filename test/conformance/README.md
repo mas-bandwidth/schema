@@ -545,7 +545,8 @@ region and retention arms retain their measurement and bounds checks.
 For an instance with a Go writer refusal, the manifest may carry the
 go-refusal=<reason> marker. On that Go wire row the driver writes the
 case.absent file with the exact reason bytes, and the harness counts one named
-absence while rejecting emitted bytes or an empty/wrong reason. Other language
-legs keep comparing their wire bytes with the golden. The blob_shared row uses
+absence while rejecting emitted bytes or an empty/wrong reason. The Luau leg's
+writer refuses it too and answers the case absent; other language legs keep
+comparing their wire bytes with the golden until they carry the refusal. The blob_shared row uses
 this marker because one blob node named from two slots is refused by Go
 writers (blob_shared, SPEC-TABLES sections 2.5 and 16.7).

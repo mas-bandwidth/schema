@@ -1,7 +1,7 @@
 #include "lists/HoldersTable.h"
 #include "lists/MigrateTable.h"
 #include "lists/ReportTable.h"
-#include "lists/SaveTable.h"
+#include "lists/SaveGameTable.h"
 #include "lists/SharedTable.h"
 #include "unit.h"
 SCHEMA_CONFORMANCE_GRAPH_CODEC(Save,save)

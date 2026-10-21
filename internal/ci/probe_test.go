@@ -24,9 +24,29 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, dir := range []string{"make", "tables/scalars"} {
-		if err := os.CopyFS(filepath.Join(fixture, dir), os.DirFS(filepath.Join(root, dir))); err != nil {
-			t.Fatal(err)
+	if err := os.CopyFS(filepath.Join(fixture, "tables/scalars"), os.DirFS(filepath.Join(root, "tables/scalars"))); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.CopyFS(filepath.Join(fixture, "make"), os.DirFS(filepath.Join(root, "make"))); err != nil {
+		t.Fatal(err)
+	}
+	// A hyphenated make/<leg>-<surface>.mk is a companion fragment of a leg
+	// (make/luau-serialize.mk, docs/PORT-LUAU.md), not a port; drop it from
+	// the fixture so the registry skips it here just as it does in the probe
+	// test's count below.
+	makeEntries, err := os.ReadDir(filepath.Join(fixture, "make"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range makeEntries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.HasSuffix(name, ".mk") && strings.Contains(name, "-") {
+			if err := os.Remove(filepath.Join(fixture, "make", name)); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
@@ -44,6 +64,33 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(fixture, path), data, 0o644); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// A real `schema new-leg` leg in the tree (make/<lang>.mk beside a
+	// compiler/target_<lang>.go behind its schema_leg_<lang> tag, such as
+	// luau, docs/PORT-LUAU.md) is a skeleton here too: its marker file is
+	// carried into the fixture, so the gate skips it by the same rule.
+	skeletons := 1 // the planted lua
+	tagged, err := filepath.Glob(filepath.Join(root, "compiler", "target_*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, src := range tagged {
+		lang := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(src), "target_"), ".go")
+		data, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, _, _ := strings.Cut(string(data), "\n")
+		if first != "//go:build schema_leg_"+lang {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(fixture, "make", lang+".mk")); err != nil {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(fixture, "compiler", filepath.Base(src)), []byte(first+"\n\npackage compiler\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		skeletons++
 	}
 	run := func(dir, name string, args ...string) string {
 		t.Helper()
@@ -77,6 +124,8 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A hyphenated make/<leg>-<surface>.mk is a companion fragment of a leg
+	// (make/luau-serialize.mk, docs/PORT-LUAU.md), not a port.
 	var legs []string
 	for _, mk := range mkFiles {
 		stem := strings.TrimSuffix(filepath.Base(mk), ".mk")
@@ -84,7 +133,7 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			legs = append(legs, mk)
 		}
 	}
-	if len(legs) == 0 || refused+carried != len(legs)-1 {
+	if len(legs) == 0 || refused+carried != len(legs)-skeletons {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {
