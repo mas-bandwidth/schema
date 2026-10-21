@@ -173,3 +173,25 @@ func loadViewUnit(t *testing.T, dir string) *ir.Unit {
 	}
 	return u
 }
+
+// TestUnitViewNegativeConstantRust pins a negative constant's int_value as
+// its two's-complement image (docs/SPEC-TABLES.md §8.3): -5 is
+// 0xfffffffffffffffb, never the magnitude 5 that big.Int.Uint64 answers. The
+// listing gate found this on tables/vocab's WideNegative.
+func TestUnitViewNegativeConstantRust(t *testing.T) {
+	u := unitFrom(t, "package t\nconst Down = -5\nconst Up = 5\ntable T { x int32 }\n")
+	out, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := string(out[UnitViewModule+".rs"])
+	for _, want := range []string{
+		`name: "Down", file: `,
+		`int_value: 0xfffffffffffffffb_u64 as i64`,
+		`int_value: 0x0000000000000005_u64 as i64`,
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("unit_view.rs lacks %q", want)
+		}
+	}
+}
