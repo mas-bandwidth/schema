@@ -13,6 +13,7 @@ package rusttable
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,23 +35,53 @@ func (g *gen) variableCodecModule() []byte {
 	b.WriteString("#[allow(unused_imports)]\nuse std::any::Any;\n")
 	b.WriteString("#[allow(unused_imports)]\nuse std::collections::HashMap;\n")
 	b.WriteString("#[allow(unused_imports)]\nuse std::rc::Rc;\n\n")
+	b.WriteString("/// The reader's id-table distinctness bound and open-addressing probe capacity (docs/SPEC-TABLES.md §3).\n")
+	b.WriteString("#[allow(dead_code)]\nconst ID_TABLE_PROBE_BOUND: usize = 4096;\n")
+	b.WriteString("#[allow(dead_code)]\nconst ID_TABLE_PROBE_SLOTS: usize = 8192;\n")
+	for _, other := range g.unit.Files {
+		if other.Base == g.file.Base {
+			continue
+		}
+		otherNames := fileVariableTableNames(g.unit, other, g.vc)
+		if len(otherNames) == 0 {
+			continue
+		}
+		var syms []string
+		for _, n := range otherNames {
+			syms = append(syms, n, fn(n, "number"), fn(n, "save_body"), fn(n, "load_body"), fn(n, "json_count"), fn(n, "json_write"), fn(n, "json_read"), fn(n, "json_fields"), fn(n, "json_ptr"))
+		}
+		fmt.Fprintf(&b, "#[allow(unused_imports)]\nuse super::%s_table::{%s};\n", strings.ToLower(other.Base), strings.Join(syms, ", "))
+	}
+	b.WriteString("\n")
 	g.emitVariableEnums(&b, names)
+	var plain, holding []string
 	for _, n := range names {
-		g.emitVariableStruct(&b, g.unit.Tables[n])
+		if structHoldsUnion(vStruct(g.unit, n)) {
+			holding = append(holding, n)
+		} else {
+			plain = append(plain, n)
+		}
+	}
+	for _, n := range plain {
+		g.emitVariableStruct(&b, vStruct(g.unit, n))
+	}
+	g.emitUnionTypes(&b, names)
+	for _, n := range holding {
+		g.emitVariableStruct(&b, vStruct(g.unit, n))
 	}
 	for _, n := range names {
-		g.emitVariableNumber(&b, g.unit.Tables[n])
+		g.emitVariableNumber(&b, vStruct(g.unit, n))
 	}
 	for _, n := range names {
-		g.emitVariableSaveBody(&b, g.unit.Tables[n])
+		g.emitVariableSaveBody(&b, vStruct(g.unit, n))
 	}
 	for _, n := range names {
-		g.emitVariableLoadBody(&b, g.unit.Tables[n])
+		g.emitVariableLoadBody(&b, vStruct(g.unit, n))
 	}
 	g.emitVariableDispatch(&b, names)
 	for _, n := range names {
-		if g.isVariableRoot(g.unit.Tables[n]) {
-			g.emitVariableRoot(&b, g.unit.Tables[n])
+		if g.isVariableRoot(vStruct(g.unit, n)) {
+			g.emitVariableRoot(&b, vStruct(g.unit, n))
 		}
 	}
 	g.emitVariableText(&b)
@@ -86,29 +117,53 @@ const (
 	vScalar  vClass = iota // bool, an integer, bits(N), a float
 	vEnum                  // kind 30: the variant name's id reference
 	vString                // string(N): kind 12, L, the bytes
+	vWString               // wstring(N): kind 33, L in BYTES, the UTF-16 units little-endian (§3)
 	vBytes                 // bytes(N): kind 14 over element kind 6
 	vBlob                  // *string / *bytes: kind 17, an index to a blob node (§2.5)
 	vPointer               // *T: kind 17, an index to a table node (§3.1)
 	vTable                 // T by value: kind 13, L, a body
+	vMap                   // map[K]V: kind 14 over element kind 13, entries in key order (§2.8)
+	vUnion                 // kind 15: an arm header (§2.6)
 )
 
 func classOf(f *ir.Field) vClass {
 	switch {
+	case f.IsMap():
+		return vMap
 	case f.Type.Blob():
 		return vBlob
 	case f.Type.Pointer:
 		return vPointer
 	case f.Type.Kind == ir.TString:
 		return vString
+	case f.Type.Kind == ir.TWString:
+		return vWString
 	case f.Type.Kind == ir.TBytes:
 		return vBytes
 	case f.Type.Kind == ir.TNamed:
-		if _, ok := f.Type.Ref.(*ir.Enum); ok {
+		switch f.Type.Ref.(type) {
+		case *ir.Enum:
 			return vEnum
+		case *ir.Union:
+			return vUnion
+		case *ir.Flags:
+			// a FLAGS MASK rides as a u64 scalar (docs/SPEC-TABLES.md §3:
+			// kind 9), its default the mask the brace list spells (SPEC §4.2)
+			return vScalar
 		}
 		return vTable
 	}
 	return vScalar
+}
+
+// isFlags reports a flags-mask field, whose text form is the array of its set
+// bits' names (docs/SPEC-TABLES.md §16.2).
+func isFlags(f *ir.Field) *ir.Flags {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	fl, _ := f.Type.Ref.(*ir.Flags)
+	return fl
 }
 
 // fieldWireKind is the kind byte a FIELD rides under (the oracle's wireKind):
@@ -153,6 +208,10 @@ func scalarRust(f *ir.Field) string {
 			return rustInt(f.Type.Width)
 		}
 		return rustUint(f.Type.Width)
+	case ir.TNamed:
+		if isFlags(f) != nil {
+			return "u64" // a flags mask's storage is u64 in every target (SPEC §4.2)
+		}
 	}
 	return "()"
 }
@@ -172,10 +231,18 @@ func elemRust(f *ir.Field) string {
 		return "Option<Rc<" + f.Type.Name + ">>"
 	case vString:
 		return "String"
+	case vWString:
+		// the CODE UNITS, as the oracle's Cell.Units and the cook's [u16; N]
+		// hold them (docs/SPEC-TABLES.md §7.2): a paired, zero-free value
+		return "Vec<u16>"
 	case vBytes:
 		return "Vec<u8>"
 	case vEnum, vTable:
 		return f.Type.Name
+	case vMap:
+		return f.MapEntry.Name
+	case vUnion:
+		return f.Type.Ref.(*ir.Union).Name
 	}
 	return scalarRust(f)
 }
@@ -183,8 +250,18 @@ func elemRust(f *ir.Field) string {
 // variableFieldType is a field's Rust storage type: an array of any length is
 // a Vec of its element (a bounded [..N]T holds at most N, §2.9).
 func variableFieldType(f *ir.Field) string {
-	if f.Array != ir.ArrayNone {
-		return "Vec<" + elemRust(f) + ">"
+	if f.IsMap() {
+		return "Vec<" + f.MapEntry.Name + ">"
+	}
+	if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+		t := "Vec<" + elemRust(f) + ">"
+		if f.Type.Optional {
+			return "Option<" + t + ">"
+		}
+		return t
+	}
+	if f.Type.Optional && !f.Type.Pointer {
+		return "Option<" + elemRust(f) + ">"
 	}
 	return elemRust(f)
 }
@@ -256,6 +333,15 @@ func enumDefault(f *ir.Field) string {
 // fieldDefault is the value a fresh field holds and an absent field reads
 // (SPEC §5, docs/SPEC-TABLES.md §4).
 func fieldDefault(f *ir.Field) string {
+	if f.Type.Optional {
+		return "None"
+	}
+	if f.KeyEnum != "" && f.KeyEnumRef != nil {
+		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", len(f.KeyEnumRef.Variants), fieldDefault(scalarOnly(f)))
+	}
+	if f.Array == ir.ArrayFixed {
+		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", f.ArrayBound, fieldDefault(scalarOnly(f)))
+	}
 	if f.Array != ir.ArrayNone {
 		return "Vec::new()"
 	}
@@ -267,6 +353,9 @@ func fieldDefault(f *ir.Field) string {
 			return "String::new()"
 		}
 		return "String::from(" + rustStr(f.DefBytes) + ")"
+	case vWString:
+		// WIDE TEXT TAKES NO SPECIFIED DEFAULT (SPEC.md §4.12): empty
+		return "Vec::new()"
 	case vBytes:
 		if len(f.DefBytes) == 0 {
 			return "Vec::new()"
@@ -276,29 +365,62 @@ func fieldDefault(f *ir.Field) string {
 		return enumDefault(f)
 	case vTable:
 		return f.Type.Name + "::default()"
+	case vMap:
+		return "Vec::new()"
+	case vUnion:
+		return f.Type.Ref.(*ir.Union).Name + "::None"
 	}
 	return scalarDefault(f)
 }
 
+func (g *gen) collectVariableEnums(names []string) []*ir.Enum {
+	seen := map[string]bool{}
+	var out []*ir.Enum
+	seenUnion := map[*ir.Union]bool{}
+	var walkField func(f *ir.Field)
+	walkField = func(f *ir.Field) {
+		if f == nil {
+			return
+		}
+		if f.KeyEnumRef != nil && !seen[f.KeyEnumRef.Name] {
+			seen[f.KeyEnumRef.Name] = true
+			out = append(out, f.KeyEnumRef)
+		}
+		if e, ok := f.Type.Ref.(*ir.Enum); ok && !seen[e.Name] {
+			seen[e.Name] = true
+			out = append(out, e)
+		}
+		if f.IsMap() && f.MapEntry != nil {
+			for _, ef := range f.MapEntry.Fields {
+				walkField(ef)
+			}
+		}
+		if un := unionOf(f); un != nil && !seenUnion[un] {
+			seenUnion[un] = true
+			for _, v := range un.Variants {
+				walkField(v.F)
+			}
+		}
+	}
+	for _, n := range names {
+		for _, f := range vStruct(g.unit, n).Fields {
+			walkField(f)
+		}
+	}
+	return out
+}
+
 // emitVariableEnums emits each enum the file's emitted tables reach, once.
 func (g *gen) emitVariableEnums(b *strings.Builder, names []string) {
-	seen := map[string]bool{}
-	for _, n := range names {
-		for _, f := range g.unit.Tables[n].Fields {
-			e, ok := f.Type.Ref.(*ir.Enum)
-			if !ok || seen[e.Name] {
-				continue
-			}
-			seen[e.Name] = true
-			fmt.Fprintf(b, "/// %s — an enum on the variable wire (docs/SPEC-TABLES.md §3, §5).\n", e.Name)
-			fmt.Fprintf(b, "#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]\n")
-			fmt.Fprintf(b, "pub enum %s {\n", e.Name)
-			fmt.Fprintf(b, "    #[default]\n    None,\n")
-			for _, v := range e.Variants {
-				fmt.Fprintf(b, "    %s,\n", rustVariant(v))
-			}
-			b.WriteString("}\n\n")
+	for _, e := range g.collectVariableEnums(names) {
+		fmt.Fprintf(b, "/// %s — an enum on the variable wire (docs/SPEC-TABLES.md §3, §5).\n", e.Name)
+		fmt.Fprintf(b, "#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]\n")
+		fmt.Fprintf(b, "pub enum %s {\n", e.Name)
+		fmt.Fprintf(b, "    #[default]\n    None,\n")
+		for _, v := range e.Variants {
+			fmt.Fprintf(b, "    %s,\n", rustVariant(v))
 		}
+		b.WriteString("}\n\n")
 	}
 }
 
@@ -332,6 +454,31 @@ func (g *gen) emitVariableNumber(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "pub fn %s(v: &%s, g: &mut TableNodeGraph) {\n", fn(st.Name, "number"), st.Name)
 	for _, f := range st.Fields {
 		x := "v." + ir.RustSnake(f.Name)
+		if f.Type.Optional {
+			switch classOf(f) {
+			case vPointer:
+				if f.Array != ir.ArrayNone {
+					fmt.Fprintf(b, "    if let Some(arr) = &%s { for e in arr.iter() { if let Some(n) = e { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } } } }\n", x, ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName()), fn(f.Type.Name, "number"))
+				}
+			case vTable:
+				if f.Array != ir.ArrayNone {
+					fmt.Fprintf(b, "    if let Some(arr) = &%s { for e in arr.iter() { %s(e, g); } }\n", x, fn(f.Type.Name, "number"))
+				} else {
+					fmt.Fprintf(b, "    if let Some(inner) = &%s { %s(inner, g); }\n", x, fn(f.Type.Name, "number"))
+				}
+			case vUnion:
+				if f.Array != ir.ArrayNone {
+					fmt.Fprintf(b, "    if let Some(arr) = &%s { for e in arr.iter() {\n", x)
+					g.emitUnionNumber(b, f, "(*e)")
+					fmt.Fprintf(b, "    } }\n")
+				} else {
+					fmt.Fprintf(b, "    if let Some(inner) = &%s {\n", x)
+					g.emitUnionNumber(b, f, "(*inner)")
+					fmt.Fprintf(b, "    }\n")
+				}
+			}
+			continue
+		}
 		switch classOf(f) {
 		case vBlob:
 			bytes := "b.as_bytes()"
@@ -343,16 +490,26 @@ func (g *gen) emitVariableNumber(b *strings.Builder, st *ir.Struct) {
 			visit := func(e string) string {
 				return fmt.Sprintf("if let Some(n) = %s { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } }", e, ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName()), fn(f.Type.Name, "number"))
 			}
-			if f.Array != ir.ArrayNone {
+			if f.KeyEnum != "" || f.Array != ir.ArrayNone {
 				fmt.Fprintf(b, "    for e in %s.iter() { %s }\n", x, visit("e"))
 			} else {
 				fmt.Fprintf(b, "    %s\n", visit("&"+x))
 			}
 		case vTable:
-			if f.Array != ir.ArrayNone {
+			if f.KeyEnum != "" || f.Array != ir.ArrayNone {
 				fmt.Fprintf(b, "    for e in %s.iter() { %s(e, g); }\n", x, fn(f.Type.Name, "number"))
 			} else {
 				fmt.Fprintf(b, "    %s(&%s, g);\n", fn(f.Type.Name, "number"), x)
+			}
+		case vMap:
+			g.emitMapNumber(b, f, x)
+		case vUnion:
+			if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+				fmt.Fprintf(b, "    for e in %s.iter() {\n", x)
+				g.emitUnionNumber(b, f, "(*e)")
+				fmt.Fprintf(b, "    }\n")
+			} else {
+				g.emitUnionNumber(b, f, x)
 			}
 		}
 	}
@@ -433,6 +590,18 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 	id := ir.TableFieldWireId(f)
 	kind := fieldWireKind(f)
 	inner := ind + "    "
+	if f.Type.Optional {
+		g.emitOptionalSaveField(b, f, ordinal, x, ind)
+		return
+	}
+	if f.KeyEnum != "" {
+		g.emitKeyedSave(b, f, ordinal, x, ind)
+		return
+	}
+	if f.Array == ir.ArrayFixed {
+		g.emitFixedArraySave(b, f, ordinal, x, ind)
+		return
+	}
 	if f.Array != ir.ArrayNone {
 		// AN UNBOUNDED ARRAY IS THE COUNTED ARRAY'S OWN BYTES (§2.9): kind 14,
 		// L, the element kind, the live count, the elements; empty elides.
@@ -461,6 +630,8 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			fmt.Fprintf(b, "%slet _ = j;\n", ein)
 			fmt.Fprintf(b, "%slet vref = %s;\n", ein, enumRef(f, "*e"))
 			fmt.Fprintf(b, "%sleb_write(&mut body, vref);\n", ein)
+		case vUnion:
+			g.withArmIndex("j as u32", func() { g.emitUnionElement(b, f, "e", "body", ordinal, ein) })
 		default:
 			fmt.Fprintf(b, "%slet _ = j;\n", ein)
 			fmt.Fprintf(b, "%s%s\n", ein, scalarWrite(f, "(*e)", "body"))
@@ -518,6 +689,8 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%sleb_write(out, %s.len() as u64);\n", inner, x)
 		fmt.Fprintf(b, "%sout.extend_from_slice(%s.as_bytes());\n", inner, x)
 		fmt.Fprintf(b, "%s}\n", ind)
+	case vWString:
+		g.emitWideSaveField(b, f, x, ind)
 	case vBytes:
 		// bytes(N) rides as an array of u8 (§2.5): kind 14, L = 2 + n, element
 		// kind 6, the count, the bytes; at its default it elides
@@ -543,6 +716,10 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%slet vref = %s;\n", inner, enumRef(f, x))
 		fmt.Fprintf(b, "%sleb_write(out, vref);\n", inner)
 		fmt.Fprintf(b, "%s}\n", ind)
+	case vMap:
+		g.emitMapSave(b, f, ordinal, x, ind)
+	case vUnion:
+		g.emitUnionSave(b, f, ordinal, x, ind)
 	default:
 		// a field holding its declared default is not written at all (§3)
 		guard := x + " != " + scalarDefault(f)
@@ -570,6 +747,44 @@ func intRange(f *ir.Field) (lo, hi string, ok bool) {
 	return f.IntMin.String(), f.IntMax.String(), true
 }
 
+// clampStmt is §4's declared clamp (docs/SPEC-TABLES.md §4) on a decode local
+// of `bits` width and the given signedness, spelled with `suffix` and counted
+// on `counter`: each end that sits ON the local's own limit is elided, because
+// a comparison that cannot fire is a deny-by-default clippy error
+// (absurd_extreme_comparisons) and describes a value the local cannot hold —
+// the same "this check cannot fire" rule tables/examples/Ranges.schema pins
+// for the C and C++ legs. "" when there is no declared range or neither end
+// can fire.
+func clampStmt(f *ir.Field, bits int, signed bool, suffix, counter, ind string) string {
+	if !f.HasIntRange || f.IntMin == nil || f.IntMax == nil {
+		return ""
+	}
+	localMin, localMax := new(big.Int), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
+	if signed {
+		localMin = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)))
+		localMax = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)), big.NewInt(1))
+	}
+	lo, hi := f.IntMin.String(), f.IntMax.String()
+	low := fmt.Sprintf("if x < %s%s { x = %s%s; %s += 1; }", lo, suffix, lo, suffix, counter)
+	high := fmt.Sprintf("if x > %s%s { x = %s%s; %s += 1; }", hi, suffix, hi, suffix, counter)
+	switch canLow, canHigh := f.IntMin.Cmp(localMin) > 0, f.IntMax.Cmp(localMax) < 0; {
+	case canLow && canHigh:
+		return ind + low + " else " + high + "\n"
+	case canLow:
+		return ind + low + "\n"
+	case canHigh:
+		return ind + high + "\n"
+	}
+	return ""
+}
+
+func scalarReadFn(f *ir.Field) string {
+	if f.Type.Width == 128 {
+		return "scalar_read_128"
+	}
+	return "table_scalar_read"
+}
+
 // emitScalarConvert emits the conversion of `raw` — read at the wire kind held
 // in `kvar` — into the destination expression `dst`, with §4's declared clamp
 // and bits(N)'s implied one, exactly as the oracle's scalarAt orders them.
@@ -586,22 +801,35 @@ func emitScalarConvert(b *strings.Builder, f *ir.Field, dst, kvar, ind string) {
 		return
 	}
 	signed := f.Type.Kind == ir.TInt && f.Type.Signed
-	if signed {
-		fmt.Fprintf(b, "%slet mut x = raw as i64;\n", ind)
-	} else {
-		fmt.Fprintf(b, "%slet mut x = raw;\n", ind)
-	}
-	if lo, hi, ok := intRange(f); ok {
-		suffix := "u64"
-		if signed {
-			suffix = "i64"
+	// the local is mutable only when a clamp below can write it
+	mut := func(clamps string) string {
+		if clamps == "" {
+			return ""
 		}
-		fmt.Fprintf(b, "%sif x < %s%s { x = %s%s; report.clamped += 1; } else if x > %s%s { x = %s%s; report.clamped += 1; }\n", ind, lo, suffix, lo, suffix, hi, suffix, hi, suffix)
+		return "mut "
 	}
+	if f.Type.Width == 128 {
+		suffix, from := "u128", "raw"
+		if signed {
+			suffix, from = "i128", "raw as i128"
+		}
+		clamp := clampStmt(f, 128, signed, suffix, "report.clamped", ind)
+		fmt.Fprintf(b, "%slet %sx = %s;\n", ind, mut(clamp), from)
+		b.WriteString(clamp)
+		fmt.Fprintf(b, "%s%s = x as %s;\n", ind, dst, scalarRust(f))
+		return
+	}
+	suffix, from := "u64", "raw"
+	if signed {
+		suffix, from = "i64", "raw as i64"
+	}
+	clamp := clampStmt(f, 64, signed, suffix, "report.clamped", ind)
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		max := uint64(1)<<uint(f.Type.Width) - 1
-		fmt.Fprintf(b, "%sif x > %du64 { x = %du64; report.clamped += 1; }\n", ind, max, max)
+		clamp += fmt.Sprintf("%sif x > %du64 { x = %du64; report.clamped += 1; }\n", ind, max, max)
 	}
+	fmt.Fprintf(b, "%slet %sx = %s;\n", ind, mut(clamp), from)
+	b.WriteString(clamp)
 	fmt.Fprintf(b, "%s%s = x as %s;\n", ind, dst, scalarRust(f))
 }
 
@@ -618,6 +846,9 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// the plain path.\n")
 	fmt.Fprintf(b, "#[allow(unused_variables, unused_mut, clippy::too_many_arguments)]\n")
 	fmt.Fprintf(b, "pub fn %s(wire: &[u8], off: &mut usize, end: usize, ids: &[u64], v: &mut %s, nodes: &mut TableNodeReader, report: &mut TableReport, path: TableRetainPath, mut retain: Option<&mut TableRetain>, nested: bool) -> bool {\n", fnName, st.Name)
+	fmt.Fprintf(b, "    if end > wire.len() { report.malformed = true; return false; }\n")
+	fmt.Fprintf(b, "    // LEBs in this body cannot borrow a byte from the enclosing body.\n")
+	fmt.Fprintf(b, "    let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);\n")
 	fmt.Fprintf(b, "    while *off < end {\n")
 	fmt.Fprintf(b, "        let Some(r) = leb_read(wire, off) else { report.malformed = true; return false; };\n")
 	fmt.Fprintf(b, "        if r == 0 { return true; }\n")
@@ -627,15 +858,17 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "        if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.malformed = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)\n")
 	fmt.Fprintf(b, "        if id == NODE_TABLE_ID {\n")
 	fmt.Fprintf(b, "            // the reserved id inside a NESTED body is malformed (§3.1); a\n")
-	fmt.Fprintf(b, "            // VARIABLE-class root steps over its own node table and never\n")
-	fmt.Fprintf(b, "            // counts it unknown, because the root gathered it first\n")
+	fmt.Fprintf(b, "            // variable-class root steps over its own node table (§3.1).\n")
+	fmt.Fprintf(b, "            // A fixed-class root has no numbering and sees it as unknown (§4).\n")
 	fmt.Fprintf(b, "            if nested { report.malformed = true; return false; }\n")
-	fmt.Fprintf(b, "            if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }\n")
-	fmt.Fprintf(b, "            continue;\n")
+	if !st.FixedDeclared {
+		fmt.Fprintf(b, "            if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }\n")
+		fmt.Fprintf(b, "            continue;\n")
+	}
 	fmt.Fprintf(b, "        }\n")
 	fmt.Fprintf(b, "        match id {\n")
 	for i, f := range st.Fields {
-		g.emitVariableLoadField(b, f, i, "            ")
+		g.emitVariableLoadField(b, st, f, i, "            ")
 	}
 	// THE UNKNOWN ARM (docs/SPEC-TABLES.md §4, §6.6): the plain read skips the
 	// field and counts one unknown; the retaining read also captures it, or
@@ -715,12 +948,22 @@ func emitPointerResolve(b *strings.Builder, f *ir.Field, dst, ind string) {
 // emitVariableLoadField emits one field's decode arm inside the load match.
 // ordinal is the field's position in its body's declaration order, the step
 // the retention path descends through (docs/SPEC-TABLES.md §6.6).
-func (g *gen) emitVariableLoadField(b *strings.Builder, f *ir.Field, ordinal int, ind string) {
+func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Field, ordinal int, ind string) {
 	id := ir.TableFieldWireId(f)
 	field := "v." + ir.RustSnake(f.Name)
 	kind := fieldWireKind(f)
 	fmt.Fprintf(b, "%s0x%016x => {\n", ind, id)
 	in := ind + "    "
+	if f.Type.Optional {
+		g.emitOptionalLoadField(b, f, ordinal, field, in)
+		fmt.Fprintf(b, "%s}\n", ind)
+		return
+	}
+	if f.KeyEnum != "" {
+		g.emitKeyedLoad(b, f, ordinal, field, in)
+		fmt.Fprintf(b, "%s}\n", ind)
+		return
+	}
 	if f.Array != ir.ArrayNone {
 		g.emitArrayLoad(b, f, ordinal, field, in)
 		fmt.Fprintf(b, "%s}\n", ind)
@@ -772,6 +1015,8 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s    else { %s = std::str::from_utf8(b).unwrap().to_string(); }\n", in, field)
 		fmt.Fprintf(b, "%s    *off = s;\n", in)
 		fmt.Fprintf(b, "%s}\n", in)
+	case vWString:
+		emitWideLoadField(b, f, field, in)
 	case vBytes:
 		g.emitArrayLoad(b, f, ordinal, field, in)
 	case vEnum:
@@ -779,12 +1024,18 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%selse {\n", in)
 		emitEnumDecode(b, f, field, "end", "return false;", in+"    ")
 		fmt.Fprintf(b, "%s}\n", in)
+	case vMap:
+		g.emitMapLoad(b, f, ordinal, field, in)
+	case vUnion:
+		g.emitUnionLoad(b, f, ordinal, field, in)
 	default:
 		// the declared kind, or a narrower one that WIDENS into it (§4):
 		// decoded exactly at its own width and counted widened once
 		fmt.Fprintf(b, "%sif kind == %d || table_kind_widens(kind, %d) {\n", in, kind, kind)
-		fmt.Fprintf(b, "%s    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };\n", in)
-		fmt.Fprintf(b, "%s    if kind != %d { report.widened += 1; }\n", in, kind)
+		fmt.Fprintf(b, "%s    let Some(raw) = %s(wire, off, end, kind) else { report.malformed = true; return false; };\n", in, scalarReadFn(f))
+		if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {
+			fmt.Fprintf(b, "%s    if kind != %d { report.widened += 1; }\n", in, kind)
+		}
 		emitScalarConvert(b, f, field, "kind", in+"    ")
 		fmt.Fprintf(b, "%s} else { %s }\n", in, kindSkip)
 	}
@@ -815,7 +1066,9 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%slet ek = wire[*off]; *off += 1;\n", i2)
 	fmt.Fprintf(b, "%smatch leb_read(wire, off) {\n", i2)
 	fmt.Fprintf(b, "%s    None => { report.malformed = true; }\n", i2)
-	fmt.Fprintf(b, "%s    Some(_) if *off > sub => { report.malformed = true; }\n", i2)
+	// A canonical count may be wider than this array's L and finish in the
+	// enclosing body. The oracle still accepts the count, then sees an empty
+	// element span, applying kind/clamp rules before marking damage (§3, §4).
 	fmt.Fprintf(b, "%s    Some(count) => {\n", i2)
 	i3 := i2 + "        "
 	cls := classOf(f)
@@ -830,14 +1083,17 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	if widens {
 		fmt.Fprintf(b, "%sif ek != %d { report.widened += 1; }\n", i4, ek)
 	}
-	if cls == vTable {
+	if cls == vTable || cls == vUnion {
 		fmt.Fprintf(b, "%sif let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, %d); }\n", i4, ordinal)
+	}
+	if f.Array == ir.ArrayFixed {
+		fmt.Fprintf(b, "%slet prior = %s.clone();\n", i4, field)
 	}
 	fmt.Fprintf(b, "%s%s.clear();\n", i4, field)
 	switch f.Array {
 	case ir.ArrayList:
 		fmt.Fprintf(b, "%slet keep = if count > 0x7fffffff { report.malformed = true; 0 } else { count };\n", i4)
-	case ir.ArrayCounted:
+	case ir.ArrayCounted, ir.ArrayFixed:
 		fmt.Fprintf(b, "%slet keep = if count > %d { report.clamped += 1; %d } else { count };\n", i4, f.ArrayBound, f.ArrayBound)
 	default: // bytes(N)
 		fmt.Fprintf(b, "%slet keep = if count > %d { report.clamped += 1; %d } else { count };\n", i4, f.Type.Size, f.Type.Size)
@@ -845,6 +1101,7 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%sfor j in 0..keep {\n", i4)
 	i5 := i4 + "    "
 	fmt.Fprintf(b, "%slet _ = j;\n", i5)
+	fmt.Fprintf(b, "%sif *off >= sub { report.malformed = true; break; }\n", i5)
 	switch {
 	case isBytes:
 		fmt.Fprintf(b, "%sif *off >= sub { report.malformed = true; break; }\n", i5)
@@ -872,13 +1129,31 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%slet mut e = %s::None;\n", i5, f.Type.Name)
 		emitEnumDecode(b, f, "e", "sub", "break;", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
+	case cls == vUnion:
+		fmt.Fprintf(b, "%slet mut e = %s::None;\n", i5, f.Type.Name)
+		fmt.Fprintf(b, "%slet item_ok = (|| -> bool {\n", i5)
+		// each element is its own body occurrence (§6.6)
+		g.withArmIndex("j as u32", func() { g.emitUnionDecode(b, f, "e", "sub", ordinal, i5+"    ", true) })
+		fmt.Fprintf(b, "%s    true\n%s})();\n", i5, i5)
+		if f.Array == ir.ArrayFixed {
+			// The oracle resets a fixed union slot as soon as its arm id is
+			// entered. A damaged arm therefore replaces that slot with None,
+			// while the untouched tail keeps the preceding occurrence (§3, §4).
+			fmt.Fprintf(b, "%sif !item_ok { %s.push(e); break; }\n", i5, field)
+		} else {
+			fmt.Fprintf(b, "%sif !item_ok { break; }\n", i5)
+		}
+		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	default:
-		fmt.Fprintf(b, "%slet Some(raw) = table_scalar_read(wire, off, sub, ek) else { report.malformed = true; break; };\n", i5)
+		fmt.Fprintf(b, "%slet Some(raw) = %s(wire, off, sub, ek) else { report.malformed = true; break; };\n", i5, scalarReadFn(f))
 		fmt.Fprintf(b, "%slet mut e = %s;\n", i5, scalarDefault(f))
 		emitScalarConvert(b, f, "e", "ek", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	}
 	fmt.Fprintf(b, "%s}\n", i4)
+	if f.Array == ir.ArrayFixed {
+		fmt.Fprintf(b, "%swhile %s.len() < %d { %s.push(prior.get(%s.len()).cloned().unwrap_or_else(|| %s)); }\n", i4, field, f.ArrayBound, field, field, fieldDefault(scalarOnly(f)))
+	}
 	fmt.Fprintf(b, "%s}\n", i3)
 	fmt.Fprintf(b, "%s    }\n", i2)
 	fmt.Fprintf(b, "%s}\n", i2)
@@ -887,24 +1162,50 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%s}\n", in)
 }
 
-// pointerTargets is every table of the file a pointer slot can name: the
+// pointerTargets is every table of the unit a pointer slot can name: the
 // tables the numbering's records are bodies of (§3.1).
 func (g *gen) pointerTargets(names []string) []*ir.Struct {
-	in := map[string]bool{}
-	for _, n := range names {
-		in[n] = true
-	}
 	seen := map[string]bool{}
+	visited := map[string]bool{}
 	var out []*ir.Struct
-	for _, n := range names {
-		for _, f := range g.unit.Tables[n].Fields {
-			if f.Type.Pointer && !f.Type.Blob() {
-				if ref, ok := f.Type.Ref.(*ir.Struct); ok && in[ref.Name] && !seen[ref.Name] {
+	var consider func(f *ir.Field)
+	var considerStruct func(st *ir.Struct)
+	considerStruct = func(st *ir.Struct) {
+		if st == nil || visited[st.Name] {
+			return
+		}
+		visited[st.Name] = true
+		for _, f := range st.Fields {
+			consider(f)
+		}
+	}
+	consider = func(f *ir.Field) {
+		if f == nil {
+			return
+		}
+		if f.IsMap() && f.MapEntry != nil {
+			considerStruct(f.MapEntry)
+			return
+		}
+		if un := unionOf(f); un != nil {
+			for _, v := range un.Variants {
+				consider(v.F)
+			}
+		}
+		if f.Type.Pointer && !f.Type.Blob() {
+			if ref, ok := f.Type.Ref.(*ir.Struct); ok && (g.vc == nil || g.vc.emitted[ref.Name]) {
+				if !seen[ref.Name] {
 					seen[ref.Name] = true
 					out = append(out, ref)
 				}
+				considerStruct(ref)
 			}
+		} else if ref, ok := f.Type.Ref.(*ir.Struct); ok && !f.Type.Blob() && (g.vc == nil || g.vc.emitted[ref.Name]) {
+			considerStruct(ref)
 		}
+	}
+	for _, n := range names {
+		considerStruct(vStruct(g.unit, n))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
@@ -916,13 +1217,14 @@ func (g *gen) pointerTargets(names []string) []*ir.Struct {
 func (g *gen) emitVariableDispatch(b *strings.Builder, names []string) {
 	targets := g.pointerTargets(names)
 	fmt.Fprintf(b, "/// The body of one table record of the numbering, by its type id (docs/SPEC-TABLES.md §3.1).\n")
-	fmt.Fprintf(b, "#[allow(dead_code, unused_variables)]\n")
-	fmt.Fprintf(b, "fn variable_record_save(type_id: u64, node: &Rc<dyn Any>, out: &mut Vec<u8>, ids: &mut IdTable, g: &TableNodeGraph) {\n")
+	fmt.Fprintf(b, "#[allow(dead_code, unused_variables, unused_mut)]\n")
+	fmt.Fprintf(b, "fn variable_record_save(type_id: u64, node: &Rc<dyn Any>, out: &mut Vec<u8>, ids: &mut IdTable, g: &TableNodeGraph, mut retain: Option<&mut TableRetain>, mut report: Option<&mut TableReport>, path: TableRetainPath) {\n")
 	fmt.Fprintf(b, "    match type_id {\n")
 	for _, st := range targets {
 		fmt.Fprintf(b, "        0x%016x => {\n", ir.TableWireId(st.WireName()))
 		fmt.Fprintf(b, "            if let Some(v) = node.downcast_ref::<%s>() {\n", st.Name)
-		fmt.Fprintf(b, "                %s(v, out, ids, g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
+		fmt.Fprintf(b, "                %s(v, out, ids, g, retain.as_deref_mut(), report.as_deref_mut(), path);\n", fn(st.Name, "save_body"))
+		fmt.Fprintf(b, "                if let (Some(ret), Some(rep)) = (retain.as_deref_mut(), report.as_deref_mut()) { retain_emit_tail(out, ids, ret, KNOWN_IDS, path, rep); }\n")
 		fmt.Fprintf(b, "            }\n")
 		fmt.Fprintf(b, "        }\n")
 	}
@@ -942,25 +1244,27 @@ func (g *gen) emitVariableDispatch(b *strings.Builder, names []string) {
 	fmt.Fprintf(b, "    match &nodes.slots[k] {\n")
 	fmt.Fprintf(b, "        TableNodeSlot::Built(_, n) => return Some(n.clone()),\n")
 	fmt.Fprintf(b, "        TableNodeSlot::Table(_) => {}\n")
-	fmt.Fprintf(b, "        TableNodeSlot::Building => { report.malformed = true; return None; }\n")
+	fmt.Fprintf(b, "        TableNodeSlot::Building => { report.cycle_on_save = true; return None; }\n")
 	fmt.Fprintf(b, "        _ => return None,\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let (type_id, start, end) = nodes.recs[k];\n")
 	fmt.Fprintf(b, "    nodes.slots[k] = TableNodeSlot::Building;\n")
-	fmt.Fprintf(b, "    let mut sink = TableRetain::default();\n")
+	fmt.Fprintf(b, "    let mut sink = TableRetain { bytes: Vec::with_capacity(nodes.retain_capacity), ids: Vec::new() };\n")
 	fmt.Fprintf(b, "    let retaining = nodes.retaining;\n")
 	fmt.Fprintf(b, "    let node: Option<Rc<dyn Any>> = match type_id {\n")
 	for _, st := range targets {
 		fmt.Fprintf(b, "        0x%016x => {\n", ir.TableWireId(st.WireName()))
 		fmt.Fprintf(b, "            let mut v = %s::default();\n", st.Name)
 		fmt.Fprintf(b, "            let mut off = start;\n")
-		fmt.Fprintf(b, "            let _ = %s(wire, &mut off, end, ids, &mut v, nodes, report, TableRetainPath::default(), if retaining { Some(&mut sink) } else { None }, true);\n", fn(st.Name, "load_body"))
+		fmt.Fprintf(b, "            let _ = %s(wire, &mut off, end, ids, &mut v, nodes, report, TableRetainPath::default().step(u32::MAX, k as u32), if retaining { Some(&mut sink) } else { None }, true);\n", fn(st.Name, "load_body"))
 		fmt.Fprintf(b, "            Some(Rc::new(v))\n")
 		fmt.Fprintf(b, "        }\n")
 	}
 	fmt.Fprintf(b, "        _ => None,\n")
 	fmt.Fprintf(b, "    };\n")
 	fmt.Fprintf(b, "    nodes.slots[k] = match &node { Some(n) => TableNodeSlot::Built(type_id, n.clone()), None => TableNodeSlot::Null };\n")
+	fmt.Fprintf(b, "    if let Some(n) = &node { retain_bind_node(&mut sink, n); }\n")
+	fmt.Fprintf(b, "    nodes.retained.extend_from_slice(&sink.bytes);\n")
 	fmt.Fprintf(b, "    node\n")
 	fmt.Fprintf(b, "}\n\n")
 }
@@ -969,13 +1273,13 @@ func (g *gen) emitVariableDispatch(b *strings.Builder, names []string) {
 // root body, after its own fields (and the retained tail), under the reserved
 // id, kind 12, the count and the records in index order — each record's type
 // id interned before its body, as the oracle writes it.
-func emitNodeTableWrite(b *strings.Builder) {
+func emitNodeTableWrite(b *strings.Builder, retaining bool) {
 	fmt.Fprintf(b, "    if !g.records.is_empty() {\n")
 	fmt.Fprintf(b, "        leb_write(&mut out, ids.id_ref(NODE_TABLE_ID));\n")
 	fmt.Fprintf(b, "        out.push(12); // kind 12: the opaque byte payload (§3.1)\n")
 	fmt.Fprintf(b, "        let mut payload = Vec::new();\n")
 	fmt.Fprintf(b, "        leb_write(&mut payload, g.records.len() as u64);\n")
-	fmt.Fprintf(b, "        for rec in &g.records {\n")
+	fmt.Fprintf(b, "        for (k, rec) in g.records.iter().enumerate() {\n")
 	fmt.Fprintf(b, "            match rec {\n")
 	fmt.Fprintf(b, "                TableNodeRecord::Blob(type_id, blob) => {\n")
 	fmt.Fprintf(b, "                    leb_write(&mut payload, ids.id_ref(*type_id));\n")
@@ -985,7 +1289,11 @@ func emitNodeTableWrite(b *strings.Builder) {
 	fmt.Fprintf(b, "                TableNodeRecord::Table(type_id, node) => {\n")
 	fmt.Fprintf(b, "                    leb_write(&mut payload, ids.id_ref(*type_id));\n")
 	fmt.Fprintf(b, "                    let mut body = Vec::new();\n")
-	fmt.Fprintf(b, "                    variable_record_save(*type_id, node, &mut body, &mut ids, &g);\n")
+	if retaining {
+		fmt.Fprintf(b, "                    variable_record_save(*type_id, node, &mut body, &mut ids, &g, Some(&mut *retain), Some(&mut *report), retain_node_path(node));\n")
+	} else {
+		fmt.Fprintf(b, "                    variable_record_save(*type_id, node, &mut body, &mut ids, &g, None, None, TableRetainPath::default());\n")
+	}
 	fmt.Fprintf(b, "                    leb_write(&mut payload, body.len() as u64);\n")
 	fmt.Fprintf(b, "                    payload.extend_from_slice(&body);\n")
 	fmt.Fprintf(b, "                }\n")
@@ -1003,6 +1311,8 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fnName := ir.RustSnake(st.Name)
 	// SAVE
 	fmt.Fprintf(b, "/// %s_save — a whole form-1 FILE (docs/SPEC-TABLES.md §3, §3.1).\n", fnName)
+	fmt.Fprintf(b, "/// An over-bound value panics with its field name; use %s_save_checked\n", fnName)
+	fmt.Fprintf(b, "/// for a named Err instead of a panic (docs/SPEC-TABLES.md §3).\n")
 	fmt.Fprintf(b, "pub fn %s_save(v: &%s) -> Vec<u8> {\n", fnName, st.Name)
 	fmt.Fprintf(b, "    let mut out = Vec::new();\n")
 	fmt.Fprintf(b, "    out.push(TABLE_WIRE_FORM);\n")
@@ -1010,11 +1320,35 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut g = TableNodeGraph::new();\n")
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
-	emitNodeTableWrite(b)
+	emitNodeTableWrite(b, false)
+	fmt.Fprintf(b, "    // A Vec cannot carry the writer's named refusal (§3): never return a truncated file.\n")
+	fmt.Fprintf(b, "    if let Some(why) = ids.refused.take() { panic!(\"{}\", why); }\n")
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
 	fmt.Fprintf(b, "    out.extend_from_slice(&(ids.entries.len() as u64).to_le_bytes());\n")
 	fmt.Fprintf(b, "    out\n")
+	fmt.Fprintf(b, "}\n\n")
+
+	// SAVE-CHECKED: the same file, or the writer's refusal BY NAME when a
+	// value is over its declared bound (docs/SPEC-TABLES.md §3, SPEC.md
+	// §4.12: a wstring(N) over N code units), as the Go leg's save refuses
+	// (internal/codegen/gotable/write.go).
+	fmt.Fprintf(b, "/// %s_save_checked — %s_save, or the refusal by name of a value over its bound\n", fnName, fnName)
+	fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3): nothing is returned for a refused value.\n")
+	fmt.Fprintf(b, "pub fn %s_save_checked(v: &%s) -> Result<Vec<u8>, String> {\n", fnName, st.Name)
+	fmt.Fprintf(b, "    let mut out = Vec::new();\n")
+	fmt.Fprintf(b, "    out.push(TABLE_WIRE_FORM);\n")
+	fmt.Fprintf(b, "    let mut ids = IdTable::new();\n")
+	fmt.Fprintf(b, "    let mut g = TableNodeGraph::new();\n")
+	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
+	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
+	fmt.Fprintf(b, "    // every node record's body rides too, and is checked by the same walk\n")
+	emitNodeTableWrite(b, false)
+	fmt.Fprintf(b, "    if let Some(why) = ids.refused.take() { return Err(why); }\n")
+	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
+	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
+	fmt.Fprintf(b, "    out.extend_from_slice(&(ids.entries.len() as u64).to_le_bytes());\n")
+	fmt.Fprintf(b, "    Ok(out)\n")
 	fmt.Fprintf(b, "}\n\n")
 
 	// SAVE-RETAIN (docs/SPEC-TABLES.md §6.6): the same file, with the retained
@@ -1023,8 +1357,11 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// %s_save_retain — the retaining save (docs/SPEC-TABLES.md §6.6): the\n", fnName)
 	fmt.Fprintf(b, "/// retained tail rides before the node-table field, and every retained id\n")
 	fmt.Fprintf(b, "/// enters the one id table in first-use order.\n")
+	fmt.Fprintf(b, "/// An over-bound value panics with its field name; it cannot return a\n")
+	fmt.Fprintf(b, "/// truncated Vec (docs/SPEC-TABLES.md §3).\n")
 	fmt.Fprintf(b, "pub fn %s_save_retain(v: &%s, retain: &mut TableRetain, report: &mut TableReport) -> Vec<u8> {\n", fnName, st.Name)
 	fmt.Fprintf(b, "    retain.ids.clear();\n")
+	fmt.Fprintf(b, "    retain_clear_placed(retain);\n")
 	fmt.Fprintf(b, "    let mut out = Vec::new();\n")
 	fmt.Fprintf(b, "    out.push(TABLE_WIRE_FORM);\n")
 	fmt.Fprintf(b, "    let mut ids = IdTable::new();\n")
@@ -1032,7 +1369,10 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, Some(&mut *retain), Some(&mut *report), TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	fmt.Fprintf(b, "    retain_emit_tail(&mut out, &mut ids, retain, KNOWN_IDS, TableRetainPath::default(), report);\n")
-	emitNodeTableWrite(b)
+	emitNodeTableWrite(b, true)
+	fmt.Fprintf(b, "    retain_count_unplaced(retain, report);\n")
+	fmt.Fprintf(b, "    // A Vec cannot carry the writer's named refusal (§3): never return a truncated file.\n")
+	fmt.Fprintf(b, "    if let Some(why) = ids.refused.take() { panic!(\"{}\", why); }\n")
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
 	fmt.Fprintf(b, "    out.extend_from_slice(&(ids.entries.len() as u64).to_le_bytes());\n")
@@ -1061,24 +1401,44 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	}
 	bytesEdge, stringEdge := ir.PointerReachableBlobs(st)
 
+	fmt.Fprintf(b, "/// %s_load_inner — decodes one variable-form wire, enforcing the 4096-entry\n", fnName)
+	fmt.Fprintf(b, "/// id-table reader bound and 8192-slot open-addressing distinctness probe with\n")
+	fmt.Fprintf(b, "/// no heap allocation for the id table (docs/SPEC-TABLES.md §3).\n")
 	fmt.Fprintf(b, "pub fn %s_load_inner(wire: &[u8], mut retain: Option<&mut TableRetain>, report: &mut TableReport) -> Option<%s> {\n", fnName, st.Name)
 	fmt.Fprintf(b, "    if wire.is_empty() { report.malformed = true; return None; }\n")
-	fmt.Fprintf(b, "    if wire[0] != TABLE_WIRE_FORM { report.refused = true; return None; }\n")
-	fmt.Fprintf(b, "    if %s_load_measure(wire) < 0 { return None; } // a framing the container cannot open (§3, §6.5)\n", fnName)
+	fmt.Fprintf(b, "    if wire[0] != TABLE_WIRE_FORM { report.refused = true; report.reason = TableRefuseReason::UnknownForm; return None; }\n")
 	fmt.Fprintf(b, "    if wire.len() < 9 { report.malformed = true; return None; }\n")
-	fmt.Fprintf(b, "    let count = u64::from_le_bytes(wire[wire.len() - 8..].try_into().ok()?) as usize;\n")
-	fmt.Fprintf(b, "    if count > wire.len() / 8 { report.malformed = true; return None; }\n")
+	fmt.Fprintf(b, "    let count = u64::from_le_bytes(wire[wire.len() - 8..].try_into().ok()?);\n")
+	fmt.Fprintf(b, "    if count > (wire.len() / 8) as u64 { report.malformed = true; return None; }\n")
+	fmt.Fprintf(b, "    if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; } // §3: at most 4096 entries in the id table\n")
+	fmt.Fprintf(b, "    let count = count as usize;\n")
 	fmt.Fprintf(b, "    let span = 8 + 8 * count;\n")
 	fmt.Fprintf(b, "    if span + 1 > wire.len() { report.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "    let estart = wire.len() - span;\n")
 	fmt.Fprintf(b, "    let end = estart;\n")
-	fmt.Fprintf(b, "    let mut ids = Vec::with_capacity(count);\n")
+	fmt.Fprintf(b, "    let mut ids_buf = [0u64; ID_TABLE_PROBE_SLOTS];\n")
+	fmt.Fprintf(b, "    let mut probe_slots = [0u64; ID_TABLE_PROBE_SLOTS];\n")
+	fmt.Fprintf(b, "    let mut probe_used = [0u64; ID_TABLE_PROBE_SLOTS / 64];\n")
 	fmt.Fprintf(b, "    for i in 0..count {\n")
 	fmt.Fprintf(b, "        let s = estart + 8 * i;\n")
 	fmt.Fprintf(b, "        let id = u64::from_le_bytes(wire[s..s + 8].try_into().ok()?);\n")
-	fmt.Fprintf(b, "        if ids.contains(&id) { report.malformed = true; return None; }\n")
-	fmt.Fprintf(b, "        ids.push(id);\n")
+	fmt.Fprintf(b, "        let mut h = ((id.wrapping_mul(0x9e3779b97f4a7c15) >> 51) as usize) & (ID_TABLE_PROBE_SLOTS - 1);\n")
+	fmt.Fprintf(b, "        loop {\n")
+	fmt.Fprintf(b, "            let bit = 1u64 << (h & 63);\n")
+	fmt.Fprintf(b, "            if (probe_used[h >> 6] & bit) == 0 {\n")
+	fmt.Fprintf(b, "                probe_used[h >> 6] |= bit;\n")
+	fmt.Fprintf(b, "                probe_slots[h] = id;\n")
+	fmt.Fprintf(b, "                break;\n")
+	fmt.Fprintf(b, "            }\n")
+	fmt.Fprintf(b, "            if probe_slots[h] == id { report.malformed = true; return None; }\n")
+	fmt.Fprintf(b, "            h = (h + 1) & (ID_TABLE_PROBE_SLOTS - 1);\n")
+	fmt.Fprintf(b, "        }\n")
+	fmt.Fprintf(b, "        ids_buf[i] = id;\n")
 	fmt.Fprintf(b, "    }\n")
+	fmt.Fprintf(b, "    let ids: &[u64] = &ids_buf[..count];\n")
+	if !st.FixedDeclared {
+		fmt.Fprintf(b, "    if %s_load_measure(wire) < 0 { return None; } // a framing the container cannot open (§3, §6.5)\n", fnName)
+	}
 	// body-extent pre-scan (docs/SPEC-TABLES.md §3): a body whose zero reference
 	// lands before the id table is malformed, and nothing is decoded.
 	fmt.Fprintf(b, "    {\n")
@@ -1099,14 +1459,31 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	// resolves pointers as it meets them cannot know the numbering yet: it is
 	// gathered whole first, then the body read decodes and resolves.
 	fmt.Fprintf(b, "    let placeable: &[u64] = &[%s];\n", strings.Join(placeable, ", "))
-	fmt.Fprintf(b, "    let mut nodes = TableNodeReader::scan(wire, end, &ids, 0x%016x, placeable, %v, %v, retain.is_some(), report)?;\n", ir.TableWireId(st.WireName()), bytesEdge, stringEdge)
+	if st.FixedDeclared {
+		fmt.Fprintf(b, "    // A fixed-class root does not own the node table: §4 reads it as an unknown field.\n")
+		fmt.Fprintf(b, "    let mut nodes = TableNodeReader { good: true, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new() };\n", ir.TableWireId(st.WireName()))
+	} else {
+		fmt.Fprintf(b, "    let mut nodes = TableNodeReader::scan(wire, end, &ids, 0x%016x, placeable, %v, %v, retain.is_some(), retain.as_ref().map_or(0, |r| r.bytes.capacity()), report)?;\n", ir.TableWireId(st.WireName()), bytesEdge, stringEdge)
+	}
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
 	fmt.Fprintf(b, "    let mut off = 1usize;\n")
 	fmt.Fprintf(b, "    let _ = %s(wire, &mut off, end, &ids, &mut v, &mut nodes, report, TableRetainPath::default(), retain.as_deref_mut(), false);\n", fn(st.Name, "load_body"))
+	fmt.Fprintf(b, "    let reachable_cycle = report.cycle_on_save;\n")
 	fmt.Fprintf(b, "    // every placeable record is decoded whether or not a slot names it, so\n")
 	fmt.Fprintf(b, "    // what its body reports is counted as the oracle counts it (§3.1, §4)\n")
 	fmt.Fprintf(b, "    for k in 0..nodes.slots.len() {\n")
 	fmt.Fprintf(b, "        if matches!(nodes.slots[k], TableNodeSlot::Table(_)) { let _ = variable_node_build(wire, &ids, &mut nodes, k, report); }\n")
+	fmt.Fprintf(b, "    }\n")
+	fmt.Fprintf(b, "    report.cycle_on_save = reachable_cycle;\n")
+	fmt.Fprintf(b, "    if let Some(ret) = retain.as_deref_mut() {\n")
+	fmt.Fprintf(b, "        let mut at = 0usize;\n")
+	fmt.Fprintf(b, "        while at + 4 <= nodes.retained.len() {\n")
+	fmt.Fprintf(b, "            let len = retain_record_len(&nodes.retained[at..]);\n")
+	fmt.Fprintf(b, "            if len < 17 || len > nodes.retained.len() - at { break; }\n")
+	fmt.Fprintf(b, "            if len <= ret.bytes.capacity().saturating_sub(ret.bytes.len()) { ret.bytes.extend_from_slice(&nodes.retained[at..at+len]); }\n")
+	fmt.Fprintf(b, "            else { report.retained -= 1; report.retain_lost += 1; }\n")
+	fmt.Fprintf(b, "            at += len;\n")
+	fmt.Fprintf(b, "        }\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    Some(v)\n")
 	fmt.Fprintf(b, "}\n\n")
@@ -1127,29 +1504,45 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	align := ir.TableRegionAlign(g.unit)
 	var lists []*ir.Field
 	for _, f := range st.Fields {
-		if f.IsList() && classOf(f) == vTable {
+		if f.IsList() || f.IsMap() {
 			lists = append(lists, f)
 		}
 	}
 	fmt.Fprintf(b, "/// %s_load_measure — the region bytes the framing commands\n", fnName)
-	fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3.1, §6.5): -1 when the file cannot be opened.\n")
+	fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3, §3.1, §6.5): -1 when the file cannot be opened.\n")
 	fmt.Fprintf(b, "pub fn %s_load_measure(wire: &[u8]) -> i64 {\n", fnName)
 	fmt.Fprintf(b, "    if wire.is_empty() || wire[0] != TABLE_WIRE_FORM { return -1; }\n")
 	fmt.Fprintf(b, "    if wire.len() < 9 { return -1; }\n")
-	fmt.Fprintf(b, "    let count = u64::from_le_bytes(wire[wire.len() - 8..].try_into().unwrap()) as usize;\n")
-	fmt.Fprintf(b, "    if count > wire.len() / 8 { return -1; }\n")
+	fmt.Fprintf(b, "    let count = u64::from_le_bytes(wire[wire.len() - 8..].try_into().unwrap());\n")
+	fmt.Fprintf(b, "    if count > (wire.len() / 8) as u64 { return -1; }\n")
+	fmt.Fprintf(b, "    if count > ID_TABLE_PROBE_BOUND as u64 { return -1; } // §3: at most 4096 entries in the id table\n")
+	fmt.Fprintf(b, "    let count = count as usize;\n")
 	fmt.Fprintf(b, "    let span = 8 + 8 * count;\n")
 	fmt.Fprintf(b, "    if span + 1 > wire.len() { return -1; }\n")
 	fmt.Fprintf(b, "    let estart = wire.len() - span;\n")
 	fmt.Fprintf(b, "    let end = estart;\n")
-	fmt.Fprintf(b, "    let mut ids = Vec::with_capacity(count);\n")
+	fmt.Fprintf(b, "    let mut ids_buf = [0u64; ID_TABLE_PROBE_SLOTS];\n")
+	fmt.Fprintf(b, "    let mut probe_slots = [0u64; ID_TABLE_PROBE_SLOTS];\n")
+	fmt.Fprintf(b, "    let mut probe_used = [0u64; ID_TABLE_PROBE_SLOTS / 64];\n")
 	fmt.Fprintf(b, "    for i in 0..count {\n")
 	fmt.Fprintf(b, "        let s = estart + 8 * i;\n")
 	fmt.Fprintf(b, "        let id = u64::from_le_bytes(wire[s..s + 8].try_into().unwrap());\n")
-	fmt.Fprintf(b, "        if ids.contains(&id) { return -1; }\n")
-	fmt.Fprintf(b, "        ids.push(id);\n")
+	fmt.Fprintf(b, "        let mut h = ((id.wrapping_mul(0x9e3779b97f4a7c15) >> 51) as usize) & (ID_TABLE_PROBE_SLOTS - 1);\n")
+	fmt.Fprintf(b, "        loop {\n")
+	fmt.Fprintf(b, "            let bit = 1u64 << (h & 63);\n")
+	fmt.Fprintf(b, "            if (probe_used[h >> 6] & bit) == 0 {\n")
+	fmt.Fprintf(b, "                probe_used[h >> 6] |= bit;\n")
+	fmt.Fprintf(b, "                probe_slots[h] = id;\n")
+	fmt.Fprintf(b, "                break;\n")
+	fmt.Fprintf(b, "            }\n")
+	fmt.Fprintf(b, "            if probe_slots[h] == id { return -1; }\n")
+	fmt.Fprintf(b, "            h = (h + 1) & (ID_TABLE_PROBE_SLOTS - 1);\n")
+	fmt.Fprintf(b, "        }\n")
+	fmt.Fprintf(b, "        ids_buf[i] = id;\n")
 	fmt.Fprintf(b, "    }\n")
+	fmt.Fprintf(b, "    let ids: &[u64] = &ids_buf[..count];\n")
 	fmt.Fprintf(b, "    let round = |n: i64| (n + %d - 1) & -%d;\n", align, align)
+	g.emitNestedMeasureHelper(b, st)
 	if len(lists) > 0 {
 		fmt.Fprintf(b, "    let mut at: i64 = 0;\n")
 	} else {
@@ -1169,6 +1562,14 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "            let Some(l) = leb_read(wire, &mut off) else { return -1; };\n")
 	fmt.Fprintf(b, "            if l > (end - off) as u64 { return -1; }\n")
 	fmt.Fprintf(b, "            let sub = off + l as usize;\n")
+	fmt.Fprintf(b, "            // The last reserved field supplies the node table (§3.1); an\n")
+	fmt.Fprintf(b, "            // earlier occurrence is superseded like the oracle's scan.\n")
+	fmt.Fprintf(b, "            let mut later = sub; let mut superseded = false;\n")
+	fmt.Fprintf(b, "            while later < end { let Some(r2) = leb_read(&wire[..end], &mut later) else { break; }; if r2 == 0 || later >= end { break; } let Some(id2) = ref_id(&ids, r2) else { break; }; let k2 = wire[later]; later += 1;\n")
+	fmt.Fprintf(b, "                if id2 == NODE_TABLE_ID { superseded = true; break; }\n")
+	fmt.Fprintf(b, "                if !leb_skip(wire, &mut later, end, k2) { break; }\n")
+	fmt.Fprintf(b, "            }\n")
+	fmt.Fprintf(b, "            if superseded { off = sub; continue; }\n")
 	fmt.Fprintf(b, "            let Some(declared) = leb_read(wire, &mut off) else { return -1; };\n")
 	fmt.Fprintf(b, "            let mut recs = 0i64;\n")
 	fmt.Fprintf(b, "            let mut cur_blob = 0i64;\n")
@@ -1179,8 +1580,28 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                if off > sub || bl as usize > sub - off { return -1; }\n")
 	fmt.Fprintf(b, "                if ids[tref as usize - 1] == STRING_TYPE_ID || ids[tref as usize - 1] == BYTES_TYPE_ID {\n")
 	fmt.Fprintf(b, "                    if bl > 0xffffffff { return -1; }\n")
-	fmt.Fprintf(b, "                    cur_blob += round(8 + bl as i64 + 1);\n")
+	fmt.Fprintf(b, "                    // Only text needs a terminator in region storage (§6.5).\n")
+	fmt.Fprintf(b, "                    let nul = if ids[tref as usize - 1] == STRING_TYPE_ID { 1 } else { 0 };\n")
+	fmt.Fprintf(b, "                    cur_blob += round(8 + bl as i64 + nul);\n")
 	fmt.Fprintf(b, "                }\n")
+	// THE STORAGE A NODE RECORD COMMANDS is its type's, and only for a type
+	// THIS ROOT can place (docs/SPEC-TABLES.md §3.1, §6.5): a table no pointer
+	// below the root targets is a node the reader cannot name and commands none,
+	// exactly as tablewire.FileRegionMeasure sizes it.
+	if reached := ir.PointerReachable(st); len(reached) > 0 {
+		fmt.Fprintf(b, "                match ids[tref as usize - 1] {\n")
+		seen := map[uint64]bool{}
+		for _, n := range reached {
+			id := ir.TableWireId(n.WireName())
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			fmt.Fprintf(b, "                    0x%016x => { let extra = nested_measure(0x%016x, &wire[off..off + bl as usize], &ids, 0); if extra < 0 { return -1; } cur_blob += round(round(%d) + extra); }\n", id, id, ir.RecordLayout(g.unit, n).Size)
+		}
+		fmt.Fprintf(b, "                    _ => {}\n")
+		fmt.Fprintf(b, "                }\n")
+	}
 	fmt.Fprintf(b, "                off += bl as usize;\n")
 	fmt.Fprintf(b, "                recs += 1;\n")
 	fmt.Fprintf(b, "            }\n")
@@ -1207,13 +1628,38 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "                if sub - off >= 2 {\n")
 		fmt.Fprintf(b, "                    let ek = wire[off]; off += 1;\n")
 		fmt.Fprintf(b, "                    let Some(c) = leb_read(wire, &mut off) else { return -1; };\n")
-		fmt.Fprintf(b, "                    if ek == %d {\n", ir.TableKindTable)
+		fmt.Fprintf(b, "                    let carries = match id {\n")
+		for _, f := range lists {
+			want := ir.TableWireElemKind(f)
+			if f.IsMap() {
+				want = ir.TableKindTable
+			}
+			fmt.Fprintf(b, "                        0x%016x => ek == %d || table_kind_widens(ek, %d),\n", ir.TableFieldWireId(f), want, want)
+		}
+		fmt.Fprintf(b, "                        _ => false,\n")
+		fmt.Fprintf(b, "                    };\n")
+		fmt.Fprintf(b, "                    if carries {\n")
 		fmt.Fprintf(b, "                        if c > 0x7fffffff { return -1; }\n")
-		fmt.Fprintf(b, "                        if off > sub || c as usize > (sub - off) / 2 { return -1; }\n")
+		fmt.Fprintf(b, "                        let floor = if ek == %d { 2 } else { table_kind_width(ek).max(1) };\n", ir.TableKindTable)
+		fmt.Fprintf(b, "                        if off > sub || c as usize > (sub - off) / floor { return -1; }\n")
 		fmt.Fprintf(b, "                        match id {\n")
 		for _, f := range lists {
-			size, la := ir.ListElementLayout(g.unit, f)
-			fmt.Fprintf(b, "                            0x%016x => { at = (at + %d - 1) & -%d; at += c as i64 * %d; }\n", ir.TableFieldWireId(f), la, la, size)
+			var size, la int64
+			if f.IsMap() {
+				layout := ir.RecordLayout(g.unit, f.MapEntry)
+				size, la = layout.Size, layout.Align
+			} else {
+				size, la = ir.ListElementLayout(g.unit, f)
+			}
+			fmt.Fprintf(b, "                            0x%016x => { at = (at + %d - 1) & -%d; at += c as i64 * %d;\n", ir.TableFieldWireId(f), la, la, size)
+			child, _ := f.Type.Ref.(*ir.Struct)
+			if f.IsMap() {
+				child = f.MapEntry
+			}
+			if child != nil && !f.Type.Pointer {
+				fmt.Fprintf(b, "                                let mut p = off; for _ in 0..c { if p >= sub { break; } let Some(n) = leb_read(&wire[..sub], &mut p) else { break; }; if n > (sub - p) as u64 { break; } at = nested_measure(0x%016x, &wire[p..p + n as usize], &ids, at); if at < 0 { return -1; } p += n as usize; }\n", ir.TableWireId(child.WireName()))
+			}
+			fmt.Fprintf(b, "                            }\n")
 		}
 		fmt.Fprintf(b, "                            _ => {}\n")
 		fmt.Fprintf(b, "                        }\n")
@@ -1226,6 +1672,73 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	}
 	fmt.Fprintf(b, "        if !leb_skip(wire, &mut off, end, kind) { return -1; }\n")
 	fmt.Fprintf(b, "    }\n")
-	fmt.Fprintf(b, "    round(round(%d) + at) + blob_total + (records + 1) * 16\n", rootSize)
+	fmt.Fprintf(b, "    let root_at = nested_measure(0x%016x, &wire[1..end], &ids, 0);\n", ir.TableWireId(st.WireName()))
+	fmt.Fprintf(b, "    if root_at < 0 { return -1; }\n")
+	fmt.Fprintf(b, "    round(round(%d) + root_at) + blob_total + (records + 1) * 16\n", rootSize)
 	fmt.Fprintf(b, "}\n\n")
+}
+
+// emitWideSaveField writes one `wstring(N)` field (docs/SPEC-TABLES.md §3, kind
+// 33; SPEC.md §4.12): wide text takes no specified default, so the EMPTY value
+// is what elides; otherwise the header, L = twice the unit count (a BYTE
+// length, like every L on this wire) and the units little-endian. A value
+// over N is the save's refusal by name ([table_wide_fit]), the oracle's
+// writer bound (internal/codegen/gotable/write.go's Length > N check).
+func (g *gen) emitWideSaveField(b *strings.Builder, f *ir.Field, x, ind string) {
+	inner := ind + "    "
+	fmt.Fprintf(b, "%sif !%s.is_empty() {\n", ind, x)
+	fmt.Fprintf(b, "%slet n = table_wide_fit(ids, &%s, %d, %q);\n", inner, x, f.Type.Size, wideOwner(g.unit, f)+"."+f.Name)
+	fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, ir.TableFieldWireId(f))
+	fmt.Fprintf(b, "%sout.push(%d);\n", inner, ir.TableKindWstring)
+	fmt.Fprintf(b, "%sleb_write(out, (n * 2) as u64);\n", inner)
+	fmt.Fprintf(b, "%stable_wide_put(out, &%s[..n]);\n", inner, x)
+	fmt.Fprintf(b, "%s}\n", ind)
+}
+
+// emitWideLoadField reads one `wstring(N)` field (docs/SPEC-TABLES.md §3, §4;
+// the oracle is internal/tablewire decode.go): another kind is a mismatch,
+// skipped by its own rule; an L past the body is framing damage; an odd L, an
+// unpaired surrogate or a zero unit is damage that reads the declared default
+// (empty) and counts malformed, the parent reading on past L; more than N
+// units keeps the longest prefix that does not split a pair and counts one
+// clamp.
+func emitWideLoadField(b *strings.Builder, f *ir.Field, field, in string) {
+	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindWstring, kindSkip)
+	fmt.Fprintf(b, "%selse {\n", in)
+	fmt.Fprintf(b, "%s    let Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", in)
+	fmt.Fprintf(b, "%s    if *off > end || l > (end - *off) as u64 { report.malformed = true; return false; }\n", in)
+	fmt.Fprintf(b, "%s    let s = *off + l as usize;\n", in)
+	fmt.Fprintf(b, "%s    match table_wide_units(&wire[*off..s]) {\n", in)
+	fmt.Fprintf(b, "%s        None => { report.malformed = true; %s = Vec::new(); }\n", in, field)
+	fmt.Fprintf(b, "%s        Some(u) => {\n", in)
+	fmt.Fprintf(b, "%s            let keep = table_wide_boundary(&u, %d);\n", in, f.Type.Size)
+	fmt.Fprintf(b, "%s            if keep < u.len() { report.clamped += 1; }\n", in)
+	fmt.Fprintf(b, "%s            %s = u[..keep].to_vec();\n", in, field)
+	fmt.Fprintf(b, "%s        }\n", in)
+	fmt.Fprintf(b, "%s    }\n", in)
+	fmt.Fprintf(b, "%s    *off = s;\n", in)
+	fmt.Fprintf(b, "%s}\n", in)
+}
+
+// wideOwner names the declaration a field line belongs to — a table (a map's
+// generated entry included) or a union, whose arm is a field line (§2.6) — so
+// a writer's refusal names `<owner>.<field>` (docs/SPEC-TABLES.md §11).
+func wideOwner(u *ir.Unit, f *ir.Field) string {
+	for _, st := range u.Tables {
+		for _, g := range st.Fields {
+			if g == f {
+				return st.Name
+			}
+		}
+	}
+	for _, set := range []map[string]*ir.Union{u.TableUnions, u.Unions} {
+		for _, un := range set {
+			for _, v := range un.Variants {
+				if v.F == f {
+					return un.Name
+				}
+			}
+		}
+	}
+	return "?"
 }

@@ -19,26 +19,13 @@ package rusttable
 // (`LINEAGE_FIXED_DEFAULTS`), so a defaults row is proved by writing the values
 // the declaration names and holding the bytes to that image.
 //
-// `union-field-arms` is NOT among these subtests: its node asks for a DIRECT
-// text or array arm payload (docs/roadmap.sexp, union-field-arms/rust/valid-data
-// `:remaining` "Implement direct text/byte-buffer/array arm layout and
-// emitters"), and this backend writes and reads neither. The shared gate
-// ADMITS them — ir.TableFixedSupported (ir/fixedform.go:241) refuses only a
-// pointer, map, unbounded array, keyed array or optional arm, so a direct
-// string(N) or [..N]T arm falls through to true — but this backend's own
-// unionRowable (internal/codegen/rusttable/cook.go:391) refuses those same
-// arms, and the effect is a SILENT drop of the WHOLE fixed form: GenerateLineage
-// returns only build_version.rs, no `<base>_fixed.rs`. The supported shape (a
-// text or array nested inside a type arm) is the sibling task union-values; the
-// direct scalar arm alone does not prove a title that also names text and
-// array. That row is reported :unknown in docs/roadmap-evidence/fixed-rust.sexp.
-//
-// `payload-free-arms` is also NOT among these subtests: the shared eligibility
-// rule admits a payload-free arm (ir/fixedform.go's TableFixedSupported skips a
-// nil arm), but this backend still emits no fixed form for a closure that holds
-// one — GenerateLineage returns only build_version.rs and no `<base>_fixed.rs`
-// — so there is no writer or reader to exercise. That row is reported :unknown
-// in docs/roadmap-evidence/fixed-rust.sexp.
+// `union-field-arms` and `payload-free-arms` live in their own probe binary
+// beside this one (internal/codegen/rusttable/fixedroadmap_t18_test.go,
+// TestFixedRoadmapRustT18UnionArms): direct text, bytes, fixed-array and
+// counted-array union arms ride in `<Union>RowArms` (through `#[repr(C)]`
+// `<Union>RowArm<Arm>` companion structs and `[T; N]`), and payload-free arms
+// take tag-only `is_<arm>` / `set_<arm>` accessors with no overlay member
+// (SPEC-TABLES §2.6, §3.4).
 //
 // `utf16-values` is NOT among these subtests: the Rust target refuses a
 // `wstring(N)` field in a table closure (compiler/target_rust.go:30 calls

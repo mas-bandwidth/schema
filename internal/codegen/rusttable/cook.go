@@ -45,6 +45,7 @@ func (g *gen) cookModule() []byte {
 	g.emitCookDescriptors(roots)
 	for _, st := range roots {
 		g.emitCookHandle(st)
+		g.emitCookWrite(st)
 	}
 	b.WriteString(g.body.String())
 	return []byte(b.String())
@@ -279,6 +280,34 @@ pub unsafe fn table_cook_open(
     }
 }
 
+/// Name the first failed cook-open clause (§7) using the reference vocabulary
+/// in gotable/refusal.go. The ordinary open stays the fast path.
+///
+/// # Safety
+/// bytes must point at length readable bytes.
+pub unsafe fn table_cook_open_reason(bytes: *const u8, length: u64, root_size: u64, root_align: u64) -> &'static str {
+    unsafe {
+        if table_cook_open(bytes, length, root_size, root_align).is_some() { return "ok"; }
+        if bytes.is_null() { return "unaligned_base"; }
+        if length < TABLE_COOK_HEADER_BYTES { return "truncated"; }
+        let magic = table_cook_read64(bytes);
+        if magic != TABLE_COOK_MAGIC {
+            return if magic.swap_bytes() == TABLE_COOK_MAGIC { "foreign_order" } else { "not_a_cook" };
+        }
+        if table_cook_read64(bytes.add(16)) != TABLE_COOK_BYTE_ORDER { return "not_a_cook"; }
+        if table_cook_read64(bytes.add(8)) != BUILD_VERSION { return "wrong_build_version"; }
+        if table_cook_read64(bytes.add(48)) != 0 || table_cook_read64(bytes.add(56)) != 0 { return "reserved_not_zero"; }
+        let data_length = table_cook_read64(bytes.add(24));
+        let attribution_length = table_cook_read64(bytes.add(32));
+        let alignment = table_cook_read64(bytes.add(40));
+        if alignment < 8 || alignment > TABLE_COOK_MAX_ALIGN || alignment & (alignment - 1) != 0 || !alignment.is_multiple_of(root_align) { return "bad_alignment"; }
+        let data_offset = (TABLE_COOK_HEADER_BYTES + alignment - 1) & !(alignment - 1);
+        if length < data_offset || data_length > length - data_offset || attribution_length != length - data_offset - data_length || data_length < root_size { return "truncated"; }
+        if !(bytes.add(data_offset as usize) as usize as u64).is_multiple_of(alignment) { return "unaligned_base"; }
+        "truncated"
+    }
+}
+
 `
 
 // ---- the blittable records (docs/SPEC-TABLES.md §7.2, §19.3) ----
@@ -306,11 +335,12 @@ func (g *gen) cookable(name string) bool {
 // at the greatest arm alignment, the whole rounded up. Nothing on the wire
 // moves: it is where the bytes LAND that this decides.
 //
-// What it does not carry is an arm whose storage needs a COMPANION — text, or
-// an array with its count — because such an arm is an unnamed struct of two
-// pieces in the C++ overlay and this port would have to name it. §3.4's own
-// layout law refuses those arms outright (ir.TableFixedSupported), so the two
-// refusals are one and nothing that reaches this form is turned away by it.
+// Every fixed-form union arm rides here (docs/SPEC-TABLES.md §2.6, §3.4):
+// payload-free arms take tag-only accessors, `[N]T` arms take `[T; N]`, and
+// companioned `string(N)`, `wstring(N)`, `bytes(N)` and `[..N]T` arms take a
+// `#[repr(C)]` companion struct `<Union>RowArm<Arm>` matching cpptable's
+// unnamed arm struct. Only variable, keyed or optional arms are refused,
+// matching ir.TableFixedSupported.
 func (g *gen) rowable(name string) bool {
 	return g.reaches(name, unionRowable)
 }
@@ -382,20 +412,18 @@ func (g *gen) reaches(name string, ok func(*ir.Union) bool) bool {
 	return walk(name)
 }
 
-// unionRowable reports whether a union has a blittable twin here: every arm
-// carries a payload and every payload is ONE PIECE of storage — a scalar, or a
-// nested record. An arm of text, or of an array with its count, is two pieces
-// that must occupy one slot of the overlay, which the C++ reference spells as
-// an unnamed struct; naming those is the remaining follow-on and §3.4's layout
-// law refuses the same arms, so nothing is lost here that this form carries.
+// unionRowable reports whether a union has a blittable twin here
+// (docs/SPEC-TABLES.md §2.6, §3.4, §7.2, §15): payload-free arms, scalar or
+// declaration arms, direct `[N]T` arms, and companioned `string(N)`,
+// `wstring(N)`, `bytes(N)` and `[..N]T` arms all ride. Only variable, keyed or
+// optional arms are refused, matching ir.TableFixedSupported.
 func unionRowable(un *ir.Union) bool {
 	for _, v := range un.Variants {
 		if v.F == nil {
-			return false // a payload-free arm has no storage to overlay
+			continue // a payload-free arm has no storage inside the overlay (docs/SPEC-TABLES.md §2.6)
 		}
 		a := v.F
-		if a.Type.Pointer || a.IsMap() || a.IsList() || a.Array != ir.ArrayNone || a.KeyEnum != "" ||
-			a.Type.Kind == ir.TString || a.Type.Kind == ir.TWString || a.Type.Kind == ir.TBytes ||
+		if a.Type.Pointer || a.IsMap() || a.IsList() || a.KeyEnum != "" ||
 			a.Type.Optional || a.Type.Blob() {
 			return false
 		}
@@ -494,9 +522,7 @@ func (g *gen) emitCookRows(members []*ir.Struct) {
 	for _, st := range members {
 		if !g.rowable(st.Name) {
 			g.pf("// %s has NO blittable record: its by-value closure reaches a union with\n", st.Name)
-			g.pf("// an arm whose storage needs a COMPANION beside it — text, or an array\n")
-			g.pf("// with its count — which is two pieces in one slot of the overlay and the\n")
-			g.pf("// one arm shape this port does not name yet (docs/SPEC-TABLES.md §15).\n\n")
+			g.pf("// a variable, keyed or optional arm (docs/SPEC-TABLES.md §2.6, §3.4, §15).\n\n")
 			continue
 		}
 		g.emitCookRow(st)
@@ -543,8 +569,74 @@ func (g *gen) emitUnionRows(unions []*ir.Union) {
 	}
 }
 
+func unionHasPayload(un *ir.Union) bool {
+	for _, v := range un.Variants {
+		if v.F != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// unionArmCompanionType names the #[repr(C)] companion struct an arm takes
+// when its storage is two pieces inside the union's overlay — a string/wstring/
+// bytes buffer beside `value_length`, or a counted array beside `value_count`
+// (docs/SPEC-TABLES.md §2.6, matching cpptable/arms.go emitArmStorage).
+func unionArmCompanionType(un *ir.Union, v ir.UnionVariant) (string, bool) {
+	if v.F == nil {
+		return "", false
+	}
+	f := v.F
+	switch {
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes, f.Array == ir.ArrayCounted:
+		return un.Name + "RowArm" + ir.GoExportName(v.Name), true
+	}
+	return "", false
+}
+
+// unionArmRowType is one union arm's Rust type inside <Name>RowArms and in the
+// checked accessor pair on <Name>Row (docs/SPEC-TABLES.md §2.6).
+func unionArmRowType(un *ir.Union, v ir.UnionVariant) string {
+	if comp, ok := unionArmCompanionType(un, v); ok {
+		return comp
+	}
+	if v.F.Array == ir.ArrayFixed {
+		return fmt.Sprintf("[%s; %d]", cookElemType(v.F), v.F.ArrayBound)
+	}
+	return cookElemType(v.F)
+}
+
 func (g *gen) emitUnionRow(un *ir.Union) {
 	size, align, tag, armOffset := ir.UnionLayout(g.unit, un)
+	var defaultTypes []string
+	for _, v := range un.Variants {
+		comp, ok := unionArmCompanionType(un, v)
+		if !ok {
+			continue
+		}
+		defaultTypes = append(defaultTypes, comp)
+		f := v.F
+		g.pf("#[repr(C)]\n#[derive(Clone, Copy)]\npub struct %s {\n", comp)
+		switch {
+		case f.Type.Kind == ir.TString:
+			g.pf("    pub value: [u8; %d], // string(%s): buffer, used length beside it (docs/SPEC-TABLES.md §2.6)\n",
+				f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
+			g.pf("    pub value_length: i32,\n")
+		case f.Type.Kind == ir.TWString:
+			g.pf("    pub value: [u16; %d], // wstring(%s): UTF-16 code units, used length beside it (docs/SPEC-TABLES.md §2.6)\n",
+				f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
+			g.pf("    pub value_length: i32,\n")
+		case f.Type.Kind == ir.TBytes:
+			g.pf("    pub value: [u8; %d], // bytes(%s): buffer, used length beside it (docs/SPEC-TABLES.md §2.6)\n",
+				f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
+			g.pf("    pub value_length: i32,\n")
+		case f.Array == ir.ArrayCounted:
+			g.pf("    pub value: [%s; %d], // %s: elements, live count beside them (docs/SPEC-TABLES.md §2.6)\n",
+				cookElemType(f), f.ArrayBound, tableFieldTypeName(f))
+			g.pf("    pub value_count: i32,\n")
+		}
+		g.pf("}\n\n")
+	}
 	g.pf("// %s — the union twin: %d bytes, aligned %d; a %d-byte tag, the arms at %d.\n",
 		un.Name, size, align, tag, armOffset)
 	tagType := rustUint(ir.StorageBitsFor(un.Max))
@@ -556,15 +648,29 @@ func (g *gen) emitUnionRow(un *ir.Union) {
 	g.pf("    pub(crate) arms: %sRowArms,\n", un.Name)
 	g.pf("}\n\n")
 	g.pf("#[repr(C)]\n#[derive(Clone, Copy)]\npub union %sRowArms {\n", un.Name)
+	if !unionHasPayload(un) {
+		g.pf("    pub(crate) _none: [u8; 0],\n")
+	}
 	for _, v := range un.Variants {
-		g.pf("    pub(crate) %s: %s, // %s\n", v.Name, cookElemType(v.F), tableFieldTypeName(v.F))
+		if v.F == nil {
+			continue // a payload-free arm has no member in the overlay (docs/SPEC-TABLES.md §2.6)
+		}
+		g.pf("    pub(crate) %s: %s, // %s\n", v.Name, unionArmRowType(un, v), tableFieldTypeName(v.F))
 	}
 	g.pf("}\n\n")
 	g.pf("impl %sRow {\n", un.Name)
 	g.pf("    /// The live arm's ordinal, from 1 in declared order; 0 is None.\n")
 	g.pf("    pub fn tag(&self) -> %s {\n        self.tag\n    }\n\n", tagType)
 	for i, v := range un.Variants {
-		arm := cookElemType(v.F)
+		if v.F == nil {
+			g.pf("    /// True when the tag names `%s` (a payload-free arm, docs/SPEC-TABLES.md §2.6).\n", v.Name)
+			g.pf("    pub fn is_%s(&self) -> bool {\n        self.tag == %d\n    }\n\n", v.Name, i+1)
+			g.pf("    /// Selects `%s` (a payload-free arm, docs/SPEC-TABLES.md §2.6): zeroes the\n", v.Name)
+			g.pf("    /// overlay and sets the tag only (docs/FIXED-FORM-ALGORITHM.md §3.1).\n")
+			g.pf("    pub fn set_%s(&mut self) {\n        *self = Self::default();\n        self.tag = %d;\n    }\n\n", v.Name, i+1)
+			continue
+		}
+		arm := unionArmRowType(un, v)
 		g.pf("    /// `%s` when the tag names it, and None otherwise. THE CHECK IS WHAT\n", v.Name)
 		g.pf("    /// MAKES THE READ SAFE: the overlay holds one arm and the tag says which.\n")
 		g.pf("    pub fn %s(&self) -> Option<%s> {\n", v.Name, arm)
@@ -581,7 +687,8 @@ func (g *gen) emitUnionRow(un *ir.Union) {
 	g.pf("    /// The empty union: tag 0, no arm.\n")
 	g.pf("    pub fn set_none(&mut self) {\n        *self = Self::default();\n    }\n")
 	g.pf("}\n\n")
-	for _, name := range []string{un.Name + "Row", un.Name + "RowArms"} {
+	defaultTypes = append(defaultTypes, un.Name+"Row", un.Name+"RowArms")
+	for _, name := range defaultTypes {
 		g.pf("impl Default for %s {\n", name)
 		g.pf("    fn default() -> Self {\n")
 		g.pf("        // the empty union: tag zero and an overlay of zeros, which is a value\n")
@@ -608,6 +715,9 @@ func (g *gen) emitUnionLayout(unions []*ir.Union) {
 		g.pf("const _: () = assert!(core::mem::offset_of!(%sRow, arms) == %d, \"%sRow: the arms are overlaid here\");\n",
 			un.Name, armOffset, un.Name)
 		for _, v := range un.Variants {
+			if v.F == nil {
+				continue
+			}
 			g.pf("const _: () = assert!(core::mem::offset_of!(%sRowArms, %s) == 0, \"%sRowArms.%s: every arm starts the overlay\");\n",
 				un.Name, v.Name, un.Name, v.Name)
 		}
@@ -697,7 +807,9 @@ func (g *gen) emitCookNamedTextDefaults(st *ir.Struct, ind string) {
 			g.pf("%svalue.%s_length = %d;\n", ind, f.Name, n)
 			continue
 		}
-		if f.Type.Kind != ir.TNamed {
+		// a pointer's slot is a self-relative delta, zero is null (§6.3): the
+		// target's defaults live in the target's own record, never in the slot
+		if f.Type.Kind != ir.TNamed || f.Type.Pointer {
 			continue
 		}
 		nested, ok := f.Type.Ref.(*ir.Struct)
@@ -721,7 +833,9 @@ func (g *gen) emitCookNamedTextDefaults(st *ir.Struct, ind string) {
 
 func (g *gen) emitCookRowField(f *ir.Field) {
 	switch {
-	case f.Type.Pointer:
+	case f.IsMap(), f.IsList():
+		g.pf("    pub %s: [u64; 2],\n", f.Name)
+	case f.Type.Pointer && f.Array == ir.ArrayNone && f.KeyEnum == "":
 		g.pf("    pub %s: i64, // *%s: signed self-relative delta, zero is null (§6.3)\n", f.Name, f.Type.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
@@ -760,6 +874,9 @@ func (g *gen) emitCookRowField(f *ir.Field) {
 // wire rides the variant-name hash — so the slot is the plain unsigned, not
 // the wire newtype.
 func cookElemType(f *ir.Field) string {
+	if f.Type.Pointer {
+		return "i64"
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "bool"
@@ -854,7 +971,8 @@ func cookRowMembers(f *ir.Field) []string {
 	var names []string
 	names = append(names, f.Name)
 	switch {
-	case f.Type.Pointer:
+	case f.IsMap(), f.IsList():
+	case f.Type.Pointer && f.Array == ir.ArrayNone && f.KeyEnum == "":
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
@@ -912,6 +1030,89 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 	g.pf("        if delta == 0 {\n            return core::ptr::null();\n        }\n")
 	g.pf("        (slot as *const u8).offset(delta as isize) as *const %sRow\n", st.Name)
 	g.pf("    }\n}\n\n")
+}
+
+// emitCookWrite is the cooked form's WRITE side for one FIXED table
+// (docs/SPEC-TABLES.md §7.6): the Rust spelling of gotable/cookwrite.go's
+// <T>CookMeasure, <T>CookMeasureReason and <T>CookFrom — measure before
+// write, a buffer short of the measure writes nothing and returns false, and
+// both byte orders ride (1 little, 2 big, Go's TableByteOrder values). A
+// variable table's writer is the region writer (numbering, containers), which
+// this leg does not carry yet, so it keeps its read side only.
+func (g *gen) emitCookWrite(st *ir.Struct) {
+	if !g.cookable(st.Name) || !st.IsTable || st.IsMapEntry() {
+		return
+	}
+	if ir.VariableTables(g.unit)[st.Name] || !g.cookWriteCarried(st) {
+		return
+	}
+	n := st.Name
+	layout := ir.RecordLayout(g.unit, st)
+	align := layout.Align
+	if align < 8 {
+		align = 8
+	}
+	data := (layout.Size + align - 1) & -align
+	total := 64 + data + 16
+	g.pf("// ---- %s's cook WRITE side (docs/SPEC-TABLES.md §7.6) ----\n", n)
+	g.pf("// The Rust spelling of Go's %sCookMeasure, %sCookMeasureReason and\n", n, n)
+	g.pf("// %sCookFrom (gotable/cookwrite.go): the measure is a constant for a\n", n)
+	g.pf("// fixed table, so the reason is always Ok; a buffer short of it, a bad\n")
+	g.pf("// byte order or a value outside a declared bound writes NOTHING and\n")
+	g.pf("// returns false.\n")
+	g.pf("pub fn %s(_value: &%sRow) -> i64 {\n    %d\n}\n\n", fn(n, "cook_measure"), n, total)
+	g.pf("pub fn %s(value: &%sRow) -> (i64, TableCookRefuse) {\n    (%s(value), TableCookRefuse::Ok)\n}\n\n",
+		fn(n, "cook_measure_reason"), n, fn(n, "cook_measure"))
+	g.pf("pub fn %s(value: &%sRow, buffer: &mut [u8], order: u64) -> bool {\n", fn(n, "cook_from"), n)
+	g.pf("    unsafe {\n")
+	g.pf("        if order != 1 && order != 2 {\n            return false;\n        }\n")
+	g.pf("        if (buffer.len() as i64) < %d {\n            return false;\n        }\n", total)
+	g.pf("        let p = value as *const %sRow as *const u8;\n", n)
+	g.pf("        let out = buffer.as_mut_ptr();\n")
+	g.pf("        // the measure pass: no buffer, so a refusal changes no byte (Go's\n")
+	g.pf("        // first record walk with a nil buffer)\n")
+	g.pf("        if !table_cook_write_record(p, %s(), core::ptr::null_mut(), 64, order) {\n            return false;\n        }\n", fn(n, "cook_info"))
+	g.pf("        core::ptr::write_bytes(out, 0, %d);\n", total)
+	g.pf("        table_cook_put(out, 0, TABLE_COOK_MAGIC, 8, order);\n")
+	g.pf("        table_cook_put(out, 8, BUILD_VERSION, 8, order);\n")
+	g.pf("        table_cook_put(out, 16, order, 8, order);\n")
+	g.pf("        table_cook_put(out, 24, %d, 8, order);\n", data)
+	g.pf("        table_cook_put(out, 32, 16, 8, order); // one node: 1 * 16\n")
+	g.pf("        table_cook_put(out, 40, %d, 8, order);\n", align)
+	g.pf("        if !table_cook_write_record(p, %s(), out, 64, order) {\n            return false;\n        }\n", fn(n, "cook_info"))
+	g.pf("        table_cook_put(out, %d, 0, 8, order);\n", 64+data)
+	g.pf("        table_cook_put(out, %d, 0x%016x, 8, order);\n", 64+data+8, ir.TableWireId(st.WireName()))
+	g.pf("        true\n    }\n}\n\n")
+}
+
+// cookWriteCarried reports whether the cook WRITE side carries every construct
+// the record's by-value closure declares (§7.6): scalars, strings, bytes,
+// fixed and counted arrays, optionals and nested records. A pointer edge, a
+// map, a list or wide text is the variable region's writer, which this leg
+// does not carry yet, so the table keeps its read side only and the report
+// names it.
+func (g *gen) cookWriteCarried(st *ir.Struct) bool {
+	seen := map[string]bool{}
+	var walk func(s *ir.Struct) bool
+	walk = func(s *ir.Struct) bool {
+		if seen[s.Name] {
+			return true
+		}
+		seen[s.Name] = true
+		for _, f := range s.Fields {
+			switch {
+			case f.Type.Pointer, f.Type.Blob(), f.IsMap(), f.IsList(), f.Type.Kind == ir.TWString:
+				return false
+			}
+			if ref, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
+				if !walk(ref) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	return walk(st)
 }
 
 // cookRegionAligns is every alignment a region rooted at this record can
@@ -1002,6 +1203,124 @@ pub struct TableCookInfo {
     pub fields: &'static [TableCookFieldInfo],
 }
 
+// ---- the cook WRITE side (docs/SPEC-TABLES.md §7.6) ----
+// The Rust spelling of gotable/cookwrite.go's writer, the fixed path: put
+// takes the byte order, and a record walk with a NULL buffer measures and
+// validates only, so a refusal changes no byte. The refusal is named as Go
+// names it (gotable/refusal.go's TableRefuseInvalidValue); the fixed path can
+// answer only this one.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TableCookRefuse {
+    Ok,
+    InvalidValue, // a count or a used length outside its declared bound (§7.6)
+}
+
+// table_cook_put writes one scalar unaligned in the chosen byte order (Go's
+// TableByteOrder: 1 little, 2 big). A null buffer is the measure pass.
+pub unsafe fn table_cook_put(out: *mut u8, at: i64, value: u64, width: u32, order: u64) {
+    if out.is_null() {
+        return;
+    }
+    unsafe {
+        for i in 0..width as usize {
+            let shift = if order == 2 { width as usize - 1 - i } else { i };
+            *out.add(at as usize + i) = (value >> (shift * 8)) as u8;
+        }
+    }
+}
+
+// table_cook_raw reads one slot's bytes at the width the descriptor names.
+unsafe fn table_cook_raw(p: *const u8, at: i64, width: u32) -> u64 {
+    let mut v: u64 = 0;
+    unsafe {
+        for i in 0..width as usize {
+            v |= (*p.add(at as usize + i) as u64) << (i * 8);
+        }
+    }
+    v
+}
+
+// table_cook_write_record is Go's record/field/value walk over these
+// descriptors: present bytes first, every count checked against its declared
+// bound before anything is written, elements at their own width in the chosen
+// order. A null out means measure and validate only (§7.6's measure pass).
+pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut u8, at: i64, order: u64) -> bool {
+    for i in 0..t.num_fields as usize {
+        let f = &t.fields[i];
+        let dest = at + f.offset as i64;
+        if f.present_offset >= 0 {
+            let present = unsafe { table_cook_raw(p, f.present_offset as i64, 1) };
+            unsafe { table_cook_put(out, at + f.present_offset as i64, if present != 0 { 1 } else { 0 }, 1, order); }
+        }
+        match f.storage {
+            TableCookStorage::String | TableCookStorage::Bytes => {
+                let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) as i32 };
+                if used < 0 || used > f.array_bound {
+                    return false;
+                }
+                unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
+                for k in 0..used as i64 {
+                    let v = unsafe { table_cook_raw(p, f.offset as i64 + k, 1) };
+                    unsafe { table_cook_put(out, dest + k, v, 1, order); }
+                }
+            }
+            TableCookStorage::Record => {
+                if f.is_pointer {
+                    return false; // a pointer edge is the region writer's, not carried yet
+                }
+                let info = match f.record {
+                    Some(r) => r(),
+                    None => return false,
+                };
+                let count: i32 = if f.count_offset >= 0 {
+                    let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) as i32 };
+                    if used < 0 || used > f.array_bound {
+                        return false;
+                    }
+                    unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
+                    used
+                } else if f.is_array {
+                    f.array_bound
+                } else {
+                    1
+                };
+                for k in 0..count as i64 {
+                    let src = unsafe { p.add((f.offset as i64 + k * f.elem_size as i64) as usize) };
+                    if unsafe { !table_cook_write_record(src, info, out, dest + k * f.elem_size as i64, order) } {
+                        return false;
+                    }
+                }
+            }
+            TableCookStorage::Reference => {
+                return false; // the variable region's writer, not carried yet
+            }
+            _ => {
+                let count: i32 = if f.count_offset >= 0 {
+                    let used = unsafe { table_cook_raw(p, f.count_offset as i64, 4) as i32 };
+                    if used < 0 || used > f.array_bound {
+                        return false;
+                    }
+                    unsafe { table_cook_put(out, at + f.count_offset as i64, used as u64, 4, order); }
+                    used
+                } else if f.is_array {
+                    f.array_bound
+                } else {
+                    1
+                };
+                for k in 0..count as i64 {
+                    let v = unsafe { table_cook_raw(p, f.offset as i64 + k * f.elem_size as i64, f.elem_size as u32) };
+                    if f.storage == TableCookStorage::Bool {
+                        unsafe { table_cook_put(out, dest + k * f.elem_size as i64, if v != 0 { 1 } else { 0 }, 1, order); }
+                    } else {
+                        unsafe { table_cook_put(out, dest + k * f.elem_size as i64, v, f.elem_size as u32, order); }
+                    }
+                }
+            }
+        }
+    }
+    true
+}
+
 `
 
 // emitCookDescriptors emits one <name>_cook_info() per cookable record.
@@ -1054,17 +1373,23 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 		storage, elemSize = "TableCookStorage::Reference", 8
 	case f.Type.Pointer:
 		storage, elemSize = "TableCookStorage::Reference", 8
-		record = fmt.Sprintf("Some(%s)", fn(f.Type.Name, "cook_info"))
+		if g.cookable(f.Type.Name) {
+			record = fmt.Sprintf("Some(%s)", fn(f.Type.Name, "cook_info"))
+		}
+		if f.KeyEnum != "" || (f.Array != ir.ArrayNone && !f.IsList()) {
+			isArray = true
+			arrayBound = f.ArrayBound
+		}
 	case f.Type.Kind == ir.TString:
 		storage, elemSize, arrayBound = "TableCookStorage::String", f.Type.Size+1, f.Type.Size
 	case f.Type.Kind == ir.TBytes:
 		storage, elemSize, arrayBound, isArray = "TableCookStorage::Bytes", 1, f.Type.Size, true
 	default:
 		storage, elemSize = cookStorageOf(g.unit, f)
-		if isStruct(f) {
+		if isStruct(f) && g.cookable(f.Type.Name) {
 			record = fmt.Sprintf("Some(%s)", fn(f.Type.Name, "cook_info"))
 		}
-		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+		if f.KeyEnum != "" || (f.Array != ir.ArrayNone && !f.IsList()) {
 			isArray = true
 			arrayBound = f.ArrayBound
 		}
