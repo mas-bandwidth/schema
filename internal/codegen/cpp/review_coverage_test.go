@@ -153,7 +153,11 @@ type Guarded {
 		t.Fatal(err)
 	}
 	w := string(files["GuardedWire.h"])
-	read := w[strings.Index(w, "bool ReadGuarded("):]
+	readAt := strings.Index(w, "bool ReadGuarded(")
+	if readAt < 0 {
+		t.Fatal("GuardedWire.h carries no ReadGuarded")
+	}
+	read := w[readAt:]
 	for _, want := range []string{
 		"value.f = 0.0f;",
 		"value.d = 0.0;",
@@ -192,8 +196,12 @@ type Ranges {
 		t.Fatal(err)
 	}
 	w := string(files["RangesWire.h"])
-	write := w[strings.Index(w, "bool WriteRanges("):strings.Index(w, "bool ReadRanges(")]
-	read := w[strings.Index(w, "bool ReadRanges("):]
+	writeAt, readAt := strings.Index(w, "bool WriteRanges("), strings.Index(w, "bool ReadRanges(")
+	if writeAt < 0 || readAt < writeAt {
+		t.Fatal("RangesWire.h does not carry WriteRanges before ReadRanges")
+	}
+	write := w[writeAt:readAt]
+	read := w[readAt:]
 	for _, want := range []string{
 		"serialize_assert( int64_t( value.pinned64 ) >= int64_t( 5000000000 ) && int64_t( value.pinned64 ) <= int64_t( 5000000000 ) );",
 		"serialize_assert( value.capped <= 10000000000000000000ull );",

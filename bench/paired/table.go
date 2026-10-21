@@ -680,7 +680,7 @@ func buildAnchor(cxx string, flags []string, ser string) anchorBuild {
 	if err == nil {
 		return anchorBuild{Command: args}
 	}
-	os.Stderr.Write(output)
+	_, _ = os.Stderr.Write(output)
 	return anchorBuild{Command: args, Refusal: "does not compile: " + firstCompilerError(string(output), err)}
 }
 
@@ -1184,7 +1184,7 @@ func planReadPass(langs []string, out string, rounds int, info buildInfo, receip
 			delta := math.Abs(after[key]/start - 1)
 			board.ControlDelta = math.Max(board.ControlDelta, delta*100)
 			if delta > controlTolerance {
-				return fmt.Errorf("C++ packet control %s moved %.1f%% (> 5%%); repeat the sitting", key, delta*100)
+				return fmt.Errorf("the C++ packet control %s moved %.1f%% (> 5%%); repeat the sitting", key, delta*100)
 			}
 		}
 		if now, err := porcelain(); err != nil || now != status {

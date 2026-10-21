@@ -172,7 +172,7 @@ func TestCPPRefuseReasonEnumHoldsItsHighRangeConstants(t *testing.T) {
 	if !ok {
 		t.Fatalf("TableRefuseReason's underlying type %q is one this test cannot measure", underlying)
 	}
-	var max uint64 = ^uint64(0)
+	max := ^uint64(0)
 	if bits < 64 {
 		max = (uint64(1) << bits) - 1
 	}

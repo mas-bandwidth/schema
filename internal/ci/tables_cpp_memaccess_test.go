@@ -57,14 +57,20 @@ func memaccessOffenders(src string) []int {
 			var arg strings.Builder
 			for j := open + 1; j < len(line); j++ {
 				c := line[j]
-				if c == '(' {
+				stop := false
+				switch {
+				case c == '(':
 					depth++
-				} else if c == ')' {
+				case c == ')':
 					if depth == 0 {
-						break
+						stop = true
+					} else {
+						depth--
 					}
-					depth--
-				} else if c == ',' && depth == 0 {
+				case c == ',' && depth == 0:
+					stop = true
+				}
+				if stop {
 					break
 				}
 				arg.WriteByte(c)

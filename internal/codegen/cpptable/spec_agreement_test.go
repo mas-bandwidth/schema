@@ -126,7 +126,11 @@ table Root {
 		t.Fatal("no struct TableFieldInfo in the emitted runtime")
 	}
 	body := out[i:]
-	body = body[:strings.Index(body, "\n};")]
+	closeAt := strings.Index(body, "\n};")
+	if closeAt < 0 {
+		t.Fatal("struct TableFieldInfo has no closing brace in the emitted runtime")
+	}
+	body = body[:closeAt]
 	members := map[string]bool{}
 	for _, m := range regexp.MustCompile(`(?m)^\s+[^/\n]*?\b(\w+)\s*;`).FindAllStringSubmatch(body, -1) {
 		members[m[1]] = true
