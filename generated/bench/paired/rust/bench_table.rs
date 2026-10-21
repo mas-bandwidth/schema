@@ -565,6 +565,7 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
                     if kind != 1 { report.widened += 1; }
                     v.moving = raw != 0;
+                    if raw > 1 { report.malformed = true; }
                 } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
             }
             0x7674cfd19b9031ca => {
@@ -572,6 +573,7 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
                     if kind != 1 { report.widened += 1; }
                     v.firing = raw != 0;
+                    if raw > 1 { report.malformed = true; }
                 } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
             }
             _ => {
@@ -662,6 +664,7 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
                     if kind != 1 { report.widened += 1; }
                     v.crit = raw != 0;
+                    if raw > 1 { report.malformed = true; }
                 } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
             }
             _ => {

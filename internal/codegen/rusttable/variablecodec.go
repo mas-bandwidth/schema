@@ -791,7 +791,10 @@ func scalarReadFn(f *ir.Field) string {
 func emitScalarConvert(b *strings.Builder, f *ir.Field, dst, kvar, ind string) {
 	switch f.Type.Kind {
 	case ir.TBool:
+		// a bool byte that is neither 0 nor 1 keeps true and is MALFORMED on
+		// the tolerant read (docs/SPEC-TABLES.md §6.5), as the oracle's scalarAt
 		fmt.Fprintf(b, "%s%s = raw != 0;\n", ind, dst)
+		fmt.Fprintf(b, "%sif raw > 1 { report.malformed = true; }\n", ind)
 		return
 	case ir.TFloat32:
 		fmt.Fprintf(b, "%s%s = f32::from_bits(raw as u32);\n", ind, dst)
