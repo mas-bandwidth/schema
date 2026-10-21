@@ -216,7 +216,7 @@ table Ledger | integrity = "crc32c"
 		body = append(body, 0)
 		wire := append([]byte{1}, body...)
 		wire = append(wire, 0, 0, 0, 0, 0, 0, 0, 0)
-		binary.LittleEndian.PutUint64(wire[len(wire)-8:], uint64(id))
+		binary.LittleEndian.PutUint64(wire[len(wire)-8:], id)
 		wire = append(wire, 0, 0, 0, 0, 0, 0, 0, 0)
 		binary.LittleEndian.PutUint64(wire[len(wire)-8:], 1)
 		wire = append(wire, 0, 0, 0, 0)

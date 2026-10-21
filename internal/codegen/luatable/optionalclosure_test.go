@@ -183,7 +183,7 @@ print("json_stale=" .. hex(json.ToJson(T, "Outer", p)))
 		}
 		got[k] = v
 	}
-	hexOf := func(b []byte) string { return hex.EncodeToString(b) }
+	hexOf := hex.EncodeToString
 	checks := []struct{ key, want, what string }{
 		{"measure_absent", strconv.FormatInt(measureAbsent, 10), "LoadMeasure of the absent wire"},
 		{"measure_present", strconv.FormatInt(measurePresent, 10), "LoadMeasure of the present wire"},

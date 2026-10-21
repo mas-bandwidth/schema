@@ -150,7 +150,7 @@ func parseLuaFuzzLine(line string) (luaFuzzAnswer, error) {
 	if len(f) == 2 && f[0] == "ERR" {
 		msg, err := hex.DecodeString(f[1])
 		if err != nil {
-			return a, fmt.Errorf("probe ERR line %q: %v", line, err)
+			return a, fmt.Errorf("probe ERR line %q: %w", line, err)
 		}
 		a.raised = string(msg)
 		return a, nil

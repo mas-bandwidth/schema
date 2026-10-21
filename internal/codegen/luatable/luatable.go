@@ -243,8 +243,7 @@ func closure(u *ir.Unit) ([]*ir.Struct, []*ir.Union) {
 	structs := map[string]*ir.Struct{}
 	unions := map[string]*ir.Union{}
 	var visitField func(f *ir.Field)
-	var visit func(st *ir.Struct)
-	visit = func(st *ir.Struct) {
+	visit := func(st *ir.Struct) {
 		if st == nil || structs[st.Name] != nil {
 			return
 		}

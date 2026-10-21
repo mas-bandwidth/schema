@@ -414,14 +414,6 @@ func constructor(m *Module, decl string) string {
 	return ref[:i+1] + "New" + ref[i+1:]
 }
 
-func isClassRef(ref ir.Decl) bool {
-	switch ref.(type) {
-	case *ir.Struct, *ir.Union:
-		return true
-	}
-	return false
-}
-
 // isWide reports a 128-bit storage (docs/PORT-LUA.md, 64-BIT AND 128-BIT
 // INTEGERS): int128, uint128 and a fixed(I, F) with I+F = 128.
 func isWide(t ir.FieldType) bool {

@@ -40,13 +40,6 @@ type strictGroup struct {
 	cases []strictCase
 }
 
-func strictErrName(s string) string {
-	if i := strings.IndexByte(s, ':'); i >= 0 {
-		return s[:i]
-	}
-	return s
-}
-
 func strictLeb(n uint64) []byte {
 	var out []byte
 	for {

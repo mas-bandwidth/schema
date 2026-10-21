@@ -188,8 +188,6 @@ func emitReadItems(m *Module, items []ir.Item, ind string) {
 	}
 }
 
-func (m *Module) pf(format string, args ...any) { m.Printf(format, args...) }
-
 func emitConstItem(m *Module, item *ir.ConstItem, ind string) {
 	holder, fn := "BITS", "serializeBits"
 	if item.Bits > 32 {

@@ -81,10 +81,6 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	return Generate(u)
 }
 
-// fixedKindOptional is the ONE kind §3.4's block adds to §3's closed set: the
-// OPTIONAL WRAPPER, one child, whose size is one present byte plus the child's.
-const fixedKindOptional = 35
-
 const (
 	fixedEntryBytes   = 17
 	fixedCountBytes   = 4
@@ -232,19 +228,6 @@ func fixedElementBytesAt(f *ir.Field, depth int) int64 {
 	return fixedStorageBytes(f.Type)
 }
 
-func fixedUnionBytesAt(un *ir.Union, depth int) int64 {
-	widest := int64(0)
-	for _, v := range un.Variants {
-		if v.F == nil {
-			continue
-		}
-		if n := fixedFieldBytesAt(v.F, depth+1); n > widest {
-			widest = n
-		}
-	}
-	return int64(ir.StorageBitsFor(un.Max)/8) + widest
-}
-
 // fixedRefusal names a construct the fixed form (docs/SPEC-TABLES.md §3.4)
 // refuses, as `Table.field: construct (cite)` (mirrors jstable/fixedjs.go's
 // fixedRefusal, the JS leg's own boundary list).
@@ -271,8 +254,7 @@ func fixedFieldRefusal(st *ir.Struct, f *ir.Field) string {
 	case f.Type.Kind == ir.TInt && f.Type.Width == 128:
 		return ": an int128 (docs/SPEC-TABLES.md §3) is not fixed"
 	case f.Type.Kind == ir.TNamed:
-		switch r := f.Type.Ref.(type) {
-		case *ir.Union:
+		if r, ok := f.Type.Ref.(*ir.Union); ok {
 			for _, v := range r.Variants {
 				if v.F != nil && v.F.Type.Kind == ir.TFixed {
 					return ": a union arm holding a fixed/ufixed (docs/SPEC-TABLES.md §15) is not fixed"

@@ -137,7 +137,11 @@ func TestLuaNightlyFuzzLane(t *testing.T) {
 	}
 	// The heavy run is guarded by the schedule/dispatch condition; the push
 	// lane must not invoke it.
-	nightly := wf[strings.Index(wf, "  nightly:"):]
+	at := strings.Index(wf, "  nightly:")
+	if at < 0 {
+		t.Fatal("the lua fuzz workflow has no nightly job")
+	}
+	nightly := wf[at:]
 	if !strings.Contains(nightly, "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'") {
 		t.Error("the nightly job is not guarded by schedule/workflow_dispatch")
 	}

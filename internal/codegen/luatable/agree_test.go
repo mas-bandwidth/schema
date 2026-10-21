@@ -81,7 +81,7 @@ func agParseLine(line string) (agAnswer, error) {
 	n := []*int{&a.counts.unknown, &a.counts.kindMismatch, &a.counts.widened, &a.counts.clamped, &a.counts.duplicate}
 	for i, p := range n {
 		if _, err := fmt.Sscanf(f[1+i], "%d", p); err != nil {
-			return a, fmt.Errorf("probe line %q field %d: %v", line, 1+i, err)
+			return a, fmt.Errorf("probe line %q field %d: %w", line, 1+i, err)
 		}
 	}
 	a.counts.malformed = f[6] == "true"
@@ -92,7 +92,7 @@ func agParseLine(line string) (agAnswer, error) {
 	}
 	s, err := hex.DecodeString(f[8])
 	if err != nil {
-		return a, fmt.Errorf("probe line %q saved bytes: %v", line, err)
+		return a, fmt.Errorf("probe line %q saved bytes: %w", line, err)
 	}
 	a.saved = s
 	return a, nil
