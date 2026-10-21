@@ -248,7 +248,7 @@ func blockBuildMatchesTheGoBuilderOverBlockdemo(t *testing.T) {
 	dartProbe.WriteString("import 'dart:typed_data';\n")
 	roots := []string{"PaddedFrame", "RenderFrame"}
 	for _, root := range roots {
-		dartProbe.WriteString(fmt.Sprintf("import '%sBlock.dart' as %s;\n", u.DeclFile[root], strings.ToLower(root)))
+		fmt.Fprintf(&dartProbe, "import '%sBlock.dart' as %s;\n", u.DeclFile[root], strings.ToLower(root))
 	}
 	dartProbe.WriteString("String hex(Uint8List b, int n) => b.take(n).map((v) => v.toRadixString(16).padLeft(2, '0')).join();\nvoid main() {\n")
 	for _, root := range roots {
@@ -262,12 +262,12 @@ func blockBuildMatchesTheGoBuilderOverBlockdemo(t *testing.T) {
 			goCounts = append(goCounts, fmt.Sprintf("%s:%d", ir.GoExportName(a.Field.Name), count))
 			dartCounts = append(dartCounts, fmt.Sprintf("%sCount: %d", dartName(a.Field.Name), count))
 		}
-		goProbe.WriteString(fmt.Sprintf(" {var s %sBlockStorage;if !s.Create(TableBlockAllocator{Alloc:func(n int64)[]byte{return bytes.Repeat([]byte{0xa5},int(n))},Free:func([]byte){}}){t.Fatal(\"create\")};defer s.Destroy()\n", root))
-		goProbe.WriteString(fmt.Sprintf("  var b %sBlock;if !%sBlockBegin(&b,&s,%sCounts{%s},nil){t.Fatal(\"begin\")}\n", root, root, root, strings.Join(goCounts, ",")))
-		goProbe.WriteString(fmt.Sprintf("  fmt.Printf(\"%s %%x\\n\",unsafe.Slice((*byte)(b.Base),b.Bytes))}\n", root))
-		dartProbe.WriteString(fmt.Sprintf("  {\n    final bytes = Uint8List(%s.%sBlock.blockMaxBytes)..fillRange(0, %s.%sBlock.blockMaxBytes, 0xa5);\n", strings.ToLower(root), root, strings.ToLower(root), root))
-		dartProbe.WriteString(fmt.Sprintf("    final b = %s.%sBlock.begin(bytes, 0, %s)!;\n", strings.ToLower(root), root, strings.Join(dartCounts, ", ")))
-		dartProbe.WriteString(fmt.Sprintf("    print('%s ${hex(bytes, b.length)}');\n  }\n", root))
+		fmt.Fprintf(&goProbe, " {var s %sBlockStorage;if !s.Create(TableBlockAllocator{Alloc:func(n int64)[]byte{return bytes.Repeat([]byte{0xa5},int(n))},Free:func([]byte){}}){t.Fatal(\"create\")};defer s.Destroy()\n", root)
+		fmt.Fprintf(&goProbe, "  var b %sBlock;if !%sBlockBegin(&b,&s,%sCounts{%s},nil){t.Fatal(\"begin\")}\n", root, root, root, strings.Join(goCounts, ","))
+		fmt.Fprintf(&goProbe, "  fmt.Printf(\"%s %%x\\n\",unsafe.Slice((*byte)(b.Base),b.Bytes))}\n", root)
+		fmt.Fprintf(&dartProbe, "  {\n    final bytes = Uint8List(%s.%sBlock.blockMaxBytes)..fillRange(0, %s.%sBlock.blockMaxBytes, 0xa5);\n", strings.ToLower(root), root, strings.ToLower(root), root)
+		fmt.Fprintf(&dartProbe, "    final b = %s.%sBlock.begin(bytes, 0, %s)!;\n", strings.ToLower(root), root, strings.Join(dartCounts, ", "))
+		fmt.Fprintf(&dartProbe, "    print('%s ${hex(bytes, b.length)}');\n  }\n", root)
 	}
 	goProbe.WriteString("}\n")
 	dartProbe.WriteString("}\n")

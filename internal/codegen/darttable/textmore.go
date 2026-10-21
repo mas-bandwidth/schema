@@ -49,26 +49,6 @@ func flagsRef(f *ir.Field) *ir.Flags {
 
 func flagsFn(fl *ir.Flags, what string) string { return "_" + dartName(fl.Name) + what }
 
-// unitHasWide reports whether any closure field or arm is a wide scalar, which
-// is when the exact decoder is owed (§16.2).
-func (g *wireGen) unitHasWide() bool {
-	for _, st := range g.closure {
-		for _, f := range st.Fields {
-			if isWide(f) {
-				return true
-			}
-		}
-	}
-	for _, un := range g.closureUnions() {
-		for _, arm := range un.Variants {
-			if !arm.Void() && isWide(arm.F) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // textFlags is every flags set a closure field or arm names.
 func (g *wireGen) textFlags() []*ir.Flags {
 	seen := map[string]bool{}

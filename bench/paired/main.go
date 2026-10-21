@@ -552,7 +552,7 @@ func corpusID(wire string) (string, error) {
 
 // corpusPaths maps the basename a runner hashes to the file it loads, for one
 // wire. The read arm (-mode plan-read) loads BOTH wires' files in one
-// invocation and hashes their union (readArmCorpusID), so its id differs from
+// invocation and hashes their union (corpusIDOf over readArmCorpusPaths), so its id differs from
 // either wire's by §1.6's own definition and its rows are never divisible
 // against a row of an ordinary pass.
 func corpusPaths(wire string) map[string]string {

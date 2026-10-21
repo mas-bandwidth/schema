@@ -103,7 +103,6 @@ func assertNoUnusedShownName(t *testing.T, src, lib string) {
 const declFinalN = `\bfinal n =`
 
 var finalNRe = regexp.MustCompile(declFinalN)
-var wordNRe = regexp.MustCompile(`\bn\b`)
 
 // isIdent reports whether a byte can sit inside a Dart identifier.
 func isIdent(b byte) bool {

@@ -894,7 +894,7 @@ func messageElementRunBits(kind uint8, shape ir.TableMessageShape) int64 {
 	if shape.Inner != nil {
 		inner = *shape.Inner
 	}
-	return int64(ir.TableMessageValueBits(shape.Elem, inner))
+	return ir.TableMessageValueBits(shape.Elem, inner)
 }
 
 // emitMessageDropElement reads one array element past the reader's own bound

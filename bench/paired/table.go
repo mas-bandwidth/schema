@@ -740,12 +740,6 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
-// readArmCorpusID is the id the read arm's rows must carry: both wires' files,
-// hashed as one corpus, because ONE invocation loaded them all.
-func readArmCorpusID() (string, error) {
-	return corpusIDOf(readArmCorpusPaths(false))
-}
-
 // readArmCorpusPaths is the read arm's corpus; the plan build also loads the
 // lineage pair, so its ONE id covers all three lanes' files.
 func readArmCorpusPaths(plan bool) map[string]string {
@@ -777,7 +771,7 @@ func buildAnchor(cxx string, flags []string, ser string) anchorBuild {
 	if err == nil {
 		return anchorBuild{Command: args}
 	}
-	os.Stderr.Write(output)
+	_, _ = os.Stderr.Write(output)
 	return anchorBuild{Command: args, Refusal: "does not compile: " + firstCompilerError(string(output), err)}
 }
 
@@ -1128,11 +1122,12 @@ func (b readArmBoard) markdown() string {
 		fmt.Fprintf(&w, "# bytes_per_op: fixed %.1f B/record, packet %.0f B/record (§5.3 rule 2 — the division is this driver's alone)\n", b.FixedBytes, b.PacketBytes)
 	}
 	w.WriteString("# checks: table=contract, packet C/C++/C#=removed, packet Go=always (§1.9)\n")
-	if leg != "cpp" {
+	switch {
+	case leg != "cpp":
 		fmt.Fprintf(&w, "# anchor: none for %s (SPEC-TABLES §3.4's straight-line reference, %s, is the C++ leg's alone)\n", legTitle(leg), anchorSource)
-	} else if b.Anchor.Refusal != "" {
+	case b.Anchor.Refusal != "":
 		fmt.Fprintf(&w, "# C++ anchor: — %s %s  (bound %.1fx, SPEC-TABLES §3.4)\n", anchorSource, b.Anchor.Refusal, anchorBound)
-	} else {
+	default:
 		fmt.Fprintf(&w, "# C++ anchor: identity %.1f ns/record / straight-line %.1f = %.2fx  (bound %.1fx, SPEC-TABLES §3.4)  %s\n", b.Anchor.Identity.BestNs, b.Anchor.StraightLine.BestNs, b.Anchor.Ratio, anchorBound, b.Anchor.Verdict)
 	}
 	w.WriteString("\nleg      identity read    plan read    packet read    GATE identity  GATE plan    plan/identity\n")
@@ -1239,16 +1234,11 @@ func porcelain() (string, error) {
 	return string(b), nil
 }
 
-// planReadPass is the whole of `-mode plan-read`: gate, window, control,
-// rounds, control, verdicts, board.
-func planReadPass(langs []string, out string, rounds int, info buildInfo, receipt string) (resultErr error) {
-	return planReadPassOn(langs, out, rounds, info, receipt, "")
-}
-
 // readArmLegs are the legs whose runner carries `--read-arm` on this tree.
 var readArmLegs = []string{"cpp", "dart"}
 
-// planReadPassOn is planReadPass with the sitting's pinned core recorded.
+// planReadPassOn is the whole of `-mode plan-read`: gate, window, control,
+// rounds, control, verdicts, board, with the sitting's pinned core recorded.
 func planReadPassOn(langs []string, out string, rounds int, info buildInfo, receipt, lane string) (resultErr error) {
 	if len(langs) != 1 || !contains(readArmLegs, langs[0]) {
 		return errors.New("plan-read measures ONE leg per sitting, and only a leg whose runner has a read arm (-langs cpp or -langs dart)")

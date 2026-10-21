@@ -132,7 +132,7 @@ func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
 	// when every arm is: an arm is a field line, judged by these same rules.
 	if un := unionRef(f); un != nil {
 		// a fixed positional array of unions rides too, every slot (§3)
-		if f.Array != ir.ArrayNone && !f.CountedOnWire() && !(f.Array == ir.ArrayFixed && f.KeyEnum == "") {
+		if f.Array != ir.ArrayNone && !f.CountedOnWire() && (f.Array != ir.ArrayFixed || f.KeyEnum != "") {
 			return false
 		}
 		return cardWireUnionSeen(un, seen)

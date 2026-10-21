@@ -690,7 +690,7 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 			}
 			stride := ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / maxInt64(f.ArrayBound, 1)
 			if f.Array == ir.ArrayCounted {
-				stride = ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / maxInt64(int64(f.ArrayBound), 1)
+				stride = ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / maxInt64(f.ArrayBound, 1)
 			}
 			g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, limit)
 			if write {
@@ -709,7 +709,7 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 	}
 }
 
-// the two walk-state locals a record body may read
+// the two walk-state locals a record body may read.
 var (
 	cookUsesOut   = regexp.MustCompile(`\bout\b`)
 	cookUsesOrder = regexp.MustCompile(`\border\b`)

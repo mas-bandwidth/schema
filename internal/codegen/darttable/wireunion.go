@@ -445,14 +445,14 @@ func armWidens(arm ir.UnionVariant) []int {
 		return nil
 	}
 	f := arm.F
-	switch {
-	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
+	switch f.Type.Kind {
+	case ir.TInt, ir.TBits:
 		var out []int
 		for _, w := range widenKinds(ir.TableWireScalarKind(f), f.Type.Kind == ir.TInt && f.Type.Signed) {
 			out = append(out, w.k)
 		}
 		return out
-	case f.Type.Kind == ir.TFloat64:
+	case ir.TFloat64:
 		return []int{wireKindF32}
 	}
 	return nil

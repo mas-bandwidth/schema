@@ -30,8 +30,8 @@ func TestSkipKindStepsEveryScalarAtItsWidth(t *testing.T) {
 	if src == "" {
 		t.Fatal("no generated library defines skipKind")
 	}
-	body := src[strings.Index(src, "bool skipKind(int kind) {"):]
-	body = body[:strings.Index(body, "\n  }\n")]
+	_, body, _ := strings.Cut(src, "bool skipKind(int kind) {")
+	body, _, _ = strings.Cut(body, "\n  }\n")
 	for kind := 1; kind < 64; kind++ {
 		w := ir.TableKindWidth(kind)
 		if w == 0 || kind == ir.TableKindPointer {

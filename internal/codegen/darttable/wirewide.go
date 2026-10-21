@@ -26,7 +26,7 @@ import (
 // isWide reports whether a field (or one element of an array field) rides
 // under one of the wide kinds 18–29 (docs/SPEC-TABLES.md §3, §15).
 func isWide(f *ir.Field) bool {
-	if f.Type.Kind != ir.TFixed && !(f.Type.Kind == ir.TInt && f.Type.Width == 128) {
+	if f.Type.Kind != ir.TFixed && (f.Type.Kind != ir.TInt || f.Type.Width != 128) {
 		return false
 	}
 	return ir.TableKindWide(ir.TableScalarKind(singleOf(f)))
