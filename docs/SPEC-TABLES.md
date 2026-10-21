@@ -579,23 +579,33 @@ Four spellings are Dart's own and the reason is at each site.
   currency is the `Uint8List`: a multi-byte scalar is assembled from bytes
   rather than read through a `ByteData`, because a `ByteData` is a second
   object describing the same memory — two arguments for one fact, or an
-  allocation to derive one from the other. A caller that owns a reader, a
-  writer and a report allocates NOTHING per record under `dart compile` — the
-  language's release configuration and the one a shipping consumer runs — and
-  that is MEASURED rather than claimed: `make tables-dart-alloc` counts the
-  VM's own new-space scavenges over a steady phase of load, measure and save
-  across the conformance corpus and holds the count at zero under an AOT
-  snapshot, with a planted allocation per record as the control that turns
-  it red. Under the JIT the same instrument prints its count beside AOT's and
-  does not gate on it, because what the JIT boxes is the inliner's decision
-  and not the codec's: a `double` crossing a conversion call the inlining
-  budget left out of line is boxed, and where the budget runs out depends on
-  the loop around the codec — one boxed double per pass of the eight-record
-  corpus on the wire phase as measured, up to three per record with one codec
-  inlined into a monomorphic caller. Two further costs are the JIT's and never
-  AOT's: a `float32` carrying a NaN with a payload costs one boxed double, and
-  a 64-bit integer field holding a value outside ±2⁶² costs one boxed integer
-  per read.
+  allocation to derive one from the other. A caller that owns its record,
+  plan, buffer, cursor and report allocates NOTHING per record on the fixed-form,
+  block and cook paths under `dart compile` — the language's release
+  configuration and the one a shipping consumer runs — and that is MEASURED
+  rather than claimed: `make tables-dart-alloc` (`test/dart-tables/gcgate.dart`)
+  counts the VM's own new-space scavenges over a steady phase of form-3 load,
+  measure and save (`FX1` and `tables/examples`), block row walks and cook root
+  and pointer walks, holds the count at zero under an AOT snapshot on the
+  pinned Dart SDK 3.13.2 (`tables-dart-alloc-runtime-negative-control` refuses
+  to certify on any other version; `SCHEMA_DART_ALLOC_ANY_SDK=1` reports
+  without certifying), and requires one planted allocation per record to turn
+  its row red while the neighbour row stays green
+  (`tables-dart-alloc-negative-control`). The variable-class `Card` wire row
+  (`cardWireLoad` and `cardWireSave`, which return a freshly allocated `Card`
+  tree and `Uint8List` per call rather than taking caller-owned scratch) and the
+  JIT counts are printed beside AOT's and not gated, because what the JIT boxes
+  is the inliner's decision and not the codec's: a `double` crossing a
+  conversion call the inlining budget left out of line is boxed, and where the
+  budget runs out depends on the loop around the codec. So no generated Dart
+  body calls a float32 conversion (issue 404, PORTING M3): the packet, block
+  and message emitters spell it at each assignment through the typed-data
+  views, NaN payloads narrowed and widened in software as before, and `make tables-dart-float-jit` holds the packet codec at zero steady JIT scavenges
+  on the pinned SDK 3.13.2 — measured at 76 per 2,000,000 passes of five
+  float32 and three float64 fields with the helpers, from one caller or two,
+  and 0 hand-inlined. Two further costs are the JIT's and never AOT's: a
+  `float32` carrying a NaN with a payload costs one boxed double, and a 64-bit
+  integer field holding a value outside ±2⁶² costs one boxed integer per read.
 - **THE VERBS ARE MEMBERS OF THE VALUE** — `config.measure()`,
   `config.save(out)`, `config.load(bytes, report)`, `loadBody`, `saveBody`,
   `reset`, `fromJson`, `toJson`, `toJsonMeasure` — methods on a table's own
@@ -11065,6 +11075,23 @@ the wire, and keeps the flexibility that comes with it.
   | the descriptors | `XCook::Type()` | `XCook.Type` | `cook.Type() *TableCookInfo` | `XCook.Type` | `XCook.type`, a `const TableCookInfo` |
   | §7.1's facts | `XCook::RegionAlignment` etc. | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them; `RegionAlignment()` is the UNIT's ceiling, the max over every cook closure, and not the opened file's per-region header word | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
 
+  **A MAP FIELD IS READ AS ITS ENTRIES, in every column** (§2.8, §7.2): the
+  slot is the delta and the count, and a cooked holder exposes the count, the
+  entry at an index in ascending key order, and `Find`. Go spells them
+  `row.F.Count`, `row.F.At(i)` and `XFFind(nil, &row.F, key)`. Dart has no
+  struct and no pointer to a scalar, so its row carries three members per map
+  field instead: `fCount` (0 for an absent or an empty map, and 0 for a slot
+  whose array would leave the view, since a Dart read past it would throw
+  rather than refuse), `fAt(index, into)`, which moves a lent `<Entry>Row`
+  cursor, and `fFind(key, into)`, the same binary search, which moves the
+  cursor onto the entry, or answers null. The handle is the ENTRY in every
+  case and the value is read through it. An integer key is a Dart `int`
+  compared at the key's own signedness (a `uint64` with its sign bit flipped);
+  a `string(N)` key is its UTF-8 bytes, a `List<int>`, ordered bytewise over
+  the used length with the shorter first, which is the order the cook was
+  written in. The entry's cursor is emitted with the holder's library, and it
+  is a cursor only: an entry has no `Open` and no `Cook` (below).
+
   **THE GENERATED STRUCT IS THE COOKED RECORD**, and the backend asserts it
   rather than assuming it: every record a unit's files declare carries
   `static_assert`s on its `sizeof`, its `alignof` and every field's `offsetof`
@@ -13971,13 +13998,14 @@ in build version (§20.5).
     text form (schema#515), so there is no wire runtime module for a
     declaration to collide with.
 
-    **DART ADDS SIX, WIDENS SEVEN, AND CLAIMS TWELVE VERBS AGAINST FIELD
+    **DART ADDS SEVEN, WIDENS SEVEN, AND CLAIMS TWELVE VERBS AGAINST FIELD
     NAMES.** A Dart library is a file and its privacy is per library, so a
     runtime shared across a unit's files is PUBLIC, and every spelling of it
     is claimed: `TableEnumVocab` (the per-enum vocabularies are its static
     members, so one claim covers every enum), `TableScratch` (the float
     conversion scratch), `TableNarrowFloat`, `TableUnsignedLess`,
-    `TableCookRef` (the bounded deref's answers, §7) and `TableBuildVersion`
+    `TableCookRef` (the bounded deref's answers, §7), `TableCookWriteReport`
+    (the cook writer's named refusal, §7.6) and `TableBuildVersion`
     — the last is the page's `BuildVersion` in Dart's spelling, since a
     library-scope constant carries the runtime's prefix. Seven are widened to
     Dart: `TableJson`, the four bits/float pairs (`TableBitsToFloat`,
@@ -15548,10 +15576,11 @@ FLT_MAX into an infinity the walk then counts as the wrong shape. That case has
 a name in the corpus: `num-float32-upper-band`.
 
 The price is stated rather than hidden: those are the Dart walk's allocations,
-and they are per FLOAT and per NUMBER TOKEN rather than per field. The WIRE
-path allocates nothing at all under AOT, which `make tables-dart-alloc`
-measures at zero scavenges; the same instrument prints the JIT's count and
-the text walk's count beside it, priced rather than gated.
+and they are per FLOAT and per NUMBER TOKEN rather than per field. The
+caller-owned fixed-form, block and cook paths allocate nothing at all under AOT
+on the pinned Dart SDK 3.13.2, which `make tables-dart-alloc` measures at zero
+scavenges; the same instrument prints the JIT counts and the variable-class
+`Card` wire row's count beside them, priced rather than gated.
 
 **The JavaScript walk is NOT `JSON.parse`/`JSON.stringify`, and could not be.**
 This section's clamping, counting, duplicate-key and trailing-comma rules ARE

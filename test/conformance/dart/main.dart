@@ -10,6 +10,7 @@
 // The working directory is the repository root, which is the contract: every
 // path in the manifest is repo-relative, so this driver never resolves one.
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -19,6 +20,41 @@ import '../../../build/tables-generated-dart/block/RenderBlock.dart' as blk;
 import '../../../build/tables-generated-dart/cards/CardsWire.dart';
 import '../../../build/tables-generated-dart/pointers/GraphdemoCook.dart';
 import '../../../build/tables-generated-dart/pointers/GraphCook.dart' as ck;
+import '../../../build/tables-generated-dart/pointers/GraphdemoWire.dart' as graphdemo;
+import '../../../build/tables-generated-dart/blobs/BlobdemoWire.dart' as blobdemo;
+import '../../../build/tables-generated-dart/blobs/AssetsCook.dart' as assets;
+import '../../../build/tables-generated-dart/lists/ListdemoWire.dart' as listdemo;
+import '../../../build/tables-generated-dart/maps/MapdemoWire.dart' as mapdemo;
+import '../../../build/tables-generated-dart/messages/MessagedemoWire.dart' as messagedemo;
+import '../../../build/tables-generated-dart/backend/BackenddemoWire.dart' as backenddemo;
+import '../../../build/tables-generated-dart/stream/StreamdemoWire.dart' as streamdemo;
+import '../../../build/tables-generated-dart/examples/TabledemoWire.dart' as tabledemo;
+import '../../../build/tables-generated-dart/vocab/VocabdemoWire.dart' as vocabdemo;
+import '../../../build/tables-generated-dart/vocab9/Vocab9demoWire.dart' as vocab9demo;
+import '../../../build/tables-generated-dart-scalars/scalars/ScalardemoWire.dart' as scalardemo;
+import '../../../build/tables-generated-dart/wide/WideWire.dart' as widedemo;
+import '../../../build/tables-generated-dart/v1/Tblv1Wire.dart' as tblv1;
+import '../../../build/tables-generated-dart/v2/Tblv2Wire.dart' as tblv2;
+import '../../../build/tables-generated-dart/w1/Tblw1Wire.dart' as tblw1;
+import '../../../build/tables-generated-dart/w2/Tblw2Wire.dart' as tblw2;
+import '../../../build/tables-generated-dart/r1/Tblr1Wire.dart' as tblr1;
+import '../../../build/tables-generated-dart/r2/Tblr2Wire.dart' as tblr2;
+import '../../../build/tables-generated-dart/backend/BackenddemoFixed.dart' as backenddemo_fixed;
+import '../../../build/tables-generated-dart/backend/BackendFixed.dart' as backend;
+import '../../../build/tables-generated-dart/vocab/VocabdemoFixed.dart' as vocabdemo_fixed;
+import '../../../build/tables-generated-dart/vocab/VocabFixed.dart' as vocab;
+import '../../../build/tables-generated-dart/vocab9/Vocab9demoFixed.dart' as vocab9demo_fixed;
+import '../../../build/tables-generated-dart/vocab9/Vocab9Fixed.dart' as vocab9;
+import '../../../build/tables-generated-dart/g1/Tblg1Wire.dart' as tblg1;
+import '../../../build/tables-generated-dart/m1/Tblm1Wire.dart' as tblm1;
+import '../../../build/tables-generated-dart/m2/Tblm2Wire.dart' as tblm2;
+import '../../../build/tables-generated-dart/p1/Tblp1Wire.dart' as tblp1;
+import '../../../build/tables-generated-dart/p3/Tblp3Wire.dart' as tblp3;
+import '../../../build/tables-generated-dart/p2/Tblp2Wire.dart' as tblp2;
+import '../../../build/tables-generated-dart/k1/Tblk1Wire.dart' as tblk1;
+import '../../../build/tables-generated-dart/k2/Tblk2Wire.dart' as tblk2;
+import '../../../build/tables-generated-dart/a2/Tbla2Wire.dart' as tbla2;
+import '../../../build/tables-generated-dart-scalars/scalars2/Scalardemo2Wire.dart' as scalardemo2;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -47,18 +83,28 @@ Uint8List blockBuffer(Uint8List image, int extent, int pointer) {
   return buffer;
 }
 
-String openBlock(String name, Uint8List image, int extent, int pointer) {
-  if (pointer < 0) {
-    return 'refuse\n'; // no buffer at all
-  }
+String openBlock(
+  String name,
+  Uint8List image,
+  int extent,
+  int pointer, {
+  bool reasons = false,
+}) {
   final claim = extent < 0 ? image.length : extent;
-  final buffer = blockBuffer(image, extent, pointer);
-  final Object? block = name.startsWith('block_render')
-      ? blk.RenderFrameBlock.open(buffer, pointer, claim)
+  // no buffer at all: the null the reason surface hands the reader as is
+  final buffer = pointer < 0 ? null : blockBuffer(image, extent, pointer);
+  final base = pointer < 0 ? 0 : pointer;
+  final (Object?, Object) opened = name.startsWith('block_render')
+      ? blk.RenderFrameBlock.openWithReason(buffer, base, claim)
       : name.startsWith('block_padded')
-      ? blk.PaddedFrameBlock.open(buffer, pointer, claim)
+      ? blk.PaddedFrameBlock.openWithReason(buffer, base, claim)
       : throw StateError('driver: no block named $name');
-  return block == null ? 'refuse\n' : 'open\n';
+  if (reasons) {
+    // THE REASON BESIDE THE FALSE (docs/SPEC-TABLES.md §19.2): the enum's own
+    // word, `ok` when it opened (test/conformance/README.md, block-reason)
+    return '${opened.$2}\n';
+  }
+  return opened.$1 == null ? 'refuse\n' : 'open\n';
 }
 
 int surfaceBlock(String outDir) {
@@ -348,18 +394,28 @@ int cookAlignment(Uint8List source) {
   return (buffer, base, bytes);
 }
 
-Object? openCookAt(String root, Uint8List? buffer, int base, int bytes) {
+Object? openCookAt(String root, Uint8List? buffer, int base, int bytes) =>
+    openCookAtReason(root, buffer, base, bytes).$1;
+
+// openCookAtReason is the cook's Open with the FIRST failing clause beside the
+// null (docs/SPEC-TABLES.md §7), the reference leg's word for it.
+(Object?, Object) openCookAtReason(
+  String root,
+  Uint8List? buffer,
+  int base,
+  int bytes,
+) {
   switch (root) {
     case 'Scene':
-      return ck.SceneCook.open(buffer, base, bytes);
+      return ck.SceneCook.openWithReason(buffer, base, bytes);
     case 'Depot':
-      return ck.DepotCook.open(buffer, base, bytes);
+      return ck.DepotCook.openWithReason(buffer, base, bytes);
     case 'Album':
-      return ck.AlbumCook.open(buffer, base, bytes);
+      return ck.AlbumCook.openWithReason(buffer, base, bytes);
     case 'TreeNode':
-      return ck.TreeNodeCook.open(buffer, base, bytes);
+      return ck.TreeNodeCook.openWithReason(buffer, base, bytes);
     case 'ListNode':
-      return ck.ListNodeCook.open(buffer, base, bytes);
+      return ck.ListNodeCook.openWithReason(buffer, base, bytes);
   }
   throw StateError('driver: no cook root named $root');
 }
@@ -406,11 +462,50 @@ String openCookForged(
   Uint8List data,
   int extent,
   int lead,
-  bool nil,
-) {
+  bool nil, {
+  bool reasons = false,
+}) {
   final (buffer, base, bytes) = place(data, extent, lead, cookAlignment(data));
-  final opened = openCookAt(root, nil ? null : buffer, base, bytes);
-  return opened == null ? 'refuse\n' : 'open\n';
+  final opened = openCookAtReason(root, nil ? null : buffer, base, bytes);
+  if (reasons) {
+    // THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §7): the enum's own
+    // word, `ok` when it opened (test/conformance/README.md, cook-reason)
+    return '${opened.$2}\n';
+  }
+  return opened.$1 == null ? 'refuse\n' : 'open\n';
+}
+
+// forgeryLine finds the `forgery` row a `refusal` row names: the refusal
+// carries the forgery's name and kind, and the bytes, extent and base are the
+// forgery's own (testdata/conformance/tables/FORMAT.md).
+List<String> forgeryLine(String name) =>
+    kind('forgery').firstWhere((f) => f[1] == name);
+
+// cook-reason and block-reason: one word per `refusal` row of the kind, the
+// first failing clause as the reference leg's TableRefuseReason spells it
+// (docs/SPEC-TABLES.md §7, §19.2; internal/codegen/gotable/refusal.go).
+int surfaceReason(String outDir, String want) {
+  for (final r in kind('refusal')) {
+    if (r[2] != want) {
+      continue;
+    }
+    final f = forgeryLine(r[1]);
+    final data = File(f[4]).readAsBytesSync();
+    final extent = int.parse(f[5]);
+    final pointer = f[6] == 'null' ? -1 : int.parse(f[6]);
+    final answer = want == 'cook'
+        ? openCookForged(
+            f[3],
+            data,
+            extent,
+            pointer < 0 ? 0 : pointer,
+            pointer < 0,
+            reasons: true,
+          )
+        : openBlock(f[3], data, extent, pointer, reasons: true);
+    File('$outDir/${r[1]}').writeAsStringSync(answer);
+  }
+  return 0;
 }
 
 int surfaceCookForgery(String outDir) {
@@ -648,13 +743,956 @@ int surfaceCook(String outDir) {
   return 0;
 }
 
+// A row this leg cannot carry writes <case>.absent (test/conformance/README.md).
+// graphdemo, blobdemo and listdemo answer wire, json-read, json-write and
+// report for the roots the variable class carries. mapdemo, messagedemo,
+// scalars and widedemo answer the same four for every root: maps, unions and
+// their arrays, keyed and fixed arrays, optionals, flags, wstring and the wide
+// scalars on form 1 and in the text (docs/SPEC-TABLES.md §2.3, §2.6, §2.8, §3,
+// §15, §16). The V, W and R evolution units answer wire and report on form 1;
+// W1/W2 also exercise default-bearing text round trips.
+// Other unsupported rows stay absent. no-text rows are not asked for a text.
+bool noTextRow(List<String> f) => f.length > 5 && f[5] == 'no-text';
+
+void spillAbsent(String outDir, String name) {
+  File('$outDir/$name.absent').writeAsBytesSync(<int>[]);
+}
+
+String _reportLine(int unknown, int kind, int widened, int clamped, int duplicate, bool malformed, bool refused) {
+  final m = malformed ? 'true' : 'false';
+  final v = refused ? 'refused' : 'read';
+  return '$unknown,$kind,$widened,$clamped,$duplicate,$m,$v\n';
+}
+
+Uint8List? wireResave(String unit, String root, Uint8List wire) {
+  switch ('$unit $root') {
+    case 'tblv1 Cfg':
+      return tblv1.cfgWireSave(tblv1.cfgWireLoad(wire));
+    case 'tblv2 Cfg':
+      return tblv2.cfgWireSave(tblv2.cfgWireLoad(wire));
+    case 'tblw1 Fleet':
+      return tblw1.fleetWireSave(tblw1.fleetWireLoad(wire));
+    case 'tblw2 Fleet':
+      return tblw2.fleetWireSave(tblw2.fleetWireLoad(wire));
+    case 'tblr1 Cfg':
+      return tblr1.cfgWireSave(tblr1.cfgWireLoad(wire));
+    case 'tblr2 Cfg':
+      return tblr2.cfgWireSave(tblr2.cfgWireLoad(wire));
+    case 'graphdemo Scene':
+      return graphdemo.sceneWireSave(graphdemo.sceneWireLoad(wire));
+    case 'blobdemo Catalog':
+      return blobdemo.catalogWireSave(blobdemo.catalogWireLoad(wire));
+    case 'listdemo Save':
+      return listdemo.saveWireSave(listdemo.saveWireLoad(wire));
+    case 'listdemo Album':
+      return listdemo.albumWireSave(listdemo.albumWireLoad(wire));
+    case 'listdemo Sheet':
+      return listdemo.sheetWireSave(listdemo.sheetWireLoad(wire));
+    case 'listdemo Unbounded':
+      return listdemo.unboundedWireSave(listdemo.unboundedWireLoad(wire));
+    case 'mapdemo Cells':
+      return mapdemo.cellsWireSave(mapdemo.cellsWireLoad(wire));
+    case 'mapdemo Chunks':
+      return mapdemo.chunksWireSave(mapdemo.chunksWireLoad(wire));
+    case 'mapdemo Crews':
+      return mapdemo.crewsWireSave(mapdemo.crewsWireLoad(wire));
+    case 'mapdemo Depth':
+      return mapdemo.depthWireSave(mapdemo.depthWireLoad(wire));
+    case 'mapdemo Docs':
+      return mapdemo.docsWireSave(mapdemo.docsWireLoad(wire));
+    case 'mapdemo Fleet':
+      return mapdemo.fleetWireSave(mapdemo.fleetWireLoad(wire));
+    case 'mapdemo Pairs':
+      return mapdemo.pairsWireSave(mapdemo.pairsWireLoad(wire));
+    case 'mapdemo Runs':
+      return mapdemo.runsWireSave(mapdemo.runsWireLoad(wire));
+    case 'mapdemo Slots':
+      return mapdemo.slotsWireSave(mapdemo.slotsWireLoad(wire));
+    case 'mapdemo Spans':
+      return mapdemo.spansWireSave(mapdemo.spansWireLoad(wire));
+    case 'mapdemo Text':
+      return mapdemo.textWireSave(mapdemo.textWireLoad(wire));
+    case 'mapdemo Trails':
+      return mapdemo.trailsWireSave(mapdemo.trailsWireLoad(wire));
+    case 'messagedemo ToolMessage':
+      return messagedemo.toolMessageWireSave(messagedemo.toolMessageWireLoad(wire));
+    case 'scalars SimState':
+      return scalardemo.simStateWireSave(scalardemo.simStateWireLoad(wire));
+    case 'widedemo Caption':
+      return widedemo.captionWireSave(widedemo.captionWireLoad(wire));
+    case 'widedemo Stamp':
+      return widedemo.stampWireSave(widedemo.stampWireLoad(wire));
+  }
+  return null;
+}
+
+Uint8List? jsonReadSave(String unit, String root, String text) {
+  switch ('$unit $root') {
+    case 'tblw1 Fleet':
+      return tblw1.fleetWireSave(tblw1.fleetFromJson(text));
+    case 'tblw2 Fleet':
+      return tblw2.fleetWireSave(tblw2.fleetFromJson(text));
+    case 'graphdemo Scene':
+      return graphdemo.sceneWireSave(graphdemo.sceneFromJson(text));
+    case 'blobdemo Catalog':
+      return blobdemo.catalogWireSave(blobdemo.catalogFromJson(text));
+    case 'listdemo Save':
+      return listdemo.saveWireSave(listdemo.saveFromJson(text));
+    case 'listdemo Album':
+      return listdemo.albumWireSave(listdemo.albumFromJson(text));
+    case 'listdemo Sheet':
+      return listdemo.sheetWireSave(listdemo.sheetFromJson(text));
+    case 'listdemo Unbounded':
+      return listdemo.unboundedWireSave(listdemo.unboundedFromJson(text));
+    case 'mapdemo Cells':
+      return mapdemo.cellsWireSave(mapdemo.cellsFromJson(text));
+    case 'mapdemo Chunks':
+      return mapdemo.chunksWireSave(mapdemo.chunksFromJson(text));
+    case 'mapdemo Crews':
+      return mapdemo.crewsWireSave(mapdemo.crewsFromJson(text));
+    case 'mapdemo Depth':
+      return mapdemo.depthWireSave(mapdemo.depthFromJson(text));
+    case 'mapdemo Docs':
+      return mapdemo.docsWireSave(mapdemo.docsFromJson(text));
+    case 'mapdemo Fleet':
+      return mapdemo.fleetWireSave(mapdemo.fleetFromJson(text));
+    case 'mapdemo Pairs':
+      return mapdemo.pairsWireSave(mapdemo.pairsFromJson(text));
+    case 'mapdemo Runs':
+      return mapdemo.runsWireSave(mapdemo.runsFromJson(text));
+    case 'mapdemo Slots':
+      return mapdemo.slotsWireSave(mapdemo.slotsFromJson(text));
+    case 'mapdemo Spans':
+      return mapdemo.spansWireSave(mapdemo.spansFromJson(text));
+    case 'mapdemo Text':
+      return mapdemo.textWireSave(mapdemo.textFromJson(text));
+    case 'mapdemo Trails':
+      return mapdemo.trailsWireSave(mapdemo.trailsFromJson(text));
+    case 'messagedemo ToolMessage':
+      return messagedemo.toolMessageWireSave(messagedemo.toolMessageFromJson(text));
+    case 'scalars SimState':
+      return scalardemo.simStateWireSave(scalardemo.simStateFromJson(text));
+    case 'widedemo Caption':
+      return widedemo.captionWireSave(widedemo.captionFromJson(text));
+    case 'widedemo Stamp':
+      return widedemo.stampWireSave(widedemo.stampFromJson(text));
+    case 'listdemo Army':
+      return listdemo.armyWireSave(listdemo.armyFromJson(text));
+    case 'listdemo Mixed':
+      return listdemo.mixedWireSave(listdemo.mixedFromJson(text));
+    case 'streamdemo Feed':
+      return streamdemo.feedWireSave(streamdemo.feedFromJson(text));
+    case 'tabledemo ArchiveConfig':
+      return tabledemo.archiveConfigWireSave(tabledemo.archiveConfigFromJson(text));
+    case 'tabledemo KeyedConfig':
+      return tabledemo.keyedConfigWireSave(tabledemo.keyedConfigFromJson(text));
+    case 'tabledemo WideBlob':
+      return tabledemo.wideBlobWireSave(tabledemo.wideBlobFromJson(text));
+    case 'tblg1 Guarded':
+      return tblg1.guardedWireSave(tblg1.guardedFromJson(text));
+    case 'tblm1 Msg':
+      return tblm1.msgWireSave(tblm1.msgFromJson(text));
+    case 'tblm2 Msg':
+      return tblm2.msgWireSave(tblm2.msgFromJson(text));
+    case 'tblp1 Chain':
+      return tblp1.chainWireSave(tblp1.chainFromJson(text));
+    case 'tblp3 Chain':
+      return tblp3.chainWireSave(tblp3.chainFromJson(text));
+    case 'tblr1 Cfg':
+      return tblr1.cfgWireSave(tblr1.cfgFromJson(text));
+    case 'tblr2 Cfg':
+      return tblr2.cfgWireSave(tblr2.cfgFromJson(text));
+    case 'tblv1 Cfg':
+      return tblv1.cfgWireSave(tblv1.cfgFromJson(text));
+    case 'tblv2 Cfg':
+      return tblv2.cfgWireSave(tblv2.cfgFromJson(text));
+    case 'vocabdemo Wide00':
+      return vocabdemo.wide00WireSave(vocabdemo.wide00FromJson(text));
+    case 'vocabdemo Wide09':
+      return vocabdemo.wide09WireSave(vocabdemo.wide09FromJson(text));
+    case 'vocab9demo Wide00':
+      return vocab9demo.wide00WireSave(vocab9demo.wide00FromJson(text));
+    case 'vocab9demo Wide19':
+      return vocab9demo.wide19WireSave(vocab9demo.wide19FromJson(text));
+    case 'backenddemo LoginRequest':
+      return backenddemo.loginRequestWireSave(backenddemo.loginRequestFromJson(text));
+    case 'backenddemo MatchResult':
+      return backenddemo.matchResultWireSave(backenddemo.matchResultFromJson(text));
+    case 'backenddemo StorePurchase':
+      return backenddemo.storePurchaseWireSave(backenddemo.storePurchaseFromJson(text));
+    case 'tabledemo LoadoutConfig':
+      return tabledemo.loadoutConfigWireSave(tabledemo.loadoutConfigFromJson(text));
+    case 'tabledemo ProfileConfig':
+      return tabledemo.profileConfigWireSave(tabledemo.profileConfigFromJson(text));
+    case 'tabledemo RootConfig':
+      return tabledemo.rootConfigWireSave(tabledemo.rootConfigFromJson(text));
+  }
+  return null;
+}
+
+String? jsonWriteText(String unit, String root, Uint8List wire) {
+  switch ('$unit $root') {
+    case 'tblw1 Fleet':
+      return tblw1.fleetToJson(tblw1.fleetWireLoad(wire));
+    case 'tblw2 Fleet':
+      return tblw2.fleetToJson(tblw2.fleetWireLoad(wire));
+    case 'graphdemo Scene':
+      return graphdemo.sceneToJson(graphdemo.sceneWireLoad(wire));
+    case 'blobdemo Catalog':
+      return blobdemo.catalogToJson(blobdemo.catalogWireLoad(wire));
+    case 'listdemo Save':
+      return listdemo.saveToJson(listdemo.saveWireLoad(wire));
+    case 'listdemo Album':
+      return listdemo.albumToJson(listdemo.albumWireLoad(wire));
+    case 'listdemo Sheet':
+      return listdemo.sheetToJson(listdemo.sheetWireLoad(wire));
+    case 'listdemo Unbounded':
+      return listdemo.unboundedToJson(listdemo.unboundedWireLoad(wire));
+    case 'mapdemo Cells':
+      return mapdemo.cellsToJson(mapdemo.cellsWireLoad(wire));
+    case 'mapdemo Chunks':
+      return mapdemo.chunksToJson(mapdemo.chunksWireLoad(wire));
+    case 'mapdemo Crews':
+      return mapdemo.crewsToJson(mapdemo.crewsWireLoad(wire));
+    case 'mapdemo Depth':
+      return mapdemo.depthToJson(mapdemo.depthWireLoad(wire));
+    case 'mapdemo Docs':
+      return mapdemo.docsToJson(mapdemo.docsWireLoad(wire));
+    case 'mapdemo Fleet':
+      return mapdemo.fleetToJson(mapdemo.fleetWireLoad(wire));
+    case 'mapdemo Pairs':
+      return mapdemo.pairsToJson(mapdemo.pairsWireLoad(wire));
+    case 'mapdemo Runs':
+      return mapdemo.runsToJson(mapdemo.runsWireLoad(wire));
+    case 'mapdemo Slots':
+      return mapdemo.slotsToJson(mapdemo.slotsWireLoad(wire));
+    case 'mapdemo Spans':
+      return mapdemo.spansToJson(mapdemo.spansWireLoad(wire));
+    case 'mapdemo Text':
+      return mapdemo.textToJson(mapdemo.textWireLoad(wire));
+    case 'mapdemo Trails':
+      return mapdemo.trailsToJson(mapdemo.trailsWireLoad(wire));
+    case 'messagedemo ToolMessage':
+      return messagedemo.toolMessageToJson(messagedemo.toolMessageWireLoad(wire));
+    case 'scalars SimState':
+      return scalardemo.simStateToJson(scalardemo.simStateWireLoad(wire));
+    case 'widedemo Caption':
+      return widedemo.captionToJson(widedemo.captionWireLoad(wire));
+    case 'widedemo Stamp':
+      return widedemo.stampToJson(widedemo.stampWireLoad(wire));
+    case 'listdemo Army':
+      return listdemo.armyToJson(listdemo.armyWireLoad(wire));
+    case 'listdemo Mixed':
+      return listdemo.mixedToJson(listdemo.mixedWireLoad(wire));
+    case 'streamdemo Feed':
+      return streamdemo.feedToJson(streamdemo.feedWireLoad(wire));
+    case 'tabledemo ArchiveConfig':
+      return tabledemo.archiveConfigToJson(tabledemo.archiveConfigWireLoad(wire));
+    case 'tabledemo KeyedConfig':
+      return tabledemo.keyedConfigToJson(tabledemo.keyedConfigWireLoad(wire));
+    case 'tabledemo WideBlob':
+      return tabledemo.wideBlobToJson(tabledemo.wideBlobWireLoad(wire));
+    case 'tblg1 Guarded':
+      return tblg1.guardedToJson(tblg1.guardedWireLoad(wire));
+    case 'tblm1 Msg':
+      return tblm1.msgToJson(tblm1.msgWireLoad(wire));
+    case 'tblm2 Msg':
+      return tblm2.msgToJson(tblm2.msgWireLoad(wire));
+    case 'tblp1 Chain':
+      return tblp1.chainToJson(tblp1.chainWireLoad(wire));
+    case 'tblp3 Chain':
+      return tblp3.chainToJson(tblp3.chainWireLoad(wire));
+    case 'tblr1 Cfg':
+      return tblr1.cfgToJson(tblr1.cfgWireLoad(wire));
+    case 'tblr2 Cfg':
+      return tblr2.cfgToJson(tblr2.cfgWireLoad(wire));
+    case 'tblv1 Cfg':
+      return tblv1.cfgToJson(tblv1.cfgWireLoad(wire));
+    case 'tblv2 Cfg':
+      return tblv2.cfgToJson(tblv2.cfgWireLoad(wire));
+    case 'vocabdemo Wide00':
+      return vocabdemo.wide00ToJson(vocabdemo.wide00WireLoad(wire));
+    case 'vocabdemo Wide09':
+      return vocabdemo.wide09ToJson(vocabdemo.wide09WireLoad(wire));
+    case 'vocab9demo Wide00':
+      return vocab9demo.wide00ToJson(vocab9demo.wide00WireLoad(wire));
+    case 'vocab9demo Wide19':
+      return vocab9demo.wide19ToJson(vocab9demo.wide19WireLoad(wire));
+    case 'backenddemo LoginRequest':
+      return backenddemo.loginRequestToJson(backenddemo.loginRequestWireLoad(wire));
+    case 'backenddemo MatchResult':
+      return backenddemo.matchResultToJson(backenddemo.matchResultWireLoad(wire));
+    case 'backenddemo StorePurchase':
+      return backenddemo.storePurchaseToJson(backenddemo.storePurchaseWireLoad(wire));
+    case 'tabledemo LoadoutConfig':
+      return tabledemo.loadoutConfigToJson(tabledemo.loadoutConfigWireLoad(wire));
+    case 'tabledemo ProfileConfig':
+      return tabledemo.profileConfigToJson(tabledemo.profileConfigWireLoad(wire));
+    case 'tabledemo RootConfig':
+      return tabledemo.rootConfigToJson(tabledemo.rootConfigWireLoad(wire));
+  }
+  return null;
+}
+
+String? loadReport(String unit, String root, Uint8List wire) {
+  switch ('$unit $root') {
+    case 'tblv1 Cfg':
+      final r = tblv1.TableWireReport();
+      tblv1.cfgWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblv2 Cfg':
+      final r = tblv2.TableWireReport();
+      tblv2.cfgWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblw1 Fleet':
+      final r = tblw1.TableWireReport();
+      tblw1.fleetWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblw2 Fleet':
+      final r = tblw2.TableWireReport();
+      tblw2.fleetWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblr1 Cfg':
+      final r = tblr1.TableWireReport();
+      tblr1.cfgWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblr2 Cfg':
+      final r = tblr2.TableWireReport();
+      tblr2.cfgWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'graphdemo Scene':
+      final r = graphdemo.TableWireReport();
+      graphdemo.sceneWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'blobdemo Catalog':
+      final r = blobdemo.TableWireReport();
+      blobdemo.catalogWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'listdemo Save':
+      final r = listdemo.TableWireReport();
+      listdemo.saveWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'listdemo Album':
+      final r = listdemo.TableWireReport();
+      listdemo.albumWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'listdemo Sheet':
+      final r = listdemo.TableWireReport();
+      listdemo.sheetWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'listdemo Unbounded':
+      final r = listdemo.TableWireReport();
+      listdemo.unboundedWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'mapdemo Cells':
+      final r = mapdemo.TableWireReport();
+      mapdemo.cellsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'mapdemo Chunks':
+      final r = mapdemo.TableWireReport();
+      mapdemo.chunksWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'mapdemo Crews':
+      final r = mapdemo.TableWireReport();
+      mapdemo.crewsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'mapdemo Depth':
+      final r = mapdemo.TableWireReport();
+      mapdemo.depthWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'mapdemo Docs':
+      final r = mapdemo.TableWireReport();
+      mapdemo.docsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'mapdemo Fleet':
+      final r = mapdemo.TableWireReport();
+      mapdemo.fleetWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'mapdemo Pairs':
+      final r = mapdemo.TableWireReport();
+      mapdemo.pairsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'mapdemo Runs':
+      final r = mapdemo.TableWireReport();
+      mapdemo.runsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'mapdemo Slots':
+      final r = mapdemo.TableWireReport();
+      mapdemo.slotsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'mapdemo Spans':
+      final r = mapdemo.TableWireReport();
+      mapdemo.spansWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'mapdemo Text':
+      final r = mapdemo.TableWireReport();
+      mapdemo.textWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'mapdemo Trails':
+      final r = mapdemo.TableWireReport();
+      mapdemo.trailsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'messagedemo ToolMessage':
+      final r = messagedemo.TableWireReport();
+      messagedemo.toolMessageWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'scalars SimState':
+      final r = scalardemo.TableWireReport();
+      scalardemo.simStateWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'widedemo Caption':
+      final r = widedemo.TableWireReport();
+      widedemo.captionWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'widedemo Stamp':
+      final r = widedemo.TableWireReport();
+      widedemo.stampWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    // THE P SET's presence evolution and the M SET's arm evolution
+    // (docs/SPEC-TABLES.md §4, §5): a value, an optional and a pointer reading
+    // one another, and a union whose arms moved, each read tolerantly
+    case 'tblp1 Chain':
+      final r = tblp1.TableWireReport();
+      tblp1.chainWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblp3 Chain':
+      final r = tblp3.TableWireReport();
+      tblp3.chainWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    // the stream unit's parts: an element kind, a count past its bound and
+    // an index out of range, each read tolerantly (§4)
+    case 'streamdemo Feed':
+      final r = streamdemo.TableWireReport();
+      streamdemo.feedWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblp2 Chain':
+      final r = tblp2.TableWireReport();
+      tblp2.chainWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    // the 64-bit id-table pair and the arm retypes (§3, §5): K1 and K2 read
+    // each other's escapes, A2 reads A1's arms moved, retyped and unknown
+    case 'tblk1 Root':
+      final r = tblk1.TableWireReport();
+      tblk1.rootWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblk2 Root':
+      final r = tblk2.TableWireReport();
+      tblk2.rootWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tbla2 Root':
+      final r = tbla2.TableWireReport();
+      tbla2.rootWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblscalars2 SimState':
+      final r = scalardemo2.TableWireReport();
+      scalardemo2.simStateWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblm1 Msg':
+      final r = tblm1.TableWireReport();
+      tblm1.msgWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'tblm2 Msg':
+      final r = tblm2.TableWireReport();
+      tblm2.msgWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+  }
+  return null;
+}
+
+// ---- cook-write (docs/SPEC-TABLES.md §7.6): the runtime WRITES the cooked
+// file, and the harness compares it with the two `schema cook` wrote. Each
+// row names an instance: its wire is loaded, measured, refused at one byte
+// short (which must write nothing) and cooked in each byte order.
+//
+// A row whose instance this leg cannot load writes <case>.absent with the
+// reason, by unit (test/conformance/README.md).
+const Map<String, String> cookWriteAbsent = <String, String>{
+  'tabledemo': _fixedFormOnly,
+  'tblv1': _fixedFormOnly,
+  'tblv2': _fixedFormOnly,
+  'tblp1': _fixedFormOnly,
+  'tblp3': _fixedFormOnly,
+  'tblm1': _fixedFormOnly,
+  'tblm2': _fixedFormOnly,
+  'messagedemo':
+      'the Dart table backend refuses the unit (a union arm '
+      'carrying `was`, docs/SPEC-TABLES.md §5): no Dart value to cook',
+  'streamdemo':
+      'the Dart table backend refuses the unit (a union a table '
+      'closure holds, docs/SPEC-TABLES.md §2.6, §11): no Dart value to cook',
+  'scalars':
+      'the unit carries the wide kinds, for which the Dart table '
+      'backend emits no cook form (docs/SPEC-TABLES.md §3)',
+};
+
+const String _fixedFormOnly =
+    'the Dart fixed class reads form 3 only and '
+    "this instance's wire is form 1, which Dart reads for the variable class "
+    'alone (docs/SPEC-TABLES.md §3, §3.4): no Dart value to cook';
+
+// cookWriter loads one instance and answers its measured extent and the
+// writer for one byte order, or null when this leg has no codec for it.
+(int, bool Function(Uint8List, Endian))? cookWriter(
+  String unit,
+  String root,
+  Uint8List wire,
+) {
+  switch ('$unit $root') {
+    case 'graphdemo Scene':
+      final r = graphdemo.TableWireReport();
+      final value = graphdemo.sceneWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        ck.SceneCook.cookMeasure(value),
+        (out, order) => ck.SceneCook.cook(value, out, order),
+      );
+    case 'blobdemo Catalog':
+      final r = blobdemo.TableWireReport();
+      final value = blobdemo.catalogWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        assets.CatalogCook.cookMeasure(value),
+        (out, order) => assets.CatalogCook.cook(value, out, order),
+      );
+  }
+  return null;
+}
+
+int surfaceCookWrite(String outDir) {
+  for (final f in kind('cook-write')) {
+    final instance = lines.firstWhere(
+      (c) => c[0] == 'instance' && c[1] == f[1],
+      orElse: () => const <String>[],
+    );
+    if (instance.isEmpty) {
+      stderr.writeln('driver: cook-write ${f[1]} names no instance');
+      return 1;
+    }
+    final writer = cookWriter(
+      instance[2],
+      instance[3],
+      File(instance[4]).readAsBytesSync(),
+    );
+    if (writer == null) {
+      final why =
+          cookWriteAbsent[instance[2]] ??
+          'no Dart codec for ${instance[2]} ${instance[3]}';
+      for (final name in [f[1], '${f[1]}-be']) {
+        File('$outDir/$name.absent').writeAsStringSync(why);
+      }
+      continue;
+    }
+    final (size, cook) = writer;
+    if (size < 1) {
+      stderr.writeln('driver: ${f[1]}: cook measure refused');
+      return 1;
+    }
+    for (final order in [Endian.little, Endian.big]) {
+      final name = order == Endian.little ? f[1] : '${f[1]}-be';
+      final buffer = Uint8List(size)..fillRange(0, size, 0xa5);
+      // one byte short is refused, and the refusal writes NOTHING (§7.6)
+      if (cook(Uint8List.sublistView(buffer, 0, size - 1), order) ||
+          buffer.any((b) => b != 0xa5)) {
+        stderr.writeln('driver: $name: a short capacity wrote bytes');
+        return 1;
+      }
+      if (!cook(buffer, order)) {
+        stderr.writeln('driver: $name: cook write refused');
+        return 1;
+      }
+      File('$outDir/$name').writeAsBytesSync(buffer);
+    }
+  }
+  return 0;
+}
+
+int surfaceWire(String outDir) {
+  for (final f in kind('instance')) {
+    final saved = wireResave(f[2], f[3], File(f[4]).readAsBytesSync());
+    if (saved == null) {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    File('$outDir/${f[1]}').writeAsBytesSync(saved);
+  }
+  return 0;
+}
+
+int surfaceJsonRead(String outDir) {
+  for (final f in kind('instance')) {
+    if (noTextRow(f)) continue;
+    final textPath = 'testdata/conformance/tables/json/${f[1]}.json';
+    if (!File(textPath).existsSync()) {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    final saved = jsonReadSave(f[2], f[3], File(textPath).readAsStringSync());
+    if (saved == null) {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    File('$outDir/${f[1]}').writeAsBytesSync(saved);
+  }
+  return 0;
+}
+
+int surfaceJsonWrite(String outDir) {
+  for (final f in kind('instance')) {
+    if (noTextRow(f)) continue;
+    final text = jsonWriteText(f[2], f[3], File(f[4]).readAsBytesSync());
+    if (text == null) {
+      spillAbsent(outDir, '${f[1]}.json');
+      continue;
+    }
+    File('$outDir/${f[1]}.json').writeAsStringSync(text);
+  }
+  return 0;
+}
+
+// §16.3 and §17.5: a hostile tree reports the actual tolerant text-read
+// counters, or refuses a malformed text. A missing codec is explicit.
+String? jsonHostileReport(String unit, String root, String text) {
+  dynamic r;
+  try {
+    switch ('$unit $root') {
+      case 'tabledemo RootConfig':
+        r = tabledemo.TableTextReport();
+        tabledemo.rootConfigFromJson(text, r);
+        break;
+      case 'tabledemo PackConfig':
+        r = tabledemo.TableTextReport();
+        tabledemo.packConfigFromJson(text, r);
+        break;
+      case 'blobdemo Catalog':
+        r = blobdemo.TableTextReport();
+        blobdemo.catalogFromJson(text, r);
+        break;
+      case 'graphdemo Scene':
+        r = graphdemo.TableTextReport();
+        graphdemo.sceneFromJson(text, r);
+        break;
+      case 'messagedemo ToolMessage':
+        r = messagedemo.TableTextReport();
+        messagedemo.toolMessageFromJson(text, r);
+        break;
+      case 'scalars SimState':
+        r = scalardemo.TableTextReport();
+        scalardemo.simStateFromJson(text, r);
+        break;
+      case 'streamdemo Feed':
+        r = streamdemo.TableTextReport();
+        streamdemo.feedFromJson(text, r);
+        break;
+      default:
+        return null;
+    }
+  } catch (_) {
+    return 'refused\n';
+  }
+  return '${r.unknown},${r.kindMismatch},0,${r.clamped},${r.duplicate},false,read\n';
+}
+
+int surfaceJsonHostile(String outDir) {
+  for (final f in kind('json-hostile')) {
+    final text = utf8.decode(File('${f[4]}/${f[3]}.json').readAsBytesSync(), allowMalformed: true);
+    final verdict = jsonHostileReport(f[2], f[3], text);
+    if (verdict == null) {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    File('$outDir/${f[1]}').writeAsStringSync(verdict);
+  }
+  return 0;
+}
+
+int surfaceReport(String outDir) {
+  for (final f in kind('report')) {
+    final line = loadReport(f[2], f[3], File(f[4]).readAsBytesSync());
+    if (line == null) {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    File('$outDir/${f[1]}').writeAsStringSync(line);
+  }
+  return 0;
+}
+
+// ---- the MESSAGE FORM (docs/SPEC-TABLES.md §3.3) ----
+//
+// One `message` row reads its connection's announcement into a fresh
+// vocabulary, loads the batch against it into 256 bodies of caller storage
+// ("LoadMessages reads one buffer into the caller's storage and allocates
+// nothing"), and saves the bodies read back into one buffer ("SaveMessages
+// takes an array of bodies of ONE root and writes ONE buffer"), sized by
+// MeasureMessages. The harness compares those bytes with the message golden,
+// as test/conformance/go/messages.go does for the Go leg.
+
+typedef MessageRun = Uint8List? Function(Uint8List announcement, Uint8List wire);
+
+// A MessageFuzz answers one wire-fuzz mutant of a form-2 roster entry with the
+// reply wireFuzz writes (docs/SPEC-TABLES.md §3.3, §4.2).
+typedef MessageFuzz = List<int> Function(Uint8List wire);
+
+// MessageCodec is one fixed root's batch verbs, bound twice: the `message`
+// surface's batch read against a connection's announcement, and the wire
+// fuzzer's mutant read against the unit's OWN announcement.
+final class MessageCodec {
+  const MessageCodec(this.batch, this.fuzz);
+  final MessageRun batch;
+  final MessageFuzz fuzz;
+}
+
+// _ownAnnouncement is the unit's compiled announcement, which the fuzzer's
+// vocabulary reads: the roster names the form and never carries one, because
+// the vocabulary is a pure function of the build version (§3.3).
+Uint8List _ownAnnouncement(int Function() measure, int Function(Uint8List) announce) {
+  final out = Uint8List(measure());
+  announce(out);
+  return out;
+}
+
+// _messageRow binds one fixed root's batch verbs. The vocabulary and report
+// classes are each unit home's own, so the binding is generic over them.
+MessageCodec _messageRow<T, V, R>({
+  required T Function() fresh,
+  required void Function(T) init,
+  required V Function() vocabulary,
+  required R Function() report,
+  required Uint8List Function() own,
+  required bool Function(V, Uint8List, R) announceRead,
+  required int Function(List<T>, Uint8List, V, R) load,
+  required int Function(List<T>, R) measure,
+  required int Function(List<T>, Uint8List, R) save,
+  required bool Function(R) damaged,
+}) {
+  // THE FUZZ ARM (docs/SPEC-TABLES.md §3.3, §4.2), as messageRow in
+  // test/conformance/go/messages.go runs it with fuzz=true: the batch is read
+  // into the same 256 bodies of caller storage the Go reference reads it into,
+  // so a batch of up to 256 bodies is never refused as too large, and the
+  // first body is saved back whatever the batch claims. A message root has no
+  // LoadMeasure, so the reply carries loaded=1 and measure=-1, as the Go
+  // leg's does.
+  V? ownVocabulary;
+  var ownRefused = false;
+  final storage = List<T>.generate(256, (_) => fresh());
+  final first = storage.sublist(0, 1);
+  MessageFuzz fuzz = (Uint8List wire) {
+    final values = storage;
+    for (final v in values) {
+      init(v);
+    }
+    final dynamic rep = report();
+    if (ownVocabulary == null && !ownRefused) {
+      final vocab = vocabulary();
+      if (announceRead(vocab, own(), report())) {
+        ownVocabulary = vocab;
+      } else {
+        ownRefused = true;
+      }
+    }
+    final vocab = ownVocabulary;
+    // THE LOAD'S ANSWER IS READ, never dropped: LoadMessages answers the
+    // bodies it read, -1 on failure (§3.3), and the Go reference takes
+    // `count, ok := load(...)` and sets `rep.malformed = rep.malformed || !ok
+    // && !rep.refused` (test/conformance/go/messages.go, messageRow). A load
+    // that failed without a refusal is malformed, whatever the report says,
+    // so a broken batch is never saved back as if whole.
+    var count = -1;
+    if (vocab == null) {
+      (rep as dynamic).Refuse('no_vocabulary');
+    } else {
+      count = load(values, wire, vocab, rep as R);
+    }
+    final ok = count >= 0;
+    List<int>? saved;
+    final n = measure(first, report());
+    if (n >= 0) {
+      final out = Uint8List(n);
+      if (save(first, out, report()) == n) {
+        saved = out;
+      }
+    }
+    return _fuzzReply(
+      loaded: true,
+      unknown: rep.unknown as int,
+      clamped: rep.clamped as int,
+      malformed: (rep.malformed as bool) || !ok && !(rep.refused as bool),
+      refused: rep.refused as bool,
+      measure: -1,
+      saved: saved,
+    );
+  };
+  return MessageCodec((Uint8List announcement, Uint8List wire) {
+    final vocab = vocabulary();
+    if (!announceRead(vocab, announcement, report())) {
+      return null;
+    }
+    final values = List<T>.generate(256, (_) {
+      final v = fresh();
+      init(v);
+      return v;
+    });
+    final rep = report();
+    final count = load(values, wire, vocab, rep);
+    if (count < 1 || count > 256 || damaged(rep)) {
+      return null;
+    }
+    final bodies = values.sublist(0, count);
+    final n = measure(bodies, report());
+    if (n < 0) {
+      return null;
+    }
+    final out = Uint8List(n);
+    if (save(bodies, out, report()) != n) {
+      return null;
+    }
+    return out;
+  }, fuzz);
+}
+
+List<E> _entries<E>(E Function() zero) => List<E>.generate(4096, (_) => zero());
+
+final Map<String, MessageCodec> messageRuns = {
+  'backenddemo LoginRequest': _messageRow<backenddemo_fixed.LoginRequest, backenddemo_fixed.TableVocabulary, backenddemo_fixed.TableReport>(
+    fresh: backenddemo_fixed.LoginRequest.new,
+    init: backenddemo_fixed.initLoginRequest,
+    vocabulary: () => backenddemo_fixed.TableVocabulary(entries: _entries(() => backenddemo_fixed.TableMessageEntry(0, 0))),
+    report: backenddemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(backenddemo_fixed.announceMeasure, backenddemo_fixed.announce),
+    announceRead: backenddemo_fixed.announceRead,
+    load: backend.loginRequestLoadMessages,
+    measure: backend.loginRequestMeasureMessages,
+    save: backend.loginRequestSaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+  'backenddemo MatchResult': _messageRow<backenddemo_fixed.MatchResult, backenddemo_fixed.TableVocabulary, backenddemo_fixed.TableReport>(
+    fresh: backenddemo_fixed.MatchResult.new,
+    init: backenddemo_fixed.initMatchResult,
+    vocabulary: () => backenddemo_fixed.TableVocabulary(entries: _entries(() => backenddemo_fixed.TableMessageEntry(0, 0))),
+    report: backenddemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(backenddemo_fixed.announceMeasure, backenddemo_fixed.announce),
+    announceRead: backenddemo_fixed.announceRead,
+    load: backend.matchResultLoadMessages,
+    measure: backend.matchResultMeasureMessages,
+    save: backend.matchResultSaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+  'backenddemo StorePurchase': _messageRow<backenddemo_fixed.StorePurchase, backenddemo_fixed.TableVocabulary, backenddemo_fixed.TableReport>(
+    fresh: backenddemo_fixed.StorePurchase.new,
+    init: backenddemo_fixed.initStorePurchase,
+    vocabulary: () => backenddemo_fixed.TableVocabulary(entries: _entries(() => backenddemo_fixed.TableMessageEntry(0, 0))),
+    report: backenddemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(backenddemo_fixed.announceMeasure, backenddemo_fixed.announce),
+    announceRead: backenddemo_fixed.announceRead,
+    load: backend.storePurchaseLoadMessages,
+    measure: backend.storePurchaseMeasureMessages,
+    save: backend.storePurchaseSaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+  'backenddemo Envelope': _messageRow<backenddemo_fixed.Envelope, backenddemo_fixed.TableVocabulary, backenddemo_fixed.TableReport>(
+    fresh: backenddemo_fixed.Envelope.new,
+    init: backenddemo_fixed.initEnvelope,
+    vocabulary: () => backenddemo_fixed.TableVocabulary(entries: _entries(() => backenddemo_fixed.TableMessageEntry(0, 0))),
+    report: backenddemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(backenddemo_fixed.announceMeasure, backenddemo_fixed.announce),
+    announceRead: backenddemo_fixed.announceRead,
+    load: backend.envelopeLoadMessages,
+    measure: backend.envelopeMeasureMessages,
+    save: backend.envelopeSaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+  'vocabdemo Wide00': _messageRow<vocabdemo_fixed.Wide00, vocabdemo_fixed.TableVocabulary, vocabdemo_fixed.TableReport>(
+    fresh: vocabdemo_fixed.Wide00.new,
+    init: vocabdemo_fixed.initWide00,
+    vocabulary: () => vocabdemo_fixed.TableVocabulary(entries: _entries(() => vocabdemo_fixed.TableMessageEntry(0, 0))),
+    report: vocabdemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(vocabdemo_fixed.announceMeasure, vocabdemo_fixed.announce),
+    announceRead: vocabdemo_fixed.announceRead,
+    load: vocab.wide00LoadMessages,
+    measure: vocab.wide00MeasureMessages,
+    save: vocab.wide00SaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+  'vocabdemo Wide09': _messageRow<vocabdemo_fixed.Wide09, vocabdemo_fixed.TableVocabulary, vocabdemo_fixed.TableReport>(
+    fresh: vocabdemo_fixed.Wide09.new,
+    init: vocabdemo_fixed.initWide09,
+    vocabulary: () => vocabdemo_fixed.TableVocabulary(entries: _entries(() => vocabdemo_fixed.TableMessageEntry(0, 0))),
+    report: vocabdemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(vocabdemo_fixed.announceMeasure, vocabdemo_fixed.announce),
+    announceRead: vocabdemo_fixed.announceRead,
+    load: vocab.wide09LoadMessages,
+    measure: vocab.wide09MeasureMessages,
+    save: vocab.wide09SaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+  'vocab9demo Wide00': _messageRow<vocab9demo_fixed.Wide00, vocab9demo_fixed.TableVocabulary, vocab9demo_fixed.TableReport>(
+    fresh: vocab9demo_fixed.Wide00.new,
+    init: vocab9demo_fixed.initWide00,
+    vocabulary: () => vocab9demo_fixed.TableVocabulary(entries: _entries(() => vocab9demo_fixed.TableMessageEntry(0, 0))),
+    report: vocab9demo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(vocab9demo_fixed.announceMeasure, vocab9demo_fixed.announce),
+    announceRead: vocab9demo_fixed.announceRead,
+    load: vocab9.wide00LoadMessages,
+    measure: vocab9.wide00MeasureMessages,
+    save: vocab9.wide00SaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+  'vocab9demo Wide19': _messageRow<vocab9demo_fixed.Wide19, vocab9demo_fixed.TableVocabulary, vocab9demo_fixed.TableReport>(
+    fresh: vocab9demo_fixed.Wide19.new,
+    init: vocab9demo_fixed.initWide19,
+    vocabulary: () => vocab9demo_fixed.TableVocabulary(entries: _entries(() => vocab9demo_fixed.TableMessageEntry(0, 0))),
+    report: vocab9demo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(vocab9demo_fixed.announceMeasure, vocab9demo_fixed.announce),
+    announceRead: vocab9demo_fixed.announceRead,
+    load: vocab9.wide19LoadMessages,
+    measure: vocab9.wide19MeasureMessages,
+    save: vocab9.wide19SaveMessages,
+    damaged: (r) => r.refused || r.malformed,
+  ),
+};
+
+int surfaceMessage(String outDir) {
+  for (final f in kind('message')) {
+    List<String>? conn;
+    for (final c in kind('connection')) {
+      if (c[1] == f[2]) {
+        conn = c;
+        break;
+      }
+    }
+    if (conn == null) {
+      stderr.writeln('message ${f[1]}: no connection row ${f[2]}');
+      return 1;
+    }
+    final run = messageRuns['${conn[2]} ${f[3]}'];
+    if (run == null) {
+      // A message row whose root is a plain `table` carries no message verbs
+      // (docs/SPEC-TABLES.md §3.3: "a plain `table T` may not" ride the
+      // form), so the driver answers ABSENT and names the reason.
+      File('$outDir/${f[1]}.absent').writeAsStringSync('plain table: §3.3');
+      continue;
+    }
+    final answer = run.batch(File(conn[4]).readAsBytesSync(), File(f[5]).readAsBytesSync());
+    if (answer == null) {
+      stderr.writeln('message ${f[1]}: the batch did not load and save');
+      return 1;
+    }
+    File('$outDir/${f[1]}').writeAsBytesSync(answer);
+  }
+  return 0;
+}
+
 const String surfaces =
-    // the five WIRE-CARRYING surfaces are ABSENT: Dart emits no table wire
-    // (the port that wrote the wire's previous form was removed; schema#514
-    // brings the id-table form to Dart). The accelerators are current.
+    // wire, json-read, json-write and report answer the variable class for
+    // graphdemo, blobdemo and listdemo (docs/SPEC-TABLES.md §3, §16.7), and
+    // cook-write the graphdemo and blobdemo rows (§7.6). The
+    // accelerators and the forgery surfaces stay, and cook-reason and
+    // block-reason name each forgery's first failing clause (§7, §19.2). The
+    // wire fuzzer's roots are another card's.
     ''
-    'cook\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
-    'forgery\ncook-forgery\n';
+    'wire\nmessage\njson-read\njson-write\njson-hostile\nreport\n'
+    'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
+    'forgery\ncook-forgery\ncook-reason\nblock-reason\n';
 
 void main(List<String> args) {
   if (args.isNotEmpty && args[0] == 'wire-fuzz') {
@@ -734,11 +1772,51 @@ Future<String> _readString(_ByteSource src) async {
   return String.fromCharCodes(await src.read(n));
 }
 
+// _fuzzReply is one reply in the harness's layout: loaded, the five counters,
+// malformed, the refusal verdict, the measure, the two retention counters,
+// and the saved length and bytes (-1 for a save that failed), as
+// test/conformance/go/wire_fuzz.go writes it.
+List<int> _fuzzReply({
+  required bool loaded,
+  int unknown = 0,
+  int kindMismatch = 0,
+  int widened = 0,
+  int clamped = 0,
+  int duplicate = 0,
+  bool malformed = false,
+  bool refused = false,
+  required int measure,
+  int retained = 0,
+  int retainLost = 0,
+  List<int>? saved,
+}) {
+  final out = <int>[];
+  _putU8(out, loaded ? 1 : 0);
+  _putU32(out, unknown);
+  _putU32(out, kindMismatch);
+  _putU32(out, widened);
+  _putU32(out, clamped);
+  _putU32(out, duplicate);
+  _putU8(out, malformed ? 1 : 0);
+  _putU8(out, refused ? 1 : 0);
+  _putU64(out, measure);
+  _putU32(out, retained);
+  _putU32(out, retainLost);
+  if (saved == null) {
+    _putU64(out, -1);
+  } else {
+    _putU64(out, saved.length);
+    out.addAll(saved);
+  }
+  return out;
+}
+
 Future<void> wireFuzz() async {
   final src = _ByteSource();
   final count = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
   final roster = <bool>[];
   final retains = <bool>[];
+  final messages = <MessageFuzz?>[];
   final available = <int>[];
   for (var i = 0; i < count; i++) {
     final unit = await _readString(src);
@@ -746,9 +1824,14 @@ Future<void> wireFuzz() async {
     final form = (await src.read(1))[0];
     final retain = (await src.read(1))[0];
     final ok = unit == 'cards' && root == 'Card' && form == 1;
+    // a form-2 root rides the message arm (§3.3), as findMessageCodec binds
+    // it in test/conformance/go/wire_fuzz.go; a plain `table` carries no
+    // message verbs and so answers absent, as the Go leg's does
+    final message = form == 2 && retain == 0 ? messageRuns['$unit $root']?.fuzz : null;
     roster.add(ok);
     retains.add(ok && retain == 1);
-    available.add(ok ? 1 : 0);
+    messages.add(ok ? null : message);
+    available.add(ok || message != null ? 1 : 0);
   }
   stdout.add(available);
   await stdout.flush();
@@ -760,6 +1843,12 @@ Future<void> wireFuzz() async {
     final index = ByteData.sublistView(idxBytes).getUint32(0, Endian.little);
     final size = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
     final wire = await src.read(size);
+    final message = messages[index];
+    if (message != null) {
+      stdout.add(message(wire));
+      await stdout.flush();
+      continue;
+    }
     final report = TableWireReport();
     var loaded = true;
     var measure = 0;
@@ -788,7 +1877,7 @@ Future<void> wireFuzz() async {
     _putU32(out, report.kindMismatch);
     _putU32(out, report.widened);
     _putU32(out, report.clamped);
-    _putU32(out, 0); // duplicate: the card carries no map
+    _putU32(out, report.duplicate);
     _putU8(out, report.malformed ? 1 : 0);
     _putU8(out, report.refused ? 1 : 0);
     _putU64(out, measure);
@@ -821,8 +1910,22 @@ int run(List<String> args) {
   }
   final out = args[2];
   switch (surface) {
+    case 'wire':
+      return surfaceWire(out);
+    case 'message':
+      return surfaceMessage(out);
+    case 'json-read':
+      return surfaceJsonRead(out);
+    case 'json-write':
+      return surfaceJsonWrite(out);
+    case 'json-hostile':
+      return surfaceJsonHostile(out);
+    case 'report':
+      return surfaceReport(out);
     case 'cook':
       return surfaceCook(out);
+    case 'cook-write':
+      return surfaceCookWrite(out);
     case 'cook-foreign':
       return surfaceCookForeign(out);
     case 'cook-forgery':
@@ -835,6 +1938,10 @@ int run(List<String> args) {
       return surfaceBlockDump(out);
     case 'forgery':
       return surfaceForgery(out);
+    case 'cook-reason':
+      return surfaceReason(out, 'cook');
+    case 'block-reason':
+      return surfaceReason(out, 'block');
   }
   return 2;
 }

@@ -948,7 +948,7 @@ rust         00.0            00.0         00.0           PASS          PASS     
 cs           00.0            00.0         00.0           PASS          PASS          0.00
 java         00.0            00.0         00.0           PASS          PASS          0.00
 js           00.0            00.0         00.0           PASS          PASS          0.00
-dart           —               —            —             —             —             —     no runner on this tree
+dart         00.0            00.0         00.0           PASS          PASS          0.00
 elixir       00.0            00.0         00.0           PASS          PASS          0.00
 ```
 
@@ -964,10 +964,10 @@ names:
 - **A leg with no runner is NAMED with its reason**, in §1.9's and
   `nine.sh`'s own vocabulary — "no runner on this tree", "no leg in this driver
   yet", "runner present, but its rows do not belong to this sitting" are
-  different facts about the merge, and none is ever estimated. Eight table
-  runners exist under `bench/tables/` today; Dart's fixed-form leg has landed
-  and its bench runner has not, so the ninth line is a named refusal until it
-  does.
+  different facts about the merge, and none is ever estimated. Nine table
+  runners exist under `bench/tables/` today, Dart's (`bench/tables/dart`, a
+  table-only leg whose packet number is the type board's) the last to land, so
+  no line of the nine is a named refusal on this tree.
 - **The first ratio is C++'s alone and the board says so.** Arm B is
   hand-written, and nine hand-maintained layouts would be nine chances for the
   comparand to be wrong in a leg-specific way. The form's rule is one reference

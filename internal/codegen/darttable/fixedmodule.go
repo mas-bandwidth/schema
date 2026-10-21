@@ -208,7 +208,7 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 	return ""
 }
 
-// fixedLocalUnions finds unions with direct field-line or payload-free arms.
+// fixedLocalUnions finds unions with direct field-line, payload-free or TABLE arms.
 // Their fixed form owns its storage, including a tag-only union with no arm
 // members (SPEC-TABLES §2.6, §3.4).
 func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
@@ -234,6 +234,13 @@ func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 			// emitter's, and its arms answer to the OUTER tag through the guard
 			// chain (docs/FIXED-FORM-ALGORITHM.md §4.1).
 			if _, ok := v.F.Type.Ref.(*ir.Union); ok {
+				local = true
+			}
+			// §2.6: a union with a TABLE arm is a table-closure construct
+			// (ir.Unit.TableUnions, beside Decls), so the packet emitter never
+			// emits its class. The fixed form is its only home and owns its
+			// storage, one pre-allocated table per arm (§3.4).
+			if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed && s.IsTable {
 				local = true
 			}
 		}
@@ -529,6 +536,19 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	}
 	g.pf("}\n\n")
 
+	// ---- the caller's cached ByteData view, one per direction, reused across
+	// calls: the browse's caller passes the same buffer every iteration, so the
+	// view is built once in the warmup and the steady phase allocates nothing ----
+	g.pf("ByteData? _%sFixedSaveView;\n", lower)
+	g.pf("Uint8List? _%sFixedSaveBytes;\n", lower)
+	g.pf("ByteData _%sFixedSaveViewOf(Uint8List bytes) {\n", lower)
+	g.pf("  if (_%sFixedSaveBytes != bytes) {\n", lower)
+	g.pf("    _%sFixedSaveView = ByteData.sublistView(bytes);\n", lower)
+	g.pf("    _%sFixedSaveBytes = bytes;\n", lower)
+	g.pf("  }\n")
+	g.pf("  return _%sFixedSaveView!;\n", lower)
+	g.pf("}\n\n")
+
 	// ---- the write ----
 	g.pf("/// THE WRITE IS A TEMPLATE: the hash and zeros laid down first — which is\n")
 	g.pf("/// also what zero-fills every byte of declared slack — and then value stores\n")
@@ -538,7 +558,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		[]string{"List<" + st.Name + "> values", "int count", "Uint8List bytes"})
 	g.pf("  final need = %sFixedMeasure(count);\n", lower)
 	g.pf("  if (count < 0 || bytes.length < need) {\n    return -1;\n  }\n")
-	g.pf("  final view = ByteData.sublistView(bytes);\n")
+	g.pf("  final view = _%sFixedSaveViewOf(bytes);\n", lower)
 	g.pf("  // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven\n")
 	g.pf("  // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.\n")
 	g.call("  ", "", "bytes.fillRange",
@@ -564,6 +584,16 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    at += %sFixedRecordBytes;\n", lower)
 	g.pf("  }\n  return need;\n}\n\n")
 
+	g.pf("ByteData? _%sFixedLoadView;\n", lower)
+	g.pf("Uint8List? _%sFixedLoadBytes;\n", lower)
+	g.pf("ByteData _%sFixedLoadViewOf(Uint8List bytes) {\n", lower)
+	g.pf("  if (_%sFixedLoadBytes != bytes) {\n", lower)
+	g.pf("    _%sFixedLoadView = ByteData.sublistView(bytes);\n", lower)
+	g.pf("    _%sFixedLoadBytes = bytes;\n", lower)
+	g.pf("  }\n")
+	g.pf("  return _%sFixedLoadView!;\n", lower)
+	g.pf("}\n\n")
+
 	// ---- the read ----
 	g.pf("/// THE READ: a prefill and ONE loop over ONE plan — the identity plan when\n")
 	g.pf("/// the layout's hash is this build's own, and a plan compiled once from the\n")
@@ -585,7 +615,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  report.reset();\n")
 	g.pf("  if (byteLength < 1 || byteLength > bytes.length) {\n")
 	g.pf("    report.malformed = true;\n    return -1;\n  }\n")
-	g.pf("  final view = ByteData.sublistView(bytes);\n")
+	g.pf("  final view = _%sFixedLoadViewOf(bytes);\n", lower)
 	g.pf("  // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
 	g.pf("  // the registry is ordered, so a byte this reader does not carry is named\n")
 	g.pf("  // by where it sits relative to this form and never by one word for both.\n")

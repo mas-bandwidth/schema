@@ -1,4 +1,5 @@
-// The BLOCK FORM (docs/SPEC-TABLES.md §19): the Dart READ half.
+// The BLOCK FORM (docs/SPEC-TABLES.md §19): the Dart READ half and, since the
+// fill path landed, the WRITE half's begin (§19.1).
 //
 // NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on
 // the side, in <Base>Block.dart, which a consumer imports only if it reads a
@@ -27,6 +28,7 @@ package darttable
 
 import (
 	"fmt"
+	"math/bits"
 	"sort"
 	"strings"
 
@@ -120,7 +122,8 @@ func (g *blockGen) assemble() []byte {
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
-	fmt.Fprintf(&h, "// package %s — the BLOCK FORM (docs/SPEC-TABLES.md §19): the READ half.\n", g.unit.Package)
+	fmt.Fprintf(&h, "// package %s — the BLOCK FORM (docs/SPEC-TABLES.md §19): the READ half and\n", g.unit.Package)
+	fmt.Fprintf(&h, "// begin, the fill path's first half (§19.1).\n")
 	h.WriteString("//\n")
 	h.WriteString("// NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on\n")
 	h.WriteString("// the side: import this library only if you read a block. The unit's\n")
@@ -148,6 +151,11 @@ func (g *blockGen) assemble() []byte {
 		one := fmt.Sprintf("import '%s' show %s;", base, strings.Join(names, ", "))
 		if len(one) <= 80 {
 			h.WriteString(one + "\n")
+			continue
+		}
+		two := fmt.Sprintf("    show %s;", strings.Join(names, ", "))
+		if len(two) <= 80 {
+			fmt.Fprintf(&h, "import '%s'\n%s\n", base, two)
 			continue
 		}
 		fmt.Fprintf(&h, "import '%s'\n    show\n", base)
@@ -260,10 +268,95 @@ func (g *blockGen) emitBlock(bl *ir.BlockLayout) {
 		g.needRow(a.ElemName)
 	}
 
+	g.emitBlockBuild(bl)
 	g.trimBlank()
 	g.emitBlockOpen(bl)
 	g.emitBlockDescriptors(bl)
 	g.pf("}\n\n")
+}
+
+// emitBlockBuild writes the block's FILL half (docs/SPEC-TABLES.md §19.1):
+// `begin`, which lays down the prologue and one triple per out-of-line array
+// and NOT ONE OTHER BYTE — never a row and never the padding between arrays.
+// The image is the reference's: the same three prologue words at the same
+// offsets, each triple's offset_of rounded up to the array's own alignment,
+// its count and its pitch, and the used extent rounded to §19.1's 64 bytes.
+//
+// EVERY CHECK RUNS BEFORE THE FIRST WRITE, so a refused begin leaves the
+// caller's bytes exactly as they were — the clause §19.1 states for the
+// producer side and the reason the count bounds are named through a
+// TableBlockRefusal rather than thrown.
+//
+// DART HAS NO ALLOCATOR TO OWN: the reference leg's Begin takes a storage that
+// allocated a maximum-sized extent, and here the caller hands the bytes it
+// owns and the aligned base inside them, which is the same requirement said in
+// the currency this language has — the extent from `base` must hold the
+// declared maximum, exactly as the storage's allocation does.
+func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
+	name := bl.Table.Name
+	g.pf("  // ---- the block fill path: begin (docs/SPEC-TABLES.md §19.1) ----\n")
+	g.pf("  /// Writes the prologue and this block's triples, and NOTHING else: no row\n")
+	g.pf("  /// and no padding between arrays is touched, so what a caller put in the\n")
+	g.pf("  /// extent stays there. Returns the built block — its used extent in\n")
+	g.pf("  /// [Block.length] — or null on a refusal, which [refusal] then names: the\n")
+	g.pf("  /// array whose declared maximum a count violates, the count and the bound.\n")
+	g.pf("  ///\n")
+	g.pf("  /// `base` is the block's first byte within `bytes` and §19.1's 64-byte\n")
+	g.pf("  /// alignment is required of it; the extent from it must hold\n")
+	g.pf("  /// [blockMaxBytes], the size a producer's storage allocates.\n")
+	head := fmt.Sprintf("  static %sBlock? begin(Uint8List bytes, int base, {", name)
+	var params []string
+	for _, a := range bl.Arrays {
+		params = append(params, fmt.Sprintf("required int %sCount", dartName(a.Field.Name)))
+	}
+	params = append(params, "TableBlockRefusal? refusal")
+	one := head + strings.Join(params, ", ") + "}) {"
+	if len(one) <= 80 {
+		g.pf("%s\n", one)
+	} else {
+		g.pf("  static %sBlock? begin(\n    Uint8List bytes,\n    int base, {\n", name)
+		for _, p := range params {
+			g.pf("    %s,\n", p)
+		}
+		g.pf("  }) {\n")
+	}
+	g.pf("    if (refusal != null) {\n")
+	g.pf("      refusal.array = '';\n      refusal.count = 0;\n      refusal.maximum = 0;\n    }\n")
+	for _, a := range bl.Arrays {
+		field := dartName(a.Field.Name) + "Count"
+		g.pf("    // the DECLARED MAXIMUM (§19.1): a count past it would run the array out\n")
+		g.pf("    // of the extent a consumer sizes by the maximum, so it is refused here\n")
+		g.pf("    // and again by [open] on the reader's side.\n")
+		g.pf("    if (%s < 0 || %s > %d) {\n", field, field, a.Max)
+		g.pf("      if (refusal != null) {\n")
+		g.pf("        refusal.array = '%s';\n        refusal.count = %s;\n        refusal.maximum = %d;\n      }\n",
+			a.Field.Name, field, a.Max)
+		g.pf("      return null;\n    }\n")
+	}
+	g.pf("    if (base < 0 || base %% %d != 0) {\n      return null; // the base's alignment\n    }\n", ir.BlockAlign)
+	g.pf("    if (bytes.length - base < blockMaxBytes) {\n")
+	g.pf("      return null; // the caller's bytes cannot hold the declared maximum\n    }\n")
+	g.pf("    final view = ByteData.view(\n")
+	g.pf("      bytes.buffer,\n      bytes.offsetInBytes,\n      bytes.lengthInBytes,\n    );\n")
+	g.pf("    // the prologue's three words (§19.1), little-endian as this build is\n")
+	g.pf("    view.setUint64(base, tableBlockMagic, Endian.little);\n")
+	g.pf("    view.setUint64(base + 8, tableBuildVersion, Endian.little);\n")
+	g.pf("    view.setUint64(base + 16, tableBlockByteOrder, Endian.little);\n")
+	g.pf("    var offset = projectionSize;\n")
+	for _, a := range bl.Arrays {
+		field := dartName(a.Field.Name) + "Count"
+		alignment := int64(ir.BlockAlign)
+		if a.ElemAlign() > alignment {
+			alignment = a.ElemAlign()
+		}
+		g.pf("    offset = (offset + %d) & ~%d;\n", alignment-1, alignment-1)
+		g.pf("    view.setUint64(base + %d, offset, Endian.little);\n", a.OffsetOfOffset)
+		g.pf("    view.setUint32(base + %d, %s, Endian.little);\n", a.CountOffset, field)
+		g.pf("    view.setUint32(base + %d, %d, Endian.little);\n", a.StrideOffset, a.Stride)
+		g.pf("    offset += %s * %d;\n", field, a.Stride)
+	}
+	g.pf("    final used = (offset + %d) & ~%d;\n", ir.BlockAlign-1, ir.BlockAlign-1)
+	g.pf("    return %sBlock(bytes, view, base, used);\n  }\n\n", name)
 }
 
 // needRow records the import one record's cursor needs. ONE RECORD HAS ONE
@@ -271,7 +364,7 @@ func (g *blockGen) emitBlock(bl *ir.BlockLayout) {
 // and the COOK library otherwise — so the import follows the form, not the
 // file that declared the schema type.
 func (g *blockGen) needRow(record string) {
-	base := g.unit.DeclFile[record]
+	base := cookDeclFile(g.unit, record)
 	if base == "" {
 		return
 	}
@@ -315,6 +408,13 @@ func (g *blockGen) emitRowCursor(record string, ml *ir.MemberLayout) {
 // expression for the record's first byte.
 func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, ind, origin string) {
 	for _, fl := range ml.Fields {
+		if fl.Field.Type.Kind == ir.TFloat32 && !fl.Field.Type.Pointer {
+			// A class owns its scratch view; no allocation rides a field read.
+			g.pf("%s", dartBlockFloat32Runtime)
+			break
+		}
+	}
+	for _, fl := range ml.Fields {
 		f := fl.Field
 		if bl != nil && ir.BlockOutOfLine(f) {
 			continue // the triple, emitted with its array
@@ -322,10 +422,16 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 		facts := ir.BlockFieldOf(g.unit, f, fl.Offset, bl != nil)
 		name := dartName(f.Name)
 		switch {
+		case f.IsMap():
+			// a MAP slot is a delta and a count, never a scalar (§2.8, §7.2):
+			// only a cooked record reaches one, since a map refuses the block form
+			g.emitCookMapAccessors(f, fl.Offset, ind, origin)
+			continue
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			g.pf("%s// %s: the USED length, and a view of the bytes it names\n", ind, tableFieldTypeName(f))
-			g.pf("%sint get %sLength => view.getInt32(%s + %d, Endian.little);\n",
-				ind, name, origin, facts.CountOffset)
+			g.pf("%sint get %sLength {\n", ind, name)
+			g.pf("%s  final used = view.getInt32(%s + %d, Endian.little);\n", ind, origin, facts.CountOffset)
+			g.pf("%s  return used < 0 || used > %d ? 0 : used;\n%s}\n\n", ind, f.Type.Size, ind)
 			// a Block owns its buffer; a ROW cursor holds only a view, so the
 			// caller hands the buffer the view was taken over
 			head, buffer := fmt.Sprintf("Uint8List get %sBytes", name), "bytes"
@@ -351,15 +457,15 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 			g.needRow(f.Type.Name)
 		case facts.IsArray:
 			g.pf("%sstatic const int %sBound = %d;\n", ind, name, facts.ArrayBound)
-			g.arrow(ind, fmt.Sprintf("%s %sAt(int index)", dartScalarType(f.Type), name),
-				g.readAt(f, fmt.Sprintf("%s + %d + index * %d", origin, fl.Offset, facts.ElemSize)))
+			g.scalarGetter(ind, f, fmt.Sprintf("%s %sAt(int index)", dartScalarType(f.Type), name),
+				fmt.Sprintf("%s + %d + index * %d", origin, fl.Offset, facts.ElemSize))
 		case f.Type.Kind == ir.TNamed && isStructRef(f.Type):
-			g.pf("%s%sRow %s(%sRow into) {\n", ind, f.Type.Name, name, f.Type.Name)
+			g.pf("%s%sRow %s(%sRow into) {\n", ind, f.Type.Name, fieldMember(f), f.Type.Name)
 			g.pf("%s  into.at = %s + %d;\n%s  return into;\n%s}\n\n", ind, origin, fl.Offset, ind, ind)
 			g.needRow(f.Type.Name)
 		default:
-			g.arrow(ind, fmt.Sprintf("%s get %s", dartScalarType(f.Type), name),
-				g.readAt(f, fmt.Sprintf("%s + %d", origin, fl.Offset)))
+			g.scalarGetter(ind, f, fmt.Sprintf("%s get %s", dartScalarType(f.Type), fieldMember(f)),
+				fmt.Sprintf("%s + %d", origin, fl.Offset))
 		}
 		if facts.Optional {
 			g.pf("%sbool get %sPresent => view.getUint8(%s + %d) != 0;\n",
@@ -383,6 +489,13 @@ func dartScalarType(t ir.FieldType) string {
 		return "bool"
 	case ir.TFloat32, ir.TFloat64:
 		return "double"
+	case ir.TFixed:
+		// the wide kinds hold their RAW integer as a BigInt (§3, §15)
+		return "BigInt"
+	case ir.TInt:
+		if t.Width == 128 {
+			return "BigInt"
+		}
 	}
 	return "int"
 }
@@ -394,9 +507,15 @@ func (g *blockGen) readAt(f *ir.Field, at string) string {
 	case ir.TBool:
 		return fmt.Sprintf("view.getUint8(%s) != 0", at)
 	case ir.TFloat32:
-		return fmt.Sprintf("view.getFloat32(%s, Endian.little)", at)
+		panic("darttable: a float32 read is a statement body (scalarGetter), never an expression")
 	case ir.TFloat64:
 		return fmt.Sprintf("view.getFloat64(%s, Endian.little)", at)
+	case ir.TFixed:
+		return wideRead(f, at)
+	case ir.TInt:
+		if t.Width == 128 {
+			return wideRead(f, at)
+		}
 	}
 	signed := t.Kind == ir.TInt && t.Signed
 	width := blockScalarWidth(t)
@@ -408,6 +527,13 @@ func (g *blockGen) readAt(f *ir.Field, at string) string {
 		return fmt.Sprintf("view.get%s8(%s)", kind, at)
 	}
 	return fmt.Sprintf("view.get%s%d(%s, Endian.little)", kind, width*8, at)
+}
+
+// wideRead reads one wide kind at its storage width (§3, §15). The value is
+// the RAW integer the wire and the cook both carry, held as a BigInt.
+func wideRead(f *ir.Field, at string) string {
+	kind := ir.TableScalarKind(f)
+	return fmt.Sprintf("tableCookGetWide(view, %s, %d, %v)", at, ir.TableKindWidth(kind), ir.TableKindSigned(kind))
 }
 
 func blockScalarWidth(t ir.FieldType) int {
@@ -430,7 +556,7 @@ func blockScalarWidth(t ir.FieldType) int {
 		case *ir.Enum:
 			return (ref.StorageBits + 7) / 8
 		case *ir.Flags:
-			return (ref.WireBits + 7) / 8
+			return 8 // a flags slot is uint64 in every target (ir/blocklayout.go)
 		}
 	}
 	return 1
@@ -456,16 +582,36 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.pf("  //\n")
 	g.pf("  // `base` is the block's first byte within `bytes`, and it is the only base a\n")
 	g.pf("  // Dart consumer holds: §19.1's 64-byte alignment is checked on it.\n")
+	g.pf("  //\n")
+	g.pf("  // open is openWithReason without the reason: the same checks in the same\n")
+	g.pf("  // order, so the verdict and the reason never disagree.\n")
 	g.pf("  static %sBlock? open(Uint8List? bytes, int base, int extent) {\n", name)
-	g.pf("    if (bytes == null || extent < %d || base < 0) {\n      return null;\n    }\n", bl.Projection.Size)
-	g.pf("    if (base %% %d != 0) {\n      return null; // the base's alignment\n    }\n", ir.BlockAlign)
+	g.pf("    return openWithReason(bytes, base, extent).$1;\n  }\n\n")
+	g.pf("  // openWithReason answers the block and the FIRST failing clause beside the\n")
+	g.pf("  // null, as the reference leg names it (docs/SPEC-TABLES.md §19.2, the clauses\n")
+	g.pf("  // in the order internal/codegen/gotable/block.go's Open checks them): no\n")
+	g.pf("  // buffer is an unaligned base, a claim under the projection or past the\n")
+	g.pf("  // caller's bytes is truncated, the magic is not_a_cook or, read\n")
+	g.pf("  // byte-reversed, foreign_order, then the order word, the build version,\n")
+	g.pf("  // every array's layout (bad_layout), the used extent's padding (truncated)\n")
+	g.pf("  // and last the base's own alignment.\n")
+	g.pf("  static (%sBlock?, TableRefuseReason) openWithReason(\n", name)
+	g.pf("    Uint8List? bytes,\n    int base,\n    int extent,\n  ) {\n")
+	g.pf("    if (bytes == null || base < 0) {\n      return (null, TableRefuseReason.unalignedBase);\n    }\n")
+	g.pf("    if (extent < %d) {\n      return (null, TableRefuseReason.truncated);\n    }\n", bl.Projection.Size)
 	g.pf("    if (extent > bytes.length - base) {\n")
-	g.pf("      return null; // the claim runs past the bytes the caller owns\n    }\n")
+	g.pf("      // the claim runs past the bytes the caller owns\n")
+	g.pf("      return (null, TableRefuseReason.truncated);\n    }\n")
 	g.pf("    final view = ByteData.view(\n")
 	g.pf("      bytes.buffer,\n      bytes.offsetInBytes,\n      bytes.lengthInBytes,\n    );\n")
-	g.pf("    if (tableBlockRead64(view, base) != tableBlockMagic) {\n      return null;\n    }\n")
-	g.pf("    if (tableBlockRead64(view, base + 8) != tableBuildVersion) {\n      return null;\n    }\n")
-	g.pf("    if (tableBlockRead64(view, base + 16) != tableBlockByteOrder) {\n      return null;\n    }\n")
+	g.pf("    final magic = tableBlockRead64(view, base);\n")
+	g.pf("    if (magic != tableBlockMagic) {\n")
+	// the magic as a block of the OTHER byte order reads back through the same
+	// bytewise read: what tells foreign_order from not_a_cook (§19.2)
+	g.pf("      return (\n        null,\n        magic == 0x%016x\n", bits.ReverseBytes64(ir.BlockMagic))
+	g.pf("            ? TableRefuseReason.foreignOrder\n            : TableRefuseReason.notACook,\n      );\n    }\n")
+	g.pf("    if (tableBlockRead64(view, base + 16) != tableBlockByteOrder) {\n      return (null, TableRefuseReason.notACook);\n    }\n")
+	g.pf("    if (tableBlockRead64(view, base + 8) != tableBuildVersion) {\n      return (null, TableRefuseReason.wrongBuildVersion);\n    }\n")
 	g.pf("    var used = %d;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		field := dartName(a.Field.Name)
@@ -481,16 +627,16 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		g.pf("      final offsetOf = view.getUint64(base + %d, Endian.little);\n", a.OffsetOfOffset)
 		g.pf("      final count = view.getUint32(base + %d, Endian.little);\n", a.CountOffset)
 		g.pf("      final stride = view.getUint32(base + %d, Endian.little);\n", a.StrideOffset)
-		g.pf("      if (stride != %sStride) {\n        return null;\n      }\n", field)
+		g.pf("      if (stride != %sStride) {\n        return (null, TableRefuseReason.badLayout);\n      }\n", field)
 		g.pf("      // past the DECLARED MAXIMUM: Begin refuses this on the producer side\n")
 		g.pf("      // and Open refuses it here, because a consumer that sizes anything by\n")
 		g.pf("      // the maximum would overflow on a count the maximum does not bound\n")
-		g.pf("      if (count > %sMax) {\n        return null;\n      }\n", field)
-		g.pf("      if (offsetOf < %d || offsetOf %% %d != 0) {\n        return null;\n      }\n",
+		g.pf("      if (count > %sMax) {\n        return (null, TableRefuseReason.badLayout);\n      }\n", field)
+		g.pf("      if (offsetOf < %d || offsetOf %% %d != 0) {\n        return (null, TableRefuseReason.badLayout);\n      }\n",
 			bl.Projection.Size, alignment)
-		g.pf("      if (offsetOf > extent) {\n        return null;\n      }\n")
+		g.pf("      if (offsetOf > extent) {\n        return (null, TableRefuseReason.badLayout);\n      }\n")
 		g.pf("      final rows = count * stride; // both bounded above: this cannot carry\n")
-		g.pf("      if (rows > extent - offsetOf) {\n        return null;\n      }\n")
+		g.pf("      if (rows > extent - offsetOf) {\n        return (null, TableRefuseReason.badLayout);\n      }\n")
 		g.pf("      final end = offsetOf + rows;\n")
 		g.pf("      if (end > used) {\n        used = end;\n      }\n")
 		g.pf("    }\n")
@@ -499,9 +645,16 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.pf("    // used is already inside extent, and the padding is paid out of the slack\n")
 	g.pf("    // that is left rather than added and compared after.\n")
 	g.pf("    final padding = (%d - (used %% %d)) %% %d;\n", ir.BlockAlign, ir.BlockAlign, ir.BlockAlign)
-	g.pf("    if (padding > extent - used) {\n      return null;\n    }\n")
+	g.pf("    if (padding > extent - used) {\n      return (null, TableRefuseReason.truncated);\n    }\n")
 	g.pf("    used += padding;\n")
-	g.pf("    return %sBlock(bytes, view, base, used);\n  }\n", name)
+	g.pf("    if (base %% %d != 0) {\n      return (null, TableRefuseReason.unalignedBase);\n    }\n", ir.BlockAlign)
+	// one line when it fits the formatter's 80 columns, the record split
+	// otherwise: the tables-dart-clean gate holds this file to `dart format`
+	ret := fmt.Sprintf("    return (%sBlock(bytes, view, base, used), TableRefuseReason.ok);", name)
+	if len(ret) > 80 {
+		ret = fmt.Sprintf("    return (\n      %sBlock(bytes, view, base, used),\n      TableRefuseReason.ok,\n    );", name)
+	}
+	g.pf("%s\n  }\n", ret)
 }
 
 // emitBlockDescriptors is the REFLECTIVE half (docs/SPEC-TABLES.md §8, §19.2): the
@@ -663,10 +816,48 @@ func (g *blockGen) sublist(ind, head, args string) {
 
 // arrow writes an expression-bodied member, breaking after the arrow the way
 // `dart format` does when the one-line form runs past 80 columns.
+// scalarGetter writes one scalar field's getter. A float32 widens AT THE
+// READ, in the getter's own body (issue 404, PORTING M3): under the JIT a
+// double crossing an out-of-line conversion call is boxed, and whether the
+// call is inlined is the inliner's budget, not the codec's. A NaN pattern
+// widens in software — the hardware conversion quiets a signalling NaN —
+// so the payload survives (SPEC-TABLES §3; float32_cells_test.go is the
+// law); the bits are a NaN exactly when their magnitude exceeds infinity's.
+func (g *blockGen) scalarGetter(ind string, f *ir.Field, head, at string) {
+	if f.Type.Kind != ir.TFloat32 {
+		g.arrow(ind, head, g.readAt(f, at))
+		return
+	}
+	g.pf("%s%s {\n", ind, head)
+	one := fmt.Sprintf("%s  final bits = view.getUint32(%s, Endian.little);", ind, at)
+	if len(one) <= 80 {
+		g.pf("%s\n", one)
+	} else {
+		g.pf("%s  final bits = view.getUint32(\n%s    %s,\n%s    Endian.little,\n%s  );\n", ind, ind, at, ind, ind)
+	}
+	g.pf("%s  if ((bits & 0x7fffffff) <= 0x7f800000) {\n", ind)
+	g.pf("%s    _float32Words[0] = bits;\n", ind)
+	g.pf("%s    return _float32Cell[0];\n", ind)
+	g.pf("%s  }\n", ind)
+	g.pf("%s  _float64Words[0] = ((bits >>> 31) << 63) | ((bits & 0x7fffff) << 29);\n", ind)
+	g.pf("%s  _float64Words[0] |= 0x7ff0000000000000;\n", ind)
+	g.pf("%s  return _float64Cell[0];\n", ind)
+	g.pf("%s}\n\n", ind)
+}
+
 func (g *blockGen) arrow(ind, head, expr string) {
 	one := fmt.Sprintf("%s%s => %s;", ind, head, expr)
 	if len(one) <= 80 {
 		g.pf("%s\n", one)
+		return
+	}
+	two := fmt.Sprintf("%s    %s;", ind, expr)
+	if len(two) <= 80 {
+		g.pf("%s%s =>\n%s\n", ind, head, two)
+		return
+	}
+	if fn, arg, ok := strings.Cut(strings.TrimSuffix(expr, ")"), "("); ok {
+		g.pf("%s%s => %s(\n%s  %s,\n%s);\n", ind, head, fn, ind, arg, ind)
 		return
 	}
 	g.pf("%s%s =>\n%s    %s;\n", ind, head, ind, expr)
@@ -681,3 +872,14 @@ func (g *blockGen) trimBlank() {
 	g.body.WriteString(text)
 	g.body.WriteString("\n")
 }
+
+// IEEE-754 payloads are data (SPEC-TABLES §3): hardware widening quiets a
+// signalling NaN, so preserve sign and mantissa in the double representation.
+// The class owns only the views; each float32 getter converts in its own
+// body (scalarGetter, issue 404).
+const dartBlockFloat32Runtime = `  static final Float32List _float32Cell = Float32List(2);
+  static final Uint32List _float32Words = _float32Cell.buffer.asUint32List();
+  static final Float64List _float64Cell = _float32Cell.buffer.asFloat64List();
+  static final Uint64List _float64Words = _float32Cell.buffer.asUint64List();
+
+`
