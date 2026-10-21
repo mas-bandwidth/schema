@@ -97,7 +97,7 @@ end
 	}
 	out := strings.TrimSpace(string(luaurun.Run(t, dir, "main.luau", nil)))
 	seen := map[string]bool{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		var name string
 		var unbounded bool
 		var bound string
@@ -160,7 +160,7 @@ func goUnboundedFacts(t *testing.T, files map[string][]byte, table string) map[s
 	}
 	_, body, _ := strings.Cut(src, marker)
 	out := map[string]unboundedFacts{}
-	for _, block := range strings.Split(body, "\n\t{Name: ") {
+	for block := range strings.SplitSeq(body, "\n\t{Name: ") {
 		m := goFieldName.FindStringSubmatch(block)
 		if m == nil {
 			continue

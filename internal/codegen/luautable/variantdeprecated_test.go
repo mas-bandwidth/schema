@@ -196,9 +196,9 @@ print("measure " .. tostring(m) .. " " .. tostring(rep.reason) .. " " .. tostrin
 }
 
 func prefixedLine(s, prefix string) string {
-	for _, line := range strings.Split(s, "\n") {
-		if strings.HasPrefix(line, prefix) {
-			return strings.TrimPrefix(line, prefix)
+	for line := range strings.SplitSeq(s, "\n") {
+		if after, ok := strings.CutPrefix(line, prefix); ok {
+			return after
 		}
 	}
 	return ""

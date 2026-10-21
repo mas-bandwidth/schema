@@ -17,6 +17,7 @@ package luautable
 import (
 	"embed"
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"path"
@@ -114,9 +115,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for name, data := range views {
-		out[name] = data
-	}
+	maps.Copy(out, views)
 	// SPEC-TABLES.md §2.12: a unit with no table carrying json, block or
 	// cook omits those runtime surfaces. Fixed, view, message and retain are
 	// governed by surface, not forms.

@@ -43,7 +43,7 @@ func TestLuauTypeWireReadsTheGoldens(t *testing.T) {
 	writeFile(t, dir, "main.luau", readProbe)
 	out := string(luaurun.Run(t, dir, "main.luau", inputs))
 	lines := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		name, verdict, _ := strings.Cut(line, " ")
 		lines[name] = verdict
 	}
@@ -61,7 +61,6 @@ func TestLuauTypeWireReadsTheGoldens(t *testing.T) {
 	}
 
 	for _, name := range readGoldens {
-		name := name
 		t.Run("short/"+name, func(t *testing.T) {
 			dir := t.TempDir()
 			writeAll(t, dir, files)
@@ -117,7 +116,7 @@ func TestLuauTypeWireReadNegativeControl(t *testing.T) {
 	writeFile(t, dir, "main.luau", readProbe)
 	out := string(luaurun.Run(t, dir, "main.luau", all))
 	found := false
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		if strings.HasPrefix(line, "degenerate MISMATCH") {
 			found = true
 		}

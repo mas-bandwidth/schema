@@ -149,7 +149,7 @@ func Analyze(t testing.TB, dir string, files ...string) string {
 func HexLines(t testing.TB, out []byte) [][]byte {
 	t.Helper()
 	var lines [][]byte
-	for _, l := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for l := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		if l == "" {
 			lines = append(lines, nil)
 			continue

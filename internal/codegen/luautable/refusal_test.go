@@ -176,7 +176,7 @@ func emittedIntegrity(t *testing.T, g *generatedUnit, root string) {
 func idTable(ids ...uint64) []byte {
 	var b []byte
 	for _, x := range append(ids, uint64(len(ids))) {
-		for i := 0; i < 8; i++ {
+		for i := range 8 {
 			b = append(b, byte(x>>(8*i)))
 		}
 	}

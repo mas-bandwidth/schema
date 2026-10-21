@@ -129,15 +129,15 @@ func TestLuauLoadRefusesNegativeIdCount(t *testing.T) {
 	}
 	var valid []byte
 	want := map[string]string{}
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(line, "valid:") {
-			valid, err = hex.DecodeString(strings.TrimPrefix(line, "valid:"))
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if after, ok := strings.CutPrefix(line, "valid:"); ok {
+			valid, err = hex.DecodeString(after)
 			if err != nil {
 				t.Fatalf("the oracle's valid wire: %v", err)
 			}
 		}
-		if strings.HasPrefix(line, "@") {
-			name, rest, ok := strings.Cut(strings.TrimPrefix(line, "@"), "|")
+		if after, ok := strings.CutPrefix(line, "@"); ok {
+			name, rest, ok := strings.Cut(after, "|")
 			if !ok {
 				t.Fatalf("unexpected oracle line %q", line)
 			}
@@ -177,7 +177,7 @@ end
 	}
 	luauOut := luaurun.Run(t, g.dir, "main.luau", inputs)
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(luauOut)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(luauOut)), "\n") {
 		if line == "" {
 			continue
 		}

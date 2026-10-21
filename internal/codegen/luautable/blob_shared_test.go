@@ -69,7 +69,7 @@ func blobLeb(v uint64) []byte {
 
 func blobU64(v uint64) []byte {
 	var b []byte
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		b = append(b, byte(v>>(8*i)))
 	}
 	return b

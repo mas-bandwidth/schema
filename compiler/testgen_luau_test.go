@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,12 +68,8 @@ func TestTestgenLuau(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
-	for name, data := range luauFiles {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
+	maps.Copy(files, luauFiles)
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
 			t.Fatal(err)
@@ -98,7 +95,7 @@ func TestTestgenLuau(t *testing.T) {
 
 	out := string(luaurun.Run(t, dir, "main.luau", nil))
 	var got []string
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		if name, ok := strings.CutPrefix(line, "SAMPLE "); ok {
 			got = append(got, name)
 		}
@@ -160,7 +157,7 @@ func goSampleNames(t *testing.T, files map[string][]byte) []string {
 	sort.Strings(names)
 	for _, name := range names {
 		root := ""
-		for _, line := range strings.Split(string(files[name]), "\n") {
+		for line := range strings.SplitSeq(string(files[name]), "\n") {
 			if m := decl.FindStringSubmatch(line); m != nil {
 				root = m[1]
 			}
@@ -196,7 +193,7 @@ func luauSampleNames(t *testing.T, files map[string][]byte) []string {
 	sort.Strings(names)
 	for _, name := range names {
 		line := ""
-		for _, l := range strings.Split(string(files[name]), "\n") {
+		for l := range strings.SplitSeq(string(files[name]), "\n") {
 			if strings.HasPrefix(l, "local names = {") {
 				line = l
 				break
@@ -256,7 +253,7 @@ func luauSampleOracle(t *testing.T, files map[string][]byte) []string {
 	for _, file := range names {
 		src := string(files[file])
 		var nameLine string
-		for _, line := range strings.Split(src, "\n") {
+		for line := range strings.SplitSeq(src, "\n") {
 			if strings.HasPrefix(line, "local names = {") {
 				nameLine = line
 				break

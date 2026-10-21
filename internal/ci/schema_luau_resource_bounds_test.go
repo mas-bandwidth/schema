@@ -119,7 +119,7 @@ func runLuauResourceBounds(t *testing.T, dir string) map[string][]string {
 	}
 	out := luaurun.Run(t, dir, "main.luau", nil)
 	got := map[string][]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		if fields := strings.Split(line, "\t"); len(fields) >= 3 {
 			got[fields[0]] = fields
 		}

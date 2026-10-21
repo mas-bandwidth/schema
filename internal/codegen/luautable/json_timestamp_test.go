@@ -171,7 +171,7 @@ print("text=" .. hex(json.ToJson("Root", v)))
 	}
 	out := string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"text": []byte(text)}))
 	got := jsonTimestampResult{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		key, value, _ := strings.Cut(line, "=")
 		switch key {
 		case "malformed":
@@ -207,7 +207,6 @@ func TestLuauJsonTimestampStrictRFC3339(t *testing.T) {
 	}
 
 	for _, tc := range jsonTimestampCases() {
-		tc := tc
 		text := `{"at":` + strconv.Quote(tc.text) + `}`
 		inst := model.New(st)
 		var rep tabletext.Report

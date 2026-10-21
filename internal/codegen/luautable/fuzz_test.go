@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"hash/fnv"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -62,7 +63,7 @@ func luauFuzzMutate(base []byte, seed uint64) []byte {
 		return []byte{byte(r.next())}
 	}
 	edits := 1 + int(r.next()%4)
-	for k := 0; k < edits; k++ {
+	for range edits {
 		pos := int(r.next() % uint64(len(w)))
 		switch r.next() % 3 {
 		case 0:
@@ -382,9 +383,7 @@ func runLuauFuzzDifferential(t *testing.T, edit func([]byte) []byte) luauFuzzRes
 			cache[unitKey] = nil
 			return nil
 		}
-		for name, data := range tables {
-			files[name] = data
-		}
+		maps.Copy(files, tables)
 		g := &generated{files: files, m: tabletext.NewModel(u)}
 		cache[unitKey] = g
 		return g
@@ -425,7 +424,7 @@ func runLuauFuzzDifferential(t *testing.T, edit func([]byte) []byte) luauFuzzRes
 			if err != nil {
 				t.Fatalf("instance %s: %v", row.caseName, err)
 			}
-			for j := 0; j < luauFuzzMutantsPerInstance; j++ {
+			for j := range luauFuzzMutantsPerInstance {
 				seed := luauFuzzMutantSeed(row.caseName, j)
 				g.mutants = append(g.mutants, luauFuzzMutant{row.caseName, seed, luauFuzzMutate(base, seed)})
 			}

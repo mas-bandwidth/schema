@@ -189,9 +189,9 @@ var buf [256]byte
 		t.Fatalf("the generated Go oracle failed: %v\n%s", err, out)
 	}
 	got := map[string]string{}
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(line, "@") {
-			f := strings.SplitN(strings.TrimPrefix(line, "@"), "|", 2)
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if after, ok := strings.CutPrefix(line, "@"); ok {
+			f := strings.SplitN(after, "|", 2)
 			if len(f) == 2 {
 				got[f[0]] = f[1]
 			}
@@ -234,9 +234,9 @@ end
 	}
 	out := luaurun.Run(t, g.dir, "main.luau", inputs)
 	got := map[string]string{}
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(line, "@") {
-			f := strings.SplitN(strings.TrimPrefix(line, "@"), "|", 2)
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if after, ok := strings.CutPrefix(line, "@"); ok {
+			f := strings.SplitN(after, "|", 2)
 			if len(f) == 2 {
 				got[f[0]] = f[1]
 			}
@@ -333,9 +333,9 @@ end
 	}
 	out := luaurun.Run(t, g.dir, "main.luau", nil)
 	got := map[string]string{}
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(line, "@") {
-			f := strings.SplitN(strings.TrimPrefix(line, "@"), "|", 2)
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if after, ok := strings.CutPrefix(line, "@"); ok {
+			f := strings.SplitN(after, "|", 2)
 			if len(f) == 2 {
 				got[f[0]] = f[1]
 			}

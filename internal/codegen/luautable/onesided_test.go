@@ -140,7 +140,6 @@ func TestLuauOneSidedIntegerRange(t *testing.T) {
 		{"b unbounded side at the kind limit", "b", 0},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			wire, wantSaved, wantAccepted, wantClamped, wantA, wantB := oneSidedOracle(t, model, u, tc)
 			out := strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": wire})))

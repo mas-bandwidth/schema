@@ -3,6 +3,7 @@ package luautable_test
 import (
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -165,9 +166,7 @@ func buildCookUnit(t *testing.T, units map[string][]string, key string) *cookUni
 	if err != nil {
 		t.Fatalf("unit %s: %v", key, err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	g := &generatedUnit{dir: t.TempDir(), files: files, loaded: true}
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(g.dir, name), data, 0o644); err != nil {
@@ -260,7 +259,6 @@ func TestLuauCookOpenAgreesWithGo(t *testing.T) {
 				{"unaligned_base", nil, true},
 			}
 			for _, tc := range cases {
-				tc := tc
 				t.Run("damaged/"+tc.name, func(t *testing.T) {
 					want := goCookReason(tc.bytes, cu.build, layout.Size, layout.Align)
 					got := runProbe(t, cu.g, cookProbe(cu.g, rootName, build, tc.nilBase), map[string][]byte{"wire": wire, "cook": tc.bytes})

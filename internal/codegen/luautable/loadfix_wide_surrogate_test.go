@@ -194,7 +194,6 @@ func TestLuauLoadWideLoneSurrogateAgreesWithTheEngine(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
 	for _, c := range loadFixFCases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			g := generateUnit(t, units, c.unit)

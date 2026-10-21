@@ -16,11 +16,8 @@ func firstDiffOffset(a, b string) string {
 	if a == b {
 		return "equal"
 	}
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
-	}
-	for i := 0; i < n; i++ {
+	n := min(len(b), len(a))
+	for i := range n {
 		if a[i] != b[i] {
 			return strings.TrimSpace(strings.Join([]string{
 				"first differing byte", itoa(i / 2), "of", itoa(len(a) / 2), "vs", itoa(len(b) / 2),
@@ -53,7 +50,6 @@ func TestLuauJsonMapOfBoundedArrayAgreesWithTheCorpus(t *testing.T) {
 
 	units, _ := readManifest(t)
 	for _, caseName := range []string{"map_crews", "map_runs"} {
-		caseName := caseName
 		t.Run(caseName, func(t *testing.T) {
 			t.Parallel()
 			var row jsonRow

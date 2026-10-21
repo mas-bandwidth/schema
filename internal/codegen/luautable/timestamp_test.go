@@ -244,7 +244,7 @@ func goTimestampOracle(t *testing.T) map[string][]byte {
 		t.Fatalf("the generated Go oracle failed: %v\n%s", err, out)
 	}
 	wants := map[string][]byte{}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 2 && (f[0] == "var_elided" || f[0] == "var_full" || f[0] == "fixed_full") {
 			raw, err := hex.DecodeString(f[1])
@@ -272,7 +272,7 @@ func TestLuauTimestampBinaryForms(t *testing.T) {
 
 	gots := map[string][]byte{}
 	var sawKindMismatch, sawFixedStrictOk bool
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		f := strings.Fields(line)
 		if len(f) < 2 {
 			continue

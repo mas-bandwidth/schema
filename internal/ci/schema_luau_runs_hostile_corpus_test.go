@@ -388,7 +388,7 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 		}
 		out := luaurun.Run(t, dir, "main.luau", inputs)
 		got := map[string][4]string{}
-		for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+		for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 			f := strings.Split(line, "\t")
 			if len(f) != 4 {
 				t.Fatalf("%s: probe line %q is not name/verdict/reason/digest", schema, line)
@@ -572,7 +572,7 @@ end
 	}
 	out := luaurun.Run(t, dir, "main.luau", inputs)
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		name, rest, _ := strings.Cut(line, "\t")
 		got[name] = rest
 	}

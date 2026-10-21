@@ -186,7 +186,6 @@ func TestLuauLoadSimStateClampAgreesWithTheEngine(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
 	for _, c := range loadFixJCases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			g := generateUnit(t, units, c.unit)
 			if g.err != nil {

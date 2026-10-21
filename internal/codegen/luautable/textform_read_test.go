@@ -277,7 +277,6 @@ func TestLuauLoadTextFormAgreesWithGo(t *testing.T) {
 		{"fixed", tfFixedSchema, []string{"Document"}},
 		{"variable", tfVariableSchema, []string{"Document", "Graph", "Strict"}},
 	} {
-		unit := unit
 		t.Run(unit.name, func(t *testing.T) {
 			t.Parallel()
 			srcDir := t.TempDir()
@@ -344,7 +343,7 @@ func tfJSONStrict(v *Strict) []byte { n := StrictToJsonMeasure(v); b := make([]b
 				t.Fatalf("the Go oracle did not build and run: %v\n%s", err, wantOut)
 			}
 			want := map[string]string{}
-			for _, line := range strings.Split(string(wantOut), "\n") {
+			for line := range strings.SplitSeq(string(wantOut), "\n") {
 				if strings.HasPrefix(line, "=== RUN") || strings.HasPrefix(line, "--- ") || strings.HasPrefix(line, "PASS") || strings.HasPrefix(line, "ok ") {
 					continue
 				}
@@ -399,7 +398,7 @@ end
 			}
 			gotOut := string(luaurun.Run(t, dir, "main.luau", nil))
 			got := map[string]string{}
-			for _, line := range strings.Split(strings.TrimRight(gotOut, "\n"), "\n") {
+			for line := range strings.SplitSeq(strings.TrimRight(gotOut, "\n"), "\n") {
 				if fields := strings.Split(line, "\t"); len(fields) >= 3 {
 					got[fields[0]] = line
 				}

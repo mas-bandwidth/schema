@@ -143,7 +143,6 @@ func TestLuauMessageFormMatchesTheGoldens(t *testing.T) {
 	}
 	compared := 0
 	for _, row := range rows {
-		row := row
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			conn, ok := conns[row.connection]

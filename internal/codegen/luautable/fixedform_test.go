@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -65,9 +66,7 @@ func build(t *testing.T, schema string) (string, string, map[string][]byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
@@ -92,7 +91,6 @@ func TestLuauFixedFormAgreesWithTheByteOracle(t *testing.T) {
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
 	var compared atomic.Int32
 	for _, v := range fixedCorpusVectors {
-		v := v
 		t.Run(strings.TrimSuffix(v.file, ".bin"), func(t *testing.T) {
 			t.Parallel()
 			oracle, err := os.ReadFile(filepath.Join(corpus, v.file))
@@ -130,18 +128,9 @@ func TestLuauFixedFormAgreesWithTheByteOracle(t *testing.T) {
 					}
 					at++
 				}
-				lo := at - 8
-				if lo < 0 {
-					lo = 0
-				}
-				hi := at + 16
-				if hi > len(got) {
-					hi = len(got)
-				}
-				ohi := at + 16
-				if ohi > len(oracle) {
-					ohi = len(oracle)
-				}
+				lo := max(at-8, 0)
+				hi := min(at+16, len(got))
+				ohi := min(at+16, len(oracle))
 				t.Errorf("%s: differs at byte %d: got %x oracle %x (%d bytes)", v.file, at, got[lo:hi], oracle[lo:ohi], len(oracle))
 			}
 			compared.Add(1)
@@ -281,7 +270,6 @@ func TestLuauFixedFormRefusals(t *testing.T) {
 		"plan_too_large": {oracle, planTooLarge},
 	}
 	for name, f := range forged {
-		f := f
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			dir, mod, _ := build(t, "test/tables/FX1.schema")
@@ -309,7 +297,7 @@ if ok then print("read") elseif type(err) == "table" then print(err.name) else p
 var planTooLarge = func() string {
 	var b strings.Builder
 	b.WriteString("{ hash = T.FxRootFixedHash, recordBytes = T.FxRootFixedRecordBytes, layout = { { id = 0i, kind = 13, size = 0, children = 0 }")
-	for i := 0; i < 4097; i++ {
+	for range 4097 {
 		b.WriteString(", { id = 0i, kind = 4, size = 4, children = 0 }")
 	}
 	b.WriteString(" } }")

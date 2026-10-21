@@ -166,7 +166,7 @@ func retainRunLuau(t *testing.T, g *generatedUnit, wire []byte, capacity int) *r
 	}
 	out := string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": wire}))
 	r := &retainResult{}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 {
 			continue
@@ -188,7 +188,7 @@ func retainRunLuau(t *testing.T, g *generatedUnit, wire []byte, capacity int) *r
 			id := binary.LittleEndian.Uint64(idBytes)
 			kind, _ := strconv.Atoi(f[4])
 			rc := rec{node: uint32(node), depth: uint32(depth), id: id, kind: uint8(kind)}
-			for i := 0; i < depth; i++ {
+			for i := range depth {
 				o, _ := strconv.Atoi(f[5+2*i])
 				ix, _ := strconv.Atoi(f[6+2*i])
 				rc.steps = append(rc.steps, step{o: uint32(o), i: uint32(ix)})
@@ -298,7 +298,7 @@ func TestRetainOracle(t *testing.T) {
 func parseRetainLines(t *testing.T, out string) *retainResult {
 	t.Helper()
 	r := &retainResult{}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 {
 			continue
@@ -320,7 +320,7 @@ func parseRetainLines(t *testing.T, out string) *retainResult {
 			id := binary.LittleEndian.Uint64(idBytes)
 			kind, _ := strconv.Atoi(f[4])
 			rc := rec{node: uint32(node), depth: uint32(depth), id: id, kind: uint8(kind)}
-			for i := 0; i < depth; i++ {
+			for i := range depth {
 				o, _ := strconv.Atoi(f[5+2*i])
 				ix, _ := strconv.Atoi(f[6+2*i])
 				rc.steps = append(rc.steps, step{o: uint32(o), i: uint32(ix)})
@@ -550,7 +550,6 @@ func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 		{bodies: 64, retained: 1, lost: 0, what: "the last depth the cap admits"},
 		{bodies: 65, retained: 0, lost: 1, what: "one past the cap"},
 	} {
-		row := row
 		t.Run("depth cap "+row.what, func(t *testing.T) {
 			deepOld, _ := retainCompile(t, retainDeepOldSchema)
 			deepNew, _ := retainCompile(t, retainDeepSchema(row.bodies))

@@ -39,7 +39,7 @@ func TestConformanceLuauDependsOnEveryRuntimeFile(t *testing.T) {
 			for _, m := range wildcard.FindAllStringSubmatch(rest, -1) {
 				globs = append(globs, m[1])
 			}
-			for _, tok := range strings.Fields(wildcard.ReplaceAllString(rest, " ")) {
+			for tok := range strings.FieldsSeq(wildcard.ReplaceAllString(rest, " ")) {
 				if !strings.Contains(tok, "$(") {
 					literal[tok] = true
 				}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,7 +41,7 @@ func loadFixAmutate(base []byte, seed uint64) []byte {
 		return []byte{byte(r.next())}
 	}
 	edits := 1 + int(r.next()%4)
-	for k := 0; k < edits; k++ {
+	for range edits {
 		pos := int(r.next() % uint64(len(w)))
 		switch r.next() % 3 {
 		case 0:
@@ -115,9 +116,7 @@ func loadFixAstage(t *testing.T, wire []byte) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {

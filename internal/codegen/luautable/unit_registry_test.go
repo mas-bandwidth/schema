@@ -2,6 +2,7 @@ package luautable_test
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,9 +41,7 @@ func TestLuauUnitViewListsTheUnit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	for fn, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, fn), data, 0o644); err != nil {
@@ -122,9 +121,7 @@ func TestLuauUnitViewTableFree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for k, v := range views {
-		files[k] = v
-	}
+	maps.Copy(files, views)
 	dir := t.TempDir()
 	for fn, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, fn), data, 0o644); err != nil {

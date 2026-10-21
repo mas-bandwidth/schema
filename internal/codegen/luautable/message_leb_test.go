@@ -218,7 +218,6 @@ require("./inputs")
 		{"first_reference_eleven_byte_overlong", respell(t, ann, refOff, overlongLeb(refValue, 11))},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			wantAnnounced, wantMalformed := goAnnounce(c.data)
 			gotAnnounced, gotMalformed := luauAnnounce(t, dir, c.data)

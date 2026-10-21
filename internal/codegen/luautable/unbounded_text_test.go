@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -142,9 +143,7 @@ func luauUnboundedTextGenerated(t *testing.T, u *ir.Unit) *generatedUnit {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	g := &generatedUnit{dir: t.TempDir(), files: files, loaded: true}
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(g.dir, name), data, 0o644); err != nil {

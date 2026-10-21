@@ -145,7 +145,6 @@ func TestLuauJsonNullElemsArrayRefusal(t *testing.T) {
 		{name: "unbounded-string", field: "xs []*string"},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
@@ -212,7 +211,6 @@ func TestLuauJsonNullElementsInArraysAndMaps(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			m := nullElemUnit(t)

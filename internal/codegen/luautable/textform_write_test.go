@@ -197,7 +197,7 @@ func TestLuauTextFormEditKeepsTheDocument(t *testing.T) {
 		t.Fatalf("the Go oracle did not build and run: %v\n%s", err, wantOut)
 	}
 	want := map[string]string{}
-	for _, line := range strings.Split(string(wantOut), "\n") {
+	for line := range strings.SplitSeq(string(wantOut), "\n") {
 		if fields := strings.Split(line, "\t"); len(fields) >= 3 {
 			want[fields[0]] = line
 		}
@@ -267,7 +267,7 @@ end
 	}
 	gotOut := string(luaurun.Run(t, dir, "main.luau", nil))
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(gotOut, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(gotOut, "\n"), "\n") {
 		if fields := strings.Split(line, "\t"); len(fields) >= 3 {
 			got[fields[0]] = line
 		}

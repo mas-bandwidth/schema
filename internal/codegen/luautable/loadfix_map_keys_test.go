@@ -295,7 +295,6 @@ func loadFixDCheck(t *testing.T, c loadFixDCase) {
 func TestLuauLoadMapKeyRulesAgreeWithTheEngine(t *testing.T) {
 	t.Parallel()
 	for _, c := range loadFixDCases {
-		c := c
 		t.Run(c.what, func(t *testing.T) {
 			t.Parallel()
 			loadFixDCheck(t, c)

@@ -2,6 +2,7 @@ package luautable_test
 
 import (
 	"encoding/hex"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -37,9 +38,7 @@ func TestLuauTableSaveSkipsFalseGuards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
@@ -112,7 +111,7 @@ emit("f", patrol({active = true, has_target = true, target_id = 5}))
 	out := strings.TrimSpace(string(luaurun.Run(t, dir, "main.luau", nil)))
 	saved := map[string][]byte{}
 	measure := map[string]int{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		f := strings.Fields(line)
 		if len(f) != 3 {
 			t.Fatalf("unexpected output line %q", line)

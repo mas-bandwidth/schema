@@ -23,6 +23,7 @@ package luau
 import (
 	"embed"
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"path"
@@ -111,9 +112,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			out[f.Base+"."+ext] = g.Assemble()
 		}
 	}
-	for name, data := range Runtime() {
-		out[name] = data
-	}
+	maps.Copy(out, Runtime())
 	return out, nil
 }
 

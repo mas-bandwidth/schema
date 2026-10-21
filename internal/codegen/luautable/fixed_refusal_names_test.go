@@ -255,7 +255,7 @@ end
 		reason    string
 		malformed bool
 	}{}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		fields := strings.Split(line, "|")
 		if len(fields) != 3 {
 			t.Fatalf("the Luau probe printed %q, want name|reason|malformed", line)

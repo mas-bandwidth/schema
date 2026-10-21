@@ -3,6 +3,7 @@ package luautable_test
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -95,9 +96,7 @@ func TestLuauCookMatchesTheGoCook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {

@@ -308,7 +308,6 @@ func loadFixICheck(t *testing.T, c loadFixIKindMismatchCase) {
 func TestLuauLoadKindMismatchAgreesWithTheEngine(t *testing.T) {
 	t.Parallel()
 	for _, c := range loadFixIKindMismatchCases {
-		c := c
 		t.Run(c.what, func(t *testing.T) {
 			t.Parallel()
 			loadFixICheck(t, c)

@@ -210,7 +210,7 @@ print("wire=" .. hex(save.save(St.lookup("Root"), v)))
 	}
 	out := string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"text": []byte(text)}))
 	got := jsonTextZeroResult{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		key, value, _ := strings.Cut(line, "=")
 		switch key {
 		case "malformed":

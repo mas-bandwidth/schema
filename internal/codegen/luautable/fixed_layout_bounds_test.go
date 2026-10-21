@@ -271,7 +271,7 @@ print(string.format("valid|%d|%d|%d|%d", values[1].X, values[1].Inner.A, values[
 		malformed bool
 	}{}
 	var gotValues string
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		fields := strings.Split(line, "|")
 		if fields[0] == "valid" && len(fields) == 5 {
 			gotValues = strings.Join(fields[1:], "|")

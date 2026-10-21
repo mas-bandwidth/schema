@@ -91,7 +91,7 @@ func TestLuauNightlyFuzzSavedInputs(t *testing.T) {
 			continue
 		}
 		fields := map[string]string{}
-		for _, line := range strings.Split(string(meta), "\n") {
+		for line := range strings.SplitSeq(string(meta), "\n") {
 			if k, v, ok := strings.Cut(line, "="); ok {
 				fields[k] = v
 			}

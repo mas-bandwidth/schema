@@ -60,7 +60,7 @@ func reportsExpect(t *testing.T) map[string]string {
 		t.Fatal(err)
 	}
 	m := map[string]string{}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if strings.HasPrefix(line, "#") || strings.TrimSpace(line) == "" {
 			continue
 		}

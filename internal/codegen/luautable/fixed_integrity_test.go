@@ -199,7 +199,7 @@ func goFixedIntegrityOracle(t *testing.T, schema string) (keyed, keyless []byte,
 		t.Fatalf("the generated Go oracle failed: %v\n%s", err, out)
 	}
 	verdicts = map[string]string{}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 {
 			continue
@@ -245,7 +245,7 @@ func TestLuauFixedFormIntegrity(t *testing.T) {
 	var gotKeyed, gotKeyless []byte
 	gotVerdicts := map[string]string{}
 	records, values := -1, 0
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 {
 			continue

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"slices"
 	"sort"
 	"testing"
 
@@ -118,10 +119,5 @@ func schemaModuleDigest(files map[string][]byte, modules []string) string {
 }
 
 func containsName(names []string, name string) bool {
-	for _, n := range names {
-		if n == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(names, name)
 }

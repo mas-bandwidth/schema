@@ -322,7 +322,7 @@ func goTotalOracleOutput(t *testing.T, field string, wires [3][]byte) []string {
 		t.Fatalf("the Go oracle failed: %v\n%s", err, out)
 	}
 	var lines []string
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "OVERSAVE REFUSED" || line == "OVERSAVE TAKEN" || isThreeNumbers(line) {
 			lines = append(lines, line)
@@ -383,7 +383,6 @@ func runListTotalProbe(t *testing.T, g *generatedUnit, field string, wires [3][]
 func TestLuauTextListTotalBytesBound(t *testing.T) {
 	t.Parallel()
 	for _, tc := range listTotalCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			g := generateFiles(t, map[string]string{"Probe.schema": tc.schema})
 			path := filepath.Join(t.TempDir(), "Probe.schema")
