@@ -554,7 +554,7 @@ local run = function(name, carrier, dir, mod, root, annkey) {
   local v = null;
   local r = fresh();
   if (carrier == "text") {
-    v = J.FromJson(T, root, inputs[name], r);
+    v = J.FromJsonTolerant(T, root, inputs[name], r);
     if (v == null || r.malformed) { emit(name, "refuse", "damaged", null); return; }
   } else if (carrier == "wire") {
     local R = schema.require("schema_table_refusal");
