@@ -26,12 +26,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// loadFixDMapKeyMutant is the mutant of seed 0xab0d8eb6d5b32215 (case
-// map_cells, unit mapdemo, root Cells, base testdata/wire/tables/map_cells.bin).
-const loadFixDMapKeyMutant = "01010e370d021a020c05616c706861030e0e04030a0000000b0000000c0000000019020c0462657461030e0e0403000000000100000002000000000404070000000038810af11f06a7a3ec105b16194ac93dea0ce83094fde47ce9ea716f0f01827f0400000000000000"
-
-const loadFixDMapKeySeed = uint64(0xab0d8eb6d5b32215)
-
 // loadFixDCounts is the report's six counters, a comparable tuple.
 type loadFixDCounts struct {
 	unknown, kindMismatch, widened, clamped, duplicate int
@@ -50,8 +44,6 @@ type loadFixDAnswer struct {
 
 // loadFixDOracle is the engine's answer for the mutant.
 type loadFixDOracle struct {
-	variable       bool
-	framingRefused bool
 	noRoot         bool
 	counts         loadFixDCounts
 	refused        bool

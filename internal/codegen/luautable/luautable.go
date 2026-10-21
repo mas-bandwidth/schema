@@ -344,7 +344,7 @@ func writeUnitDeclarations(b *strings.Builder, u *ir.Unit) {
 				if outside {
 					json, id = "-", 0
 				}
-				fmt.Fprintf(b, "{name=%q,json=%q,type=%q,id=%q,optional=%v,doc=%q,tags=", f.Name, json, ir.TableTypeSpelling(f), fmt.Sprintf("%016x", uint64(id)), f.Type.Optional, f.Doc)
+				fmt.Fprintf(b, "{name=%q,json=%q,type=%q,id=%q,optional=%v,doc=%q,tags=", f.Name, json, ir.TableTypeSpelling(f), fmt.Sprintf("%016x", id), f.Type.Optional, f.Doc)
 				writeUnitTags(b, f.Tags)
 				b.WriteString("}")
 			}
@@ -999,10 +999,10 @@ func intDesc(g *luau.Gen, f *ir.Field, def bool) string {
 	kind := ir.TableWireScalarKind(f)
 	kw := ir.TableKindWidth(kind)
 	dom := "number"
-	switch {
-	case kw == 16:
+	switch kw {
+	case 16:
 		dom = "int128"
-	case kw == 8:
+	case 8:
 		dom = "integer"
 	}
 	parts := []string{"s = \"int\"", fmt.Sprintf("kw = %d", kw), fmt.Sprintf("signed = %v", ir.TableKindSigned(kind)), fmt.Sprintf("dom = %q", dom)}

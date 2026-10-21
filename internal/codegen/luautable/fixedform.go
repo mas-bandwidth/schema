@@ -14,11 +14,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// fixedKindOptional is the ONE kind §3.4's layout adds to §3's closed set: the
-// OPTIONAL WRAPPER, one child, whose size is one present byte plus the child's.
-// It is a LAYOUT kind and not a WIRE kind — nothing rides under it in a record.
-const fixedKindOptional = ir.TableKindOptional
-
 func init() {
 	Register("fixedform", emitFixedForm)
 }

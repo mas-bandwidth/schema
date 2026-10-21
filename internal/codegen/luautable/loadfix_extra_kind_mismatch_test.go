@@ -30,20 +30,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// loadFixIKindMismatchMutant is the mutant of seed 0x0db38a87c26d573c (case
-// guard_true_both_edges, unit tblg1, root Guarded, base
-// testdata/wire/tables/guard_true_both_edges.bin).
-const loadFixIKindMismatchMutant = "01010101021102031101040c130205270604010000000005070604020000000000c740a70b98ed73d744e5f7fadfa6c4f7c15dd12f298f25e3ffffffffffffffff8db6f6d2c61cbd66ea0ce83094fde47c0600000000000000"
-
-const loadFixIKindMismatchSeed = uint64(0x0db38a87c26d573c)
-
-// loadFixIPairsMutant is the mutant of seed 0x70aef99c722b66e1 (case
-// map_pairs, unit mapdemo, root Pairs, base
-// testdata/wire/tables/map_pairs.bin).
-const loadFixIPairsMutant = "01010e200d020e020804000000030e0411020201000e020809000000030e041102030094040405000000054c1302060707042800000000060707045a00000000004656eeb16b2e8ce6ec105b36194ac93dea0ce83094fde47ce9ea716f0f0182bfffffffffffffffff06684798d1a1cf5274a279448ee2e5b10700000000000000"
-
-const loadFixIPairsSeed = uint64(0x70aef99c722b66e1)
-
 // loadFixICounts is the report's six counters, a comparable tuple.
 type loadFixICounts struct {
 	unknown, kindMismatch, widened, clamped, duplicate int

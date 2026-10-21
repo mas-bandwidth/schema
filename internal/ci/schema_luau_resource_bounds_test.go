@@ -90,7 +90,7 @@ func luauResourceBoundsMain() []byte {
 	b.WriteString("local root = \"H\"\n")
 	b.WriteString("local docs = {\n")
 	for _, name := range []string{"deep", "hugecount", "giantstring", "unknownfields"} {
-		b.WriteString(fmt.Sprintf("\t{ name = %q, text = %q },\n", name, luauResourceBoundsDocs()[name]))
+		fmt.Fprintf(&b, "\t{ name = %q, text = %q },\n", name, luauResourceBoundsDocs()[name])
 	}
 	b.WriteString("}\n")
 	b.WriteString("local limits = nil\n")

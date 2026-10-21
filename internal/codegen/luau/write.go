@@ -221,7 +221,7 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 		}
 		g.Pf("%sif type(%s) ~= \"buffer\" or type(%s) ~= \"number\" or %s < 0 or %s > %d then return false end\n",
 			indent, val, length, length, length, size)
-		emitBitsOrSkip(g, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(int64(size))), "the length")
+		emitBitsOrSkip(g, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), "the length")
 		call(fmt.Sprintf("stream:serializeBytes(buffer.fromstring(buffer.readstring(%s, 0, %s)))", val, length),
 			" -- align, then the used bytes (SPEC §4.7)")
 	case ir.TWString:
@@ -231,7 +231,7 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 		}
 		g.Pf("%sif type(%s) ~= \"buffer\" or type(%s) ~= \"number\" or %s < 0 or %s > %d then return false end\n",
 			indent, val, length, length, length, size)
-		emitBitsOrSkip(g, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(int64(size-1))), "the code unit count")
+		emitBitsOrSkip(g, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size-1)), "the code unit count")
 		g.Pf("%sfor _u = 1, %s do\n", indent, length)
 		g.Pf("%s  if not stream:serializeBits({ value = buffer.readu16(%s, (_u - 1) * 2) }, 32) then return false end -- UTF-16 code unit (SPEC §4.12)\n",
 			indent, val)

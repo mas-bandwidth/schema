@@ -139,7 +139,7 @@ func loadFixCParseLine(line string) (loadFixCAnswer, error) {
 	}
 	raw, err := hex.DecodeString(line)
 	if err != nil {
-		return a, fmt.Errorf("reply line is not lowercase hex: %v", err)
+		return a, fmt.Errorf("reply line is not lowercase hex: %w", err)
 	}
 	if len(raw) < 47 {
 		return a, fmt.Errorf("reply has %d bytes, want at least the 47-byte header", len(raw))

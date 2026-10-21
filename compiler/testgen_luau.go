@@ -159,7 +159,7 @@ func tgLuauEvalString(e ast.Expr) (string, error) {
 		switch sel.Sel.Name {
 		case "Repeat":
 			if len(x.Args) != 2 {
-				return "", fmt.Errorf("Repeat takes two arguments")
+				return "", fmt.Errorf("repeat takes two arguments")
 			}
 			n, err := tgLuauEvalInt(x.Args[1])
 			if err != nil {

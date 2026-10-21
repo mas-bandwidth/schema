@@ -209,7 +209,7 @@ local foreign = %s
 local values = F.load(T.FuRootDescriptor, %s, inputs.old, foreign)
 local out = F.save(T.FuRootDescriptor, foreign, values)
 print(hex(out))
-`, mod, fixedLiteral(oldOracle), fmt.Sprintf("{ hash = T.FuRootFixedHash, recordBytes = T.FuRootFixedRecordBytes, layout = T.FuRootFixedLayout }"))
+`, mod, fixedLiteral(oldOracle), "{ hash = T.FuRootFixedHash, recordBytes = T.FuRootFixedRecordBytes, layout = T.FuRootFixedLayout }")
 	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ local ok, err = pcall(function()
 	return F.load(T.FuRootDescriptor, %s, inputs.new)
 end)
 if ok then print("read") elseif type(err) == "table" then print(err.name) else print("error") end
-`, mod, fmt.Sprintf("{ hash = T.FuRootFixedHash, recordBytes = T.FuRootFixedRecordBytes, layout = T.FuRootFixedLayout }"))
+`, mod, "{ hash = T.FuRootFixedHash, recordBytes = T.FuRootFixedRecordBytes, layout = T.FuRootFixedLayout }")
 	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +349,7 @@ local fixed = %s
 local values = F.load(T.FxRootDescriptor, fixed, inputs.oracle)
 local out = F.save(T.FxRootDescriptor, fixed, values)
 print(hex(out))
-`, mod, fmt.Sprintf("{ hash = T.FxRootFixedHash, recordBytes = T.FxRootFixedRecordBytes, layout = T.FxRootFixedLayout }"))
+`, mod, "{ hash = T.FxRootFixedHash, recordBytes = T.FxRootFixedRecordBytes, layout = T.FxRootFixedLayout }")
 	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
 	}

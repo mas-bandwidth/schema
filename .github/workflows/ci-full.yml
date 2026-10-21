@@ -648,6 +648,11 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
+      # update-goldens ends in `go test ./...`, which runs the Luau packages
+      # under the pinned interpreter (internal/codegen/luau/luaurun)
+      - name: install the Luau pin
+        run: make dist-luau
+
       - name: rewrite every pin under testdata/ from the reference
         run: make -j"$(nproc)" conformance-pin update-goldens
 

@@ -76,15 +76,6 @@ func funcName(g *Gen, prefix, decl string) string {
 	return g.Require(g.moduleOf(decl, false)) + "." + prefix + decl
 }
 
-func lastDot(s string) int {
-	for i := len(s) - 1; i >= 0; i-- {
-		if s[i] == '.' {
-			return i
-		}
-	}
-	return 0
-}
-
 // call emits the C++-style early-out around one serialize call.
 func (g *Gen) call(ind, expr, comment string) {
 	g.Pf("%sif not %s then%s\n%s  return false\n%send\n", ind, expr, comment, ind, ind)
@@ -171,8 +162,6 @@ func emitReadItems(g *Gen, items []ir.Item, ind string) {
 		}
 	}
 }
-
-func (g *Gen) pf(format string, args ...any) { g.Pf(format, args...) }
 
 func emitConstItem(g *Gen, item *ir.ConstItem, ind string) {
 	holder, fn, lit := "BITS", "serializeBits", item.Value.String()
@@ -285,15 +274,14 @@ func emitReadScalar(g *Gen, f *ir.Field, name, lenName, ind string) {
 					}
 					g.Pf("%s  return false\n%send\n", ind, ind)
 				}
-				if f.IntMin.Sign() == 0 {
-					if f.Type.Width <= 32 {
-						g.Pf("%s%s = integer.tonumber(BIG.value)\n", ind, name)
-					} else {
-						g.Pf("%s%s = BIG.value\n", ind, name)
-					}
-				} else if f.Type.Width <= 32 {
+				switch {
+				case f.IntMin.Sign() == 0 && f.Type.Width <= 32:
+					g.Pf("%s%s = integer.tonumber(BIG.value)\n", ind, name)
+				case f.IntMin.Sign() == 0:
+					g.Pf("%s%s = BIG.value\n", ind, name)
+				case f.Type.Width <= 32:
 					g.Pf("%s%s = integer.tonumber(integer.add(BIG.value, %s))\n", ind, name, IntegerLit(f.IntMin))
-				} else {
+				default:
 					g.Pf("%s%s = integer.add(BIG.value, %s)\n", ind, name, IntegerLit(f.IntMin))
 				}
 			}
@@ -434,19 +422,18 @@ func emitZeroField(g *Gen, f *ir.Field, path, ind string) {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		g.Pf("%sbuffer.fill(%s, 0, 0)\n%s%sLength = 0\n", ind, name, ind, name)
 	case f.Array != ir.ArrayNone:
-		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+		switch f.Type.Kind {
+		case ir.TString, ir.TBytes, ir.TWString:
 			g.Pf("%sfor i = 1, %d do buffer.fill(%s[i], 0, 0); %sLength[i] = 0 end\n", ind, f.ArrayBound, name, name)
-		} else if f.Type.Kind == ir.TNamed {
-			if _, ok := f.Type.Ref.(*ir.Struct); ok {
+		case ir.TNamed:
+			switch f.Type.Ref.(type) {
+			case *ir.Struct, *ir.Union:
 				g.Pf("%sfor i = 1, %d do %s(%s[i]) end\n", ind, f.ArrayBound,
 					funcName(g, "Zero", f.Type.Name), name)
-			} else if _, ok := f.Type.Ref.(*ir.Union); ok {
-				g.Pf("%sfor i = 1, %d do %s(%s[i]) end\n", ind, f.ArrayBound,
-					funcName(g, "Zero", f.Type.Name), name)
-			} else {
+			default:
 				g.Pf("%sfor i = 1, %d do %s[i] = %s end\n", ind, f.ArrayBound, name, ZeroValue(g, f.Type))
 			}
-		} else {
+		default:
 			g.Pf("%sfor i = 1, %d do %s[i] = %s end\n", ind, f.ArrayBound, name, ZeroValue(g, f.Type))
 		}
 		if f.Array == ir.ArrayCounted {

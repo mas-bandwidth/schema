@@ -24,8 +24,6 @@
 -- THE CARD MAP).
 
 local manifest: string = require("../../../build/conformance-luau/driver/manifest")
-local inputs: { [string]: buffer } = require("../../../build/luau-driver/inputs")
-local unitModules: { [string]: { string } } = require("../../../build/luau-driver/units")
 
 local args = { ... }
 local surface = args[1]
@@ -33,6 +31,18 @@ local surface = args[1]
 local GENERATED = "build/conformance-luau"
 
 local SURFACES = { wire = true, report = true }
+
+-- `list` names the surfaces and reads no case, so it needs none of the
+-- staged inputs (build/luau-driver is made by make/luau-conformance.mk)
+if surface == "list" then
+	for name in pairs(SURFACES) do
+		print(name)
+	end
+	return
+end
+
+local inputs: { [string]: buffer } = require("../../../build/luau-driver/inputs")
+local unitModules: { [string]: { string } } = require("../../../build/luau-driver/units")
 
 local function rows(text: string): { { string } }
 	local out = {}
@@ -166,13 +176,6 @@ end
 
 if surface == nil then
 	error("usage: driver <manifest> surface")
-end
-
-if surface == "list" then
-	for name in pairs(SURFACES) do
-		print(name)
-	end
-	return
 end
 
 if not SURFACES[surface] then

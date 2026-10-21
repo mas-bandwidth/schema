@@ -440,7 +440,7 @@ func roundtripProbe(g *generatedUnit, rootName string) string {
 	for _, m := range mods {
 		fmt.Fprintf(&b, "Modules[#Modules + 1] = require(\"./%s\")\n", m)
 	}
-	b.WriteString(strings.Replace(roundtripMain, "ROOT", strconv.Quote(rootName), -1))
+	b.WriteString(strings.ReplaceAll(roundtripMain, "ROOT", strconv.Quote(rootName)))
 	return b.String()
 }
 

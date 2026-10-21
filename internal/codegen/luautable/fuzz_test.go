@@ -119,7 +119,7 @@ func parseLuauFuzzLine(line string) (luauFuzzAnswer, error) {
 	}
 	raw, err := hex.DecodeString(line)
 	if err != nil {
-		return a, fmt.Errorf("reply line is not lowercase hex: %v", err)
+		return a, fmt.Errorf("reply line is not lowercase hex: %w", err)
 	}
 	if len(raw) < 47 {
 		return a, fmt.Errorf("reply has %d bytes, want at least the 47-byte header", len(raw))
@@ -523,7 +523,7 @@ func luauFuzzRun(lua string, g *luauFuzzGroup, c *luauFuzzChunk) ([]byte, error)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("luau wirefuzz.luau: %v\nstderr:\n%s", err, stderr.String())
+		return nil, fmt.Errorf("luau wirefuzz.luau: %w\nstderr:\n%s", err, stderr.String())
 	}
 	return stdout.Bytes(), nil
 }
