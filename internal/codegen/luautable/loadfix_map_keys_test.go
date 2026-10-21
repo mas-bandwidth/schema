@@ -44,11 +44,11 @@ type loadFixDAnswer struct {
 
 // loadFixDOracle is the engine's answer for the mutant.
 type loadFixDOracle struct {
-	noRoot         bool
-	counts         loadFixDCounts
-	refused        bool
-	encoded        []byte
-	encFail        bool
+	noRoot  bool
+	counts  loadFixDCounts
+	refused bool
+	encoded []byte
+	encFail bool
 }
 
 // loadFixDProbe is the Luau main for one mutant: it loads tolerantly, saves,
