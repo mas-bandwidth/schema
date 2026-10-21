@@ -239,6 +239,10 @@ local function nn(x: any): string
 	-- event without naming a refusal (docs/HOSTILE-CORPUS.md, "Reasons").
 	if x == nil or x == "" then return "damaged" end
 	if x == "wire_damaged" or x == "malformed" then return "damaged" end
+	-- §16.3's text refusals are malformed reads whose Reason names the
+	-- field; the engine has no refusal constant for them, so they are damaged
+	local name = string.match(tostring(x), "^([%w_]+):")
+	if name == "string_not_utf8" or name == "string_lone_surrogate" or name == "text_holds_zero" then return "damaged" end
 	return tostring(x)
 end
 local function hexstr(buf: buffer): string
