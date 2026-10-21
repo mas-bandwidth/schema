@@ -208,3 +208,97 @@ func fencedBlock(doc, prefix string) string {
 	}
 	return ""
 }
+
+// cardLanguages is the nine-language table for the card facade, with the make
+// target that runs each leg's conformance check.
+var cardLanguages = []struct {
+	heading string
+	target  string
+}{
+	{"C++", "cards-cpp-conformance"},
+	{"C", "cards-c-conformance"},
+	{"C#", "cards-cs-conformance"},
+	{"Go", "cards-conformance-go"},
+	{"Rust", "cards-rust-conformance"},
+	{"Java", "cards-java-conformance"},
+	{"JavaScript", "cards-js-conformance"},
+	{"Dart", "cards-dart-conformance"},
+	{"Elixir", "cards-elixir-conformance"},
+}
+
+// TestCardsPageNamesEveryLanguage checks that docs/CARDS.md carries one
+// section per language (C++, C, C#, Go, Rust, Java, JavaScript, Dart, Elixir)
+// and that each language section names every symbol in facadeNames and
+// facadeMethods alongside its conformance target, plus the shared
+// cards-conformance-all gate and the two TLA+ models.
+func TestCardsPageNamesEveryLanguage(t *testing.T) {
+	t.Parallel()
+
+	doc := mustReadEnv(t, "CARDS_DOC_PATH")
+	sections := languageSections(doc)
+
+	for _, lang := range cardLanguages {
+		sec, ok := sections[lang.heading]
+		if !ok {
+			t.Errorf("docs/CARDS.md has no %q language section", lang.heading)
+			continue
+		}
+		for _, name := range facadeNames {
+			if !strings.Contains(sec, name) {
+				t.Errorf("docs/CARDS.md %s section does not name facade %q", lang.heading, name)
+			}
+		}
+		for _, m := range facadeMethods {
+			if !strings.Contains(sec, m.name) {
+				t.Errorf("docs/CARDS.md %s section does not name facade method %q", lang.heading, m.name)
+			}
+		}
+		if !strings.Contains(sec, lang.target) {
+			t.Errorf("docs/CARDS.md %s section does not name target %q", lang.heading, lang.target)
+		}
+	}
+	for _, want := range []string{"cards-conformance-all", "tla/CardVersioning.tla", "tla/CardHops.tla"} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("docs/CARDS.md does not name %q", want)
+		}
+	}
+}
+
+// languageSections splits doc on level-2 and level-3 markdown headings outside
+// fenced code blocks and returns the body under each "### <heading>" line.
+func languageSections(doc string) map[string]string {
+	out := map[string]string{}
+	var cur string
+	var buf strings.Builder
+	inFence := false
+	flush := func() {
+		if cur != "" {
+			out[cur] = buf.String()
+			cur = ""
+			buf.Reset()
+		}
+	}
+	for _, line := range strings.Split(doc, "\n") {
+		if strings.HasPrefix(line, "```") {
+			inFence = !inFence
+		}
+		if !inFence {
+			if strings.HasPrefix(line, "### ") {
+				flush()
+				cur = strings.TrimSpace(strings.TrimPrefix(line, "### "))
+				continue
+			}
+			if strings.HasPrefix(line, "## ") {
+				flush()
+				continue
+			}
+		}
+		if cur != "" {
+			buf.WriteString(line)
+			buf.WriteByte('\n')
+		}
+	}
+	flush()
+	return out
+}
+
