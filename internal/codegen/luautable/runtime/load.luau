@@ -518,21 +518,6 @@ local function enum_read(fd: any, r: any, report: any): (any, boolean)
 	return 0, true
 end
 
--- a MAP rides as an array of tables (§2.8): the key before the slot, a
--- repeated key last-wins and counted duplicate, a key kind the declaration
--- does not name emptying the map for one kind_mismatch. The entries land in
--- the holder's slot as the {Entry} array the type mapping names
--- (docs/PORT-LUAU.md, THE TYPE MAPPING).
-local function key_token(v: any): any
-	if v == nil then return "null" end
-	if typeof(v) == "integer" then return "i" .. tostring(v) end
-	if typeof(v) == "string" then return "s" .. v end
-	if typeof(v) == "table" and v.lo ~= nil and v.hi ~= nil then
-		return "w" .. tostring(v.hi) .. ":" .. tostring(v.lo)
-	end
-	return "n" .. tostring(v)
-end
-
 -- A CLAMP KEEPS WHOLE CODE POINTS (docs/SPEC-TABLES.md §3, KIND 12 / 33): a
 -- string past its bound keeps the last whole UTF-8 code point within it, and
 -- a wide string its first N code units less an orphan high surrogate.
