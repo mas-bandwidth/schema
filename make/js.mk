@@ -428,11 +428,11 @@ tables-js-runtime-home: bin/schema
 
 .PHONY: tables-js-runtime-home-negative-control
 tables-js-runtime-home-negative-control: bin/schema tables-js-runtime-home
-	@sed 's|home := capitalize(u.Package)|home := ir.ProtocolIdHome(u) // SABOTAGED: back to the file order|' \
-		internal/codegen/jstable/jstable.go > build/jsruntime-fileorder.gotext
+	@sed 's|home := capitalizePkg(u.Package)|home := ProtocolIdHome(u) // SABOTAGED: back to the file order|' \
+		ir/fixedform.go > build/jsruntime-fileorder.gotext
 	@grep -q SABOTAGED build/jsruntime-fileorder.gotext || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
-	@printf '{"Replace":{"%s/internal/codegen/jstable/jstable.go":"%s/build/jsruntime-fileorder.gotext"}}\n' \
+	@printf '{"Replace":{"%s/ir/fixedform.go":"%s/build/jsruntime-fileorder.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/jsruntime-overlay.json
 	@go build -overlay=build/jsruntime-overlay.json -o build/schema-jsruntime-sabotaged ./cmd/schema
 	@rm -rf build/runtime-home-js/base-sabotage build/runtime-home-js/added-sabotage
