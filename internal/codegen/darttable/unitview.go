@@ -306,11 +306,18 @@ final class UnitViewInfo {
 		c := u.Consts[name]
 		integer := int64(0)
 		real := uint64(0)
-		if c.Int != nil {
-			integer = int64(c.Int.Uint64())
-		}
+		// docs/SPEC-TABLES.md §8.3: int_value is the folded value, so a negative
+		// constant keeps its sign, and a value outside int64 keeps the
+		// two's-complement pattern the column holds (internal/viewlisting, the
+		// compiler's own listing, is the oracle)
 		if c.IsFloat {
 			real = math.Float64bits(c.Float)
+		} else if c.Int != nil {
+			if c.Int.IsInt64() {
+				integer = c.Int.Int64()
+			} else {
+				integer = int64(c.Int.Uint64())
+			}
 		}
 		pf("    // constant %s\n", name)
 		pf("    ViewConstant(%s,%s,%s,%t,%d,%s,%s,%s),\n", viewDartString(name), viewDartString(viewDartFile(u, name)), viewDartString(c.Storage), c.IsFloat, integer, dartU64Literal(real), viewDartString(c.Doc), viewDartTags(c.Tags))

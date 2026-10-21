@@ -236,16 +236,7 @@ func fieldOf(t *testing.T, text, name string) string {
 func blockBuildMatchesTheGoBuilderOverBlockdemo(t *testing.T) {
 	t.Parallel()
 	dartBin := dartBinary(t)
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(runtime); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the Go runtime sibling is not at %s: %v", runtime, err)
-		}
-		t.Skip("the serialize.go sibling checkout is absent: the Go builder cannot be compiled")
-	}
+	runtime := slowtest.SerializeGo(t, "../../..")
 	paths, err := filepath.Glob(filepath.Join("..", "..", "..", "tables", "block", "*.schema"))
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("tables/block: %v", err)

@@ -766,6 +766,8 @@ String _reportLine(int unknown, int kind, int widened, int clamped, int duplicat
 
 Uint8List? wireResave(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'tblg1 Guarded':
+      return tblg1.guardedWireSave(tblg1.guardedWireLoad(wire));
     case 'tblv1 Cfg':
       return tblv1.cfgWireSave(tblv1.cfgWireLoad(wire));
     case 'tblv2 Cfg':

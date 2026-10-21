@@ -43,7 +43,7 @@ func TestUnionArraysCarriers(t *testing.T) {
 	u := unitFromSource(t, unionArraySrc)
 	c := New()
 	for _, target := range c.Targets() {
-		if target == "cpp" || target == "c" || target == "cs" || target == "go" {
+		if target == "cpp" || target == "c" || target == "cs" || target == "dart" || target == "go" {
 			files, err := c.Generate(u, target, Options{})
 			if err != nil {
 				t.Fatalf("--lang %s refused the supported shape: %v", target, err)
@@ -52,7 +52,11 @@ func TestUnionArraysCarriers(t *testing.T) {
 			if target != "cpp" {
 				suffix = target
 			}
-			if _, ok := files["ProbeTable."+suffix]; !ok {
+			name := "ProbeTable." + suffix
+			if target == "dart" {
+				name = "ProbeFixed.dart" // the Dart table backend names a fixed table's library <Base>Fixed.dart
+			}
+			if _, ok := files[name]; !ok {
 				t.Fatalf("--lang %s emitted no table source", target)
 			}
 			continue

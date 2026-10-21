@@ -148,10 +148,7 @@ func goCookOracle(t *testing.T, u *ir.Unit, oracle, dir string) string {
 	if err := os.MkdirAll(module, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../..")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	files["oracle_test.go"] = []byte("package " + u.Package + "\n" + oracle)
 	for name, data := range files {

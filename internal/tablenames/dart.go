@@ -27,6 +27,7 @@ func init() {
 		Name{Name: "TableCookByteOrder", What: "this build's byte order, as a cooked header records it", RustConst: true},
 		Name{Name: "TableCookMaxAlign", What: "the greatest region alignment a cooked header may name", RustConst: true},
 		Name{Name: "TableCookRead64", What: "the cooked header read BYTEWISE. C# spells it a Schema member, which claims nothing; DART puts it at library scope, so the claim is the union"},
+		Name{Name: "TableCookGetWide", What: "the cook's 128-bit read: a kind 18-29 slot's raw value as a BigInt"},
 		Name{Name: "TableCookInfo", What: "a cooked record's reflection descriptor"},
 		Name{Name: "TableCookFieldInfo", What: "a cooked field's reflection descriptor"},
 		Name{Name: "TableCookStorage", What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
@@ -56,6 +57,7 @@ func init() {
 		Name{Name: "TableFixedLineagePlan", What: "one lineage entry's plan, laid down from the lock's bytes, with its compile census and its refusal name"},
 		Name{Name: "TableFixedLineagePlans", What: "the fixed form: one plan per lineage entry, built once from the lock's bytes and off every load path"},
 		Name{Name: "TableFixedSelect", What: "the fixed form: the first lineage index whose hash is the file's, or -1 — a file is matched on this and nothing else"},
+		Name{Name: "TableFixedView", What: "the fixed form: one cached ByteData view of the caller's buffer, so a Load or Save over the same buffer allocates nothing"},
 		Name{Name: "TableFixedTextIllFormed", What: "the fixed form: whether a text payload's USED units are well-formed (docs/SPEC-TABLES.md §4.12)"},
 		Name{Name: "TableBuildVersion", What: "Dart's spelling of the unit's build version, at library scope in the block runtime home (the cook's, in a unit with no block form)"},
 		// THE MESSAGE FORM's announcement runtime (docs/SPEC-TABLES.md §3.3),
@@ -101,6 +103,9 @@ func init() {
 		// three below are claimed as one registration apiece.
 		Name{Name: "TableMessageBatchOpen", What: "the batch reader's open: one announcement pass over the bytes"},
 		Name{Name: "TableMessageBatchClose", What: "the batch reader's close: one byte-level check over the just-read batch"},
+		Name{Name: "TableMessageReservedId", What: "the message form: whether an announced id is one of the reserved ids an entry may not name (§3.1, §3.3)"},
+		Name{Name: "TableMessageShape", What: "the message form: one announced entry's decoded shape, and the skip that steps over an unknown entry by it (§3.3)"},
+		Name{Name: "TableTextValid", What: "the message form: whether a string(N) payload is well-formed UTF-8 with no zero byte (§3.3, §3)"},
 		Name{Name: "TableMessageRefBits", What: "the announced message bit codec: the reference width of an n-entry vocabulary"},
 	)
 }

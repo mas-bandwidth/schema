@@ -75,7 +75,7 @@ abstract final class TableFixedOp {
 /// fixed stride is what keeps the read loop monomorphic: the loop never
 /// touches a field name and nothing is allocated.
 abstract final class TableFixedLane {
-  static const int lanes = 9;
+  static const int lanes = 11;
   static const int op = 0;
   static const int src = 1;
   static const int dst = 2;
@@ -88,6 +88,12 @@ abstract final class TableFixedLane {
   // compared at ALL of them. It is its own lane because meta already carries a
   // widen's width and sign and a text entry's flavour (§5.2, THE GUARD'S WIDTH).
   static const int argW = 8;
+  // THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md §4.1): offset+count into a
+  // pool of (guard, arg, argw) links, OUTERMOST FIRST, the only bound the
+  // layout's 64. The pool is the plan's own remap pool, three ints a link; the
+  // count is 0 for an entry under one tag or none, whose guard lane is all of it.
+  static const int guards = 9;
+  static const int guardCount = 10;
 
   // MY SIDE of the layout, five lanes per entry of my own: the storage facts a
   // layout entry cannot carry. In C++ these are offsetof rows; the reader's own
@@ -267,6 +273,23 @@ final class TableFixedReport {
 /// A LAYOUT VIEW is the bytes and the entry count. Every read of an entry is
 /// arithmetic on the seventeen-byte stride, so nothing is parsed twice and
 /// nothing is materialised.
+/// ONE CACHED ByteData VIEW of the caller's buffer, rebuilt only when the
+/// buffer changes: a Load or Save over the same buffer every frame allocates
+/// nothing after the first call (the tables soak's scavenge gate).
+final class TableFixedView {
+  ByteData? _view;
+  Uint8List? _bytes;
+
+  @pragma('vm:prefer-inline')
+  ByteData of(Uint8List bytes) {
+    if (!identical(_bytes, bytes)) {
+      _view = ByteData.sublistView(bytes);
+      _bytes = bytes;
+    }
+    return _view!;
+  }
+}
+
 final class TableFixedLayout {
   ByteData? view;
   int at = 0;
@@ -326,6 +349,56 @@ final class TableFixedLayout {
   }
 
   int tagBytes(int i) => size(i) - unionArmBytes(i);
+
+  /// A FLOAT32 CELL RIDES AS ITS BITS (docs/FIXED-FORM-ALGORITHM.md §3.1: the
+  /// cell stores what the record held; SPEC-TABLES §3: no canonicalisation of
+  /// a float). A Dart double is a float64, and the hardware float32<->float64
+  /// conversion QUIETS a signalling NaN on the way in, so a reference file
+  /// holding 0x7F800001 would rewrite as 0x7FC00001. Every exponent but the
+  /// all-ones one converts exactly; a NaN is assembled by hand, the f32
+  /// mantissa's 23 bits shifted up by 29 into the f64 one and back, the quiet
+  /// bit carried as the writer wrote it: the same surgery the plan's
+  /// widenFloat rung and the packet emitter's float32 helpers do. A generated
+  /// float32 store or load converts through these two and nowhere else
+  /// (TestFixedFloat32CellsStoreBitsNotDoubles).
+  static final Float32List _f32 = Float32List(2);
+  static final Uint32List _f32Words = _f32.buffer.asUint32List();
+  static final Float64List _f64 = _f32.buffer.asFloat64List();
+  static final Uint64List _f64Words = _f32.buffer.asUint64List();
+
+  /// the float32 bits a double holding a float32 value carries, a NaN's
+  /// payload and signalling bit included
+  @pragma('vm:prefer-inline')
+  static int float32Bits(double value) {
+    if (!value.isNaN) {
+      _f32[0] = value;
+      return _f32Words[0];
+    }
+    _f64[0] = value;
+    final bits = _f64Words[0];
+    var mantissa = (bits >>> 29) & 0x7fffff;
+    if (mantissa == 0) {
+      // a float64 NaN whose payload lies only below float32's 23 bits has no
+      // float32 spelling; it stays a NaN, quiet
+      mantissa = 0x400000;
+    }
+    return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
+  }
+
+  /// the double a float32 cell's bits widen to, exactly: a NaN keeps its
+  /// payload and its signalling bit
+  @pragma('vm:prefer-inline')
+  static double float32Value(int bits) {
+    if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
+      _f64Words[0] =
+          ((bits >>> 31) << 63) |
+          0x7ff0000000000000 |
+          ((bits & 0x7fffff) << 29);
+      return _f64[0];
+    }
+    _f32Words[0] = bits;
+    return _f32[0];
+  }
 
   /// THE HASH is fnv1a64 over the layout's bytes exactly as written, and it is
   /// the eight bytes every record carries. A Dart int is a full 64-bit two's
@@ -702,6 +775,14 @@ final class TableFixedPlan {
   /// their OWN tag's width.
   int argw = 1;
 
+  /// THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST (§4.1): one
+  /// (guard, arg, argw) link per enclosing union, pushed on the way into an arm
+  /// and popped on the way out; chainAt is where it was laid in the pool, once
+  /// per arm, or -1. Sized once for the layout's 64.
+  final Int32List chain = Int32List(65 * 3);
+  int chainLen = 0;
+  int chainAt = -1;
+
   /// THE TWO-PASS SPLIT (§5.2, §5.9 #42). The walk runs TWICE — unguarded
   /// entries first, guarded ones second — and split is the index the guarded
   /// half starts at. pass is which half the walk is keeping, tested at the
@@ -998,6 +1079,22 @@ int tableFixedRun(
         tableFixedTagAt(source, at + guard, plan[b + TableFixedLane.argW]) !=
             plan[b + TableFixedLane.arg]) {
       continue;
+    }
+    // AN ARM INSIDE AN ARM ANSWERS TO EVERY OUTER TAG TOO (§4.1, the guard
+    // chain): the links outside the innermost, outermost first, all must hold.
+    final links = plan[b + TableFixedLane.guardCount];
+    if (links > 1) {
+      var holds = true;
+      var g = plan[b + TableFixedLane.guards];
+      for (var j = 0; j < links - 1; j++, g += 3) {
+        if (tableFixedTagAt(source, at + remap[g], remap[g + 2]) != remap[g + 1]) {
+          holds = false;
+          break;
+        }
+      }
+      if (!holds) {
+        continue;
+      }
     }
     final s = at + plan[b + TableFixedLane.src];
     final d = plan[b + TableFixedLane.dst];
@@ -1380,6 +1477,34 @@ abstract final class TableFixedCompiler {
     e[b + TableFixedLane.meta] = meta;
     // argw IS THE GUARD'S WIDTH IN BYTES, and zero reads as one.
     e[b + TableFixedLane.argW] = plan.argw <= 0 ? 1 : plan.argw;
+    e[b + TableFixedLane.guards] = 0;
+    e[b + TableFixedLane.guardCount] = 0;
+    // THE GUARD CHAIN (§4.1): an entry beneath a union answers to EVERY
+    // enclosing tag. Its guard lane is the chain's innermost link, and a chain
+    // past one is laid into the pool, once per arm, as offset+count.
+    if (guard != tableFixedNoGuard && plan.chainLen > 0) {
+      final c = plan.chain;
+      final inner = (plan.chainLen - 1) * 3;
+      e[b + TableFixedLane.guard] = c[inner];
+      e[b + TableFixedLane.arg] = c[inner + 1];
+      e[b + TableFixedLane.argW] = c[inner + 2];
+      if (plan.chainLen > 1) {
+        if (plan.chainAt < 0) {
+          final need = plan.chainLen * 3;
+          if (plan.remapUsed + need > plan.remap.length) {
+            plan.overflow = true;
+            return;
+          }
+          plan.chainAt = plan.remapUsed;
+          for (var k = 0; k < need; k++) {
+            plan.remap[plan.chainAt + k] = c[k];
+          }
+          plan.remapUsed += need;
+        }
+        e[b + TableFixedLane.guards] = plan.chainAt;
+        e[b + TableFixedLane.guardCount] = plan.chainLen;
+      }
+    }
     plan.count++;
   }
 
@@ -1673,6 +1798,20 @@ abstract final class TableFixedCompiler {
           var theirArm = ti + 1;
           for (var j = 0; j < theirArms; j++) {
             if (theirs.id(theirArm) == mine.id(myArm)) {
+              // THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT (§4.1,
+              // the guard chain): one link pushed on the way in, the arm's own
+              // tag const included, popped on the way out.
+              if (plan.chainLen >= 65) {
+                plan.overflow = true;
+                return;
+              }
+              final savedAt = plan.chainAt;
+              final l = plan.chainLen * 3;
+              plan.chain[l] = theirAt;
+              plan.chain[l + 1] = j + 1;
+              plan.chain[l + 2] = plan.argw <= 0 ? 1 : plan.argw;
+              plan.chainLen++;
+              plan.chainAt = -1;
               // MY tag value, written under THEIR tag's guard
               push(
                 plan,
@@ -1697,6 +1836,8 @@ abstract final class TableFixedCompiler {
                 report,
                 census,
               );
+              plan.chainLen--;
+              plan.chainAt = savedAt;
               break;
             }
             theirArm += theirs.subtree(theirArm);
@@ -1819,6 +1960,8 @@ abstract final class TableFixedCompiler {
             e[p + TableFixedLane.guard] == e[b + TableFixedLane.guard] &&
             e[p + TableFixedLane.arg] == e[b + TableFixedLane.arg] &&
             e[p + TableFixedLane.argW] == e[b + TableFixedLane.argW] &&
+            e[p + TableFixedLane.guards] == e[b + TableFixedLane.guards] &&
+            e[p + TableFixedLane.guardCount] == e[b + TableFixedLane.guardCount] &&
             e[p + TableFixedLane.src] + e[p + TableFixedLane.size] ==
                 e[b + TableFixedLane.src] &&
             e[p + TableFixedLane.dst] + e[p + TableFixedLane.size] ==
@@ -1946,6 +2089,8 @@ abstract final class TableFixedCompiler {
       return -1;
     }
     plan.count = 0;
+    plan.chainLen = 0;
+    plan.chainAt = -1;
     plan.remapUsed = 0;
     plan.overflow = false;
     plan.tooLarge = false;
@@ -2059,6 +2204,12 @@ class TableReport {
   bool refused = false;
   bool malformed = false;
   int unknown = 0;
+  /// §4's other events, carried here so a message read answers the same
+  /// six-counter report the Go reference does (internal/tabletext.Report).
+  int kindMismatch = 0;
+  int widened = 0;
+  int clamped = 0;
+  int duplicate = 0;
   int buildVersionPeer = 0;
   int buildVersionOwn = 0;
   String reason = '';
@@ -2173,7 +2324,7 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
       // THE FIELD IS LENGTH-PREFIXED (§3): its body is a LEB length, then the
       // element kind, then the vocabulary's own LEB length, then the entries.
       final fieldLength = tableMessageLeb(bytes, at, bodyEnd);
-      if (fieldLength.$1 < 0) {
+      if (!fieldLength.$3 || fieldLength.$1 < 0) {
         break;
       }
       at = fieldLength.$2;
@@ -2187,7 +2338,7 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
         break;
       }
       final length = tableMessageLeb(bytes, at, fieldEnd);
-      if (length.$1 < 0) {
+      if (!length.$3 || length.$1 < 0) {
         break;
       }
       at = length.$2;
@@ -2328,16 +2479,24 @@ int tableMessageShapeEnd(Uint8List bytes, int at, int end, int kind) {
       return at;
     }
     if (packing == 1 && kind != 10) {
+      // A WIDTH ABOVE THE KIND'S OWN DOMAIN IS A HOSTILE WIDTH, checked once
+      // here and never again (ir.DecodeShape checks the width against TableMessageKindBits). The
+      // value is read whole, so a width near 2^63 still trips this test rather
+      // than wrapping into a small number.
       final n = tableMessageLeb(bytes, at, end);
-      if (n.$1 < 0) {
+      if (!n.$3 || n.$1 < 0 || n.$1 > tableMessageKindWidth(kind) * 8) {
         return -1;
       }
       at = n.$2;
       if (kind >= 18) {
         return at + 16 <= end ? at + 16 : -1;
       }
+      // A RANGED BASE IS A WHOLE LEB VALUE, and a signed kind's is a zigzag
+      // near 2^64 for a minimum near -2^63 (ir.DecodeShape's
+      // tableMessageUnzigzag). The bit pattern may read back negative in a
+      // Dart int; that is a value, never a failed read.
       final base = tableMessageLeb(bytes, at, end);
-      return base.$1 < 0 ? -1 : base.$2;
+      return base.$3 ? base.$2 : -1;
     }
     if (packing == 2 && kind == 10) {
       return at + 12 <= end ? at + 12 : -1;
@@ -2346,18 +2505,18 @@ int tableMessageShapeEnd(Uint8List bytes, int at, int end, int kind) {
   }
   if (kind == 12 || kind == 33) {
     final n = tableMessageLeb(bytes, at, end);
-    return n.$1 < 0 ? -1 : n.$2;
+    return (!n.$3 || n.$1 < 0) ? -1 : n.$2;
   }
   if (kind == 14 || kind == 16) {
     if (kind == 14) {
       final lo = tableMessageLeb(bytes, at, end);
-      if (lo.$1 < 0) {
+      if (!lo.$3 || lo.$1 < 0) {
         return -1;
       }
       at = lo.$2;
     }
     final hi = tableMessageLeb(bytes, at, end);
-    return hi.$1 < 0 ? -1 : hi.$2;
+    return (!hi.$3 || hi.$1 < 0) ? -1 : hi.$2;
   }
   return at;
 }
@@ -2433,7 +2592,7 @@ int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
     case 17:
     case 30:
       final v = tableMessageLeb(bytes, at, end);
-      return v.$1 < 0 ? -1 : v.$2;
+      return (!v.$3 || v.$1 < 0) ? -1 : v.$2;
     case 12:
     case 13:
     case 14:
@@ -2442,13 +2601,13 @@ int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
     case 32:
     case 33:
       final n = tableMessageLeb(bytes, at, end);
-      if (n.$1 < 0 || n.$2 + n.$1 > end) {
+      if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) {
         return -1;
       }
       return n.$2 + n.$1;
     case 15:
       final arm = tableMessageLeb(bytes, at, end);
-      if (arm.$1 < 0) {
+      if (!arm.$3 || arm.$1 < 0) {
         return -1;
       }
       if (arm.$1 == 0) {
@@ -2458,7 +2617,7 @@ int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
         return -1;
       }
       final n = tableMessageLeb(bytes, arm.$2 + 1, end);
-      if (n.$1 < 0 || n.$2 + n.$1 > end) {
+      if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) {
         return -1;
       }
       return n.$2 + n.$1;
@@ -2478,8 +2637,12 @@ int tableMessageBits(int n) {
 }
 
 /// LEB128, the canonical length every length of a file takes (§3). Answers the
-/// value and the offset past it, or -1 where the bytes run out.
-(int, int) tableMessageLeb(Uint8List bytes, int at, int end) {
+/// value, the offset past it, and whether the bytes spelled one whole (the Go
+/// reference's readLebBytes). A value above 2^63 reads back NEGATIVE in a Dart
+/// int; that is the uint64's bit pattern, not a failure, and the flag is what
+/// tells the two apart. A signed ranged base near -2^63 is exactly such a
+/// value (ir.DecodeShape, tableMessageUnzigzag), so the base read must keep it.
+(int, int, bool) tableMessageLeb(Uint8List bytes, int at, int end) {
   var value = 0;
   var shift = 0;
   while (at < end && shift < 64) {
@@ -2487,18 +2650,18 @@ int tableMessageBits(int n) {
     at++;
     value |= (b & 0x7f) << shift;
     if ((b & 0x80) == 0) {
-      return (value, at);
+      return (value, at, true);
     }
     shift += 7;
   }
-  return (-1, at);
+  return (0, at, false);
 }
 /// THE ANNOUNCEMENT: the unit's id table, settled byte for byte by the
 /// compiler. It is an ordinary form-`1` file whose body carries the build
 /// version and the vocabulary and whose trailer is the two reserved ids
 /// (docs/SPEC-TABLES.md §3.3).
 final Uint8List tableAnnouncement = Uint8List.fromList(const <int>[
-  0x01, 0x01, 0x09, 0x2c, 0x1b, 0x35, 0xfe, 0x07, 0x9e, 0xbc, 0x12, 0x02,
+  0x01, 0x01, 0x09, 0x4e, 0x05, 0x2a, 0x97, 0x84, 0x3a, 0x75, 0x23, 0x02,
   0x0e, 0xfc, 0x06, 0x06, 0xf9, 0x06, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac,
   0x38, 0xaa, 0x07, 0x01, 0x10, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00,
   0xbe, 0x0d, 0x04, 0x01, 0x10, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d,
@@ -2579,7 +2742,7 @@ final Uint8List tableAnnouncement = Uint8List.fromList(const <int>[
 ]);
 const int tableAnnouncementLength = 932;
 /// The unit's own build version, emitted beside the announcement.
-const int tableBuildVersion = 1350127745471159084;
+const int tableBuildVersion = 2555012704748832078;
 
 
 // ---------------------------------------------------------------------------
@@ -2593,28 +2756,6 @@ class TableBitWriter {
   static final Uint32List _float32Words = _float32Cell.buffer.asUint32List();
   static final Float64List _float64Cell = _float32Cell.buffer.asFloat64List();
   static final Uint64List _float64Words = _float32Cell.buffer.asUint64List();
-
-  static int _float32BitsFromDouble(double value) {
-    if (!value.isNaN) {
-      _float32Cell[0] = value;
-      return _float32Words[0];
-    }
-    _float64Cell[0] = value;
-    final bits = _float64Words[0];
-    var mantissa = (bits >>> 29) & 0x7fffff;
-    if (mantissa == 0) mantissa = 0x400000;
-    return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
-  }
-
-  static double _doubleFromFloat32Bits(int bits) {
-    if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
-      _float64Words[0] = ((bits >>> 31) << 63) |
-          0x7ff0000000000000 | ((bits & 0x7fffff) << 29);
-      return _float64Cell[0];
-    }
-    _float32Words[0] = bits;
-    return _float32Cell[0];
-  }
 
   Uint8List buffer;
   int bits = 0;
@@ -2721,8 +2862,282 @@ bool tableMessageBatchClose(TableMessageReader r) {
   }
   return true;
 }
+
+/// ONE ANNOUNCED ENTRY'S SHAPE, decoded from its signature bytes so an
+/// unknown entry can be stepped over (docs/SPEC-TABLES.md §3.3). The decode
+/// and the skip are its static members, so the runtime spells no private
+/// library-scope name (compiler/tablesdart_test.go).
+final class TableMessageShape {
+  int packing = 0;
+  int bits = 0;
+  int min = 0;
+  int max = 0;
+  int elem = 0;
+  TableMessageShape? inner;
+
+
+  /// Decodes ONE shape at at in an announced entry's signature, mirroring
+  /// ir.DecodeShape. Answers the shape and the offset past it.
+  static (TableMessageShape, int) decode(Uint8List sig, int at, int kind) {
+    final s = TableMessageShape();
+    if ((kind >= 2 && kind <= 10) || (kind >= 18 && kind <= 29)) {
+      s.packing = sig[at];
+      at += 1;
+      if (s.packing == 1 && kind != 10) {
+        final n = tableMessageLeb(sig, at, sig.length);
+        at = n.$2;
+        s.bits = n.$1;
+        if (kind >= 18) {
+          at += 16;
+        } else {
+          final b = tableMessageLeb(sig, at, sig.length);
+          at = b.$2;
+        }
+      } else if (s.packing == 2 && kind == 10) {
+        s.bits = quantizedBits(sig, at);
+        at += 12;
+      }
+    } else if (kind == 12 || kind == 33) {
+      final n = tableMessageLeb(sig, at, sig.length);
+      s.max = n.$1;
+      at = n.$2;
+    } else if (kind == 14 || kind == 16) {
+      if (kind == 14) {
+        final lo = tableMessageLeb(sig, at, sig.length);
+        s.min = lo.$1;
+        at = lo.$2;
+      }
+      final hi = tableMessageLeb(sig, at, sig.length);
+      s.max = hi.$1;
+      at = hi.$2;
+      s.elem = sig[at];
+      at += 1;
+      final inner = decode(sig, at, s.elem);
+      s.inner = inner.$1;
+      at = inner.$2;
+    }
+    return (s, at);
+  }
+
+  /// The width of a quantized f32 (ir.DecodeShape, ir.TableMessageQuantization):
+  /// bits.Len32 of ceil(float32((max - min) / res)), clamped to [1, 2^32 - 256].
+  static int quantizedBits(Uint8List sig, int at) {
+    if (at + 12 > sig.length) return 0;
+    final view = ByteData.sublistView(sig, at, at + 12);
+    final f = Float32List(3);
+    f[0] = view.getFloat32(0, Endian.little);
+    f[1] = view.getFloat32(4, Endian.little);
+    f[2] = view.getFloat32(8, Endian.little);
+    f[1] = f[1] - f[0];
+    f[2] = f[1] / f[2];
+    var values = f[2];
+    if (!(values >= 1)) {
+      values = 1;
+    } else if (values > 4294967040.0) {
+      values = 4294967040.0;
+    }
+    var count = values.ceil();
+    var width = 0;
+    while (count != 0) {
+      width++;
+      count >>= 1;
+    }
+    return width;
+  }
+
+  /// bits_required(min, max): the width of max - min, and zero where the two
+  /// are equal (ir.TableMessageBitsRequired). The difference is taken in the
+  /// 64-bit domain Go's int64 subtraction wraps in, and a span near 2^64 reads
+  /// back negative in a Dart int: its uint64 bit length is 64, exactly what
+  /// bits.Len64 answers after the same wrap.
+  static int bitsRequired(int min, int max) {
+    if (max <= min) {
+      return 0;
+    }
+    final value = max - min;
+    if (value < 0) {
+      return 64;
+    }
+    var width = 0;
+    var v = value;
+    while (v != 0) {
+      width++;
+      v >>= 1;
+    }
+    return width;
+  }
+
+  /// ONE value's width in bits under a shape (ir.TableMessageValueBits), or -1
+  /// where the kind has no fixed-width payload.
+  static int valueBits(int kind, TableMessageShape s) {
+    if (kind == 1) {
+      return 1;
+    }
+    if (kind == 11) {
+      return 64;
+    }
+    if (kind == 10) {
+      return s.packing == 2 ? s.bits : 32;
+    }
+    if ((kind >= 2 && kind <= 9) || (kind >= 18 && kind <= 29)) {
+      if (s.packing == 1) {
+        return s.bits;
+      }
+      return tableMessageKindWidth(kind) * 8;
+    }
+    return -1;
+  }
+
+  /// Steps over ONE announced entry's payload without decoding it, the mirror
+  /// of the Go reference's skip (internal/tablewire/messagedecode.go): the
+  /// announcement's kind and shape alone say where the next reference begins.
+  static bool skipEntry(TableMessageReader r, TableMessageEntry e) {
+    final shape = decode(e.signature, 9, e.kind);
+    return skip(r, e.kind, shape.$1);
+  }
+
+  static bool skip(TableMessageReader r, int kind, TableMessageShape s) {
+    switch (kind) {
+      case 0:
+      case 32:
+        return true;
+      case 30:
+        final ref = r.bits.get(r.vocabulary.refBits);
+        if (r.bits.failed) return false;
+        if (ref == 0) return true;
+        if (ref > r.vocabulary.count) return false;
+        // bitDecoder.name: a reserved id or a payload-bearing entry is damage
+        final named = r.vocabulary.entries[ref - 1];
+        return !tableMessageReservedId(named.id) && named.kind == 0;
+      case 15:
+        final ref = r.bits.get(r.vocabulary.refBits);
+        if (r.bits.failed) return false;
+        if (ref == 0) return true;
+        if (ref > r.vocabulary.count) return false;
+        final arm = r.vocabulary.entries[ref - 1];
+        // bitDecoder.arm: a reserved id or a kind-0 entry is damage
+        if (tableMessageReservedId(arm.id) || arm.kind == 0) return false;
+        return skipEntry(r, arm);
+      case 13:
+        while (true) {
+          final ref = r.bits.get(r.vocabulary.refBits);
+          if (r.bits.failed) return false;
+          if (ref == 0) return true;
+          if (ref > r.vocabulary.count) return false;
+          if (!skipEntry(r, r.vocabulary.entries[ref - 1])) return false;
+        }
+      case 17:
+        // A FIXED ROOT NUMBERS NO NODE, so there is no index width to step
+        // (internal/tablewire/messagedecode.go root: indexBits = 0).
+        return false;
+      case 12:
+        final n = r.bits.get(bitsRequired(0, s.max));
+        if (r.bits.failed || !r.bits.align()) return false;
+        return r.bits.skip(n * 8);
+      case 33:
+        final n = r.bits.get(bitsRequired(0, s.max));
+        if (r.bits.failed) return false;
+        return r.bits.skip(n * 16);
+      case 31:
+        if (!r.bits.align()) return false;
+        final n = r.bits.get(32);
+        if (r.bits.failed) return false;
+        return r.bits.skip(n * 8);
+      case 14:
+      case 16:
+        var n = s.min;
+        if (kind == 16) {
+          n = 0;
+        }
+        final width = kind == 16
+            ? bitsRequired(0, s.max)
+            : bitsRequired(s.min, s.max);
+        if (width > 0) {
+          final raw = r.bits.get(width);
+          if (r.bits.failed) return false;
+          n = raw;
+          if (kind == 14) {
+            n += s.min;
+          }
+        }
+        if (kind == 14 && s.elem == 6 && !r.bits.align()) return false;
+        final inner = s.inner ?? TableMessageShape();
+        // elementRunBits + skipRun (internal/tablewire/messagedecode.go): a
+        // fixed-width element of an ARRAY is stepped arithmetically; every
+        // other element is walked one at a time.
+        if (kind == 14) {
+          final elem = s.elem;
+          if (elem != 13 && elem != 15 && elem != 17 && elem != 30) {
+            final run = valueBits(elem, inner);
+            if (run == 0) return true;
+            if (run > 0) {
+              if (n > 0x7fffffffffffffff ~/ run) return false;
+              return r.bits.skip(n * run);
+            }
+          }
+        }
+        for (var i = 0; i < n; i++) {
+          if (kind == 16) {
+            r.bits.get(r.vocabulary.refBits);
+            if (r.bits.failed) return false;
+          }
+          if (!skip(r, s.elem, inner)) return false;
+        }
+        return true;
+    }
+    final width = valueBits(kind, s);
+    if (width < 0) return false;
+    return r.bits.skip(width);
+  }
+}
+
+/// A string(N) payload must be well-formed UTF-8 with no zero byte among its
+/// bytes (docs/SPEC-TABLES.md §3.3, §3): a payload that is not text is not
+/// text at whatever length the reader would have kept. Mirrors the Go
+/// reference's textValid (internal/tablewire/text.go).
+bool tableTextValid(Uint8List bytes, int start, int length) {
+  final end = start + length;
+  if (start < 0 || end > bytes.length) return false;
+  var index = start;
+  while (index < end) {
+    final lead = bytes[index++];
+    if (lead == 0) return false;
+    if (lead < 0x80) continue;
+    int remaining, point;
+    if ((lead & 0xE0) == 0xC0) {
+      remaining = 1;
+      point = lead & 0x1F;
+    } else if ((lead & 0xF0) == 0xE0) {
+      remaining = 2;
+      point = lead & 0x0F;
+    } else if ((lead & 0xF8) == 0xF0) {
+      remaining = 3;
+      point = lead & 0x07;
+    } else {
+      return false;
+    }
+    if (remaining > end - index) return false;
+    for (var part = 0; part < remaining; part++) {
+      final byte = bytes[index++];
+      if ((byte & 0xC0) != 0x80) return false;
+      point = (point << 6) | (byte & 0x3F);
+    }
+    if (remaining == 1 && point < 0x80) return false;
+    if (remaining == 2 &&
+        (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF))) {
+      return false;
+    }
+    if (remaining == 3 && (point < 0x10000 || point > 0x10FFFF)) {
+      return false;
+    }
+  }
+  return true;
+}
 const int tableMessageRefBits = 7;
 const int tableMessageBatchMax = 256;
+
+bool tableMessageReservedId(int id) =>
+    id == -2 || id == -3 || id == -1;
 
 bool mixedEntitySaveMessageBody(TableBitWriter w, MixedEntity value) {
   if (value.entityId != 0) {
@@ -2813,61 +3228,101 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
     if (ref == 0) return true;
     switch (ref) {
       case 31:
-        value.entityId = r.bits.get(12);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.entityId += 0;
+        {
+          final v = r.bits.get(12);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.entityId = v;
+          value.entityId += 0;
+        }
+        if (value.entityId > 4095) { value.entityId = 4095; r.report.clamped++; }
         break;
       case 32:
-        value.posX = r.bits.get(15);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.posX += -16383;
-        value.posX = value.posX.toSigned(32);
+        {
+          final v = r.bits.get(15);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.posX = v;
+          value.posX += -16383;
+          value.posX = value.posX.toSigned(32);
+        }
+        if (value.posX < -16383) { value.posX = -16383; r.report.clamped++; } else if (value.posX > 16383) { value.posX = 16383; r.report.clamped++; }
         break;
       case 33:
-        value.posY = r.bits.get(15);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.posY += -16383;
-        value.posY = value.posY.toSigned(32);
+        {
+          final v = r.bits.get(15);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.posY = v;
+          value.posY += -16383;
+          value.posY = value.posY.toSigned(32);
+        }
+        if (value.posY < -16383) { value.posY = -16383; r.report.clamped++; } else if (value.posY > 16383) { value.posY = 16383; r.report.clamped++; }
         break;
       case 34:
-        value.posZ = r.bits.get(15);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.posZ += -16383;
-        value.posZ = value.posZ.toSigned(32);
+        {
+          final v = r.bits.get(15);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.posZ = v;
+          value.posZ += -16383;
+          value.posZ = value.posZ.toSigned(32);
+        }
+        if (value.posZ < -16383) { value.posZ = -16383; r.report.clamped++; } else if (value.posZ > 16383) { value.posZ = 16383; r.report.clamped++; }
         break;
       case 35:
-        value.yaw = r.bits.get(9);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.yaw += 0;
+        {
+          final v = r.bits.get(9);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.yaw = v;
+          value.yaw += 0;
+        }
+        if (value.yaw > 511) { value.yaw = 511; r.report.clamped++; }
         break;
       case 36:
-        value.pitch = r.bits.get(9);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.pitch += 0;
+        {
+          final v = r.bits.get(9);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.pitch = v;
+          value.pitch += 0;
+        }
+        if (value.pitch > 511) { value.pitch = 511; r.report.clamped++; }
         break;
       case 37:
-        value.velX = r.bits.get(12);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.velX += -2048;
-        value.velX = value.velX.toSigned(32);
+        {
+          final v = r.bits.get(12);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.velX = v;
+          value.velX += -2048;
+          value.velX = value.velX.toSigned(32);
+        }
+        if (value.velX < -2048) { value.velX = -2048; r.report.clamped++; } else if (value.velX > 2047) { value.velX = 2047; r.report.clamped++; }
         break;
       case 38:
-        value.velY = r.bits.get(12);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.velY += -2048;
-        value.velY = value.velY.toSigned(32);
+        {
+          final v = r.bits.get(12);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.velY = v;
+          value.velY += -2048;
+          value.velY = value.velY.toSigned(32);
+        }
+        if (value.velY < -2048) { value.velY = -2048; r.report.clamped++; } else if (value.velY > 2047) { value.velY = 2047; r.report.clamped++; }
         break;
       case 39:
-        value.velZ = r.bits.get(12);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.velZ += -2048;
-        value.velZ = value.velZ.toSigned(32);
+        {
+          final v = r.bits.get(12);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.velZ = v;
+          value.velZ += -2048;
+          value.velZ = value.velZ.toSigned(32);
+        }
+        if (value.velZ < -2048) { value.velZ = -2048; r.report.clamped++; } else if (value.velZ > 2047) { value.velZ = 2047; r.report.clamped++; }
         break;
       case 40:
-        value.health = r.bits.get(10);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.health += 0;
-        value.health = value.health.toSigned(32);
+        {
+          final v = r.bits.get(10);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.health = v;
+          value.health += 0;
+          value.health = value.health.toSigned(32);
+        }
+        if (value.health < 0) { value.health = 0; r.report.clamped++; } else if (value.health > 1000) { value.health = 1000; r.report.clamped++; }
         break;
       case 41:
         {
@@ -2890,7 +3345,13 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
               case 65: value.weapon = 13; break;
               case 66: value.weapon = 14; break;
               case 67: value.weapon = 15; break;
-              default: value.weapon = 0; r.report.unknown++; break;
+              default:
+                if (ref > r.vocabulary.count || tableMessageReservedId(r.vocabulary.entries[ref - 1].id) || r.vocabulary.entries[ref - 1].kind != 0) {
+                  r.report.Damage();
+                  return false;
+                }
+                value.weapon = 0; r.report.unknown++;
+                break;
             }
           }
         }
@@ -2898,17 +3359,37 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
       case 42:
         break;
       case 43:
-        value.moving = r.bits.get(1) != 0;
-        if (r.bits.failed) { r.report.Damage(); return false; }
+        {
+          final v = r.bits.get(1) != 0;
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.moving = v;
+        }
         break;
       case 44:
-        value.firing = r.bits.get(1) != 0;
-        if (r.bits.failed) { r.report.Damage(); return false; }
+        {
+          final v = r.bits.get(1) != 0;
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.firing = v;
+        }
         break;
       default:
+        if (ref > r.vocabulary.count) {
+          r.report.Damage();
+          return false;
+        }
+        final named = r.vocabulary.entries[ref - 1].id;
+        if (named == TableVocabulary.buildVersionWireId ||
+            named == TableVocabulary.vocabularyWireId ||
+            named == TableVocabulary.nodeWireId) {
+          r.report.Damage();
+          return false;
+        }
         r.report.unknown++;
-        r.report.Damage();
-        return false;
+        if (!TableMessageShape.skipEntry(r, r.vocabulary.entries[ref - 1])) {
+          r.report.Damage();
+          return false;
+        }
+        break;
     }
   }
 }
@@ -2934,20 +3415,42 @@ bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
     if (ref == 0) return true;
     switch (ref) {
       case 51:
-        value.statId = r.bits.get(8);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.statId += 0;
+        {
+          final v = r.bits.get(8);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.statId = v;
+          value.statId += 0;
+        }
+        if (value.statId > 255) { value.statId = 255; r.report.clamped++; }
         break;
       case 52:
-        value.delta = r.bits.get(10);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.delta += -512;
-        value.delta = value.delta.toSigned(32);
+        {
+          final v = r.bits.get(10);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.delta = v;
+          value.delta += -512;
+          value.delta = value.delta.toSigned(32);
+        }
+        if (value.delta < -512) { value.delta = -512; r.report.clamped++; } else if (value.delta > 511) { value.delta = 511; r.report.clamped++; }
         break;
       default:
+        if (ref > r.vocabulary.count) {
+          r.report.Damage();
+          return false;
+        }
+        final named = r.vocabulary.entries[ref - 1].id;
+        if (named == TableVocabulary.buildVersionWireId ||
+            named == TableVocabulary.vocabularyWireId ||
+            named == TableVocabulary.nodeWireId) {
+          r.report.Damage();
+          return false;
+        }
         r.report.unknown++;
-        r.report.Damage();
-        return false;
+        if (!TableMessageShape.skipEntry(r, r.vocabulary.entries[ref - 1])) {
+          r.report.Damage();
+          return false;
+        }
+        break;
     }
   }
 }
@@ -2981,30 +3484,59 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
     if (ref == 0) return true;
     switch (ref) {
       case 45:
-        value.targetId = r.bits.get(12);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.targetId += 0;
+        {
+          final v = r.bits.get(12);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.targetId = v;
+          value.targetId += 0;
+        }
+        if (value.targetId > 4095) { value.targetId = 4095; r.report.clamped++; }
         break;
       case 46:
-        value.damage = r.bits.get(12);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.damage += 0;
-        value.damage = value.damage.toSigned(32);
+        {
+          final v = r.bits.get(12);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.damage = v;
+          value.damage += 0;
+          value.damage = value.damage.toSigned(32);
+        }
+        if (value.damage < 0) { value.damage = 0; r.report.clamped++; } else if (value.damage > 4095) { value.damage = 4095; r.report.clamped++; }
         break;
       case 47:
-        value.hitKind = r.bits.get(3);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.hitKind += 0;
-        value.hitKind = value.hitKind.toSigned(32);
+        {
+          final v = r.bits.get(3);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.hitKind = v;
+          value.hitKind += 0;
+          value.hitKind = value.hitKind.toSigned(32);
+        }
+        if (value.hitKind < 0) { value.hitKind = 0; r.report.clamped++; } else if (value.hitKind > 7) { value.hitKind = 7; r.report.clamped++; }
         break;
       case 48:
-        value.crit = r.bits.get(1) != 0;
-        if (r.bits.failed) { r.report.Damage(); return false; }
+        {
+          final v = r.bits.get(1) != 0;
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.crit = v;
+        }
         break;
       default:
+        if (ref > r.vocabulary.count) {
+          r.report.Damage();
+          return false;
+        }
+        final named = r.vocabulary.entries[ref - 1].id;
+        if (named == TableVocabulary.buildVersionWireId ||
+            named == TableVocabulary.vocabularyWireId ||
+            named == TableVocabulary.nodeWireId) {
+          r.report.Damage();
+          return false;
+        }
         r.report.unknown++;
-        r.report.Damage();
-        return false;
+        if (!TableMessageShape.skipEntry(r, r.vocabulary.entries[ref - 1])) {
+          r.report.Damage();
+          return false;
+        }
+        break;
     }
   }
 }
@@ -3030,20 +3562,42 @@ bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
     if (ref == 0) return true;
     switch (ref) {
       case 29:
-        value.channel = r.bits.get(2);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.channel += 0;
-        value.channel = value.channel.toSigned(32);
+        {
+          final v = r.bits.get(2);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.channel = v;
+          value.channel += 0;
+          value.channel = value.channel.toSigned(32);
+        }
+        if (value.channel < 0) { value.channel = 0; r.report.clamped++; } else if (value.channel > 3) { value.channel = 3; r.report.clamped++; }
         break;
       case 30:
-        value.speaker = r.bits.get(12);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.speaker += 0;
+        {
+          final v = r.bits.get(12);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.speaker = v;
+          value.speaker += 0;
+        }
+        if (value.speaker > 4095) { value.speaker = 4095; r.report.clamped++; }
         break;
       default:
+        if (ref > r.vocabulary.count) {
+          r.report.Damage();
+          return false;
+        }
+        final named = r.vocabulary.entries[ref - 1].id;
+        if (named == TableVocabulary.buildVersionWireId ||
+            named == TableVocabulary.vocabularyWireId ||
+            named == TableVocabulary.nodeWireId) {
+          r.report.Damage();
+          return false;
+        }
         r.report.unknown++;
-        r.report.Damage();
-        return false;
+        if (!TableMessageShape.skipEntry(r, r.vocabulary.entries[ref - 1])) {
+          r.report.Damage();
+          return false;
+        }
+        break;
     }
   }
 }
@@ -3072,20 +3626,42 @@ bool mixedPickupEventLoadMessageBody(
     if (ref == 0) return true;
     switch (ref) {
       case 49:
-        value.itemId = r.bits.get(10);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.itemId += 0;
+        {
+          final v = r.bits.get(10);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.itemId = v;
+          value.itemId += 0;
+        }
+        if (value.itemId > 1023) { value.itemId = 1023; r.report.clamped++; }
         break;
       case 50:
-        value.amount = r.bits.get(8);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.amount += 0;
-        value.amount = value.amount.toSigned(32);
+        {
+          final v = r.bits.get(8);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.amount = v;
+          value.amount += 0;
+          value.amount = value.amount.toSigned(32);
+        }
+        if (value.amount < 0) { value.amount = 0; r.report.clamped++; } else if (value.amount > 255) { value.amount = 255; r.report.clamped++; }
         break;
       default:
+        if (ref > r.vocabulary.count) {
+          r.report.Damage();
+          return false;
+        }
+        final named = r.vocabulary.entries[ref - 1].id;
+        if (named == TableVocabulary.buildVersionWireId ||
+            named == TableVocabulary.vocabularyWireId ||
+            named == TableVocabulary.nodeWireId) {
+          r.report.Damage();
+          return false;
+        }
         r.report.unknown++;
-        r.report.Damage();
-        return false;
+        if (!TableMessageShape.skipEntry(r, r.vocabulary.entries[ref - 1])) {
+          r.report.Damage();
+          return false;
+        }
+        break;
     }
   }
 }
@@ -3160,12 +3736,10 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
       default: w.overflow = true;
     }
   }
-  if (true) {
-    w.put(13, tableMessageRefBits);
-    w.align();
-    for (var i = 0; i < 4; i++) {
-      w.put(value.loadout[i], 8);
-    }
+  w.put(13, tableMessageRefBits);
+  w.align();
+  for (var i = 0; i < 4; i++) {
+    w.put(value.loadout[i], 8);
   }
   if (value.playerNameLength > 0) {
     w.put(14, tableMessageRefBits);
@@ -3181,19 +3755,84 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
   }
   if (value.aimX != 0.0) {
     w.put(16, tableMessageRefBits);
-    w.put(TableBitWriter._float32BitsFromDouble(value.aimX), 32);
+    {
+      final f = value.aimX;
+      TableBitWriter._float32Cell[0] = f;
+      final f32 = TableBitWriter._float32Cell[0];
+      TableBitWriter._float32Cell[0] = f32 - -1.0;
+      final shifted = TableBitWriter._float32Cell[0];
+      TableBitWriter._float32Cell[0] = shifted / 2.0;
+      var ratio = TableBitWriter._float32Cell[0];
+      if (!(ratio >= 0)) { ratio = 0.0; } else if (!(ratio <= 1)) { ratio = 1.0; }
+      TableBitWriter._float32Cell[0] = 200.0;
+      final fc = TableBitWriter._float32Cell[0];
+      TableBitWriter._float32Cell[0] = ratio * fc;
+      final scaled = TableBitWriter._float32Cell[0];
+      TableBitWriter._float32Cell[0] = scaled + 0.5;
+      var index = TableBitWriter._float32Cell[0].floor();
+      if (index > 200) { index = 200; }
+      w.put(index, 8);
+    }
   }
   if (value.aimY != 0.0) {
     w.put(17, tableMessageRefBits);
-    w.put(TableBitWriter._float32BitsFromDouble(value.aimY), 32);
+    {
+      final f = value.aimY;
+      TableBitWriter._float32Cell[0] = f;
+      final f32 = TableBitWriter._float32Cell[0];
+      TableBitWriter._float32Cell[0] = f32 - -1.0;
+      final shifted = TableBitWriter._float32Cell[0];
+      TableBitWriter._float32Cell[0] = shifted / 2.0;
+      var ratio = TableBitWriter._float32Cell[0];
+      if (!(ratio >= 0)) { ratio = 0.0; } else if (!(ratio <= 1)) { ratio = 1.0; }
+      TableBitWriter._float32Cell[0] = 200.0;
+      final fc = TableBitWriter._float32Cell[0];
+      TableBitWriter._float32Cell[0] = ratio * fc;
+      final scaled = TableBitWriter._float32Cell[0];
+      TableBitWriter._float32Cell[0] = scaled + 0.5;
+      var index = TableBitWriter._float32Cell[0].floor();
+      if (index > 200) { index = 200; }
+      w.put(index, 8);
+    }
   }
   if (value.aimZ != 0.0) {
     w.put(18, tableMessageRefBits);
-    w.put(TableBitWriter._float32BitsFromDouble(value.aimZ), 32);
+    {
+      final f = value.aimZ;
+      TableBitWriter._float32Cell[0] = f;
+      final f32 = TableBitWriter._float32Cell[0];
+      TableBitWriter._float32Cell[0] = f32 - -1.0;
+      final shifted = TableBitWriter._float32Cell[0];
+      TableBitWriter._float32Cell[0] = shifted / 2.0;
+      var ratio = TableBitWriter._float32Cell[0];
+      if (!(ratio >= 0)) { ratio = 0.0; } else if (!(ratio <= 1)) { ratio = 1.0; }
+      TableBitWriter._float32Cell[0] = 200.0;
+      final fc = TableBitWriter._float32Cell[0];
+      TableBitWriter._float32Cell[0] = ratio * fc;
+      final scaled = TableBitWriter._float32Cell[0];
+      TableBitWriter._float32Cell[0] = scaled + 0.5;
+      var index = TableBitWriter._float32Cell[0].floor();
+      if (index > 200) { index = 200; }
+      w.put(index, 8);
+    }
   }
   if (value.recoil != 0.0) {
     w.put(19, tableMessageRefBits);
-    w.put(TableBitWriter._float32BitsFromDouble(value.recoil), 32);
+    {
+      final f = value.recoil;
+      if (!f.isNaN) {
+        TableBitWriter._float32Cell[0] = f;
+        w.put(TableBitWriter._float32Words[0], 32);
+      } else {
+        TableBitWriter._float64Cell[0] = f;
+        final b = TableBitWriter._float64Words[0];
+        var m = (b >>> 29) & 0x7fffff;
+        if (m == 0) {
+          m = 0x400000;
+        }
+        w.put(((b >>> 63) << 31) | 0x7f800000 | m, 32);
+      }
+    }
   }
   if (value.drift != 0.0) {
     w.put(20, tableMessageRefBits);
@@ -3201,19 +3840,21 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
   }
   if (value.wideKey != UInt128.zero) {
     w.put(21, tableMessageRefBits);
-    {
-      final v = value.wideKey;
-      w.put(v.lo, 64);
-      w.put(v.hi, 64);
-    }
+    var lo = value.wideKey.lo;
+    var hi = value.wideKey.hi;
+    w.put(lo, 64);
+    w.put(hi, 64);
   }
   if (value.flux != Int128.zero) {
     w.put(22, tableMessageRefBits);
-    {
-      final v = (value.flux - Int128(0xfffffff000000000, 0));
-      w.put(v.lo, 64);
-      w.put(v.hi, 38);
-    }
+    var lo = value.flux.lo;
+    var hi = value.flux.hi;
+    var dlo = lo - 0;
+    var borrow = (lo ^ 0x8000000000000000) < (0 ^ 0x8000000000000000) ? 1 : 0;
+    lo = dlo;
+    hi = hi - 0xfffffff000000000 - borrow;
+    w.put(lo, 64);
+    w.put(hi, 38);
   }
   if (value.ping != 0) {
     w.put(23, tableMessageRefBits);
@@ -3247,61 +3888,121 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
     if (ref == 0) return true;
     switch (ref) {
       case 1:
-        value.sequence = r.bits.get(16);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.sequence += 0;
+        {
+          final v = r.bits.get(16);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.sequence = v;
+          value.sequence += 0;
+        }
+        if (value.sequence > 65535) { value.sequence = 65535; r.report.clamped++; }
         break;
       case 2:
-        value.ackSequence = r.bits.get(16);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.ackSequence += 0;
-        value.ackSequence = value.ackSequence.toSigned(32);
+        {
+          final v = r.bits.get(16);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.ackSequence = v;
+          value.ackSequence += 0;
+          value.ackSequence = value.ackSequence.toSigned(32);
+        }
+        if (value.ackSequence < 0) { value.ackSequence = 0; r.report.clamped++; } else if (value.ackSequence > 65535) { value.ackSequence = 65535; r.report.clamped++; }
         break;
       case 3:
-        value.ackBits = r.bits.get(32);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.ackBits += 0;
+        {
+          final v = r.bits.get(32);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.ackBits = v;
+          value.ackBits += 0;
+        }
+        if (value.ackBits > 4294967295) { value.ackBits = 4294967295; r.report.clamped++; }
         break;
       case 4:
-        value.sessionId = r.bits.get(64);
-        if (r.bits.failed) { r.report.Damage(); return false; }
+        {
+          final v = r.bits.get(64);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.sessionId = v;
+        }
         break;
       case 5:
-        value.clientId = r.bits.get(32);
-        if (r.bits.failed) { r.report.Damage(); return false; }
+        {
+          final v = r.bits.get(32);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.clientId = v;
+        }
         break;
       case 6:
-        value.nonce = r.bits.get(64);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.nonce += 0;
+        {
+          final v = r.bits.get(64);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.nonce = v;
+          value.nonce += 0;
+        }
+        if ((value.nonce ^ 0x8000000000000000) < 0x8000000000000000) { value.nonce = 0; r.report.clamped++; } else if ((value.nonce ^ 0x8000000000000000) > 9223372036854775807) { value.nonce = 0xffffffffffffffff; r.report.clamped++; }
         break;
       case 7:
-        value.worldTime = r.bits.get(41);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.worldTime += -1000000000000;
+        {
+          final v = r.bits.get(41);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.worldTime = v;
+          value.worldTime += -1000000000000;
+        }
+        if (value.worldTime < -1000000000000) { value.worldTime = -1000000000000; r.report.clamped++; } else if (value.worldTime > 1000000000000) { value.worldTime = 1000000000000; r.report.clamped++; }
         break;
       case 8:
-        value.frameTick = r.bits.get(48);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.frameTick += 0;
+        {
+          final v = r.bits.get(48);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.frameTick = v;
+          value.frameTick += 0;
+        }
+        if ((value.frameTick ^ 0x8000000000000000) > 0x8000ffffffffffff) { value.frameTick = 281474976710655; r.report.clamped++; }
         break;
       case 9:
-        value.serverTime = r.bits.get(24);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.serverTime += 0;
+        {
+          final v = r.bits.get(24);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.serverTime = v;
+          value.serverTime += 0;
+        }
+        if (value.serverTime < 0) { value.serverTime = 0; r.report.clamped++; } else if (value.serverTime > 65535) { value.serverTime = 65535; r.report.clamped++; }
         break;
       case 10:
-        value.entitiesCount = r.bits.get(3) + 1;
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        for (var i = 0; i < value.entitiesCount; i++) {
-          if (!mixedEntityLoadMessageBody(r, value.entities[i])) return false;
+        {
+          {
+            final v = r.bits.get(3) + 1;
+            if (r.bits.failed) { r.report.Damage(); return false; }
+            value.entitiesCount = v;
+          }
+            final kept = value.entitiesCount < 8 ? value.entitiesCount : 8;
+            if (kept != value.entitiesCount) { r.report.clamped++; }
+            for (var i = 0; i < value.entitiesCount; i++) {
+              if (i < kept) {
+                if (!mixedEntityLoadMessageBody(r, value.entities[i])) return false;
+              } else {
+                    final t = MixedEntity();
+                  if (!mixedEntityLoadMessageBody(r, t)) return false;
+              }
+            }
+            value.entitiesCount = kept;
         }
         break;
       case 11:
-        value.statsCount = r.bits.get(7) + 0;
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        for (var i = 0; i < value.statsCount; i++) {
-          if (!mixedStatLoadMessageBody(r, value.stats[i])) return false;
+        {
+          {
+            final v = r.bits.get(7) + 0;
+            if (r.bits.failed) { r.report.Damage(); return false; }
+            value.statsCount = v;
+          }
+            final kept = value.statsCount < 80 ? value.statsCount : 80;
+            if (kept != value.statsCount) { r.report.clamped++; }
+            for (var i = 0; i < value.statsCount; i++) {
+              if (i < kept) {
+                if (!mixedStatLoadMessageBody(r, value.stats[i])) return false;
+              } else {
+                    final t = MixedStat();
+                  if (!mixedStatLoadMessageBody(r, t)) return false;
+              }
+            }
+            value.statsCount = kept;
         }
         break;
       case 12:
@@ -3322,7 +4023,17 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
                 value.gameEvent.type = 3;
                 if (!mixedPickupEventLoadMessageBody(r, value.gameEvent.pickup)) return false;
                 break;
-              default: value.gameEvent.type = 0; r.report.unknown++; break;
+              default:
+                if (ref > r.vocabulary.count || tableMessageReservedId(r.vocabulary.entries[ref - 1].id) || r.vocabulary.entries[ref - 1].kind == 0) {
+                  r.report.Damage();
+                  return false;
+                }
+                value.gameEvent.type = 0; r.report.unknown++;
+                if (!TableMessageShape.skipEntry(r, r.vocabulary.entries[ref - 1])) {
+                  r.report.Damage();
+                  return false;
+                }
+                break;
             }
           }
         }
@@ -3330,8 +4041,11 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
       case 13:
         if (!r.bits.align()) { r.report.Damage(); return false; }
         for (var i = 0; i < 4; i++) {
-          value.loadout[i] = r.bits.get(8);
-          if (r.bits.failed) { r.report.Damage(); return false; }
+          {
+            final v = r.bits.get(8);
+            if (r.bits.failed) { r.report.Damage(); return false; }
+            value.loadout[i] = v;
+          }
         }
         break;
       case 14:
@@ -3340,8 +4054,9 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (r.bits.failed || !r.bits.align()) { r.report.Damage(); return false; }
           final start = r.bits.offset >> 3;
           if (!r.bits.skip(n * 8)) { r.report.Damage(); return false; }
+          if (!tableTextValid(r.bits.buffer, start, n)) { r.report.Damage(); return false; }
           var kept = n;
-          if (kept > 15) { kept = 15;  }
+          if (kept > 15) { kept = 15; r.report.clamped++; }
           value.playerNameLength = kept;
           value.playerName.setRange(0, kept, r.bits.buffer, start);
         }
@@ -3353,83 +4068,177 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final start = r.bits.offset >> 3;
           if (!r.bits.skip(n * 8)) { r.report.Damage(); return false; }
           var kept = n;
-          if (kept > 16) { kept = 16;  }
+          if (kept > 16) { kept = 16; r.report.clamped++; }
           value.payloadLength = kept;
           value.payload.setRange(0, kept, r.bits.buffer, start);
         }
         break;
       case 16:
-        value.aimX = TableBitWriter._doubleFromFloat32Bits(r.bits.get(32));
-        if (r.bits.failed) { r.report.Damage(); return false; }
+        {
+          final index = r.bits.get(8);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          if (index > 200) { r.report.Damage(); return false; }
+          TableBitWriter._float32Cell[0] = index.toDouble();
+          final fi = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = 200.0;
+          final fc = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = fi / fc;
+          final normalized = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = normalized * 2.0;
+          final scaled = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = scaled + -1.0;
+          value.aimX = TableBitWriter._float32Cell[0];
+        }
+        if (value.aimX < -1.0) { value.aimX = -1.0; r.report.clamped++; } else if (value.aimX > 1.0) { value.aimX = 1.0; r.report.clamped++; }
         break;
       case 17:
-        value.aimY = TableBitWriter._doubleFromFloat32Bits(r.bits.get(32));
-        if (r.bits.failed) { r.report.Damage(); return false; }
+        {
+          final index = r.bits.get(8);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          if (index > 200) { r.report.Damage(); return false; }
+          TableBitWriter._float32Cell[0] = index.toDouble();
+          final fi = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = 200.0;
+          final fc = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = fi / fc;
+          final normalized = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = normalized * 2.0;
+          final scaled = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = scaled + -1.0;
+          value.aimY = TableBitWriter._float32Cell[0];
+        }
+        if (value.aimY < -1.0) { value.aimY = -1.0; r.report.clamped++; } else if (value.aimY > 1.0) { value.aimY = 1.0; r.report.clamped++; }
         break;
       case 18:
-        value.aimZ = TableBitWriter._doubleFromFloat32Bits(r.bits.get(32));
-        if (r.bits.failed) { r.report.Damage(); return false; }
+        {
+          final index = r.bits.get(8);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          if (index > 200) { r.report.Damage(); return false; }
+          TableBitWriter._float32Cell[0] = index.toDouble();
+          final fi = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = 200.0;
+          final fc = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = fi / fc;
+          final normalized = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = normalized * 2.0;
+          final scaled = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = scaled + -1.0;
+          value.aimZ = TableBitWriter._float32Cell[0];
+        }
+        if (value.aimZ < -1.0) { value.aimZ = -1.0; r.report.clamped++; } else if (value.aimZ > 1.0) { value.aimZ = 1.0; r.report.clamped++; }
         break;
       case 19:
-        value.recoil = TableBitWriter._doubleFromFloat32Bits(r.bits.get(32));
+        {
+          final b = r.bits.get(32);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          if ((b & 0x7fffffff) <= 0x7f800000) {
+            TableBitWriter._float32Words[0] = b;
+            value.recoil = TableBitWriter._float32Cell[0];
+          } else {
+            final w64 = ((b >>> 31) << 63) | ((b & 0x7fffff) << 29);
+            TableBitWriter._float64Words[0] = w64 | 0x7ff0000000000000;
+            value.recoil = TableBitWriter._float64Cell[0];
+          }
+        }
         if (r.bits.failed) { r.report.Damage(); return false; }
         break;
       case 20:
-        value.drift = (ByteData(8)..setUint64(0, r.bits.get(64), Endian.little)).getFloat64(0, Endian.little);
-        if (r.bits.failed) { r.report.Damage(); return false; }
+        {
+          final b = r.bits.get(64);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.drift = (ByteData(8)..setUint64(0, b, Endian.little)).getFloat64(0, Endian.little);
+        }
         break;
       case 21:
-        {
-          final lo = r.bits.get(64);
-          final hi = r.bits.get(64);
-          if (r.bits.failed) { r.report.Damage(); return false; }
-          value.wideKey = UInt128(hi, lo);
-        }
+        var lo = r.bits.get(64);
+        if (r.bits.failed) { r.report.Damage(); return false; }
+        var hi = r.bits.get(64);
+        if (r.bits.failed) { r.report.Damage(); return false; }
+        value.wideKey = UInt128(hi, lo);
         break;
       case 22:
-        {
-          final lo = r.bits.get(64);
-          final hi = r.bits.get(38);
-          if (r.bits.failed) { r.report.Damage(); return false; }
-          value.flux = Int128(hi, lo) + Int128(0xfffffff000000000, 0);
-        }
+        var lo = r.bits.get(64);
+        if (r.bits.failed) { r.report.Damage(); return false; }
+        var hi = r.bits.get(38);
+        if (r.bits.failed) { r.report.Damage(); return false; }
+        var sumLo = lo + 0;
+        var carry = (sumLo ^ 0x8000000000000000) < (lo ^ 0x8000000000000000) ? 1 : 0;
+        hi = hi + 0xfffffff000000000 + carry;
+        lo = sumLo;
+        value.flux = Int128(hi, lo);
+        if (value.flux < Int128(0xfffffff000000000, 0)) { value.flux = Int128(0xfffffff000000000, 0); r.report.clamped++; } else if (value.flux > Int128(68719476736, 0)) { value.flux = Int128(68719476736, 0); r.report.clamped++; }
         break;
       case 23:
-        value.ping = r.bits.get(16);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.ping += 0;
+        {
+          final v = r.bits.get(16);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.ping = v;
+          value.ping += 0;
+        }
+        if (value.ping < 0) { value.ping = 0; r.report.clamped++; } else if (value.ping > 250) { value.ping = 250; r.report.clamped++; }
         break;
       case 24:
-        value.crcHint = r.bits.get(24);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.crcHint += 0;
+        {
+          final v = r.bits.get(24);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.crcHint = v;
+          value.crcHint += 0;
+        }
+        if (value.crcHint > 16777215) { value.crcHint = 16777215; r.report.clamped++; }
         break;
       case 25:
-        value.hasExtra = r.bits.get(1) != 0;
-        if (r.bits.failed) { r.report.Damage(); return false; }
+        {
+          final v = r.bits.get(1) != 0;
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.hasExtra = v;
+        }
         break;
       case 26:
-        value.extra = r.bits.get(8);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.extra += 0;
-        value.extra = value.extra.toSigned(32);
+        {
+          final v = r.bits.get(8);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.extra = v;
+          value.extra += 0;
+          value.extra = value.extra.toSigned(32);
+        }
+        if (value.extra < 0) { value.extra = 0; r.report.clamped++; } else if (value.extra > 255) { value.extra = 255; r.report.clamped++; }
         break;
       case 27:
-        value.idleTicks = r.bits.get(4);
-        if (r.bits.failed) { r.report.Damage(); return false; }
-        value.idleTicks += 0;
-        value.idleTicks = value.idleTicks.toSigned(32);
+        {
+          final v = r.bits.get(4);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.idleTicks = v;
+          value.idleTicks += 0;
+          value.idleTicks = value.idleTicks.toSigned(32);
+        }
+        if (value.idleTicks < 0) { value.idleTicks = 0; r.report.clamped++; } else if (value.idleTicks > 15) { value.idleTicks = 15; r.report.clamped++; }
         break;
       default:
+        if (ref > r.vocabulary.count) {
+          r.report.Damage();
+          return false;
+        }
+        final named = r.vocabulary.entries[ref - 1].id;
+        if (named == TableVocabulary.buildVersionWireId ||
+            named == TableVocabulary.vocabularyWireId ||
+            named == TableVocabulary.nodeWireId) {
+          r.report.Damage();
+          return false;
+        }
         r.report.unknown++;
-        r.report.Damage();
-        return false;
+        if (!TableMessageShape.skipEntry(r, r.vocabulary.entries[ref - 1])) {
+          r.report.Damage();
+          return false;
+        }
+        break;
     }
   }
 }
 
 bool fixedTableSaveMessageBody(TableBitWriter w, FixedTable value) {
-  if (value.value != 0) {
+  final probeValue = TableBitWriter(Uint8List(0))..measuring = true;
+  if (!benchMixedSaveMessageBody(probeValue, value.value)) return false;
+  if (probeValue.bits > tableMessageRefBits) {
     w.put(28, tableMessageRefBits);
     if (!benchMixedSaveMessageBody(w, value.value)) return false;
   }
@@ -3448,9 +4257,23 @@ bool fixedTableLoadMessageBody(TableMessageReader r, FixedTable value) {
         if (!benchMixedLoadMessageBody(r, value.value)) return false;
         break;
       default:
+        if (ref > r.vocabulary.count) {
+          r.report.Damage();
+          return false;
+        }
+        final named = r.vocabulary.entries[ref - 1].id;
+        if (named == TableVocabulary.buildVersionWireId ||
+            named == TableVocabulary.vocabularyWireId ||
+            named == TableVocabulary.nodeWireId) {
+          r.report.Damage();
+          return false;
+        }
         r.report.unknown++;
-        r.report.Damage();
-        return false;
+        if (!TableMessageShape.skipEntry(r, r.vocabulary.entries[ref - 1])) {
+          r.report.Damage();
+          return false;
+        }
+        break;
     }
   }
 }
@@ -3845,10 +4668,26 @@ void benchMixedFixedWriteBody(
   view.setInt32(at + 1145, value.payloadLength, Endian.little);
   bytes.setRange(at + 1149, at + 1149 + value.payloadLength, value.payload);
   bytes.fillRange(at + 1149 + value.payloadLength, at + 1165, 0);
-  view.setFloat32(at + 1165, value.aimX, Endian.little);
-  view.setFloat32(at + 1169, value.aimY, Endian.little);
-  view.setFloat32(at + 1173, value.aimZ, Endian.little);
-  view.setFloat32(at + 1177, value.recoil, Endian.little);
+  view.setUint32(
+    at + 1165,
+    TableFixedLayout.float32Bits(value.aimX),
+    Endian.little,
+  );
+  view.setUint32(
+    at + 1169,
+    TableFixedLayout.float32Bits(value.aimY),
+    Endian.little,
+  );
+  view.setUint32(
+    at + 1173,
+    TableFixedLayout.float32Bits(value.aimZ),
+    Endian.little,
+  );
+  view.setUint32(
+    at + 1177,
+    TableFixedLayout.float32Bits(value.recoil),
+    Endian.little,
+  );
   view.setFloat64(at + 1181, value.drift, Endian.little);
   view.setUint64(at + 1189, value.wideKey.lo, Endian.little);
   view.setUint64(at + 1189 + 8, value.wideKey.hi, Endian.little);
@@ -3986,7 +4825,9 @@ void benchMixedFixedDecode(
     report.clamped++;
   }
   value.payload.setRange(0, 16, image, at + 1149);
-  value.aimX = view.getFloat32(at + 1165, Endian.little);
+  value.aimX = TableFixedLayout.float32Value(
+    view.getUint32(at + 1165, Endian.little),
+  );
   if (value.aimX < -1.0) {
     value.aimX = -1.0;
     report.clamped++;
@@ -3994,7 +4835,9 @@ void benchMixedFixedDecode(
     value.aimX = 1.0;
     report.clamped++;
   }
-  value.aimY = view.getFloat32(at + 1169, Endian.little);
+  value.aimY = TableFixedLayout.float32Value(
+    view.getUint32(at + 1169, Endian.little),
+  );
   if (value.aimY < -1.0) {
     value.aimY = -1.0;
     report.clamped++;
@@ -4002,7 +4845,9 @@ void benchMixedFixedDecode(
     value.aimY = 1.0;
     report.clamped++;
   }
-  value.aimZ = view.getFloat32(at + 1173, Endian.little);
+  value.aimZ = TableFixedLayout.float32Value(
+    view.getUint32(at + 1173, Endian.little),
+  );
   if (value.aimZ < -1.0) {
     value.aimZ = -1.0;
     report.clamped++;
@@ -4010,7 +4855,9 @@ void benchMixedFixedDecode(
     value.aimZ = 1.0;
     report.clamped++;
   }
-  value.recoil = view.getFloat32(at + 1177, Endian.little);
+  value.recoil = TableFixedLayout.float32Value(
+    view.getUint32(at + 1177, Endian.little),
+  );
   value.drift = view.getFloat64(at + 1181, Endian.little);
   value.wideKey = UInt128(
     view.getUint64(at + 1189 + 8, Endian.little),

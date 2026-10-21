@@ -270,6 +270,23 @@ final class TableFixedReport {
 /// A LAYOUT VIEW is the bytes and the entry count. Every read of an entry is
 /// arithmetic on the seventeen-byte stride, so nothing is parsed twice and
 /// nothing is materialised.
+/// ONE CACHED ByteData VIEW of the caller's buffer, rebuilt only when the
+/// buffer changes: a Load or Save over the same buffer every frame allocates
+/// nothing after the first call (the tables soak's scavenge gate).
+final class TableFixedView {
+  ByteData? _view;
+  Uint8List? _bytes;
+
+  @pragma('vm:prefer-inline')
+  ByteData of(Uint8List bytes) {
+    if (!identical(_bytes, bytes)) {
+      _view = ByteData.sublistView(bytes);
+      _bytes = bytes;
+    }
+    return _view!;
+  }
+}
+
 final class TableFixedLayout {
   ByteData? view;
   int at = 0;

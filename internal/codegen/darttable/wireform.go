@@ -703,6 +703,7 @@ int _kindFloor(int k) {
     case 11:
     case 23:
     case 28:
+    case 36:
       return 8;
     case 18:
     case 19:
@@ -1043,6 +1044,7 @@ final class TableWireReader {
       case 11:
       case 23:
       case 28:
+      case 36: // a timestamp, eight bytes (§3; ir.TableKindWidth)
         if (!has(8)) return false;
         pos += 8;
         return true;
@@ -2362,6 +2364,16 @@ func (g *wireGen) emitNumber(st *ir.Struct) {
 
 func (g *wireGen) emitNumberField(f *ir.Field, ind string) {
 	expr := "v." + fieldMember(f)
+	if f.Type.Optional {
+		// AN ABSENT OPTIONAL'S TABLE IS NOT DESCENDED (§2.3, §3.1, schema#526):
+		// the numbering gates on the presence companion exactly as the save
+		// does (emitSaveOptional), so a pointer left inside an absent optional
+		// takes no index and costs no record.
+		g.pf("%sif (v.%s) {\n", ind, hasMember(f))
+		g.emitNumberField(nonOptional(f), ind+"\t")
+		g.pf("%s}\n", ind)
+		return
+	}
 	switch {
 	case f.IsMap():
 		// a map is a by-value edge at its field's position, its entries in

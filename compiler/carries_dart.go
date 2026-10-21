@@ -1,5 +1,5 @@
 package compiler
 
 func init() {
-	registerCarries("dart")
+	registerCarries("dart", carryOptionalVariableClosure)
 }

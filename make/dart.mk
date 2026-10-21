@@ -314,7 +314,7 @@ tables-dart-alloc-runtime-negative-control: build/dart_gcgate build/fixedform-co
 # samples the scavenge count every second after the warmup and fails if it
 # moves, reporting the worker's RSS drift beside it as the weaker instrument.
 DART_SOAK_GC_FLAGS = --verbose_gc --new_gen_semi_initial_size=1 --new_gen_semi_max_size=1
-SOAK_SECONDS ?= 3600
+# SOAK_SECONDS is the Makefile's (3600 by default), shared by every leg's soak.
 
 build/dart_tables_soak: build/dart-fixed/.stamp build/tables-generated-dart/.stamp cards-dart-generate build/fixedform-corpus/.stamp build/cook-fuzz/.stamp test/dart-tables/soak.dart
 	@mkdir -p build
@@ -493,12 +493,13 @@ tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	@echo "negative control: both halves of the extent bound removed from the Dart block Open turn the fuzzer RED at both seeds"
 
 # THE LEAD GATE'S NEGATIVE CONTROL: the base-alignment check is removed from the
-# block Open in a copy, and the enumerated lead pass must go red — every middle
+# block Open (openWithReason, which open delegates to) in a copy, and the
+# enumerated lead pass must go red — every middle
 # lead 1..63 opens when the check that should refuse them is gone (I5).
 .PHONY: tables-dart-fuzz-lead-negative-control
 tables-dart-fuzz-lead-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-fuzz-lead-nc && mkdir -p build/dart-fuzz-lead-nc
-	@sed -e 's|g.pf("    if (base %% %d != 0) {\\n      return null; // the base'"'"'s alignment\\n    }\\n", ir.BlockAlign)|// SABOTAGED: the base-alignment check is gone|' \
+	@sed -e 's#g.pf("    if (base %% %d != 0) {\\n      return (null, TableRefuseReason.unalignedBase);\\n    }\\n", ir.BlockAlign)#// SABOTAGED: the base-alignment check is gone#' \
 		internal/codegen/darttable/block.go > build/dart-fuzz-lead-nc/block.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-lead-nc/block.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -779,6 +780,9 @@ tables-dart-keyed-negative-control:
 		  cat build/dart-keyed-nc/log; exit 1; }
 	@grep -m1 "enum extent" build/dart-keyed-nc/log
 	@echo "negative control: one extra keyed slot turns the Dart keyed-array extent test RED"
+
+# reached from make test like every other Dart control (TestPortingRegisterHoldsTheTree)
+test-dart: tables-dart-keyed-negative-control
 
 # THE VARIABLE CLASS (docs/SPEC-TABLES.md §2.5, §2.9, §3, §3.1, §16.7): pointers,
 # by-value nesting, []*T, blobs, the remaining scalar kinds and unbounded

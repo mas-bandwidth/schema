@@ -351,12 +351,17 @@ void main() {
 			}
 		}
 		for _, want := range []string{
-			"w.put(v.lo, 64);", "w.put(v.hi, 64);", "w.put(v.hi, 38);", "w.put(v.lo, 10);",
-			"final lo = r.bits.get(10);",
-			"(value.neg - Int128(0xc000000000000000, 0))",
-			"value.neg = Int128(hi, lo) + Int128(0xc000000000000000, 0);",
-			"(value.flux - Int128(0xfffffff000000000, 0))",
-			"value.flux = Int128(hi, lo) + Int128(0xfffffff000000000, 0);",
+			// the one 128-bit path (emitMessageWrite/ReadScalar128): the
+			// halves cross low first, and a ranged base comes off and goes
+			// back on at full width, the borrow and the carry crossing halves
+			"w.put(lo, 64);", "w.put(hi, 64);", "w.put(hi, 38);", "w.put(lo, 10);",
+			"var lo = r.bits.get(10);",
+			"hi = hi - 0xc000000000000000 - borrow;",
+			"hi = hi + 0xc000000000000000 + carry;",
+			"value.neg = Int128(hi, lo);",
+			"hi = hi - 0xfffffff000000000 - borrow;",
+			"hi = hi + 0xfffffff000000000 + carry;",
+			"value.flux = Int128(hi, lo);",
 		} {
 			if !strings.Contains(src, want) {
 				t.Fatalf("the 128-bit message form does not cross the lane as low 64 then the rest, base at full width: missing %q", want)

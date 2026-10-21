@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE DART MESSAGE FUZZ ARM HONOURS WHAT THE LOAD RETURNS (docs/SPEC-TABLES.md
@@ -105,21 +107,11 @@ func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sibling := os.Getenv("SERIALIZE_GO")
-	if sibling == "" {
-		sibling = filepath.Join(root, "..", "serialize.go")
-	}
-	if !filepath.IsAbs(sibling) {
-		sibling = filepath.Join(root, sibling)
-	}
-	if _, err := os.Stat(filepath.Join(sibling, "go.mod")); err == nil {
-		mk("build/conformance-go", "SERIALIZE_GO="+sibling)
-		live := drive(filepath.Join(root, "build", "conformance-go"))
-		if len(live) == 0 || live[0] != 1 || !bytes.Equal(live[1:], want) {
-			t.Fatalf("build/conformance-go no longer answers %s: re-pin it from the Go driver (% x)", pin, live)
-		}
-	} else {
-		t.Logf("the serialize.go sibling is absent at %s: the Go driver's replies are read from %s only", sibling, pin)
+	sibling := slowtest.SerializeGo(t, root)
+	mk("build/conformance-go", "SERIALIZE_GO="+sibling)
+	live := drive(filepath.Join(root, "build", "conformance-go"))
+	if len(live) == 0 || live[0] != 1 || !bytes.Equal(live[1:], want) {
+		t.Fatalf("build/conformance-go no longer answers %s: re-pin it from the Go driver (% x)", pin, live)
 	}
 
 	// reply walks one reply in the harness's layout (test/conformance/go/

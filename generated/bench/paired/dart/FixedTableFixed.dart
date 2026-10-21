@@ -36,6 +36,7 @@ import 'BenchFixed.dart'
         TableFixedPlan,
         TableFixedRefusal,
         TableFixedReport,
+        TableFixedView,
         TableMessageReader,
         TableReport,
         TableVocabulary,
@@ -43,7 +44,6 @@ import 'BenchFixed.dart'
         fixedTableFixedWriteBody,
         fixedTableLoadMessageBody,
         fixedTableSaveMessageBody,
-        initFixedTable,
         tableFixedFillRun,
         tableFixedForm,
         tableFixedLineagePlans,
@@ -408,21 +408,28 @@ final Int32List fixedTableFixedDst = Int32List.fromList(const <int>[
 /// value a consumer will index with.
 // dart format off
 final Int32List fixedTableFixedIdentity = Int32List.fromList(const <int>[
-  0, 0, 0, 52, 0, -1, 0, 0, 1,
-  1, 52, 52, 8, 0, -1, 0, 0, 1, // entities count
-  0, 56, 56, 408, 0, -1, 0, 0, 1, // entities, whole
-  1, 464, 464, 80, 0, -1, 0, 0, 1, // stats count
-  0, 468, 468, 641, 0, -1, 0, 0, 1, // stats, whole
-  0, 1122, 1122, 4, 0, -1, 0, 0, 1, // loadout, whole
-  2, 1126, 1126, 15, 1130, -1, 0, 1, 1, // player_name
-  2, 1145, 1145, 16, 1149, -1, 0, 3, 1, // payload
-  0, 1165, 1165, 71, 0, -1, 0, 0, 1,
-  0, 1109, 1109, 13, 0, 1108, 1, 0, 1,
-  0, 1109, 1109, 8, 0, 1108, 2, 0, 1,
-  0, 1109, 1109, 8, 0, 1108, 3, 0, 1,
+  0, 0, 0, 52, 0, -1, 0, 0, 1, 0, 0,
+  1, 52, 52, 8, 0, -1, 0, 0, 1, 0, 0, // entities count
+  0, 56, 56, 408, 0, -1, 0, 0, 1, 0, 0, // entities, whole
+  1, 464, 464, 80, 0, -1, 0, 0, 1, 0, 0, // stats count
+  0, 468, 468, 641, 0, -1, 0, 0, 1, 0, 0, // stats, whole
+  0, 1122, 1122, 4, 0, -1, 0, 0, 1, 0, 0, // loadout, whole
+  2, 1126, 1126, 15, 1130, -1, 0, 1, 1, 0, 0, // player_name
+  2, 1145, 1145, 16, 1149, -1, 0, 3, 1, 0, 0, // payload
+  0, 1165, 1165, 71, 0, -1, 0, 0, 1, 0, 0,
+  0, 1109, 1109, 13, 0, 1108, 1, 0, 1, 0, 0,
+  0, 1109, 1109, 8, 0, 1108, 2, 0, 1, 0, 0,
+  0, 1109, 1109, 8, 0, 1108, 3, 0, 1, 0, 0,
 ]);
 // dart format on
 const int fixedTableFixedIdentityCount = 12;
+
+/// THE GUARD CHAIN'S POOL for the identity plan (§4.1): offset+count from an
+/// entry's guards lanes, (guard, arg, argw) a link, outermost first.
+// dart format off
+final Int32List fixedTableFixedIdentityGuards = Int32List.fromList(const <int>[
+]);
+// dart format on
 
 /// THE SPLIT: the index the identity plan's GUARDED half starts at — the
 /// number of unguarded entries (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4,
@@ -587,6 +594,8 @@ int fixedTableFixedMeasure(int count) {
   return fixedTableFixedHeaderBytes + count * fixedTableFixedRecordBytes;
 }
 
+final fixedTableFixedSaveView = TableFixedView();
+
 /// THE WRITE IS A TEMPLATE: the hash and zeros laid down first — which is
 /// also what zero-fills every byte of declared slack — and then value stores
 /// at constant offsets. No measuring pass, no id interning, no trailer and no
@@ -596,7 +605,7 @@ int fixedTableFixedSave(List<FixedTable> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
-  final view = ByteData.sublistView(bytes);
+  final view = fixedTableFixedSaveView.of(bytes);
   // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven
   // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.
   bytes.fillRange(0, TableFixedLimits.headerBytes, 0);
@@ -622,6 +631,8 @@ int fixedTableFixedSave(List<FixedTable> values, int count, Uint8List bytes) {
   }
   return need;
 }
+
+final fixedTableFixedLoadView = TableFixedView();
 
 /// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 /// the layout's hash is this build's own, and a plan compiled once from the
@@ -649,7 +660,7 @@ int fixedTableFixedLoad(
     report.malformed = true;
     return -1;
   }
-  final view = ByteData.sublistView(bytes);
+  final view = fixedTableFixedLoadView.of(bytes);
   // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
   // the registry is ordered, so a byte this reader does not carry is named
   // by where it sits relative to this form and never by one word for both.
@@ -723,7 +734,7 @@ int fixedTableFixedLoad(
   // the rule is the type's value bytes minus what the plan lands, and the
   // identity plan lands all of them.
   var fillCount = 0;
-  var remap = plan.remap;
+  var remap = fixedTableFixedIdentityGuards;
   // THE COMPILE CENSUS IS THE PLAN'S OWN NUMBERS, carried onto the report
   // ONCE after the record loop and only on a read that returns (§5.9 #6):
   // once per peer, never per record, and REFUSE moves no counter at all.
