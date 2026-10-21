@@ -69,7 +69,9 @@ func TestGoTestgenRoundTripAndDamage(t *testing.T) {
 
 	t.Run("green", func(t *testing.T) {
 		t.Parallel()
-		out, err := runGeneratedUnit(t, u, stub, add, "-v")
+		// the round-trip and damage tests only: the fuzz targets beside them
+		// are TestGoTestgenFuzzTargets' gate (§16.11)
+		out, err := runGeneratedUnit(t, u, stub, add, "-v", "-run", "^Test")
 		if err != nil {
 			t.Fatalf("emitted tests: %v\n%s", err, out)
 		}

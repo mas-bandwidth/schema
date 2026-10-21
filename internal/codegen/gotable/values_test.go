@@ -49,6 +49,11 @@ func runGeneratedUnit(t *testing.T, u *ir.Unit, testSource string, edit func(map
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	files["values_test.go"] = []byte(testSource)
 	for name, data := range files {
+		// a name with a slash is a file under a directory of the package, a
+		// testdata/fuzz corpus entry (SPEC-TABLES §16.11)
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o700); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
 			t.Fatal(err)
 		}
