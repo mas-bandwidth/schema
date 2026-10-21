@@ -114,9 +114,13 @@ static SCHEMA_UNUSED int table_json_read_blob( TableJsonIn * in, void * slot, co
     for(;;)
     {
         char c;
+        int step;
         if(in->pos>=in->size) { in->bad=1; return 0; }
         c=in->text[in->pos++];
         if(c=='"') { break; }
+        step=table_json_base64_step(in,c);
+        if(step<0) { return 0; }
+        if(step==0) { malformed=1; continue; }
         if(malformed) { continue; }
         if(c=='=') { pad++; continue; }
         if(pad>0) { malformed=1; continue; }
