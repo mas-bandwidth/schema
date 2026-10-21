@@ -2203,6 +2203,9 @@ local function count_nodes(T: any, desc: any, root: any): any
       top.i = top.i + 1
       if not e.blob and open[e.val] then return nil end
       local n = (g.count[e.val] or 0) + 1
+      -- a blob is owned by one slot (§2.5): the text writer refuses a second
+      -- slot naming it, blob_shared, as every writer does
+      if e.blob and n > 1 then return nil end
       g.count[e.val] = n
       if n == 1 and not e.blob then
         local d = T.Tables[e.target]

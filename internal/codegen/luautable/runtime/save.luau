@@ -317,7 +317,7 @@ local function arm_edges(fd: any, u: any, out: { any })
 	if arm.s == "tab" then
 		edges(St.lookup(arm.t), val, out)
 	elseif arm.s == "sblob" or arm.s == "bblob" then
-		if val ~= nil then out[#out + 1] = { blob = arm.s, val = val } end
+		if val ~= nil then out[#out + 1] = { blob = arm.s, val = val, field = un.name .. "." .. arm.name } end
 	elseif arm.s == "ptr" then
 		if val ~= nil then out[#out + 1] = { d = St.lookup(arm.t), val = val } end
 	elseif arm.s == "arr" and arm.e ~= nil and arm.e.s == "ptr" then
@@ -351,7 +351,7 @@ edges = function(d: any, v: any, out: { any }): { any }
 		local val = v[fd.slot]
 		local s = fd.s
 		if s == "sblob" or s == "bblob" then
-			if val ~= nil then out[#out + 1] = { blob = s, val = val } end
+			if val ~= nil then out[#out + 1] = { blob = s, val = val, field = d.name .. "." .. fd.name } end
 		elseif s == "ptr" then
 			if val ~= nil then out[#out + 1] = { d = St.lookup(fd.t), val = val } end
 		elseif s == "union" then
@@ -384,7 +384,7 @@ end
 -- THE WALK HOLDS ITS OWN STACK: a pointer chain is as deep as it is long, and
 -- the interpreter's call stack is not the bound. Only one node's by-value
 -- closure recurses, and that nesting is the schema's, never the data's.
-local function number(d: any, root: any): any
+local function number(d: any, root: any): (any, any?)
 	local nodes: any = { list = {}, index = {} }
 	nodes.index[root] = 1
 	local open: { [any]: boolean } = { [root] = true }
@@ -398,9 +398,12 @@ local function number(d: any, root: any): any
 			top.i = top.i + 1
 			local e = top.edges[top.i]
 			if open[e.val] then return nil end
-			-- A BLOB IS NUMBERED AS EVERY NODE IS (docs/SPEC-TABLES.md §2.5,
-			-- §3.1): the first visit takes the index and a second slot naming
-			-- the same blob reuses it, exactly as the engine's node graph does.
+			-- A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): the first
+			-- visit numbers it, and a second slot naming the same buffer is
+			-- refused by name, blob_shared, as every writer refuses it.
+			if e.blob ~= nil and nodes.index[e.val] ~= nil then
+				return nil, { name = "blob_shared", field = e.field }
+			end
 			if nodes.index[e.val] == nil then
 				if e.blob ~= nil then
 					-- a BYTE BUFFER is numbered as every node is and reaches nothing (§2.5)
@@ -916,9 +919,9 @@ end
 -- table and its count, and for a root that declares integrity = "crc32c" the
 -- four-byte little-endian CRC-32C trailer. A data cycle or a value with no
 -- wire identity refuses (nil).
-local function walk(d: any, v: any, count: boolean): any
-	local nodes = number(d, v)
-	if nodes == nil then return nil end
+local function walk(d: any, v: any, count: boolean): (any, any?)
+	local nodes, why = number(d, v)
+	if nodes == nil then return nil, why end
 	local c = { ids = new_ids(), nodes = nodes, count = count }
 	local w = new_writer(count)
 	w_u8(w, Form)
@@ -1009,8 +1012,8 @@ function S.save(d: any, v: any): (buffer?, any?)
 	if v == nil then return nil, { name = "nil_value", field = d.name } end
 	local invalid = invalid_deprecated(d, v, {})
 	if invalid ~= nil then return nil, invalid end
-	local w = walk(d, v, false)
-	if w == nil then return nil end
+	local w, why = walk(d, v, false)
+	if w == nil then return nil, why end
 	local out = buffer.create(w.n)
 	buffer.copy(out, 0, w.b, 0, w.n)
 	return out, nil
@@ -1021,8 +1024,8 @@ end
 function S.measure(d: any, v: any): (number?, any?)
 	local invalid = invalid_deprecated(d, v, {})
 	if invalid ~= nil then return nil, invalid end
-	local w = walk(d, v, true)
-	if w == nil then return nil end
+	local w, why = walk(d, v, true)
+	if w == nil then return nil, why end
 	return w.n, nil
 end
 

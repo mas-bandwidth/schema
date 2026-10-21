@@ -84,12 +84,14 @@ func blobFnv(s string) uint64 {
 	return h
 }
 
-// blobClampedWire builds the hostile form-1 wire of Probe{note, note2} naming
-// one blob record and title = "abc" past its string(2) bound: the read clamps
-// title and counts one blob_shared, so the strict read refuses blob_shared
-// (§2.5, §6.5). Node index 2 is the one blob record; the id table intern the
-// field ids in first-use order and the reserved blob id last.
-func blobClampedWire() []byte {
+// blobSharedWire builds the hostile form-1 wire of Probe{note, note2} naming
+// one blob record, with the given title: "ab" is in bound, "abc" is past its
+// string(2) bound and the read clamps it too. The read counts one blob_shared,
+// so the strict read refuses blob_shared (§2.5, §6.5). No writer emits this
+// wire (every writer refuses a shared blob), so it is built here. Node index 2
+// is the one blob record; the id table interns the field ids in first-use
+// order and the reserved blob id last.
+func blobSharedWire(titleText string) []byte {
 	note, note2, title := blobFnv("note"), blobFnv("note2"), blobFnv("title")
 	ids := []uint64{note, note2, title, 0xffffffffffffffff, 0x704be0d8faaffc58}
 	var w []byte
@@ -102,8 +104,8 @@ func blobClampedWire() []byte {
 	w = append(w, blobLeb(2)...)
 	w = append(w, blobLeb(3)...)
 	w = append(w, 0x0c)
-	w = append(w, blobLeb(3)...)
-	w = append(w, "abc"...)
+	w = append(w, blobLeb(uint64(len(titleText)))...)
+	w = append(w, titleText...)
 	var sub []byte
 	sub = append(sub, blobLeb(1)...)
 	sub = append(sub, blobLeb(5)...)
@@ -161,8 +163,8 @@ print("shared|" .. tostring(rep.blobShared) .. "|" .. tostring(v.Note == v.Note2
 local strict = fresh()
 local sv = R.ReadStrict(ProbeTable, "Probe", inputs.shared, strict)
 print("strict|" .. tostring(strict.reason) .. "|" .. tostring(strict.field) .. "|" .. tostring(sv == nil))
-local sharedOut = S.save(d, v)
-print("sharedsave|" .. tostring(sharedOut == nil))
+local sharedOut, why = S.save(d, v)
+print("sharedsave|" .. tostring(sharedOut == nil) .. "|" .. tostring(why and why.name) .. "|" .. tostring(why and why.field))
 local rep2 = fresh()
 local v2 = L.loadTolerant("Probe", inputs.distinct, rep2)
 print("distinctreport|" .. tostring(rep2.blobShared))
@@ -184,7 +186,7 @@ print("clampedstrict|" .. tostring(strict3.reason) .. "|" .. tostring(strict3.fi
 // record named by two *string slots loads with report.blobShared 1, the two
 // slots hold the same buffer and its bytes, ReadStrict refuses it as
 // blob_shared with the second naming field as witness, and the save refuses
-// that value. Two equal but DISTINCT buffers are two records and save to the
+// that value by the same name (every writer does). Two equal but DISTINCT buffers are two records and save to the
 // Go oracle's two-record wire. A wire that is both clamped and blob-shared
 // refuses as blob_shared (BlobShared precedes Clamped in Go's Err()). Every
 // expected wire, count and field is computed here from internal/tabletext and
@@ -228,9 +230,17 @@ func TestLuauBlobNamedTwice(t *testing.T) {
 	if wantShared != 1 || sharedField != "note2" {
 		t.Fatalf("the oracle's shared value counts %d extras and first names %q, want 1 and note2", wantShared, sharedField)
 	}
-	sharedWire, err := tablewire.Encode(m, shared)
-	if err != nil {
-		t.Fatalf("the oracle did not encode the shared value: %v", err)
+	if _, err := tablewire.Encode(m, shared); err == nil || !strings.Contains(err.Error(), "blob_shared") {
+		t.Fatalf("the oracle encoded the shared value; every writer refuses it as blob_shared (§2.5): %v", err)
+	}
+	sharedWire := blobSharedWire("ab")
+	sinst := m.New(m.Lookup("Probe"))
+	var srep tabletext.Report
+	if ok, derr := tablewire.Decode(m, sinst, sharedWire, &srep); !ok || derr != nil || srep.Malformed || srep.Clamped != 0 {
+		t.Fatalf("the oracle did not decode the shared wire: ok=%v err=%v report=%+v", ok, derr, srep)
+	}
+	if sSlots, sDistinct, sField := blobSlots(sinst); sSlots-sDistinct != wantShared || sField != sharedField {
+		t.Fatalf("the oracle's shared wire counts %d extras and first names %q, want %d and %s", sSlots-sDistinct, sField, wantShared, sharedField)
 	}
 
 	// TWO EQUAL BUT DISTINCT BUFFERS: two records in the oracle's wire.
@@ -247,13 +257,13 @@ func TestLuauBlobNamedTwice(t *testing.T) {
 		t.Fatalf("the oracle did not encode two distinct blobs: %v", err)
 	}
 	if string(sharedWire) == string(distinctWire) {
-		t.Fatal("the oracle wrote the shared and two-blob values the same bytes")
+		t.Fatal("the shared wire and the oracle's two-blob wire are the same bytes")
 	}
 
 	// THE CLAMPED WIRE: one blob from two slots and title past its bound. The
 	// oracle's own decode sees the clamp and the shared blob, so the strict
 	// read names blob_shared (§6.5, BlobShared before Clamped).
-	clampedWire := blobClampedWire()
+	clampedWire := blobSharedWire("abc")
 	cinst := m.New(m.Lookup("Probe"))
 	var crep tabletext.Report
 	if ok, derr := tablewire.Decode(m, cinst, clampedWire, &crep); !ok || derr != nil || crep.Malformed {
@@ -290,12 +300,10 @@ func TestLuauBlobNamedTwice(t *testing.T) {
 	if want := fmt.Sprintf("%s|%s|true", "blob_shared", sharedField); got["strict"] != want {
 		t.Errorf("strict read: got %q, want %q (reason|witness|refused)", got["strict"], want)
 	}
-	// THE ENGINE RE-SAVES A TOLERANTLY-LOADED SHARED BLOB: its node graph
-	// numbers the blob once and writes the same index from both slots
-	// (internal/tablewire nodes.go), so the Luau save matches it byte for byte
-	// rather than refusing the value the load accepted.
-	if got["sharedsave"] != "false" {
-		t.Errorf("the save refused a shared blob the load accepted: %q", got["sharedsave"])
+	// EVERY WRITER REFUSES A SHARED BLOB (§2.5): the tolerant load keeps the
+	// one node, and the save refuses that value by name, as the engine does.
+	if want := "true|blob_shared|Probe." + sharedField; got["sharedsave"] != want {
+		t.Errorf("the save of a shared blob: got %q, want %q (refused|reason|witness)", got["sharedsave"], want)
 	}
 	if got["distinctreport"] != "0" {
 		t.Errorf("the two-distinct-blobs load counts blobShared %q, want 0", got["distinctreport"])

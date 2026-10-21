@@ -35,6 +35,9 @@ type loadFixECase struct {
 	unit string
 	root string
 	hex  string
+	// refuseSave: the loaded value names one blob from two slots, so both
+	// the engine and the Luau save refuse it (docs/SPEC-TABLES.md §2.5)
+	refuseSave bool
 }
 
 // loadFixECases carries one case per group this card fixed.
@@ -58,10 +61,9 @@ var loadFixECases = []loadFixECase{
 	},
 	{
 		// blob_shared: the tolerant load keeps one blob named from two slots,
-		// and the engine numbers it once, so the save writes the same two
-		// references instead of refusing the value (docs/SPEC-TABLES.md §2.5,
-		// §3.1).
-		name: "shared blob re-saves",
+		// and every writer refuses that value by name, so the engine and the
+		// Luau save both refuse to re-save it (docs/SPEC-TABLES.md §2.5).
+		name: "shared blob refuses to re-save", refuseSave: true,
 		seed: 0xf5e118f73bb8f76d, unit: "blobdemo", root: "Catalog",
 		hex: "01010c047477696e021102031102040c070105041020304000861b638eba01bcc403b2f40f72193b61b746a665bb209250ffffffffffffffffe44f1c4f47c02e2f0500000000000000",
 	},
@@ -238,6 +240,17 @@ func TestLuauLoadKeyedAndBlobSaveAgreeWithTheEngine(t *testing.T) {
 			want, ok := loadFixEEngineFor(t, units, c.unit, c.root, wire)
 			if !ok {
 				t.Fatalf("seed %#016x %s: the engine refused the root itself", c.seed, c.name)
+			}
+			if c.refuseSave {
+				if !got.loaded || !got.saveFail || !want.saveFail {
+					t.Fatalf("seed %#016x %s: loaded=%t, Luau saveFail=%t, engine saveFail=%t; want a loaded value both refuse to save",
+						c.seed, c.name, got.loaded, got.saveFail, want.saveFail)
+				}
+				if got.counts != want.counts {
+					t.Fatalf("seed %#016x %s: the report differs: Luau says %+v, the engine says %+v",
+						c.seed, c.name, got.counts, want.counts)
+				}
+				return
 			}
 			if !got.loaded || got.saveFail {
 				t.Fatalf("seed %#016x %s: the Luau leg loaded=%t saveFail=%t, want a loaded, saved value (%+v)",

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -52,6 +53,13 @@ func jsonManifestRows(t *testing.T) []jsonRow {
 		r := jsonRow{kind: fields[0], caseName: fields[1], unit: fields[2], root: fields[3], path: fields[4]}
 		if r.kind == "json-hostile" && len(fields) >= 6 {
 			r.expected = fields[5]
+			// carried-by=<ports> uncarried=<verdict> (docs/SPEC-TABLES.md §17):
+			// a port the row does not name still owes the uncarried verdict.
+			if len(fields) >= 8 {
+				if carried, ok := strings.CutPrefix(fields[6], "carried-by="); ok && !slices.Contains(strings.Split(carried, ","), "luau") {
+					r.expected = strings.TrimPrefix(fields[7], "uncarried=")
+				}
+			}
 		}
 		for _, extra := range fields[5:] {
 			if extra == "no-text" {

@@ -484,8 +484,8 @@ func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 
 	// THE CAPACITY BOUND, ONE PAST: a record the remaining capacity cannot hold
 	// WHOLE is not kept at all and counts one retain_lost.
-	capOldSrc := "package cap\ntable Root { seed int32 }\n"
-	capNewSrc := "package cap\ntable Root { seed int32\n extra string(32) }\n"
+	capOldSrc := "package capdemo\ntable Root { seed int32 }\n"
+	capNewSrc := "package capdemo\ntable Root { seed int32\n extra string(32) }\n"
 	capOld, _ := retainCompile(t, capOldSrc)
 	capNew, _ := retainCompile(t, capNewSrc)
 	capWire := retainWire(t, capNew, `{"extra":"hello"}`)
