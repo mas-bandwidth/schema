@@ -1533,6 +1533,21 @@ All compile errors with positions:
   `unsafe.Sizeof(*(*T)(nil))` rather than through `new`
   (`TestGenerateGoCompilesNonGoReservedWords`, cmd/schema: every such word, in
   every declaration form, builds).
+  **Go's predeclared identifiers are Go words.** The Go list carries the whole
+  universe block: the builtin functions (`append cap clear close complex copy
+  delete imag len make max min new panic print println real recover`), the
+  predeclared types (`any bool byte comparable complex64 complex128 error
+  float32 float64 int int8 int16 int32 int64 rune string uint uint8 uint16
+  uint32 uint64 uintptr`) and constants (`true false iota nil`). A schema name
+  equal to one takes exactly what every other Go word takes: a table is
+  escaped (`table len` is `type len_ struct`), a field, union arm or variant is
+  carried under its exported spelling, and every other declaration kind and
+  the package name are refused by name under `--lang go` and in `schema check`
+  (the names the schema grammar already reserves, `bool`, `int32`, `string`
+  and the rest, never reach this rule). Proved, class by class, by
+  `TestGenerateGoCompilesNonGoReservedWords` (each word as a table and a field
+  builds) and `TestGenerateGoRefusesGoReservedWords` (each word as a `type` is
+  refused).
 - **Package-name safety:** the package ident maps to every target's
   namespace/module/package concept verbatim (§6.1), which exposes it to three
   collision classes no declaration or field name can hit, each refused with a

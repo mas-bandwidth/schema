@@ -3573,6 +3573,13 @@ var targetReserved = func() map[string][]string {
 		true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while`)
 	add("Go", `break byte case chan const continue default defer else fallthrough false for func go goto
 		if import interface map package range ref return select struct switch true type unsafe var`)
+	// Go's universe block (SPEC.md §4.6): every predeclared identifier, so a
+	// schema name equal to one takes the treatment every other Go word takes
+	// (a table escapes to name_, the other declaration kinds are refused)
+	// rather than shadowing the builtin in the emitted package.
+	add("Go", `append cap clear close complex copy delete imag len make max min new panic print println real recover
+		any bool comparable complex64 complex128 error float32 float64 int int8 int16 int32 int64 rune string
+		uint uint8 uint16 uint32 uint64 uintptr iota nil`)
 	add("Rust", `abstract as async await become box break char const continue crate do dyn
 		else enum extern false final fn for if impl in let loop macro match mod move mut
 		override priv pub ref return self Self static struct super trait true try type typeof

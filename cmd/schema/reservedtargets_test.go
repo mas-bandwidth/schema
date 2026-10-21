@@ -62,7 +62,22 @@ var schemaKeywords = map[string]bool{
 // reports each of them as Go-reserved, so a mutation that drops a word from
 // check.go's Go list fails here: the word stops being reported as Go-reserved,
 // and this test notices.
-var goReservedWords = strings.Fields(`break byte case chan const continue default defer else fallthrough false for func go goto if import interface map package range ref return select struct switch true type unsafe var`)
+var goReservedWords = append(strings.Fields(`break byte case chan const continue default defer else fallthrough false for func go goto if import interface map package range ref return select struct switch true type unsafe var`),
+	goUniverseFuncs...)
+
+// The predeclared identifiers of Go's universe block (SPEC.md §4.6), by class.
+// Each is a Go word: a table so named escapes to name_, a field, arm or variant
+// is carried exported, and every other declaration kind is refused by name.
+var (
+	goUniverseFuncs  = strings.Fields(`append cap clear close complex copy delete imag len make max min new panic print println real recover`)
+	goUniverseTypes  = strings.Fields(`any bool byte comparable complex64 complex128 error float32 float64 int int8 int16 int32 int64 rune string uint uint8 uint16 uint32 uint64 uintptr`)
+	goUniverseConsts = strings.Fields(`true false iota nil`)
+)
+
+func init() {
+	goReservedWords = append(goReservedWords, goUniverseTypes...)
+	goReservedWords = append(goReservedWords, goUniverseConsts...)
+}
 
 // TestGenerateGoRefusesGoReservedWords pins the Go half of §4.6: every Go
 // reserved word must be refused by generate --lang go (SPEC §4.6).
@@ -234,6 +249,59 @@ func (s *ReadStream) Err() error { return s.err }
 				gb.Dir = out
 				if _, err := gb.Output(); err != nil {
 					fail("go build: %v", err)
+				}
+			})
+		}
+	}
+	wg.Wait()
+
+	// THE UNIVERSE BLOCK, one class at a time: a Go predeclared identifier
+	// is a Go word, so it is carried where Go carries its words — a table
+	// name (escaped to name_) and a field — and the emitted package builds
+	// without shadowing the builtin. (A variant is never emitted bare either,
+	// but `max` and `min` collide with an enum's own generated extents, a
+	// refusal of every target, so variants are not part of this probe.)
+	for _, class := range []struct {
+		name  string
+		words []string
+	}{{"builtin functions", goUniverseFuncs}, {"predeclared types", goUniverseTypes}, {"predeclared constants", goUniverseConsts}} {
+		for _, w := range class.words {
+			if schemaKeywords[w] {
+				continue // the grammar refuses it before any target sees it
+			}
+			w, class := w, class
+			wg.Go(func() {
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				fail := func(format string, args ...any) {
+					mu.Lock()
+					bad = append(bad, fmt.Sprintf("%s word %q: "+format, append([]any{class.name, w}, args...)...))
+					mu.Unlock()
+				}
+				out := filepath.Join(work, "universe-out", w)
+				dir := filepath.Join(work, "universe", w)
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					fail("%v", err)
+					return
+				}
+				src := fmt.Sprintf("package t\ntable %s {\n  %s int32\n}\n", w, w)
+				if err := os.WriteFile(filepath.Join(dir, "W.schema"), []byte(src), 0o644); err != nil {
+					fail("%v", err)
+					return
+				}
+				if outBytes, err := exec.Command(bin, "generate", "--lang", "go", "--out", out, dir).CombinedOutput(); err != nil {
+					fail("generate: %s", outBytes)
+					return
+				}
+				mod := fmt.Sprintf("module t\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %s\n\tgithub.com/mas-bandwidth/serialize.go => %s\n)\n", checkout, runtime)
+				if err := os.WriteFile(filepath.Join(out, "go.mod"), []byte(mod), 0o644); err != nil {
+					fail("%v", err)
+					return
+				}
+				gb := exec.Command("go", "build", "./...")
+				gb.Dir = out
+				if o, err := gb.CombinedOutput(); err != nil {
+					fail("go build: %v\n%s", err, o)
 				}
 			})
 		}
