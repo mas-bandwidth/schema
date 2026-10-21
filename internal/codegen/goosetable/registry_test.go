@@ -38,7 +38,7 @@ func TestGooseRegistryNoFragmentLeavesTheRuntimeAsWritten(t *testing.T) {
 func TestGooseRegistryAssemblesByRank(t *testing.T) {
 	t.Parallel()
 	frags := map[string][]byte{
-		"b_keyed.goosereg": []byte("// the keyed array\nadd Kind 20 Keyed\nadd kind_rows 10 Row { shape: ShapeArr, array: ArrayKeyed } // narrower first\n"),
+		"b_keyed.goosereg":  []byte("// the keyed array\nadd Kind 20 Keyed\nadd kind_rows 10 Row { shape: ShapeArr, array: ArrayKeyed } // narrower first\n"),
 		"a_scalar.goosereg": []byte("declare enum Kind\ndeclare array kind_rows Row\n\nadd kind_rows 50 Row { shape: ShapeArr, array: 0 }\nadd Kind 10 Scalar\nadd kind_rows 10 Row { shape: ShapeInt, array: 0 },\n"),
 	}
 	got, err := assembleRegistry([]byte("namespace schema_rt;\n"), frags)
