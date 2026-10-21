@@ -246,13 +246,6 @@ func squirrelHostileKey(schema string) string {
 	return strings.NewReplacer("/", "_", ".", "_").Replace(schema)
 }
 
-func squirrelHostileHex(b []byte) string {
-	if b == nil {
-		return "-"
-	}
-	return hex.EncodeToString(b)
-}
-
 func squirrelHostileFindings(c hostileCase, got hostileResult) []string {
 	if got.verdict != c.verdict {
 		return []string{fmt.Sprintf("%s: verdict %q, manifest %q", c.name, got.verdict, c.verdict)}

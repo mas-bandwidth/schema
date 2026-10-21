@@ -188,30 +188,6 @@ func emitFixedCRC32C(m *Module) {
 	m.Printf("  };\n")
 }
 
-// enumOrdinal is a variant's fixed-form number: its 1-based declaration
-// ordinal, 0 for the implicit None (SPEC §4.2).
-func enumOrdinal(e *ir.Enum, name string) int64 {
-	if name == "" || name == "None" {
-		return 0
-	}
-	for i, v := range e.Variants {
-		if v == name {
-			return int64(i + 1)
-		}
-	}
-	return 0
-}
-
-// enumDefaultOrdinal is the ordinal a deprecated variant lands on in a fixed
-// slot: the FIELD's declared default (docs/SPEC-TABLES.md §2.15).
-func enumDefaultOrdinal(f *ir.Field) int64 {
-	e, ok := f.Type.Ref.(*ir.Enum)
-	if !ok || !f.HasDefault {
-		return 0
-	}
-	return enumOrdinal(e, f.DefVariant)
-}
-
 // deprecatedVariants is an enum's deprecated variants and their ordinals, in
 // declaration order (docs/SPEC-TABLES.md §2.15).
 func deprecatedVariants(e *ir.Enum) (names []string, ordinals []int64) {

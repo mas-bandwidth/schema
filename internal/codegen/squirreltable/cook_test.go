@@ -52,11 +52,6 @@ type cookForgery struct {
 	verdict string
 }
 
-type cookRefusal struct {
-	forgery string
-	reason  string
-}
-
 func readCookRows(t *testing.T, path string) ([]cookRow, []cookForgery, map[string]string) {
 	t.Helper()
 	f, err := os.Open(path)

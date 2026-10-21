@@ -189,16 +189,17 @@ func fuzzEngine(m *tabletext.Model, def *ir.Struct, variable bool, data []byte) 
 	} else {
 		ok, derr = tablewire.DecodeRegion(m, inst, data, &rep)
 	}
-	if tablewire.Refused(derr) {
+	switch {
+	case tablewire.Refused(derr):
 		ans.refused = true
 		if variable {
 			ans.saveFail = true
 			return ans, nil
 		}
 		ans.loaded = true
-	} else if derr != nil {
+	case derr != nil:
 		return ans, fmt.Errorf("the engine refused the root itself: %w", derr)
-	} else {
+	default:
 		ans.loaded = ok || !variable
 		ans.unknown, ans.kindMismatch, ans.widened = rep.Unknown, rep.KindMismatch, rep.Widened
 		ans.clamped, ans.duplicate = rep.Clamped, rep.Duplicate
@@ -460,11 +461,11 @@ func runWireFuzzDifferential(t *testing.T, edit func(name string, src []byte) []
 					fuzzSeed, si, s.name, j, r.unit, r.root, builder, len(data), data)
 				got, err := leg.ask(s.root, data)
 				if err != nil {
-					return mutants, fmt.Errorf("%s\n  the driver died on the mutant: %v\n%s", where, err, leg.stderr.String())
+					return mutants, fmt.Errorf("%s\n  the driver died on the mutant: wv\n%s", where, err, leg.stderr.String())
 				}
 				want, err := fuzzEngine(m, def, variable, data)
 				if err != nil {
-					return mutants, fmt.Errorf("%s\n  %v", where, err)
+					return mutants, fmt.Errorf("%s\n  wv", where, err)
 				}
 				if v := fuzzVerdict(got, want); v != "" {
 					if dump := os.Getenv("SCHEMA_SQUIRREL_FUZZ_FAILED"); dump != "" {
@@ -483,7 +484,7 @@ func runWireFuzzDifferential(t *testing.T, edit func(name string, src []byte) []
 		}
 		_ = leg.stdin.Close()
 		if err := leg.cmd.Wait(); err != nil || leg.stderr.Len() > 0 {
-			return mutants, fmt.Errorf("the driver (builder arm %t) did not leave cleanly at EOF: %v\n%s", builder, err, leg.stderr.String())
+			return mutants, fmt.Errorf("the driver (builder arm %t) did not leave cleanly at EOF: %w\n%s", builder, err, leg.stderr.String())
 		}
 	}
 	// NOTHING PASSES BY BEING SKIPPED: every root of a generated unit is

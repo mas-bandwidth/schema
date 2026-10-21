@@ -152,11 +152,11 @@ func buildHostileCases(t *testing.T, clean []byte) []hostileCase {
 func squirrelFixedReasons(t *testing.T, sqDir, module, recRoot, hostileDir string, cases []hostileCase) map[string]string {
 	t.Helper()
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(`local S = dofile("schema_module.nut", true);
+	fmt.Fprintf(&sb, `local S = dofile("schema_module.nut", true);
 local T = S.require(%q);
 local inputs = dofile("inputs.nut", true);
 local names = [
-`, module))
+`, module)
 	for i, c := range cases {
 		if i > 0 {
 			sb.WriteString(", ")

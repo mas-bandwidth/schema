@@ -290,7 +290,8 @@ func TestSquirrelBlobNamedTwice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("oracle two blobs write json: %v", err)
 	}
-	twoJson := append(twoJsonBody, '\n')
+	twoJsonBody = append(twoJsonBody, '\n')
+	twoJson := twoJsonBody
 
 	ampData := make([]byte, 65536)
 	for i := range ampData {

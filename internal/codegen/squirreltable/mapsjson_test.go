@@ -145,11 +145,12 @@ table Root { keys map[int8]int32
 		t.Errorf("keydomains: Squirrel reports %s, the Go oracle %s", g[1], wantReport)
 	default:
 		have, ok := unhex(g[0])
-		if !ok {
+		switch {
+		case !ok:
 			t.Errorf("keydomains: ToJson refused")
-		} else if string(have) != want {
+		case string(have) != want:
 			t.Errorf("keydomains: ToJson differs from the Go oracle\n got %q\nwant %q", have, want)
-		} else {
+		default:
 			compared++
 		}
 	}

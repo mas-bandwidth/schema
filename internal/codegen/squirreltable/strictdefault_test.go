@@ -218,7 +218,7 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 		inputs[key+"@fix"] = fixedInputs[key]
 		fmt.Fprintf(&p, "runFixed(%q, %q, %q, %q);\n", "strictfix", fixedMod, "Fix", key+"@fix")
 	}
-	p.WriteString(fmt.Sprintf("runFixedClean(%q, %q, %q, %q);\n", "strictfix", fixedMod, "Fix", "clean@fix"))
+	fmt.Fprintf(&p, "runFixedClean(%q, %q, %q, %q);\n", "strictfix", fixedMod, "Fix", "clean@fix")
 
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
 	out := string(sqrun.Run(t, dir, "main.nut", inputs))
@@ -307,8 +307,8 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 		if len(f) != 7 {
 			t.Fatalf("%s: hostile verdict %q is not u,k,w,c,d,m,verdict", c.key, c.verdict)
 		}
-		switch {
-		case f[5] == "true":
+		switch f[5] {
+		case "true":
 			want = "malformed"
 		default:
 			if dc, _ := strconv.Atoi(f[3]); dc > 0 {

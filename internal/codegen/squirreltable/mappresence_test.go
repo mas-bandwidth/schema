@@ -170,36 +170,39 @@ func TestSquirrelMapPresence(t *testing.T) {
 		}
 		// THE TEXT READS BACK AS THE SAME ONE OF THREE (§16.2)
 		fields, ok = rows["json "+shape]
-		if !ok {
+		switch {
+		case !ok:
 			t.Errorf("%s: the probe printed no json row", shape)
-		} else if fields[0] != shape {
+		case fields[0] != shape:
 			t.Errorf("%s: FromJson reads back %s", shape, fields[0])
-		} else if fields[1] != golden {
+		case fields[1] != golden:
 			t.Errorf("%s: FromJson then save\n got %s\nwant %s", shape, fields[1], golden)
-		} else {
+		default:
 			compared++
 		}
 		// THE WIRE READS BACK AS THE SAME ONE OF THREE (§2.8)
 		fields, ok = rows["wire "+shape]
-		if !ok {
+		switch {
+		case !ok:
 			t.Errorf("%s: the probe printed no wire row", shape)
-		} else if fields[0] != shape {
+		case fields[0] != shape:
 			t.Errorf("%s: load reads back %s", shape, fields[0])
-		} else if fields[1] != golden {
+		case fields[1] != golden:
 			t.Errorf("%s: load then save\n got %s\nwant %s", shape, fields[1], golden)
-		} else {
+		default:
 			compared++
 		}
 	}
 	// A JSON null IS ABSENT and writes the absent wire (§16.2)
 	fields, ok := rows["json null"]
-	if !ok {
+	switch {
+	case !ok:
 		t.Errorf("null: the probe printed no json row")
-	} else if fields[0] != "absent" {
+	case fields[0] != "absent":
 		t.Errorf("null: FromJson reads back %s, want absent", fields[0])
-	} else if fields[1] != mapPresenceAbsent {
+	case fields[1] != mapPresenceAbsent:
 		t.Errorf("null: null writes\n got %s\nwant %s", fields[1], mapPresenceAbsent)
-	} else {
+	default:
 		compared++
 	}
 	// three built wires, three built texts, three FromJson wires, three

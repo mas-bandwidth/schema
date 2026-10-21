@@ -139,7 +139,7 @@ table Guarded
 			t.Errorf("%s: the probe printed no row", c.name)
 			continue
 		}
-		if g[1] != c.wantReason && !(c.wantReason == "" && g[1] == "-") {
+		if g[1] != c.wantReason && (c.wantReason != "" || g[1] != "-") {
 			t.Errorf("%s: FromJson reason %q, want %q", c.name, g[1], c.wantReason)
 		}
 		if c.wantReason == "" && g[0] == "null" {

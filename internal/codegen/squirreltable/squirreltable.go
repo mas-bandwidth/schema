@@ -207,8 +207,7 @@ func closure(u *ir.Unit) (all, roots []*ir.Struct) {
 
 // unmapped names a construct the descriptors do not carry yet, or "".
 func unmapped(f *ir.Field) string {
-	switch {
-	case f.Type.Kind == ir.TWString:
+	if f.Type.Kind == ir.TWString {
 		return "wide text (SPEC §4.12; table kind 33)"
 	}
 	return ""
