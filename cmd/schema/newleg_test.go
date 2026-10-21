@@ -184,7 +184,10 @@ func TestNewLegLuaYieldsABuildingTestingSkeleton(t *testing.T) {
 			return strings.HasSuffix(rel, ".go") || strings.Contains("/"+rel, "/runtime/")
 		})
 	}
-	copyScaffoldTree(t, filepath.Join(root, "make"), filepath.Join(tree, "make"), func(rel string) bool { return !luaLegPath("make/" + rel) })
+	copyScaffoldTree(t, filepath.Join(root, "make"), filepath.Join(tree, "make"), func(rel string) bool {
+		// make/checks/ is included by name from the Makefile, so it stays
+		return strings.HasPrefix(rel, "checks/") || !luaLegPath("make/"+rel)
+	})
 
 	// the leg is not registered before the verb runs, or the discovery below
 	// would not be doing the work
@@ -262,7 +265,7 @@ func runInErr(t *testing.T, dir, name string, args ...string) (string, error) {
 // luaLegPath reports a path the live Lua leg owns: its codegen packages, and
 // every compiler, cmd or make file whose name carries the word lua (target_lua.go,
 // carries_lua_*.go, testgen_lua.go, make/lua.mk, make/schema-lua-*.mk,
-// make/checks/lua-*.mk, internal/tablenames/lua.go). The copy leaves them out
+// internal/tablenames/lua.go); the Makefile includes make/checks/ by name. The copy leaves them out
 // so the tree is the one before Lua was a leg, which is the tree `new-leg lua`
 // is for. Luau is another language and stays (lua followed by u is not lua).
 func luaLegPath(rel string) bool {
