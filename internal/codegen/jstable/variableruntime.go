@@ -28,8 +28,9 @@ package jstable
 // is its own blob record — exactly what the reference's text reader builds,
 // one blob per slot — and a String OBJECT is the spelling of a blob two slots
 // share. A load hands a *string slot a primitive when one slot names the
-// record, and one shared String object when two or more do, so a load-save of
-// a shared blob writes it once again.
+// record, and one shared String object when two or more do — the tolerant
+// read keeps the one node — and a save of that value refuses it, blob_shared:
+// every writer refuses a blob two slots name (§2.5).
 const jsVariableCodecRuntime = `
 // ---------------------------------------------------------------------------
 // THE CODEC WALK (docs/SPEC-TABLES.md §3, §3.1), driven by TableVariableCodecs
@@ -199,7 +200,11 @@ function TableVariableFieldEdges(fd, v, out) {
   }
 }
 
-function TableVariableNumber(c, root) {
+// refuseShared is the WRITER'S rule (§2.5): a blob object a second slot
+// names is blob_shared, and Save and Measure refuse it (null, -1) rather than
+// write the edge or a copy per slot. A cook packs the graph as it finds it and
+// passes false.
+function TableVariableNumber(c, root, refuseShared) {
   const nodes = new TableVariableNodes();
   nodes.index.set(root, 1);
   const open = new Set([root]);
@@ -208,7 +213,10 @@ function TableVariableNumber(c, root) {
     const top = stack[stack.length - 1];
     if (top.i >= top.edges.length) { open.delete(top.v); stack.pop(); continue; }
     const e = top.edges[top.i++];
-    if (e.blob) { TableVariableBlobNode(nodes, e.holder, e.fd, e.val); continue; }
+    if (e.blob) {
+      if (!TableVariableBlobNode(nodes, e.holder, e.fd, e.val) && refuseShared) { return null; }
+      continue;
+    }
     if (open.has(e.val)) { return null; }
     if (nodes.index.has(e.val)) { continue; }
     nodes.list.push({ typeId: e.c.typeId, codec: e.c, v: e.val });
@@ -228,11 +236,13 @@ function TableVariableBlobNode(nodes, holder, fd, val) {
       nodes.list.push({ typeId, body: TableVariableUtf8Encode(val) });
       m.set(fd.n, nodes.list.length + 1);
     }
-    return;
+    return true;
   }
-  if (nodes.index.has(val)) { return; }
+  // a blob OBJECT already numbered is one blob a second slot names: shared
+  if (nodes.index.has(val)) { return false; }
   nodes.list.push({ typeId, body: fd.s === "sblob" ? TableVariableUtf8Encode(String(val)) : val });
   nodes.index.set(val, nodes.list.length + 1);
+  return true;
 }
 
 // ---- THE SAVE WALK (docs/SPEC-TABLES.md §3; internal/tablewire/encode.go) ---
@@ -440,7 +450,8 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
 // THE SAVE (docs/SPEC-TABLES.md §3, §3.1): the form byte, the root's fields,
 // the retained tail, the node table LAST in the root body under the reserved
 // id at kind 12, the terminator, then the id table and its count. A data cycle
-// or a value with no wire identity refuses the save (null).
+// or a value with no wire identity refuses the save (null), and so does one
+// blob two slots name, blob_shared (§2.5): every writer refuses it.
 function TableVariableSave(c, v, retain) {
   const outer = TableVariableEntryCache;
   TableVariableEntryCache = new Map();
@@ -452,7 +463,7 @@ function TableVariableSave(c, v, retain) {
 }
 
 function TableVariableSaveWalk(c, v, retain) {
-  const nodes = TableVariableNumber(c, v);
+  const nodes = TableVariableNumber(c, v, true);
   if (nodes === null) { return null; }
   const w = new TableVariableWriter();
   w.u8(TableVariableForm);

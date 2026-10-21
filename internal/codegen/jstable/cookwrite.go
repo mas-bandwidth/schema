@@ -768,7 +768,7 @@ const cookEngineVariable = `  function alignUp(n, a) {
     const codec = TableVariableCodecs[name];
     const layout = layouts[name];
     if (codec === undefined || layout === undefined) { return { reason: "invalid_value" }; }
-    const nodes = TableVariableNumber(codec, value);
+    const nodes = TableVariableNumber(codec, value, false);
     if (nodes === null) { return { reason: "data_cycle" }; }
     const entries = [{ typeId: layout.typeId, v: value, blob: false, layout, offset: 0 }];
     for (const n of nodes.list) {
