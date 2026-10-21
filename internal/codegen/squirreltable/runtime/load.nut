@@ -611,6 +611,17 @@ readField = function(fd, r, T, table, v, report, st, nested) {
 // the key and the value at their own field kinds; a key met again is
 // last-wins and counted duplicate, a descending key is malformed, and an
 // entry count the body cannot hold is malformed.
+// the counters a map entry's decode can move, by name (readMapField)
+local mapEntryCounters = function(report) {
+  local out = {};
+  foreach (k in ["unknown", "kindMismatch", "widened", "clamped", "duplicate", "nonFinite"]) {
+    local x = null;
+    try { x = report[k]; } catch (e) { x = null; }
+    if (x != null) out[k] <- x;
+  }
+  return out;
+};
+
 local readMapEntry = function(ed, es, T, table, ent, report, st) {
   if (!bodyRead(ed, es, T, table, ent, report, st, true)) return false;
   return es.at == es.end;
@@ -729,6 +740,13 @@ readMapField = function(fd, r, T, table, v, report, st) {
       break;
     }
     local ent = ed.make();
+    // The engine places the key BEFORE it decodes the entry (tablewire
+    // mapField): a descending entry is never decoded, so nothing inside it
+    // counts. This reader learns the key by decoding, so it notes the
+    // counters first and puts them back when the key turns out to descend.
+    // They are read and written by name, never cloned: the strict read's
+    // report is a delegate witness whose slots live behind _get and _set.
+    local before = mapEntryCounters(report);
     if (!readMapEntry(ed, es, T, table, ent, report, st)) {
       report.malformed = true;
       break;
@@ -737,6 +755,7 @@ readMapField = function(fd, r, T, table, v, report, st) {
     local cmp = haveLast ? mapKeyCmp(last, key) : -1;
     if (cmp > 0) {
       // DESCENDING: not a body any conforming writer produced (§2.8)
+      foreach (k, x in before) report[k] = x;
       report.malformed = true;
       break;
     }
