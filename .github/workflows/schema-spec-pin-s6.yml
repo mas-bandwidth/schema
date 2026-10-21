@@ -1,0 +1,28 @@
+name: spec pins section 6
+
+# SECTION 6'S SPEC PINS (docs/SPEC-TABLES.md §6, "The two lives of a table",
+# the two load paths and retain-unknown): every normative sentence carries a
+# row id and every row is pinned in each port that carries its feature, or
+# owed by name. The guard and this card's pins are Go tests in internal/ci, so
+# this is unit tier and rides every pull request that can move §6 or a pin.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  spec-pins-s6:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # the fleet's own Linux runners, never a GitHub-hosted one and never the
+    # studio; `fleet` keeps the job off the slow benches
+    runs-on: [self-hosted, Linux, fleet, schema]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: section 6 spec pins
+        # make/schema-spec-pin-s6.mk, included by path from the Makefile
+        run: make schema-spec-pin-s6
