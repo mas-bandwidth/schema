@@ -23,6 +23,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `elixir-alloc/` | Elixir allocation tests | `make test-elixir` | `make test-elixir` |
 | `elixir-filemodule/` | Elixir file-module tests | `make test-elixir` | `make test-elixir` |
 | `elixir-fixedform/` | Elixir fixed-form tests | `make test-elixir` | `make test-elixir` |
+| `elixir-hostile/` | Elixir hostile-corpus runner | `make schema-elixir-runs-hostile-corpus` | `make schema-elixir-runs-hostile-corpus` |
 | `elixir-ludicrous/` | Elixir int128 tests | `make test-elixir` | `make test-elixir` |
 | `elixir-tables/` | Elixir table tests | `make test-elixir` | `make test-elixir` |
 | `elixir-view/` | Elixir view tests | `make test-elixir` | `make test-elixir` |

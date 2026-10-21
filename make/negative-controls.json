@@ -583,7 +583,8 @@
         "tables-elixir-offsets-negative-control",
         "tables-elixir-runtime-pin-negative-control",
         "tables-elixir-slot-negative-control",
-        "tables-elixir-versioning-negative-control"
+        "tables-elixir-versioning-negative-control",
+        "schema-elixir-runs-hostile-corpus-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"

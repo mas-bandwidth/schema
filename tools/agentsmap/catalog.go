@@ -175,6 +175,7 @@ var catalog = []Entry{
 	e("test/elixir-alloc", "Elixir allocation tests", "make test-elixir", "make test-elixir"),
 	e("test/elixir-filemodule", "Elixir file-module tests", "make test-elixir", "make test-elixir"),
 	e("test/elixir-fixedform", "Elixir fixed-form tests", "make test-elixir", "make test-elixir"),
+	e("test/elixir-hostile", "Elixir hostile-corpus runner", "make schema-elixir-runs-hostile-corpus", "make schema-elixir-runs-hostile-corpus"),
 	e("test/elixir-ludicrous", "Elixir int128 tests", "make test-elixir", "make test-elixir"),
 	e("test/elixir-tables", "Elixir table tests", "make test-elixir", "make test-elixir"),
 	e("test/elixir-view", "Elixir view tests", "make test-elixir", "make test-elixir"),

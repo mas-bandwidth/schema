@@ -112,7 +112,14 @@ func unitViewModule(u *ir.Unit, ns string) []byte {
 			if c.IsFloat {
 				real = viewFloatLiteral(c.Float)
 			} else if c.Int != nil {
-				integer = int64(c.Int.Uint64())
+				// docs/SPEC-TABLES.md §8.3: int_value is the folded value, so a
+				// negative constant keeps its sign; a value outside int64 keeps
+				// the two's-complement pattern, as the Go and C++ views do
+				if c.Int.IsInt64() {
+					integer = c.Int.Int64()
+				} else {
+					integer = int64(c.Int.Uint64())
+				}
 			}
 			emitViewMap(&b, "      ", []viewKV{
 				{key: "name", value: elixirQuote(c.Name)},
