@@ -217,8 +217,7 @@ func variableFieldConstruct(f *ir.Field) string {
 	case f.Array == ir.ArrayCounted && f.ArrayMin > 0:
 		return "a counted array with a declared minimum [Min..N]T is outside the variable class this leg carries (§3)"
 	}
-	switch ref := f.Type.Ref.(type) {
-	case *ir.Union:
+	if ref, ok := f.Type.Ref.(*ir.Union); ok {
 		return unionFieldConstruct(ref, map[*ir.Union]bool{})
 	}
 	return ""

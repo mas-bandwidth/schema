@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -198,7 +199,7 @@ func blockProbeRun(t *testing.T, spillTo string) map[string]string {
 		t.Fatalf("the emitted Rust runtime did not run: %v\n%s", err, o)
 	}
 	got := map[string]string{}
-	for _, line := range strings.Split(string(o), "\n") {
+	for line := range strings.SplitSeq(string(o), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -269,9 +270,7 @@ func cppOpensRustBlock(t *testing.T, block []byte) {
 	if err != nil {
 		t.Fatalf("the C++ block reader did not generate: %v", err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	root := t.TempDir()
 	for name, data := range files {
 		if strings.Contains(name, "/") {
@@ -428,10 +427,7 @@ func TestBlockBuildAndCookWriteRust(t *testing.T) {
 		t.Fatal("no Config table in the probe unit")
 	}
 	layout := ir.RecordLayout(u, cfg)
-	align := layout.Align
-	if align < 8 {
-		align = 8
-	}
+	align := max(layout.Align, 8)
 	data := (layout.Size + align - 1) & -align
 	total := 64 + data + 16
 	if got["MEASURE"] != fmt.Sprintf("%d true", total) {

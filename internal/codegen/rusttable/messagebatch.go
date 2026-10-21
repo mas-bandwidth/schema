@@ -167,10 +167,7 @@ func msgShapeLiteral(kind uint8, s ir.TableMessageShape) string {
 		hi = 0
 	}
 	count, delta, _ := ir.TableMessageQuantization(s)
-	bits := ir.TableMessageValueBits(kind, s)
-	if bits < 0 {
-		bits = 0
-	}
+	bits := max(ir.TableMessageValueBits(kind, s), 0)
 	return fmt.Sprintf("TableMessageShape { packing: %d, bits: %d, base_lo: 0x%x, base_hi: 0x%x, min: %d, max: %d, elem: %d, qmin: f32::from_bits(0x%x), qdelta: f32::from_bits(0x%x), qcount: %d }",
 		s.Packing, bits, lo, hi, s.Min, s.Max, s.Elem, math.Float32bits(s.QMin), math.Float32bits(delta), count)
 }

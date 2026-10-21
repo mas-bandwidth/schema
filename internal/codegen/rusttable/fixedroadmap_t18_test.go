@@ -585,7 +585,7 @@ func TestFixedRoadmapRustT18UnionArms(t *testing.T) {
 
 func t18Line(out, id string) string {
 	prefix := "T18 " + id + " "
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(l, prefix) {
 			return l
 		}

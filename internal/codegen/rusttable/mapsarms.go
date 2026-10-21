@@ -18,10 +18,6 @@ func unionOf(f *ir.Field) *ir.Union {
 	return un
 }
 
-func (g *gen) usesUnion(f *ir.Field) bool {
-	return classOf(f) == vUnion
-}
-
 // collectVariableUnions returns each union an emitted table reaches, after the
 // unions its arms reach and before the unions that hold it (docs/SPEC-TABLES.md §2.6).
 func (g *gen) collectVariableUnions(names []string) []*ir.Union {
@@ -483,11 +479,12 @@ func (g *gen) emitArrayBodyWrite(b *strings.Builder, f *ir.Field, x, dst string,
 		ek = elemWireKind(f)
 	}
 	count := x + ".len()"
-	if f.Array == ir.ArrayFixed {
+	switch {
+	case f.Array == ir.ArrayFixed:
 		count = fmt.Sprintf("%d", f.ArrayBound)
-	} else if f.Array == ir.ArrayCounted {
+	case f.Array == ir.ArrayCounted:
 		count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
-	} else if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
+	case f.Type.Kind == ir.TBytes && !f.Type.Pointer:
 		count = fmt.Sprintf("%s.len().min(%d)", x, f.Type.Size)
 	}
 	fmt.Fprintf(b, "%s%s.push(%d);\n", ind, dst, ek)
@@ -962,12 +959,13 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 	default:
 		fmt.Fprintf(b, "%slet mut slot = %s;\n", in, fieldDefault(f))
 		fmt.Fprintf(b, "%slet mut ok = true;\n", in)
-		if f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer) {
+		switch {
+		case f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer):
 			g.emitArrayBodyReadChecked(b, f, "slot", aend, "ok", ordinal, in, false)
-		} else if classOf(f) == vEnum {
+		case classOf(f) == vEnum:
 			emitEnumDecode(b, f, "slot", aend, "return false;", in)
 			fmt.Fprintf(b, "%sif *off != %s { report.malformed = true; ok = false; }\n", in, aend)
-		} else if classOf(f) == vWString {
+		case classOf(f) == vWString:
 			// an arm's wide text (docs/SPEC-TABLES.md §3, §4; the oracle's
 			// decode.go arm case): an odd L or ill-formed units read the union
 			// None and count malformed; over N keeps the longest prefix that
@@ -976,12 +974,12 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 			fmt.Fprintf(b, "%s    None => { report.malformed = true; ok = false; }\n", in)
 			fmt.Fprintf(b, "%s    Some(u) => { let keep = table_wide_boundary(&u, %d); if keep < u.len() { report.clamped += 1; } slot = u[..keep].to_vec(); }\n", in, f.Type.Size)
 			fmt.Fprintf(b, "%s}\n", in)
-		} else if classOf(f) == vString {
+		case classOf(f) == vString:
 			fmt.Fprintf(b, "%slet bytes = &wire[*off..%s];\n", in, aend)
 			fmt.Fprintf(b, "%sif !text_valid(bytes) { report.malformed = true; ok = false; }\n", in)
 			fmt.Fprintf(b, "%selse if bytes.len() > %d { let mut cut = %d; while cut > 0 && bytes[cut] & 0xC0 == 0x80 { cut -= 1; } slot = std::str::from_utf8(&bytes[..cut]).unwrap().to_string(); report.clamped += 1; }\n", in, f.Type.Size, f.Type.Size)
 			fmt.Fprintf(b, "%selse { slot = std::str::from_utf8(bytes).unwrap().to_string(); }\n", in)
-		} else {
+		default:
 			fmt.Fprintf(b, "%slet Some(raw) = %s(wire, off, %s, %s) else { report.malformed = true; %s = %s::None; *off = %s; return false; };\n", in, scalarReadFn(f), aend, akind, field, un.Name, aend)
 			emitScalarConvert(b, f, "slot", akind, in)
 		}
@@ -1018,13 +1016,14 @@ func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, a
 	fmt.Fprintf(b, "%sif ek != %d { report.widened += 1; }\n", i3, ek)
 	bound := f.ArrayBound
 	if f.Type.Kind == ir.TBytes && f.Array == ir.ArrayNone {
-		bound = int64(f.Type.Size)
+		bound = f.Type.Size
 	}
-	if f.Array == ir.ArrayList {
+	switch {
+	case f.Array == ir.ArrayList:
 		fmt.Fprintf(b, "%slet keep = if count > 0x7fffffff { report.malformed = true; 0 } else { count };\n", i3)
-	} else if bound > 0 {
+	case bound > 0:
 		fmt.Fprintf(b, "%slet keep = if count > %d { report.clamped += 1; %d } else { count };\n", i3, bound, bound)
-	} else {
+	default:
 		fmt.Fprintf(b, "%slet keep = count;\n", i3)
 	}
 	if f.Array == ir.ArrayFixed {
@@ -1207,25 +1206,26 @@ func (g *gen) emitUnionText(b *strings.Builder, names []string) {
 		fmt.Fprintf(b, "    match key.as_str() {\n")
 		for _, v := range un.Variants {
 			fmt.Fprintf(b, "        %q => {\n", v.Name)
-			if v.Void() {
+			switch {
+			case v.Void():
 				fmt.Fprintf(b, "            if jr.peek() == b'n' {\n")
 				fmt.Fprintf(b, "                if jr.read_null() { *v = %s::%s; }\n", un.Name, rustVariant(v.Name))
 				fmt.Fprintf(b, "            } else { jr.kind_mismatch += 1; jr.skip_value(); }\n")
-			} else if v.F.Array != ir.ArrayNone {
+			case v.F.Array != ir.ArrayNone:
 				fmt.Fprintf(b, "            if jr.peek() != b'[' { jr.kind_mismatch += 1; jr.skip_value(); }\n")
 				fmt.Fprintf(b, "            else {\n")
 				fmt.Fprintf(b, "                let mut arm = %s;\n", fieldDefault(v.F))
 				g.emitTextReadValue(b, v.F, "arm", "                ")
 				fmt.Fprintf(b, "                if !jr.malformed { *v = %s::%s(arm); }\n", un.Name, rustVariant(v.Name))
 				fmt.Fprintf(b, "            }\n")
-			} else if classOf(v.F) == vTable || classOf(v.F) == vMap || classOf(v.F) == vUnion {
+			case classOf(v.F) == vTable || classOf(v.F) == vMap || classOf(v.F) == vUnion:
 				fmt.Fprintf(b, "            if jr.peek() != b'{' { jr.kind_mismatch += 1; jr.skip_value(); }\n")
 				fmt.Fprintf(b, "            else {\n")
 				fmt.Fprintf(b, "                let mut arm = %s;\n", fieldDefault(v.F))
 				g.emitTextReadValue(b, v.F, "arm", "                ")
 				fmt.Fprintf(b, "                if !jr.malformed { *v = %s::%s(arm); }\n", un.Name, rustVariant(v.Name))
 				fmt.Fprintf(b, "            }\n")
-			} else {
+			default:
 				fmt.Fprintf(b, "            let before_km = jr.kind_mismatch;\n")
 				fmt.Fprintf(b, "            let mut arm = %s;\n", fieldDefault(v.F))
 				g.emitTextReadValue(b, v.F, "arm", "            ")

@@ -91,7 +91,6 @@ func TestMessageFormBatchRust(t *testing.T) {
 		}
 		t.Logf("plain-table message rows, absent by §3.3: %v", plain)
 		for _, unit := range names {
-			unit := unit
 			t.Run(unit, func(t *testing.T) {
 				t.Parallel()
 				carried := byUnit[unit]
@@ -406,7 +405,7 @@ fn main() {
 
 func messageBatchLine(out, id string) string {
 	prefix := "BATCH " + id + " "
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(l, prefix) {
 			return l
 		}

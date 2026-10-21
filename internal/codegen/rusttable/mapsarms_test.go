@@ -136,7 +136,7 @@ func TestMapsAndUnionArmsOnTheTableWireRust(t *testing.T) {
 					t.Fatalf("%s: the oracle does not write the committed text", c.name)
 				}
 			} else {
-				c.text = append(text, '\n')
+				c.text = []byte(string(text) + "\n")
 			}
 		}
 	}
@@ -246,7 +246,7 @@ func TestMapsAndUnionArmsOnTheTableWireRust(t *testing.T) {
 		t.Fatalf("the maps/union-arm probe did not run: %v\n%s", err, out)
 	}
 	got := map[string]bool{}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		got[strings.TrimSpace(line)] = true
 	}
 	for _, w := range want {

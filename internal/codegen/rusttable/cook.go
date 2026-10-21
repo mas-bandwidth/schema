@@ -1048,10 +1048,7 @@ func (g *gen) emitCookWrite(st *ir.Struct) {
 	}
 	n := st.Name
 	layout := ir.RecordLayout(g.unit, st)
-	align := layout.Align
-	if align < 8 {
-		align = 8
-	}
+	align := max(layout.Align, 8)
 	data := (layout.Size + align - 1) & -align
 	total := 64 + data + 16
 	g.pf("// ---- %s's cook WRITE side (docs/SPEC-TABLES.md §7.6) ----\n", n)

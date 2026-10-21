@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1172,8 +1173,7 @@ func (g *gen) pointerTargets(names []string) []*ir.Struct {
 	visited := map[string]bool{}
 	var out []*ir.Struct
 	var consider func(f *ir.Field)
-	var considerStruct func(st *ir.Struct)
-	considerStruct = func(st *ir.Struct) {
+	considerStruct := func(st *ir.Struct) {
 		if st == nil || visited[st.Name] {
 			return
 		}
@@ -1731,10 +1731,8 @@ func emitWideLoadField(b *strings.Builder, f *ir.Field, field, in string) {
 // a writer's refusal names `<owner>.<field>` (docs/SPEC-TABLES.md §11).
 func wideOwner(u *ir.Unit, f *ir.Field) string {
 	for _, st := range u.Tables {
-		for _, g := range st.Fields {
-			if g == f {
-				return st.Name
-			}
+		if slices.Contains(st.Fields, f) {
+			return st.Name
 		}
 	}
 	for _, set := range []map[string]*ir.Union{u.TableUnions, u.Unions} {

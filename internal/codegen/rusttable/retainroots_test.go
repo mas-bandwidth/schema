@@ -230,7 +230,7 @@ func manifestRoster(t *testing.T, repo string) []rosterSeed {
 		t.Fatal(err)
 	}
 	var out []rosterSeed
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) < 5 || (f[0] != "instance" && f[0] != "report") {
 			continue
@@ -253,7 +253,7 @@ func carriedRoots(t *testing.T, repo string, roster []rosterSeed) (map[string]bo
 		t.Fatal(err)
 	}
 	paths := map[string][]string{}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) >= 3 && f[0] == "unit" {
 			paths[f[1]] = f[2:]
@@ -465,7 +465,8 @@ func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, s
 		want, encoded := oracleSeed(t, units[s.unit].unit, s.root, wire, retain)
 		if retain && s.retainedAtLeast > 0 {
 			var kept int
-			if _, err := fmt.Sscanf(want[strings.Index(want, "retained="):], "retained=%d", &kept); err != nil || kept < s.retainedAtLeast {
+			_, after, _ := strings.Cut(want, "retained=")
+			if _, err := fmt.Sscanf(after, "%d", &kept); err != nil || kept < s.retainedAtLeast {
 				t.Errorf("%s (%s.%s): the oracle retains %s, fewer than the %d this seed exists to exercise", s.name, s.unit, s.root, want, s.retainedAtLeast)
 			}
 		}

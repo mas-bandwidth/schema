@@ -1171,9 +1171,7 @@ func planReadPass(langs []string, out string, info buildInfo, config fastConfig,
 		if pass == fastPasses-1 {
 			return fmt.Errorf("plan-read still has a sample below 200ms after %d uniform attempts", fastPasses)
 		}
-		for wire, n := range raised {
-			counts[wire] = n
-		}
+		maps.Copy(counts, raised)
 	}
 	f.evidence.FinalCounts = counts
 	if err := checkBuildRevision(info.Revision, gitValue(".", "rev-parse", "HEAD")); err != nil {
