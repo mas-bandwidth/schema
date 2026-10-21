@@ -488,12 +488,17 @@ public final class MixedPickupEventVariable {
     // pointer-reachable TABLE types it can place, plus the two reserved
     // BLOB type ids this root's pointer closure names (docs/SPEC-TABLES.md
     // §2.5, §3.1, §6.5). A type id outside that set commands no region.
-    private static final TableVariable.NodeSizer NODE_SIZER = new TableVariable.NodeSizer() {
-        public long size(
-                long typeId, TableVariable.Reader r, int off, int len, TableVariable.Measure m) {
-            return 0;
-        }
-    };
+    private static final TableVariable.NodeSizer NODE_SIZER =
+            new TableVariable.NodeSizer() {
+                public long size(
+                        long typeId,
+                        TableVariable.Reader r,
+                        int off,
+                        int len,
+                        TableVariable.Measure m) {
+                    return 0;
+                }
+            };
 
     // The one-argument form allocates ONE Measure handle per call; a caller
     // that keeps a Measure measures with no allocation at all: the walk reads

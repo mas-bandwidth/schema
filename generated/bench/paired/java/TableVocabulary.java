@@ -1319,6 +1319,7 @@ public final class TableVocabulary {
             case 11:
             case 23:
             case 28:
+            case 36:
                 return 8;
             case 18:
             case 19:

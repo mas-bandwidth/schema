@@ -645,7 +645,9 @@ public final class TableJson {
                             v = Long.parseUnsignedLong(tok);
                         } catch (NumberFormatException e) {
                             rep.clamped++; // past what sixty-four bits hold
-                            v = -1L; // the largest unsigned magnitude; the range checks below add a second clamp when the bound is narrower than uint64
+                            // the largest unsigned magnitude; the range checks below add
+                            // a second clamp when the bound is narrower than uint64
+                            v = -1L;
                         }
                     }
                 }

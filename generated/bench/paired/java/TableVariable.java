@@ -264,6 +264,7 @@ public final class TableVariable {
                 case 11:
                 case 23:
                 case 28:
+                case 36:
                     if (has(8)) {
                         off += 8;
                     } else {
@@ -796,6 +797,7 @@ public final class TableVariable {
             case 11:
             case 23:
             case 28:
+            case 36:
                 w = 8;
                 break;
             case 18:
