@@ -212,7 +212,6 @@ func sweepManifest(t *testing.T) {
 	seen := 0
 	skipped := 0
 	for _, unit := range units {
-		unit := unit
 		var full []string
 		for _, p := range unit.paths {
 			full = append(full, filepath.Join(root, p))
@@ -413,7 +412,7 @@ func TestLobsterTextFormNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	input := map[string][]byte{"in.txt": []byte(textInput)}
-	control := strings.Split(strings.TrimRight(string(lobsterrun.Run(t, g.dir, "main.lobster", input)), "\n"), "\n")[0]
+	control, _, _ := strings.Cut(strings.TrimRight(string(lobsterrun.Run(t, g.dir, "main.lobster", input)), "\n"), "\n")
 	if control != hex.EncodeToString(want) {
 		t.Fatalf("the control, unpatched: got %s want %x", control, want)
 	}
@@ -430,7 +429,7 @@ func TestLobsterTextFormNegativeControl(t *testing.T) {
 	if err := os.WriteFile(path, []byte(patched), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	bad := strings.Split(strings.TrimRight(string(lobsterrun.Run(t, g.dir, "main.lobster", input)), "\n"), "\n")[0]
+	bad, _, _ := strings.Cut(strings.TrimRight(string(lobsterrun.Run(t, g.dir, "main.lobster", input)), "\n"), "\n")
 	if bad == hex.EncodeToString(want) {
 		t.Fatalf("the patched reader still saved Go's bytes: %s", bad)
 	}

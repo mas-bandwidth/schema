@@ -62,7 +62,7 @@ func reportLines(t *testing.T) map[string]string {
 		t.Fatal(err)
 	}
 	out := map[string]string{}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		x := strings.Fields(line)
 		if len(x) >= 2 && !strings.HasPrefix(x[0], "#") {
 			out[x[0]] = x[1]

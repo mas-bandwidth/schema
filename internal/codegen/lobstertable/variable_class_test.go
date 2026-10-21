@@ -61,7 +61,7 @@ func vcCheckCensus(t *testing.T, g *loadUnit) {
 	}
 	out := strings.TrimRight(string(lobsterrun.Run(t, g.dir, "census.lobster", nil)), "\n")
 	got := map[string]string{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		x := strings.Fields(line)
 		if len(x) == 2 {
 			got[x[0]] = x[1]

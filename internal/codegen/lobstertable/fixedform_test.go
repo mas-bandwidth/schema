@@ -2,6 +2,7 @@ package lobstertable_test
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -93,9 +94,7 @@ func fixedRun(t *testing.T, schema, rootName string, input []byte) []byte {
 	if err != nil {
 		t.Fatalf("%s: lobster tables: %v", schema, err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {

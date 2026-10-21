@@ -133,7 +133,7 @@ hex(write_float(read_float(f)))
 	// vendored file's text and is not edited here (THE TASK: verbatim), so the
 	// warning lines are dropped and only the program's hex lines are read.
 	var hexOut strings.Builder
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if strings.Contains(line, "warning:") {
 			continue
 		}

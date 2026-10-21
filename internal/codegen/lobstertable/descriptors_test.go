@@ -283,7 +283,7 @@ func runDescriptorsProbe(t *testing.T, p *descriptorProbe, wire []byte, sabotage
 	}
 	text := strings.TrimSpace(string(lobsterrun.Run(t, dir, "main.lobster", map[string][]byte{"w0": wire})))
 	out := map[string]string{}
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		if k, v, ok := strings.Cut(line, " "); ok {
 			out[k] = v
 		}

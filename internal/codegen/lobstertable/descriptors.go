@@ -8,6 +8,7 @@ package lobstertable
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -221,12 +222,12 @@ func tagList(tags []string) string {
 }
 
 func join(parts []string) string {
-	out := ""
+	var out strings.Builder
 	for i, p := range parts {
 		if i > 0 {
-			out += ", "
+			out.WriteString(", ")
 		}
-		out += p
+		out.WriteString(p)
 	}
-	return out
+	return out.String()
 }

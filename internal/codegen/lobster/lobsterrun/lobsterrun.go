@@ -108,7 +108,7 @@ func Run(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 func HexLines(t testing.TB, out []byte) [][]byte {
 	t.Helper()
 	var lines [][]byte
-	for _, l := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for l := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		if l == "" {
 			lines = append(lines, nil)
 			continue

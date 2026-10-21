@@ -11,6 +11,7 @@ package lobstertable
 import (
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -68,8 +69,9 @@ func blockRecord(g *lobster.Gen, blocks *ir.BlockUnit, ml *ir.MemberLayout, name
 	if ml == nil {
 		return fmt.Sprintf("%s.BlockRecord { name: %s }", rt, lobster.StringLit([]byte(name)))
 	}
-	out := fmt.Sprintf("%s.BlockRecord {\n                name: %s,\n                size: %d,\n                align: %d,\n                fields: [",
-		rt, lobster.StringLit([]byte(name)), ml.Size, ml.Align)
+	var out strings.Builder
+	out.WriteString(fmt.Sprintf("%s.BlockRecord {\n                name: %s,\n                size: %d,\n                align: %d,\n                fields: [",
+		rt, lobster.StringLit([]byte(name)), ml.Size, ml.Align))
 	for i, fl := range ml.Fields {
 		f := fl.Field
 		facts := ir.BlockFieldOf(g.Unit, f, fl.Offset, projection)
@@ -93,14 +95,14 @@ func blockRecord(g *lobster.Gen, blocks *ir.BlockUnit, ml *ir.MemberLayout, name
 		if i == len(ml.Fields)-1 {
 			sep = ""
 		}
-		out += fmt.Sprintf("\n                    %s.BlockField { name: %s, offset: %d, size: %d, kind: %d, out_of_line: %v, offset_of_offset: %d, count_offset: %d, stride_offset: %d, stride: %d, is_array: %v, counted: %v, optional: %v, bound: %d, elem_size: %d, present_offset: %d, elem: %s }%s",
+		out.WriteString(fmt.Sprintf("\n                    %s.BlockField { name: %s, offset: %d, size: %d, kind: %d, out_of_line: %v, offset_of_offset: %d, count_offset: %d, stride_offset: %d, stride: %d, is_array: %v, counted: %v, optional: %v, bound: %d, elem_size: %d, present_offset: %d, elem: %s }%s",
 			rt, lobster.StringLit([]byte(f.Name)), fl.Offset, fl.Size, ir.TableWireFieldKind(f),
 			outOfLine, offOf, countOff, strideOff, stride,
 			facts.IsArray, facts.Counted, facts.Optional, facts.ArrayBound, facts.ElemSize, facts.PresentOffset,
-			lobster.StringLit([]byte(elem)), sep)
+			lobster.StringLit([]byte(elem)), sep))
 	}
-	out += "\n                ]::" + rt + ".BlockField,\n            }"
-	return out
+	out.WriteString("\n                ]::" + rt + ".BlockField,\n            }")
+	return out.String()
 }
 
 // blArray finds one out-of-line array by field name in the table's layout.

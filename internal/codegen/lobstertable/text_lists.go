@@ -13,6 +13,8 @@
 package lobstertable
 
 import (
+	"slices"
+
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -60,10 +62,8 @@ func emitTextListFacts(g *lobster.Gen) error {
 }
 
 func appendModule(mods []string, name string) []string {
-	for _, m := range mods {
-		if m == name {
-			return mods
-		}
+	if slices.Contains(mods, name) {
+		return mods
 	}
 	return append(mods, name)
 }

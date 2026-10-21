@@ -16,6 +16,7 @@ package lobstertable
 import (
 	"embed"
 	"fmt"
+	"maps"
 	"math/big"
 	"path"
 	"sort"
@@ -108,9 +109,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := lobster.ImportCycle(graph, order, "the table surface"); err != nil {
 		return nil, err
 	}
-	for name, data := range Runtime() {
-		out[name] = data
-	}
+	maps.Copy(out, Runtime())
 	return out, nil
 }
 

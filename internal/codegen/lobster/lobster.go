@@ -24,6 +24,7 @@ package lobster
 import (
 	"embed"
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"path"
@@ -113,9 +114,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		out[f.Base+"."+ext] = g.Assemble()
 	}
-	for name, data := range Runtime() {
-		out[name] = data
-	}
+	maps.Copy(out, Runtime())
 	return out, nil
 }
 
@@ -125,7 +124,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 var keywords = map[string]bool{}
 
 func init() {
-	for _, k := range strings.Fields(`nil return class struct import int float string any void def fn is from
+	for k := range strings.FieldsSeq(`nil return class struct import int float string any void def fn is from
 		program private resource enum enum_flags typeof var let pakfile switch case default
 		out_of_range namespace not and or attribute if for while super constructor guard
 		abstract union member member_frame static static_frame operator elif else break

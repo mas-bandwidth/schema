@@ -168,8 +168,8 @@ func TestLobsterEveryScalarFieldIsBornAtItsIRDefault(t *testing.T) {
 				if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
 					slot = "schema_rt.f64bits(" + slot + ")"
 				}
-				if strings.HasPrefix(want, "Variant:") {
-					want = ns + "." + VariantName(f.Type.Name, strings.TrimPrefix(want, "Variant:"))
+				if after, ok0 := strings.CutPrefix(want, "Variant:"); ok0 {
+					want = ns + "." + VariantName(f.Type.Name, after)
 				}
 				fmt.Fprintf(&main, "check(\"%s.%s\", %s == %s)\n", s.Name, f.Name, slot, want)
 				n++
