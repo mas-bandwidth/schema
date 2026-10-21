@@ -419,13 +419,9 @@
     {
       "name": "cs",
       "when": "pull-request",
-      "why": "the C# port's conformance leg, its soak allocation-count negative control, its four packet families, the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached. The card driver's controls (one rendered byte changed, render alone must go red; the upgrade and task-hash switches, each of which must turn the shared-corpus run red) ride here too: 2 s each on the author's machine.",
+      "why": "the C# port's conformance leg, its soak allocation-count negative control, its four packet families, the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
       "targets": [
-        "cards-cs-conformance-negative-control",
-        "cards-cs-conformance-upgrade-negative-control",
-        "cards-cs-conformance-hash-negative-control",
         "conformance-negative-control-cs",
-        "cards-cs-retain-negative-control",
         "tables-cs-alloc-runtime-negative-control",
         "tables-cs-soak-negative-control",
         "tables-cs-retain-negative-control",
@@ -439,6 +435,18 @@
         "packet-wide-cs-negative-control",
         "packet-clean-cs-negative-control",
         "tables-cs-clean-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-cards",
+      "when": "pull-request",
+      "why": "the C# card driver's controls, split from the cs group when the merged stream took that job past its 5-minute timeout: one rendered byte changed (render alone must go red), the upgrade and task-hash switches (each must turn the shared-corpus run red), and the retained-unknown-field control on the Card codec. 2 s each on the author's machine, plus the SDK build.",
+      "targets": [
+        "cards-cs-conformance-negative-control",
+        "cards-cs-conformance-upgrade-negative-control",
+        "cards-cs-conformance-hash-negative-control",
+        "cards-cs-retain-negative-control"
       ],
       "dotnet": "pin"
     },
