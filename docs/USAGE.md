@@ -1671,6 +1671,20 @@ is not stable before 22. The `long length` on both `open`s is the seat that
 overload takes when the floor moves — it is a named follow-on, not an oversight,
 and until it lands a cook past 2 GiB has no Java reader.
 
+**A Java blob is one OBJECT, and two slots holding the same one are refused.**
+§2.5 owns a blob by one slot, and the Java writers (`save`, the measure by
+save, `toJson`) number a `*string` or `*bytes` slot by the identity of the
+`String` or `byte[]` it holds. Two slots holding the same object are a shared
+blob, `blob_shared`, and the write answers `null`. That INCLUDES two slots set
+from one string literal, because Java interns literals: `v.note = "x";
+v.head.caption = "x";` is one `String` and is refused. Give each slot its own
+object (`new String(...)`, or a fresh `byte[]`) when two slots must hold equal
+bytes; equal contents in distinct objects are two records and save. The
+tolerant `load` of a wire whose two slots name one blob keeps the one object
+in both, so a later save of that value refuses as the oracle does
+(`TestJavaWritersRefuseASharedBlob`). Letting caller-built equal strings
+save by value is the roadmap row `java/per-value-shared-marker`.
+
 **Elixir carries the two accelerators and no table wire.** A unit that
 declares tables grows `<Base>Block.ex` and `<Base>Cook.ex` beside its packet
 modules, with `BlockRuntime.ex`, `CookRuntime.ex` and `BuildVersion.ex` once
