@@ -141,11 +141,13 @@ var catalog = []Entry{
 	e("testdata/conformance", "table conformance dumps", "make conformance", "make conformance"),
 	e("testdata/golden", "generated-source goldens", "go test ./internal/goldens", "make update-goldens"),
 	e("testdata/jsontestsuite", "vendored JSONTestSuite (MIT)", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
+	e("testdata/luau-nightly-fuzz", "Luau nightly fuzz repros", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz-replay"),
 	e("testdata/wire", "pinned wire bytes", "go test ./internal/goldens", "make update-goldens"),
 
 	// tools/
 	e("tools/agentsmap", "AGENTS.md generator and drift guard", "go test ./tools/agentsmap", "make map"),
 	e("tools/fixedtwin", "fixed-form twin", "go test ./tools/fixedtwin", "go test ./tools/fixedtwin"),
+	e("tools/luaufuzzhost", "Luau nightly fuzz host (C++)", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
 	e("tools/negativecontrols", "negative-control enumerator", "go test ./tools/negativecontrols", "go run ./tools/negativecontrols check"),
 	e("tools/roadmap", "ROADMAP.md table honesty", "go test ./tools/roadmap", "go test ./tools/roadmap"),
 	e("tools/sabotage", "negative-control sabotages", "go test ./tools/negativecontrols", "go run ./tools/sabotage"),

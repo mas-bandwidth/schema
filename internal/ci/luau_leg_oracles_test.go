@@ -62,8 +62,8 @@ func TestLuauLegBuildsItsOracles(t *testing.T) {
 	if !strings.Contains(rec, "SCHEMA_REQUIRE_CORPUS=1") {
 		t.Error("test-luau's recipe does not set SCHEMA_REQUIRE_CORPUS=1")
 	}
-	if !strings.Contains(rec, "SCHEMA_SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME))") {
-		t.Error("test-luau's recipe does not export SCHEMA_SERIALIZE_GO as $(abspath $(SERIALIZE_GO_RUNTIME))")
+	if !strings.Contains(rec, "SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME))") {
+		t.Error("test-luau's recipe does not export SERIALIZE_GO as $(abspath $(SERIALIZE_GO_RUNTIME))")
 	}
 
 	// Every oracle resolves the runtime the same way. A test that names the
@@ -82,7 +82,7 @@ func TestLuauLegBuildsItsOracles(t *testing.T) {
 			t.Fatal(err)
 		}
 		if strings.Contains(string(body), "build/serialize.go") {
-			t.Errorf("%s names build/serialize.go; resolve the runtime from SCHEMA_SERIALIZE_GO (the sibling as a fallback)", filepath.Base(file))
+			t.Errorf("%s names build/serialize.go; resolve the runtime through slowtest.SerializeGo", filepath.Base(file))
 		}
 	}
 }

@@ -73,10 +73,7 @@ func TestLuauBlockReadAgreesWithGo(t *testing.T) {
 	for name, data := range more {
 		goFiles[name] = data
 	}
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := tfSerializeGoRuntime(t)
 	goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	goFiles["probe_test.go"] = blockReadProbe(dir)
 	for name, data := range goFiles {

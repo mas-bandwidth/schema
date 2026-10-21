@@ -54,7 +54,7 @@ test-luau: toolchain-luau tables-fixedform-corpus \
 	$(LUAU_CONFORMANCE_DRIVER)/inputs.luau \
 	$(LUAU_CONFORMANCE_DRIVER)/units.luau \
 	$(SERIALIZE_GO_RUNTIME)/go.mod
-	SCHEMA_REQUIRE_CORPUS=1 SCHEMA_SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
+	SCHEMA_REQUIRE_CORPUS=1 SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
 		go test -count=1 -timeout 600s ./internal/codegen/luau/... ./internal/codegen/luautable/...
 update-goldens-luau: ;
 

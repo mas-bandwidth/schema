@@ -580,7 +580,6 @@ LUAU_SRC_SHA := deee653d0f5971b809ef67f50dbe8109ad369d7575e344cfe2013774fed2f4c6
 LUAU_SRC     := build/luau-src-$(LUAU_VERSION)
 LUAU_NF_HOST := build/luaufuzzhost/luaufuzzhost
 LUAU_NF_HOST_OBJ := build/luaufuzzhost/obj
-CXX ?= c++
 LUAU_NF_HOST_INC := -I$(LUAU_SRC)/Common/include -I$(LUAU_SRC)/Ast/include -I$(LUAU_SRC)/Bytecode/include \
 	-I$(LUAU_SRC)/Compiler/include -I$(LUAU_SRC)/VM/include -I$(LUAU_SRC)/VM/src
 

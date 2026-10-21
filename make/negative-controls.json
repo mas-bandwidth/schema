@@ -621,14 +621,6 @@
       "targets": [
         "tables-go-view-negative-controls"
       ]
-    },
-    {
-      "name": "luau-analyze",
-      "when": "pull-request",
-      "why": "the Luau lens's one planted strict type error in a scratch copy of the generated output, which luau-analyze must reject and name. Measured 0.4 s over 1 control on the Linux bench, beside the same gate's corpus pass.",
-      "targets": [
-        "schema-luau-generated-analyze-strict-gate-negative-control"
-      ]
     }
   ],
   "excluded": [
@@ -659,6 +651,18 @@
     {
       "target": "tables-c-big-endian-negative-control",
       "reason": "the C twin of tables-big-endian-negative-control: ci.yml's big-endian job runs it on every pull request already, after the C++ put16 control. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. Issue #684 owns the job's budget, so the control is named here rather than placed in a group."
+    },
+    {
+      "target": "schema-luau-generated-analyze-strict-gate-negative-control",
+      "reason": "runs in its own workflow, .github/workflows/schema-luau-generated-analyze-strict-gate.yml, on every pull request and nightly, which installs the pinned Luau (make dist-luau) that this leg's rows do not: the plan has no luau toolchain field. Measured 0.4 s over 1 control on the Linux bench."
+    },
+    {
+      "target": "schema-luau-resource-bounds-negative-control",
+      "reason": "runs in its own workflow, .github/workflows/schema-luau-resource-bounds.yml, on every pull request and nightly, which installs the pinned Luau (make dist-luau) that this leg's rows do not: the plan has no luau toolchain field."
+    },
+    {
+      "target": "schema-luau-runs-hostile-corpus-negative-control",
+      "reason": "runs in its own workflow, .github/workflows/schema-luau-runs-hostile-corpus.yml, on the nightly schedule and on dispatch, which installs the pinned Luau (make dist-luau) that this leg's rows do not: the plan has no luau toolchain field."
     }
   ]
 }

@@ -230,10 +230,7 @@ func retainGoOracle(t *testing.T, u *ir.Unit, wire []byte, idCapacity int) *reta
 	mod := "module probe\n\ngo 1.26\n"
 	for _, data := range files {
 		if strings.Contains(string(data), `"github.com/mas-bandwidth/serialize.go"`) {
-			runtime, err := filepath.Abs("../../../../serialize.go")
-			if err != nil {
-				t.Fatal(err)
-			}
+			runtime := tfSerializeGoRuntime(t)
 			mod += fmt.Sprintf("\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
 			break
 		}

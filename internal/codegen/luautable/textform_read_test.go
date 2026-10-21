@@ -436,17 +436,10 @@ end
 	}
 }
 
-// tfSerializeGoRuntime is the Go runtime the probes compile against: the
-// Makefile's resolved checkout when the leg exports it, else the sibling
-// serialize.go checkout four levels above the package (block_read_test.go).
+// tfSerializeGoRuntime is the Go runtime the probes compile against, found
+// the one way every Go probe finds it (internal/slowtest.SerializeGo): an
+// absolute SERIALIZE_GO, the sibling checkout, then the fetched copy.
 func tfSerializeGoRuntime(t *testing.T) string {
 	t.Helper()
-	if dir := os.Getenv("SCHEMA_SERIALIZE_GO"); dir != "" {
-		return dir
-	}
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return runtime
+	return slowtest.SerializeGo(t, "../../..")
 }

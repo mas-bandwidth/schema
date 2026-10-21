@@ -111,10 +111,7 @@ func TestLuauLoadRefusesNegativeIdCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	maps.Copy(goFiles, goTables)
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := tfSerializeGoRuntime(t)
 	goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	goFiles["oracle_test.go"] = []byte(negativeCountGoOracle)
 	goDir := t.TempDir()
