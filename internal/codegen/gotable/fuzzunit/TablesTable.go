@@ -172,7 +172,7 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 				mark := w.Ids.Count
 				payload1 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.WeaponsCount); i++ {
+				for i := range int(value.WeaponsCount) {
 					{
 						mark := payload1.Ids.Count
 						n := WeaponConfigMeasureBody(&value.Weapons[i], payload1.Ids)
@@ -208,7 +208,7 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.WeaponsCount); i++ {
+					for i := range int(value.WeaponsCount) {
 						{
 							mark := w.Ids.Count
 							n := WeaponConfigMeasureBody(&value.Weapons[i], w.Ids)
@@ -247,7 +247,7 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 				mark := w.Ids.Count
 				payload4 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.ProfilesCount); i++ {
+				for i := range int(value.ProfilesCount) {
 					{
 						mark := payload4.Ids.Count
 						n := ProfileConfigMeasureBody(&value.Profiles[i], payload4.Ids)
@@ -283,7 +283,7 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.ProfilesCount); i++ {
+					for i := range int(value.ProfilesCount) {
 						{
 							mark := w.Ids.Count
 							n := ProfileConfigMeasureBody(&value.Profiles[i], w.Ids)
@@ -411,7 +411,7 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 					}
 					previous := value.WeaponsCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
@@ -464,7 +464,7 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 					}
 					previous := value.ProfilesCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
@@ -681,7 +681,7 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 				mark := w.Ids.Count
 				payload1 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.WeaponsCount); i++ {
+				for i := range int(value.WeaponsCount) {
 					{
 						payload3 := payload1.Ids.Path
 						payload1.Ids.Path = payload3.step(1, uint32(i))
@@ -722,7 +722,7 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.WeaponsCount); i++ {
+					for i := range int(value.WeaponsCount) {
 						{
 							payload5 := w.Ids.Path
 							w.Ids.Path = payload5.step(1, uint32(i))
@@ -766,7 +766,7 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 				mark := w.Ids.Count
 				payload6 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.ProfilesCount); i++ {
+				for i := range int(value.ProfilesCount) {
 					{
 						payload8 := payload6.Ids.Path
 						payload6.Ids.Path = payload8.step(2, uint32(i))
@@ -807,7 +807,7 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.ProfilesCount); i++ {
+					for i := range int(value.ProfilesCount) {
 						{
 							payload10 := w.Ids.Path
 							w.Ids.Path = payload10.step(2, uint32(i))
@@ -931,7 +931,7 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 					}
 					previous := value.WeaponsCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
@@ -986,7 +986,7 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 					}
 					previous := value.ProfilesCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
@@ -2004,7 +2004,7 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 				mark := w.Ids.Count
 				payload17 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.GradesCount); i++ {
+				for i := range int(value.GradesCount) {
 					switch value.Grades[i] {
 					case GradeNone:
 						if !payload17.putLebPair(0) {
@@ -2036,7 +2036,7 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.GradesCount); i++ {
+					for i := range int(value.GradesCount) {
 						switch value.Grades[i] {
 						case GradeNone:
 							if !w.putLebPair(0) {
@@ -2072,7 +2072,7 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 				mark := w.Ids.Count
 				payload20 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(3); i++ {
+				for i := range int(3) {
 					switch value.Podium[i] {
 					case GradeNone:
 						if !payload20.putLebPair(0) {
@@ -2104,7 +2104,7 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(3); i++ {
+					for i := range int(3) {
 						switch value.Podium[i] {
 						case GradeNone:
 							if !w.putLebPair(0) {
@@ -2168,7 +2168,7 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 				mark := w.Ids.Count
 				payload23 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(2); i++ {
+				for i := range int(2) {
 					{
 						mark := payload23.Ids.Count
 						n := WeaponConfigMeasureBody(&value.Backups[i], payload23.Ids)
@@ -2204,7 +2204,7 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(2); i++ {
+					for i := range int(2) {
 						{
 							mark := w.Ids.Count
 							n := WeaponConfigMeasureBody(&value.Backups[i], w.Ids)
@@ -2243,7 +2243,7 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 				mark := w.Ids.Count
 				payload26 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.AttachmentsCount); i++ {
+				for i := range int(value.AttachmentsCount) {
 					{
 						mark := payload26.Ids.Count
 						n := AttachmentMeasureBody(&value.Attachments[i], payload26.Ids)
@@ -2279,7 +2279,7 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.AttachmentsCount); i++ {
+					for i := range int(value.AttachmentsCount) {
 						{
 							mark := w.Ids.Count
 							n := AttachmentMeasureBody(&value.Attachments[i], w.Ids)
@@ -2407,7 +2407,7 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 					}
 					previous := value.GradesCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						{
 							variantRef, ok := sub.Leb()
 							if !ok {
@@ -2467,7 +2467,7 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 						keep = 3
 						r.Report.Clamped++
 					}
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						{
 							variantRef, ok := sub.Leb()
 							if !ok {
@@ -2570,7 +2570,7 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 						keep = 2
 						r.Report.Clamped++
 					}
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
@@ -2618,7 +2618,7 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 					}
 					previous := value.AttachmentsCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
@@ -2806,7 +2806,7 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 				mark := w.Ids.Count
 				payload1 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.GradesCount); i++ {
+				for i := range int(value.GradesCount) {
 					switch value.Grades[i] {
 					case GradeNone:
 						if !payload1.putLebPair(0) {
@@ -2838,7 +2838,7 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.GradesCount); i++ {
+					for i := range int(value.GradesCount) {
 						switch value.Grades[i] {
 						case GradeNone:
 							if !w.putLebPair(0) {
@@ -2874,7 +2874,7 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 				mark := w.Ids.Count
 				payload4 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(3); i++ {
+				for i := range int(3) {
 					switch value.Podium[i] {
 					case GradeNone:
 						if !payload4.putLebPair(0) {
@@ -2906,7 +2906,7 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(3); i++ {
+					for i := range int(3) {
 						switch value.Podium[i] {
 						case GradeNone:
 							if !w.putLebPair(0) {
@@ -3010,7 +3010,7 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 				mark := w.Ids.Count
 				payload9 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(2); i++ {
+				for i := range int(2) {
 					{
 						payload11 := payload9.Ids.Path
 						payload9.Ids.Path = payload11.step(5, uint32(i))
@@ -3051,7 +3051,7 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(2); i++ {
+					for i := range int(2) {
 						{
 							payload13 := w.Ids.Path
 							w.Ids.Path = payload13.step(5, uint32(i))
@@ -3095,7 +3095,7 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 				mark := w.Ids.Count
 				payload14 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.AttachmentsCount); i++ {
+				for i := range int(value.AttachmentsCount) {
 					{
 						payload16 := payload14.Ids.Path
 						payload14.Ids.Path = payload16.step(6, uint32(i))
@@ -3136,7 +3136,7 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.AttachmentsCount); i++ {
+					for i := range int(value.AttachmentsCount) {
 						{
 							payload18 := w.Ids.Path
 							w.Ids.Path = payload18.step(6, uint32(i))
@@ -3263,7 +3263,7 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 					}
 					previous := value.GradesCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						{
 							variantRef, ok := sub.Leb()
 							if !ok {
@@ -3327,7 +3327,7 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 						keep = 3
 						r.Report.Clamped++
 					}
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						{
 							variantRef, ok := sub.Leb()
 							if !ok {
@@ -3435,7 +3435,7 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 						keep = 2
 						r.Report.Clamped++
 					}
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
@@ -3485,7 +3485,7 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 					}
 					previous := value.AttachmentsCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
@@ -3637,7 +3637,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 				mark := w.Ids.Count
 				payload30 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.IconLength); i++ {
+				for i := range int(value.IconLength) {
 					payload30.Put8(uint8(value.Icon[i]))
 					pairs++
 				}
@@ -3656,7 +3656,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.IconLength); i++ {
+					for i := range int(value.IconLength) {
 						w.Put8(uint8(value.Icon[i]))
 					}
 				}
@@ -3743,7 +3743,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 				mark := w.Ids.Count
 				payload33 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(4); i++ {
+				for i := range int(4) {
 					payload33.Put32(math.Float32bits(value.Ratings[i]))
 					pairs++
 				}
@@ -3762,7 +3762,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(4); i++ {
+					for i := range int(4) {
 						w.Put32(math.Float32bits(value.Ratings[i]))
 					}
 				}
@@ -3912,7 +3912,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					}
 					previous := value.IconLength
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -4180,7 +4180,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 						keep = 4
 						r.Report.Clamped++
 					}
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -4435,7 +4435,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 				mark := w.Ids.Count
 				payload1 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.IconLength); i++ {
+				for i := range int(value.IconLength) {
 					payload1.Put8(uint8(value.Icon[i]))
 					pairs++
 				}
@@ -4454,7 +4454,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.IconLength); i++ {
+					for i := range int(value.IconLength) {
 						w.Put8(uint8(value.Icon[i]))
 					}
 				}
@@ -4541,7 +4541,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 				mark := w.Ids.Count
 				payload4 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(4); i++ {
+				for i := range int(4) {
 					payload4.Put32(math.Float32bits(value.Ratings[i]))
 					pairs++
 				}
@@ -4560,7 +4560,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(4); i++ {
+					for i := range int(4) {
 						w.Put32(math.Float32bits(value.Ratings[i]))
 					}
 				}
@@ -4741,7 +4741,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					}
 					previous := value.IconLength
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -5010,7 +5010,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 						keep = 4
 						r.Report.Clamped++
 					}
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break

@@ -62,9 +62,7 @@ func tableJsonCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 		return f.ArrayBound
 	}
 	count := *(*int32)(unsafe.Add(base, uintptr(f.CountOffset)))
-	if count < 0 {
-		count = 0
-	}
+	count = max(count, 0)
 	if !f.UnboundedContainer && count > f.ArrayBound {
 		count = f.ArrayBound
 	}
@@ -268,7 +266,7 @@ func (o *tableJsonOut) put(c byte) {
 
 func (o *tableJsonOut) text(s string) {
 	if o.compact {
-		for i := 0; i < len(s); i++ {
+		for i := range len(s) {
 			o.put(s[i])
 		}
 		return
@@ -285,7 +283,7 @@ func (o *tableJsonOut) text(s string) {
 
 func (o *tableJsonOut) line(depth int32) {
 	o.put('\n')
-	for i := int32(0); i < depth; i++ {
+	for range depth {
 		o.text("  ")
 	}
 }
@@ -567,7 +565,7 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 		}
 		out.put('[')
 		first := true
-		for bit := int64(0); bit < 64; bit++ {
+		for bit := range int64(64) {
 			if bits&(uint64(1)<<bit) == 0 {
 				continue
 			}
@@ -636,7 +634,7 @@ func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldIn
 		// it.
 		out.put('{')
 		first := true
-		for slot := int32(0); slot < f.ArrayBound; slot++ {
+		for slot := range f.ArrayBound {
 			if !tableJsonKeyedSlotValid(f, slot) {
 				continue
 			}
@@ -666,7 +664,7 @@ func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldIn
 			return true
 		}
 		out.put('[')
-		for i := int32(0); i < count; i++ {
+		for i := range count {
 			if i > 0 {
 				out.put(',')
 			}
@@ -932,7 +930,7 @@ func (in *tableJsonIn) hex4() int32 {
 		return -1
 	}
 	value := int32(0)
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		c := in.text[in.pos+i]
 		var digit int32
 		switch {
@@ -1351,7 +1349,7 @@ func tableJsonNameIs(name string, key []byte) bool {
 	if len(name) != len(key) {
 		return false
 	}
-	for i := 0; i < len(key); i++ {
+	for i := range len(key) {
 		if name[i] != key[i] {
 			return false
 		}
@@ -1825,7 +1823,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		// every slot back to its declared defaults first, so a key the text
 		// omits keeps them and a repeated field key cannot leave an earlier
 		// occurrence's slots standing
-		for i := int32(0); i < f.ArrayBound; i++ {
+		for i := range f.ArrayBound {
 			slot := unsafe.Add(storage, uintptr(i)*uintptr(f.ElemSize))
 			if f.Kind == 13 {
 				f.Table().Reset(slot)
@@ -1861,7 +1859,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 			}
 			in.pos++
 			slot := int32(-1)
-			for v := int32(0); v < f.ArrayBound; v++ {
+			for v := range f.ArrayBound {
 				// nothing is stored for None, so "None" finds no slot and is an
 				// unknown key like any other name this reader cannot place
 				if !tableJsonKeyedSlotValid(f, v) {
@@ -1924,7 +1922,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		// own (the reset hook); every other element kind's storage default is
 		// zero, which is what the generated array declares.
 		if f.Kind == 13 {
-			for i := int32(0); i < f.ArrayBound; i++ {
+			for i := range f.ArrayBound {
 				f.Table().Reset(unsafe.Add(storage, uintptr(i)*uintptr(f.ElemSize)))
 			}
 		} else {
@@ -2425,7 +2423,7 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 			}
 		}
 		var fraction tableJsonWide
-		for b := 0; b < frac; b++ {
+		for range frac {
 			carry := byte(0)
 			for k := fn - 1; k >= 0; k-- {
 				d := fd[k]*2 + carry
@@ -2435,7 +2433,7 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 			fraction = fraction.shl(1)
 			fraction[0] |= uint64(carry)
 		}
-		for k := 0; k < fn; k++ {
+		for k := range fn {
 			if fd[k] != 0 {
 				in.report.KindMismatch++
 				return true
@@ -2570,9 +2568,7 @@ func (g *tableJsonGraph) setLabel(key uint64, entry tableJsonLabel) bool {
 	i, exists := g.findLabel(key)
 	if !exists && g.count*2 >= len(g.labels) {
 		capacity := len(g.labels) * 2
-		if capacity < 16 {
-			capacity = 16
-		}
+		capacity = max(capacity, 16)
 		if g.allocate == nil {
 			return false
 		}
@@ -2882,7 +2878,7 @@ func tableJsonWriteList(out *tableJsonOut, holder unsafe.Pointer, f *TableFieldI
 	}
 	p := unsafe.Add(holder, ref)
 	out.put('[')
-	for i := int32(0); i < count; i++ {
+	for i := range count {
 		if i > 0 {
 			out.put(',')
 		}
@@ -2960,7 +2956,7 @@ func tableJsonWriteMap(out *tableJsonOut, p unsafe.Pointer, f *TableFieldInfo, d
 		base := unsafe.Add(p, ref)
 		entry := f.Table()
 		key, value := &entry.Fields[0], &entry.Fields[1]
-		for i := int32(0); i < count; i++ {
+		for i := range count {
 			if i > 0 {
 				out.put(',')
 			}
@@ -3240,7 +3236,7 @@ func rfc3339Parse(text []byte) (int64, bool) {
 	}
 
 	year := 0
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		d, ok := rfc3339Digit(text, i)
 		if !ok {
 			return 0, false

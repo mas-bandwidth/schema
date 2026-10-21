@@ -321,7 +321,7 @@ func TestSpecLimitsMatchGo(t *testing.T) {
 	messageSrc := string(messageBytes)
 	jsonSrc := string(jsonBytes)
 
-	lebMaxBytes := extractRegexpUint(t, tableWireSource, `for i := 0; i < (\d+); i\+\+`, "leb128_max_bytes")
+	lebMaxBytes := extractRegexpUint(t, tableWireSource, `for i := range (\d+) \{`, "leb128_max_bytes")
 	fixedRecordBoundRt := extractRegexpUint(t, fixedRuntimeSrc, `const tableFixedRecordMaxBytes uint32 = (\d+)`, "fixedruntime.tableFixedRecordMaxBytes")
 	if fixedRecordBoundRt != uint64(ir.TableFixedRecordMaxBytes) {
 		t.Fatalf("fixed_record_bound: fixedruntime=%d != ir.TableFixedRecordMaxBytes=%d", fixedRecordBoundRt, ir.TableFixedRecordMaxBytes)

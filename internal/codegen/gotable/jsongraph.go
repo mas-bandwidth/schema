@@ -20,7 +20,7 @@ func (g *tableJsonGraph) findLabel(key uint64)(int,bool) {if len(g.labels)==0{re
 func (g *tableJsonGraph) getLabel(key uint64)(tableJsonLabel,bool){i,ok:=g.findLabel(key);if !ok{return tableJsonLabel{},false};return g.labels[i],true}
 func (g *tableJsonGraph) setLabel(key uint64,entry tableJsonLabel)bool {
  if key==0{return false};i,exists:=g.findLabel(key)
- if !exists&&g.count*2>=len(g.labels){capacity:=len(g.labels)*2;if capacity<16{capacity=16};if g.allocate==nil{return false};memory:=g.allocate(int64(capacity)*int64(unsafe.Sizeof(tableJsonLabel{})));if memory==nil{return false};clear(memory);old,oldMemory:=g.labels,g.memory;g.memory=memory;g.labels=unsafe.Slice((*tableJsonLabel)(unsafe.Pointer(&memory[0])),capacity);for _,e:=range old {if e.key!=0{slot,_:=g.findLabel(e.key);g.labels[slot]=e}};if oldMemory!=nil{g.release(oldMemory)};i,_=g.findLabel(key)}
+ if !exists&&g.count*2>=len(g.labels){capacity:=len(g.labels)*2;capacity=max(capacity,16);if g.allocate==nil{return false};memory:=g.allocate(int64(capacity)*int64(unsafe.Sizeof(tableJsonLabel{})));if memory==nil{return false};clear(memory);old,oldMemory:=g.labels,g.memory;g.memory=memory;g.labels=unsafe.Slice((*tableJsonLabel)(unsafe.Pointer(&memory[0])),capacity);for _,e:=range old {if e.key!=0{slot,_:=g.findLabel(e.key);g.labels[slot]=e}};if oldMemory!=nil{g.release(oldMemory)};i,_=g.findLabel(key)}
  if !exists {g.count++};entry.key=key;g.labels[i]=entry;return true
 }
 func (g *tableJsonGraph) close(){if g.memory!=nil{g.release(g.memory);g.memory=nil;g.labels=nil}}

@@ -1232,7 +1232,7 @@ func (r *tableTextFormResolver) keyed(v *tableTextFormNode, f *TableFieldInfo, p
 			return r.fail(TableTextFormSyntax, k, k.start)
 		}
 		slot := int32(-1)
-		for s := int32(0); s < f.ArrayBound; s++ {
+		for s := range f.ArrayBound {
 			// nothing is stored for None, so it names no slot (§2.4)
 			if tableJsonKeyedSlotValid(f, s) && f.KeyName(tableJsonKeyedSlotKey(s)) == string(k.text) {
 				slot = s

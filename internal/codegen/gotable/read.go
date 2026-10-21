@@ -306,7 +306,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		g.retainDiscard("r")
 	}
 	if keyed {
-		g.pf("%sfor i := uint64(0); i < count; i++ {\n", i)
+		g.pf("%sfor range count {\n", i)
 		j := i + "\t"
 		g.pf("%skeyRef, ok := sub.Leb(); if !ok { r.Report.Malformed = true; break }\n", j)
 		g.pf("%skey, ok := sub.Resolve(keyRef); if !ok { r.Report.Malformed = true; break }\n", j)
@@ -347,7 +347,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		if f.TextTotal > 0 {
 			g.pf("%sspent := int64(0)\n", i)
 		}
-		g.pf("%sfor i := uint64(0); i < keep; i++ {\n", i)
+		g.pf("%sfor i := range keep {\n", i)
 		j := i + "\t"
 		switch kind {
 		case tkString:

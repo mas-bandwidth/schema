@@ -125,7 +125,7 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 				mark := w.Ids.Count
 				payload1 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.PayloadLength); i++ {
+				for i := range int(value.PayloadLength) {
 					payload1.Put8(uint8(value.Payload[i]))
 					pairs++
 				}
@@ -144,7 +144,7 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.PayloadLength); i++ {
+					for i := range int(value.PayloadLength) {
 						w.Put8(uint8(value.Payload[i]))
 					}
 				}
@@ -166,7 +166,7 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 				mark := w.Ids.Count
 				payload4 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.SamplesCount); i++ {
+				for i := range int(value.SamplesCount) {
 					payload4.Put16(uint16(value.Samples[i]))
 					pairs++
 				}
@@ -185,7 +185,7 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.SamplesCount); i++ {
+					for i := range int(value.SamplesCount) {
 						w.Put16(uint16(value.Samples[i]))
 					}
 				}
@@ -296,7 +296,7 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 					}
 					previous := value.PayloadLength
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -351,7 +351,7 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 					}
 					previous := value.SamplesCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -566,7 +566,7 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 				mark := w.Ids.Count
 				payload1 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.PayloadLength); i++ {
+				for i := range int(value.PayloadLength) {
 					payload1.Put8(uint8(value.Payload[i]))
 					pairs++
 				}
@@ -585,7 +585,7 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.PayloadLength); i++ {
+					for i := range int(value.PayloadLength) {
 						w.Put8(uint8(value.Payload[i]))
 					}
 				}
@@ -607,7 +607,7 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 				mark := w.Ids.Count
 				payload4 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.SamplesCount); i++ {
+				for i := range int(value.SamplesCount) {
 					payload4.Put16(uint16(value.Samples[i]))
 					pairs++
 				}
@@ -626,7 +626,7 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.SamplesCount); i++ {
+					for i := range int(value.SamplesCount) {
 						w.Put16(uint16(value.Samples[i]))
 					}
 				}
@@ -728,7 +728,7 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 					}
 					previous := value.PayloadLength
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -784,7 +784,7 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 					}
 					previous := value.SamplesCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break

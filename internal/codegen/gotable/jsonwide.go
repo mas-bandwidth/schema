@@ -100,12 +100,12 @@ func tableJsonReadWide(in *tableJsonIn,token []byte,storage unsafe.Pointer,f *Ta
     for z:=point;z<0;z++ {if fn<128 {fd[fn]=0};fn++}
     for k:=max(point,0)+start;k<end;k++ {if fn>=128 {if digit(k)!='0'{in.report.KindMismatch++;return true}}else{fd[fn]=digit(k)-'0';fn++}}
   var fraction tableJsonWide
-  for b:=0;b<frac;b++ {
+  for range frac {
    carry:=byte(0)
    for k:=fn-1;k>=0;k-- {d:=fd[k]*2+carry;fd[k]=d%10;carry=d/10}
    fraction=fraction.shl(1);fraction[0]|=uint64(carry)
   }
-  for k:=0;k<fn;k++ {if fd[k]!=0 {in.report.KindMismatch++;return true}}
+  for k := range fn {if fd[k]!=0 {in.report.KindMismatch++;return true}}
   var whole tableJsonWide
   for k:=start;k<start+point && !saturated;k++ {d:=uint32(0);if k<end {d=uint32(digit(k)-'0')};if whole.mulAdd(10,d)!=0{saturated=true}}
   if !saturated && frac>0 && !whole.shr(128-frac).zero() {saturated=true}

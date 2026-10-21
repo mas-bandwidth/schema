@@ -302,7 +302,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		if e.Id == 0xffffffffffffffff {
 			nodeSeen = true
 		}
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			o := v.Entries[i].Shape
 			if o.Max-o.Min == src.Offset-began && o.Min >= 0 && o.Max <= int64(len(words)) {
 				same := true
@@ -324,7 +324,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		count++
 	}
 	src.Offset = 0
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		e, ok := tableMessageEntryRead(&src)
 		if !ok {
 			report.Malformed = true
@@ -509,9 +509,7 @@ func tableMessageRegionWrite(w *TableMessageWriter, p unsafe.Pointer, t *TableTy
 	defer func() { w.Numbering = nil }()
 	w.Numbering = n
 	w.IndexBits = tableMessageBits(uint64(len(n.entries)))
-	if w.IndexBits < 1 {
-		w.IndexBits = 1
-	}
+	w.IndexBits = max(w.IndexBits, 1)
 	if len(n.entries) > 1 {
 		slot := uint64(0)
 		for i := range tableMessageEntries {
@@ -620,7 +618,7 @@ func tableMessageBodyStorage(r *TableMessageReader, root *TableTypeInfo, blobs i
 	}
 	r.IndexBits = tableMessageBits(uint64(count + 1))
 	size = (count + 1) * 16
-	for k := int64(0); k < count; k++ {
+	for range count {
 		record, ok := tableMessageRecordScan(r, root, blobs)
 		if !ok {
 			return 0, false, false
@@ -639,7 +637,7 @@ func tableMessageRegionMeasure(v *TableVocabulary, data []byte, root *TableTypeI
 		return -1
 	}
 	total := int64(0)
-	for i := int64(0); i < count; i++ {
+	for range count {
 		size, complete, ok := tableMessageBodyStorage(&r, root, blobs)
 		if !ok {
 			return -1
@@ -673,7 +671,7 @@ func tableMessageRegionInto(r *TableMessageReader, root *TableTypeInfo, blobs in
 	nodes := TableNodeMap{Base: base, Entries: directory, Once: true}
 	recordsStart := r.Bits.Offset
 	unknown := int32(0)
-	for k := int64(0); k < count; k++ {
+	for k := range count {
 		record, good := tableMessageRecordScan(r, root, blobs)
 		if !good {
 			r.Report.Malformed = true
@@ -720,7 +718,7 @@ func tableMessageRegionInto(r *TableMessageReader, root *TableTypeInfo, blobs in
 	r.Report.Unknown += unknown
 	r.Nodes = nodes
 	r.Bits.Offset = recordsStart
-	for k := int64(0); k < count; k++ {
+	for k := range count {
 		if _, good := r.Bits.Get(r.Vocabulary.RefBits); !good {
 			r.Report.Malformed = true
 			return out, false
@@ -841,7 +839,7 @@ func (r *TableRetainMessageReader) capture(e TableMessageEntry) bool {
 	binary.LittleEndian.PutUint32(b[12:], uint32(probe.w.Offset))
 	binary.LittleEndian.PutUint64(b[16:], e.Id)
 	b[24] = e.Shape.Kind
-	for i := 0; i < p.depth; i++ {
+	for i := range p.depth {
 		binary.LittleEndian.PutUint32(b[26+i*8:], p.steps[i].ordinal)
 		binary.LittleEndian.PutUint32(b[30+i*8:], p.steps[i].index)
 	}
@@ -943,7 +941,7 @@ func (s *tableRetainMessageIn) opaque(e TableMessageEntry, framed bool) bool {
 	if framed {
 		s.w.PutLeb(n)
 	}
-	for i := uint64(0); i < n; i++ {
+	for range n {
 		v, ok := s.bits.Get(8)
 		if !ok {
 			return false
@@ -1044,7 +1042,7 @@ func (s *tableRetainMessageIn) elements(e TableMessageEntry, depth int) bool {
 		return false
 	}
 	element := TableMessageEntry{Shape: e.Element}
-	for i := uint64(0); i < n; i++ {
+	for range n {
 		if e.Shape.Kind == 16 {
 			if _, ok := s.ref(false); !ok || !s.framed(element, depth+1) {
 				return false
@@ -1111,7 +1109,7 @@ func tableMessageRegionIntoRetain(r *TableRetainMessageReader, root *TableTypeIn
 	nodes := TableNodeMap{Base: base, Entries: directory, Once: true}
 	recordsStart := r.Bits.Offset
 	unknown := int32(0)
-	for k := int64(0); k < count; k++ {
+	for k := range count {
 		record, good := tableMessageRecordScan(&r.tableMessagePlainReader, root, blobs)
 		if !good {
 			r.Report.Malformed = true
@@ -1162,7 +1160,7 @@ func tableMessageRegionIntoRetain(r *TableRetainMessageReader, root *TableTypeIn
 	r.Report.Unknown += unknown
 	r.Nodes = nodes
 	r.Bits.Offset = recordsStart
-	for k := int64(0); k < count; k++ {
+	for k := range count {
 		if _, good := r.Bits.Get(r.Vocabulary.RefBits); !good {
 			r.Report.Malformed = true
 			return out, false

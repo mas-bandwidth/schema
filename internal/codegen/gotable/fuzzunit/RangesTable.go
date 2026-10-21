@@ -253,7 +253,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 				mark := w.Ids.Count
 				payload1 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.EdgesCount); i++ {
+				for i := range int(value.EdgesCount) {
 					payload1.Put16(uint16(value.Edges[i]))
 					pairs++
 				}
@@ -272,7 +272,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.EdgesCount); i++ {
+					for i := range int(value.EdgesCount) {
 						w.Put16(uint16(value.Edges[i]))
 					}
 				}
@@ -1027,7 +1027,7 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 					}
 					previous := value.EdgesCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -1369,7 +1369,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 				mark := w.Ids.Count
 				payload1 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.EdgesCount); i++ {
+				for i := range int(value.EdgesCount) {
 					payload1.Put16(uint16(value.Edges[i]))
 					pairs++
 				}
@@ -1388,7 +1388,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.EdgesCount); i++ {
+					for i := range int(value.EdgesCount) {
 						w.Put16(uint16(value.Edges[i]))
 					}
 				}
@@ -2134,7 +2134,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 					}
 					previous := value.EdgesCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -2409,7 +2409,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 				mark := w.Ids.Count
 				payload21 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.CountsCount); i++ {
+				for i := range int(value.CountsCount) {
 					payload21.Put64(uint64(value.Counts[i]))
 					pairs++
 				}
@@ -2428,7 +2428,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.CountsCount); i++ {
+					for i := range int(value.CountsCount) {
 						w.Put64(uint64(value.Counts[i]))
 					}
 				}
@@ -3183,7 +3183,7 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 					}
 					previous := value.CountsCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -3525,7 +3525,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 				mark := w.Ids.Count
 				payload1 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.CountsCount); i++ {
+				for i := range int(value.CountsCount) {
 					payload1.Put64(uint64(value.Counts[i]))
 					pairs++
 				}
@@ -3544,7 +3544,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.CountsCount); i++ {
+					for i := range int(value.CountsCount) {
 						w.Put64(uint64(value.Counts[i]))
 					}
 				}
@@ -4290,7 +4290,7 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 					}
 					previous := value.CountsCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -5260,7 +5260,7 @@ func RangedSignedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLin
 	}
 	out[n] = TableFixedEntry{Src: src + 60, Dst: dst + uint32(unsafe.Offsetof(RangedSigned{}.EdgesCount)), Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCount} // edges count
 	n++
-	for i := uint32(0); i < 4; i++ {
+	for i := range uint32(4) {
 		es := src + 64 + i*2
 		ed := dst + uint32(unsafe.Offsetof(RangedSigned{}.Edges)) + i*uint32(unsafe.Sizeof(int16(0)))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 2, Guard: tableFixedNoGuard, Op: tableFixedCopy}
@@ -5289,7 +5289,7 @@ func RangedSignedFixedWriteBody(b []byte, value *RangedSigned) {
 	tableFixedPut32(b[60:], uint32(value.EdgesCount))
 	{
 		livei := min(max(int64(value.EdgesCount), 0), 4)
-		for i := int64(0); i < livei; i++ {
+		for i := range livei {
 			tableFixedPut16(b[64:][i*2:], uint16(value.Edges[i]))
 		}
 	}
@@ -5395,7 +5395,7 @@ func RangedUnsignedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardL
 	}
 	out[n] = TableFixedEntry{Src: src + 60, Dst: dst + uint32(unsafe.Offsetof(RangedUnsigned{}.CountsCount)), Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCount} // counts count
 	n++
-	for i := uint32(0); i < 4; i++ {
+	for i := range uint32(4) {
 		es := src + 64 + i*8
 		ed := dst + uint32(unsafe.Offsetof(RangedUnsigned{}.Counts)) + i*uint32(unsafe.Sizeof(uint64(0)))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
@@ -5424,7 +5424,7 @@ func RangedUnsignedFixedWriteBody(b []byte, value *RangedUnsigned) {
 	tableFixedPut32(b[60:], uint32(value.CountsCount))
 	{
 		livei := min(max(int64(value.CountsCount), 0), 4)
-		for i := int64(0); i < livei; i++ {
+		for i := range livei {
 			tableFixedPut64(b[64:][i*8:], uint64(value.Counts[i]))
 		}
 	}
@@ -5543,8 +5543,6 @@ func RangedSignedFixedClampBody(value *RangedSigned, clamped *int32) {
 		value.I64Inside = 9223372036854775806
 		(*clamped)++
 	}
-	for i := int64(0); i < int64(value.EdgesCount); i++ {
-	}
 }
 
 // RangedUnsigned's read-side bounds.
@@ -5609,8 +5607,6 @@ func RangedUnsignedFixedClampBody(value *RangedUnsigned, clamped *int32) {
 	} else if value.U64Inside > 18446744073709551614 {
 		value.U64Inside = 18446744073709551614
 		(*clamped)++
-	}
-	for i := int64(0); i < int64(value.CountsCount); i++ {
 	}
 }
 
@@ -5677,8 +5673,6 @@ func RangedSignedFixedCheckBody(value *RangedSigned) bool {
 	if value.EdgesCount < 0 || value.EdgesCount > 4 {
 		return false
 	}
-	for i := int64(value.EdgesCount) - 1; i >= 0; i-- {
-	}
 	return true
 }
 
@@ -5723,8 +5717,6 @@ func RangedUnsignedFixedCheckBody(value *RangedUnsigned) bool {
 	}
 	if value.CountsCount < 0 || value.CountsCount > 4 {
 		return false
-	}
-	for i := int64(value.CountsCount) - 1; i >= 0; i-- {
 	}
 	return true
 }
@@ -5945,7 +5937,7 @@ func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixed
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := range n {
 			RangedSignedReset(&values[k])
 		}
 		return -1
@@ -6050,7 +6042,7 @@ func RangedSignedFixedLoadTolerant(values []RangedSigned, data []byte, plan []Ta
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
+	for k := range n {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -6268,7 +6260,7 @@ func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableF
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := range n {
 			RangedUnsignedReset(&values[k])
 		}
 		return -1
@@ -6373,7 +6365,7 @@ func RangedUnsignedFixedLoadTolerant(values []RangedUnsigned, data []byte, plan 
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
+	for k := range n {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -6553,7 +6545,7 @@ func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixed
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := range n {
 			RangedWidthsReset(&values[k])
 		}
 		return -1
@@ -6658,7 +6650,7 @@ func RangedWidthsFixedLoadTolerant(values []RangedWidths, data []byte, plan []Ta
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
+	for k := range n {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]

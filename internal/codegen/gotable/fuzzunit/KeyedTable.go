@@ -1650,7 +1650,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 			mark := payload.Ids.Count
 			payload6 := TableWriter{Measuring: true, Ids: payload.Ids}
 			pairs := uint64(0)
-			for i := 0; i < int(int(WeaponMax)); i++ {
+			for i := range int(int(WeaponMax)) {
 				{
 					mark := payload6.Ids.Count
 					id, named := Weapon(i + 1).TableEnumId()
@@ -1702,7 +1702,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(WeaponMax)); i++ {
+				for i := range int(int(WeaponMax)) {
 					{
 						mark := payload.Ids.Count
 						id, named := Weapon(i + 1).TableEnumId()
@@ -1755,7 +1755,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 					mark := w.Ids.Count
 					payload9 := TableWriter{Measuring: true, Ids: w.Ids}
 					pairs := uint64(0)
-					for i := 0; i < int(int(WeaponMax)); i++ {
+					for i := range int(int(WeaponMax)) {
 						{
 							mark := payload9.Ids.Count
 							id, named := Weapon(i + 1).TableEnumId()
@@ -1807,7 +1807,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(WeaponMax)); i++ {
+						for i := range int(int(WeaponMax)) {
 							{
 								mark := w.Ids.Count
 								id, named := Weapon(i + 1).TableEnumId()
@@ -1959,7 +1959,7 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 						r.Report.KindMismatch++
 						break
 					}
-					for i := uint64(0); i < count; i++ {
+					for range count {
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -2150,7 +2150,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 			mark := payload.Ids.Count
 			payload1 := TableRetainWriter{Measuring: true, Ids: payload.Ids}
 			pairs := uint64(0)
-			for i := 0; i < int(int(WeaponMax)); i++ {
+			for i := range int(int(WeaponMax)) {
 				{
 					mark := payload1.Ids.Count
 					id, named := Weapon(i + 1).TableEnumId()
@@ -2212,7 +2212,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(WeaponMax)); i++ {
+				for i := range int(int(WeaponMax)) {
 					{
 						mark := payload.Ids.Count
 						id, named := Weapon(i + 1).TableEnumId()
@@ -2275,7 +2275,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 					mark := w.Ids.Count
 					payload8 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 					pairs := uint64(0)
-					for i := 0; i < int(int(WeaponMax)); i++ {
+					for i := range int(int(WeaponMax)) {
 						{
 							mark := payload8.Ids.Count
 							id, named := Weapon(i + 1).TableEnumId()
@@ -2337,7 +2337,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(WeaponMax)); i++ {
+						for i := range int(int(WeaponMax)) {
 							{
 								mark := w.Ids.Count
 								id, named := Weapon(i + 1).TableEnumId()
@@ -2489,7 +2489,7 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 						r.Report.KindMismatch++
 						break
 					}
-					for i := uint64(0); i < count; i++ {
+					for range count {
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -2590,7 +2590,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 			mark := payload.Ids.Count
 			payload14 := TableWriter{Measuring: true, Ids: payload.Ids}
 			pairs := uint64(0)
-			for i := 0; i < int(int(TeamMax)); i++ {
+			for i := range int(int(TeamMax)) {
 				{
 					mark := payload14.Ids.Count
 					id, named := Team(i + 1).TableEnumId()
@@ -2642,7 +2642,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(TeamMax)); i++ {
+				for i := range int(int(TeamMax)) {
 					{
 						mark := payload.Ids.Count
 						id, named := Team(i + 1).TableEnumId()
@@ -2695,7 +2695,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 					mark := w.Ids.Count
 					payload17 := TableWriter{Measuring: true, Ids: w.Ids}
 					pairs := uint64(0)
-					for i := 0; i < int(int(TeamMax)); i++ {
+					for i := range int(int(TeamMax)) {
 						{
 							mark := payload17.Ids.Count
 							id, named := Team(i + 1).TableEnumId()
@@ -2747,7 +2747,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(TeamMax)); i++ {
+						for i := range int(int(TeamMax)) {
 							{
 								mark := w.Ids.Count
 								id, named := Team(i + 1).TableEnumId()
@@ -2799,7 +2799,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 			mark := payload.Ids.Count
 			payload20 := TableWriter{Measuring: true, Ids: payload.Ids}
 			pairs := uint64(0)
-			for i := 0; i < int(int(HullMax)); i++ {
+			for i := range int(int(HullMax)) {
 				{
 					mark := payload20.Ids.Count
 					id, named := Hull(i + 1).TableEnumId()
@@ -2851,7 +2851,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(HullMax)); i++ {
+				for i := range int(int(HullMax)) {
 					{
 						mark := payload.Ids.Count
 						id, named := Hull(i + 1).TableEnumId()
@@ -2904,7 +2904,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 					mark := w.Ids.Count
 					payload23 := TableWriter{Measuring: true, Ids: w.Ids}
 					pairs := uint64(0)
-					for i := 0; i < int(int(HullMax)); i++ {
+					for i := range int(int(HullMax)) {
 						{
 							mark := payload23.Ids.Count
 							id, named := Hull(i + 1).TableEnumId()
@@ -2956,7 +2956,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(HullMax)); i++ {
+						for i := range int(int(HullMax)) {
 							{
 								mark := w.Ids.Count
 								id, named := Hull(i + 1).TableEnumId()
@@ -3095,7 +3095,7 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 						r.Report.KindMismatch++
 						break
 					}
-					for i := uint64(0); i < count; i++ {
+					for range count {
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -3151,7 +3151,7 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 						r.Report.KindMismatch++
 						break
 					}
-					for i := uint64(0); i < count; i++ {
+					for range count {
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -3345,7 +3345,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 			mark := payload.Ids.Count
 			payload1 := TableRetainWriter{Measuring: true, Ids: payload.Ids}
 			pairs := uint64(0)
-			for i := 0; i < int(int(TeamMax)); i++ {
+			for i := range int(int(TeamMax)) {
 				{
 					mark := payload1.Ids.Count
 					id, named := Team(i + 1).TableEnumId()
@@ -3407,7 +3407,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(TeamMax)); i++ {
+				for i := range int(int(TeamMax)) {
 					{
 						mark := payload.Ids.Count
 						id, named := Team(i + 1).TableEnumId()
@@ -3470,7 +3470,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 					mark := w.Ids.Count
 					payload8 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 					pairs := uint64(0)
-					for i := 0; i < int(int(TeamMax)); i++ {
+					for i := range int(int(TeamMax)) {
 						{
 							mark := payload8.Ids.Count
 							id, named := Team(i + 1).TableEnumId()
@@ -3532,7 +3532,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(TeamMax)); i++ {
+						for i := range int(int(TeamMax)) {
 							{
 								mark := w.Ids.Count
 								id, named := Team(i + 1).TableEnumId()
@@ -3594,7 +3594,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 			mark := payload.Ids.Count
 			payload15 := TableRetainWriter{Measuring: true, Ids: payload.Ids}
 			pairs := uint64(0)
-			for i := 0; i < int(int(HullMax)); i++ {
+			for i := range int(int(HullMax)) {
 				{
 					mark := payload15.Ids.Count
 					id, named := Hull(i + 1).TableEnumId()
@@ -3656,7 +3656,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(HullMax)); i++ {
+				for i := range int(int(HullMax)) {
 					{
 						mark := payload.Ids.Count
 						id, named := Hull(i + 1).TableEnumId()
@@ -3719,7 +3719,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 					mark := w.Ids.Count
 					payload22 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 					pairs := uint64(0)
-					for i := 0; i < int(int(HullMax)); i++ {
+					for i := range int(int(HullMax)) {
 						{
 							mark := payload22.Ids.Count
 							id, named := Hull(i + 1).TableEnumId()
@@ -3781,7 +3781,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(HullMax)); i++ {
+						for i := range int(int(HullMax)) {
 							{
 								mark := w.Ids.Count
 								id, named := Hull(i + 1).TableEnumId()
@@ -3960,7 +3960,7 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 						r.Report.KindMismatch++
 						break
 					}
-					for i := uint64(0); i < count; i++ {
+					for range count {
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -4020,7 +4020,7 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 						r.Report.KindMismatch++
 						break
 					}
-					for i := uint64(0); i < count; i++ {
+					for range count {
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -4135,7 +4135,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 			mark := payload.Ids.Count
 			payload26 := TableWriter{Measuring: true, Ids: payload.Ids}
 			pairs := uint64(0)
-			for i := 0; i < int(int(TeamMax)); i++ {
+			for i := range int(int(TeamMax)) {
 				{
 					mark := payload26.Ids.Count
 					id, named := Team(i + 1).TableEnumId()
@@ -4189,7 +4189,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(TeamMax)); i++ {
+				for i := range int(int(TeamMax)) {
 					{
 						mark := payload.Ids.Count
 						id, named := Team(i + 1).TableEnumId()
@@ -4244,7 +4244,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 					mark := w.Ids.Count
 					payload29 := TableWriter{Measuring: true, Ids: w.Ids}
 					pairs := uint64(0)
-					for i := 0; i < int(int(TeamMax)); i++ {
+					for i := range int(int(TeamMax)) {
 						{
 							mark := payload29.Ids.Count
 							id, named := Team(i + 1).TableEnumId()
@@ -4298,7 +4298,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(TeamMax)); i++ {
+						for i := range int(int(TeamMax)) {
 							{
 								mark := w.Ids.Count
 								id, named := Team(i + 1).TableEnumId()
@@ -4416,7 +4416,7 @@ func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 							break
 						}
 					}
-					for i := uint64(0); i < count; i++ {
+					for range count {
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -4592,7 +4592,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 			mark := payload.Ids.Count
 			payload1 := TableRetainWriter{Measuring: true, Ids: payload.Ids}
 			pairs := uint64(0)
-			for i := 0; i < int(int(TeamMax)); i++ {
+			for i := range int(int(TeamMax)) {
 				{
 					mark := payload1.Ids.Count
 					id, named := Team(i + 1).TableEnumId()
@@ -4646,7 +4646,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(TeamMax)); i++ {
+				for i := range int(int(TeamMax)) {
 					{
 						mark := payload.Ids.Count
 						id, named := Team(i + 1).TableEnumId()
@@ -4701,7 +4701,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 					mark := w.Ids.Count
 					payload4 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 					pairs := uint64(0)
-					for i := 0; i < int(int(TeamMax)); i++ {
+					for i := range int(int(TeamMax)) {
 						{
 							mark := payload4.Ids.Count
 							id, named := Team(i + 1).TableEnumId()
@@ -4755,7 +4755,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(TeamMax)); i++ {
+						for i := range int(int(TeamMax)) {
 							{
 								mark := w.Ids.Count
 								id, named := Team(i + 1).TableEnumId()
@@ -4863,7 +4863,7 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 							break
 						}
 					}
-					for i := uint64(0); i < count; i++ {
+					for range count {
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -5024,7 +5024,7 @@ func HullConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	for i := uint32(0); i < 3; i++ {
+	for i := range uint32(3) {
 		es := src + 8 + i*14
 		ed := dst + uint32(unsafe.Offsetof(HullConfig{}.Turrets)) + i*uint32(unsafe.Sizeof(TurretConfig{}))
 		n += TurretConfigFixedLeaves(out[n:], links[n:], es, ed)
@@ -5035,14 +5035,14 @@ func HullConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 func HullConfigFixedWriteBody(b []byte, value *HullConfig) {
 	tableFixedPutF32(b[0:], value.Health)
 	tableFixedPutF32(b[4:], value.Mass)
-	for i := int64(0); i < 3; i++ {
+	for i := range int64(3) {
 		TurretConfigFixedWriteBody(b[8:][i*14:], &value.Turrets[i])
 	}
 }
 
 func ScoreBoardFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
-	for i := uint32(0); i < 3; i++ {
+	for i := range uint32(3) {
 		es := src + 0 + i*4
 		ed := dst + uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)) + i*uint32(unsafe.Sizeof(int32(0)))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
@@ -5052,19 +5052,19 @@ func ScoreBoardFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 }
 
 func ScoreBoardFixedWriteBody(b []byte, value *ScoreBoardRow) {
-	for i := int64(0); i < 3; i++ {
+	for i := range int64(3) {
 		tableFixedPut32(b[0:][i*4:], uint32(value.PerTeam[i]))
 	}
 }
 
 func KeyedConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
 	n := 0
-	for i := uint32(0); i < 3; i++ {
+	for i := range uint32(3) {
 		es := src + 0 + i*24
 		ed := dst + uint32(unsafe.Offsetof(KeyedConfig{}.Teams)) + i*uint32(unsafe.Sizeof(TeamConfig{}))
 		n += TeamConfigFixedLeaves(out[n:], links[n:], es, ed)
 	}
-	for i := uint32(0); i < 3; i++ {
+	for i := range uint32(3) {
 		es := src + 72 + i*50
 		ed := dst + uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)) + i*uint32(unsafe.Sizeof(HullConfig{}))
 		n += HullConfigFixedLeaves(out[n:], links[n:], es, ed)
@@ -5078,10 +5078,10 @@ func KeyedConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink
 }
 
 func KeyedConfigFixedWriteBody(b []byte, value *KeyedConfig) {
-	for i := int64(0); i < 3; i++ {
+	for i := range int64(3) {
 		TeamConfigFixedWriteBody(b[0:][i*24:], &value.Teams[i])
 	}
-	for i := int64(0); i < 3; i++ {
+	for i := range int64(3) {
 		HullConfigFixedWriteBody(b[72:][i*50:], &value.Hulls[i])
 	}
 	ScoreBoardFixedWriteBody(b[222:], &value.Scores)
@@ -5102,7 +5102,7 @@ func TeamConfigFixedClampBody(value *TeamConfig, clamped *int32) {
 // ScoreBoard's read-side bounds.
 func ScoreBoardFixedClampBody(value *ScoreBoardRow, clamped *int32) {
 	_, _ = value, clamped
-	for i := int64(0); i < 3; i++ {
+	for i := range 3 {
 		if value.PerTeam[i] < 0 {
 			value.PerTeam[i] = 0
 			(*clamped)++
@@ -5116,7 +5116,7 @@ func ScoreBoardFixedClampBody(value *ScoreBoardRow, clamped *int32) {
 // KeyedConfig's read-side bounds.
 func KeyedConfigFixedClampBody(value *KeyedConfig, clamped *int32) {
 	_, _ = value, clamped
-	for i := int64(0); i < 3; i++ {
+	for i := range 3 {
 		TeamConfigFixedClampBody(&value.Teams[i], clamped)
 	}
 	ScoreBoardFixedClampBody(&value.Scores, clamped)
@@ -5181,7 +5181,7 @@ func TeamConfigFixedCheckBodyExact(value *TeamConfig) bool {
 // ScoreBoard's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func ScoreBoardFixedCheckBody(value *ScoreBoardRow) bool {
 	_ = value
-	for i := int64(0); i < 3; i++ {
+	for i := range 3 {
 		if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 			return false
 		}
@@ -5192,7 +5192,7 @@ func ScoreBoardFixedCheckBody(value *ScoreBoardRow) bool {
 // KeyedConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func KeyedConfigFixedCheckBody(value *KeyedConfig) bool {
 	_ = value
-	for i := int64(0); i < 3; i++ {
+	for i := range 3 {
 		if !TeamConfigFixedCheckBody(&value.Teams[i]) {
 			return false
 		}
@@ -5351,7 +5351,7 @@ func TeamConfigFixedLoad(values []TeamConfig, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := range n {
 			TeamConfigReset(&values[k])
 		}
 		return -1
@@ -5456,7 +5456,7 @@ func TeamConfigFixedLoadTolerant(values []TeamConfig, data []byte, plan []TableF
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
+	for k := range n {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -5605,7 +5605,7 @@ func GunnerConfigFixedLoad(values []GunnerConfig, data []byte, plan []TableFixed
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := range n {
 			GunnerConfigReset(&values[k])
 		}
 		return -1
@@ -5710,7 +5710,7 @@ func GunnerConfigFixedLoadTolerant(values []GunnerConfig, data []byte, plan []Ta
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
+	for k := range n {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -5868,7 +5868,7 @@ func TurretConfigFixedLoad(values []TurretConfig, data []byte, plan []TableFixed
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := range n {
 			TurretConfigReset(&values[k])
 		}
 		return -1
@@ -5973,7 +5973,7 @@ func TurretConfigFixedLoadTolerant(values []TurretConfig, data []byte, plan []Ta
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
+	for k := range n {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -6157,7 +6157,7 @@ func HullConfigFixedLoad(values []HullConfig, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := range n {
 			HullConfigReset(&values[k])
 		}
 		return -1
@@ -6262,7 +6262,7 @@ func HullConfigFixedLoadTolerant(values []HullConfig, data []byte, plan []TableF
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
+	for k := range n {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -6530,7 +6530,7 @@ func KeyedConfigFixedLoad(values []KeyedConfig, data []byte, plan []TableFixedEn
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := range n {
 			KeyedConfigReset(&values[k])
 		}
 		return -1
@@ -6635,7 +6635,7 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
+	for k := range n {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]

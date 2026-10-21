@@ -150,7 +150,7 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 			// the container pack places each node's containers in the region
 			// first, then the clear walks their elements there (a nil arena)
 			source = tableSourceReplace(source, ";if !tableRegionEdges(p,e.info,nil,func(slot *TableRef,f *TableFieldInfo) bool {", ";tableRegionClearAbsent(p,e.info);if !tableRegionEdges(p,e.info,nil,func(slot *TableRef,f *TableFieldInfo) bool {", 1)
-			reset = tableSourceReplace(reset, "p:=unsafe.Add(base,f.Offset)\n", "p:=unsafe.Add(base,f.Offset)\n  if f.List||f.Map {h:=(*tableContainer)(p);if h.Count<=0{continue};cursor:=tableMapCursor(h,f,nil);for j:=int32(0);j<h.Count;j++ {elem:=cursor.Next();if elem==nil{break};tableRegionClearAbsentValue(elem,f)};cursor.Release();continue}\n", 1)
+			reset = tableSourceReplace(reset, "p:=unsafe.Add(base,f.Offset)\n", "p:=unsafe.Add(base,f.Offset)\n  if f.List||f.Map {h:=(*tableContainer)(p);if h.Count<=0{continue};cursor:=tableMapCursor(h,f,nil);for range h.Count {elem:=cursor.Next();if elem==nil{break};tableRegionClearAbsentValue(elem,f)};cursor.Release();continue}\n", 1)
 		} else {
 			source = tableSourceReplace(source, ";if !tableRegionEdges(p,e.info,func(slot *TableRef,f *TableFieldInfo) bool {", ";tableRegionClearAbsent(p,e.info);if !tableRegionEdges(p,e.info,func(slot *TableRef,f *TableFieldInfo) bool {", 1)
 		}
@@ -168,13 +168,13 @@ const tableRegionClearAbsentSource = `func tableRegionClearAbsent(base unsafe.Po
  for i:=range info.Fields {f:=&info.Fields[i];if !tableJsonGuardHolds(base,info,f.Guard){continue};p:=unsafe.Add(base,f.Offset)
   if f.Optional && !*(*bool)(unsafe.Add(base,f.PresentOffset)) {if !f.IsArray&&!f.List&&!f.Map {if f.Kind==13&&f.Table!=nil {f.Table().Reset(p)} else if f.Kind==15 {clear(unsafe.Slice((*byte)(p),f.ElemSize))}};continue}
   if f.List||f.Map {continue}
-  count:=int32(1);if f.IsArray {count=tableRegionCount(base,f);if count<0 || count>f.ArrayBound{continue}};for j:=int32(0);j<count;j++ {tableRegionClearAbsentValue(unsafe.Add(p,uintptr(j)*uintptr(f.ElemSize)),f)}
+  count:=int32(1);if f.IsArray {count=tableRegionCount(base,f);if count<0 || count>f.ArrayBound{continue}};for j := range count {tableRegionClearAbsentValue(unsafe.Add(p,uintptr(j)*uintptr(f.ElemSize)),f)}
  }
 }
 func tableRegionClearAbsentValue(p unsafe.Pointer,f *TableFieldInfo){
  if f.Pointer {return}
  if f.Kind==13 && f.Table!=nil {tableRegionClearAbsent(p,f.Table());return}
- if f.Kind==15 && f.Arms!=nil {arms:=f.Arms();tag:=tableJsonGetRaw(unsafe.Add(p,arms.TagOffset),arms.TagSize);if tag==0 || tag>=uint64(len(arms.Arms)){return};arm:=&arms.Arms[tag];if arm.Void{return};af:=&arm.Field;at:=unsafe.Add(p,af.Offset);count:=int32(1);if af.IsArray {count=tableRegionCount(p,af);if count<0 || count>af.ArrayBound{return}};for j:=int32(0);j<count;j++ {tableRegionClearAbsentValue(unsafe.Add(at,uintptr(j)*uintptr(af.ElemSize)),af)}}
+ if f.Kind==15 && f.Arms!=nil {arms:=f.Arms();tag:=tableJsonGetRaw(unsafe.Add(p,arms.TagOffset),arms.TagSize);if tag==0 || tag>=uint64(len(arms.Arms)){return};arm:=&arms.Arms[tag];if arm.Void{return};af:=&arm.Field;at:=unsafe.Add(p,af.Offset);count:=int32(1);if af.IsArray {count=tableRegionCount(p,af);if count<0 || count>af.ArrayBound{return}};for j := range count {tableRegionClearAbsentValue(unsafe.Add(at,uintptr(j)*uintptr(af.ElemSize)),af)}}
 }
 `
 
@@ -214,7 +214,7 @@ func (g *tableGen) emitRegionMember(st *ir.Struct) {
 	g.pf("func %sLoadBuilder(b *%sBuilder,wire []byte,report *TableReport) bool {read:=report;if read==nil{read=new(TableReport)}else{*read=TableReport{}};ok:=%sLoadBuilderTolerant(b,wire,read);return ok&&read.Err()==nil}\n", n, n, n)
 	// ReadStrict is §6.5's STRICT read: one call, its own builder, one typed reason.
 	g.pf("// %sReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, its own builder, one typed reason.\n", n)
-	g.pf("func %sReadStrict(wire []byte)(*%s,error){var b %sBuilder;size:=%sLoadMeasure(wire);if size<0{size=0};if !b.initSized(size){return nil,TableRefuseAllocationFailed};var report TableReport;ok:=%sLoadBuilderTolerant(&b,wire,&report);if err:=report.Err();err!=nil||!ok{b.Shutdown();if err==nil{err=TableRefuseWireDamaged};return nil,err};if !b.Lock(){b.Shutdown();return nil,TableRefuseAllocationFailed};return b.AsConst(),nil}\n", n, typ, n, n, n)
+	g.pf("func %sReadStrict(wire []byte)(*%s,error){var b %sBuilder;size:=%sLoadMeasure(wire);size=max(size,0);if !b.initSized(size){return nil,TableRefuseAllocationFailed};var report TableReport;ok:=%sLoadBuilderTolerant(&b,wire,&report);if err:=report.Err();err!=nil||!ok{b.Shutdown();if err==nil{err=TableRefuseWireDamaged};return nil,err};if !b.Lock(){b.Shutdown();return nil,TableRefuseAllocationFailed};return b.AsConst(),nil}\n", n, typ, n, n, n)
 	g.pf("type %sBuilder struct { Arena TableArena; Main TableWorker; root TableRef; region,allocation []byte }\n", n)
 	g.pf("func (b *%sBuilder) Init(allocator ...TableAllocator) bool { if b.region!=nil||!b.Arena.Init(allocator...){return false};b.Main=TableWorker{Arena:&b.Arena};p,ref:=b.Main.Alloc(int64(unsafe.Sizeof(%s{})));b.root=ref;if p==nil{b.Arena.Shutdown();b.root=0;return false};%sReset((*%s)(p));return true }\n", n, typ, n, typ)
 	g.pf("func (b *%sBuilder) initSized(first int64, allocator ...TableAllocator) bool { if b.region!=nil||!b.Arena.initSized(first, allocator...){return false};b.Main=TableWorker{Arena:&b.Arena};p,ref:=b.Main.Alloc(int64(unsafe.Sizeof(%s{})));b.root=ref;if p==nil{b.Arena.Shutdown();b.root=0;return false};%sReset((*%s)(p));return true }\n", n, typ, n, typ)
@@ -251,7 +251,7 @@ func (a *TableArena) Init(allocator ...TableAllocator) bool {if a==nil||a.initia
 // initSized is Init with segment 0 sized to the input. A strict read's arena
 // then costs its input rather than a whole megabyte. Nothing ever moves
 // (docs/SPEC-TABLES.md §6.4, "Building on many threads").
-func (a *TableArena) initSized(first int64, allocator ...TableAllocator) bool {if !a.Init(allocator...){return false};if first<=0{return true};first=(first+tableArenaSlabBytes-1)& -tableArenaSlabBytes;if first<tableArenaSlabBytes{first=tableArenaSlabBytes};if first>=tableArenaSegmentBytes{return true};a.first=first;a.next.Store(uint64(tableRegionAlign));return true}
+func (a *TableArena) initSized(first int64, allocator ...TableAllocator) bool {if !a.Init(allocator...){return false};if first<=0{return true};first=(first+tableArenaSlabBytes-1)& -tableArenaSlabBytes;first=max(first,tableArenaSlabBytes);if first>=tableArenaSegmentBytes{return true};a.first=first;a.next.Store(uint64(tableRegionAlign));return true}
 func (a *TableArena) Shutdown() {for i:=range a.segments{if s:=a.segments[i].Swap(nil);s!=nil {if s.owned{a.Allocator.free(s.data)};*s=tableArenaSegment{}}};a.initialized=false;a.next.Store(0)}
 func (a *TableArena) At(ref TableRef) unsafe.Pointer { if ref<=0 || ref>=tableArenaSegmentBytes*tableArenaSegments {return nil};s:=a.segments[ref/tableArenaSegmentBytes].Load();if s==nil{return nil};return unsafe.Pointer(&s.data[ref%tableArenaSegmentBytes]) }
 func (a *TableArena) grab(bytes int64) (int64,int64) {
@@ -278,7 +278,7 @@ type TableNumbering struct { shared bool; reason TableRefuseReason; arena *Table
 func (n *TableNumbering) Release() {n.allocator.free(n.memory);n.allocator.free(n.indexMemory);n.memory=nil;n.indexMemory=nil;n.entries=nil;n.buckets=nil;n.root=nil}
 func (n *TableNumbering) find(p unsafe.Pointer)(int,bool) {if p==nil||len(n.buckets)==0{return 0,false};h:=uint64(uintptr(p));h^=h>>33;h*=0xff51afd7ed558ccd;h^=h>>33;mask:=uint64(len(n.buckets)-1);for slot:=h&mask;;slot=(slot+1)&mask {v:=n.buckets[slot];if v==0{return int(slot),false};if n.entries[v-1].node==p{return int(v-1),true}}}
 func (n *TableNumbering) grow()bool {
- capacity:=cap(n.entries)*2;if capacity<16{capacity=16};if capacity>int(^uint(0)>>1)/int(unsafe.Sizeof(tableNodeEntry{})){return false}
+ capacity:=cap(n.entries)*2;capacity=max(capacity,16);if capacity>int(^uint(0)>>1)/int(unsafe.Sizeof(tableNodeEntry{})){return false}
  memory:=n.allocator.alloc(int64(capacity)*int64(unsafe.Sizeof(tableNodeEntry{})));if memory==nil{return false}
  index:=n.allocator.alloc(int64(capacity)*16);if index==nil{n.allocator.free(memory);return false};clear(index)
  entries:=unsafe.Slice((*tableNodeEntry)(unsafe.Pointer(&memory[0])),capacity);copy(entries,n.entries);length:=len(n.entries)
@@ -297,12 +297,12 @@ func (n *TableNumbering) visit(p unsafe.Pointer,t *TableTypeInfo,id uint64)bool 
 }
 func tableNumber(root unsafe.Pointer,info *TableTypeInfo,a *TableArena,allocator ...TableAllocator)(TableNumbering,bool){n:=TableNumbering{arena:a,root:root};if a!=nil{n.allocator=a.Allocator};if len(allocator)>0{n.allocator=allocator[0]};if root==nil||!n.visit(root,info,info.Id){if n.reason==TableRefuseOk{n.reason=TableRefuseInvalidValue};n.Release();return n,false};return n,true}
 func tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,visit func(*TableRef,*TableFieldInfo) bool) bool {
- for i:=range info.Fields {f:=&info.Fields[i];if !tableJsonGuardHolds(base,info,f.Guard) || f.Optional && !*(*bool)(unsafe.Add(base,f.PresentOffset)){continue};p:=unsafe.Add(base,f.Offset);count:=int32(1);if f.IsArray {count=tableRegionCount(base,f);if count<0 || count>f.ArrayBound{return false}};for j:=int32(0);j<count;j++ {at:=unsafe.Add(p,uintptr(j)*uintptr(f.ElemSize));if !tableRegionValueEdges(at,f,visit){return false}} };return true
+ for i:=range info.Fields {f:=&info.Fields[i];if !tableJsonGuardHolds(base,info,f.Guard) || f.Optional && !*(*bool)(unsafe.Add(base,f.PresentOffset)){continue};p:=unsafe.Add(base,f.Offset);count:=int32(1);if f.IsArray {count=tableRegionCount(base,f);if count<0 || count>f.ArrayBound{return false}};for j := range count {at:=unsafe.Add(p,uintptr(j)*uintptr(f.ElemSize));if !tableRegionValueEdges(at,f,visit){return false}} };return true
 }
 func tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,visit func(*TableRef,*TableFieldInfo) bool) bool {
  if f.Pointer {return visit((*TableRef)(p),f)}
  if f.Kind==13 && f.Table!=nil {return tableRegionEdges(p,f.Table(),visit)}
- if f.Kind==15 && f.Arms!=nil {arms:=f.Arms();tag:=tableJsonGetRaw(unsafe.Add(p,arms.TagOffset),arms.TagSize);if tag>=uint64(len(arms.Arms)){return false};if tag!=0 {arm:=&arms.Arms[tag];if arm.Void{return true};af:=&arm.Field;at:=unsafe.Add(p,af.Offset);count:=int32(1);if af.IsArray {count=tableRegionCount(p,af);if count<0 || count>af.ArrayBound{return false}};for j:=int32(0);j<count;j++ {if !tableRegionValueEdges(unsafe.Add(at,uintptr(j)*uintptr(af.ElemSize)),af,visit){return false}}} };return true
+ if f.Kind==15 && f.Arms!=nil {arms:=f.Arms();tag:=tableJsonGetRaw(unsafe.Add(p,arms.TagOffset),arms.TagSize);if tag>=uint64(len(arms.Arms)){return false};if tag!=0 {arm:=&arms.Arms[tag];if arm.Void{return true};af:=&arm.Field;at:=unsafe.Add(p,af.Offset);count:=int32(1);if af.IsArray {count=tableRegionCount(p,af);if count<0 || count>af.ArrayBound{return false}};for j := range count {if !tableRegionValueEdges(unsafe.Add(at,uintptr(j)*uintptr(af.ElemSize)),af,visit){return false}}} };return true
 }
 func tableNodeWrite(w *TableWriter,e *tableNodeEntry) bool { if e.info!=nil{return e.info.SaveBody(w,e.node)};length:=uint64(*(*uint32)(e.node));w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node,8)),int(length)));return !w.Overflow }
 func tableNodeMeasure(w *TableWriter,ids *TableIds,e *tableNodeEntry)int64 {*w=TableWriter{Measuring:true,Ids:ids};if !tableNodeWrite(w,e){return -1};return w.Offset}

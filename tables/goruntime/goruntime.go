@@ -16,6 +16,7 @@ package goruntime
 import (
 	"encoding/binary"
 	"math"
+	"slices"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -690,7 +691,7 @@ func (p TableFixedEntry) chainHolds(plan []TableFixedEntry, src []byte) bool {
 	if p.GuardCount <= 2 {
 		return true
 	}
-	for j := uint32(0); j < p.GuardCount; j++ {
+	for j := range p.GuardCount {
 		l := p.guardLink(plan, j)
 		if TableFixedTagAt(src, l.Guard, l.ArgW) != l.Arg {
 			return false
@@ -830,7 +831,7 @@ func TableFixedArgWidth(w uint8) uint32 {
 func TableFixedTagAt(src []byte, at uint32, w uint8) uint64 {
 	n := TableFixedArgWidth(w)
 	var v uint64
-	for k := uint32(0); k < n; k++ {
+	for k := range n {
 		v |= uint64(src[at+k]) << (8 * k)
 	}
 	return v
@@ -849,7 +850,7 @@ func TableFixedTagAt(src []byte, at uint32, w uint8) uint64 {
 // has its split at the END, not at zero.
 func TableFixedPartition(plan []TableFixedEntry, n int32) int32 {
 	split := int32(0)
-	for i := int32(0); i < n; i++ {
+	for i := range n {
 		if plan[i].Guard == TableFixedNoGuard {
 			e := plan[i]
 			copy(plan[split+1:i+1], plan[split:i])
@@ -874,7 +875,7 @@ func TableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, u
 	written := emit(scratch, links, 0, 0)
 	var pool []TableFixedGuardLink
 	index := map[string]uint32{}
-	for i := 0; i < written; i++ {
+	for i := range written {
 		chain := links[i]
 		k := len(chain)
 		if k == 0 {
@@ -913,14 +914,14 @@ func TableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, u
 	if len(pool) > 0 {
 		base := uintptr(n * entryBytes)
 		copy(unsafe.Slice((*TableFixedGuardLink)(unsafe.Add(unsafe.Pointer(&raw[0]), base)), len(pool)), pool)
-		for i := 0; i < written; i++ {
+		for i := range written {
 			if raw[i].GuardCount != 0 {
 				raw[i].GuardIndex = uint32(base) + raw[i].GuardIndex*uint32(linkBytes)
 			}
 		}
 	}
 	out := 0
-	for i := 0; i < written; i++ {
+	for i := range written {
 		if out > 0 && raw[out-1].Op == raw[i].Op && TableFixedRuns(raw[i].Op) &&
 			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
 			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
@@ -997,13 +998,13 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 	// index; entries below it run WITHOUT a guard test and only the guarded
 	// half from split on tests one.
 	split := count
-	for i := int32(0); i < count; i++ {
+	for i := range count {
 		if plan[i].Guard != TableFixedNoGuard {
 			split = i
 			break
 		}
 	}
-	for i := int32(0); i < count; i++ {
+	for i := range count {
 		p := plan[i]
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2). Below the
 		// split there is no guard to test (§4.4).
@@ -1030,14 +1031,14 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// then decline to fill it — a value that is neither None nor an
 			// arm. Aux is the reader's own arm count.
 			var tag uint64
-			for k := uint32(0); k < p.Size; k++ {
+			for k := range p.Size {
 				tag |= uint64(src[p.Src+k]) << (8 * k)
 			}
 			if tag > uint64(p.Aux) {
 				tag = 0
 				report.Unknown++
 			}
-			for k := uint32(0); k < p.Size; k++ {
+			for k := range p.Size {
 				dst[p.Dst+k] = byte(tag >> (8 * k))
 			}
 		case TableFixedBool:
@@ -1046,7 +1047,7 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// 0 on arm64, so a hostile 2 reads true on one and false on the
 			// other. The wire says nonzero is true (mas-bandwidth/schema docs/SPEC-TABLES.md §3);
 			// normalise here (byte != 0 -> 1) and never copy.
-			for k := uint32(0); k < p.Size; k++ {
+			for k := range p.Size {
 				v := byte(0)
 				if src[p.Src+k] != 0 {
 					v = 1
@@ -1102,7 +1103,7 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 		case TableFixedWiden:
 			var raw uint64
-			for i := uint32(0); i < p.Size; i++ {
+			for i := range p.Size {
 				raw |= uint64(src[p.Src+i]) << (8 * i)
 			}
 			if p.Sign != 0 {
@@ -1112,7 +1113,7 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 					raw |= ^((top << 1) - 1)
 				}
 			}
-			for i := uint8(0); i < p.DstSize; i++ {
+			for i := range p.DstSize {
 				dst[p.Dst+uint32(i)] = byte(raw >> (8 * i))
 			}
 			report.Widened++
@@ -1134,7 +1135,7 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			report.Widened++
 		case TableFixedConst:
 			aux := p.Aux
-			for i := uint32(0); i < p.Size; i++ {
+			for i := range p.Size {
 				dst[p.Dst+i] = byte(aux >> (8 * i))
 			}
 			// THE OP MOVES NOTHING (§5.4): the unguarded None const lands None,
@@ -1160,7 +1161,7 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 // entry's DstSize — is why the count lives in the plan-aware pass here and not
 // in the op (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12).
 func TableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, report *TableReport) {
-	for i := int32(0); i < count; i++ {
+	for i := range count {
 		p := plan[i]
 		// THE GUARD AT ITS FULL WIDTH, matching tableFixedRun (§5.2): an entry
 		// whose guard does not match never lands, so it never counts.
@@ -1186,7 +1187,7 @@ func TableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, rep
 		case TableFixedConst:
 			if p.Aux == 0 && p.DstSize != 0 && p.Guard == TableFixedNoGuard {
 				var raw uint64
-				for k := uint32(0); k < p.Size; k++ {
+				for k := range p.Size {
 					raw |= uint64(src[p.Src+k]) << (8 * k)
 				}
 				if raw > uint64(p.DstSize) {
@@ -1213,10 +1214,8 @@ func TableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 		if !utf8.Valid(p[:used]) {
 			return true
 		}
-		for _, c := range p[:used] {
-			if c == 0 {
-				return true
-			}
+		if slices.Contains(p[:used], 0) {
+			return true
 		}
 	case TableFixedTextWide:
 		for i := uint32(0); i < used; i++ {
@@ -1307,7 +1306,7 @@ func TableFixedUnitsIllFormed(units []uint16) bool {
 // one destination byte is written. It walks each entry under its own guards,
 // writes nothing and moves no counter.
 func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
-	for i := int32(0); i < count; i++ {
+	for i := range count {
 		p := plan[i]
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
 		// entry runs only under its own tag, and one that does not run cannot
@@ -1474,7 +1473,7 @@ func TableFixedCheckEntry(c *TableFixedCheck, i, depth int32) int32 {
 	var widest, firstSize, secondSize, firstChildren uint32
 	var firstKind uint8
 	kidsAreVariants := true
-	for k := uint32(0); k < e.Children; k++ {
+	for k := range e.Children {
 		child := at
 		used := TableFixedCheckEntry(c, child, depth+1)
 		if c.why != "" {
@@ -1721,9 +1720,7 @@ func TableFixedLand(cover []byte, off, n uint32) {
 		return
 	}
 	last := off + n
-	if last > end {
-		last = end
-	}
+	last = min(last, end)
 	for i := off; i < last; i++ {
 		cover[i] = 1
 	}
@@ -1737,7 +1734,7 @@ func TableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []Tabl
 		return nil
 	}
 	cover := make([]byte, dstSize)
-	for i := int32(0); i < count; i++ {
+	for i := range count {
 		p := plan[i]
 		if p.Guard != TableFixedNoGuard {
 			continue
@@ -1875,7 +1872,7 @@ func (w *TableBitWriter) Put(value uint64, n int64) {
 			w.Buffer[index+8] = byte(value >> (64 - shift))
 		}
 	} else {
-		for j := int64(0); j < need; j++ {
+		for j := range need {
 			w.Buffer[index+j] = byte(word >> (j * 8))
 		}
 	}
@@ -1915,7 +1912,7 @@ func (r *TableBitReader) Get(n int64) (uint64, bool) {
 			value |= uint64(r.Buffer[at+8]) << (64 - shift)
 		}
 	} else {
-		for j := int64(0); j < need; j++ {
+		for j := range need {
 			value |= uint64(r.Buffer[at+j]) << (8 * j)
 		}
 		value >>= shift
@@ -2070,15 +2067,13 @@ func TableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		}
 		if e.Element.Bits >= 0 || e.Element.Kind == 0 || e.Element.Kind == 32 {
 			width := e.Element.Bits
-			if width < 0 {
-				width = 0
-			}
+			width = max(width, 0)
 			if s.Kind == 16 {
 				width += v.RefBits
 			}
 			return r.Skip(int64(n) * width)
 		}
-		for i := uint64(0); i < n; i++ {
+		for range n {
 			if s.Kind == 16 && !r.Skip(v.RefBits) {
 				return false
 			}
@@ -2172,4 +2167,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x8ea0c18fc647c28e
+const Version uint64 = 0xe8122cedd2bc1d3d

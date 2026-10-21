@@ -641,7 +641,7 @@ func (w *tableCookWriter) put(at int64, value uint64, width uint32) {
 	if w.buffer == nil {
 		return
 	}
-	for i := uint32(0); i < width; i++ {
+	for i := range width {
 		shift := i
 		if w.order == TableByteOrderBig {
 			shift = width - 1 - i
@@ -694,7 +694,7 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 	}
 	if !f.Pointer && (f.TypeName == "string" || f.TypeName == "bytes" || f.TypeName == "wstring") {
 		width := f.CookElemSize
-		for i := int32(0); i < used; i++ {
+		for i := range used {
 			v := tableJsonGetRaw(unsafe.Add(p, int64(i)*int64(width)), width)
 			w.put(dest+int64(i)*int64(width), v, width)
 		}

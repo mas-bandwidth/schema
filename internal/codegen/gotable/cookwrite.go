@@ -104,7 +104,7 @@ const goCookWriteRuntime = `
 type TableByteOrder uint8
 const (TableByteOrderLittle TableByteOrder=1;TableByteOrderBig TableByteOrder=2)
 type tableCookWriter struct { buffer []byte; order TableByteOrder; at int64 }
-func(w *tableCookWriter) put(at int64,value uint64,width uint32){if w.buffer==nil{return};for i:=uint32(0);i<width;i++ {shift:=i;if w.order==TableByteOrderBig{shift=width-1-i};w.buffer[at+int64(i)]=byte(value>>(shift*8))}}
+func(w *tableCookWriter) put(at int64,value uint64,width uint32){if w.buffer==nil{return};for i := range width {shift:=i;if w.order==TableByteOrderBig{shift=width-1-i};w.buffer[at+int64(i)]=byte(value>>(shift*8))}}
 func(w *tableCookWriter) header(data,nodes,align int64){w.put(0,0x4b4f4f434d484353,8);w.put(8,tableCookBuildVersion,8);w.put(16,uint64(w.order),8);w.put(24,uint64(data),8);w.put(32,uint64(nodes)*16,8);w.put(40,uint64(align),8)}
 func(w *tableCookWriter) record(p unsafe.Pointer,t *TableTypeInfo,at int64,live bool)bool {
  for i:=range t.Fields {f:=&t.Fields[i];rides:=live&&tableJsonGuardHolds(p,t,f.Guard);if f.Optional {rides=rides&&*(*bool)(unsafe.Add(p,f.PresentOffset))};if !w.field(p,f,at,rides){return false}};return true
@@ -116,7 +116,7 @@ func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,li
  count:=int32(1);used:=int32(1)
  if f.Counted {used=*(*int32)(unsafe.Add(base,f.CountOffset));if used<0||!f.UnboundedContainer&&used>f.ArrayBound{return false};w.put(at+int64(f.CookCountOffset),uint64(used),4)}
  if !f.Pointer&&(f.TypeName=="string"||f.TypeName=="bytes"||f.TypeName=="wstring") {
-  width:=f.CookElemSize;for i:=int32(0);i<used;i++{v:=tableJsonGetRaw(unsafe.Add(p,int64(i)*int64(width)),width);w.put(dest+int64(i)*int64(width),v,width)};return true
+  width:=f.CookElemSize;for i := range used {v:=tableJsonGetRaw(unsafe.Add(p,int64(i)*int64(width)),width);w.put(dest+int64(i)*int64(width),v,width)};return true
  }
  if f.IsArray {count=f.ArrayBound;if !f.Counted{used=count}}
  for i:=int32(0);i<count;i++ {if !w.value(unsafe.Add(p,int64(i)*int64(f.ElemSize)),f,dest+int64(i)*int64(f.CookElemSize),live&&i<used){return false}};return true
@@ -150,6 +150,6 @@ const goCookContainerWriteRuntime = `
 func(w *tableCookWriter) container(p unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool {
  h:=(*tableContainer)(p);if h.Count<0||!live&&h.Count!=0{return false};if h.Count==0{return true};if w.numbering==nil{return false}
  alignment:=int64(f.ElemAlign);w.at=(w.at+alignment-1)& -alignment;start:=w.at;w.at+=int64(h.Count)*int64(f.CookElemSize);if w.at<start{return false};w.put(at,uint64(start-at),8);w.put(at+8,uint64(h.Count),4)
- cursor:=tableMapCursor(h,f,w.numbering.arena);defer cursor.Release();for i:=int32(0);i<h.Count;i++ {elem:=cursor.Next();if elem==nil||!w.value(elem,f,start+int64(i)*int64(f.CookElemSize),true){return false}};return true
+ cursor:=tableMapCursor(h,f,w.numbering.arena);defer cursor.Release();for i := range h.Count {elem:=cursor.Next();if elem==nil||!w.value(elem,f,start+int64(i)*int64(f.CookElemSize),true){return false}};return true
 }
 `

@@ -89,7 +89,7 @@ func t07GoC14(t *testing.T) {
 	if clamp == "" {
 		t.Fatal("RootFixedClampBody is not emitted")
 	}
-	if !strings.Contains(clamp, "for i := int64(0); i < int64(value.MarksCount); i++ {") {
+	if !strings.Contains(clamp, "for i := range int64(value.MarksCount) {") {
 		t.Error("C14: the bounds pass must walk a counted array's LIVE count (§4.6)")
 	}
 	if strings.Contains(clamp, "i < 4") {

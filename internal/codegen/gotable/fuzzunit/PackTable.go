@@ -772,7 +772,7 @@ func ShipEntrySaveBodyFields(w *TableWriter, value *ShipEntry) bool {
 				mark := w.Ids.Count
 				payload3 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.HardpointsCount); i++ {
+				for i := range int(value.HardpointsCount) {
 					if value.Hardpoints[i] < 0 || value.Hardpoints[i] > 8 {
 						return false
 					}
@@ -794,7 +794,7 @@ func ShipEntrySaveBodyFields(w *TableWriter, value *ShipEntry) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.HardpointsCount); i++ {
+					for i := range int(value.HardpointsCount) {
 						if value.Hardpoints[i] < 0 || value.Hardpoints[i] > 8 {
 							return false
 						}
@@ -981,7 +981,7 @@ func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
 					}
 					previous := value.HardpointsCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -1245,7 +1245,7 @@ func ShipEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *ShipEntry) bool 
 				mark := w.Ids.Count
 				payload1 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.HardpointsCount); i++ {
+				for i := range int(value.HardpointsCount) {
 					if value.Hardpoints[i] < 0 || value.Hardpoints[i] > 8 {
 						return false
 					}
@@ -1267,7 +1267,7 @@ func ShipEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *ShipEntry) bool 
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.HardpointsCount); i++ {
+					for i := range int(value.HardpointsCount) {
 						if value.Hardpoints[i] < 0 || value.Hardpoints[i] > 8 {
 							return false
 						}
@@ -1485,7 +1485,7 @@ func ShipEntryLoadBodyRetain(r *TableRetainReader, value *ShipEntry) bool {
 					}
 					previous := value.HardpointsCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -1687,7 +1687,7 @@ func GlobalSettingsSaveBodyFields(w *TableWriter, value *GlobalSettings) bool {
 				mark := w.Ids.Count
 				payload9 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(3); i++ {
+				for i := range int(3) {
 					payload9.Put32(math.Float32bits(value.SpawnDelays[i]))
 					pairs++
 				}
@@ -1706,7 +1706,7 @@ func GlobalSettingsSaveBodyFields(w *TableWriter, value *GlobalSettings) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(3); i++ {
+					for i := range int(3) {
 						w.Put32(math.Float32bits(value.SpawnDelays[i]))
 					}
 				}
@@ -1890,7 +1890,7 @@ func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
 						keep = 3
 						r.Report.Clamped++
 					}
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -2140,7 +2140,7 @@ func GlobalSettingsSaveBodyFieldsRetain(w *TableRetainWriter, value *GlobalSetti
 				mark := w.Ids.Count
 				payload1 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(3); i++ {
+				for i := range int(3) {
 					payload1.Put32(math.Float32bits(value.SpawnDelays[i]))
 					pairs++
 				}
@@ -2159,7 +2159,7 @@ func GlobalSettingsSaveBodyFieldsRetain(w *TableRetainWriter, value *GlobalSetti
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(3); i++ {
+					for i := range int(3) {
 						w.Put32(math.Float32bits(value.SpawnDelays[i]))
 					}
 				}
@@ -2337,7 +2337,7 @@ func GlobalSettingsLoadBodyRetain(r *TableRetainReader, value *GlobalSettings) b
 						keep = 3
 						r.Report.Clamped++
 					}
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						if !sub.Has(tableKindBytes(elemKind)) {
 							r.Report.Malformed = true
 							break
@@ -2458,7 +2458,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 			mark := payload.Ids.Count
 			payload14 := TableWriter{Measuring: true, Ids: payload.Ids}
 			pairs := uint64(0)
-			for i := 0; i < int(int(ShipTypeMax)); i++ {
+			for i := range int(int(ShipTypeMax)) {
 				{
 					mark := payload14.Ids.Count
 					id, named := ShipType(i + 1).TableEnumId()
@@ -2510,7 +2510,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(ShipTypeMax)); i++ {
+				for i := range int(int(ShipTypeMax)) {
 					{
 						mark := payload.Ids.Count
 						id, named := ShipType(i + 1).TableEnumId()
@@ -2563,7 +2563,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 					mark := w.Ids.Count
 					payload17 := TableWriter{Measuring: true, Ids: w.Ids}
 					pairs := uint64(0)
-					for i := 0; i < int(int(ShipTypeMax)); i++ {
+					for i := range int(int(ShipTypeMax)) {
 						{
 							mark := payload17.Ids.Count
 							id, named := ShipType(i + 1).TableEnumId()
@@ -2615,7 +2615,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(ShipTypeMax)); i++ {
+						for i := range int(int(ShipTypeMax)) {
 							{
 								mark := w.Ids.Count
 								id, named := ShipType(i + 1).TableEnumId()
@@ -2667,7 +2667,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 			mark := payload.Ids.Count
 			payload20 := TableWriter{Measuring: true, Ids: payload.Ids}
 			pairs := uint64(0)
-			for i := 0; i < int(int(DifficultyMax)); i++ {
+			for i := range int(int(DifficultyMax)) {
 				{
 					mark := payload20.Ids.Count
 					id, named := Difficulty(i + 1).TableEnumId()
@@ -2721,7 +2721,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(DifficultyMax)); i++ {
+				for i := range int(int(DifficultyMax)) {
 					{
 						mark := payload.Ids.Count
 						id, named := Difficulty(i + 1).TableEnumId()
@@ -2776,7 +2776,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 					mark := w.Ids.Count
 					payload23 := TableWriter{Measuring: true, Ids: w.Ids}
 					pairs := uint64(0)
-					for i := 0; i < int(int(DifficultyMax)); i++ {
+					for i := range int(int(DifficultyMax)) {
 						{
 							mark := payload23.Ids.Count
 							id, named := Difficulty(i + 1).TableEnumId()
@@ -2830,7 +2830,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(DifficultyMax)); i++ {
+						for i := range int(int(DifficultyMax)) {
 							{
 								mark := w.Ids.Count
 								id, named := Difficulty(i + 1).TableEnumId()
@@ -2890,7 +2890,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 				mark := w.Ids.Count
 				payload26 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.ReservesCount); i++ {
+				for i := range int(value.ReservesCount) {
 					{
 						mark := payload26.Ids.Count
 						n := ShipEntryMeasureBody(&value.Reserves[i], payload26.Ids)
@@ -2926,7 +2926,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.ReservesCount); i++ {
+					for i := range int(value.ReservesCount) {
 						{
 							mark := w.Ids.Count
 							n := ShipEntryMeasureBody(&value.Reserves[i], w.Ids)
@@ -3067,7 +3067,7 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 						r.Report.KindMismatch++
 						break
 					}
-					for i := uint64(0); i < count; i++ {
+					for range count {
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -3127,7 +3127,7 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 							break
 						}
 					}
-					for i := uint64(0); i < count; i++ {
+					for range count {
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -3202,7 +3202,7 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 					}
 					previous := value.ReservesCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
@@ -3442,7 +3442,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 			mark := payload.Ids.Count
 			payload3 := TableRetainWriter{Measuring: true, Ids: payload.Ids}
 			pairs := uint64(0)
-			for i := 0; i < int(int(ShipTypeMax)); i++ {
+			for i := range int(int(ShipTypeMax)) {
 				{
 					mark := payload3.Ids.Count
 					id, named := ShipType(i + 1).TableEnumId()
@@ -3504,7 +3504,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(ShipTypeMax)); i++ {
+				for i := range int(int(ShipTypeMax)) {
 					{
 						mark := payload.Ids.Count
 						id, named := ShipType(i + 1).TableEnumId()
@@ -3567,7 +3567,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 					mark := w.Ids.Count
 					payload10 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 					pairs := uint64(0)
-					for i := 0; i < int(int(ShipTypeMax)); i++ {
+					for i := range int(int(ShipTypeMax)) {
 						{
 							mark := payload10.Ids.Count
 							id, named := ShipType(i + 1).TableEnumId()
@@ -3629,7 +3629,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(ShipTypeMax)); i++ {
+						for i := range int(int(ShipTypeMax)) {
 							{
 								mark := w.Ids.Count
 								id, named := ShipType(i + 1).TableEnumId()
@@ -3691,7 +3691,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 			mark := payload.Ids.Count
 			payload17 := TableRetainWriter{Measuring: true, Ids: payload.Ids}
 			pairs := uint64(0)
-			for i := 0; i < int(int(DifficultyMax)); i++ {
+			for i := range int(int(DifficultyMax)) {
 				{
 					mark := payload17.Ids.Count
 					id, named := Difficulty(i + 1).TableEnumId()
@@ -3745,7 +3745,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 				if !payload.putLebPair(pairs) {
 					payload.putLebWide(pairs)
 				}
-				for i := 0; i < int(int(DifficultyMax)); i++ {
+				for i := range int(int(DifficultyMax)) {
 					{
 						mark := payload.Ids.Count
 						id, named := Difficulty(i + 1).TableEnumId()
@@ -3800,7 +3800,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 					mark := w.Ids.Count
 					payload20 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 					pairs := uint64(0)
-					for i := 0; i < int(int(DifficultyMax)); i++ {
+					for i := range int(int(DifficultyMax)) {
 						{
 							mark := payload20.Ids.Count
 							id, named := Difficulty(i + 1).TableEnumId()
@@ -3854,7 +3854,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 						if !w.putLebPair(pairs) {
 							w.putLebWide(pairs)
 						}
-						for i := 0; i < int(int(DifficultyMax)); i++ {
+						for i := range int(int(DifficultyMax)) {
 							{
 								mark := w.Ids.Count
 								id, named := Difficulty(i + 1).TableEnumId()
@@ -3914,7 +3914,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 				mark := w.Ids.Count
 				payload23 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := 0; i < int(value.ReservesCount); i++ {
+				for i := range int(value.ReservesCount) {
 					{
 						payload25 := payload23.Ids.Path
 						payload23.Ids.Path = payload25.step(4, uint32(i))
@@ -3955,7 +3955,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := 0; i < int(value.ReservesCount); i++ {
+					for i := range int(value.ReservesCount) {
 						{
 							payload27 := w.Ids.Path
 							w.Ids.Path = payload27.step(4, uint32(i))
@@ -4092,7 +4092,7 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 						r.Report.KindMismatch++
 						break
 					}
-					for i := uint64(0); i < count; i++ {
+					for range count {
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -4156,7 +4156,7 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 							break
 						}
 					}
-					for i := uint64(0); i < count; i++ {
+					for range count {
 						keyRef, ok := sub.Leb()
 						if !ok {
 							r.Report.Malformed = true
@@ -4236,7 +4236,7 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 					}
 					previous := value.ReservesCount
 					decoded := int32(0)
-					for i := uint64(0); i < keep; i++ {
+					for i := range keep {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
@@ -4322,7 +4322,7 @@ func ShipEntryFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, 
 	}
 	out[n] = TableFixedEntry{Src: src + 44, Dst: dst + uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCount} // hardpoints count
 	n++
-	for i := uint32(0); i < 4; i++ {
+	for i := range uint32(4) {
 		es := src + 48 + i*4
 		ed := dst + uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)) + i*uint32(unsafe.Sizeof(int32(0)))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
@@ -4346,7 +4346,7 @@ func ShipEntryFixedWriteBody(b []byte, value *ShipEntry) {
 	tableFixedPut32(b[44:], uint32(value.HardpointsCount))
 	{
 		livei := min(max(int64(value.HardpointsCount), 0), 4)
-		for i := int64(0); i < livei; i++ {
+		for i := range livei {
 			tableFixedPut32(b[48:][i*4:], uint32(value.Hardpoints[i]))
 		}
 	}
@@ -4378,7 +4378,7 @@ func GlobalSettingsFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardL
 	}
 	out[n] = TableFixedEntry{Src: src + 5, Dst: dst + uint32(unsafe.Offsetof(GlobalSettings{}.BuildNoteLength)), Size: 48, Aux: dst + uint32(unsafe.Offsetof(GlobalSettings{}.BuildNote)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 1} // build_note
 	n++
-	for i := uint32(0); i < 3; i++ {
+	for i := range uint32(3) {
 		es := src + 57 + i*4
 		ed := dst + uint32(unsafe.Offsetof(GlobalSettings{}.SpawnDelays)) + i*uint32(unsafe.Sizeof(float32(0)))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
@@ -4392,7 +4392,7 @@ func GlobalSettingsFixedWriteBody(b []byte, value *GlobalSettings) {
 	tableFixedPut8(b[4:], uint8(value.Difficulty))
 	tableFixedPut32(b[5:], uint32(value.BuildNoteLength))
 	copy(b[5:][4:], value.BuildNote[:min(uint32(value.BuildNoteLength), 48)])
-	for i := int64(0); i < 3; i++ {
+	for i := range int64(3) {
 		tableFixedPutF32(b[57:][i*4:], value.SpawnDelays[i])
 	}
 }
@@ -4410,12 +4410,12 @@ func PackConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 		ed := dst + uint32(unsafe.Offsetof(PackConfig{}.Global))
 		n += GlobalSettingsFixedLeaves(out[n:], links[n:], es, ed)
 	}
-	for i := uint32(0); i < 3; i++ {
+	for i := range uint32(3) {
 		es := src + 73 + i*98
 		ed := dst + uint32(unsafe.Offsetof(PackConfig{}.Ships)) + i*uint32(unsafe.Sizeof(ShipEntry{}))
 		n += ShipEntryFixedLeaves(out[n:], links[n:], es, ed)
 	}
-	for i := uint32(0); i < 3; i++ {
+	for i := range uint32(3) {
 		es := src + 367 + i*4
 		ed := dst + uint32(unsafe.Offsetof(PackConfig{}.Thresholds)) + i*uint32(unsafe.Sizeof(int32(0)))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
@@ -4423,7 +4423,7 @@ func PackConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 	}
 	out[n] = TableFixedEntry{Src: src + 379, Dst: dst + uint32(unsafe.Offsetof(PackConfig{}.ReservesCount)), Size: 3, Guard: tableFixedNoGuard, Op: tableFixedCount} // reserves count
 	n++
-	for i := uint32(0); i < 3; i++ {
+	for i := range uint32(3) {
 		es := src + 383 + i*98
 		ed := dst + uint32(unsafe.Offsetof(PackConfig{}.Reserves)) + i*uint32(unsafe.Sizeof(ShipEntry{}))
 		n += ShipEntryFixedLeaves(out[n:], links[n:], es, ed)
@@ -4434,16 +4434,16 @@ func PackConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 func PackConfigFixedWriteBody(b []byte, value *PackConfig) {
 	tableFixedPut32(b[0:], uint32(value.Version))
 	GlobalSettingsFixedWriteBody(b[4:], &value.Global)
-	for i := int64(0); i < 3; i++ {
+	for i := range int64(3) {
 		ShipEntryFixedWriteBody(b[73:][i*98:], &value.Ships[i])
 	}
-	for i := int64(0); i < 3; i++ {
+	for i := range int64(3) {
 		tableFixedPut32(b[367:][i*4:], uint32(value.Thresholds[i]))
 	}
 	tableFixedPut32(b[379:], uint32(value.ReservesCount))
 	{
 		livei := min(max(int64(value.ReservesCount), 0), 3)
-		for i := int64(0); i < livei; i++ {
+		for i := range livei {
 			clear(b[383:][i*98 : i*98+98])
 			ShipEntryFixedWriteBody(b[383:][i*98:], &value.Reserves[i])
 		}
@@ -4459,7 +4459,7 @@ func GunnerSettingsFixedClampBody(value *GunnerSettings, clamped *int32) {
 // ShipEntry's read-side bounds.
 func ShipEntryFixedClampBody(value *ShipEntry, clamped *int32) {
 	_, _ = value, clamped
-	for i := int64(0); i < int64(value.HardpointsCount); i++ {
+	for i := range int64(value.HardpointsCount) {
 		if value.Hardpoints[i] < 0 {
 			value.Hardpoints[i] = 0
 			(*clamped)++
@@ -4493,10 +4493,10 @@ func GlobalSettingsFixedClampBody(value *GlobalSettings, clamped *int32) {
 func PackConfigFixedClampBody(value *PackConfig, clamped *int32) {
 	_, _ = value, clamped
 	GlobalSettingsFixedClampBody(&value.Global, clamped)
-	for i := int64(0); i < 3; i++ {
+	for i := range 3 {
 		ShipEntryFixedClampBody(&value.Ships[i], clamped)
 	}
-	for i := int64(0); i < 3; i++ {
+	for i := range 3 {
 		if value.Thresholds[i] < 0 {
 			value.Thresholds[i] = 0
 			(*clamped)++
@@ -4505,7 +4505,7 @@ func PackConfigFixedClampBody(value *PackConfig, clamped *int32) {
 			(*clamped)++
 		}
 	}
-	for i := int64(0); i < int64(value.ReservesCount); i++ {
+	for i := range int64(value.ReservesCount) {
 		ShipEntryFixedClampBody(&value.Reserves[i], clamped)
 	}
 }
@@ -4704,12 +4704,12 @@ func PackConfigFixedCheckBody(value *PackConfig) bool {
 	if !GlobalSettingsFixedCheckBody(&value.Global) {
 		return false
 	}
-	for i := int64(0); i < 3; i++ {
+	for i := range 3 {
 		if !ShipEntryFixedCheckBody(&value.Ships[i]) {
 			return false
 		}
 	}
-	for i := int64(0); i < 3; i++ {
+	for i := range 3 {
 		if value.Thresholds[i] < 0 || value.Thresholds[i] > 1000 {
 			return false
 		}
@@ -4876,7 +4876,7 @@ func GunnerSettingsFixedLoad(values []GunnerSettings, data []byte, plan []TableF
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := range n {
 			GunnerSettingsReset(&values[k])
 		}
 		return -1
@@ -4981,7 +4981,7 @@ func GunnerSettingsFixedLoadTolerant(values []GunnerSettings, data []byte, plan 
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
+	for k := range n {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -5173,7 +5173,7 @@ func ShipEntryFixedLoad(values []ShipEntry, data []byte, plan []TableFixedEntry,
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := range n {
 			ShipEntryReset(&values[k])
 		}
 		return -1
@@ -5278,7 +5278,7 @@ func ShipEntryFixedLoadTolerant(values []ShipEntry, data []byte, plan []TableFix
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
+	for k := range n {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -5464,7 +5464,7 @@ func GlobalSettingsFixedLoad(values []GlobalSettings, data []byte, plan []TableF
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := range n {
 			GlobalSettingsReset(&values[k])
 		}
 		return -1
@@ -5569,7 +5569,7 @@ func GlobalSettingsFixedLoadTolerant(values []GlobalSettings, data []byte, plan 
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
+	for k := range n {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]
@@ -5869,7 +5869,7 @@ func PackConfigFixedLoad(values []PackConfig, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := range n {
 			PackConfigReset(&values[k])
 		}
 		return -1
@@ -5974,7 +5974,7 @@ func PackConfigFixedLoadTolerant(values []PackConfig, data []byte, plan []TableF
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
+	for k := range n {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]

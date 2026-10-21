@@ -121,11 +121,11 @@ const goMessageRuntime = `
 func (w *TableBitWriter) Put(value uint64,n int64) {
  if n<0||n>64 {w.Overflow=true;return};if n==0{return};at:=w.Bits;w.Bits+=n;if w.Bits<at {w.Overflow=true;return};if w.Measuring{return};if (w.Bits+7)/8>int64(len(w.Buffer)){w.Overflow=true;return}
  if n<64 {value&=(uint64(1)<<n)-1};index:=at>>3;shift:=at&7;head:=uint64(0);if shift!=0 {head=uint64(w.Buffer[index])&((uint64(1)<<shift)-1)};word:=head|value<<shift;need:=(shift+n+7)/8
- if need>=8 {binary.LittleEndian.PutUint64(w.Buffer[index:],word);if need>8 {w.Buffer[index+8]=byte(value>>(64-shift))}}else{for j:=int64(0);j<need;j++ {w.Buffer[index+j]=byte(word>>(j*8))}}
+ if need>=8 {binary.LittleEndian.PutUint64(w.Buffer[index:],word);if need>8 {w.Buffer[index+8]=byte(value>>(64-shift))}}else{for j := range need {w.Buffer[index+j]=byte(word>>(j*8))}}
 }
 func (w *TableBitWriter) Align(){w.Put(0,(-w.Bits)&7)}
 func (w *TableBitWriter) Raw(data []byte){w.Align();if w.Measuring {w.Bits+=int64(len(data))*8;return};at:=w.Bits/8;w.Bits+=int64(len(data))*8;if at>int64(len(w.Buffer))-int64(len(data)){w.Overflow=true;return};copy(w.Buffer[at:],data)}
-func (r *TableBitReader) Get(n int64)(uint64,bool) {if n<0||n>64||r.Offset<0||n>int64(len(r.Buffer))*8-r.Offset{return 0,false};if n==0{return 0,true};at:=r.Offset>>3;shift:=r.Offset&7;need:=(shift+n+7)/8;var value uint64;if need>=8 {value=binary.LittleEndian.Uint64(r.Buffer[at:])>>shift;if need>8 {value|=uint64(r.Buffer[at+8])<<(64-shift)}}else{for j:=int64(0);j<need;j++ {value|=uint64(r.Buffer[at+j])<<(8*j)};value>>=shift};if n<64 {value&=(uint64(1)<<n)-1};r.Offset+=n;return value,true}
+func (r *TableBitReader) Get(n int64)(uint64,bool) {if n<0||n>64||r.Offset<0||n>int64(len(r.Buffer))*8-r.Offset{return 0,false};if n==0{return 0,true};at:=r.Offset>>3;shift:=r.Offset&7;need:=(shift+n+7)/8;var value uint64;if need>=8 {value=binary.LittleEndian.Uint64(r.Buffer[at:])>>shift;if need>8 {value|=uint64(r.Buffer[at+8])<<(64-shift)}}else{for j := range need {value|=uint64(r.Buffer[at+j])<<(8*j)};value>>=shift};if n<64 {value&=(uint64(1)<<n)-1};r.Offset+=n;return value,true}
 func (r *TableBitReader) Skip(n int64)bool {if n<0||n>int64(len(r.Buffer))*8-r.Offset{return false};r.Offset+=n;return true}
 func (r *TableBitReader) Align()bool {v,ok:=r.Get((-r.Offset)&7);return ok&&v==0}
 func tableMessageBits(n uint64)int64 {var count int64;for n!=0 {count++;n>>=1};return count}
@@ -149,8 +149,8 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  };if versionCount!=1||wordsCount!=1{report.Malformed=true;return false}
  if v.Strict&&v.BuildVersion!=BuildVersion {report.BuildVersionPeer=v.BuildVersion;report.BuildVersionOwn=BuildVersion;return tableMessageRefuse(report,"build_version_mismatch")}
  src:=TableReader{Buffer:words,Report:report};count:=int64(0);nodeSeen:=false
- for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){return tableMessageRefuse(report,"vocabulary_too_large")};began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok||e.Id==0xfffffffffffffffd||e.Id==0xfffffffffffffffe||e.Id==0xffffffffffffffff&&nodeSeen{report.Malformed=true;return false};if e.Id==0xffffffffffffffff{nodeSeen=true};for i:=int64(0);i<count;i++ {o:=v.Entries[i].Shape;if o.Max-o.Min==src.Offset-began&&o.Min>=0&&o.Max<=int64(len(words)) {same:=true;for j:=o.Min;j<o.Max;j++ {if words[j]!=words[began+j-o.Min]{same=false;break}};if same{report.Malformed=true;return false}}};e.Shape.Min=began;e.Shape.Max=src.Offset;v.Entries[count]=e;count++}
- src.Offset=0;for i:=int64(0);i<count;i++ {e,ok:=tableMessageEntryRead(&src);if !ok{report.Malformed=true;return false};v.Entries[i]=e}
+ for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){return tableMessageRefuse(report,"vocabulary_too_large")};began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok||e.Id==0xfffffffffffffffd||e.Id==0xfffffffffffffffe||e.Id==0xffffffffffffffff&&nodeSeen{report.Malformed=true;return false};if e.Id==0xffffffffffffffff{nodeSeen=true};for i := range count {o:=v.Entries[i].Shape;if o.Max-o.Min==src.Offset-began&&o.Min>=0&&o.Max<=int64(len(words)) {same:=true;for j:=o.Min;j<o.Max;j++ {if words[j]!=words[began+j-o.Min]{same=false;break}};if same{report.Malformed=true;return false}}};e.Shape.Min=began;e.Shape.Max=src.Offset;v.Entries[count]=e;count++}
+ src.Offset=0;for i := range count {e,ok:=tableMessageEntryRead(&src);if !ok{report.Malformed=true;return false};v.Entries[i]=e}
  v.Count=count;v.RefBits=tableMessageBits(uint64(count));if v.RefBits==0{v.RefBits=1};v.Announced=true;return true
 }
 // THE SHAPE IS THE DECLARED ONE, the bytes the announcement spells, and never
@@ -192,7 +192,7 @@ func tableMessageSkip(r *TableBitReader,v *TableVocabulary,indexBits int64,e Tab
  case 15:ref,ok:=r.Get(v.RefBits);if !ok||ref==0{return ok};arm,ok:=v.Entry(ref);return ok&&arm.Id<0xfffffffffffffffd&&arm.Shape.Kind!=0&&tableMessageSkip(r,v,indexBits,arm,depth+1)
  case 12,33:n,ok:=tableMessageCount(r,s);if !ok{return false};width:=int64(16);if s.Kind==12 {width=8;if !r.Align(){return false}};return r.Skip(int64(n)*width)
  case 31:if !r.Align(){return false};n,ok:=r.Get(32);return ok&&r.Skip(int64(n)*8)
- case 14,16:n,ok:=tableMessageCount(r,s);if !ok{return false};if s.Kind==14&&e.Element.Kind==6&&!r.Align(){return false};if e.Element.Bits>=0||e.Element.Kind==0||e.Element.Kind==32 {width:=e.Element.Bits;if width<0{width=0};if s.Kind==16 {width+=v.RefBits};return r.Skip(int64(n)*width)};for i:=uint64(0);i<n;i++ {if s.Kind==16&&!r.Skip(v.RefBits){return false};before:=r.Offset;if !tableMessageSkip(r,v,indexBits,TableMessageEntry{Shape:e.Element},depth+1)||r.Offset==before{return false}};return true
+ case 14,16:n,ok:=tableMessageCount(r,s);if !ok{return false};if s.Kind==14&&e.Element.Kind==6&&!r.Align(){return false};if e.Element.Bits>=0||e.Element.Kind==0||e.Element.Kind==32 {width:=e.Element.Bits;width=max(width,0);if s.Kind==16 {width+=v.RefBits};return r.Skip(int64(n)*width)};for range n {if s.Kind==16&&!r.Skip(v.RefBits){return false};before:=r.Offset;if !tableMessageSkip(r,v,indexBits,TableMessageEntry{Shape:e.Element},depth+1)||r.Offset==before{return false}};return true
  };return s.Bits>=0&&r.Skip(s.Bits)
 }
 // Framing scans follow announced shapes; typed body reads diagnose reserved ids.

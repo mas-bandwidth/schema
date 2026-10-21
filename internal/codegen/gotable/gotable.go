@@ -784,13 +784,10 @@ func (g *tableGen) assemble() ([]byte, error) {
 	fmt.Fprintf(&h, "package %s\n\n", g.unit.Package)
 	var std []string
 	if g.home {
-		std = append(std, `"encoding/binary"`, `"hash/crc32"`, `"unicode/utf8"`)
+		std = append(std, `"encoding/binary"`, `"hash/crc32"`, `"unicode/utf8"`, `"slices"`)
 	}
 	if g.home && g.regional {
 		std = append(std, `"sync"`, `"sync/atomic"`)
-		if unitHasContainers(g.unit) {
-			std = append(std, `"slices"`)
-		}
 	}
 	if g.needsMath {
 		std = append(std, `"math"`)

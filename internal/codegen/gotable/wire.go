@@ -303,7 +303,7 @@ func (w *TableWriter) Header(ref uint64, kind uint8) {
 }
 
 func (w *TableWriter) Trailer() {
-	for i := 0; i < w.Ids.Count; i++ { w.Put64(w.Ids.Values[i]) }
+	for i := range w.Ids.Count { w.Put64(w.Ids.Values[i]) }
 	w.Put64(uint64(w.Ids.Count))
 }
 
@@ -356,7 +356,7 @@ func (r *TableReader) lebPair() (uint64, bool) {
 func (r *TableReader) lebWide() (uint64, bool) {
 	at := r.Offset
 	var v uint64
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if !r.Has(1) { break }
 		b := r.Get8()
 		if i == 9 && b > 1 { break }
@@ -459,7 +459,7 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 		if !pairwise {
 			var seen [512]uint64
 			var used [512]uint8
-			for i := uint64(0); i < n; i++ {
+			for i := range n {
 				id := binary.LittleEndian.Uint64(r.Ids[i*8:])
 				hash := id
 				hash ^= hash >> 33

@@ -223,7 +223,7 @@ func WideBlobSaveMessageBody(w *TableMessageWriter, value *WideBlob) bool {
 			}
 			w.Put(uint64(value.PayloadLength)-0, 17)
 			w.Align()
-			for i := 0; i < int(value.PayloadLength); i++ {
+			for i := range int(value.PayloadLength) {
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Payload[i]), uint64(0))
 			}
 		}
@@ -238,7 +238,7 @@ func WideBlobSaveMessageBody(w *TableMessageWriter, value *WideBlob) bool {
 				return false
 			}
 			w.Put(uint64(value.SamplesCount)-0, 17)
-			for i := 0; i < int(value.SamplesCount); i++ {
+			for i := range int(value.SamplesCount) {
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 0, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Samples[i]), uint64(0))
 			}
 		}
@@ -486,7 +486,7 @@ func WideBlobLoadMessages(values []WideBlob, vocabulary *TableVocabulary, data [
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			WideBlobReset(&values[i])
 		}
 		return 0, false
@@ -506,7 +506,7 @@ func WideBlobLoadMessagesTolerant(values []WideBlob, vocabulary *TableVocabulary
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !WideBlobLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}

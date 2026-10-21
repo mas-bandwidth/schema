@@ -329,7 +329,7 @@ func t03GoR32(t *testing.T) {
 	at := strings.Index(load, "if pick < LineageFixedFloor {")
 	known := strings.Index(load, "known := &LineageFixedKnown[pick]")
 	bytes := strings.Index(load, "layout[i] != known.Layout[i]")
-	records := strings.Index(load, "for k := int64(0); k < n; k++")
+	records := strings.Index(load, "for k := range n {")
 	if at < 0 || known < 0 || bytes < 0 || records < 0 {
 		t.Fatalf("R32: the load's shape moved (%d, %d, %d, %d)", at, known, bytes, records)
 	}
@@ -404,7 +404,7 @@ func t03GoR15(t *testing.T) {
 	text, _ := t03GoRetire(t, 0)
 	load := t03GoLoad(t, text, "Lineage")
 	miss := strings.Index(load, `return tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)`)
-	records := strings.Index(load, "for k := int64(0); k < n; k++")
+	records := strings.Index(load, "for k := range n {")
 	if miss < 0 || records < 0 {
 		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)
 	}
@@ -690,7 +690,7 @@ func t03GoR29(t *testing.T) {
 	t03GoHas(t, runtime, "v > int32(p.Size)", "R29 the count clamps to the writer's bound")
 	t03GoHas(t, runtime, "uint32(v) > capn", "R29 the text clamps to the writer's span")
 	t03GoHas(t, runtime, "n := theirN", "R29 the count's bound is the writer's")
-	t03GoHas(t, runtime, "if myN < n {", "R29 the count's bound is held to the reader's storage")
+	t03GoHas(t, runtime, "n = min(n, myN)", "R29 the count's bound is held to the reader's storage")
 	t03GoHas(t, runtime, "Size: n,", "R29 the count entry carries the writer's bound")
 	// THE BAND EDGE IS ZERO-EXTENDED, NOT SIGN-EXTENDED: a u16 top widened
 	// into a u32 has the WRITER's kind 7, which is unsigned, so no sign bit is

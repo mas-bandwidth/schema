@@ -634,7 +634,7 @@ func (g *tableGen) emitFixedTextLeaf(st *ir.Struct, f *ir.Field, base, units int
 
 func (g *tableGen) emitFixedElementLoop(st *ir.Struct, f *ir.Field, base, count int64) {
 	elem := fixedElementBytes(f)
-	g.pf("\tfor i := uint32(0); i < %d; i++ {\n", count)
+	g.pf("\tfor i := range uint32(%d) {\n", count)
 	g.pf("\t\tes := src + %d + i*%d\n", base, elem)
 	g.pf("\t\ted := dst + %s + i*%s\n", g.offGo(st.Name, member(f)), g.sizeofGo(f))
 	g.emitFixedElementLeavesAt(f, "es", "ed", 2)
@@ -762,7 +762,7 @@ func (g *tableGen) emitFixedArmTextLeaf(ind, src, dst, valueDst, unionName, arm 
 func (g *tableGen) emitFixedArmLoop(f *ir.Field, src, dst, count string, tabs int) {
 	ind := strings.Repeat("\t", tabs)
 	elem := fixedElementBytes(f)
-	g.pf("%sfor i := uint32(0); i < %s; i++ {\n", ind, count)
+	g.pf("%sfor i := range uint32(%s) {\n", ind, count)
 	g.pf("%s\tes := %s + i*%d\n", ind, src, elem)
 	g.pf("%s\ted := %s + i*%s\n", ind, dst, g.sizeofGo(f))
 	g.emitFixedElementLeavesAt(f, "es", "ed", tabs+2)
@@ -865,7 +865,7 @@ func (g *tableGen) emitFixedWriteLoop(f *ir.Field, dest string, count int64, exp
 	ind := strings.Repeat("\t", tabs)
 	elem := fixedElementBytes(f)
 	loop := fixedLoopVar(depth)
-	g.pf("%sfor %s := int64(0); %s < %d; %s++ {\n", ind, loop, loop, count, loop)
+	g.pf("%sfor %s := range int64(%d) {\n", ind, loop, count)
 	g.emitFixedWriteElement(f, fmt.Sprintf("%s[%s*%d:]", dest, loop, elem), expr+"["+loop+"]", depth+1, tabs+1, defaultMode)
 	g.pf("%s}\n", ind)
 }
@@ -902,7 +902,7 @@ func (g *tableGen) emitFixedWriteLive(f *ir.Field, dest, count, expr string, dep
 	slot := fixedOwnsSlots(f)
 	g.pf("%s{\n", ind)
 	g.pf("%s\t%s := min(max(int64(%s), 0), %d)\n", ind, live, count, f.ArrayBound)
-	g.pf("%s\tfor %s := int64(0); %s < %s; %s++ {\n", ind, loop, loop, live, loop)
+	g.pf("%s\tfor %s := range %s {\n", ind, loop, live)
 	if slot {
 		g.pf("%s\t\tclear(%s[%s*%d : %s*%d+%d])\n", ind, dest, loop, elem, loop, elem, elem)
 	}
@@ -1216,7 +1216,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// every value it had written reset. A supplied report receives THIS read's report.\n")
 	g.pf("func %sFixedLoad(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
 	g.pf("\tread := report\n\tif read == nil {\n\t\tread = new(TableReport)\n\t} else {\n\t\t*read = TableReport{}\n\t}\n\tn := %sFixedLoadTolerant(values, data, plan, read)\n", st.Name)
-	g.pf("\tif n < 0 {\n\t\treturn -1\n\t}\n\tif read.Err() != nil {\n\t\tfor k := int64(0); k < n; k++ {\n\t\t\t%sReset(&values[k])\n\t\t}\n\t\treturn -1\n\t}\n\treturn n\n}\n\n", st.Name)
+	g.pf("\tif n < 0 {\n\t\treturn -1\n\t}\n\tif read.Err() != nil {\n\t\tfor k := range n {\n\t\t\t%sReset(&values[k])\n\t\t}\n\t\treturn -1\n\t}\n\treturn n\n}\n\n", st.Name)
 	g.pf("// %sFixedLoadTolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps\n", st.Name)
 	g.pf("// every recovered record, with the counters counted onto the report passed.\n")
 	g.pf("func %sFixedLoadTolerant(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
@@ -1329,7 +1329,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\t\treturn tableFixedRefuse(report, why)\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
-	g.pf("\tfor k := int64(0); k < n; k++ {\n")
+	g.pf("\tfor k := range n {\n")
 	g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
 	g.pf("\t\tfor i := range holes {\n")
 	g.pf("\t\t\th := holes[i]\n")
@@ -1597,6 +1597,15 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, tabs int, pass
 		if chk && !fixedCheckNeededField(&elem, map[string]bool{}) {
 			return
 		}
+		// An element with nothing to clamp emits no loop at all: an empty
+		// loop over the count is a no-op, and its index would be unused.
+		var body strings.Builder
+		g.into(&body, func() {
+			g.emitFixedClampElement(f, fmt.Sprintf("%s.%s[i]", val, member(f)), tabs+1, pass)
+		})
+		if body.Len() == 0 {
+			return
+		}
 		if down {
 			// THE CHECK WALKS A COUNTED ARRAY DOWN (docs/FIXED-FORM-ALGORITHM.md
 			// §3.1): every live element is checked either way, and ending on
@@ -1604,9 +1613,9 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, tabs int, pass
 			// walks up (measured by TestGoTableWriterSpeedTable).
 			g.pf("%sfor i := %s - 1; i >= 0; i-- {\n", ind, count)
 		} else {
-			g.pf("%sfor i := int64(0); i < %s; i++ {\n", ind, count)
+			g.pf("%sfor i := range %s {\n", ind, count)
 		}
-		g.emitFixedClampElement(f, fmt.Sprintf("%s.%s[i]", val, member(f)), tabs+1, pass)
+		g.raw(body.String())
 		g.pf("%s}\n", ind)
 	}
 	switch {
@@ -1829,4 +1838,14 @@ func (g *tableGen) emitByteArray(b []byte) {
 		}
 		g.pf("%s\n", sb.String())
 	}
+}
+
+// raw writes already-indented text to the current target, as pf would after
+// its own indentation: text captured through into goes back out this way.
+func (g *tableGen) raw(s string) {
+	if g.out != nil {
+		g.out.WriteString(s)
+		return
+	}
+	g.body.WriteString(s)
 }

@@ -1864,7 +1864,7 @@ fixed table Cfg {
 	if strings.Contains(clampBody, "switch value.Effect.Type") {
 		t.Error("a union whose arms declare nothing bounded must not emit a switch with nothing to switch on")
 	}
-	if !strings.Contains(clampBody, "for i := int64(0); i < int64(value.MarksCount); i++") {
+	if !strings.Contains(clampBody, "for i := range int64(value.MarksCount) {") {
 		t.Error("a counted array must clamp LIVE elements, not the declared bound")
 	}
 	if strings.Contains(clampBody, "i < 4") {

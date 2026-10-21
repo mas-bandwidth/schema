@@ -555,14 +555,14 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 	}
 	out[n] = TableFixedEntry{Src: src + 52, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.EntitiesCount)), Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // entities count
 	n++
-	for i := uint32(0); i < 8; i++ {
+	for i := range uint32(8) {
 		es := src + 56 + i*51
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Entities)) + i*uint32(unsafe.Sizeof(MixedEntity{}))
 		n += MixedEntityFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	out[n] = TableFixedEntry{Src: src + 464, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), Size: 80, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
 	n++
-	for i := uint32(0); i < 80; i++ {
+	for i := range uint32(80) {
 		es := src + 468 + i*8
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Stats)) + i*uint32(unsafe.Sizeof(MixedStat{}))
 		n += MixedStatFixedLeaves(out[n:], links[n:], es, ed)
@@ -594,7 +594,7 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 			}
 		}
 	}
-	for i := uint32(0); i < 4; i++ {
+	for i := range uint32(4) {
 		es := src + 1122 + i*1
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Loadout)) + i*uint32(unsafe.Sizeof(uint8(0)))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
@@ -692,7 +692,7 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	tableFixedPut32(b[52:], uint32(value.EntitiesCount))
 	{
 		livei := min(max(int64(value.EntitiesCount), 0), 8)
-		for i := int64(0); i < livei; i++ {
+		for i := range livei {
 			clear(b[56:][i*51 : i*51+51])
 			MixedEntityFixedWriteBody(b[56:][i*51:], &value.Entities[i])
 		}
@@ -701,7 +701,7 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	tableFixedPut32(b[464:], uint32(value.StatsCount))
 	{
 		livei := min(max(int64(value.StatsCount), 0), 80)
-		for i := int64(0); i < livei; i++ {
+		for i := range livei {
 			clear(b[468:][i*8 : i*8+8])
 			MixedStatFixedWriteBody(b[468:][i*8:], &value.Stats[i])
 		}
@@ -716,7 +716,7 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	case MixedEventTypePickup:
 		MixedPickupEventFixedWriteBody(b[1108:][1:], &value.GameEvent.Pickup)
 	}
-	for i := int64(0); i < 4; i++ {
+	for i := range int64(4) {
 		tableFixedPut8(b[1122:][i*1:], uint8(value.Loadout[i]))
 	}
 	tableFixedPut32(b[1126:], uint32(value.PlayerNameLength))
@@ -930,10 +930,10 @@ func BenchMixedFixedClampBody(value *BenchMixed, clamped *int32) {
 		value.ServerTime = 16776960
 		(*clamped)++
 	}
-	for i := int64(0); i < int64(value.EntitiesCount); i++ {
+	for i := range int64(value.EntitiesCount) {
 		MixedEntityFixedClampBody(&value.Entities[i], clamped)
 	}
-	for i := int64(0); i < int64(value.StatsCount); i++ {
+	for i := range int64(value.StatsCount) {
 		MixedStatFixedClampBody(&value.Stats[i], clamped)
 	}
 	if uint32(value.GameEvent.Type) > 3 {
@@ -1686,7 +1686,7 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	if read.Err() != nil {
-		for k := int64(0); k < n; k++ {
+		for k := range n {
 			FixedTableReset(&values[k])
 		}
 		return -1
@@ -1791,7 +1791,7 @@ func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableF
 			return tableFixedRefuse(report, why)
 		}
 	}
-	for k := int64(0); k < n; k++ {
+	for k := range n {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]

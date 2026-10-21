@@ -117,7 +117,7 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 		if f.KeyEnum != "" {
 			loopcount = fmt.Sprint(f.ArrayBound)
 		}
-		g.pf("%sfor i:=0;i<int(%s);i++ {\n", ind, loopcount)
+		g.pf("%sfor i := range int(%s) {\n", ind, loopcount)
 		e := messageElement(f)
 		if f.KeyEnum != "" {
 			cond := g.emitMessageRides(e, expr+"[i]", ind+"\t")
@@ -130,7 +130,7 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 	case f.Type.Kind == ir.TString:
 		g.pf("%sw.Put(uint64(%sLength),%d);w.Raw(%s[:%sLength])\n", ind, expr, ir.TableMessageCountBits(entry.Shape), expr, expr)
 	case f.Type.Kind == ir.TWString:
-		g.pf("%sw.Put(uint64(%sLength),%d);for i:=int32(0);i<%sLength;i++ {w.Put(uint64(%s[i]),16)}\n", ind, expr, ir.TableMessageCountBits(entry.Shape), expr, expr)
+		g.pf("%sw.Put(uint64(%sLength),%d);for i := range int32(%sLength) {w.Put(uint64(%s[i]),16)}\n", ind, expr, ir.TableMessageCountBits(entry.Shape), expr, expr)
 	case isStructRef(f.Type):
 		g.pf("%sif !%sSaveMessageBody(w,&%s){return false}\n", ind, f.Type.Name, expr)
 	case isUnionRef(f.Type):

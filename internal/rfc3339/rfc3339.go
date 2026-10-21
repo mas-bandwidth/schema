@@ -34,7 +34,7 @@ func rfc3339Parse(text []byte) (int64, bool) {
 	}
 
 	year := 0
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		d, ok := rfc3339Digit(text, i)
 		if !ok {
 			return 0, false

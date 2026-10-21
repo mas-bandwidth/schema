@@ -142,7 +142,7 @@ func FixedTableLoadMessages(values []FixedTable, vocabulary *TableVocabulary, da
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			FixedTableReset(&values[i])
 		}
 		return 0, false
@@ -162,7 +162,7 @@ func FixedTableLoadMessagesTolerant(values []FixedTable, vocabulary *TableVocabu
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !FixedTableLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}

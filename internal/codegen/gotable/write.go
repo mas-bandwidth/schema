@@ -379,7 +379,7 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 		if framed {
 			g.emitPutLeb(ind, writer, "uint64("+expr+"Length)*2")
 		}
-		g.pf("%sfor i := int32(0); i < %sLength; i++ { %s.Put16(%s[i]) }\n", ind, expr, writer, expr)
+		g.pf("%sfor i := range int32(%sLength) { %s.Put16(%s[i]) }\n", ind, expr, writer, expr)
 	case isStructRef(f.Type):
 		restore := ""
 		if g.retain && !g.retainArm {
@@ -459,7 +459,7 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 	g.pf("%s{\n", ind)
 	i := ind + "\t"
 	g.pf("%smark := %s.Ids.Count\n%s%s := TableWriter{Measuring:true, Ids:%s.Ids}; pairs := uint64(0)\n", i, writer, i, body, writer)
-	g.pf("%sfor i := 0; i < int(%s); i++ {\n", i, count)
+	g.pf("%sfor i := range int(%s) {\n", i, count)
 	if cacheLengths {
 		g.wireSerial++ // Preserve the skipped element emitter's temporary-name slot.
 		g.pf("%s n := %sMeasureBody(&%s[i],%s.Ids); if n < 0 { return false }; arrayLengths[i] = n\n", i, f.Type.Name, expr, body)
@@ -475,7 +475,7 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 	}
 	g.pf("%sif %s.Measuring { %s.Advance(n) } else {\n%s %s.Ids.Truncate(mark); %s.Put8(%d)\n", i, writer, writer, i, writer, writer, kind)
 	g.emitPutLeb(i+" ", writer, "pairs")
-	g.pf("%s for i := 0; i < int(%s); i++ {\n", i, count)
+	g.pf("%s for i := range int(%s) {\n", i, count)
 	if cacheLengths {
 		g.wireSerial++
 		// The unchanged outer truncation replays the first pass's vocabulary in

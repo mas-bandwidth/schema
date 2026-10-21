@@ -243,7 +243,7 @@ func RootConfigSaveMessageBody(w *TableMessageWriter, value *RootConfig) bool {
 				return false
 			}
 			w.Put(uint64(value.WeaponsCount)-0, 4)
-			for i := 0; i < int(value.WeaponsCount); i++ {
+			for i := range int(value.WeaponsCount) {
 				if !WeaponConfigSaveMessageBody(w, &value.Weapons[i]) {
 					return false
 				}
@@ -260,7 +260,7 @@ func RootConfigSaveMessageBody(w *TableMessageWriter, value *RootConfig) bool {
 				return false
 			}
 			w.Put(uint64(value.ProfilesCount)-0, 3)
-			for i := 0; i < int(value.ProfilesCount); i++ {
+			for i := range int(value.ProfilesCount) {
 				if !ProfileConfigSaveMessageBody(w, &value.Profiles[i]) {
 					return false
 				}
@@ -515,7 +515,7 @@ func RootConfigLoadMessages(values []RootConfig, vocabulary *TableVocabulary, da
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			RootConfigReset(&values[i])
 		}
 		return 0, false
@@ -535,7 +535,7 @@ func RootConfigLoadMessagesTolerant(values []RootConfig, vocabulary *TableVocabu
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !RootConfigLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -1344,7 +1344,7 @@ func WeaponConfigLoadMessages(values []WeaponConfig, vocabulary *TableVocabulary
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			WeaponConfigReset(&values[i])
 		}
 		return 0, false
@@ -1364,7 +1364,7 @@ func WeaponConfigLoadMessagesTolerant(values []WeaponConfig, vocabulary *TableVo
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !WeaponConfigLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -1824,7 +1824,7 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 				return false
 			}
 			w.Put(uint64(value.GradesCount)-0, 3)
-			for i := 0; i < int(value.GradesCount); i++ {
+			for i := range int(value.GradesCount) {
 				if value.Grades[i] == GradeNone {
 					w.Put(0, TableMessageRefBitsHere)
 				} else {
@@ -1852,7 +1852,7 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 		if !allDefault {
 			w.Put(22, TableMessageRefBitsHere)
 			w.Put(uint64(3)-3, 0)
-			for i := 0; i < int(3); i++ {
+			for i := range int(3) {
 				if value.Podium[i] == GradeNone {
 					w.Put(0, TableMessageRefBitsHere)
 				} else {
@@ -1893,7 +1893,7 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 		if true {
 			w.Put(25, TableMessageRefBitsHere)
 			w.Put(uint64(2)-2, 0)
-			for i := 0; i < int(2); i++ {
+			for i := range int(2) {
 				if !WeaponConfigSaveMessageBody(w, &value.Backups[i]) {
 					return false
 				}
@@ -1910,7 +1910,7 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 				return false
 			}
 			w.Put(uint64(value.AttachmentsCount)-0, 4)
-			for i := 0; i < int(value.AttachmentsCount); i++ {
+			for i := range int(value.AttachmentsCount) {
 				if !AttachmentSaveMessageBody(w, &value.Attachments[i]) {
 					return false
 				}
@@ -2359,7 +2359,7 @@ func LoadoutConfigLoadMessages(values []LoadoutConfig, vocabulary *TableVocabula
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			LoadoutConfigReset(&values[i])
 		}
 		return 0, false
@@ -2379,7 +2379,7 @@ func LoadoutConfigLoadMessagesTolerant(values []LoadoutConfig, vocabulary *Table
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !LoadoutConfigLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -2952,7 +2952,7 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 			}
 			w.Put(uint64(value.IconLength)-0, 5)
 			w.Align()
-			for i := 0; i < int(value.IconLength); i++ {
+			for i := range int(value.IconLength) {
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Icon[i]), uint64(0))
 			}
 		}
@@ -3016,7 +3016,7 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 		if !allDefault {
 			w.Put(48, TableMessageRefBitsHere)
 			w.Put(uint64(4)-4, 0)
-			for i := 0; i < int(4); i++ {
+			for i := range int(4) {
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Ratings[i])), uint64(0))
 			}
 		}
@@ -3641,7 +3641,7 @@ func ProfileConfigLoadMessages(values []ProfileConfig, vocabulary *TableVocabula
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			ProfileConfigReset(&values[i])
 		}
 		return 0, false
@@ -3661,7 +3661,7 @@ func ProfileConfigLoadMessagesTolerant(values []ProfileConfig, vocabulary *Table
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !ProfileConfigLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}

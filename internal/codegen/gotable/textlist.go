@@ -137,7 +137,7 @@ func (g *tableGen) textBytesBlock(f *ir.Field, expr, arena, start, fail string) 
 	add += "p." + val + "Length>0{spent+=int64(p." + val + "Length)}"
 	if f.IsList() {
 		elem := containerElementType(g.unit, f)
-		return fmt.Sprintf("{spent:=%s;c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&%s)),int64(unsafe.Sizeof(*new(%s))),%s);for i:=int32(0);i<%s.Count;i++{p:=(*%s)(c.Next());if p==nil{%s};%s};if spent>%d{%s}};",
+		return fmt.Sprintf("{spent:=%s;c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&%s)),int64(unsafe.Sizeof(*new(%s))),%s);for range int32(%s.Count) {p:=(*%s)(c.Next());if p==nil{%s};%s};if spent>%d{%s}};",
 			start, expr, elem, arena, expr, elem, fail, add, f.TextTotal, fail)
 	}
 	return fmt.Sprintf("{spent:=%s;for i:=int32(0);i<%sCount&&i<%d;i++{p:=&%s[i];%s};if spent>%d{%s}};",
@@ -237,7 +237,7 @@ func textListJson(u *ir.Unit, s string, walk bool) string {
 const textTotalJsonSource = `
 // tableJsonTextBytes is the byte total of count text-list elements at p
 // (docs/SPEC-TABLES.md §2.13): an absent ?string(M) element counts zero.
-func tableJsonTextBytes(p unsafe.Pointer,count int32,f *TableFieldInfo)int64{v:=&f.Table().Fields[0];spent:=int64(0);for i:=int32(0);i<count;i++{e:=unsafe.Add(p,uintptr(i)*uintptr(f.ElemSize));if f.TextList==2&&tableJsonGetRaw(unsafe.Add(e,uintptr(v.PresentOffset)),1)==0{continue};if n:=tableJsonCount(e,v);n>0{spent+=int64(n)}};return spent}
+func tableJsonTextBytes(p unsafe.Pointer,count int32,f *TableFieldInfo)int64{v:=&f.Table().Fields[0];spent:=int64(0);for i := range count {e:=unsafe.Add(p,uintptr(i)*uintptr(f.ElemSize));if f.TextList==2&&tableJsonGetRaw(unsafe.Add(e,uintptr(v.PresentOffset)),1)==0{continue};if n:=tableJsonCount(e,v);n>0{spent+=int64(n)}};return spent}
 
 // tableJsonTextTotalKeep adds one read element to the running total and says
 // whether it is kept: the first element past the total is reset, counted

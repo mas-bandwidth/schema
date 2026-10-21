@@ -293,7 +293,7 @@ func ArchiveConfigLoadMessages(values []ArchiveConfig, vocabulary *TableVocabula
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			ArchiveConfigReset(&values[i])
 		}
 		return 0, false
@@ -313,7 +313,7 @@ func ArchiveConfigLoadMessagesTolerant(values []ArchiveConfig, vocabulary *Table
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !ArchiveConfigLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}

@@ -937,7 +937,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 				return false
 			}
 			w.Put(uint64(value.EdgesCount)-0, 3)
-			for i := 0; i < int(value.EdgesCount); i++ {
+			for i := range int(value.EdgesCount) {
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 3, Packing: 1, Bits: 16, Base: [2]uint64{0xffffffffffff8000, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Edges[i]), uint64(0))
 			}
 		}
@@ -1817,7 +1817,7 @@ func RangedSignedLoadMessages(values []RangedSigned, vocabulary *TableVocabulary
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			RangedSignedReset(&values[i])
 		}
 		return 0, false
@@ -1837,7 +1837,7 @@ func RangedSignedLoadMessagesTolerant(values []RangedSigned, vocabulary *TableVo
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !RangedSignedLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -2766,7 +2766,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 				return false
 			}
 			w.Put(uint64(value.CountsCount)-0, 3)
-			for i := 0; i < int(value.CountsCount); i++ {
+			for i := range int(value.CountsCount) {
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 9, Packing: 1, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Counts[i]), uint64(0))
 			}
 		}
@@ -3646,7 +3646,7 @@ func RangedUnsignedLoadMessages(values []RangedUnsigned, vocabulary *TableVocabu
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			RangedUnsignedReset(&values[i])
 		}
 		return 0, false
@@ -3666,7 +3666,7 @@ func RangedUnsignedLoadMessagesTolerant(values []RangedUnsigned, vocabulary *Tab
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !RangedUnsignedLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -4300,7 +4300,7 @@ func RangedWidthsLoadMessages(values []RangedWidths, vocabulary *TableVocabulary
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			RangedWidthsReset(&values[i])
 		}
 		return 0, false
@@ -4320,7 +4320,7 @@ func RangedWidthsLoadMessagesTolerant(values []RangedWidths, vocabulary *TableVo
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !RangedWidthsLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}

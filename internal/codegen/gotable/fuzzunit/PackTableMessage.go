@@ -409,7 +409,7 @@ func GunnerSettingsLoadMessages(values []GunnerSettings, vocabulary *TableVocabu
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			GunnerSettingsReset(&values[i])
 		}
 		return 0, false
@@ -429,7 +429,7 @@ func GunnerSettingsLoadMessagesTolerant(values []GunnerSettings, vocabulary *Tab
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !GunnerSettingsLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -730,7 +730,7 @@ func ShipEntrySaveMessageBody(w *TableMessageWriter, value *ShipEntry) bool {
 				return false
 			}
 			w.Put(uint64(value.HardpointsCount)-0, 3)
-			for i := 0; i < int(value.HardpointsCount); i++ {
+			for i := range int(value.HardpointsCount) {
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 4, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Hardpoints[i]), uint64(0))
 			}
 		}
@@ -1058,7 +1058,7 @@ func ShipEntryLoadMessages(values []ShipEntry, vocabulary *TableVocabulary, data
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			ShipEntryReset(&values[i])
 		}
 		return 0, false
@@ -1078,7 +1078,7 @@ func ShipEntryLoadMessagesTolerant(values []ShipEntry, vocabulary *TableVocabula
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !ShipEntryLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -1366,7 +1366,7 @@ func GlobalSettingsSaveMessageBody(w *TableMessageWriter, value *GlobalSettings)
 		if !allDefault {
 			w.Put(10, TableMessageRefBitsHere)
 			w.Put(uint64(3)-3, 0)
-			for i := 0; i < int(3); i++ {
+			for i := range int(3) {
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.SpawnDelays[i])), uint64(0))
 			}
 		}
@@ -1660,7 +1660,7 @@ func GlobalSettingsLoadMessages(values []GlobalSettings, vocabulary *TableVocabu
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			GlobalSettingsReset(&values[i])
 		}
 		return 0, false
@@ -1680,7 +1680,7 @@ func GlobalSettingsLoadMessagesTolerant(values []GlobalSettings, vocabulary *Tab
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !GlobalSettingsLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -1791,7 +1791,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					for i := uint64(0); i < n; i++ {
+					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
 							r.Report.Malformed = true
@@ -1855,7 +1855,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					for i := uint64(0); i < n; i++ {
+					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
 							r.Report.Malformed = true
@@ -2037,7 +2037,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 				}
 			}
 			w.Put(uint64(pairs)-0, 2)
-			for i := 0; i < int(3); i++ {
+			for i := range int(3) {
 				probe := *w
 				probe.Measuring = true
 				probe.Bits = 0
@@ -2078,7 +2078,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 				}
 			}
 			w.Put(uint64(pairs)-0, 2)
-			for i := 0; i < int(3); i++ {
+			for i := range int(3) {
 				if !(value.Thresholds[i] != 0) {
 					continue
 				}
@@ -2105,7 +2105,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 				return false
 			}
 			w.Put(uint64(value.ReservesCount)-0, 2)
-			for i := 0; i < int(value.ReservesCount); i++ {
+			for i := range int(value.ReservesCount) {
 				if !ShipEntrySaveMessageBody(w, &value.Reserves[i]) {
 					return false
 				}
@@ -2259,7 +2259,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					for i := uint64(0); i < n; i++ {
+					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
 							r.Report.Malformed = true
@@ -2312,7 +2312,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					for i := uint64(0); i < n; i++ {
+					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
 							r.Report.Malformed = true
@@ -2446,7 +2446,7 @@ func PackConfigLoadMessages(values []PackConfig, vocabulary *TableVocabulary, da
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			PackConfigReset(&values[i])
 		}
 		return 0, false
@@ -2466,7 +2466,7 @@ func PackConfigLoadMessagesTolerant(values []PackConfig, vocabulary *TableVocabu
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !PackConfigLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}

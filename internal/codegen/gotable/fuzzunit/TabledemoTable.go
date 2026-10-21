@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x8ea0c18fc647c28e)
-const _ = uint64(0x8ea0c18fc647c28e - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xe8122cedd2bc1d3d)
+const _ = uint64(0xe8122cedd2bc1d3d - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -1149,7 +1149,7 @@ func (w *TableWriter) Header(ref uint64, kind uint8) {
 }
 
 func (w *TableWriter) Trailer() {
-	for i := 0; i < w.Ids.Count; i++ {
+	for i := range w.Ids.Count {
 		w.Put64(w.Ids.Values[i])
 	}
 	w.Put64(uint64(w.Ids.Count))
@@ -1208,7 +1208,7 @@ func (r *TableReader) lebPair() (uint64, bool) {
 func (r *TableReader) lebWide() (uint64, bool) {
 	at := r.Offset
 	var v uint64
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if !r.Has(1) {
 			break
 		}
@@ -1339,7 +1339,7 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 		if !pairwise {
 			var seen [512]uint64
 			var used [512]uint8
-			for i := uint64(0); i < n; i++ {
+			for i := range n {
 				id := binary.LittleEndian.Uint64(r.Ids[i*8:])
 				hash := id
 				hash ^= hash >> 33
@@ -1566,11 +1566,11 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	myChild := mi + 1
-	for k := uint32(0); k < me.Children; k++ {
+	for range me.Children {
 		mc := tableFixedEntryAt(mine, myChild)
 		theirChild := ti + 1
 		theirOff := theirAt
-		for j := uint32(0); j < te.Children; j++ {
+		for range te.Children {
 			tc := tableFixedEntryAt(theirs, theirChild)
 			if tc.Id == mc.Id {
 				tableFixedCompileEntry(c, theirs, theirChild, theirOff, mine, myChild, dst, myAt, guard, arg, census)
@@ -1582,11 +1582,11 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 		myChild += tableFixedSubtree(mine, myChild)
 	}
 	tcAt := ti + 1
-	for j := uint32(0); j < te.Children; j++ {
+	for range te.Children {
 		tc := tableFixedEntryAt(theirs, tcAt)
 		named := false
 		mcAt := mi + 1
-		for k := uint32(0); k < me.Children; k++ {
+		for range me.Children {
 			if tableFixedEntryAt(mine, mcAt).Id == tc.Id {
 				named = true
 				break
@@ -1659,9 +1659,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 		theirBase := theirAt + head
 		n := theirN
-		if myN < n {
-			n = myN
-		}
+		n = min(n, myN)
 		if d.Counted != 0 {
 			// THE COUNT'S BOUND IS THE WRITER'S their_n (§5.2 EMIT kind 14,
 			// §5.3 step 11: BOUNDS runs against the PLAN's bounds). The
@@ -1671,7 +1669,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// which is their_n itself on every legal widening.
 			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
-		for i := uint32(0); i < n; i++ {
+		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
 		}
 	case 16:
@@ -1680,9 +1678,9 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		tel := ti + 1 + tableFixedSubtree(theirs, ti+1)
 		mel := mi + 1 + tableFixedSubtree(mine, mi+1)
 		tee := tableFixedEntryAt(theirs, tel)
-		for k := uint32(0); k < mkey.Children; k++ {
+		for k := range mkey.Children {
 			keyId := tableFixedEntryAt(mine, mi+2+int32(k)).Id
-			for j := uint32(0); j < tkey.Children; j++ {
+			for j := range tkey.Children {
 				if tableFixedEntryAt(theirs, ti+2+int32(j)).Id != keyId {
 					continue
 				}
@@ -1718,10 +1716,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			c.argW = uint8(theirTag)
 		}
 		myArm := mi + 1
-		for k := uint32(0); k < me.Children; k++ {
+		for k := range me.Children {
 			ma := tableFixedEntryAt(mine, myArm)
 			theirArm := ti + 1
-			for j := uint32(0); j < te.Children; j++ {
+			for j := range te.Children {
 				ta := tableFixedEntryAt(theirs, theirArm)
 				if ta.Id == ma.Id {
 					// THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT
@@ -1763,10 +1761,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			return
 		}
 		m := make([]uint16, n)
-		for j := uint32(0); j < n; j++ {
+		for j := range n {
 			vid := tableFixedEntryAt(theirs, ti+1+int32(j)).Id
 			var landed uint16
-			for k := uint32(0); k < me.Children; k++ {
+			for k := range me.Children {
 				if tableFixedEntryAt(mine, mi+1+int32(k)).Id == vid {
 					landed = uint16(k + 1)
 					break
@@ -1779,9 +1777,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		tableFixedPush(c, e)
 	case 12, 33:
 		units := me.Size - 4
-		if te.Size-4 < units {
-			units = te.Size - 4
-		}
+		units = min(units, te.Size-4)
 		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: units, Aux: auxAt, Guard: guard, Op: tableFixedText, Arg: arg, Meta: d.Meta})
 	default:
 		e := TableFixedEntry{Src: theirAt, Dst: at, Guard: guard, Arg: arg}
@@ -1828,7 +1824,7 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 		return -1
 	}
 	out := int32(0)
-	for i := int32(0); i < c.count; i++ {
+	for i := range c.count {
 		if out > 0 && plan[out-1].Op == plan[i].Op && tableFixedRuns(plan[i].Op) &&
 			plan[out-1].Guard == plan[i].Guard && plan[out-1].Arg == plan[i].Arg &&
 			plan[out-1].ArgW == plan[i].ArgW && plan[out-1].Meta == plan[i].Meta &&
@@ -2042,9 +2038,7 @@ func (a *TableArena) initSized(first int64, allocator ...TableAllocator) bool {
 		return true
 	}
 	first = (first + tableArenaSlabBytes - 1) & -tableArenaSlabBytes
-	if first < tableArenaSlabBytes {
-		first = tableArenaSlabBytes
-	}
+	first = max(first, tableArenaSlabBytes)
 	if first >= tableArenaSegmentBytes {
 		return true
 	}
@@ -2243,9 +2237,7 @@ func (n *TableNumbering) find(p unsafe.Pointer) (int, bool) {
 }
 func (n *TableNumbering) grow() bool {
 	capacity := cap(n.entries) * 2
-	if capacity < 16 {
-		capacity = 16
-	}
+	capacity = max(capacity, 16)
 	if capacity > int(^uint(0)>>1)/int(unsafe.Sizeof(tableNodeEntry{})) {
 		return false
 	}
@@ -2356,7 +2348,7 @@ func tableRegionEdges(base unsafe.Pointer, info *TableTypeInfo, visit func(*Tabl
 				return false
 			}
 		}
-		for j := int32(0); j < count; j++ {
+		for j := range count {
 			at := unsafe.Add(p, uintptr(j)*uintptr(f.ElemSize))
 			if !tableRegionValueEdges(at, f, visit) {
 				return false
@@ -2392,7 +2384,7 @@ func tableRegionValueEdges(p unsafe.Pointer, f *TableFieldInfo, visit func(*Tabl
 					return false
 				}
 			}
-			for j := int32(0); j < count; j++ {
+			for j := range count {
 				if !tableRegionValueEdges(unsafe.Add(at, uintptr(j)*uintptr(af.ElemSize)), af, visit) {
 					return false
 				}
@@ -3263,7 +3255,7 @@ func tableWireArrayExtent(r TableReader, f *TableFieldInfo, keyed, arm bool, at 
 		if !f.List && !keyed && f.ArrayBound > 0 && n > uint64(f.ArrayBound) {
 			n = uint64(f.ArrayBound)
 		}
-		for i := uint64(0); i < n; i++ {
+		for range n {
 			e := &r
 			if keyed {
 				key, ok := r.Leb()
@@ -3496,7 +3488,7 @@ func (t *TableRetain) matches(b []byte, p tableRetainPath, under bool, field boo
 	if depth < p.depth || !under && depth != p.depth || field && depth == p.depth || p.depth > len(p.steps) {
 		return false
 	}
-	for i := 0; i < p.depth; i++ {
+	for i := range p.depth {
 		if binary.LittleEndian.Uint32(b[26+i*8:]) != p.steps[i].ordinal || binary.LittleEndian.Uint32(b[30+i*8:]) != p.steps[i].index {
 			return false
 		}
@@ -3586,7 +3578,7 @@ func (r *TableRetainReader) capture(id uint64, kind uint8) bool {
 	binary.LittleEndian.PutUint32(b[12:], uint32(probe.w.Offset))
 	binary.LittleEndian.PutUint64(b[16:], id)
 	b[24] = kind
-	for i := 0; i < p.depth; i++ {
+	for i := range p.depth {
 		binary.LittleEndian.PutUint32(b[26+8*i:], p.steps[i].ordinal)
 		binary.LittleEndian.PutUint32(b[30+8*i:], p.steps[i].index)
 	}
@@ -3712,7 +3704,7 @@ func (s *tableRetainIn) content(kind uint8, n int64, depth int) bool {
 		if minimum <= 0 || count > uint64(max(int64(0), s.limit-s.w.Offset)/minimum) || count > uint64(max(int64(0), end-s.r.Offset)) {
 			return false
 		}
-		for i := uint64(0); i < count; i++ {
+		for range count {
 			if kind == 16 {
 				if _, ok := s.ref(false); !ok {
 					return false
@@ -3850,7 +3842,7 @@ func (i *TableRetainIds) recordRef(id uint64) uint64 {
 		i.Lost = true
 		return 0
 	}
-	for k := 0; k < t.idUsed; k++ {
+	for k := range t.idUsed {
 		if t.Ids[k].Id == id {
 			return uint64(t.Ids[k].Slot)
 		}
@@ -3989,7 +3981,7 @@ func (s *tableRetainOut) content(kind uint8, n int64, depth int) bool {
 			return false
 		}
 		s.leb(count)
-		for i := uint64(0); i < count; i++ {
+		for range count {
 			if kind == 16 {
 				if _, ok := s.ref(); !ok || !s.framed(k, depth+1) {
 					return false

@@ -60,7 +60,7 @@ func(r *TableRetainMessageReader)capture(e TableMessageEntry)bool{
  probe:=tableRetainMessageIn{bits:r.Bits,v:r.Vocabulary,w:TableWriter{Measuring:true},limit:limit};probe.bits.Offset=start
  if !probe.payload(e,0)||probe.bits.Offset!=r.Bits.Offset||probe.w.Offset>limit{r.Report.RetainLost++;return true};need:=header+probe.w.Offset;if need>0xffffffff{r.Report.RetainLost++;return true}
  b:=t.Bytes[t.Used:t.Used+need];clear(b[:26]);binary.LittleEndian.PutUint32(b,uint32(need));binary.LittleEndian.PutUint32(b[4:],p.node);binary.LittleEndian.PutUint32(b[8:],uint32(p.depth));binary.LittleEndian.PutUint32(b[12:],uint32(probe.w.Offset));binary.LittleEndian.PutUint64(b[16:],e.Id);b[24]=e.Shape.Kind
- for i:=0;i<p.depth;i++{binary.LittleEndian.PutUint32(b[26+i*8:],p.steps[i].ordinal);binary.LittleEndian.PutUint32(b[30+i*8:],p.steps[i].index)}
+ for i := range p.depth {binary.LittleEndian.PutUint32(b[26+i*8:],p.steps[i].ordinal);binary.LittleEndian.PutUint32(b[30+i*8:],p.steps[i].index)}
  write:=tableRetainMessageIn{bits:r.Bits,v:r.Vocabulary,w:TableWriter{Buffer:b[header:]},limit:limit};write.bits.Offset=start;if !write.payload(e,0)||write.w.Overflow{r.Report.RetainLost++;return true};t.Used+=need;t.Count++;r.Report.Retained++;return true
 }
 type tableRetainMessageIn struct{bits TableBitReader;v *TableVocabulary;w TableWriter;limit int64}
@@ -75,7 +75,7 @@ func(s *tableRetainMessageIn)scalar(e TableMessageEntry)bool{
 }
 func(s *tableRetainMessageIn)opaque(e TableMessageEntry,framed bool)bool{var n uint64;var ok bool
  if e.Shape.Kind==12||e.Shape.Kind==33 {n,ok=tableMessageCount(&s.bits,e.Shape);if !ok{return false};if e.Shape.Kind==33{n*=2}else if !s.bits.Align(){return false}}else{if !s.bits.Align(){return false};n,ok=s.bits.Get(32);if !ok{return false}}
- extra:=int64(0);if framed{extra=tableLebBytes(n)};if n>0x7fffffff||!s.room(int64(n)+extra)||int64(n)*8>int64(len(s.bits.Buffer))*8-s.bits.Offset{return false};if framed{s.w.PutLeb(n)};for i:=uint64(0);i<n;i++{v,ok:=s.bits.Get(8);if !ok{return false};s.w.Put8(byte(v))};return true
+ extra:=int64(0);if framed{extra=tableLebBytes(n)};if n>0x7fffffff||!s.room(int64(n)+extra)||int64(n)*8>int64(len(s.bits.Buffer))*8-s.bits.Offset{return false};if framed{s.w.PutLeb(n)};for range n {v,ok:=s.bits.Get(8);if !ok{return false};s.w.Put8(byte(v))};return true
 }
 func(s *tableRetainMessageIn)framed(e TableMessageEntry,depth int)bool{if depth>tableRetainWalkDepthMax||!s.room(8){return false};at:=s.w.Offset;s.w.Put64(0);before:=s.w.Offset;if !s.content(e,depth)||s.w.Offset-before>0xffffffff{return false};if !s.w.Measuring{binary.LittleEndian.PutUint32(s.w.Buffer[at:],uint32(s.w.Offset-before))};return true}
 func(s *tableRetainMessageIn)content(e TableMessageEntry,depth int)bool{if depth>tableRetainWalkDepthMax{return false};switch e.Shape.Kind{
@@ -88,7 +88,7 @@ func(s *tableRetainMessageIn)content(e TableMessageEntry,depth int)bool{if depth
  };return s.scalar(e)}
 func tableRetainMessageMinimum(kind uint8)int64{if n:=tableKindBytes(kind);n!=0{return n};switch kind{case 13:return 16;case 14,16:return 10;case 15,30:return 8;case 17:return -1;case 12,31,32,33:return 1};return -1}
 func(s *tableRetainMessageIn)elements(e TableMessageEntry,depth int)bool{if e.Element.Kind==17{return false};n,ok:=tableMessageCount(&s.bits,e.Shape);if !ok{return false};if e.Shape.Kind==14&&e.Element.Kind==6&&!s.bits.Align(){return false};if !s.room(1+tableLebBytes(n)){return false};s.w.Put8(e.Element.Kind);s.w.PutLeb(n);floor:=tableRetainMessageMinimum(e.Element.Kind);if e.Shape.Kind==16{floor=16};if floor<0||n>uint64((s.limit-s.w.Offset)/floor){return false};element:=TableMessageEntry{Shape:e.Element}
- for i:=uint64(0);i<n;i++{if e.Shape.Kind==16{if _,ok:=s.ref(false);!ok||!s.framed(element,depth+1){return false}}else if !s.payload(element,depth){return false}};return true}
+ for range n {if e.Shape.Kind==16{if _,ok:=s.ref(false);!ok||!s.framed(element,depth+1){return false}}else if !s.payload(element,depth){return false}};return true}
 func(s *tableRetainMessageIn)payload(e TableMessageEntry,depth int)bool{switch e.Shape.Kind{
  case 0,17:return false
  case 32:if !s.room(1){return false};s.w.PutLeb(0);return true

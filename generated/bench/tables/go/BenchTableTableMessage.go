@@ -139,7 +139,7 @@ func (w *TableBitWriter) Put(value uint64, n int64) {
 			w.Buffer[index+8] = byte(value >> (64 - shift))
 		}
 	} else {
-		for j := int64(0); j < need; j++ {
+		for j := range need {
 			w.Buffer[index+j] = byte(word >> (j * 8))
 		}
 	}
@@ -176,7 +176,7 @@ func (r *TableBitReader) Get(n int64) (uint64, bool) {
 			value |= uint64(r.Buffer[at+8]) << (64 - shift)
 		}
 	} else {
-		for j := int64(0); j < need; j++ {
+		for j := range need {
 			value |= uint64(r.Buffer[at+j]) << (8 * j)
 		}
 		value >>= shift
@@ -349,7 +349,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		if e.Id == 0xffffffffffffffff {
 			nodeSeen = true
 		}
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			o := v.Entries[i].Shape
 			if o.Max-o.Min == src.Offset-began && o.Min >= 0 && o.Max <= int64(len(words)) {
 				same := true
@@ -371,7 +371,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		count++
 	}
 	src.Offset = 0
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		e, ok := tableMessageEntryRead(&src)
 		if !ok {
 			report.Malformed = true
@@ -607,15 +607,13 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		}
 		if e.Element.Bits >= 0 || e.Element.Kind == 0 || e.Element.Kind == 32 {
 			width := e.Element.Bits
-			if width < 0 {
-				width = 0
-			}
+			width = max(width, 0)
 			if s.Kind == 16 {
 				width += v.RefBits
 			}
 			return r.Skip(int64(n) * width)
 		}
-		for i := uint64(0); i < n; i++ {
+		for range n {
 			if s.Kind == 16 && !r.Skip(v.RefBits) {
 				return false
 			}
@@ -1516,7 +1514,7 @@ func TableEntityLoadMessages(values []TableEntity, vocabulary *TableVocabulary, 
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			TableEntityReset(&values[i])
 		}
 		return 0, false
@@ -1536,7 +1534,7 @@ func TableEntityLoadMessagesTolerant(values []TableEntity, vocabulary *TableVoca
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !TableEntityLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -1733,7 +1731,7 @@ func TableStatLoadMessages(values []TableStat, vocabulary *TableVocabulary, data
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			TableStatReset(&values[i])
 		}
 		return 0, false
@@ -1753,7 +1751,7 @@ func TableStatLoadMessagesTolerant(values []TableStat, vocabulary *TableVocabula
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !TableStatLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -1831,7 +1829,7 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 				return false
 			}
 			w.Put(uint64(value.EntitiesCount)-1, 3)
-			for i := 0; i < int(value.EntitiesCount); i++ {
+			for i := range int(value.EntitiesCount) {
 				if !TableEntitySaveMessageBody(w, &value.Entities[i]) {
 					return false
 				}
@@ -1848,7 +1846,7 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 				return false
 			}
 			w.Put(uint64(value.StatsCount)-0, 7)
-			for i := 0; i < int(value.StatsCount); i++ {
+			for i := range int(value.StatsCount) {
 				if !TableStatSaveMessageBody(w, &value.Stats[i]) {
 					return false
 				}
@@ -1899,7 +1897,7 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 			w.Put(34, TableMessageRefBitsHere)
 			w.Put(uint64(4)-4, 0)
 			w.Align()
-			for i := 0; i < int(4); i++ {
+			for i := range int(4) {
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Loadout[i]), uint64(0))
 			}
 		}
@@ -1928,7 +1926,7 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 			}
 			w.Put(uint64(value.PayloadLength)-0, 5)
 			w.Align()
-			for i := 0; i < int(value.PayloadLength); i++ {
+			for i := range int(value.PayloadLength) {
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Payload[i]), uint64(0))
 			}
 		}
@@ -3430,7 +3428,7 @@ func TableMixedLoadMessages(values []TableMixed, vocabulary *TableVocabulary, da
 		return count, false
 	}
 	if read.Err() != nil {
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			TableMixedReset(&values[i])
 		}
 		return 0, false
@@ -3450,7 +3448,7 @@ func TableMixedLoadMessagesTolerant(values []TableMixed, vocabulary *TableVocabu
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !TableMixedLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
