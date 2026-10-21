@@ -99,14 +99,19 @@ fn main() {
             };
             let value = card_load_retain(&wire, &mut store, &mut report);
             loaded = value.is_some();
-            // a blob two slots name (§2.5) is the writer's named refusal
-            saved = if report.blob_shared > 0 { None } else { Some(card_save_retain(&value.unwrap_or_default(), &mut store, &mut report)) };
+            // the writer's named refusal (§2.5: a blob two slots name) answers
+            // -1; the checked save names it without the retaining save's panic
+            let value = value.unwrap_or_default();
+            saved = match card_save_checked(&value) {
+                Ok(_) => Some(card_save_retain(&value, &mut store, &mut report)),
+                Err(_) => None,
+            };
             retained = report.retained;
             retain_lost = report.retain_lost;
         } else {
             let value = card_load(&wire, &mut report);
             loaded = value.is_some();
-            saved = if report.blob_shared > 0 { None } else { Some(card_save(&value.unwrap_or_default())) };
+            saved = card_save_checked(&value.unwrap_or_default()).ok();
             retained = 0;
             retain_lost = 0;
         }

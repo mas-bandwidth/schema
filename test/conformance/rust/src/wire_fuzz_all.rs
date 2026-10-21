@@ -77,7 +77,7 @@ const RETAIN_IDS: usize = RETAIN_BYTES / 8;
 // One root's arm: its unit's module and its four generated verbs. The report
 // is the unit's own type, so the counters are copied out here.
 macro_rules! arm {
-    ($unit:ident, $load:ident, $load_retain:ident, $save:ident, $save_retain:ident, $measure:ident, $wire:expr, $retain:expr) => {{
+    ($unit:ident, $load:ident, $load_retain:ident, $save:ident, $save_checked:ident, $save_retain:ident, $measure:ident, $wire:expr, $retain:expr) => {{
         use $unit::*;
         let wire: &[u8] = $wire;
         let mut report = TableReport::default();
@@ -88,8 +88,9 @@ macro_rules! arm {
             reply.loaded = value.is_some();
             // THE REPORT ACCUMULATES ACROSS THE PAIR (§6.6): one report is
             // zeroed before the load and read after the save
-            // a cycle, or a blob two slots name (§2.5), is a save refusal
-            if !report.cycle_on_save && report.blob_shared == 0 {
+            // a cycle, or a blob two slots name (§2.5), is a save refusal:
+            // the checked save names the writer's refusal without the panic
+            if !report.cycle_on_save && $save_checked(value.as_ref().unwrap_or(&Default::default())).is_ok() {
                 reply.saved = $save_retain(&value.unwrap_or_default(), &mut store, &mut report);
             } else {
                 reply.save_fail = true;
@@ -100,8 +101,11 @@ macro_rules! arm {
             let value = $load(wire, &mut report);
             reply.loaded = value.is_some();
             // a cycle, or a blob two slots name (§2.5), is a save refusal
-            if !report.cycle_on_save && report.blob_shared == 0 {
-                reply.saved = $save(&value.unwrap_or_default());
+            if !report.cycle_on_save {
+                match $save_checked(&value.unwrap_or_default()) {
+                    Ok(saved) => reply.saved = saved,
+                    Err(_) => reply.save_fail = true,
+                }
             } else {
                 reply.save_fail = true;
             }
@@ -265,57 +269,57 @@ const FIXED_ROOTS: &[(&str, &str)] = &[
 
 fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
     match (unit, root) {
-        ("backenddemo", "LoginRequest") => arm!(backenddemo, login_request_load, login_request_load_retain, login_request_save, login_request_save_retain, login_request_load_measure, wire, retain),
-        ("backenddemo", "MatchResult") => arm!(backenddemo, match_result_load, match_result_load_retain, match_result_save, match_result_save_retain, match_result_load_measure, wire, retain),
-        ("backenddemo", "StorePurchase") => arm!(backenddemo, store_purchase_load, store_purchase_load_retain, store_purchase_save, store_purchase_save_retain, store_purchase_load_measure, wire, retain),
-        ("blobdemo", "Catalog") => arm!(blobdemo, catalog_load, catalog_load_retain, catalog_save, catalog_save_retain, catalog_load_measure, wire, retain),
-        ("graphdemo", "Scene") => arm!(graphdemo, scene_load, scene_load_retain, scene_save, scene_save_retain, scene_load_measure, wire, retain),
-        ("listdemo", "Album") => arm!(listdemo, album_load, album_load_retain, album_save, album_save_retain, album_load_measure, wire, retain),
-        ("listdemo", "Army") => arm!(listdemo, army_load, army_load_retain, army_save, army_save_retain, army_load_measure, wire, retain),
-        ("listdemo", "Mixed") => arm!(listdemo, mixed_load, mixed_load_retain, mixed_save, mixed_save_retain, mixed_load_measure, wire, retain),
-        ("listdemo", "Save") => arm!(listdemo, save_load, save_load_retain, save_save, save_save_retain, save_load_measure, wire, retain),
-        ("listdemo", "Sheet") => arm!(listdemo, sheet_load, sheet_load_retain, sheet_save, sheet_save_retain, sheet_load_measure, wire, retain),
-        ("listdemo", "Unbounded") => arm!(listdemo, unbounded_load, unbounded_load_retain, unbounded_save, unbounded_save_retain, unbounded_load_measure, wire, retain),
-        ("mapdemo", "Cells") => arm!(mapdemo, cells_load, cells_load_retain, cells_save, cells_save_retain, cells_load_measure, wire, retain),
-        ("mapdemo", "Chunks") => arm!(mapdemo, chunks_load, chunks_load_retain, chunks_save, chunks_save_retain, chunks_load_measure, wire, retain),
-        ("mapdemo", "Crews") => arm!(mapdemo, crews_load, crews_load_retain, crews_save, crews_save_retain, crews_load_measure, wire, retain),
-        ("mapdemo", "Depth") => arm!(mapdemo, depth_load, depth_load_retain, depth_save, depth_save_retain, depth_load_measure, wire, retain),
-        ("mapdemo", "Docs") => arm!(mapdemo, docs_load, docs_load_retain, docs_save, docs_save_retain, docs_load_measure, wire, retain),
-        ("mapdemo", "Fleet") => arm!(mapdemo, fleet_load, fleet_load_retain, fleet_save, fleet_save_retain, fleet_load_measure, wire, retain),
-        ("mapdemo", "Pairs") => arm!(mapdemo, pairs_load, pairs_load_retain, pairs_save, pairs_save_retain, pairs_load_measure, wire, retain),
-        ("mapdemo", "Runs") => arm!(mapdemo, runs_load, runs_load_retain, runs_save, runs_save_retain, runs_load_measure, wire, retain),
-        ("mapdemo", "Slots") => arm!(mapdemo, slots_load, slots_load_retain, slots_save, slots_save_retain, slots_load_measure, wire, retain),
-        ("mapdemo", "Spans") => arm!(mapdemo, spans_load, spans_load_retain, spans_save, spans_save_retain, spans_load_measure, wire, retain),
-        ("mapdemo", "Text") => arm!(mapdemo, text_load, text_load_retain, text_save, text_save_retain, text_load_measure, wire, retain),
-        ("mapdemo", "Trails") => arm!(mapdemo, trails_load, trails_load_retain, trails_save, trails_save_retain, trails_load_measure, wire, retain),
-        ("messagedemo", "ToolMessage") => arm!(messagedemo, tool_message_load, tool_message_load_retain, tool_message_save, tool_message_save_retain, tool_message_load_measure, wire, retain),
-        ("streamdemo", "Feed") => arm!(streamdemo, feed_load, feed_load_retain, feed_save, feed_save_retain, feed_load_measure, wire, retain),
-        ("tabledemo", "ArchiveConfig") => arm!(tabledemo, archive_config_load, archive_config_load_retain, archive_config_save, archive_config_save_retain, archive_config_load_measure, wire, retain),
-        ("tabledemo", "KeyedConfig") => arm!(tabledemo, keyed_config_load, keyed_config_load_retain, keyed_config_save, keyed_config_save_retain, keyed_config_load_measure, wire, retain),
-        ("tabledemo", "LoadoutConfig") => arm!(tabledemo, loadout_config_load, loadout_config_load_retain, loadout_config_save, loadout_config_save_retain, loadout_config_load_measure, wire, retain),
-        ("tabledemo", "ProfileConfig") => arm!(tabledemo, profile_config_load, profile_config_load_retain, profile_config_save, profile_config_save_retain, profile_config_load_measure, wire, retain),
-        ("tabledemo", "RootConfig") => arm!(tabledemo, root_config_load, root_config_load_retain, root_config_save, root_config_save_retain, root_config_load_measure, wire, retain),
-        ("tabledemo", "WideBlob") => arm!(tabledemo, wide_blob_load, wide_blob_load_retain, wide_blob_save, wide_blob_save_retain, wide_blob_load_measure, wire, retain),
-        ("tbla2", "Root") => arm!(tbla2, root_load, root_load_retain, root_save, root_save_retain, root_load_measure, wire, retain),
-        ("tblk1", "Root") => arm!(tblk1, root_load, root_load_retain, root_save, root_save_retain, root_load_measure, wire, retain),
-        ("tblk2", "Root") => arm!(tblk2, root_load, root_load_retain, root_save, root_save_retain, root_load_measure, wire, retain),
-        ("tblm1", "Msg") => arm!(tblm1, msg_load, msg_load_retain, msg_save, msg_save_retain, msg_load_measure, wire, retain),
-        ("tblm2", "Msg") => arm!(tblm2, msg_load, msg_load_retain, msg_save, msg_save_retain, msg_load_measure, wire, retain),
-        ("tblp1", "Chain") => arm!(tblp1, chain_load, chain_load_retain, chain_save, chain_save_retain, chain_load_measure, wire, retain),
-        ("tblp2", "Chain") => arm!(tblp2, chain_load, chain_load_retain, chain_save, chain_save_retain, chain_load_measure, wire, retain),
-        ("tblp3", "Chain") => arm!(tblp3, chain_load, chain_load_retain, chain_save, chain_save_retain, chain_load_measure, wire, retain),
-        ("tblr1", "Cfg") => arm!(tblr1, cfg_load, cfg_load_retain, cfg_save, cfg_save_retain, cfg_load_measure, wire, retain),
-        ("tblr2", "Cfg") => arm!(tblr2, cfg_load, cfg_load_retain, cfg_save, cfg_save_retain, cfg_load_measure, wire, retain),
-        ("tblv1", "Cfg") => arm!(tblv1, cfg_load, cfg_load_retain, cfg_save, cfg_save_retain, cfg_load_measure, wire, retain),
-        ("tblv2", "Cfg") => arm!(tblv2, cfg_load, cfg_load_retain, cfg_save, cfg_save_retain, cfg_load_measure, wire, retain),
-        ("tblw1", "Fleet") => arm!(tblw1, fleet_load, fleet_load_retain, fleet_save, fleet_save_retain, fleet_load_measure, wire, retain),
-        ("tblw2", "Fleet") => arm!(tblw2, fleet_load, fleet_load_retain, fleet_save, fleet_save_retain, fleet_load_measure, wire, retain),
-        ("vocab9demo", "Wide00") => arm!(vocab9demo, wide00_load, wide00_load_retain, wide00_save, wide00_save_retain, wide00_load_measure, wire, retain),
-        ("vocab9demo", "Wide19") => arm!(vocab9demo, wide19_load, wide19_load_retain, wide19_save, wide19_save_retain, wide19_load_measure, wire, retain),
-        ("vocabdemo", "Wide00") => arm!(vocabdemo, wide00_load, wide00_load_retain, wide00_save, wide00_save_retain, wide00_load_measure, wire, retain),
-        ("vocabdemo", "Wide09") => arm!(vocabdemo, wide09_load, wide09_load_retain, wide09_save, wide09_save_retain, wide09_load_measure, wire, retain),
-        ("widedemo", "Caption") => arm!(widedemo, caption_load, caption_load_retain, caption_save, caption_save_retain, caption_load_measure, wire, retain),
-        ("widedemo", "Stamp") => arm!(widedemo, stamp_load, stamp_load_retain, stamp_save, stamp_save_retain, stamp_load_measure, wire, retain),
+        ("backenddemo", "LoginRequest") => arm!(backenddemo, login_request_load, login_request_load_retain, login_request_save, login_request_save_checked, login_request_save_retain, login_request_load_measure, wire, retain),
+        ("backenddemo", "MatchResult") => arm!(backenddemo, match_result_load, match_result_load_retain, match_result_save, match_result_save_checked, match_result_save_retain, match_result_load_measure, wire, retain),
+        ("backenddemo", "StorePurchase") => arm!(backenddemo, store_purchase_load, store_purchase_load_retain, store_purchase_save, store_purchase_save_checked, store_purchase_save_retain, store_purchase_load_measure, wire, retain),
+        ("blobdemo", "Catalog") => arm!(blobdemo, catalog_load, catalog_load_retain, catalog_save, catalog_save_checked, catalog_save_retain, catalog_load_measure, wire, retain),
+        ("graphdemo", "Scene") => arm!(graphdemo, scene_load, scene_load_retain, scene_save, scene_save_checked, scene_save_retain, scene_load_measure, wire, retain),
+        ("listdemo", "Album") => arm!(listdemo, album_load, album_load_retain, album_save, album_save_checked, album_save_retain, album_load_measure, wire, retain),
+        ("listdemo", "Army") => arm!(listdemo, army_load, army_load_retain, army_save, army_save_checked, army_save_retain, army_load_measure, wire, retain),
+        ("listdemo", "Mixed") => arm!(listdemo, mixed_load, mixed_load_retain, mixed_save, mixed_save_checked, mixed_save_retain, mixed_load_measure, wire, retain),
+        ("listdemo", "Save") => arm!(listdemo, save_load, save_load_retain, save_save, save_save_checked, save_save_retain, save_load_measure, wire, retain),
+        ("listdemo", "Sheet") => arm!(listdemo, sheet_load, sheet_load_retain, sheet_save, sheet_save_checked, sheet_save_retain, sheet_load_measure, wire, retain),
+        ("listdemo", "Unbounded") => arm!(listdemo, unbounded_load, unbounded_load_retain, unbounded_save, unbounded_save_checked, unbounded_save_retain, unbounded_load_measure, wire, retain),
+        ("mapdemo", "Cells") => arm!(mapdemo, cells_load, cells_load_retain, cells_save, cells_save_checked, cells_save_retain, cells_load_measure, wire, retain),
+        ("mapdemo", "Chunks") => arm!(mapdemo, chunks_load, chunks_load_retain, chunks_save, chunks_save_checked, chunks_save_retain, chunks_load_measure, wire, retain),
+        ("mapdemo", "Crews") => arm!(mapdemo, crews_load, crews_load_retain, crews_save, crews_save_checked, crews_save_retain, crews_load_measure, wire, retain),
+        ("mapdemo", "Depth") => arm!(mapdemo, depth_load, depth_load_retain, depth_save, depth_save_checked, depth_save_retain, depth_load_measure, wire, retain),
+        ("mapdemo", "Docs") => arm!(mapdemo, docs_load, docs_load_retain, docs_save, docs_save_checked, docs_save_retain, docs_load_measure, wire, retain),
+        ("mapdemo", "Fleet") => arm!(mapdemo, fleet_load, fleet_load_retain, fleet_save, fleet_save_checked, fleet_save_retain, fleet_load_measure, wire, retain),
+        ("mapdemo", "Pairs") => arm!(mapdemo, pairs_load, pairs_load_retain, pairs_save, pairs_save_checked, pairs_save_retain, pairs_load_measure, wire, retain),
+        ("mapdemo", "Runs") => arm!(mapdemo, runs_load, runs_load_retain, runs_save, runs_save_checked, runs_save_retain, runs_load_measure, wire, retain),
+        ("mapdemo", "Slots") => arm!(mapdemo, slots_load, slots_load_retain, slots_save, slots_save_checked, slots_save_retain, slots_load_measure, wire, retain),
+        ("mapdemo", "Spans") => arm!(mapdemo, spans_load, spans_load_retain, spans_save, spans_save_checked, spans_save_retain, spans_load_measure, wire, retain),
+        ("mapdemo", "Text") => arm!(mapdemo, text_load, text_load_retain, text_save, text_save_checked, text_save_retain, text_load_measure, wire, retain),
+        ("mapdemo", "Trails") => arm!(mapdemo, trails_load, trails_load_retain, trails_save, trails_save_checked, trails_save_retain, trails_load_measure, wire, retain),
+        ("messagedemo", "ToolMessage") => arm!(messagedemo, tool_message_load, tool_message_load_retain, tool_message_save, tool_message_save_checked, tool_message_save_retain, tool_message_load_measure, wire, retain),
+        ("streamdemo", "Feed") => arm!(streamdemo, feed_load, feed_load_retain, feed_save, feed_save_checked, feed_save_retain, feed_load_measure, wire, retain),
+        ("tabledemo", "ArchiveConfig") => arm!(tabledemo, archive_config_load, archive_config_load_retain, archive_config_save, archive_config_save_checked, archive_config_save_retain, archive_config_load_measure, wire, retain),
+        ("tabledemo", "KeyedConfig") => arm!(tabledemo, keyed_config_load, keyed_config_load_retain, keyed_config_save, keyed_config_save_checked, keyed_config_save_retain, keyed_config_load_measure, wire, retain),
+        ("tabledemo", "LoadoutConfig") => arm!(tabledemo, loadout_config_load, loadout_config_load_retain, loadout_config_save, loadout_config_save_checked, loadout_config_save_retain, loadout_config_load_measure, wire, retain),
+        ("tabledemo", "ProfileConfig") => arm!(tabledemo, profile_config_load, profile_config_load_retain, profile_config_save, profile_config_save_checked, profile_config_save_retain, profile_config_load_measure, wire, retain),
+        ("tabledemo", "RootConfig") => arm!(tabledemo, root_config_load, root_config_load_retain, root_config_save, root_config_save_checked, root_config_save_retain, root_config_load_measure, wire, retain),
+        ("tabledemo", "WideBlob") => arm!(tabledemo, wide_blob_load, wide_blob_load_retain, wide_blob_save, wide_blob_save_checked, wide_blob_save_retain, wide_blob_load_measure, wire, retain),
+        ("tbla2", "Root") => arm!(tbla2, root_load, root_load_retain, root_save, root_save_checked, root_save_retain, root_load_measure, wire, retain),
+        ("tblk1", "Root") => arm!(tblk1, root_load, root_load_retain, root_save, root_save_checked, root_save_retain, root_load_measure, wire, retain),
+        ("tblk2", "Root") => arm!(tblk2, root_load, root_load_retain, root_save, root_save_checked, root_save_retain, root_load_measure, wire, retain),
+        ("tblm1", "Msg") => arm!(tblm1, msg_load, msg_load_retain, msg_save, msg_save_checked, msg_save_retain, msg_load_measure, wire, retain),
+        ("tblm2", "Msg") => arm!(tblm2, msg_load, msg_load_retain, msg_save, msg_save_checked, msg_save_retain, msg_load_measure, wire, retain),
+        ("tblp1", "Chain") => arm!(tblp1, chain_load, chain_load_retain, chain_save, chain_save_checked, chain_save_retain, chain_load_measure, wire, retain),
+        ("tblp2", "Chain") => arm!(tblp2, chain_load, chain_load_retain, chain_save, chain_save_checked, chain_save_retain, chain_load_measure, wire, retain),
+        ("tblp3", "Chain") => arm!(tblp3, chain_load, chain_load_retain, chain_save, chain_save_checked, chain_save_retain, chain_load_measure, wire, retain),
+        ("tblr1", "Cfg") => arm!(tblr1, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
+        ("tblr2", "Cfg") => arm!(tblr2, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
+        ("tblv1", "Cfg") => arm!(tblv1, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
+        ("tblv2", "Cfg") => arm!(tblv2, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
+        ("tblw1", "Fleet") => arm!(tblw1, fleet_load, fleet_load_retain, fleet_save, fleet_save_checked, fleet_save_retain, fleet_load_measure, wire, retain),
+        ("tblw2", "Fleet") => arm!(tblw2, fleet_load, fleet_load_retain, fleet_save, fleet_save_checked, fleet_save_retain, fleet_load_measure, wire, retain),
+        ("vocab9demo", "Wide00") => arm!(vocab9demo, wide00_load, wide00_load_retain, wide00_save, wide00_save_checked, wide00_save_retain, wide00_load_measure, wire, retain),
+        ("vocab9demo", "Wide19") => arm!(vocab9demo, wide19_load, wide19_load_retain, wide19_save, wide19_save_checked, wide19_save_retain, wide19_load_measure, wire, retain),
+        ("vocabdemo", "Wide00") => arm!(vocabdemo, wide00_load, wide00_load_retain, wide00_save, wide00_save_checked, wide00_save_retain, wide00_load_measure, wire, retain),
+        ("vocabdemo", "Wide09") => arm!(vocabdemo, wide09_load, wide09_load_retain, wide09_save, wide09_save_checked, wide09_save_retain, wide09_load_measure, wire, retain),
+        ("widedemo", "Caption") => arm!(widedemo, caption_load, caption_load_retain, caption_save, caption_save_checked, caption_save_retain, caption_load_measure, wire, retain),
+        ("widedemo", "Stamp") => arm!(widedemo, stamp_load, stamp_load_retain, stamp_save, stamp_save_checked, stamp_save_retain, stamp_load_measure, wire, retain),
         _ => None,
     }
 }
