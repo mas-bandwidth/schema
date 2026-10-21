@@ -21,25 +21,48 @@ import (
 // carries (at the running, aligned extent), every pointer-reachable node table
 // record's own layout and containers, and the +16 directory. Each mutant is
 // the harness's minimal one for its root at seed 24845619678.
+//
+// The guarded mutant was cut against tblg1 before test/tables/G1.schema grew
+// its `optional ?Wrapped` half (schema#526), so the case carries that
+// declaration itself: the pin is the wire and the schema it was cut from.
+const measureRenamedNodeG1 = `package tblg1
+
+fixed table Node
+{
+    value int32
+}
+
+table Guarded
+{
+    at_rest bool
+    always  *Node
+    if at_rest
+    {
+        resting *Node
+    }
+}
+`
+
 func TestJavaFixMeasureRenamedNodeTable(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	for _, tc := range []struct {
 		name, dir, file, root string
+		src                   string // the declaration itself, when the case pins one
 		want                  int64
 		wire                  string
 	}{
 		// tblg1.Guarded, pass reference #1: a node table record of a
 		// pointer-reachable TABLE commands its own rounded record region
-		{"guarded", "test/tables", "G1.schema", "Guarded", 64,
+		{"guarded", "test/tables", "G1.schema", "Guarded", measureRenamedNodeG1, 64,
 			"01041102020c0a010307040401000000000044e5f7fadfa6c4f7ffffffffffffffff8db6f6d2c61cbd66ea0ce83094fde47c0400000000000000"},
 		// listdemo.Save, pass reference #1: the lists of tables inside each
 		// list element's body are walked, not only the root's own list
-		{"lists-save", "tables/lists", "", "Save", 128,
+		{"lists-save", "tables/lists", "", "Save", "", 128,
 			"01090e380d030d020a0000803f0308030000000013020a00000040040a000000400308040000000013020a00004040040a0000804003080500000000050e051103020200060e0e04030a000000140000001e000000070c0a0108070908070000000000094b4d57aa3347d2071702864cf563af3a706e3e9343e59d541502864cf463af3154af1d19735012b20f40270b6b9801ffffffffffffffff5f8258ac3615785e8476bc2eef83761e0900000000000000"},
 		// mapdemo.Depth, pass reference #1: a map's entries are walked and
 		// the maps nested in them are counted, aligned on the running extent
-		{"maps-depth", "tables/maps", "", "Depth", 184,
+		{"maps-depth", "tables/maps", "", "Depth", "", 184,
 			"010b0d15020e110d010e030603040d07050421000000000000060e2e0d0215020e110d010e030601040d0705040b00000000000015020e110d010e030602040d070504160000000000000710190d010815020e110d010e030605040d07050437000000000000090f0a0d15020e110d010e030607040d0705044d0000000000000b040900000000af5cca2119aa081a424f4f300d39841cec105b36194ac93dea0ce83094fde47c74a279448ee2e5b102fca1cea259641f5df15095f21f55708be145c2cb04da4fb5cc700519c056e731633ed695bbc2d5e9ea716f0f0182bf0b00000000000000"},
 	} {
 		tc := tc
@@ -48,9 +71,12 @@ func TestJavaFixMeasureRenamedNodeTable(t *testing.T) {
 			var u *ir.Unit
 			if tc.file != "" {
 				dir := t.TempDir()
-				schema, err := os.ReadFile(filepath.Join(repo, tc.dir, tc.file))
-				if err != nil {
-					t.Fatal(err)
+				schema := []byte(tc.src)
+				if tc.src == "" {
+					var err error
+					if schema, err = os.ReadFile(filepath.Join(repo, tc.dir, tc.file)); err != nil {
+						t.Fatal(err)
+					}
 				}
 				if err := os.WriteFile(filepath.Join(dir, tc.file), schema, 0o644); err != nil {
 					t.Fatal(err)

@@ -544,7 +544,9 @@ func TestJavaFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
 		"public static final byte[] defaults = {",
 		"public static final int[] dest = {",
 		"public static int save(Value[] values, int count, byte[] buffer)",
-		"public static int load(Value[] values, int count, byte[] data,",
+		// the formatter's shape (internal/codegen/java Canonical): a signature
+		// too wide for the column breaks one parameter per line
+		"public static int load(\n            Value[] values,\n            int count,\n            byte[] data,",
 		"public static void writeBody(byte[] b, int at, Value v)",
 		"public static void scatter(byte[] b, int at, Value v, TableFixed.Report r)",
 		"public static int writeHeader(byte[] buffer)",
