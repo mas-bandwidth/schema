@@ -738,7 +738,7 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int) string {
 		var slots strings.Builder
 		slots.WriteString("const <String, int>{")
 		for i := 0; i < int(f.ArrayBound) && i < len(en.Variants); i++ {
-			slots.WriteString(fmt.Sprintf("%s: %d, ", strconv.Quote(en.Variants[i]), i))
+			fmt.Fprintf(&slots, "%s: %d, ", strconv.Quote(en.Variants[i]), i)
 		}
 		slots.WriteString("}")
 		return fmt.Sprintf("_jsonKeyed<%s>(%s, r, %d, () => %s, %s, (%s) => %s)",

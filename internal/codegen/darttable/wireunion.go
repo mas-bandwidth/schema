@@ -268,7 +268,7 @@ func enumVidExpr(e *ir.Enum, expr string) string {
 	var s strings.Builder
 	s.WriteString("switch (" + expr + ") {")
 	for i := range e.Variants {
-		s.WriteString(fmt.Sprintf(" %d => %s,", i+1, dartU64Literal(ir.TableWireId(e.VariantWireName(i)))))
+		fmt.Fprintf(&s, " %d => %s,", i+1, dartU64Literal(ir.TableWireId(e.VariantWireName(i))))
 	}
 	return s.String() + " _ => 0 }"
 }
