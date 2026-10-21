@@ -79,7 +79,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema
+build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
 	# the POINTERED unit: its FIXED surface is refused by name for every
@@ -138,13 +138,16 @@ build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(
 	./bin/schema generate --lang js --out build/tables-generated-js/vocab tables/vocab
 	./bin/schema generate --lang js --out build/tables-generated-js/vocab9 tables/vocab9
 	./bin/schema generate --lang js --out build/tables-generated-js/backend tables/backend
-	# the five form-1 roster roots no other unit carries (tbla2.Root,
-	# tblg1.Guarded, tblk1.Root, tblk2.Root, tblp2.Chain): the harness's default
-	# wire-fuzz roster (testdata/conformance/tables/MANIFEST.txt,
-	# docs/SPEC-TABLES.md §4.2) names them, and the driver's fuzzUnits binds them
-	# for tables-js-wire-fuzz-all alone.
+	# the four form-1 roster roots no other unit carries (tbla2.Root,
+	# tblk1.Root, tblk2.Root, tblp2.Chain): the harness's default wire-fuzz
+	# roster (testdata/conformance/tables/MANIFEST.txt, docs/SPEC-TABLES.md
+	# §4.2) names them, and the driver's fuzzUnits binds them for
+	# tables-js-wire-fuzz-all alone. tblg1.Guarded is NOT generated here: G1
+	# declares `optional ?Wrapped`, an optional over a variable closure, which
+	# this target refuses until its turn (§2.3; roadmap
+	# sprint-out/js-carries-optional-over-a-variable-closure), so its four
+	# seeds answer absent.
 	./bin/schema generate --lang js --out build/tables-generated-js/a2 test/tables/A2.schema
-	./bin/schema generate --lang js --out build/tables-generated-js/g1 test/tables/G1.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/k1 test/tables/K1.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/k2 test/tables/K2.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/p2 test/tables/P2.schema
@@ -1006,10 +1009,11 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 # absent are the message-form (form-2) entries, which this leg's wire-fuzz arm
 # does not bind: backenddemo LoginRequest, MatchResult and StorePurchase,
 # vocabdemo Wide00 and Wide09, vocab9demo Wide00 and Wide19, graphdemo Scene
-# and blobdemo Catalog, 19 seeds in all. The count is pinned exactly, so a root
+# and blobdemo Catalog, 19 seeds, and tblg1 Guarded's four (an optional over a
+# variable closure, which this target does not carry yet), 23 in all. The count is pinned exactly, so a root
 # that drops to absent (or a new message-form root) fails the target by name
 # rather than shrinking the run unseen; it does not depend on SEED or N.
-TABLES_JS_WIRE_FUZZ_ABSENT := 19
+TABLES_JS_WIRE_FUZZ_ABSENT := 23
 tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
 	@./build/conformance-harness wire-fuzz \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \

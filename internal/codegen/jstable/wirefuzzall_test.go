@@ -44,15 +44,17 @@ func TestWireFuzzAllTargetJavaScript(t *testing.T) {
 	if !strings.Contains(s, "test-js: tables-js-wire-fuzz-all") {
 		t.Fatal("test-js does not run tables-js-wire-fuzz-all")
 	}
-	// The absent set (the 19 message-form seeds the arm does not bind) is
-	// pinned, so a roster root dropping to absent fails the target.
-	if !strings.Contains(s, "TABLES_JS_WIRE_FUZZ_ABSENT := 19\n") {
-		t.Error("make/js.mk does not pin the absent set at the 19 message-form seeds")
+	// The absent set (the 19 message-form seeds the arm does not bind, and
+	// tblg1 Guarded's four: an optional over a variable closure, which this
+	// target refuses until its turn) is pinned, so a roster root dropping to
+	// absent fails the target.
+	if !strings.Contains(s, "TABLES_JS_WIRE_FUZZ_ABSENT := 23\n") {
+		t.Error("make/js.mk does not pin the absent set at 23 seeds (19 message-form, 4 tblg1)")
 	}
 	if !strings.Contains(target, "', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent '") {
 		t.Errorf("tables-js-wire-fuzz-all does not check the pinned absent count:\n%s", target)
 	}
-	// The five form-1 roster roots no other unit carries are generated for
+	// The four form-1 roster roots no other unit carries are generated for
 	// the leg and bound by the driver's fuzzUnits, or the harness counts them
 	// absent and the default roster is not the whole roster.
 	drv, err := os.ReadFile("../../../test/conformance/js/main.mjs")
@@ -65,7 +67,6 @@ func TestWireFuzzAllTargetJavaScript(t *testing.T) {
 	}
 	for _, u := range []struct{ dir, schema, unit, file string }{
 		{"a2", "A2", "tbla2", "a2/Tbla2Variable.js"},
-		{"g1", "G1", "tblg1", "g1/Tblg1Variable.js"},
 		{"k1", "K1", "tblk1", "k1/Tblk1Variable.js"},
 		{"k2", "K2", "tblk2", "k2/Tblk2Variable.js"},
 		{"p2", "P2", "tblp2", "p2/Tblp2Variable.js"},
@@ -77,6 +78,11 @@ func TestWireFuzzAllTargetJavaScript(t *testing.T) {
 		if !strings.Contains(d, u.unit+": \""+u.file+"\"") {
 			t.Errorf("main.mjs fuzzUnits does not bind %s to %s", u.unit, u.file)
 		}
+	}
+	// tblg1 stays unbound until the target carries ?T over a variable closure
+	// (docs/SPEC-TABLES.md §2.3): binding it would fail the generate step.
+	if strings.Contains(d, "tblg1: \"") {
+		t.Error("main.mjs fuzzUnits binds tblg1, which this target cannot generate")
 	}
 }
 

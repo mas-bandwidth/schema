@@ -685,10 +685,13 @@ const wireRows = [
 ];
 
 // fuzzUnits binds the roster units no wire row or text surface names
-// (tbla2, tblg1, tblk1, tblk2, tblp2): the wire-fuzz arm alone reads it, so
-// the text and wire-read arms, which need ToJson and FromJson, stay as they are.
+// (tbla2, tblk1, tblk2, tblp2): the wire-fuzz arm alone reads it, so the text
+// and wire-read arms, which need ToJson and FromJson, stay as they are. tblg1
+// is not bound: G1 declares an optional over a variable closure, which this
+// target refuses until its turn (docs/SPEC-TABLES.md §2.3), so its roots
+// answer absent and make/js.mk's pinned absent count names them.
 const fuzzUnits = {
-  tbla2: "a2/Tbla2Variable.js", tblg1: "g1/Tblg1Variable.js",
+  tbla2: "a2/Tbla2Variable.js",
   tblk1: "k1/Tblk1Variable.js", tblk2: "k2/Tblk2Variable.js",
   tblp2: "p2/Tblp2Variable.js",
 };
