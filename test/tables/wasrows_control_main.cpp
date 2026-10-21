@@ -21,7 +21,7 @@ int main()
     fclose( f );
     tblr2::Cfg cfg;
     tblr2::TableReport report;
-    if ( !tblr2::CfgLoad( cfg, wire, n, &report ) ) { printf( "load refused\n" ); return 2; }
+    if ( !tblr2::CfgLoadTolerant( cfg, wire, n, &report ) ) { printf( "load refused\n" ); return 2; }
     const char * grade = cfg.grade == tblr2::Grade::Argent ? "Argent" : cfg.grade == tblr2::Grade::None ? "None" : "other";
     const char * effect = cfg.effect.type == tblr2::EffectType::Shield ? "shield" : cfg.effect.type == tblr2::EffectType::None ? "None" : "other";
     const float charge = cfg.effect.type == tblr2::EffectType::Shield ? cfg.effect.shield.charge : 0.0f;

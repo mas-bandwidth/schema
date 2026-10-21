@@ -22,7 +22,7 @@ const plainMapSchema = "package probe\n\ntable Holder\n{\n    tags map[string(8)
 // the same declarations with the plain map in its place, so the two units
 // differ by the construct alone.
 var plainMapProbes = func() []unchangedProbe {
-	usesOptionalMap := func(u *ir.Unit) bool { return u != nil && refuseOptionalMaps(u, "cpp") != nil }
+	usesOptionalMap := func(u *ir.Unit) bool { return u != nil && len(ir.OptionalMapFields(u)) > 0 }
 	base := map[string]string{"go": plainMapSchema, "cpp": plainMapSchema}
 	keep := []string{"Holder"}
 	return []unchangedProbe{

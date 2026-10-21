@@ -219,6 +219,13 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		// The ENTRIES are not here: they are by-value records inside the
 		// holder's node extent, laid after the record's own storage.
 		g.pf("    TableMap<%s> %s; // %s — the sorted entry array, empty until an insert\n", f.MapEntry.Name, f.Name, ir.TableTypeSpelling(f))
+		if f.Type.Optional {
+			// `?map[K]V` — the map beside its presence bool (docs/SPEC-TABLES.md
+			// §2.8, §2.3): ABSENT, PRESENT-EMPTY and PRESENT-WITH-ENTRIES are
+			// three values, and presence decides whether the field rides. The
+			// oracle is internal/codegen/gotable/mappresence_test.go TestGoMapPresence.
+			g.pf("    bool %s_present = false; // ?%s: absent until set\n", f.Name, tableFieldTypeName(f))
+		}
 		return
 	}
 	if f.IsList() {
@@ -286,9 +293,17 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		// appears. Every named slot exists, so there is no count companion,
 		// and the type derives its own extent from the enum — nothing outside
 		// the array names its size (docs/SPEC-TABLES.md §2.4).
+		//
+		// THE ` = {}` IS THE HOLDER'S, NOT THE TEMPLATE'S (schema#335): the
+		// element's own initializers carry a self-initialising type's declared
+		// defaults, so it gets none — the same rule the fixed and counted
+		// arrays follow, and the half of #320 that keeps cl off O(bytes) in its
+		// front end. A scalar element has no initializer of its own, so the
+		// member states the zero; `<Name>Reset` fills either from one element
+		// (docs/SPEC-TABLES.md §8.1).
 		g.noteRef(f.KeyEnum)
-		g.pf("    TableKeyed<%s, %s> %s; // [%s]: one slot per named variant, keyed by the value\n",
-			typ, f.KeyEnum, f.Name, f.KeyEnum)
+		g.pf("    TableKeyed<%s, %s> %s%s; // [%s]: one slot per named variant, keyed by the value\n",
+			typ, f.KeyEnum, f.Name, tableArrayInit(selfInit), f.KeyEnum)
 	case f.Array == ir.ArrayFixed:
 		g.pf("    %s %s[%d]%s;\n", typ, f.Name, f.ArrayBound, tableArrayInit(selfInit))
 	case f.Array == ir.ArrayCounted:
@@ -380,6 +395,9 @@ func (g *tableGen) emitTableResetAt(expr string, f *ir.Field) {
 		g.pf("    %s.entries.value = 0; // %s: empty\n", expr, ir.TableTypeSpelling(f))
 		g.pf("    %s.count = 0;\n", expr)
 		g.pf("    %s.padding = 0;\n", expr)
+		if f.Type.Optional {
+			g.pf("    %s_present = false;\n", expr)
+		}
 		return
 	}
 	if f.IsList() {
@@ -798,7 +816,14 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	g.pf("    TableIds ids;\n")
 	g.pf("    const int64_t body = %sMeasureBody( ids, value );\n", st.Name)
 	g.pf("    if ( body < 0 || ids.overflow ) { return -1; }\n")
-	g.pf("    return 1 + body + TableIdsBytes( ids );\n}\n\n")
+	// THE INTEGRITY TRAILER is counted only by a root that declares it
+	// (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING), as the Go oracle's
+	// internal/codegen/gotable/integrity.go emitIntegrityMember adds four.
+	trailer := ""
+	if st.Integrity != "" {
+		trailer = " + 4"
+	}
+	g.pf("    return 1 + body + TableIdsBytes( ids )%s;\n}\n\n", trailer)
 }
 
 // emitArrayBodyMeasure accumulates one ARRAY BODY's length into `into`: the
@@ -857,6 +882,15 @@ func (g *tableGen) emitSlotIndexMeasure(f *ir.Field, expr, into, ind, onBad, sfx
 
 func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 	if f.IsMap() {
+		if f.Type.Optional {
+			// `?map[K]V`: ABSENT measures nothing, PRESENT-EMPTY measures the
+			// field header and the two-byte array body (docs/SPEC-TABLES.md §2.8;
+			// internal/codegen/gotable/mappresence_test.go TestGoMapPresence)
+			g.pf("    if ( value.%s_present ) // ?%s: presence decides, not content\n    {\n", f.Name, tableFieldTypeName(f))
+			g.emitMapMeasureField(f)
+			g.pf("    }\n")
+			return
+		}
 		g.emitMapMeasureField(f)
 		return
 	}
@@ -1249,13 +1283,26 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 		return
 	}
 	g.pf("inline int64_t %sSave( const %s & value, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
-	g.pf("    TableWriter w( buffer, capacity );\n")
+	// THE SEALED WRITE (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the
+	// writer's capacity is the caller's minus the four trailer bytes, so the
+	// body can never consume the room the trailer needs; the seal then covers
+	// every byte written, through the Go oracle's tableIntegritySeal
+	// (internal/codegen/gotable/integrity.go).
+	if st.Integrity != "" {
+		g.pf("    TableWriter w( buffer, capacity - 4 );\n")
+	} else {
+		g.pf("    TableWriter w( buffer, capacity );\n")
+	}
 	g.pf("    TableIds ids;\n")
 	g.pf("    w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)\n")
 	g.pf("    if ( !%sSaveBody( w, ids, value ) || ids.overflow ) { return -1; }\n", st.Name)
 	g.pf("    TableIdsWrite( w, ids ); // the ID TABLE is the last thing in the file\n")
 	g.pf("    if ( w.overflow ) { return -1; }\n")
-	g.pf("    return w.offset; // == %sMeasure( value )\n}\n\n", st.Name)
+	if st.Integrity != "" {
+		g.pf("    return schema_integrity_seal( buffer, w.offset );\n}\n\n")
+	} else {
+		g.pf("    return w.offset; // == %sMeasure( value )\n}\n\n", st.Name)
+	}
 }
 
 // emitArrayBodyWrite writes one ARRAY BODY: the element kind byte, the count,
@@ -1320,6 +1367,15 @@ func (g *tableGen) emitArrayField(f *ir.Field, id uint64, elemKind int, n, acces
 
 func (g *tableGen) emitTableWriteField(f *ir.Field) {
 	if f.IsMap() {
+		if f.Type.Optional {
+			// `?map[K]V`: ABSENT writes nothing, PRESENT-EMPTY writes the field
+			// header and the two-byte array body (docs/SPEC-TABLES.md §2.8;
+			// internal/codegen/gotable/mappresence_test.go TestGoMapPresence)
+			g.pf("    if ( value.%s_present ) // ?%s\n    {\n", f.Name, tableFieldTypeName(f))
+			g.emitMapWriteField(f)
+			g.pf("    }\n")
+			return
+		}
 		g.emitMapWriteField(f)
 		return
 	}
@@ -1779,16 +1835,30 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("    TableReport * to = report != NULL ? report : &ignored;\n")
 	g.pf("    TableIdTable table;\n")
 	g.pf("    int64_t body_bytes = 0;\n")
+	if st.Integrity != "" {
+		// THE INTEGRITY TRAILER, BEFORE THE TABLE IS OPENED (docs/SPEC-TABLES.md
+		// §2.14, §3.4 THE FRAMING): a missing or mismatched trailer is
+		// whole-file DAMAGE named integrity_mismatch, with nothing decoded, as
+		// the Go oracle's tableIntegrityOpen does (internal/codegen/gotable/
+		// integrity.go). The read then proceeds over the file without it.
+		g.pf("    if ( bytes > 0 && buffer[0] == kTableWireForm && !schema_integrity_holds( buffer, bytes ) )\n    {\n")
+		g.pf("        %sReset( value );\n", st.Name)
+		g.pf("        to->malformed = true;\n")
+		g.pf("        to->damage_reason = integrity_mismatch;\n")
+		g.pf("        return TableOpenDamaged;\n    }\n")
+		g.pf("    if ( bytes > 0 && buffer[0] == kTableWireForm ) { bytes -= 4; } // checked form-1 trailer only\n")
+	}
 	g.pf("    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );\n")
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
 	g.pf("        %sReset( value );\n", st.Name)
-	g.pf("        if ( verdict == TableOpenDamaged ) { to->malformed = true; }\n")
+	g.pf("        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }\n")
 	g.pf("        else\n        {\n")
 	g.pf("            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message\n")
 	g.pf("            // stored on its own is not readable, because its table is\n")
 	g.pf("            // somewhere else, and the refusal says so BY NAME rather than\n")
 	g.pf("            // merely by form byte (docs/SPEC-TABLES.md §3.3).\n")
 	g.pf("            to->refused = true;\n")
+	g.pf("            to->refuse_reason = unknown_form; // a form byte this FILE read does not carry (§3, §6.5)\n")
 	g.pf("            to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;\n")
 	g.pf("        }\n")
 	g.pf("        return verdict;\n    }\n")
@@ -1798,18 +1868,45 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )\n    {\n")
 	g.pf("        %sReset( value );\n", st.Name)
 	g.pf("        to->malformed = true;\n")
+	g.pf("        to->refuse_reason = wire_damaged;\n")
 	g.pf("        return TableOpenDamaged;\n    }\n")
 	g.pf("    TableReader r( buffer + 1, body_bytes, to, &table );\n")
 	g.pf("    r.nested = false; // the ROOT body, the one that may carry a node table\n")
 	g.pf("    if ( !%sLoadBody( r, value ) ) { return TableOpenBodyStopped; }\n", st.Name)
 	g.pf("    return TableOpenOk;\n}\n\n")
-	g.pf("// The bool is the BODY reaching its own terminator, and it is what it has\n")
-	g.pf("// always been: framing damage inside a field keeps what it decoded, flags\n")
-	g.pf("// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).\n")
-	g.pf("// False is a wire nothing could be decoded from: a refusal, a table that\n")
-	g.pf("// cannot be read whole, or a root body the walk could not finish.\n")
-	g.pf("inline bool %sLoad( %s & value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+	g.pf("// %sLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps\n", st.Name)
+	g.pf("// the recovered value and its report, counting clamped, kind_mismatch and\n")
+	g.pf("// malformed, and answers the plain name's BASE behaviour — true when the\n")
+	g.pf("// body reached its own terminator, false for a refusal, an unreadable table\n")
+	g.pf("// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).\n")
+	g.pf("inline bool %sLoadTolerant( %s & value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
 	g.pf("    return %sLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;\n}\n\n", st.Name)
+	g.pf("// The PLAIN %sLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it\n", st.Name)
+	g.pf("// refuses whatever the strict read refuses — malformed, clamped,\n")
+	g.pf("// kind-mismatched, an unknown form or wire damage — with false as its\n")
+	g.pf("// refusal value, the supplied report overwritten with this read's report\n")
+	g.pf("// and its reason set, the value reset to its declared defaults. unknown and\n")
+	g.pf("// widened alone never refuse.\n")
+	g.pf("inline bool %sLoad( %s & value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+	g.pf("    TableReport ignored;\n")
+	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
+	g.pf("    *out = TableReport(); // this read's report, not the caller's last one (§6.5)\n")
+	g.pf("    const TableOpenVerdict verdict = %sLoadVerdict( value, buffer, bytes, out );\n", st.Name)
+	g.pf("    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )\n    {\n")
+	g.pf("        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):\n")
+	g.pf("        // the same value ReadStrict returns, with clamped before kind_mismatch\n")
+	g.pf("        // as Go's TableReport.Err() orders them, and damage before both.\n")
+	g.pf("        if ( out->refuse_reason == ok )\n        {\n")
+	g.pf("            if ( out->refused ) { out->refuse_reason = unknown_form; }\n")
+	g.pf("            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }\n")
+	g.pf("            else if ( out->clamped ) { out->refuse_reason = clamped; }\n")
+	g.pf("            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }\n")
+	g.pf("            else { out->refuse_reason = wire_damaged; }\n")
+	g.pf("        }\n")
+	g.pf("        %sReset( value );\n", st.Name)
+	g.pf("        return false;\n    }\n")
+	g.pf("    out->refuse_reason = ok;\n")
+	g.pf("    return true;\n}\n\n")
 }
 
 // emitUnknownArm is the field this reader cannot name: skipped by its framing
@@ -2205,7 +2302,12 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 	case tkF64:
 		g.pf("%s%s = table_bits_to_double( %s.get64() );\n", ind, lvalue, rdr)
 	default:
-		signed := ir.TableKindSigned(kind)
+		// A TIMESTAMP IS THE INT64'S PAYLOAD under its own kind 36: the bytes
+		// are two's complement and the storage is int64_t, so the decode takes
+		// the signed spelling Go's emitter uses for the same count
+		// (docs/SPEC-TABLES.md §2.11, §3; internal/codegen/gotable's read of
+		// a timestamp field).
+		signed := ir.TableKindSigned(kind) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 		storage := fmt.Sprintf("uint%d_t", width*8)
 		if signed {
 			storage = fmt.Sprintf("int%d_t", width*8)
@@ -2463,21 +2565,21 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 		}
 		if hoisted {
 			g.pf("};\n")
-			g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), %d, %sTableFields, %s%s, %s };\n",
-				st.Name, st.Name, st.Name, len(st.Fields), st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"))
+			g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), %d, %sTableFields, %s%s, %s, %v };\n",
+				st.Name, st.Name, st.Name, len(st.Fields), st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"), st.JsonArray)
 		} else {
 			g.pf("    };\n")
-			g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields, %s%s, %s };\n",
-				infoQualifier, st.Name, st.Name, len(st.Fields), resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"))
+			g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields, %s%s, %s, %v };\n",
+				infoQualifier, st.Name, st.Name, len(st.Fields), resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"), st.JsonArray)
 		}
 	case hoisted:
 		g.emitTagsStatic(st.Name+"_tags", st.Tags, qualifier, indent)
-		g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s };\n",
-			st.Name, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"))
+		g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s, %v };\n",
+			st.Name, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"), st.JsonArray)
 	default:
 		g.emitTagsStatic(st.Name+"_tags", st.Tags, qualifier, indent)
-		g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s };\n",
-			infoQualifier, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"))
+		g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s, %v };\n",
+			infoQualifier, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"), st.JsonArray)
 	}
 	if hoisted {
 		g.pf("inline const TableTypeInfo * %sTableType() { return &%sTableInfo; }\n\n", st.Name, st.Name)
@@ -2655,6 +2757,13 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 
 	hasRange := "false"
 	rangeMin, rangeMax := "0.0", "0.0"
+	// THE EXACT INTEGER RANGE (docs/SPEC-TABLES.md §8.1, §4), the same columns
+	// internal/codegen/gotable/exactrange_test.go TestGoExactIntegerRangeBounds
+	// pins for Go: a signed integer kind fills the int64 pair, an unsigned kind
+	// (and bits(N)) the uint64 pair, beside the float64 pair that stays for
+	// float and fixed-point ranges.
+	rangeIntMin, rangeIntMax := "0", "0"
+	rangeUintMin, rangeUintMax := "0", "0"
 	if f.Type.Kind == ir.TBits && !f.HasIntRange {
 		// bits(N) declares its range by its WIDTH: [0, 2^N - 1]. The
 		// codec has always clamped a read to it (docs/SPEC-TABLES.md §4);
@@ -2663,13 +2772,31 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
 		hasRange = "true"
 		rangeMin, rangeMax = "0.0", bigToDouble(max)
+		rangeUintMax = tableIntLit(max, false, 8)
 	}
+	// A ONE-SIDED declaration arrives here with BOTH sides filled from the
+	// type's limit (docs/SPEC-TABLES.md §4.3, SPEC §4.6), exactly the rule
+	// internal/check/onesided_test.go TestOneSidedIntegerRange pins for Go:
+	// min alone -> max is the kind's maximum, max alone -> min is its minimum.
+	// The clamp, the fixed form and the JSON read all take the same columns.
 	if f.HasIntRange {
 		hasRange = "true"
 		rangeMin, rangeMax = bigToDouble(f.IntMin), bigToDouble(f.IntMax)
+		if f.Type.Signed {
+			rangeIntMin, rangeIntMax = tableIntLit(f.IntMin, true, 8), tableIntLit(f.IntMax, true, 8)
+		} else {
+			rangeUintMin, rangeUintMax = tableIntLit(f.IntMin, false, 8), tableIntLit(f.IntMax, false, 8)
+		}
 	} else if f.HasFloatRange {
 		hasRange = "true"
 		rangeMin, rangeMax = formatFloat(f.FMin, false), formatFloat(f.FMax, false)
+	}
+	// THE WIDE KINDS (18-29) carry no int64/uint64 pair: their bounds may not
+	// fit sixty-four bits and their exact raw range is the `wide` column
+	// (docs/SPEC-TABLES.md §8.2). This is the Go oracle's rule, too.
+	if ir.TableKindWide(tableScalarKind(f)) {
+		rangeIntMin, rangeIntMax = "0", "0"
+		rangeUintMin, rangeUintMax = "0", "0"
 	}
 
 	// the VOCABULARY columns: an enum's values, a union's arms and a
@@ -2772,11 +2899,17 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	if _, _, ok := ir.TableRawRange(f); ok && ir.TableKindWide(tableScalarKind(f)) {
 		wide = "&" + sp.wideName(f)
 	}
-	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s },\n",
+	// a CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1, §2.9) is
+	// filled from the IR SHAPE, exactly as the Go oracle's emitter does
+	// (internal/codegen/gotable/codecs.go: `if f.IsList() || f.IsMap()`).
+	// The column is never inferred from array_bound here: zero is a plain
+	// scalar's bound too, and the row must be the one tell a walker reads.
+	unboundedContainer := f.IsMap() || f.IsList()
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v },\n",
 		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
-		hasRange, rangeMin, rangeMax, fracBits, wide, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)))
+		hasRange, rangeMin, rangeMax, rangeIntMin, rangeIntMax, rangeUintMin, rangeUintMax, fracBits, wide, enumMax, enumName, variantId,
+		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer)
 }
 
 // ---- string, bytes and flags defaults (SPEC §4.2) ----

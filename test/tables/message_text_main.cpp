@@ -146,7 +146,7 @@ int main()
     // falls INSIDE the last code point and the clamp keeps thirty
     {
         uint8_t text[34];
-        memset( text, 'a', 30 );
+        memset( (void *) text, 'a', 30 );
         text[30] = 0xF0; text[31] = 0x9F; text[32] = 0x98; text[33] = 0x80; // U+1F600
         const int64_t bytes = forge( batch, sizeof( batch ), vocabulary, slot, length_bits, text, 34 );
         const read_back got = load( vocabulary, batch, bytes );
@@ -159,7 +159,7 @@ int main()
     // thirty-four ASCII bytes keep thirty-two
     {
         uint8_t text[34];
-        memset( text, 'b', 34 );
+        memset( (void *) text, 'b', 34 );
         const int64_t bytes = forge( batch, sizeof( batch ), vocabulary, slot, length_bits, text, 34 );
         const read_back got = load( vocabulary, batch, bytes );
         row( got.loaded && !got.report.malformed && got.report.clamped == 1 && got.value.sku_length == 32,
@@ -170,7 +170,7 @@ int main()
     // four bytes are one code point ending exactly at thirty-two
     {
         uint8_t text[32];
-        memset( text, 'c', 28 );
+        memset( (void *) text, 'c', 28 );
         text[28] = 0xF0; text[29] = 0x9F; text[30] = 0x98; text[31] = 0x80; // U+1F600
         const int64_t bytes = forge( batch, sizeof( batch ), vocabulary, slot, length_bits, text, 32 );
         const read_back got = load( vocabulary, batch, bytes );

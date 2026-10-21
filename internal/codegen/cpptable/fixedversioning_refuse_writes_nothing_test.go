@@ -100,7 +100,7 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
 	body := `
     if ( n != -1 ) { printf( "refuse_writes_nothing: the forged record hash did not refuse: n=%lld\n", (long long) n ); return 1; }
     if ( !r.refused ) { printf( "refuse_writes_nothing: refused is false\n" ); return 1; }
-    if ( r.reason != no_layout ) { printf( "refuse_writes_nothing: reason=%d, not no_layout\n", (int) r.reason ); return 1; }
+    if ( r.reason != TableMessageReason::no_layout ) { printf( "refuse_writes_nothing: reason=%d, not TableMessageReason::no_layout\n", (int) r.reason ); return 1; }
     if ( r.malformed ) { printf( "refuse_writes_nothing: malformed set — a refusal by name is not a malformed file\n" ); return 1; }
     if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
         { printf( "refuse_writes_nothing: a counter moved: clamped=%d unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }

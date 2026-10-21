@@ -87,7 +87,10 @@ func tableGet(width int) string { return fmt.Sprintf("get%d", width*8) }
 type tableGen struct {
 	// fixedOwner is the type whose fixed-form writer is being emitted, which is
 	// what says whether a keyed array's slots are spelled `.slots` (§2.4)
-	fixedOwner  *ir.Struct
+	fixedOwner *ir.Struct
+	// fixedCheck makes the clamp walk emit <T>FixedInRange — each clamp's
+	// count expression or'd into `bad`, and no store — instead of the body.
+	fixedCheck  bool
 	unit        *ir.Unit
 	file        *ir.File
 	anyVariable bool // the unit declares at least one variable-length table
@@ -457,7 +460,13 @@ struct TableKeyed
     // the extent is the enum's, derived here and named nowhere else
     static constexpr int32_t kSlots = (int32_t) E::Max;
 
-    T slots[kSlots] = {};
+    // THE SLOT ARRAY STATES NO INITIALIZER OF ITS OWN (schema#335). A
+    // self-initialising element already carries the declared defaults, and cl
+    // expands a whole-array value-init of a large aggregate element by element
+    // in its front end, at O(bytes) (#320); a SCALAR element has no initializer
+    // of its own, so the HOLDER's member states the " = {}" that zeroes it, and
+    // <Name>Reset fills every slot from one element either way (SPEC-TABLES §8.1).
+    T slots[kSlots];
 
     T & operator[]( E key )
     {
@@ -548,6 +557,50 @@ struct TableKeyed
 // same way would be a redefinition.
 func tableInlineMacro(pkg string) string { return strings.ToUpper(pkg) + "_TABLE_INLINE" }
 
+// tableRefuseReasonLaterValues are the eleven values Go appended to the one
+// refusal vocabulary after data_cycle (docs/SPEC-TABLES.md §6.5, §11). They
+// are APPENDED and never renumbered, so every value before them keeps its
+// number and the two targets answer the same value for the same bytes. No
+// call writes one yet: this is the vocabulary every later strict-read,
+// carrier, integrity and blob card of the C++ port names. Go's iota block in
+// internal/codegen/gotable/refusal.go is the oracle, and its order is this
+// order.
+const tableRefuseReasonLaterValues = `
+    invalid_value,         // a writer handed a value outside the declaration: a count, a value or an ordinal past its bound, or ill-formed text (§3.1, §11)
+    allocation_failed,     // an allocation the codec asked for was refused (§7.6)
+    wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
+    malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
+    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
+    kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
+    base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
+    base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
+    integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
+    non_finite,            // a plain float the read landed as a NaN or an infinity (§3.3); the report's reason is non_finite: <field>
+    blob_shared            // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
+`
+
+// tableRefuseReason is the ONE refusal vocabulary (docs/SPEC-TABLES.md §6.5,
+// §7, §11, §19.2): widen.go spells the values through data_cycle in the order
+// §7 runs its clauses, and the values Go appended after data_cycle follow,
+// unrenumbered. The Go oracle is internal/codegen/gotable/refusal.go.
+func tableRefuseReason() string {
+	const close = "\n};"
+	if !strings.HasSuffix(tableRefuseReasonEnum, close) {
+		panic("cpptable: tableRefuseReasonEnum does not end with its closing brace")
+	}
+	body := strings.TrimSuffix(tableRefuseReasonEnum, close)
+	// widen.go's enum ends at data_cycle, which takes no comma when it is the
+	// last value; the appended block makes it an interior value, so it takes
+	// one (and gives up a space, to keep the comment column).
+	nl := strings.LastIndexByte(body, '\n')
+	line := body[nl+1:]
+	if !strings.HasPrefix(strings.TrimSpace(line), "data_cycle") {
+		panic("cpptable: the refusal enum no longer ends at data_cycle")
+	}
+	body = body[:nl+1] + strings.Replace(line, "data_cycle ", "data_cycle,", 1)
+	return body + tableRefuseReasonLaterValues + "};"
+}
+
 func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool, anyWide bool, has128 bool, widen widenCensus, idCap int, u *ir.Unit) string {
 	// THE ID TABLE'S CAPACITY IS A COMPILE-TIME FACT of the unit (§3): the
 	// distinct names its table closure can spell, so a save allocates nothing.
@@ -617,7 +670,7 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	// -1, in every unit, because a caller asking why it cannot have this file
 	// is asking one question whichever call refused it. Written on the
 	// refusal path only.
-	refuseReason := tableRefuseReasonEnum
+	refuseReason := tableRefuseReason()
 	if anyExtent {
 		placeMember = "\n    // an OUT-OF-LINE array (docs/SPEC-TABLES.md §8.1): place one element and\n" +
 			"    // hand it back at its defaults. A MAP places BY KEY, a string key comes\n" +
@@ -677,7 +730,11 @@ namespace ` + pkg + ` {
 // caller meeting one of these has been refused a MESSAGE on a connection,
 // which is a different recovery with a different owner than a file a header
 // match turned down.
-enum TableMessageReason
+// THE UNDERLYING TYPE HOLDS THE FIXED FORM'S PRIVATE HIGH RANGE (§3.4):
+// TableFixedReason's names sit at 0x40000000.. and a constexpr cast into an
+// unscoped enum with no fixed underlying type must land inside the enum's own
+// range, which clang 21 enforces.
+enum TableMessageReason : int32_t
 {
     newer_form,           // a FORM BYTE this reader does not carry (§3)
     // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
@@ -722,7 +779,15 @@ enum TableMessageReason
     // used units that are not paired UTF-16 — refuses the read BY NAME, the
     // verdict the packet reader gives, this form having no L to continue past.
     // Nothing is decoded and no counter moves.
-    text_ill_formed
+    text_ill_formed,
+    // A FIXED-FORM COUNT OR LENGTH PAST THE PLAN'S BOUND (docs/SPEC-TABLES.md
+    // §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5): a count past the PLAN's bound
+    // refuses count_over_bound and a text length past it length_over_bound,
+    // checked before any destination byte is written, the count or length
+    // lying about the wire rather than about the slack. It never clamps.
+    // Nothing is decoded and no counter moves.
+    count_over_bound,
+    length_over_bound
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -735,6 +800,7 @@ enum TableMessageReason
 #define SCHEMA_HAS_FLOOR 1
 #endif
 
+` + refuseReason + `
 // The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
 struct TableReport
@@ -753,6 +819,11 @@ struct TableReport
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
+    // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
+    // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
+    // the ONE node, never a copy per slot, and the strict read refuses
+    // blob_shared. The Go oracle is internal/codegen/gotable/gotable.go.
+    int32_t blob_shared = 0;
     // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
     // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
     // zero counters and a false flag are what a clean read prints too, so the
@@ -762,6 +833,10 @@ struct TableReport
     // was not refused has no reason, and this member is the one the caller
     // must not look at then (docs/SPEC-TABLES.md §3.3).
     TableMessageReason reason = newer_form;
+    // WHOLE-FILE DAMAGE can have a named cause even when it is not a refusal:
+    // integrity_mismatch is §2.14's checked-trailer damage. Read this member
+    // when malformed is true; the reason above remains the message refusal name.
+    TableRefuseReason damage_reason = ok;
     // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
     // the reason duplicate is: a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
@@ -769,11 +844,16 @@ struct TableReport
     // says what a READER could not name and that stays true.
     int32_t retained = 0;    // unknown fields whose bytes were kept
     int32_t retain_lost = 0; // every unknown this load or save could not keep
+    // THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): the
+    // same TableRefuseReason a measure's -1 and a cook's Open answer, set by
+    // the plain names and ReadStrict on every refusal and ok otherwise.
+    // unknown, widened and retained alone leave it ok.
+    TableRefuseReason refuse_reason = ok;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
-    // the hash and nothing else. Zero on every other path.
+    // the hash and nothing else. Zero on every other path, and it stays LAST on
+    // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
-` + refuseReason + `
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
@@ -843,8 +923,18 @@ inline const char TableDocNone[1] = "";
     uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
-    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_min;       // the float range; an integer range also has the exact columns below
     double range_max;
+    // THE EXACT INTEGER RANGE (docs/SPEC-TABLES.md §8.1, §4): an integer kind's
+    // declared bounds as the exact integers the schema wrote, beside the
+    // float64 pair that stays for float and fixed-point ranges. A signed kind
+    // fills range_int_min/range_int_max, an unsigned kind (and bits(N)) fills
+    // range_uint_min/range_uint_max. Both pairs are zero on every other field,
+    // and the wide kinds (18-29) carry none: their exact bounds are in wide.
+    int64_t range_int_min;
+    int64_t range_int_max;
+    uint64_t range_uint_min;
+    uint64_t range_uint_max;
     // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
     // field's F — its storage holds units × 2^F — and wide is the declared
     // range on that RAW scale, exact, as two 128-bit two's-complement values
@@ -891,6 +981,15 @@ inline const char TableDocNone[1] = "";
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // A CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1, §2.9):
+    // true on every map and []T, with array_bound 0 beside it, and false on
+    // every other field. It is the ONE TELL, apart from the §2.13.1
+    // Unbounded (unbounded text) column, so a walker reads the container
+    // from here and never infers it from array_bound — zero is a plain
+    // scalar's bound too. It sits last so every emitted row stays a
+    // positional aggregate initializer, and emitFieldInfo fills it from the
+    // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
+    bool unbounded_container;
 };
 
 struct TableTypeInfo
@@ -910,6 +1009,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -1274,7 +1376,11 @@ struct TableReader
             case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
             case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
-            case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
+            // 36 is the TIMESTAMP: its payload is the i64's eight bytes even
+            // though its kind is its own (docs/SPEC-TABLES.md §2.11, §3), so
+            // an unnamed or kind-mismatched timestamp skips cleanly, exactly
+            // as internal/tablewire/timestamp_skip_test.go pins for Go.
+            case 5: case 9: case 11: case 23: case 28: case 36: return has( 8 ) ? ( offset += 8, true ) : false;
             case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
             case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
@@ -1463,7 +1569,7 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
-` + tableFixedRuntime + fixed128 + `
+` + tableFixedRuntime + fixed128 + tableIntegrityRuntime + `
 } // namespace ` + pkg + `
 
 #endif // ` + guard + `
@@ -1652,6 +1758,19 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			for _, st := range members {
 				g.emitJsonDeclarations(st)
 			}
+			g.pf("// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----\n\n")
+			// One document edit record for the whole package: every file's
+			// header is includable together and they all share this namespace.
+			editGuard := strings.ToUpper(u.Package) + "_SCHEMA_TABLE_TEXTFORM_EDIT"
+			g.pf("#ifndef %s\n#define %s\n", editGuard, editGuard)
+			g.pf("// TableTextFormEdit replaces one existing scalar value (§16.9.3): path\n")
+			g.pf("// names it as \"field\", \"field[2]\" or \"field.child\", and text is its\n")
+			g.pf("// replacement spelling, one token of this form.\n")
+			g.pf("struct TableTextFormEdit\n{\n    const char * path;\n    const char * text;\n};\n")
+			g.pf("#endif // %s\n\n", editGuard)
+			for _, st := range members {
+				g.emitTextFormDeclarations(st)
+			}
 		} else {
 			for _, un := range unions {
 				g.emitTableUnion(un) // its arms are all cross-file: nothing here precedes it
@@ -1672,7 +1791,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// The C spellings, as serialize.h uses them: <stdint.h>, not <cstdint>.
 		// The relocatability and standard-layout asserts read the COMPILER
 		// INTRINSICS, so <type_traits> — 124 headers on its own — is not here.
-		h.WriteString("#pragma once\n\n#include <stdint.h>\n#include <string.h> // the prefill's scalar-array fills\n#include <stddef.h> // offsetof, for the reflection descriptors\n")
+		h.WriteString("#pragma once\n\n#include <stdint.h>\n#include <string.h> // the prefill's scalar-array fills\n#include <stddef.h> // offsetof, for the reflection descriptors\n#include <string> // the hand-editable text form's document (§16.9.3)\n")
 		// THE FIXED FORM'S WRITE-SIDE BOUNDS need schema_assert and nothing
 		// else (docs/SPEC-TABLES.md §3.4): a text field's used length and a
 		// counted array's live count, checked debug-only, with no abort behind
@@ -1796,14 +1915,21 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			fmt.Fprintf(&c, "#include \"%sTable.h\"\n\n", f.Base)
 			c.WriteString("#include <stdio.h> // the text form: number formatting\n")
 			c.WriteString("#include <stdlib.h> // the text form: exact number conversion\n")
-			c.WriteString("#include <locale.h> // the text form: the runtime's decimal point\n\n")
+			c.WriteString("#include <locale.h> // the text form: the runtime's decimal point\n")
+			c.WriteString("#include <string> // the hand-editable text form (§16.9)\n")
+			c.WriteString("#include <vector> // the hand-editable text form (§16.9)\n")
+			c.WriteString("#include <string.h> // the hand-editable text form (§16.9)\n\n")
 			c.WriteString(tableJsonWalk(u.Package, anyVariable, anyMap, anyList))
+			c.WriteString(tableTextFormWalk(u.Package))
 			fmt.Fprintf(&c, "\nnamespace %s {\n\n", u.Package)
 			cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
 
 				includes: map[string]bool{}, nativeIncludes: map[string]bool{}, idOrdinal: idOrdinal}
 			for _, st := range members {
 				cg.emitJsonDefinitions(st)
+			}
+			for _, st := range members {
+				cg.emitTextFormDefinitions(st)
 			}
 			c.WriteString(cg.body.String())
 			fmt.Fprintf(&c, "} // namespace %s\n", u.Package)

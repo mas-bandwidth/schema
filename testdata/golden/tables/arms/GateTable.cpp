@@ -54,7 +54,7 @@ inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32
 // exists in a unit that declares neither construct. Same shape as the
 // pointer's three: declared here, defined after the walk by whichever half
 // the unit carries. Both are OUT-OF-LINE ARRAYS to the descriptors (§8.1):
-// array_bound = 0 is the tell, and the type name says which of the two.
+// unbounded_container is the ONE TELL, and the type name says which of the two.
 
 // a map field: an out-of-line array whose type name spells the map
 inline bool TableJsonIsMap( const TableFieldInfo * f );
@@ -380,6 +380,9 @@ inline char TableJsonShape( const TableFieldInfo * f )
     if ( TableJsonIsKeyed( f ) ) return 'o';   // an object keyed by variant NAME
     if ( f->is_array ) return 'a';
     if ( f->arms != NULL ) return 'o';         // union: an object with ONE key
+    // an ARRAY ROOT held by value is its one field's array (§16.10), so a
+    // field naming it reads and writes an array rather than an object.
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) return 'a';
     if ( f->kind == 13 ) return 'o';           // nested table or type
     if ( f->kind == 17 ) return f->table != NULL ? 'o' : 's'; // a pointer: the pointee's object in place, or null (§16.7); a byte buffer's string (§2.5)
     if ( TableJsonIsEnum( f ) ) return 's';
@@ -392,6 +395,8 @@ inline char TableJsonShape( const TableFieldInfo * f )
 inline char TableJsonElementShape( const TableFieldInfo * f )
 {
     if ( f->arms != NULL ) return 'o';        // an element of an array of unions: one key, the arm (§2.6)
+    // an element that is an ARRAY ROOT is its field's array (§16.10)
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) return 'a';
     if ( f->kind == 13 ) return 'o';
     if ( TableJsonIsEnum( f ) ) return 's';
     if ( TableJsonIsFlags( f ) ) return 'a';
@@ -1053,6 +1058,9 @@ inline bool TableJsonWriteFields( TableJsonOut & out, const void * base, const T
 inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const TableTypeInfo * info, int32_t depth )
 {
     if ( depth > kTableJsonMaxDepth ) { return false; }
+    // json = "array" (§16.10): the text is the one field's array, not an
+    // object keyed by that field.
+    if ( info->json_array && info->num_fields == 1 ) { return TableJsonWriteField( out, base, &info->fields[0], depth ); }
     bool any = false;
     if ( !TableJsonWriteFields( out, base, info, depth, any ) ) { return false; }
     if ( !any )
@@ -2140,14 +2148,44 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     if ( number.saturated ) { in.report->clamped++; } // past what sixty-four bits hold
     // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
-    // The comparison is on the value's OWN scale, correctly signed past
-    // INT64_MAX, where the storage's bit pattern is not a number to compare.
+    // AN INTEGER RANGE CLAMPS AGAINST ITS EXACT COLUMNS (docs/SPEC-TABLES.md
+    // §8.1), never through a double: the same rule and the same expected
+    // values internal/codegen/gotable/exactrange_test.go
+    // TestGoExactIntegerRangeBounds pins for Go, where a bound past 2^53 is
+    // the exact integer the schema declared. The comparison is on the value's
+    // OWN scale, correctly signed past INT64_MAX, where the storage's bit
+    // pattern is not a number to compare.
     TableJsonInteger bounded = number;
     if ( f->has_range )
     {
-        const double scale = number.negative ? -(double) number.magnitude : (double) number.magnitude;
-        if ( scale < f->range_min ) { bounded = TableJsonIntegerOf( f->range_min ); in.report->clamped++; }
-        else if ( scale > f->range_max ) { bounded = TableJsonIntegerOf( f->range_max ); in.report->clamped++; }
+        bool below = false;
+        bool above = false;
+        if ( is_signed )
+        {
+            const uint64_t lo_magnitude = f->range_int_min < 0
+                ? (uint64_t) ( -( f->range_int_min + 1 ) ) + 1 : (uint64_t) f->range_int_min;
+            const uint64_t hi_magnitude = f->range_int_max < 0
+                ? (uint64_t) ( -( f->range_int_max + 1 ) ) + 1 : (uint64_t) f->range_int_max;
+            if ( number.negative )
+            {
+                below = f->range_int_min >= 0 || number.magnitude > lo_magnitude;
+                above = f->range_int_max < 0 && number.magnitude < hi_magnitude;
+            }
+            else
+            {
+                below = f->range_int_min > 0 && number.magnitude < (uint64_t) f->range_int_min;
+                above = f->range_int_max < 0 || number.magnitude > hi_magnitude;
+            }
+            if ( below ) { bounded.magnitude = lo_magnitude; bounded.negative = f->range_int_min < 0; in.report->clamped++; }
+            else if ( above ) { bounded.magnitude = hi_magnitude; bounded.negative = f->range_int_max < 0; in.report->clamped++; }
+        }
+        else
+        {
+            below = number.negative || ( !number.negative && number.magnitude < f->range_uint_min );
+            above = !number.negative && !below && number.magnitude > f->range_uint_max;
+            if ( below ) { bounded.magnitude = f->range_uint_min; bounded.negative = false; in.report->clamped++; }
+            else if ( above ) { bounded.magnitude = f->range_uint_max; bounded.negative = false; in.report->clamped++; }
+        }
     }
     bool moved = false;
     const int64_t value = TableJsonIntegerInDomain( bounded, is_signed, (int32_t) f->elem_size, moved );
@@ -2413,6 +2451,14 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
 inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth )
 {
     if ( depth > kTableJsonMaxDepth ) { in.bad = true; return false; }
+    // json = "array" (§16.10): the text MUST be the one field's array; an
+    // object in its place is a malformed text, the Go oracle's
+    // json_root_not_array refusal (gotable/stringarrays_test.go).
+    if ( info->json_array && info->num_fields == 1 )
+    {
+        if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
+        return TableJsonReadField( in, base, &info->fields[0], depth );
+    }
     if ( TableJsonPeek( in ) != '{' ) { in.bad = true; return false; }
     in.pos++;
     return TableJsonReadTableKeys( in, base, info, depth, NULL );
@@ -3155,7 +3201,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void *, const TableFieldInfo *, 
 // an unbounded array is the out-of-line array that is not a map (§8.1)
 inline bool TableJsonIsList( const TableFieldInfo * f )
 {
-    return f->is_array && f->array_bound == 0 && !TableJsonIsMap( f );
+    return f->unbounded_container && !TableJsonIsMap( f );
 }
 
 // ToJson WRITES THE ELEMENTS IN INDEX ORDER, which is the only order there is,

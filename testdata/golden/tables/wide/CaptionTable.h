@@ -185,7 +185,18 @@ enum TableRefuseReason
     count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
     count_over_extent_cap, // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
     blob_over_size_cap,    // a blob whose length is past the derived-size cap (§3.1, §11)
-    data_cycle             // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
+    data_cycle,            // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
+    invalid_value,         // a writer handed a value outside the declaration: a count, a value or an ordinal past its bound, or ill-formed text (§3.1, §11)
+    allocation_failed,     // an allocation the codec asked for was refused (§7.6)
+    wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
+    malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
+    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
+    kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
+    base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
+    base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
+    integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
+    non_finite,            // a plain float the read landed as a NaN or an infinity (§3.3); the report's reason is non_finite: <field>
+    blob_shared            // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
 };
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
@@ -256,8 +267,18 @@ struct TableFieldInfo
     uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
-    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_min;       // the float range; an integer range also has the exact columns below
     double range_max;
+    // THE EXACT INTEGER RANGE (docs/SPEC-TABLES.md §8.1, §4): an integer kind's
+    // declared bounds as the exact integers the schema wrote, beside the
+    // float64 pair that stays for float and fixed-point ranges. A signed kind
+    // fills range_int_min/range_int_max, an unsigned kind (and bits(N)) fills
+    // range_uint_min/range_uint_max. Both pairs are zero on every other field,
+    // and the wide kinds (18-29) carry none: their exact bounds are in wide.
+    int64_t range_int_min;
+    int64_t range_int_max;
+    uint64_t range_uint_min;
+    uint64_t range_uint_max;
     // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
     // field's F — its storage holds units × 2^F — and wide is the declared
     // range on that RAW scale, exact, as two 128-bit two's-complement values
@@ -304,6 +325,15 @@ struct TableFieldInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // A CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1, §2.9):
+    // true on every map and []T, with array_bound 0 beside it, and false on
+    // every other field. It is the ONE TELL, apart from the §2.13.1
+    // Unbounded (unbounded text) column, so a walker reads the container
+    // from here and never infers it from array_bound — zero is a plain
+    // scalar's bound too. It sits last so every emitted row stays a
+    // positional aggregate initializer, and emitFieldInfo fills it from the
+    // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
+    bool unbounded_container;
 };
 
 struct TableTypeInfo
@@ -323,6 +353,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -687,7 +720,11 @@ struct TableReader
             case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
             case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
-            case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
+            // 36 is the TIMESTAMP: its payload is the i64's eight bytes even
+            // though its kind is its own (docs/SPEC-TABLES.md §2.11, §3), so
+            // an unnamed or kind-mismatched timestamp skips cleanly, exactly
+            // as internal/tablewire/timestamp_skip_test.go pins for Go.
+            case 5: case 9: case 11: case 23: case 28: case 36: return has( 8 ) ? ( offset += 8, true ) : false;
             case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
             case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
@@ -751,7 +788,7 @@ inline int64_t TableKindWidth( uint8_t kind )
         case 1: case 2: case 6: case 20: case 25: return 1;
         case 3: case 7: case 21: case 26: return 2;
         case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: return 8;
+        case 5: case 9: case 11: case 23: case 28: case 36: return 8; // 36 is the timestamp, the i64 payload (§2.11)
         case 18: case 19: case 24: case 29: return 16;
     }
     return 0;
@@ -1333,7 +1370,7 @@ inline int64_t TableMessageKindBits( uint8_t kind )
         case 2: case 6: case 20: case 25: return 8;
         case 3: case 7: case 21: case 26: return 16;
         case 4: case 8: case 22: case 27: return 32;
-        case 5: case 9: case 23: case 28: return 64;
+        case 5: case 9: case 23: case 28: case 36: return 64; // 36 is the timestamp, the i64's width (§2.11)
         default: return 128;
     }
 }
@@ -1399,7 +1436,9 @@ inline bool TableMessageFixedKind( uint8_t kind ) { return kind >= 20 && kind <=
 
 inline bool TableMessageKnownKind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+    // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
+    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -1574,6 +1613,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 {
     if ( kind == 1 ) { return 1; }
     if ( kind == 11 ) { return 64; }
+    if ( kind == 36 ) { return 64; } // the timestamp's count is sixty-four raw bits (§2.11, §3.3)
     if ( kind == 10 ) { return packing == 2 ? value_bits : 32; }
     if ( TableMessageIntegerKind( kind ) || TableMessageFixedKind( kind ) )
     {
@@ -2228,6 +2268,26 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #define TABLE_RESTRICT __restrict__
 #else
 #define TABLE_RESTRICT
+#endif
+
+// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS: the two
+// counters a *FixedClampBody takes are the caller's locals, never a field of
+// the value. An int32_t & may alias every int32_t field the pass stores to, so
+// unqualified, each clamp reloads the counter and the pass does not vectorize.
+// The qualifier is per compiler, each one's MEASURED best of the plain
+// reference, __restrict, a local counter stored once at the end, and both
+// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+//   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
+//   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
+//          local counter 307.7, both slower;
+//   MSVC and any other compiler: the plain reference, the portable form.
+// A build may define TABLE_CLAMP_RESTRICT itself to override the choice.
+#ifndef TABLE_CLAMP_RESTRICT
+#if defined( __clang__ )
+#define TABLE_CLAMP_RESTRICT __restrict__
+#else
+#define TABLE_CLAMP_RESTRICT
+#endif
 #endif
 
 // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
@@ -5826,8 +5886,18 @@ inline void StampFixedWriteBody( uint8_t * b, const Stamp & value )
     TableFixedPut32( b + 12, (uint32_t) value.seq );
 }
 
+// Line's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool LineFixedInRange( const Line & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf16Valid( (const uint8_t *) value.text, (int64_t) value.text_length );
+    return bad == 0;
+}
+
 // Line's read-side bounds.
-inline void LineFixedClampBody( Line & value, int32_t & clamped, int32_t & damaged )
+inline void LineFixedClampBody( Line & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf16Valid( (const uint8_t *) value.text, (int64_t) value.text_length ) )
@@ -5836,8 +5906,36 @@ inline void LineFixedClampBody( Line & value, int32_t & clamped, int32_t & damag
     }
 }
 
+// Caption's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool CaptionFixedInRange( const Caption & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf16Valid( (const uint8_t *) value.title, (int64_t) value.title_length );
+    bad |= (int) !LineFixedInRange( value.line );
+    for ( int64_t i = 0; i < (int64_t) value.lines_count; ++i )
+    {
+        bad |= (int) !LineFixedInRange( value.lines[i] );
+    }
+    bad |= (int) ( (uint64_t) value.body.type > 3u );
+    switch ( value.body.type )
+    {
+        case BodyType::Wide:
+        {
+            break;
+        }
+        case BodyType::Narrow:
+        {
+            break;
+        }
+        default: break;
+    }
+    return bad == 0;
+}
+
 // Caption's read-side bounds.
-inline void CaptionFixedClampBody( Caption & value, int32_t & clamped, int32_t & damaged )
+inline void CaptionFixedClampBody( Caption & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf16Valid( (const uint8_t *) value.title, (int64_t) value.title_length ) )
@@ -5864,8 +5962,18 @@ inline void CaptionFixedClampBody( Caption & value, int32_t & clamped, int32_t &
     }
 }
 
+// Stamp's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool StampFixedInRange( const Stamp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf16Valid( (const uint8_t *) value.label, (int64_t) value.label_length );
+    return bad == 0;
+}
+
 // Stamp's read-side bounds.
-inline void StampFixedClampBody( Stamp & value, int32_t & clamped, int32_t & damaged )
+inline void StampFixedClampBody( Stamp & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf16Valid( (const uint8_t *) value.label, (int64_t) value.label_length ) )
@@ -5884,7 +5992,7 @@ inline bool CaptionFixedClamp( Caption & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    CaptionFixedClampBody( value, clamped, damaged );
+    if ( !CaptionFixedInRange( value ) ) { CaptionFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -6212,7 +6320,7 @@ inline bool StampFixedClamp( Stamp & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    StampFixedClampBody( value, clamped, damaged );
+    if ( !StampFixedInRange( value ) ) { StampFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
@@ -6889,31 +6997,31 @@ inline const TableTypeInfo * LineTableType();
 inline const TableTypeInfo * CaptionTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "title", "title", "wstring", 0xda31296c0c1b6029ull, 33, false, true, false, 7, (uint32_t) offsetof( Caption, title ), (uint32_t) sizeof( Caption::title ), (uint32_t) offsetof( Caption, title_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "line", "line", "Line", 0xbf4ba5ad694f5907ull, 13, false, false, false, 0, (uint32_t) offsetof( Caption, line ), (uint32_t) sizeof( Caption::line ), 0xffffffffu, 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "lines", "lines", "Line", 0x5ce3f9a9f1d5001cull, 13, true, true, false, 3, (uint32_t) offsetof( Caption, lines ), (uint32_t) sizeof( Caption::lines[0] ), (uint32_t) offsetof( Caption, lines_count ), 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "body", "body", "Body", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (uint32_t) offsetof( Caption, body ), (uint32_t) sizeof( Caption::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "wide"; case 2: return "narrow"; case 3: return "tally"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xa633f1f655715ccaull; case 2: return 0x96569b06f223c29aull; case 3: return 0xb1e5e28e4479a274ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Body[] = { { "wide", "wide", "wstring", 0xa633f1f655715ccaull, 33, false, true, false, 4, (uint32_t) offsetof( Body, wide.value ), (uint32_t) sizeof( Body::wide.value ), (uint32_t) offsetof( Body, wide.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "narrow", "narrow", "string", 0x96569b06f223c29aull, 12, false, true, false, 4, (uint32_t) offsetof( Body, narrow.value ), (uint32_t) sizeof( Body::narrow.value ), (uint32_t) offsetof( Body, narrow.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( Body, tally ), (uint32_t) sizeof( Body::tally ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Body, wide ), NULL, &arm_fields_Body[0], 16 }, { (uint32_t) offsetof( Body, narrow ), NULL, &arm_fields_Body[1], 12 }, { (uint32_t) offsetof( Body, tally ), NULL, &arm_fields_Body[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Body, type ), (uint32_t) sizeof( Body::type ), arms }; return &info; }, "", TableDocNone, 0, NULL },
+        { "title", "title", "wstring", 0xda31296c0c1b6029ull, 33, false, true, false, 7, (uint32_t) offsetof( Caption, title ), (uint32_t) sizeof( Caption::title ), (uint32_t) offsetof( Caption, title_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "line", "line", "Line", 0xbf4ba5ad694f5907ull, 13, false, false, false, 0, (uint32_t) offsetof( Caption, line ), (uint32_t) sizeof( Caption::line ), 0xffffffffu, 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "lines", "lines", "Line", 0x5ce3f9a9f1d5001cull, 13, true, true, false, 3, (uint32_t) offsetof( Caption, lines ), (uint32_t) sizeof( Caption::lines[0] ), (uint32_t) offsetof( Caption, lines_count ), 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "body", "body", "Body", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (uint32_t) offsetof( Caption, body ), (uint32_t) sizeof( Caption::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "wide"; case 2: return "narrow"; case 3: return "tally"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xa633f1f655715ccaull; case 2: return 0x96569b06f223c29aull; case 3: return 0xb1e5e28e4479a274ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Body[] = { { "wide", "wide", "wstring", 0xa633f1f655715ccaull, 33, false, true, false, 4, (uint32_t) offsetof( Body, wide.value ), (uint32_t) sizeof( Body::wide.value ), (uint32_t) offsetof( Body, wide.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, { "narrow", "narrow", "string", 0x96569b06f223c29aull, 12, false, true, false, 4, (uint32_t) offsetof( Body, narrow.value ), (uint32_t) sizeof( Body::narrow.value ), (uint32_t) offsetof( Body, narrow.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( Body, tally ), (uint32_t) sizeof( Body::tally ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Body, wide ), NULL, &arm_fields_Body[0], 16 }, { (uint32_t) offsetof( Body, narrow ), NULL, &arm_fields_Body[1], 12 }, { (uint32_t) offsetof( Body, tally ), NULL, &arm_fields_Body[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Body, type ), (uint32_t) sizeof( Body::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "Caption", (uint32_t) sizeof( Caption ), 4, fields, +[]( void * p ) { CaptionReset( *(Caption *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "Caption", (uint32_t) sizeof( Caption ), 4, fields, +[]( void * p ) { CaptionReset( *(Caption *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * StampTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "label", "label", "wstring", 0x39f7fcec8fcb623dull, 33, false, true, false, 4, (uint32_t) offsetof( Stamp, label ), (uint32_t) sizeof( Stamp::label ), (uint32_t) offsetof( Stamp, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "seq", "seq", "uint32", 0x823b8a195ce2133cull, 8, false, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "label", "label", "wstring", 0x39f7fcec8fcb623dull, 33, false, true, false, 4, (uint32_t) offsetof( Stamp, label ), (uint32_t) sizeof( Stamp::label ), (uint32_t) offsetof( Stamp, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "seq", "seq", "uint32", 0x823b8a195ce2133cull, 8, false, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "Stamp", (uint32_t) sizeof( Stamp ), 2, fields, +[]( void * p ) { StampReset( *(Stamp *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "Stamp", (uint32_t) sizeof( Stamp ), 2, fields, +[]( void * p ) { StampReset( *(Stamp *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * LineTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "text", "text", "wstring", 0xfa04f4ef1995407eull, 33, false, true, false, 4, (uint32_t) offsetof( Line, text ), (uint32_t) sizeof( Line::text ), (uint32_t) offsetof( Line, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "text", "text", "wstring", 0xfa04f4ef1995407eull, 33, false, true, false, 4, (uint32_t) offsetof( Line, text ), (uint32_t) sizeof( Line::text ), (uint32_t) offsetof( Line, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "Line", (uint32_t) sizeof( Line ), 1, fields, +[]( void * p ) { LineReset( *(Line *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "Line", (uint32_t) sizeof( Line ), 1, fields, +[]( void * p ) { LineReset( *(Line *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 

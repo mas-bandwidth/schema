@@ -230,7 +230,7 @@ static void check_scene_case( const char * name, const char * text, long text_si
     // 1. the same text, through the generated walk, into a builder
     graphdemo::SceneBuilder from_text;
     graphdemo::TableReport text_report;
-    bool text_ok = graphdemo::SceneFromJson( from_text, text, text_size, &text_report );
+    bool text_ok = graphdemo::SceneFromJsonTolerant( from_text, text, text_size, &text_report );
     if ( refused )
     {
         if ( text_ok && !text_report.malformed )
@@ -287,7 +287,7 @@ static void check_scene_case( const char * name, const char * text, long text_si
     int64_t region_bytes = graphdemo::SceneLoadMeasure( packed, size );
     uint8_t * region = (uint8_t *) calloc( 1, (size_t) region_bytes );
     graphdemo::TableReport report;
-    const graphdemo::Scene * value = graphdemo::SceneLoad( region, region_bytes, packed, size, &report );
+    const graphdemo::Scene * value = graphdemo::SceneLoadTolerant( region, region_bytes, packed, size, &report );
     if ( value == NULL )
     {
         printf( "FAIL %s: the backend refused bytes schema pack wrote\n", name );
@@ -333,7 +333,7 @@ static void check_feed_case( const char * name, const char * text, long text_siz
 
     streamdemo::FeedBuilder from_text;
     streamdemo::TableReport text_report;
-    bool text_ok = streamdemo::FeedFromJson( from_text, text, text_size, &text_report );
+    bool text_ok = streamdemo::FeedFromJsonTolerant( from_text, text, text_size, &text_report );
     if ( refused )
     {
         if ( text_ok && !text_report.malformed )
@@ -380,7 +380,7 @@ static void check_feed_case( const char * name, const char * text, long text_siz
     int64_t region_bytes = streamdemo::FeedLoadMeasure( packed, size );
     uint8_t * region = (uint8_t *) calloc( 1, (size_t) region_bytes );
     streamdemo::TableReport report;
-    const streamdemo::Feed * value = streamdemo::FeedLoad( region, region_bytes, packed, size, &report );
+    const streamdemo::Feed * value = streamdemo::FeedLoadTolerant( region, region_bytes, packed, size, &report );
     if ( value == NULL || report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 ||
          report.duplicate != 0 || report.malformed )
     {
@@ -419,7 +419,7 @@ static void check_catalog_case( const char * name, const char * text, long text_
     // 1. the same text, through the generated walk, into a builder
     blobdemo::CatalogBuilder from_text;
     blobdemo::TableReport text_report;
-    bool text_ok = blobdemo::CatalogFromJson( from_text, text, text_size, &text_report );
+    bool text_ok = blobdemo::CatalogFromJsonTolerant( from_text, text, text_size, &text_report );
     if ( refused )
     {
         if ( text_ok && !text_report.malformed )
@@ -476,7 +476,7 @@ static void check_catalog_case( const char * name, const char * text, long text_
     int64_t region_bytes = blobdemo::CatalogLoadMeasure( packed, size );
     uint8_t * region = (uint8_t *) calloc( 1, (size_t) region_bytes );
     blobdemo::TableReport report;
-    const blobdemo::Catalog * value = blobdemo::CatalogLoad( region, region_bytes, packed, size, &report );
+    const blobdemo::Catalog * value = blobdemo::CatalogLoadTolerant( region, region_bytes, packed, size, &report );
     if ( value == NULL )
     {
         printf( "FAIL %s: the backend refused bytes schema pack wrote\n", name );
@@ -573,12 +573,12 @@ int main( int argc, char ** argv )
         if ( strcmp( root, "RootConfig" ) == 0 )
         {
             check_case<RootConfig>( name, (const char *) text, text_size, packed, size, refused, want,
-                                    RootConfigFromJson, RootConfigLoad, RootConfigMeasure, RootConfigSave );
+                                    RootConfigFromJsonTolerant, RootConfigLoad, RootConfigMeasure, RootConfigSave );
         }
         else if ( strcmp( root, "PackConfig" ) == 0 )
         {
             check_case<PackConfig>( name, (const char *) text, text_size, packed, size, refused, want,
-                                    PackConfigFromJson, PackConfigLoad, PackConfigMeasure, PackConfigSave );
+                                    PackConfigFromJsonTolerant, PackConfigLoad, PackConfigMeasure, PackConfigSave );
         }
         else if ( strcmp( root, "Scene" ) == 0 )
         {
@@ -587,7 +587,7 @@ int main( int argc, char ** argv )
         else if ( strcmp( root, "ToolMessage" ) == 0 )
         {
             check_case<messagedemo::ToolMessage>( name, (const char *) text, text_size, packed, size, refused, want,
-                                                  messagedemo::ToolMessageFromJson, messagedemo::ToolMessageLoad,
+                                                  messagedemo::ToolMessageFromJsonTolerant, messagedemo::ToolMessageLoad,
                                                   messagedemo::ToolMessageMeasure, messagedemo::ToolMessageSave );
         }
         else if ( strcmp( root, "Feed" ) == 0 )
@@ -601,7 +601,7 @@ int main( int argc, char ** argv )
         else if ( strcmp( root, "SimState" ) == 0 )
         {
             check_case<scalardemo::SimState>( name, (const char *) text, text_size, packed, size, refused, want,
-                                              scalardemo::SimStateFromJson, scalardemo::SimStateLoad,
+                                              scalardemo::SimStateFromJsonTolerant, scalardemo::SimStateLoad,
                                               scalardemo::SimStateMeasure, scalardemo::SimStateSave );
         }
         else

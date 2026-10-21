@@ -202,13 +202,13 @@ static bool ref_inside( const uint8_t * base, int64_t bytes, const TableRef & re
         static int64_t Measure( const Root * r ) { return Root##Measure( r ); }                                          \
         static int64_t Save( const Root * r, uint8_t * out, int64_t capacity ) { return Root##Save( r, out, capacity ); } \
         static int64_t LoadMeasure( const uint8_t * wire, int64_t bytes ) { return Root##LoadMeasure( wire, bytes ); }   \
-        static const Root * Load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t bytes, TableReport * report ) \
+        static const Root * LoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t bytes, TableReport * report ) \
         {                                                                                                                \
-            return Root##Load( region, region_bytes, wire, bytes, report );                                              \
+            return Root##LoadTolerant( region, region_bytes, wire, bytes, report );                                              \
         }                                                                                                                \
-        static bool LoadBuilder( Builder & into, const uint8_t * wire, int64_t bytes, TableReport * report )             \
+        static bool LoadBuilderTolerant( Builder & into, const uint8_t * wire, int64_t bytes, TableReport * report )             \
         {                                                                                                                \
-            return Root##LoadBuilder( into, wire, bytes, report );                                                       \
+            return Root##LoadBuilderTolerant( into, wire, bytes, report );                                                       \
         }                                                                                                                \
         static int64_t CookMeasure( const Builder & b ) { return Root##CookMeasure( b ); }                               \
         static bool Cook( const Builder & b, void * out, uint64_t capacity, TableByteOrder order ) { return Root##Cook( b, out, capacity, order ); } \
@@ -269,7 +269,7 @@ static void exercise( const char * name, void ( * build )( typename S::Builder &
         if ( region != NULL )
         {
             TableReport report;
-            const Root * loaded = S::Load( region, need, wire, saved, &report );
+            const Root * loaded = S::LoadTolerant( region, need, wire, saved, &report );
             CHECK( loaded != NULL );
             report_silent( report, "a loaded region" );
             if ( loaded != NULL )
@@ -280,14 +280,14 @@ static void exercise( const char * name, void ( * build )( typename S::Builder &
             }
             Builder into;
             TableReport tool;
-            CHECK( S::LoadBuilder( into, wire, saved, &tool ) );
+            CHECK( S::LoadBuilderTolerant( into, wire, saved, &tool ) );
             reports_agree( tool, report );
             CHECK_EQ( S::Save( into, again, sizeof( again ) ), saved );
             CHECK( memcmp( again, wire, (size_t) saved ) == 0 );
             // the region is EXACT: one byte short is refused. Load zeroes the
             // region it is handed before it refuses, so this is the last act.
             TableReport short_report;
-            CHECK( S::Load( region, need - 1, wire, saved, &short_report ) == NULL );
+            CHECK( S::LoadTolerant( region, need - 1, wire, saved, &short_report ) == NULL );
             free( region );
         }
     }
@@ -322,8 +322,8 @@ static void exercise( const char * name, void ( * build )( typename S::Builder &
         CHECK( b.RegionBytes() <= (int64_t) sizeof( relocated ) );
         if ( b.RegionBytes() <= (int64_t) sizeof( relocated ) )
         {
-            memset( relocated, 0, sizeof( relocated ) );
-            memcpy( relocated, b.Region(), (size_t) b.RegionBytes() );
+            memset( (void *) relocated, 0, sizeof( relocated ) );
+            memcpy( (void *) relocated, b.Region(), (size_t) b.RegionBytes() );
             check( (const Root *) relocated, relocated, b.RegionBytes(), "the relocated region" );
         }
 

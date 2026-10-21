@@ -516,6 +516,15 @@ func gitValue(dir string, args ...string) string {
 	return strings.TrimSpace(string(b))
 }
 func corpusID(wire string) (string, error) {
+	return corpusIDOf(corpusPaths(wire))
+}
+
+// corpusPaths maps the basename a runner hashes to the file it loads, for one
+// wire. The read arm (-mode plan-read) loads BOTH wires' files in one
+// invocation and hashes their union (readArmCorpusID), so its id differs from
+// either wire's by §1.6's own definition and its rows are never divisible
+// against a row of an ordinary pass.
+func corpusPaths(wire string) map[string]string {
 	paths := map[string]string{}
 	if wire == "packet" {
 		paths["bench_mixed.bin"] = "testdata/wire/bench_mixed.bin"
@@ -530,6 +539,10 @@ func corpusID(wire string) (string, error) {
 			paths[name] = "bench/paired/corpus/" + name
 		}
 	}
+	return paths
+}
+
+func corpusIDOf(paths map[string]string) (string, error) {
 	keys := []string{}
 	for k := range paths {
 		keys = append(keys, k)
@@ -553,6 +566,18 @@ func corpusID(wire string) (string, error) {
 	}
 	return fmt.Sprintf("%016x", h), nil
 }
+
+// cppBuildFlags is the ONE C++ flag line: the table leg, the packet leg and
+// the read arm's straight-line anchor all compile with it, so the anchor's
+// ratio is never a flag difference.
+func cppBuildFlags(cxx, opt string) []string {
+	flags := []string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-ffp-contract=off", "-fno-rtti", "-" + opt, "-DNDEBUG", "-DBENCH_OPT=\"" + opt + "\""}
+	if version, e := capture(command{args: []string{cxx, "--version"}}); e == nil && (strings.Contains(strings.ToLower(string(version)), "gcc") || strings.Contains(strings.ToLower(string(version)), "g++")) {
+		flags = append(flags, "-Wno-class-memaccess", "-Wno-type-limits")
+	}
+	return flags
+}
+
 func generateAndBuild(langs []string) error {
 	if e := os.MkdirAll("build/paired", 0755); e != nil {
 		return e
@@ -612,14 +637,12 @@ func generateAndBuild(langs []string) error {
 		return errors.New("BENCH_OPT_LEVEL must be O2 or O3")
 	}
 	stamp := "-DBENCH_OPT=\"" + opt + "\""
-	cppFlags := []string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-ffp-contract=off", "-fno-rtti", "-" + opt, "-DNDEBUG", stamp}
-	if version, e := capture(command{args: []string{cxx, "--version"}}); e == nil && (strings.Contains(strings.ToLower(string(version)), "gcc") || strings.Contains(strings.ToLower(string(version)), "g++")) {
-		cppFlags = append(cppFlags, "-Wno-class-memaccess", "-Wno-type-limits")
-	}
+	cppFlags := cppBuildFlags(cxx, opt)
 	cFlags := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-" + opt, "-DNDEBUG", stamp}
 	if version, e := capture(command{args: []string{cc, "--version"}}); e == nil && strings.Contains(strings.ToLower(string(version)), "gcc") {
 		cFlags = append(cFlags, "-Wno-stringop-truncation")
 	}
+	anchor := anchorBuild{Refusal: "not built: the C++ leg is not in this build"}
 	// The independent C++ bridge is the equivalence oracle even for a subset pass.
 	if !contains(langs, "cpp") {
 		if e := run(schema, "generate", "--lang", "cpp", "--out", "generated/bench/paired/cpp", "bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"); e != nil {
@@ -647,6 +670,7 @@ func generateAndBuild(langs []string) error {
 			if e := run(a...); e != nil {
 				return e
 			}
+			anchor = buildAnchor(cxx, cppFlags, ser)
 		case "c":
 			a := append([]string{cc}, cFlags...)
 			// serialize.c is a translation unit, not a header: the table leg links it
@@ -881,6 +905,17 @@ func generateAndBuild(langs []string) error {
 	info.Environment = map[string]string{}
 	for _, key := range measuredEnvironment {
 		info.Environment[key] = os.Getenv(key)
+	}
+	// THE ANCHOR is recorded whether or not it built: a refusal is a fact about
+	// this tree that -mode plan-read prints, never a reason to fail the legs.
+	info.Tools["cpp_anchor"] = anchor.Refusal
+	if anchor.Refusal == "" {
+		info.Tools["cpp_anchor"] = "built: " + strings.Join(anchor.Command, " ")
+		hash, err := hashFile(anchorBinary)
+		if err != nil {
+			return err
+		}
+		info.Binaries[anchorBinary] = hash
 	}
 	info.Tools["cpp_packet_flags"] = strings.Join(cppFlags, " ") + " -DSERIALIZE_RELEASE"
 	info.Tools["cpp_table_flags"] = strings.Join(cppFlags, " ") + " -DBENCH_MATCHED"
@@ -1403,7 +1438,7 @@ func renderReport(dir string, writeOutputs bool) error {
 	return nil
 }
 func main() {
-	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, run confirmation, or render")
+	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, plan-read (the read arm, C++), run confirmation, or render")
 	out := flag.String("out", "", "new results directory (or existing directory for render)")
 	langsFlag := flag.String("langs", "cpp,c,go,cs", "comma-separated required build/gate languages")
 	rounds := flag.Int("rounds", 7, "interleaved measured rounds")
@@ -1449,7 +1484,7 @@ func main() {
 		}
 		return
 	}
-	if *mode != "build" && *mode != "gate" && *mode != "run" && *mode != "fast" && *mode != "table" && *mode != "table-langs" {
+	if *mode != "build" && *mode != "gate" && *mode != "run" && *mode != "fast" && *mode != "table" && *mode != "table-langs" && *mode != "plan-read" {
 		fail(errors.New("unknown mode"))
 	}
 	if *lane != "" && *mode != "table" {
@@ -1483,7 +1518,12 @@ func main() {
 			fail(e)
 		}
 	}
-	if !*reuse && *mode != "fast" && *mode != "table" {
+	if *mode == "plan-read" && strings.TrimSpace(*receipt) == "" {
+		fail(errors.New("plan-read requires -quiet-window with the operator’s READY/START receipt or reference"))
+	}
+	// plan-read measures a build, like fast and table: it never builds, so the
+	// compile can never land inside its quiet window.
+	if !*reuse && *mode != "fast" && *mode != "table" && *mode != "plan-read" {
 		if e := generateAndBuild(langs); e != nil {
 			fail(e)
 		}
@@ -1500,6 +1540,12 @@ func main() {
 	}
 	if *mode == "table" {
 		if e := tablePass(*out, info, fast, *lane); e != nil {
+			fail(e)
+		}
+		return
+	}
+	if *mode == "plan-read" {
+		if e := planReadPass(langs, *out, *rounds, info, *receipt); e != nil {
 			fail(e)
 		}
 		return
