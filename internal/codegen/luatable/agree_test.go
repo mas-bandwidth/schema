@@ -213,7 +213,6 @@ func TestLuaTableDamagedReportsAndResavesAgree(t *testing.T) {
 		{"resave_guard_false_drops_guarded_pointer", "guard_true_both_edges", "01010101021102031103040c13020507ff04010000000005070604020000000000c740a70b985d73d744e5f7fadfa6c4f7c15dd12f298f25e3ffffffffffffffff8db6f6d2c61cbd66ea0ce83094fde47c0600000000000000"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			row, ok := rows[c.caseName]

@@ -58,7 +58,7 @@ func luaFuzzMutate(base []byte, seed uint64) []byte {
 		return []byte{byte(r.next())}
 	}
 	edits := 1 + int(r.next()%4)
-	for k := 0; k < edits; k++ {
+	for range edits {
 		pos := int(r.next() % uint64(len(w)))
 		switch r.next() % 3 {
 		case 0:
@@ -400,7 +400,7 @@ func runLuaFuzzDifferential(t *testing.T, edit func([]byte) []byte) luaFuzzResul
 			if err != nil {
 				t.Fatalf("instance %s: %v", row.caseName, err)
 			}
-			for j := 0; j < luaFuzzMutantsPerInstance; j++ {
+			for j := range luaFuzzMutantsPerInstance {
 				seed := luaFuzzMutantSeed(row.caseName, j)
 				g.mutants = append(g.mutants, luaFuzzMutant{row.caseName, seed, luaFuzzMutate(base, seed)})
 			}
@@ -428,13 +428,11 @@ func runLuaFuzzDifferential(t *testing.T, edit func([]byte) []byte) luaFuzzResul
 	slots := make(chan struct{}, max(1, goruntime.GOMAXPROCS(0)/2))
 	for _, g := range groups {
 		for _, c := range g.chunks {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				slots <- struct{}{}
 				defer func() { <-slots }()
 				c.out, c.err = luaFuzzRun(lua, g.dir, c.file)
-			}()
+			})
 		}
 	}
 	wg.Wait()

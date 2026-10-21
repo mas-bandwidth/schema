@@ -37,7 +37,7 @@ func tablesGenerateDirs(t *testing.T, makefile string) []string {
 	t.Helper()
 	var dirs []string
 	in := false
-	for _, line := range strings.Split(makefile, "\n") {
+	for line := range strings.SplitSeq(makefile, "\n") {
 		switch {
 		case strings.HasPrefix(line, "define tables_generate"):
 			in = true

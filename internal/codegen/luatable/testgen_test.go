@@ -2,6 +2,7 @@ package luatable
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -147,9 +148,7 @@ func TestLuaTestgenWritesPassingTests(t *testing.T) {
 			t.Fatalf("the load anchor matches %d times, want 1", n)
 		}
 		files := map[string][]byte{}
-		for name, data := range generated {
-			files[name] = data
-		}
+		maps.Copy(files, generated)
 		files["load.lua"] = []byte(strings.Replace(string(src), anchor, sabotaged, 1))
 		bad := t.TempDir()
 		write(bad, files)
@@ -178,9 +177,7 @@ func TestLuaTestgenWritesPassingTests(t *testing.T) {
 			t.Fatalf("the text anchor matches %d times, want 1", n)
 		}
 		files := map[string][]byte{}
-		for name, data := range generated {
-			files[name] = data
-		}
+		maps.Copy(files, generated)
 		files["text.lua"] = []byte(strings.Replace(string(src), anchor, sabotaged, 1))
 		bad := t.TempDir()
 		write(bad, files)

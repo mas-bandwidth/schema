@@ -361,16 +361,13 @@ func EngineVerdict(m *tabletext.Model, c Case, payload []byte) (verdict, reason,
 // of the engine's refusal types is a failure, not a synthetic reason: collapsing
 // it into a made-up engine_error would hide an engine change behind a green gate.
 func RefusalReason(err error) (string, error) {
-	var mr *tablewire.MessageRefusal
-	if errors.As(err, &mr) {
+	if mr, ok := errors.AsType[*tablewire.MessageRefusal](err); ok {
 		return mr.Reason.String(), nil
 	}
-	var fr *tablewire.FormRefusal
-	if errors.As(err, &fr) {
+	if _, ok := errors.AsType[*tablewire.FormRefusal](err); ok {
 		return ReasonNewerForm, nil
 	}
-	var cr *tablewire.CountRefusal
-	if errors.As(err, &cr) {
+	if _, ok := errors.AsType[*tablewire.CountRefusal](err); ok {
 		return ReasonCountRefusal, nil
 	}
 	return "", fmt.Errorf("engine returned an unnamed refusal: %w", err)

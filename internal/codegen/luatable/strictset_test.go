@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"os/exec"
@@ -188,9 +189,7 @@ func strictGoOracle(t *testing.T, u *ir.Unit, cases []strictCase) map[string]str
 	if err != nil {
 		t.Fatalf("generate Go tables: %v", err)
 	}
-	for name, data := range tables {
-		goFiles[name] = data
-	}
+	maps.Copy(goFiles, tables)
 	dir := t.TempDir()
 	goFiles["go.mod"] = []byte("module strictprobe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v1.15.1\n")
 	var roots []string

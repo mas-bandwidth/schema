@@ -338,7 +338,7 @@ func luaHostileRun(t *testing.T, root, corpusDir string, cases []luaHostileCase,
 		t.Fatalf("the Lua hostile-corpus runner failed: %v\n%s", err, output)
 	}
 	answers := map[string]luaHostileAnswer{}
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(output)), "\n") {
 		if line == "" {
 			continue
 		}

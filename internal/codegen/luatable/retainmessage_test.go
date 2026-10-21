@@ -2,6 +2,7 @@ package luatable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -166,9 +167,7 @@ end
 			t.Fatalf("negative control %s: runtime source did not carry %q", bug.name, bug.from)
 		}
 		patchedOlder := map[string][]byte{}
-		for name, data := range olderFiles {
-			patchedOlder[name] = data
-		}
+		maps.Copy(patchedOlder, olderFiles)
 		patchedOlder["retainmessage.lua"] = []byte(patched)
 		got := runRetainProbe(t, newerFiles, patchedOlder, probe, inputs)
 		if strings.HasPrefix(got[bug.caught], bug.caught+":true:") {
@@ -219,9 +218,7 @@ func goRetainMessageSaves(t *testing.T, u *ir.Unit, cases []struct{ name, lua, g
 	if err != nil {
 		t.Fatalf("generate Go tables: %v", err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	var body strings.Builder
 	for _, c := range cases {

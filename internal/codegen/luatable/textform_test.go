@@ -3,6 +3,7 @@ package luatable
 import (
 	"encoding/hex"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -170,7 +171,7 @@ end
 	out := string(luarun.Run(t, luaDir, "main.lua", inputs))
 
 	results := map[string]struct{ verdict, body string }{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		parts := strings.SplitN(line, "\t", 3)
 		if len(parts) != 3 {
 			t.Fatalf("bad probe line %q", line)
@@ -209,9 +210,7 @@ end
 		t.Helper()
 		o := decode(stem, read(filepath.Join(vectors, stem+".value.json")))
 		want := map[string]any{}
-		for k, v := range defaults {
-			want[k] = v
-		}
+		maps.Copy(want, defaults)
 		for k, v := range o["explicit_fields"].(map[string]any) {
 			if v == nil {
 				delete(want, k)
@@ -247,9 +246,7 @@ end
 		}
 		labels[label] = len(labels) + 1
 		def := map[string]any{"&node": json.Number(itoaJSON(labels[label]))}
-		for k, e := range nodes[label].(map[string]any) {
-			def[k] = e
-		}
+		maps.Copy(def, nodes[label].(map[string]any))
 		items = append(items, def)
 	}
 	lookup := o["lookup"].(map[string]any)

@@ -11,6 +11,7 @@ package luatable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -45,9 +46,7 @@ func fixedMessageStrictGoOracle(t *testing.T, src string) map[string]string {
 	if err != nil {
 		t.Fatalf("generate Go tables: %v", err)
 	}
-	for name, data := range tables {
-		goFiles[name] = data
-	}
+	maps.Copy(goFiles, tables)
 	goFiles["go.mod"] = []byte("module strictprobe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v1.15.1\n")
 	goFiles["strictprobe_test.go"] = []byte(fixedMessageStrictGoProbe)
 	probeDir := t.TempDir()

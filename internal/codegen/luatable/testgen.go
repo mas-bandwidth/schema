@@ -719,12 +719,12 @@ func (g *ltgGen) mapValue(j *ltgJSON, f *ir.Field) error {
 	n := g.unbounded()
 	var keys []string
 	if key.Type.Kind == ir.TString || key.Type.Kind == ir.TWString {
-		for i := int64(0); i < n; i++ {
+		for i := range n {
 			keys = append(keys, string(rune('a'+i)))
 		}
 	} else {
 		lo, hi := ltgIntRange(key)
-		for i := int64(0); i < n; i++ {
+		for i := range n {
 			k := new(big.Int).Add(lo, big.NewInt(i))
 			if k.Cmp(hi) > 0 {
 				break

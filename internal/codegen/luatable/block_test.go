@@ -29,7 +29,6 @@ func TestLuaBlockRead(t *testing.T) {
 		t.Fatal("the manifest names no block image")
 	}
 	for _, row := range rows {
-		row := row
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			paths := units[row.unit]

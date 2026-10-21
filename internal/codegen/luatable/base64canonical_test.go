@@ -62,7 +62,7 @@ func TestLuaLoadTextRefusesNonCanonicalBase64(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(luarun.Run(t, dir, "main.lua", nil)), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(luarun.Run(t, dir, "main.lua", nil)), "\n"), "\n") {
 		k, v, _ := strings.Cut(line, "=")
 		got[k] = v
 	}

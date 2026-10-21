@@ -171,7 +171,7 @@ func runLuaResourceBounds(t *testing.T, dir string) map[string]luaResourceBounds
 	}
 	out := string(luarun.Run(t, dir, "main.lua", inputs))
 	got := map[string]luaResourceBoundsResult{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		fields := strings.Split(line, "\t")
 		if len(fields) != 6 {
 			t.Fatalf("bad resource-bounds probe line %q", line)

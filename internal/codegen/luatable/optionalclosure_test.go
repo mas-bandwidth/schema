@@ -176,7 +176,7 @@ print("json_stale=" .. hex(json.ToJson(T, "Outer", p)))
 		"present": wantPresent,
 	}))
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		k, v, ok := strings.Cut(line, "=")
 		if !ok {
 			t.Fatalf("probe line %q is not key=value", line)

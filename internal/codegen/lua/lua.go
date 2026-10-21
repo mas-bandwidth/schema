@@ -34,6 +34,7 @@ package lua
 import (
 	"fmt"
 	"io/fs"
+	"maps"
 	"math"
 	"math/big"
 	"sort"
@@ -122,9 +123,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		m.Body.WriteString("return _M\n")
 		out[f.Base+"."+ext] = assemble(m, f.Base == home)
 	}
-	for name, data := range rt {
-		out[name] = data
-	}
+	maps.Copy(out, rt)
 	return out, nil
 }
 

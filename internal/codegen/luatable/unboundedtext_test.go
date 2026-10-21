@@ -131,7 +131,7 @@ func TestLuaUnboundedTextBinary(t *testing.T) {
 	}
 	out := strings.TrimRight(string(luarun.Run(t, dir, "main.lua", map[string][]byte{"wire": wire})), "\n")
 	lines := map[string]string{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		key, value, ok := strings.Cut(line, ":")
 		if !ok {
 			t.Fatalf("probe line %q is not key:value", line)

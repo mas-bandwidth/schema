@@ -219,7 +219,7 @@ func TestLuaPlainFloatSpecialValuesAgreeAcrossForms(t *testing.T) {
 	}
 	out := string(luarun.Run(t, luaDir, "main.lua", nil))
 	lua := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		part := strings.SplitN(line, "|", 3)
 		if len(part) != 3 {
 			t.Fatalf("Lua probe line %q, want name|kind|value", line)

@@ -9,6 +9,7 @@ package luatable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -224,9 +225,7 @@ func generatedJSONTotalWriteOracle(t *testing.T, u *ir.Unit) string {
 	if err != nil {
 		t.Fatalf("generate Go tables: %v", err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	files["go.mod"] = []byte("module probe\n\ngo 1.26\n")
 	dir := t.TempDir()
 	for name, data := range files {
@@ -298,9 +297,7 @@ func generatedJSONOracle(t *testing.T, u *ir.Unit, cases []jsonCase) string {
 	if err != nil {
 		t.Fatalf("generate Go tables: %v", err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	files["go.mod"] = []byte("module probe\n\ngo 1.26\n")
 	dir := t.TempDir()
 	for name, data := range files {

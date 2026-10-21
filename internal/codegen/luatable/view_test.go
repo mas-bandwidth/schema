@@ -80,7 +80,7 @@ func TestLuaViewDescriptorsMatchGo(t *testing.T) {
 		out := string(luarun.Run(t, dir, "main.lua", nil))
 		got := map[string]string{}
 		var order []string
-		for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 			if line == "" {
 				continue
 			}
@@ -126,7 +126,7 @@ func TestLuaViewDescriptorsMatchGo(t *testing.T) {
 // descriptor must agree with.
 func viewLines(u *ir.Unit, listing string) map[string]string {
 	want := map[string]string{}
-	for _, line := range strings.Split(listing, "\n") {
+	for line := range strings.SplitSeq(listing, "\n") {
 		f := strings.Fields(line)
 		if len(f) < 8 || f[0] != "table" || f[2] != "field" {
 			continue

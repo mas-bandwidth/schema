@@ -118,7 +118,7 @@ run("refuse_two_tokens", function() return W.Edit(doc, { { path = "count", text 
 	out := string(luarun.Run(t, luaDir, "main.lua", inputs))
 
 	results := map[string]struct{ verdict, body string }{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		parts := strings.SplitN(line, "\t", 3)
 		if len(parts) != 3 {
 			t.Fatalf("bad probe line %q", line)

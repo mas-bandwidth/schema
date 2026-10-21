@@ -2,6 +2,7 @@ package luatable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -128,9 +129,7 @@ func goRetainOracle(t *testing.T, u *ir.Unit, wirePath string) ([]byte, int, int
 	if err != nil {
 		t.Fatalf("generate Go tables: %v", err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	files["go.mod"] = []byte("module probe\n\ngo 1.26\n")
 	dir := t.TempDir()
 	saved := filepath.Join(dir, "go_save.bin")

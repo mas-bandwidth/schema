@@ -90,7 +90,7 @@ func TestLuaTypeView(t *testing.T) {
 // IR pins (docs/SPEC-TABLES.md §8.7), with every field's columns.
 func typeViewPin(u *ir.Unit) string {
 	var lines []string
-	for _, line := range strings.Split(viewlisting.Listing(u), "\n") {
+	for line := range strings.SplitSeq(viewlisting.Listing(u), "\n") {
 		if strings.HasPrefix(line, "type ") {
 			lines = append(lines, line)
 		}

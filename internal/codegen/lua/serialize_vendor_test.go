@@ -33,7 +33,7 @@ func TestVendoredLuaSerializeIsThePin(t *testing.T) {
 	}
 	var pin []record
 	pinned := map[string]bool{}
-	for _, line := range strings.Split(string(pinBytes), "\n") {
+	for line := range strings.SplitSeq(string(pinBytes), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue

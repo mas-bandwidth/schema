@@ -123,7 +123,6 @@ func TestLuaPlainLoadIsStrict(t *testing.T) {
 			t.Fatalf("the manifest has no %s rows", kind)
 		}
 		for _, row := range rows {
-			row := row
 			instance := kind == "instance"
 			g, ok := generate(t, row.unit)
 			if !ok {

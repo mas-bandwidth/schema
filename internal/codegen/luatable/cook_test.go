@@ -31,7 +31,6 @@ func TestLuaCookOpenAndCheck(t *testing.T) {
 	t.Run("every instance cook opens", func(t *testing.T) {
 		t.Parallel()
 		for _, r := range rows {
-			r := r
 			t.Run(r.caseName, func(t *testing.T) {
 				t.Parallel()
 				var paths []string
@@ -186,7 +185,6 @@ func TestLuaCookOpenAndCheck(t *testing.T) {
 			}},
 		}
 		for _, tc := range cases {
-			tc := tc
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
 				f := tc.mutate(append([]byte(nil), valid...))

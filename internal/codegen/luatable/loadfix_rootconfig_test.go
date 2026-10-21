@@ -123,7 +123,7 @@ func loadFixRootConfigEngine(m *tabletext.Model, def *ir.Struct, data []byte) (l
 func loadFixRootConfigLeb(data []byte, at int) (uint64, int) {
 	var v uint64
 	var s uint
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		x := data[at]
 		at++
 		v |= uint64(x&0x7f) << s
@@ -179,7 +179,7 @@ func loadFixRootConfigPathAt(def *ir.Struct, wire []byte, offset int) string {
 		return def.Name + " (id table)"
 	}
 	ids := map[uint64]uint64{}
-	for i := 0; i < count; i++ {
+	for i := range count {
 		ids[uint64(i+1)] = binary.LittleEndian.Uint64(wire[end+i*8:])
 	}
 	names := map[uint64]string{}
@@ -194,10 +194,7 @@ func loadFixRootConfigPathAt(def *ir.Struct, wire []byte, offset int) string {
 			break
 		}
 		kind := int(wire[next])
-		at = loadFixRootConfigSkip(wire, next+1, kind)
-		if at > end {
-			at = end
-		}
+		at = min(loadFixRootConfigSkip(wire, next+1, kind), end)
 		if offset >= start && offset < at {
 			if name, ok := names[ids[ref]]; ok {
 				return def.Name + "." + name

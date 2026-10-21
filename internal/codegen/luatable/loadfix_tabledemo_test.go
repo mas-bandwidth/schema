@@ -169,7 +169,6 @@ func TestLuaLoadTabledemoMalformedAgreesWithTheEngine(t *testing.T) {
 	repo := filepath.Join("..", "..", "..")
 	units := manifestUnits(t, filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
 	for _, c := range loadFixTabledemoCases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			paths, ok := units[c.unit]

@@ -144,7 +144,7 @@ func WriteHexProbe(t testing.TB, dir string) {
 func HexLines(t testing.TB, out []byte) [][]byte {
 	t.Helper()
 	var lines [][]byte
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		if line == "" && len(out) == 0 {
 			break
 		}

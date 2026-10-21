@@ -27,7 +27,6 @@ func TestLuaCookRead(t *testing.T) {
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)
 	for _, row := range manifestRows(t, manifest, "instance") {
-		row := row
 		t.Run(row.caseName, func(t *testing.T) {
 			t.Parallel()
 			var paths []string
