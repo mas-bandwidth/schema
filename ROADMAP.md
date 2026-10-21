@@ -50,7 +50,7 @@ A cell is ✅ when the language's packet leg passes on this branch: the examples
 
 Fixed tables provide versioning such that a new reader can always read an old writer. They are good for messages between the game server and a backend, or the backend and the website where the reader and writer have different versions of the protocol.
 
-This work is on the sprint branch sprint/schema-vt-core and is not yet on main. Cells show ✅ verified complete or ❌ not yet verified complete: a cell is ✅ only when every task under it is done with its acceptance recorded, by the landed cards, in docs/roadmap-evidence/. Built, partial and unstarted states stay in the source data; the [feature survey](docs/FIXED-TABLES-SURVEY.md) records the full scope.
+This work is on main: sprint/schema-vt-core landed on main, and the Go core (sprint/schema-go) lands through dev (2026-10-21). Cells show ✅ verified complete or ❌ not yet verified complete: a cell is ✅ only when every task under it is done with its acceptance recorded, by the landed cards, in docs/roadmap-evidence/. Built, partial and unstarted states stay in the source data; the [feature survey](docs/FIXED-TABLES-SURVEY.md) records the full scope.
 
 <!-- nova-work:fixed-tables:start -->
 
