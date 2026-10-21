@@ -774,6 +774,7 @@ async function codecOf(unit, root, path) {
   const m = await load(path);
   const codec = {
     load: m[root + "Load"], save: m[root + "Save"], toJson: m[root + "ToJson"], fromJson: m[root + "FromJson"],
+    measureReason: m[root + "MeasureReason"],
     report: () => new m.TableVariableReport(),
   };
   if (Object.values(codec).some((f) => typeof f !== "function")) { fail(unit + "." + root + ": the variable surface is missing from " + path); }
@@ -841,25 +842,17 @@ async function surfaceWire(lines, outDir) {
     if (v === null) { fail(f[1] + ": load refused " + f[4]); }
     const saved = codec.save(v);
     if (saved === null) {
-      // THE NAMED WRITER REFUSAL (docs/SPEC-TABLES.md §2.5): an instance whose
-      // manifest line names go-refusal=<reason> and lists js in refused-by= is
-      // answered by that reason, the bytes nothing; any other refusal is a red
-      const reason = wireRefusal(f);
-      if (reason === null) { fail(f[1] + ": save refused the value"); }
+      // THE NAMED WRITER REFUSAL (docs/SPEC-TABLES.md §2.5): a blob two slots
+      // name is refused by every writer, and the leg answers it by its own
+      // reason, as the Go driver answers from its encode's error. The harness
+      // holds the reason to the manifest's; any other refusal is a red here.
+      const reason = codec.measureReason(v)[1];
+      if (reason !== "blob_shared") { fail(f[1] + ": save refused the value (" + reason + ")"); }
       writeFileSync(join(outDir, f[1] + ".absent"), reason);
       continue;
     }
     writeFileSync(join(outDir, f[1]), saved);
   }
-}
-
-// wireRefusal answers the named refusal an instance line owes this leg, or
-// null: go-refusal=<reason> with js among refused-by=<ports>.
-function wireRefusal(f) {
-  const marker = (p) => { const m = f.slice(5).find((x) => x.startsWith(p)); return m === undefined ? null : m.slice(p.length); };
-  const reason = marker("go-refusal="), by = marker("refused-by=");
-  if (reason === null || reason === "" || by === null || !by.split(",").includes("js")) { return null; }
-  return reason;
 }
 
 async function surfaceReport(lines, outDir) {

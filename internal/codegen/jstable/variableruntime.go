@@ -204,7 +204,7 @@ function TableVariableFieldEdges(fd, v, out) {
 // names is blob_shared, and Save and Measure refuse it (null, -1) rather than
 // write the edge or a copy per slot. A cook packs the graph as it finds it and
 // passes false.
-function TableVariableNumber(c, root, refuseShared) {
+function TableVariableNumber(c, root, refuseShared, why) {
   const nodes = new TableVariableNodes();
   nodes.index.set(root, 1);
   const open = new Set([root]);
@@ -214,7 +214,10 @@ function TableVariableNumber(c, root, refuseShared) {
     if (top.i >= top.edges.length) { open.delete(top.v); stack.pop(); continue; }
     const e = top.edges[top.i++];
     if (e.blob) {
-      if (!TableVariableBlobNode(nodes, e.holder, e.fd, e.val) && refuseShared) { return null; }
+      if (!TableVariableBlobNode(nodes, e.holder, e.fd, e.val) && refuseShared) {
+        if (why) { why.reason = "blob_shared"; }
+        return null;
+      }
       continue;
     }
     if (open.has(e.val)) { return null; }
@@ -452,18 +455,29 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
 // id at kind 12, the terminator, then the id table and its count. A data cycle
 // or a value with no wire identity refuses the save (null), and so does one
 // blob two slots name, blob_shared (§2.5): every writer refuses it.
-function TableVariableSave(c, v, retain) {
+function TableVariableSave(c, v, retain, why) {
   const outer = TableVariableEntryCache;
   TableVariableEntryCache = new Map();
   try {
-    return TableVariableSaveWalk(c, v, retain);
+    return TableVariableSaveWalk(c, v, retain, why);
   } finally {
     TableVariableEntryCache = outer;
   }
 }
 
-function TableVariableSaveWalk(c, v, retain) {
-  const nodes = TableVariableNumber(c, v, true);
+// THE MEASURE'S REASON TWIN (Go's MeasureReason): [size, null] for a value
+// the wire carries, [-1, reason] for one it refuses — blob_shared for a blob
+// two slots name (§2.5), invalid_value for any other value outside the
+// writer's contract (a data cycle, §3.1; an enum value no variant names, §5).
+function TableVariableMeasureReason(c, v) {
+  const why = { reason: null };
+  const b = TableVariableSave(c, v, null, why);
+  if (b !== null) { return [b.length, null]; }
+  return [-1, why.reason === null ? "invalid_value" : why.reason];
+}
+
+function TableVariableSaveWalk(c, v, retain, why) {
+  const nodes = TableVariableNumber(c, v, true, why);
   if (nodes === null) { return null; }
   const w = new TableVariableWriter();
   w.u8(TableVariableForm);
