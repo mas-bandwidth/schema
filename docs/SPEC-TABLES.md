@@ -13700,6 +13700,7 @@ in build version (§20.5).
   FixedClamp  FixedClampBody  FixedCheckBody  FixedCheckBodyExact
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
+  FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
   FixedKnown  FixedFloor  FixedLineagePlans
   ```
 
@@ -13724,7 +13725,11 @@ in build version (§20.5).
   BESIDE it rather than instead of it, because a sixty-four-bit constant
   becomes two wherever a per-record compare through a wide integer would be an
   allocation per record. All six are claimed on this list's own rule, like
-  every row above them.
+  every row above them. The JavaScript leg keeps its fixed tables module-private
+  and frozen, and hands each out by a copying accessor — `FixedDstCopy`,
+  `FixedIdentityCopy`, `FixedLayoutCopy`, `FixedPrefillCopy` — so a caller can
+  never edit a plan or an image the reader trusts; those four are claimed on
+  the same rule.
 
   The three after them are §21's, the LINEAGE as static data
   (docs/FIXED-FORM-ALGORITHM.md §5.2): a fixed table reads BACKWARD and never
