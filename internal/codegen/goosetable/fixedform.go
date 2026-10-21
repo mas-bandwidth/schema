@@ -59,7 +59,7 @@ func fixedRootFacts(st *ir.Struct) (layout []byte, hash uint64, body int64) {
 func fixedGooseBytes(data []byte) string {
 	var sb strings.Builder
 	for _, b := range data {
-		sb.WriteString(fmt.Sprintf("\\x%02x", b))
+		fmt.Fprintf(&sb, "\\x%02x", b)
 	}
 	return sb.String()
 }
@@ -298,7 +298,7 @@ func offStep(base, i string, stride int64) string {
 	return fmt.Sprintf("%s + %s * %d", base, i, stride)
 }
 
-// the element kinds a record carries (docs/FIXED-FORM-ALGORITHM.md §3)
+// the element kinds a record carries (docs/FIXED-FORM-ALGORITHM.md §3).
 const (
 	kBool = iota
 	kInt
@@ -510,7 +510,7 @@ func (e *fixedEmit) checkElem(ind int, f *ir.Field, pl place) {
 
 func (e *fixedEmit) scanField(ind int, f *ir.Field, off string) {
 	if f.Type.Optional {
-		off = off + " + 1"
+		off += " + 1"
 	}
 	el := elemOf(f)
 	switch {
@@ -576,7 +576,7 @@ func (e *fixedEmit) landField(ind int, base string, f *ir.Field, off string) {
 	pl := fieldPlace(base, f)
 	if f.Type.Optional {
 		e.p(ind, "%s = b[%s] != 0;", presentOf(base, f), off)
-		off = off + " + 1"
+		off += " + 1"
 	}
 	e.landValue(ind, f, pl, off)
 }
