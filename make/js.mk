@@ -770,10 +770,12 @@ tables-js-message-form-negative-control:
 .PHONY: tables-js-fixed-roadmap-negative-control
 tables-js-fixed-roadmap-negative-control:
 	@rm -rf build/js-roadmap-sabotage && mkdir -p build/js-roadmap-sabotage
-	@sed 's|bytes\[layoutAt + i\] !== known.layout\[i\]|false /* SABOTAGED */|' \
+	@# both halves of the compare: the 32-bit lanes and the byte tail (752c99c17)
+	@sed -e 's|bytes\[layoutAt + i\] !== known.layout\[i\]|false /* SABOTAGED */|' \
+	     -e 's|srcView.getUint32(layoutAt + i, true) !== lv.getUint32(i, true)|false /* SABOTAGED */|' \
 		internal/codegen/jstable/fixedmodule.go > build/js-roadmap-sabotage/fixedmodule.go.txt
-	@grep -q SABOTAGED build/js-roadmap-sabotage/fixedmodule.go.txt || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@[ "$$(grep -c SABOTAGED build/js-roadmap-sabotage/fixedmodule.go.txt)" = "2" ] || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch both layout compares"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedmodule.go":"%s/build/js-roadmap-sabotage/fixedmodule.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-roadmap-sabotage/overlay.json
 	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-roadmap-sabotage/overlay.json \
