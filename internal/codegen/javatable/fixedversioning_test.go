@@ -105,6 +105,127 @@ var sameHashRows = map[string]bool{
 	"field_undeprecate":  true,
 }
 
+// manifestRow is one line of the corpus manifest: the identity fields the C++
+// dump writes (file, row, side, root, records) and the two value sections.
+// `values` is what the OLD writer wrote; `forged` (only on the hostile_* and
+// past_* rows) is what the dump overwrote in the file after writing it
+// (fixedform_dump.cpp: the manifest line's `values=` is what the OLD writer
+// wrote, before the forge). A forged key spells its byte offset attached
+// (`r0.aim@104`), so a caller asks by the bare path and matches a `@` suffix.
+type manifestRow struct {
+	File    string
+	Row     string
+	Side    string
+	Root    string
+	Records int64
+	Values  map[string]string
+	Forged  map[string]string
+}
+
+// readManifest is THE one reader of a manifest line's entries: it parses every
+// line of build/fixedform-corpus/manifest.txt once and answers the rows keyed
+// by file name. No second parse exists — manifestFloatBits and the t18 oracle
+// harness are its only callers. A file with no manifest is an error, never an
+// empty map: an oracle that can degrade to "not checked" is the vacuity the
+// float fix repaired.
+func readManifest(corpus string) (map[string]manifestRow, error) {
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		return nil, fmt.Errorf("the corpus manifest is not readable, so this row has no oracle: %v", err)
+	}
+	out := map[string]manifestRow{}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		var r manifestRow
+		r.Values = map[string]string{}
+		r.Forged = map[string]string{}
+		// `values=` is the LAST entry of a line and its text may hold spaces
+		// (`r0.note="first build"`), so the line is cut there and never split
+		// on white space past it; the identity entries before it carry none.
+		head, vals, hasVals := strings.Cut(line, " values=")
+		for field := range strings.FieldsSeq(head) {
+			k, v, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			switch k {
+			case "file":
+				r.File = v
+			case "row":
+				r.Row = v
+			case "side":
+				r.Side = v
+			case "root":
+				r.Root = v
+			case "records":
+				r.Records, _ = strconv.ParseInt(v, 10, 64)
+			case "forged":
+				collectManifestPairs(v, r.Forged)
+			}
+		}
+		if hasVals {
+			collectManifestPairs(vals, r.Values)
+		}
+		if r.File != "" {
+			out[r.File] = r
+		}
+	}
+	return out, nil
+}
+
+// collectManifestPairs splits a section's comma-joined `key=value` list into a
+// map. A comma INSIDE a quoted text value is written `\,` by the dump
+// (man_quote), so a backslash keeps the next byte with its pair; the value is
+// stored as the dump wrote it, escapes and all.
+func collectManifestPairs(list string, dst map[string]string) {
+	start := 0
+	flush := func(end int) {
+		if k, v, ok := strings.Cut(list[start:end], "="); ok {
+			dst[k] = v
+		}
+	}
+	for i := 0; i < len(list); i++ {
+		switch list[i] {
+		case '\\':
+			i++
+		case ',':
+			flush(i)
+			start = i + 1
+		}
+	}
+	flush(len(list))
+}
+
+// manifestRows is readManifest for tests: the rows, or a fatal naming the
+// missing manifest.
+func manifestRows(t *testing.T, corpus string) map[string]manifestRow {
+	t.Helper()
+	rows, err := readManifest(corpus)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	return rows
+}
+
+// manifestLookup finds one value in one section of one manifest row, answering
+// the value and whether it was found. The error names what was missing — the
+// file or the value — so a caller can fail loudly by the refused name.
+func manifestLookup(rows map[string]manifestRow, file, section, path string) (string, bool, string) {
+	r, ok := rows[file]
+	if !ok {
+		return "", false, fmt.Sprintf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	}
+	m := r.Values
+	if section == "forged" {
+		m = r.Forged
+	}
+	for k, v := range m {
+		if k == path || strings.HasPrefix(k, path+"@") {
+			return v, true, ""
+		}
+	}
+	return "", false, fmt.Sprintf("the manifest's %s for %s carries no %s — the oracle and the bytes under test have come apart", section, file, path)
+}
+
 // manifestFloatBits is the FLOAT half of the corpus oracle (schema#1164,
 // Glenn 2026-09-19: "do whatever is needed to make sure that a new reader can
 // read an old writer"). Every compressed-float row on every leg asserted a
@@ -121,39 +242,15 @@ var sameHashRows = map[string]bool{
 // float oracle that can degrade to "not checked" is the vacuity this repairs.
 func manifestFloatBits(t *testing.T, corpus, file, section, path string) uint32 {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	rows, err := readManifest(corpus)
 	if err != nil {
-		t.Fatalf("the corpus manifest is not readable, so this row has no oracle: %v", err)
+		t.Fatalf("%v", err)
 	}
-	for line := range strings.SplitSeq(string(data), "\n") {
-		var values string
-		named := false
-		for field := range strings.FieldsSeq(line) {
-			k, v, ok := strings.Cut(field, "=")
-			if !ok {
-				continue
-			}
-			switch k {
-			case "file":
-				named = v == file
-			case section:
-				values = v
-			}
-		}
-		if !named {
-			continue
-		}
-		for pair := range strings.SplitSeq(values, ",") {
-			k, v, ok := strings.Cut(pair, "=")
-			if !ok || (k != path && !strings.HasPrefix(k, path+"@")) {
-				continue
-			}
-			return parseDumpedFloatBits(t, v)
-		}
-		t.Fatalf("the manifest's %s for %s carries no %s — the oracle and the bytes under test have come apart", section, file, path)
+	v, ok, why := manifestLookup(rows, file, section, path)
+	if !ok {
+		t.Fatalf("%s", why)
 	}
-	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
-	return 0
+	return parseDumpedFloatBits(t, v)
 }
 
 // parseDumpedFloatBits reads the `<decimal>|0x<bits>` spelling that BOTH the

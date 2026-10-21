@@ -88,17 +88,20 @@ func TestOptionalArraysCarriers(t *testing.T) {
 	u := unitFromSource(t, optionalArraySrc)
 	c := New()
 	for _, target := range c.Targets() {
-		if target == "cpp" || target == "c" || target == "cs" || target == "go" {
+		if target == "cpp" || target == "c" || target == "cs" || target == "go" || target == "java" {
 			files, err := c.Generate(u, target, Options{})
 			if err != nil {
 				t.Fatalf("--lang %s refused the supported shape: %v", target, err)
 			}
-			suffix := "h"
-			if target != "cpp" {
-				suffix = target
+			wantFile := "ProbeTable." + target
+			switch target {
+			case "cpp":
+				wantFile = "ProbeTable.h"
+			case "java":
+				wantFile = "LogVariable.java"
 			}
-			if _, ok := files["ProbeTable."+suffix]; !ok {
-				t.Fatalf("--lang %s emitted no table source", target)
+			if _, ok := files[wantFile]; !ok {
+				t.Fatalf("--lang %s emitted no table source (%s)", target, wantFile)
 			}
 			continue
 		}

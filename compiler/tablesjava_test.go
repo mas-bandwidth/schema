@@ -54,12 +54,13 @@ func TestJavaEmitsTableSources(t *testing.T) {
 		"TableBytes.java", "BuildVersion.java", "TableCookLayout.java", "TableBlockLayout.java",
 		"TableBlockInfo.java", "TableBlockFieldInfo.java", "TableBlockRows.java",
 		"TableCookInfo.java", "TableCookFieldInfo.java", "TableCookStorage.java",
+		"TableVariable.java", "TableJson.java", "TableTypeInfo.java", "TableFieldInfo.java", "TableRegistry.java",
 	} {
 		if _, ok := with[want]; !ok {
 			t.Errorf("--lang java emitted no %s for a unit with tables", want)
 		}
 	}
-	for _, gone := range []string{"TableReport.java", "TableReader.java", "TableWriter.java", "TableJson.java", "TableTypeInfo.java"} {
+	for _, gone := range []string{"TableReport.java", "TableReader.java", "TableWriter.java"} {
 		if _, ok := with[gone]; ok {
 			t.Errorf("--lang java emitted %s: the previous-form wire runtime was removed", gone)
 		}
@@ -161,6 +162,19 @@ func javaEmittedNames(files map[string][]byte, ignore map[string]bool) map[strin
 	return emitted
 }
 
+// javaRuntimeSrc is runtimeSrc plus a POINTERED table, because the Java scan
+// below must see the VARIABLE FORM's runtime types (TableVariable, TableJson)
+// and the descriptor and retain runtimes that ride beside it — which a
+// fixed-only unit never emits. It is the Java twin of the C leg's cRuntimeSrc
+// and the Go leg's goRuntimeSrc.
+const javaRuntimeSrc = runtimeSrc + `
+table Holder
+{
+    value int32
+    next  *Holder
+}
+`
+
 // TestJavaTableRuntimeNamesAreClaimed is the SELF-MAINTAINING half of the §11
 // promise for this backend, and it is the C# test's shape with the two things
 // Java changes:
@@ -175,7 +189,7 @@ func javaEmittedNames(files map[string][]byte, ignore map[string]bool) map[strin
 // Probe.schema generates the class Probe and, when it declares a table,
 // ProbeTable — neither of which is a runtime spelling.
 func TestJavaTableRuntimeNamesAreClaimed(t *testing.T) {
-	files := javaFiles(t, runtimeSrc)
+	files := javaFiles(t, javaRuntimeSrc)
 	ignore := map[string]bool{"Probe": true, "ProbeTable": true}
 	emitted := javaEmittedNames(files, ignore)
 	if len(emitted) == 0 {

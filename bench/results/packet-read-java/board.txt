@@ -1,0 +1,334 @@
+# gates/packet-read/java — the read arm, Java: the runners' own output, two sittings
+# produced by: taskset -c 6,14 java -cp build/paired/table-java TableMain --indexed --wire-dir bench/paired/corpus --variant-dir bench/paired/corpus --read-arm --csv --round K
+#              (cd bench/java && taskset -c 6,14 java -cp ../../build/java-bench Main --read-only --csv --round K)
+# 7 rounds per sitting, wire order alternating by K (even: fixed first), each invocation 1 discarded warmup + 1 measured run of 4,000,000 records
+# controls: the reference C++ packet and table runners (build/paired/packet-cpp, build/paired/table-cpp) --csv --round 0, same pin, at the start and end of each sitting
+# the '#' summary lines under each sitting are computed from the CSV rows below them (median_msgs_per_sec of each one-run round -> ns/record = 1e9/rate)
+
+=================== sitting 1 ===================
+# host b2 Linux x86_64
+# Model name:                              AMD Ryzen 7 255 w/ Radeon 780M Graphics
+# pin: taskset -c 6,14
+# schema a3a91f406ea81620982bcc4605636ac4a7640c14 dirty-files: 13
+#  M generated/bench/java/Bench.java
+#  M generated/bench/java/realworld/RealWorld.java
+#  M generated/bench/paired/cpp/BenchTable.h
+#  M generated/bench/paired/java/Bench.java
+#  M generated/bench/paired/java/BenchMixedFixed.java
+#  M generated/bench/paired/java/FixedTableFixed.java
+#  M generated/bench/paired/java/MixedChatEventFixed.java
+#  M generated/bench/paired/java/MixedEntityFixed.java
+#  M generated/bench/paired/java/MixedHitEventFixed.java
+#  M generated/bench/paired/java/MixedPickupEventFixed.java
+#  M generated/bench/paired/java/MixedStatFixed.java
+#  M generated/bench/paired/java/TableFixed.java
+# ?? generated/bench/paired/java/TableVocabulary.java
+# openjdk version "21.0.12.1" 2026-08-18 LTS
+# OpenJDK Runtime Environment Temurin-21.0.12.1+1 (build 21.0.12.1+1-LTS)
+# OpenJDK 64-Bit Server VM Temurin-21.0.12.1+1 (build 21.0.12.1+1-LTS, mixed mode, sharing)
+# c++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0
+# load-start 0.47 0.47 0.27 1/474 1712931
+# 2026-10-16T02:41:46Z
+# load-end 0.82 0.56 0.31 1/471 1714103
+# 2026-10-16T02:42:22Z
+# bench_fixed_read: rounds=7 iters/sample=4000000 bytes/record=1264.30 corpus_id=066b2822b3e5d487 family=table checks=contract
+#   per-round ns/record: r0=163.5 r1=167.4 r2=162.0 r3=162.8 r4=162.8 r5=163.1 r6=164.0
+#   best/median/worst ns/record 162.0 / 163.1 / 167.4  spread(rates) 3.2%
+# bench_mixed_read: rounds=7 iters/sample=4000000 bytes/record=438 corpus_id=fd0748942dc6ae09 family=gen checks=contract
+#   per-round ns/record: r0=205.5 r1=206.0 r2=205.9 r3=205.8 r4=205.9 r5=205.5 r6=206.3
+#   best/median/worst ns/record 205.5 / 205.9 / 206.3  spread(rates) 0.4%
+# ratio packet/fixed: best 1.27x  median 1.26x
+# GATE identity: PASS (fixed read faster)
+# control C++ packet bench_mixed/round_trip: start 3066829 end 3066785 msg/s delta -0.00%
+# control C++ packet bench_mixed/write: start 6396642 end 6400026 msg/s delta +0.05%
+# control C++ packet bitpacker/read: start 86460 end 86573 msg/s delta +0.13%
+# control C++ packet bitpacker/write: start 88617 end 88742 msg/s delta +0.14%
+# control C++ table bench_fixed/round_trip: start 2515886 end 2526819 msg/s delta +0.43%
+# control C++ table bench_fixed/write: start 7067251 end 7063994 msg/s delta -0.05%
+# WINDOW: OK (C++ bench_mixed/bench_fixed control legs within 5% start to end)
+
+--- control-start-packet.csv
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,bench_mixed,write,4000000,438,1,6396642,6396642,6396642,2671.94,0.00,fd0748942dc6ae09,gen,hdr,removed,O3,unknown
+cpp,bench_mixed,round_trip,4000000,438,1,3066829,3066829,3066829,1281.04,0.00,fd0748942dc6ae09,gen,hdr,removed,O3,unknown
+cpp,bitpacker,write,24576,65518,1,88617,88617,88617,5537.04,0.00,fd0748942dc6ae09,bits,hdr,removed,O3,unknown
+cpp,bitpacker,read,24576,65518,1,86460,86460,86460,5402.26,0.00,fd0748942dc6ae09,bits,hdr,removed,O3,unknown
+
+--- control-start-table.csv
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,bench_fixed,write,400000,1264.296875,1,7067251,7067251,7067251,8521.18,0.00,066b2822b3e5d487,table,hdr,contract,O3,unknown
+cpp,bench_fixed,round_trip,400000,1264.296875,1,2515886,2515886,2515886,3033.47,0.00,066b2822b3e5d487,table,hdr,contract,O3,unknown
+
+--- round-0-java-fixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_fixed_read,read,4000000,1264.30,1,6116449,6116449,6116449,7374.77,0.00,066b2822b3e5d487,table,class,contract,default,unknown
+  stderr: schema tables bench (java, the fixed form, --read-arm: the identity lane's read, measured)
+  stderr: bench_fixed_read   read             6.116 M msg/s     7374.8 MB/s   (min 6.116, max 6.116, spread 0.0%)
+  stderr: OK (corpus_id 066b2822b3e5d487)
+
+--- round-0-java-mixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed_read,read,4000000,438,1,4865069,4865069,4865069,2032.19,0.00,fd0748942dc6ae09,gen,class,contract,default,unknown
+  stderr: schema bench (java, generated codecs, --read-only: the packet wire's read, measured)
+  stderr: bench_mixed_read   read        4.87 M msg/s     2032.2 MB/s   (min 4.87, max 4.87, spread 0.0%)
+  stderr: OK (corpus_id fd0748942dc6ae09)
+
+--- round-1-java-fixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_fixed_read,read,4000000,1264.30,1,5974613,5974613,5974613,7203.75,0.00,066b2822b3e5d487,table,class,contract,default,unknown
+  stderr: schema tables bench (java, the fixed form, --read-arm: the identity lane's read, measured)
+  stderr: bench_fixed_read   read             5.975 M msg/s     7203.8 MB/s   (min 5.975, max 5.975, spread 0.0%)
+  stderr: OK (corpus_id 066b2822b3e5d487)
+
+--- round-1-java-mixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed_read,read,4000000,438,1,4854873,4854873,4854873,2027.93,0.00,fd0748942dc6ae09,gen,class,contract,default,unknown
+  stderr: schema bench (java, generated codecs, --read-only: the packet wire's read, measured)
+  stderr: bench_mixed_read   read        4.85 M msg/s     2027.9 MB/s   (min 4.85, max 4.85, spread 0.0%)
+  stderr: OK (corpus_id fd0748942dc6ae09)
+
+--- round-2-java-fixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_fixed_read,read,4000000,1264.30,1,6171283,6171283,6171283,7440.88,0.00,066b2822b3e5d487,table,class,contract,default,unknown
+  stderr: schema tables bench (java, the fixed form, --read-arm: the identity lane's read, measured)
+  stderr: bench_fixed_read   read             6.171 M msg/s     7440.9 MB/s   (min 6.171, max 6.171, spread 0.0%)
+  stderr: OK (corpus_id 066b2822b3e5d487)
+
+--- round-2-java-mixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed_read,read,4000000,438,1,4856482,4856482,4856482,2028.60,0.00,fd0748942dc6ae09,gen,class,contract,default,unknown
+  stderr: schema bench (java, generated codecs, --read-only: the packet wire's read, measured)
+  stderr: bench_mixed_read   read        4.86 M msg/s     2028.6 MB/s   (min 4.86, max 4.86, spread 0.0%)
+  stderr: OK (corpus_id fd0748942dc6ae09)
+
+--- round-3-java-fixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_fixed_read,read,4000000,1264.30,1,6141780,6141780,6141780,7405.31,0.00,066b2822b3e5d487,table,class,contract,default,unknown
+  stderr: schema tables bench (java, the fixed form, --read-arm: the identity lane's read, measured)
+  stderr: bench_fixed_read   read             6.142 M msg/s     7405.3 MB/s   (min 6.142, max 6.142, spread 0.0%)
+  stderr: OK (corpus_id 066b2822b3e5d487)
+
+--- round-3-java-mixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed_read,read,4000000,438,1,4860015,4860015,4860015,2030.07,0.00,fd0748942dc6ae09,gen,class,contract,default,unknown
+  stderr: schema bench (java, generated codecs, --read-only: the packet wire's read, measured)
+  stderr: bench_mixed_read   read        4.86 M msg/s     2030.1 MB/s   (min 4.86, max 4.86, spread 0.0%)
+  stderr: OK (corpus_id fd0748942dc6ae09)
+
+--- round-4-java-fixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_fixed_read,read,4000000,1264.30,1,6142688,6142688,6142688,7406.41,0.00,066b2822b3e5d487,table,class,contract,default,unknown
+  stderr: schema tables bench (java, the fixed form, --read-arm: the identity lane's read, measured)
+  stderr: bench_fixed_read   read             6.143 M msg/s     7406.4 MB/s   (min 6.143, max 6.143, spread 0.0%)
+  stderr: OK (corpus_id 066b2822b3e5d487)
+
+--- round-4-java-mixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed_read,read,4000000,438,1,4856396,4856396,4856396,2028.56,0.00,fd0748942dc6ae09,gen,class,contract,default,unknown
+  stderr: schema bench (java, generated codecs, --read-only: the packet wire's read, measured)
+  stderr: bench_mixed_read   read        4.86 M msg/s     2028.6 MB/s   (min 4.86, max 4.86, spread 0.0%)
+  stderr: OK (corpus_id fd0748942dc6ae09)
+
+--- round-5-java-fixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_fixed_read,read,4000000,1264.30,1,6131753,6131753,6131753,7393.22,0.00,066b2822b3e5d487,table,class,contract,default,unknown
+  stderr: schema tables bench (java, the fixed form, --read-arm: the identity lane's read, measured)
+  stderr: bench_fixed_read   read             6.132 M msg/s     7393.2 MB/s   (min 6.132, max 6.132, spread 0.0%)
+  stderr: OK (corpus_id 066b2822b3e5d487)
+
+--- round-5-java-mixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed_read,read,4000000,438,1,4865523,4865523,4865523,2032.37,0.00,fd0748942dc6ae09,gen,class,contract,default,unknown
+  stderr: schema bench (java, generated codecs, --read-only: the packet wire's read, measured)
+  stderr: bench_mixed_read   read        4.87 M msg/s     2032.4 MB/s   (min 4.87, max 4.87, spread 0.0%)
+  stderr: OK (corpus_id fd0748942dc6ae09)
+
+--- round-6-java-fixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_fixed_read,read,4000000,1264.30,1,6096465,6096465,6096465,7350.68,0.00,066b2822b3e5d487,table,class,contract,default,unknown
+  stderr: schema tables bench (java, the fixed form, --read-arm: the identity lane's read, measured)
+  stderr: bench_fixed_read   read             6.096 M msg/s     7350.7 MB/s   (min 6.096, max 6.096, spread 0.0%)
+  stderr: OK (corpus_id 066b2822b3e5d487)
+
+--- round-6-java-mixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed_read,read,4000000,438,1,4847940,4847940,4847940,2025.03,0.00,fd0748942dc6ae09,gen,class,contract,default,unknown
+  stderr: schema bench (java, generated codecs, --read-only: the packet wire's read, measured)
+  stderr: bench_mixed_read   read        4.85 M msg/s     2025.0 MB/s   (min 4.85, max 4.85, spread 0.0%)
+  stderr: OK (corpus_id fd0748942dc6ae09)
+
+--- control-end-packet.csv
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,bench_mixed,write,4000000,438,1,6400026,6400026,6400026,2673.35,0.00,fd0748942dc6ae09,gen,hdr,removed,O3,unknown
+cpp,bench_mixed,round_trip,4000000,438,1,3066785,3066785,3066785,1281.02,0.00,fd0748942dc6ae09,gen,hdr,removed,O3,unknown
+cpp,bitpacker,write,24576,65518,1,88742,88742,88742,5544.82,0.00,fd0748942dc6ae09,bits,hdr,removed,O3,unknown
+cpp,bitpacker,read,24576,65518,1,86573,86573,86573,5409.33,0.00,fd0748942dc6ae09,bits,hdr,removed,O3,unknown
+
+--- control-end-table.csv
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,bench_fixed,write,400000,1264.296875,1,7063994,7063994,7063994,8517.25,0.00,066b2822b3e5d487,table,hdr,contract,O3,unknown
+cpp,bench_fixed,round_trip,400000,1264.296875,1,2526819,2526819,2526819,3046.65,0.00,066b2822b3e5d487,table,hdr,contract,O3,unknown
+
+=================== sitting 2 ===================
+# host b2 Linux x86_64
+# Model name:                              AMD Ryzen 7 255 w/ Radeon 780M Graphics
+# pin: taskset -c 6,14
+# schema a3a91f406ea81620982bcc4605636ac4a7640c14 dirty-files: 13
+#  M generated/bench/java/Bench.java
+#  M generated/bench/java/realworld/RealWorld.java
+#  M generated/bench/paired/cpp/BenchTable.h
+#  M generated/bench/paired/java/Bench.java
+#  M generated/bench/paired/java/BenchMixedFixed.java
+#  M generated/bench/paired/java/FixedTableFixed.java
+#  M generated/bench/paired/java/MixedChatEventFixed.java
+#  M generated/bench/paired/java/MixedEntityFixed.java
+#  M generated/bench/paired/java/MixedHitEventFixed.java
+#  M generated/bench/paired/java/MixedPickupEventFixed.java
+#  M generated/bench/paired/java/MixedStatFixed.java
+#  M generated/bench/paired/java/TableFixed.java
+# ?? generated/bench/paired/java/TableVocabulary.java
+# openjdk version "21.0.12.1" 2026-08-18 LTS
+# OpenJDK Runtime Environment Temurin-21.0.12.1+1 (build 21.0.12.1+1-LTS)
+# OpenJDK 64-Bit Server VM Temurin-21.0.12.1+1 (build 21.0.12.1+1-LTS, mixed mode, sharing)
+# c++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0
+# load-start 0.82 0.56 0.31 1/472 1714155
+# 2026-10-16T02:42:22Z
+# load-end 0.97 0.63 0.34 1/469 1714482
+# 2026-10-16T02:42:58Z
+# bench_fixed_read: rounds=7 iters/sample=4000000 bytes/record=1264.30 corpus_id=066b2822b3e5d487 family=table checks=contract
+#   per-round ns/record: r0=165.0 r1=165.1 r2=164.9 r3=165.1 r4=164.1 r5=163.9 r6=164.4
+#   best/median/worst ns/record 163.9 / 164.9 / 165.1  spread(rates) 0.8%
+# bench_mixed_read: rounds=7 iters/sample=4000000 bytes/record=438 corpus_id=fd0748942dc6ae09 family=gen checks=contract
+#   per-round ns/record: r0=205.9 r1=205.7 r2=206.2 r3=205.7 r4=205.7 r5=205.9 r6=205.9
+#   best/median/worst ns/record 205.7 / 205.9 / 206.2  spread(rates) 0.2%
+# ratio packet/fixed: best 1.25x  median 1.25x
+# GATE identity: PASS (fixed read faster)
+# control C++ packet bench_mixed/round_trip: start 3064689 end 3067945 msg/s delta +0.11%
+# control C++ packet bench_mixed/write: start 6379475 end 6399991 msg/s delta +0.32%
+# control C++ packet bitpacker/read: start 86560 end 86802 msg/s delta +0.28%
+# control C++ packet bitpacker/write: start 88809 end 88781 msg/s delta -0.03%
+# control C++ table bench_fixed/round_trip: start 2527920 end 2527954 msg/s delta +0.00%
+# control C++ table bench_fixed/write: start 7058770 end 7017956 msg/s delta -0.58%
+# WINDOW: OK (C++ bench_mixed/bench_fixed control legs within 5% start to end)
+
+--- control-start-packet.csv
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,bench_mixed,write,4000000,438,1,6379475,6379475,6379475,2664.77,0.00,fd0748942dc6ae09,gen,hdr,removed,O3,unknown
+cpp,bench_mixed,round_trip,4000000,438,1,3064689,3064689,3064689,1280.15,0.00,fd0748942dc6ae09,gen,hdr,removed,O3,unknown
+cpp,bitpacker,write,24576,65518,1,88809,88809,88809,5549.07,0.00,fd0748942dc6ae09,bits,hdr,removed,O3,unknown
+cpp,bitpacker,read,24576,65518,1,86560,86560,86560,5408.52,0.00,fd0748942dc6ae09,bits,hdr,removed,O3,unknown
+
+--- control-start-table.csv
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,bench_fixed,write,400000,1264.296875,1,7058770,7058770,7058770,8510.95,0.00,066b2822b3e5d487,table,hdr,contract,O3,unknown
+cpp,bench_fixed,round_trip,400000,1264.296875,1,2527920,2527920,2527920,3047.98,0.00,066b2822b3e5d487,table,hdr,contract,O3,unknown
+
+--- round-0-java-fixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_fixed_read,read,4000000,1264.30,1,6061029,6061029,6061029,7307.95,0.00,066b2822b3e5d487,table,class,contract,default,unknown
+  stderr: schema tables bench (java, the fixed form, --read-arm: the identity lane's read, measured)
+  stderr: bench_fixed_read   read             6.061 M msg/s     7307.9 MB/s   (min 6.061, max 6.061, spread 0.0%)
+  stderr: OK (corpus_id 066b2822b3e5d487)
+
+--- round-0-java-mixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed_read,read,4000000,438,1,4856257,4856257,4856257,2028.50,0.00,fd0748942dc6ae09,gen,class,contract,default,unknown
+  stderr: schema bench (java, generated codecs, --read-only: the packet wire's read, measured)
+  stderr: bench_mixed_read   read        4.86 M msg/s     2028.5 MB/s   (min 4.86, max 4.86, spread 0.0%)
+  stderr: OK (corpus_id fd0748942dc6ae09)
+
+--- round-1-java-fixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_fixed_read,read,4000000,1264.30,1,6058548,6058548,6058548,7304.96,0.00,066b2822b3e5d487,table,class,contract,default,unknown
+  stderr: schema tables bench (java, the fixed form, --read-arm: the identity lane's read, measured)
+  stderr: bench_fixed_read   read             6.059 M msg/s     7305.0 MB/s   (min 6.059, max 6.059, spread 0.0%)
+  stderr: OK (corpus_id 066b2822b3e5d487)
+
+--- round-1-java-mixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed_read,read,4000000,438,1,4861113,4861113,4861113,2030.53,0.00,fd0748942dc6ae09,gen,class,contract,default,unknown
+  stderr: schema bench (java, generated codecs, --read-only: the packet wire's read, measured)
+  stderr: bench_mixed_read   read        4.86 M msg/s     2030.5 MB/s   (min 4.86, max 4.86, spread 0.0%)
+  stderr: OK (corpus_id fd0748942dc6ae09)
+
+--- round-2-java-fixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_fixed_read,read,4000000,1264.30,1,6065053,6065053,6065053,7312.80,0.00,066b2822b3e5d487,table,class,contract,default,unknown
+  stderr: schema tables bench (java, the fixed form, --read-arm: the identity lane's read, measured)
+  stderr: bench_fixed_read   read             6.065 M msg/s     7312.8 MB/s   (min 6.065, max 6.065, spread 0.0%)
+  stderr: OK (corpus_id 066b2822b3e5d487)
+
+--- round-2-java-mixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed_read,read,4000000,438,1,4850808,4850808,4850808,2026.23,0.00,fd0748942dc6ae09,gen,class,contract,default,unknown
+  stderr: schema bench (java, generated codecs, --read-only: the packet wire's read, measured)
+  stderr: bench_mixed_read   read        4.85 M msg/s     2026.2 MB/s   (min 4.85, max 4.85, spread 0.0%)
+  stderr: OK (corpus_id fd0748942dc6ae09)
+
+--- round-3-java-fixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_fixed_read,read,4000000,1264.30,1,6056154,6056154,6056154,7302.07,0.00,066b2822b3e5d487,table,class,contract,default,unknown
+  stderr: schema tables bench (java, the fixed form, --read-arm: the identity lane's read, measured)
+  stderr: bench_fixed_read   read             6.056 M msg/s     7302.1 MB/s   (min 6.056, max 6.056, spread 0.0%)
+  stderr: OK (corpus_id 066b2822b3e5d487)
+
+--- round-3-java-mixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed_read,read,4000000,438,1,4862592,4862592,4862592,2031.15,0.00,fd0748942dc6ae09,gen,class,contract,default,unknown
+  stderr: schema bench (java, generated codecs, --read-only: the packet wire's read, measured)
+  stderr: bench_mixed_read   read        4.86 M msg/s     2031.2 MB/s   (min 4.86, max 4.86, spread 0.0%)
+  stderr: OK (corpus_id fd0748942dc6ae09)
+
+--- round-4-java-fixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_fixed_read,read,4000000,1264.30,1,6093483,6093483,6093483,7347.08,0.00,066b2822b3e5d487,table,class,contract,default,unknown
+  stderr: schema tables bench (java, the fixed form, --read-arm: the identity lane's read, measured)
+  stderr: bench_fixed_read   read             6.093 M msg/s     7347.1 MB/s   (min 6.093, max 6.093, spread 0.0%)
+  stderr: OK (corpus_id 066b2822b3e5d487)
+
+--- round-4-java-mixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed_read,read,4000000,438,1,4862191,4862191,4862191,2030.98,0.00,fd0748942dc6ae09,gen,class,contract,default,unknown
+  stderr: schema bench (java, generated codecs, --read-only: the packet wire's read, measured)
+  stderr: bench_mixed_read   read        4.86 M msg/s     2031.0 MB/s   (min 4.86, max 4.86, spread 0.0%)
+  stderr: OK (corpus_id fd0748942dc6ae09)
+
+--- round-5-java-fixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_fixed_read,read,4000000,1264.30,1,6102240,6102240,6102240,7357.64,0.00,066b2822b3e5d487,table,class,contract,default,unknown
+  stderr: schema tables bench (java, the fixed form, --read-arm: the identity lane's read, measured)
+  stderr: bench_fixed_read   read             6.102 M msg/s     7357.6 MB/s   (min 6.102, max 6.102, spread 0.0%)
+  stderr: OK (corpus_id 066b2822b3e5d487)
+
+--- round-5-java-mixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed_read,read,4000000,438,1,4856101,4856101,4856101,2028.44,0.00,fd0748942dc6ae09,gen,class,contract,default,unknown
+  stderr: schema bench (java, generated codecs, --read-only: the packet wire's read, measured)
+  stderr: bench_mixed_read   read        4.86 M msg/s     2028.4 MB/s   (min 4.86, max 4.86, spread 0.0%)
+  stderr: OK (corpus_id fd0748942dc6ae09)
+
+--- round-6-java-fixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_fixed_read,read,4000000,1264.30,1,6084388,6084388,6084388,7336.11,0.00,066b2822b3e5d487,table,class,contract,default,unknown
+  stderr: schema tables bench (java, the fixed form, --read-arm: the identity lane's read, measured)
+  stderr: bench_fixed_read   read             6.084 M msg/s     7336.1 MB/s   (min 6.084, max 6.084, spread 0.0%)
+  stderr: OK (corpus_id 066b2822b3e5d487)
+
+--- round-6-java-mixed-read (stdout CSV, then stderr)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed_read,read,4000000,438,1,4856006,4856006,4856006,2028.40,0.00,fd0748942dc6ae09,gen,class,contract,default,unknown
+  stderr: schema bench (java, generated codecs, --read-only: the packet wire's read, measured)
+  stderr: bench_mixed_read   read        4.86 M msg/s     2028.4 MB/s   (min 4.86, max 4.86, spread 0.0%)
+  stderr: OK (corpus_id fd0748942dc6ae09)
+
+--- control-end-packet.csv
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,bench_mixed,write,4000000,438,1,6399991,6399991,6399991,2673.34,0.00,fd0748942dc6ae09,gen,hdr,removed,O3,unknown
+cpp,bench_mixed,round_trip,4000000,438,1,3067945,3067945,3067945,1281.51,0.00,fd0748942dc6ae09,gen,hdr,removed,O3,unknown
+cpp,bitpacker,write,24576,65518,1,88781,88781,88781,5547.27,0.00,fd0748942dc6ae09,bits,hdr,removed,O3,unknown
+cpp,bitpacker,read,24576,65518,1,86802,86802,86802,5423.63,0.00,fd0748942dc6ae09,bits,hdr,removed,O3,unknown
+
+--- control-end-table.csv
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,bench_fixed,write,400000,1264.296875,1,7017956,7017956,7017956,8461.74,0.00,066b2822b3e5d487,table,hdr,contract,O3,unknown
+cpp,bench_fixed,round_trip,400000,1264.296875,1,2527954,2527954,2527954,3048.02,0.00,066b2822b3e5d487,table,hdr,contract,O3,unknown

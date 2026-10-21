@@ -653,7 +653,8 @@ public final class Wire {
     private static boolean checkWriteProbeSample(ProbeSample value, byte[] data) {
         assert data.length % 8 == 0;
         assert data.length >= probeSampleMaxBytes;
-        assert value.orientation - value.orientation == 0.0f; // finite: NaN and both infinities fail this
+        // finite: NaN and both infinities fail this
+        assert value.orientation - value.orientation == 0.0f;
         if (value.active) {
             assert (value.weapon & 0xffL) >= 0;
             assert (value.weapon & 0xffL) <= 15;
@@ -691,6 +692,7 @@ public final class Wire {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 36000.0f + 0.5f);
+            if (v > 36000L) v = 36000L;
         }
         scratch |= v << scratchBits;
         scratchBits += 16;
@@ -1212,7 +1214,8 @@ public final class Wire {
         return 15;
     }
 
-    // ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC §4.8)
+    // ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC
+    // §4.8)
     public static final class ProbeShapeType {
         private ProbeShapeType() {}
 
@@ -2149,7 +2152,8 @@ public final class Wire {
         assert data.length >= probeArrayMaxBytes;
         for (int i0 = 0; i0 < 2; i0++) {
             final ProbeSample e0 = value.samples[i0];
-            assert e0.orientation - e0.orientation == 0.0f; // finite: NaN and both infinities fail this
+            // finite: NaN and both infinities fail this
+            assert e0.orientation - e0.orientation == 0.0f;
             if (e0.active) {
                 assert (e0.weapon & 0xffL) >= 0;
                 assert (e0.weapon & 0xffL) <= 15;
@@ -2192,6 +2196,7 @@ public final class Wire {
                 // two roundings, not one: the product rounds to float32 BEFORE 0.5
                 // is added, and the sum rounds before the floor (SPEC §4.3)
                 v = (long) Math.floor(n * 36000.0f + 0.5f);
+                if (v > 36000L) v = 36000L;
             }
             scratch |= v << scratchBits;
             scratchBits += 16;
@@ -2849,7 +2854,8 @@ public final class Wire {
         if (scratchBits != 0) {
             LONG_LE.set(data, wordIndex * 8, scratch);
         }
-        System.arraycopy(value.data, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.dataLength);
+        System.arraycopy(
+                value.data, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.dataLength);
         scratchBits += value.dataLength * 8;
         wordIndex += scratchBits >>> 6;
         scratchBits &= 63;
@@ -3005,7 +3011,8 @@ public final class Wire {
         if (scratchBits != 0) {
             LONG_LE.set(data, wordIndex * 8, scratch);
         }
-        System.arraycopy(value.text, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.textLength);
+        System.arraycopy(
+                value.text, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.textLength);
         scratchBits += value.textLength * 8;
         wordIndex += scratchBits >>> 6;
         scratchBits &= 63;
@@ -3076,24 +3083,30 @@ public final class Wire {
         }
         System.arraycopy(data, bitsRead >>> 3, value.text, 0, value.textLength);
         bitsRead += value.textLength * 8;
-        for (int utf8Index = 0; utf8Index < value.textLength;)
-        {
+        for (int utf8Index = 0; utf8Index < value.textLength; ) {
             int utf8Lead = value.text[utf8Index++] & 0xFF;
             if (utf8Lead < 0x80) continue;
             int utf8Remaining, utf8Point;
-            if ((utf8Lead & 0xE0) == 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-            else if ((utf8Lead & 0xF0) == 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-            else if ((utf8Lead & 0xF8) == 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-            else return false; // malformed UTF-8 lead (SPEC §4.7)
+            if ((utf8Lead & 0xE0) == 0xC0) {
+                utf8Remaining = 1;
+                utf8Point = utf8Lead & 0x1F;
+            } else if ((utf8Lead & 0xF0) == 0xE0) {
+                utf8Remaining = 2;
+                utf8Point = utf8Lead & 0x0F;
+            } else if ((utf8Lead & 0xF8) == 0xF0) {
+                utf8Remaining = 3;
+                utf8Point = utf8Lead & 0x07;
+            } else return false; // malformed UTF-8 lead (SPEC §4.7)
             if (utf8Remaining > value.textLength - utf8Index) return false;
-            for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-            {
+            for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
                 int utf8Byte = value.text[utf8Index++] & 0xFF;
                 if ((utf8Byte & 0xC0) != 0x80) return false;
                 utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
             }
             if (utf8Remaining == 1 && utf8Point < 0x80) return false;
-            if (utf8Remaining == 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
+            if (utf8Remaining == 2
+                    && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF)))
+                return false;
             if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
         }
         for (int i0 = 0; i0 < value.textLength; i0++) {
@@ -3561,7 +3574,8 @@ public final class Wire {
             assert value.items[i0] >= 0;
             assert value.items[i0] <= 255;
         }
-        assert value.compressedFloatValue - value.compressedFloatValue == 0.0f; // finite: NaN and both infinities fail this
+        // finite: NaN and both infinities fail this
+        assert value.compressedFloatValue - value.compressedFloatValue == 0.0f;
         assert value.int64Range >= -1000000000000L;
         assert value.int64Range <= 1000000000000L;
         assert value.textLength >= 0;
@@ -3680,6 +3694,7 @@ public final class Wire {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 1000.0f + 0.5f);
+            if (v > 1000L) v = 1000L;
         }
         scratch |= v << scratchBits;
         scratchBits += 10;
@@ -3864,7 +3879,8 @@ public final class Wire {
         if (scratchBits != 0) {
             LONG_LE.set(data, wordIndex * 8, scratch);
         }
-        System.arraycopy(value.text, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.textLength);
+        System.arraycopy(
+                value.text, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.textLength);
         scratchBits += value.textLength * 8;
         wordIndex += scratchBits >>> 6;
         scratchBits &= 63;
@@ -4226,24 +4242,30 @@ public final class Wire {
         }
         System.arraycopy(data, bitsRead >>> 3, value.text, 0, value.textLength);
         bitsRead += value.textLength * 8;
-        for (int utf8Index = 0; utf8Index < value.textLength;)
-        {
+        for (int utf8Index = 0; utf8Index < value.textLength; ) {
             int utf8Lead = value.text[utf8Index++] & 0xFF;
             if (utf8Lead < 0x80) continue;
             int utf8Remaining, utf8Point;
-            if ((utf8Lead & 0xE0) == 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-            else if ((utf8Lead & 0xF0) == 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-            else if ((utf8Lead & 0xF8) == 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-            else return false; // malformed UTF-8 lead (SPEC §4.7)
+            if ((utf8Lead & 0xE0) == 0xC0) {
+                utf8Remaining = 1;
+                utf8Point = utf8Lead & 0x1F;
+            } else if ((utf8Lead & 0xF0) == 0xE0) {
+                utf8Remaining = 2;
+                utf8Point = utf8Lead & 0x0F;
+            } else if ((utf8Lead & 0xF8) == 0xF0) {
+                utf8Remaining = 3;
+                utf8Point = utf8Lead & 0x07;
+            } else return false; // malformed UTF-8 lead (SPEC §4.7)
             if (utf8Remaining > value.textLength - utf8Index) return false;
-            for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-            {
+            for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
                 int utf8Byte = value.text[utf8Index++] & 0xFF;
                 if ((utf8Byte & 0xC0) != 0x80) return false;
                 utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
             }
             if (utf8Remaining == 1 && utf8Point < 0x80) return false;
-            if (utf8Remaining == 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
+            if (utf8Remaining == 2
+                    && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF)))
+                return false;
             if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
         }
         for (int i0 = 0; i0 < value.textLength; i0++) {
@@ -4294,7 +4316,8 @@ public final class Wire {
         value.offset = 0.0f;
     }
 
-    // checkWriteCompressedProbe is writeCompressedProbe's contract walk, called once through assert —
+    // checkWriteCompressedProbe is writeCompressedProbe's contract walk, called once through assert
+    // —
     // the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
@@ -4325,6 +4348,7 @@ public final class Wire {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 1000.0f + 0.5f);
+            if (v > 1000L) v = 1000L;
         }
         scratch |= v << scratchBits;
         scratchBits += 10;
@@ -4344,6 +4368,7 @@ public final class Wire {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 10000.0f + 0.5f);
+            if (v > 10000L) v = 10000L;
         }
         scratch |= v << scratchBits;
         scratchBits += 14;

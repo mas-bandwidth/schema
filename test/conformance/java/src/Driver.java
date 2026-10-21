@@ -8,10 +8,11 @@
 //   driver <manifest> <surface> <outdir>
 //
 // It answers every surface this port carries from ONE binary — the block
-// surfaces and the cook surfaces, cook-forgery included. The five WIRE-CARRYING
-// surfaces (wire, report, json-read, json-write, json-hostile) are ABSENT:
-// Java emits no table wire, because the port that wrote the wire's previous
-// form was removed rather than carried (schema#517 brings the id-table form).
+// surfaces, the cook surfaces (cook-forgery included) and the WIRE-CARRYING
+// surfaces (wire, report, json-read, json-write) the variable form (form byte
+// 1, docs/SPEC-TABLES.md §3) carries for the roots this leg's variable wire
+// answers: the public root codecs compiled from the manifest units. Every case a
+// surface meets is answered `<case>.absent` (test/conformance/README.md).
 // The C# leg splits the cook surfaces off into a second project because its
 // cook side lives in another assembly; Java's generated units are packages of
 // one classpath, so the corpus units, the block unit and the pointered unit
@@ -333,6 +334,9 @@ public final class Driver {
 
     private interface CookOpen { CookHandle open(byte[] data, int offset, long length); }
 
+    /** the generated openReason: the TableRefuseReason value name, or ok. */
+    private interface CookReason { String open(byte[] data, int offset, long length); }
+
     /** the generated deref: the slot's offset and the pointee's size (§6.3). */
     private interface Deref { int at(int slot, int size); }
 
@@ -346,13 +350,15 @@ public final class Driver {
     private static final class Root {
         String name;
         CookOpen open;
+        CookReason reason;
         graphdemo.TableCookInfo type;
     }
 
-    private static Root root(String name, CookOpen open, graphdemo.TableCookInfo type) {
+    private static Root root(String name, CookOpen open, CookReason reason, graphdemo.TableCookInfo type) {
         Root r = new Root();
         r.name = name;
         r.open = open;
+        r.reason = reason;
         r.type = type;
         return r;
     }
@@ -372,27 +378,27 @@ public final class Driver {
         roots.add(root("Scene", (d, o, n) -> {
             graphdemo.SceneCook c = graphdemo.SceneCook.open(d, o, n);
             return c == null ? null : handle(c.data(), c.region(), c.regionLength(), c::at);
-        }, graphdemo.SceneCook.type()));
+        }, graphdemo.SceneCook::openReason, graphdemo.SceneCook.type()));
         roots.add(root("Depot", (d, o, n) -> {
             graphdemo.DepotCook c = graphdemo.DepotCook.open(d, o, n);
             return c == null ? null : handle(c.data(), c.region(), c.regionLength(), c::at);
-        }, graphdemo.DepotCook.type()));
+        }, graphdemo.DepotCook::openReason, graphdemo.DepotCook.type()));
         roots.add(root("Album", (d, o, n) -> {
             graphdemo.AlbumCook c = graphdemo.AlbumCook.open(d, o, n);
             return c == null ? null : handle(c.data(), c.region(), c.regionLength(), c::at);
-        }, graphdemo.AlbumCook.type()));
+        }, graphdemo.AlbumCook::openReason, graphdemo.AlbumCook.type()));
         roots.add(root("TreeNode", (d, o, n) -> {
             graphdemo.TreeNodeCook c = graphdemo.TreeNodeCook.open(d, o, n);
             return c == null ? null : handle(c.data(), c.region(), c.regionLength(), c::at);
-        }, graphdemo.TreeNodeCook.type()));
+        }, graphdemo.TreeNodeCook::openReason, graphdemo.TreeNodeCook.type()));
         roots.add(root("ListNode", (d, o, n) -> {
             graphdemo.ListNodeCook c = graphdemo.ListNodeCook.open(d, o, n);
             return c == null ? null : handle(c.data(), c.region(), c.regionLength(), c::at);
-        }, graphdemo.ListNodeCook.type()));
+        }, graphdemo.ListNodeCook::openReason, graphdemo.ListNodeCook.type()));
         roots.add(root("Marker", (d, o, n) -> {
             graphdemo.MarkerCook c = graphdemo.MarkerCook.open(d, o, n);
             return c == null ? null : handle(c.data(), c.region(), c.regionLength(), c::at);
-        }, graphdemo.MarkerCook.type()));
+        }, graphdemo.MarkerCook::openReason, graphdemo.MarkerCook.type()));
     }
 
     private static Root rootNamed(String name) {
@@ -635,6 +641,444 @@ public final class Driver {
         return 0;
     }
 
+    // ---- the WIRE-CARRYING surfaces (docs/SPEC-TABLES.md §3, §3.1, §4, §16, §16.7)
+    //
+    // The variable form resolves codecs from manifest data. A missing codec
+    // remains an explicit absence; an exception from an emitted codec fails.
+
+    private static int failInt(String msg) {
+        System.err.println(msg);
+        return 1;
+    }
+
+    private static boolean noText(String[] f) {
+        return f.length > 5 && "no-text".equals(f[5]);
+    }
+
+    private static void spillAbsent(String out, String name) throws IOException {
+        Files.write(Path.of(out, name + ".absent"), new byte[0]);
+    }
+
+    // Resolve only public root codecs actually emitted for this unit. Entry
+    // body helpers are package-private and cannot appear as conformance roots.
+    private static final class VariableCodec {
+        final Class<?> codec;
+        final Class<?> reportType;
+        final Class<?> valueType;
+        VariableCodec(String pkg, String root) throws ReflectiveOperationException {
+            codec = Class.forName(pkg + "." + root + "Variable");
+            reportType = Class.forName(pkg + ".TableVariable$Report");
+            valueType = Class.forName(pkg + "." + root + "Variable$Value");
+            codec.getMethod("load", byte[].class, reportType);
+        }
+        Object report() throws ReflectiveOperationException { return reportType.getConstructor().newInstance(); }
+        Object load(byte[] data, Object report) throws ReflectiveOperationException { return codec.getMethod("load", byte[].class, reportType).invoke(null, data, report); }
+        Object fromJson(byte[] data, Object report) throws ReflectiveOperationException { return codec.getMethod("fromJson", byte[].class, reportType).invoke(null, data, report); }
+        byte[] save(Object value) throws ReflectiveOperationException { return (byte[]) codec.getMethod("save", valueType).invoke(null, value); }
+        byte[] toJson(Object value) throws ReflectiveOperationException { return (byte[]) codec.getMethod("toJson", valueType).invoke(null, value); }
+        int count(Object report, String field) throws ReflectiveOperationException { return reportType.getField(field).getInt(report); }
+        boolean flag(Object report, String field) throws ReflectiveOperationException { return reportType.getField(field).getBoolean(report); }
+    }
+
+    // The variable form is emitted for every table the unit holds, so the
+    // codec is looked up for every unit. A unit on another classpath, or a
+    // root the unit does not declare, is still an explicit absence below.
+    private static boolean variablePkgCarried(String pkg) {
+        return true;
+    }
+
+    // The manifest names a unit by its key; the emitted classes live in the
+    // unit's schema package. The two differ for tables/scalars (package
+    // scalardemo), test/tables/Scalars2.schema (package scalardemo2) and
+    // examples-wide (package wide), so the codec is looked up
+    // under the package, never under the unit key.
+    private static String variableUnitPackage(String unit) {
+        switch (unit) {
+            case "scalars": return "scalardemo";
+            case "widedemo": return "wide";
+            case "tblscalars2": return "scalardemo2";
+            case "tblk1": return "kind1";
+            case "tblk2": return "kind2";
+            default: return unit;
+        }
+    }
+
+    private static VariableCodec variableCodec(String unit, String root) throws ReflectiveOperationException {
+        if (!variablePkgCarried(unit)) return null;
+        try { return new VariableCodec(variableUnitPackage(unit), root); }
+        catch (ClassNotFoundException | NoSuchMethodException absent) { return null; }
+    }
+
+    // json-hostile: one tree per rule the text form states (§16.2, §16.3,
+    // §17.5). The answer is the REPORT the read produces, or `refused`.
+    private static int surfaceJsonHostile(String out) throws IOException {
+        for (String[] f : kind("json-hostile")) {
+            try {
+                VariableCodec codec = variableCodec(f[2], f[3]);
+                if (codec == null) { spillAbsent(out, f[1]); continue; }
+                Object report = codec.report();
+                byte[] text = Files.readAllBytes(Paths.get(f[4], f[3] + ".json"));
+                Object value = codec.fromJson(text, report);
+                boolean bad = value == null || codec.flag(report, "malformed") || codec.flag(report, "refused");
+                if (bad) {
+                    spill(out, f[1], "refused\n");
+                } else {
+                    spill(out, f[1], String.format("%d,%d,%d,%d,%d,false,read\n",
+                            codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
+                            codec.count(report, "widened"), codec.count(report, "clamped"),
+                            codec.count(report, "duplicate")));
+                }
+            } catch (java.lang.reflect.InvocationTargetException thrown) {
+                // A hostile tree is allowed to be refused by breaking the read;
+                // the oracle says `refused` for every rule whose text a reader
+                // cannot take. A reflection failure that is NOT the codec (a
+                // missing class or method) still fails the surface.
+                Throwable cause = thrown.getCause();
+                if (cause instanceof RuntimeException || cause instanceof Error) {
+                    spill(out, f[1], "refused\n");
+                } else {
+                    return failInt(f[1] + ": JSON hostile reader failed: " + thrown);
+                }
+            } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": JSON hostile reader failed: " + failure); }
+        }
+        return 0;
+    }
+
+    private static int surfaceWire(String out) throws IOException {
+        for (String[] f : kind("instance")) {
+            try {
+                VariableCodec codec = variableCodec(f[2], f[3]);
+                if (codec == null) { spillAbsent(out, f[1]); continue; }
+                Object report = codec.report();
+                Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
+                if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
+                byte[] saved = codec.save(value);
+                if (saved == null) return failInt(f[1] + ": save refused the value");
+                spill(out, f[1], saved);
+            } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": wire codec failed: " + failure); }
+        }
+        return 0;
+    }
+
+    private static int surfaceReport(String out) throws IOException {
+        for (String[] f : kind("report")) {
+            try {
+                VariableCodec codec = variableCodec(f[2], f[3]);
+                if (codec == null) { spillAbsent(out, f[1]); continue; }
+                Object report = codec.report();
+                boolean ok = codec.load(Files.readAllBytes(Paths.get(f[4])), report) != null;
+                boolean refused = codec.flag(report, "refused");
+                boolean malformed = codec.flag(report, "malformed") || (!ok && !refused);
+                spill(out, f[1], String.format("%d,%d,%d,%d,%d,%s,%s\n",
+                        codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
+                        codec.count(report, "widened"), codec.count(report, "clamped"),
+                        codec.count(report, "duplicate"), malformed, refused ? "refused" : "read"));
+            } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": report codec failed: " + failure); }
+        }
+        return 0;
+    }
+
+    // ---- THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §6.5, §7, §19.2)
+    //
+    // cook-reason and block-reason (test/conformance/README.md): each forgery of
+    // the kind, placed exactly as its line asks (the claim, the lead, or no
+    // buffer at all) and the generated openReason's answer: the
+    // TableRefuseReason value name of the FIRST failing clause, or `ok`. The
+    // harness compares the rows the manifest's `refusal` lines name. The reason
+    // is the generated reader's own: this driver places bytes and prints what it
+    // is told, and judges nothing.
+    private static String blockReason(String name, byte[] data, int base, long length) {
+        if (name.startsWith("block_render")) {
+            return blockdemo.RenderFrameBlock.openReason(data, base, length);
+        }
+        if (name.startsWith("block_padded")) {
+            return blockdemo.PaddedFrameBlock.openReason(data, base, length);
+        }
+        System.err.println("driver: no block named " + name);
+        System.exit(1);
+        return "";
+    }
+
+    private static int surfaceReason(String out, String form) throws IOException {
+        for (String[] f : kind("forgery")) {
+            if (!f[2].equals(form)) {
+                continue;
+            }
+            byte[] source = Files.readAllBytes(Paths.get(f[4]));
+            long claim = Long.parseLong(f[5]);
+            if (claim < 0) {
+                claim = source.length;
+            }
+            String pointer = f.length > 6 ? f[6] : "0";
+            String reason;
+            if (pointer.equals("null")) {
+                reason = form.equals("cook") ? rootNamed(f[3]).reason.open(null, 0, claim)
+                                             : blockReason(f[3], null, 0, claim);
+            } else {
+                Placed p = place(source, claim, Integer.parseInt(pointer));
+                reason = form.equals("cook") ? rootNamed(f[3]).reason.open(p.data, p.base, p.length)
+                                             : blockReason(f[3], p.data, p.base, p.length);
+            }
+            spill(out, f[1], reason + "\n");
+        }
+        return 0;
+    }
+
+    private static int surfaceJsonRead(String out) throws IOException {
+        for (String[] f : kind("instance")) {
+            if (noText(f)) continue;
+            try {
+                VariableCodec codec = variableCodec(f[2], f[3]);
+                if (codec == null) { spillAbsent(out, f[1]); continue; }
+                Object report = codec.report();
+                Object value = codec.fromJson(Files.readAllBytes(Paths.get("testdata/conformance/tables/json", f[1] + ".json")), report);
+                if (value == null || codec.flag(report, "malformed") || codec.flag(report, "refused")) return failInt(f[1] + ": fromJson refused the text");
+                byte[] saved = codec.save(value);
+                if (saved == null) return failInt(f[1] + ": save refused the value");
+                spill(out, f[1], saved);
+            } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": JSON reader failed: " + failure); }
+        }
+        return 0;
+    }
+
+    private static int surfaceJsonWrite(String out) throws IOException {
+        for (String[] f : kind("instance")) {
+            if (noText(f)) continue;
+            try {
+                VariableCodec codec = variableCodec(f[2], f[3]);
+                if (codec == null) { spillAbsent(out, f[1] + ".json"); continue; }
+                Object report = codec.report();
+                Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
+                if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
+                byte[] text = codec.toJson(value);
+                if (text == null) return failInt(f[1] + ": toJson refused the value");
+                spill(out, f[1] + ".json", text);
+            } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": JSON writer failed: " + failure); }
+        }
+        return 0;
+    }
+
+    private static final class CookCodec {
+        final VariableCodec variable;
+        final Class<?> cook;
+        final java.lang.reflect.Method measure;
+        final java.lang.reflect.Method measureReason;
+        final java.lang.reflect.Method cookFrom;
+        CookCodec(String pkg, String root, Class<?> cook) throws ReflectiveOperationException {
+            variable = new VariableCodec(pkg, root);
+            this.cook = cook;
+            measure = cook.getMethod("cookMeasure", Object.class);
+            measureReason = cook.getMethod("cookMeasureReason", Object.class);
+            cookFrom = cook.getMethod("cookFrom", Object.class, byte[].class, int.class);
+        }
+        long measure(Object value) throws ReflectiveOperationException {
+            return (long) measure.invoke(null, value);
+        }
+        Object measureReason(Object value) throws ReflectiveOperationException {
+            return measureReason.invoke(null, value);
+        }
+        boolean cookFrom(Object value, byte[] buffer, int order) throws ReflectiveOperationException {
+            return (boolean) cookFrom.invoke(null, value, buffer, order);
+        }
+    }
+
+    // A cook-write row is ABSENT only for a reason the generator wrote down
+    // (docs/SPEC-TABLES.md §7.6), never because a lookup failed:
+    //   - the root's <Root>Cook is the generated STUB (cook.go emits a class
+    //     with a private constructor and no method when the root's closure
+    //     holds a construct the Java cook form does not carry, a union), or
+    //   - the unit has no cook form in this leg at all: neither <Root>Cook nor
+    //     the unit's TableCookInfo exists (the wide-kind unit gets no
+    //     accelerators, and a unit off this classpath has neither).
+    // Every other failure (a missing <Root>Cook in a unit that has a cook
+    // form, a real writer whose cookMeasure, cookMeasureReason or cookFrom
+    // lookup breaks, a Value class that will not load) is thrown, and the
+    // surface FAILS, so a renamed or re-typed writer can never turn its rows
+    // absent and leave the cell green.
+    private static CookCodec cookCodec(String unit, String root) throws ReflectiveOperationException {
+        String pkg = variableUnitPackage(unit);
+        Class<?> cook;
+        try {
+            cook = Class.forName(pkg + "." + root + "Cook");
+        } catch (ClassNotFoundException missing) {
+            try { Class.forName(pkg + ".TableCookInfo"); }
+            catch (ClassNotFoundException noCookForm) { return null; }
+            throw missing;
+        }
+        if (cook.getDeclaredMethods().length == 0) { return null; }
+        return new CookCodec(pkg, root, cook);
+    }
+
+    private static String[] instanceNamed(String name) {
+        for (String[] f : kind("instance")) {
+            if (f[1].equals(name)) { return f; }
+        }
+        return null;
+    }
+
+    private static int surfaceCookWrite(String out) throws IOException {
+        for (String[] f : kind("cook-write")) {
+            String[] inst = instanceNamed(f[1]);
+            if (inst == null) { return failInt("missing instance " + f[1]); }
+            CookCodec codec;
+            try { codec = cookCodec(inst[2], inst[3]); }
+            catch (ReflectiveOperationException broken) {
+                return failInt(f[1] + ": cook writer lookup failed: " + broken);
+            }
+            if (codec == null) {
+                spillAbsent(out, f[1]);
+                spillAbsent(out, f[1] + "-be");
+                continue;
+            }
+            try {
+                Object report = codec.variable.report();
+                Object value = codec.variable.load(Files.readAllBytes(Paths.get(inst[4])), report);
+                if (value == null || codec.variable.flag(report, "refused") || codec.variable.flag(report, "malformed")) {
+                    return failInt(f[1] + ": cook input did not load");
+                }
+                long size = codec.measure(value);
+                if (size < 1) { return failInt(f[1] + ": cookMeasure refused"); }
+                Object reason = codec.measureReason(value);
+                long rBytes = (long) reason.getClass().getMethod("bytes").invoke(reason);
+                String rText = (String) reason.getClass().getMethod("reason").invoke(reason);
+                if (rBytes != size || !"ok".equals(rText)) {
+                    return failInt(f[1] + ": cookMeasureReason disagreed with cookMeasure");
+                }
+                for (int order : new int[] { 1, 2 }) {
+                    String name = order == 2 ? f[1] + "-be" : f[1];
+                    byte[] shortBuf = new byte[(int) size - 1];
+                    java.util.Arrays.fill(shortBuf, (byte) 0xa5);
+                    if (codec.cookFrom(value, shortBuf, order)) {
+                        return failInt(name + ": short buffer succeeded");
+                    }
+                    for (byte b : shortBuf) {
+                        if (b != (byte) 0xa5) { return failInt(name + ": short buffer wrote bytes"); }
+                    }
+                    byte[] buffer = new byte[(int) size];
+                    if (!codec.cookFrom(value, buffer, order)) {
+                        return failInt(name + ": cookFrom refused");
+                    }
+                    spill(out, name, buffer);
+                }
+            } catch (ReflectiveOperationException failure) {
+                return failInt(f[1] + ": cook-write codec failed: " + failure);
+            }
+        }
+        return 0;
+    }
+
+    private static final class MessageCodec {
+        final Class<?> vocabType;
+        final Class<?> reportType;
+        final Class<?> valueType;
+        final Class<?> valueArrayType;
+        final java.lang.reflect.Method reset;
+        final java.lang.reflect.Method announceRead;
+        final java.lang.reflect.Method loadMessages;
+        final java.lang.reflect.Method measureMessages;
+        final java.lang.reflect.Method saveMessages;
+
+        MessageCodec(String pkg, String root) throws ReflectiveOperationException {
+            vocabType = Class.forName(pkg + ".TableVocabulary");
+            reportType = Class.forName(pkg + ".TableVocabulary$Report");
+            valueType = Class.forName(pkg + "." + root + "Fixed$Value");
+            valueArrayType = java.lang.reflect.Array.newInstance(valueType, 0).getClass();
+            Class<?> msgType = Class.forName(pkg + "." + root + "Message");
+            reset = vocabType.getMethod("reset", int.class);
+            announceRead = vocabType.getMethod("announceRead", vocabType, byte[].class, reportType);
+            loadMessages = msgType.getMethod("loadMessages", valueArrayType, int.class, vocabType, byte[].class, reportType);
+            measureMessages = msgType.getMethod("measureMessages", valueArrayType, int.class, reportType);
+            saveMessages = msgType.getMethod("saveMessages", valueArrayType, int.class, byte[].class, reportType);
+        }
+
+        Object vocab() throws ReflectiveOperationException {
+            Object v = vocabType.getConstructor().newInstance();
+            reset.invoke(v, 4096);
+            return v;
+        }
+
+        Object report() throws ReflectiveOperationException {
+            return reportType.getConstructor().newInstance();
+        }
+
+        boolean announce(Object vocab, byte[] wire, Object report) throws ReflectiveOperationException {
+            return (boolean) announceRead.invoke(null, vocab, wire, report);
+        }
+
+        Object newValues(int cap) {
+            return java.lang.reflect.Array.newInstance(valueType, cap);
+        }
+
+        int load(Object values, int cap, Object vocab, byte[] wire, Object report) throws ReflectiveOperationException {
+            return (int) loadMessages.invoke(null, values, cap, vocab, wire, report);
+        }
+
+        int measure(Object values, int count, Object report) throws ReflectiveOperationException {
+            return (int) measureMessages.invoke(null, values, count, report);
+        }
+
+        int save(Object values, int count, byte[] out, Object report) throws ReflectiveOperationException {
+            return (int) saveMessages.invoke(null, values, count, out, report);
+        }
+
+        boolean flag(Object report, String field) throws ReflectiveOperationException {
+            return reportType.getField(field).getBoolean(report);
+        }
+    }
+
+    private static MessageCodec messageCodec(String unit, String root) throws ReflectiveOperationException {
+        String pkg = variableUnitPackage(unit);
+        try {
+            return new MessageCodec(pkg, root);
+        } catch (ClassNotFoundException | NoSuchMethodException absent) {
+            return null;
+        }
+    }
+
+    private static String[] connectionNamed(String key) {
+        for (String[] f : kind("connection")) {
+            if (f[1].equals(key)) { return f; }
+        }
+        return null;
+    }
+
+    private static int surfaceMessage(String out) throws IOException {
+        for (String[] f : kind("message")) {
+            String[] conn = connectionNamed(f[2]);
+            if (conn == null) { return failInt("missing connection " + f[2]); }
+            try {
+                MessageCodec codec = messageCodec(conn[2], f[3]);
+                if (codec == null) {
+                    spillAbsent(out, f[1]);
+                    continue;
+                }
+                Object vocab = codec.vocab();
+                Object report = codec.report();
+                if (!codec.announce(vocab, Files.readAllBytes(Paths.get(conn[4])), report)
+                        || codec.flag(report, "malformed") || codec.flag(report, "refused")) {
+                    return failInt(f[1] + ": announceRead refused " + conn[4]);
+                }
+                Object values = codec.newValues(256);
+                int count = codec.load(values, 256, vocab, Files.readAllBytes(Paths.get(f[5])), report);
+                if (count < 1 || codec.flag(report, "malformed") || codec.flag(report, "refused")) {
+                    return failInt(f[1] + ": loadMessages refused " + f[5]);
+                }
+                int size = codec.measure(values, count, report);
+                if (size < 1 || codec.flag(report, "refused")) {
+                    return failInt(f[1] + ": measureMessages refused");
+                }
+                byte[] buf = new byte[size];
+                if (codec.save(values, count, buf, report) != size || codec.flag(report, "refused")) {
+                    return failInt(f[1] + ": saveMessages refused");
+                }
+                spill(out, f[1], buf);
+            } catch (ReflectiveOperationException failure) {
+                return failInt(f[1] + ": message codec failed: " + failure);
+            }
+        }
+        return 0;
+    }
+
     public static int run(String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
@@ -643,10 +1087,13 @@ public final class Driver {
         readManifest(args[0]);
         String surface = args[1];
         if (surface.equals("list")) {
-            // the five WIRE-CARRYING surfaces are ABSENT: Java emits no table
-            // wire (docs/SPEC-TABLES.md §3); schema#517 is the port's row.
-            System.out.print("block\nblock-foreign\n"
-                    + "block-dump\nforgery\ncook\ncook-foreign\ncook-forgery\n");
+            // the WIRE-CARRYING surfaces ride the id-table form (docs/SPEC-TABLES.md
+            // §3, §3.1, §16.7) for the roots this leg's variable wire carries —
+            // graphdemo's Scene and blobdemo's Catalog — and answer every other
+            // case ABSENT, one by one.
+            System.out.print("wire\nreport\nblock-reason\ncook-reason\njson-read\njson-write\njson-hostile\nmessage\n"
+                    + "block\nblock-foreign\n"
+                    + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
             return 0;
         }
         if (args.length < 3) {
@@ -655,11 +1102,20 @@ public final class Driver {
         }
         String out = args[2];
         switch (surface) {
+            case "wire": return surfaceWire(out);
+            case "report": return surfaceReport(out);
+            case "block-reason": return surfaceReason(out, "block");
+            case "cook-reason": return surfaceReason(out, "cook");
+            case "json-read": return surfaceJsonRead(out);
+            case "json-write": return surfaceJsonWrite(out);
+            case "json-hostile": return surfaceJsonHostile(out);
+            case "message": return surfaceMessage(out);
             case "block": return surfaceBlock(out);
             case "block-foreign": return surfaceBlockForeign(out);
             case "block-dump": return surfaceBlockDump(out);
             case "forgery": return surfaceForgery(out);
             case "cook": return surfaceCook(out);
+            case "cook-write": return surfaceCookWrite(out);
             case "cook-foreign": return surfaceCookForeign(out);
             case "cook-forgery": return surfaceCookForgery(out);
             default: return 2;

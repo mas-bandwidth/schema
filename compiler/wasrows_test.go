@@ -49,7 +49,7 @@ func TestWasRowsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
-		if target == "cpp" || target == "c" || target == "cs" || target == "go" {
+		if target == "cpp" || target == "c" || target == "cs" || target == "go" || target == "java" {
 			if err != nil {
 				t.Fatalf("%s carries the was rows and refused: %v", target, err)
 			}
@@ -72,6 +72,24 @@ func TestWasRowsCarriers(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "Buff.mult, Effect.pong, Effect.shield and Grade.Argent") || !strings.Contains(err.Error(), "--lang cpp") {
 			t.Errorf("%s refused without naming the rows and the carrier: %v", target, err)
+		}
+	}
+}
+
+func TestJavaWasRowsCarrier(t *testing.T) {
+	u := unitFromSource(t, wasRowsUnit)
+	out, err := New().Generate(u, "java", Options{})
+	if err != nil {
+		t.Fatalf("java carries the was rows and refused: %v", err)
+	}
+	var all strings.Builder
+	for _, b := range out {
+		all.Write(b)
+	}
+	for _, old := range []string{"Silver", "ward", "ping", "multiplier"} {
+		want := fmt.Sprintf("0x%016x", ir.TableWireId(old))
+		if !strings.Contains(all.String(), want) {
+			t.Errorf("java output lacks the id of %q, %s", old, want)
 		}
 	}
 }
