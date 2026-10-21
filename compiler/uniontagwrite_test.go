@@ -72,8 +72,9 @@ var tagGoneFromRelease = map[string][]string{
 // a language with no dormant-assert idiom keeps the form native to it. They
 // are the only two left.
 var tagRefusesEveryBuild = map[string][]string{
-	"elixir": {`raise ArgumentError, "value.type is above the wire maximum"`},
-	"go":     {"if tagValue < 0 || tagValue > 2 {"},
+	"elixir":  {`raise ArgumentError, "value.type is above the wire maximum"`},
+	"go":      {"if tagValue < 0 || tagValue > 2 {"},
+	"lobster": {"if v.Type < 0 or v.Type > 2: return false"},
 }
 
 // CLAIM. The union tag is a write-side contract and nothing more: held by the
@@ -83,6 +84,9 @@ var tagRefusesEveryBuild = map[string][]string{
 func TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 	for _, target := range New().Targets() {
 		text := generatedText(t, unionTagUnit, target)
+		if codeclessLeg(t, target, text) {
+			continue
+		}
 
 		switch {
 		case target == "js":
