@@ -1962,6 +1962,26 @@ static const char * reason_name( graphdemo::TableRefuseReason reason )
         case graphdemo::integrity_mismatch: return "integrity_mismatch";
         case graphdemo::non_finite: return "non_finite";
         case graphdemo::blob_shared: return "blob_shared";
+        case graphdemo::previous_form: return "previous_form";
+        case graphdemo::newer_form: return "newer_form";
+        case graphdemo::message_form_as_file: return "message_form_as_file";
+        case graphdemo::layout_unknown: return "layout_unknown";
+        case graphdemo::layout_unsupported: return "layout_unsupported";
+        case graphdemo::layout_newer: return "layout_newer";
+        case graphdemo::layout_malformed: return "layout_malformed";
+        case graphdemo::layout_count_mismatch: return "layout_count_mismatch";
+        case graphdemo::layout_kind_unknown: return "layout_kind_unknown";
+        case graphdemo::layout_kind_invalid: return "layout_kind_invalid";
+        case graphdemo::layout_size_mismatch: return "layout_size_mismatch";
+        case graphdemo::layout_tree_unclosed: return "layout_tree_unclosed";
+        case graphdemo::layout_too_deep: return "layout_too_deep";
+        case graphdemo::layout_record_too_large: return "layout_record_too_large";
+        case graphdemo::plan_too_large: return "plan_too_large";
+        case graphdemo::no_layout: return "no_layout";
+        case graphdemo::batch_too_large: return "batch_too_large";
+        case graphdemo::text_ill_formed: return "text_ill_formed";
+        case graphdemo::count_over_bound: return "count_over_bound";
+        case graphdemo::length_over_bound: return "length_over_bound";
     }
     return "?";
 }

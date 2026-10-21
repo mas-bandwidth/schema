@@ -18,6 +18,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const cppBlobSharedSchema = `package probe
@@ -333,6 +335,7 @@ int main()
 // round-tripping.
 func TestCPPBlobNamedTwice(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skip("the generated save path is C++: no c++ on PATH")

@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestCPPTextFormDocumentEdits drives the C++ hand-editable text form's
@@ -23,6 +25,7 @@ import (
 // expectation of its own.
 func TestCPPTextFormDocumentEdits(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skip("the generated writer is C++: no c++ on PATH")

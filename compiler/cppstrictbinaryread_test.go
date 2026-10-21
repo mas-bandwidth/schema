@@ -15,6 +15,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const cppStrictBinarySchema = `package probe
@@ -183,6 +185,7 @@ int main()
 
 func TestCPPDefaultBinaryReadIsStrict(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skip("the generated read path is C++: no c++ on PATH")

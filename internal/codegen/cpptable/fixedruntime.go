@@ -14,21 +14,15 @@ const tableFixedRuntime = `
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
 // -1 of <T>FixedLoad carries one, and a framing-damage return keeps
-// "malformed" set BESIDE it. TableMessageReason is UNSCOPED and shares this
-// namespace with TableRefuseReason, whose own vocabulary already spells
-// "truncated" and "reserved_not_zero"; these three typed constants of the
-// same enum keep the two registries apart and the wire names equal. Their
-// values are a private high range, so a name another card appends to the
-// shared enum later can never collide with them, and TableMessageReason's
-// int32_t underlying type is what keeps that range inside the enum's own:
-// a constexpr cast into an unscoped enum with no fixed underlying type must
-// land in the enum's range, and clang 21 refuses one that does not.
+// "malformed" set BESIDE it. They are the one vocabulary's own values
+// (TableRefuseReason, §6.5), named here as well so the fixed form's callers
+// keep the spelling they already read.
 #define SCHEMA_HAS_FIXED_REASON_NAMES 1
 struct TableFixedReason
 {
-    static constexpr TableMessageReason layout_unknown      = (TableMessageReason) 0x40000000;
-    static constexpr TableMessageReason truncated           = (TableMessageReason) 0x40000001;
-    static constexpr TableMessageReason reserved_not_zero   = (TableMessageReason) 0x40000002;
+    static constexpr TableRefuseReason layout_unknown    = TableRefuseReason::layout_unknown;
+    static constexpr TableRefuseReason truncated         = TableRefuseReason::truncated;
+    static constexpr TableRefuseReason reserved_not_zero = TableRefuseReason::reserved_not_zero;
 };
 
 // ---------------------------------------------------------------------------

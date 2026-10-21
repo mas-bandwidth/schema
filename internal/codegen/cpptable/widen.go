@@ -444,10 +444,9 @@ const tableRefuseReasonEnum = `
 // language. A refusal moves no counter, and a match writes nothing: the
 // out-parameter is touched on the refusal path only.
 //
-// It is not the MESSAGE FORM's vocabulary (TableMessageReason, §3.3): a caller
-// meeting one of these has been refused a FILE, by a header match or by a
-// measure.
-enum TableRefuseReason
+// The MESSAGE FORM's names (TableMessageReason, §3.3) are values of this same
+// enum, appended in Go's order: one vocabulary, whichever call refused.
+enum TableRefuseReason : int32_t
 {
     ok,                    // no clause failed: the only value beside a non-null root (§7)
     not_a_cook,            // the magic is neither this build's constant nor its byte reversal, or the byte-order word contradicts the magic

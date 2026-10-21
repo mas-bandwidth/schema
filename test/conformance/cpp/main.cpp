@@ -1447,6 +1447,26 @@ static const char * reason_name( blockdemo::TableRefuseReason reason )
         case blockdemo::integrity_mismatch: return "integrity_mismatch";
         case blockdemo::non_finite: return "non_finite";
         case blockdemo::blob_shared: return "blob_shared";
+        case blockdemo::previous_form: return "previous_form";
+        case blockdemo::newer_form: return "newer_form";
+        case blockdemo::message_form_as_file: return "message_form_as_file";
+        case blockdemo::layout_unknown: return "layout_unknown";
+        case blockdemo::layout_unsupported: return "layout_unsupported";
+        case blockdemo::layout_newer: return "layout_newer";
+        case blockdemo::layout_malformed: return "layout_malformed";
+        case blockdemo::layout_count_mismatch: return "layout_count_mismatch";
+        case blockdemo::layout_kind_unknown: return "layout_kind_unknown";
+        case blockdemo::layout_kind_invalid: return "layout_kind_invalid";
+        case blockdemo::layout_size_mismatch: return "layout_size_mismatch";
+        case blockdemo::layout_tree_unclosed: return "layout_tree_unclosed";
+        case blockdemo::layout_too_deep: return "layout_too_deep";
+        case blockdemo::layout_record_too_large: return "layout_record_too_large";
+        case blockdemo::plan_too_large: return "plan_too_large";
+        case blockdemo::no_layout: return "no_layout";
+        case blockdemo::batch_too_large: return "batch_too_large";
+        case blockdemo::text_ill_formed: return "text_ill_formed";
+        case blockdemo::count_over_bound: return "count_over_bound";
+        case blockdemo::length_over_bound: return "length_over_bound";
     }
     return "?";
 }

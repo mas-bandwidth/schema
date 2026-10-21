@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestCPPTextFormDocumentVectors drives the C++ hand-editable text form's
@@ -24,6 +26,7 @@ import (
 // each .sexp against its .reason, as Go's TestDocumentRefusals does.
 func TestCPPTextFormDocumentVectors(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skip("the generated read is C++: no c++ on PATH")

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A ZERO-BIT ANNOUNCED ELEMENT CANNOT BUY UNBOUNDED RESOLVING WORK
@@ -64,6 +66,7 @@ int main(){
 // so the wall clock is part of the assertion.
 func runCppTableProbe(t *testing.T, files map[string][]byte, source string) {
 	t.Helper()
+	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skip("generated C++ execution requires c++")
