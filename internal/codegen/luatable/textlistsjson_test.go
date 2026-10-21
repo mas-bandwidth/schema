@@ -150,14 +150,17 @@ for _, c in ipairs(cases) do
   local text = f:read("*a")
   f:close()
   local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-  local v = J.FromJson(T, c.root, text, r)
+  -- the TOLERANT read, as the Go oracle's FromJsonTolerant (§16.11): the
+  -- plain FromJson is the strict read and answers nil on a clamp
+  local v = J.FromJsonTolerant(T, c.root, text, r)
   local ok = not r.malformed
   local out = nil
   if ok then out = J.ToJson(T, c.root, v) end
   local refused = ok and out == nil
   print(table.concat({ c.name, tostring(ok), tostring(r.unknown), tostring(r.kindMismatch),
     tostring(r.widened), tostring(r.clamped), tostring(r.duplicate), tostring(r.malformed),
-    r.Reason or "", hex(out), tostring(refused) }, "|"))
+    (r.Reason ~= nil and r.Reason ~= "") and r.Reason or (r.ClampedField and ("clamped: " .. r.ClampedField) or ""),
+    hex(out), tostring(refused) }, "|"))
 end
 `)
 			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe.String()), 0o644); err != nil {

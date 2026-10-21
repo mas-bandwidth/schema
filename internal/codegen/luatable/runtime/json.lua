@@ -1153,12 +1153,14 @@ local function text_list_elem(T, fd)
 end
 
 -- A text list's TOTAL clamp names its field once, the first time (§2.13,
--- §16.2), as the generated Go records it in the report's Reason; the element
--- and count clamps are §2.13's ordinary counters and name no field here.
+-- §6.5, §16.2), in the report's clamped-field slot, never in Reason, as the
+-- generated Go records it in TableReport.ClampedField; the strict read refuses
+-- it as "clamped: <Table>.<field>". The element and count clamps are §2.13's
+-- ordinary counters and name no field here, as in the Go JSON read.
 local function text_list_clamped(report, table_name, field_name)
   report.clamped = report.clamped + 1
-  if not report.Reason or report.Reason == "" then
-    report.Reason = "clamped: " .. table_name .. "." .. field_name
+  if not report.ClampedField or report.ClampedField == "" then
+    report.ClampedField = table_name .. "." .. field_name
   end
 end
 
@@ -1901,7 +1903,12 @@ function J.FromJson(T, name, text, report)
   elseif report.blobShared ~= nil and report.blobShared > 0 then
     reason = "blob_shared"
   elseif report.clamped ~= nil and report.clamped > 0 then
-    reason = "clamped"
+    -- TableClampedField (§2.13): a clamp that named its field refuses naming it
+    if report.ClampedField ~= nil and report.ClampedField ~= "" then
+      reason = "clamped: " .. report.ClampedField
+    else
+      reason = "clamped"
+    end
   elseif report.kindMismatch ~= nil and report.kindMismatch > 0 then
     reason = "kind_mismatch"
   elseif report.Reason ~= nil and report.Reason:sub(1, 12) == "non_finite: " then
