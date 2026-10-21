@@ -55,7 +55,7 @@ func TestUnionArraysCarriers(t *testing.T) {
 			_, table := files["ProbeTable."+suffix]
 			// the JS variable class lives in <Package>Variable.js (§8.4)
 			_, variable := files["ProbeVariable.js"]
-			if !table && !(target == "js" && variable) {
+			if !table && (target != "js" || !variable) {
 				t.Fatalf("--lang %s emitted no table source", target)
 			}
 			continue

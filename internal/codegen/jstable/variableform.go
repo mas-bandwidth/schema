@@ -184,39 +184,6 @@ func tableOf(f *ir.Field) *ir.Struct {
 	return nil
 }
 
-// listElement returns the table an unbounded []T field's elements are, held
-// BY VALUE, or nil: the elements whose storage the region measure lays out
-// (§6.5).
-// extentWalked is every struct a LoadMeasure's region walk reaches: the roots,
-// and through their unbounded lists of tables the element types, transitively.
-// Only these get an <T>Extent; one nothing calls would be dead code (eslint
-// no-unused-vars).
-func extentWalked(roots []*ir.Struct) map[*ir.Struct]bool {
-	walked := map[*ir.Struct]bool{}
-	work := append([]*ir.Struct(nil), roots...)
-	for len(work) > 0 {
-		st := work[len(work)-1]
-		work = work[:len(work)-1]
-		if walked[st] {
-			continue
-		}
-		walked[st] = true
-		for _, f := range st.Fields {
-			if el := listElement(f); el != nil {
-				work = append(work, el)
-			}
-		}
-	}
-	return walked
-}
-
-func listElement(f *ir.Field) *ir.Struct {
-	if !f.IsList() || f.Type.Pointer {
-		return nil
-	}
-	return tableOf(f)
-}
-
 // ---------------------------------------------------------------------------
 // THE SHARED RUNTIME
 // ---------------------------------------------------------------------------
@@ -1103,80 +1070,6 @@ func (g *variableGen) emitRootCodec(st *ir.Struct) {
 	g.pf("  return TableVariableFromJson(%s, text, report);\n", c)
 	g.pf("}\n\n")
 	g.emitRootLoadMeasure(st)
-}
-
-// emitExtentWalk emits <T>Extent, the region-storage walk a LoadMeasure runs
-// before any value decode (docs/SPEC-TABLES.md §6.5, internal/tablewire/
-// FileRegionMeasure): each unbounded list of tables adds its live elements'
-// storage to the walk's running `at`, aligned as the list is laid. A count that
-// cannot fit the framing is the one refusal this walk can name.
-func (g *variableGen) emitExtentWalk(st *ir.Struct) {
-	g.pf("function %sExtent(r, ids, at) {\n", st.Name)
-	g.pf("  while (true) {\n")
-	g.pf("    if (r.at >= r.end) { break; }\n")
-	g.pf("    const ref = r.leb();\n")
-	g.pf("    if (r.bad || ref === 0 || ref > ids.length) { break; }\n")
-	g.pf("    if (r.at >= r.end) { break; }\n")
-	var lists []*ir.Field
-	for _, f := range st.Fields {
-		if listElement(f) != nil {
-			lists = append(lists, f)
-		}
-	}
-	if len(lists) == 0 {
-		// No list adds storage here: every field is framing to skip, so the
-		// walk names no id (an unread binding would be eslint no-unused-vars).
-		g.pf("    const kind = r.u8();\n")
-		g.pf("    if (!TableVariableSkip(r, kind)) { break; }\n")
-		g.pf("  }\n")
-		g.pf("  return at;\n")
-		g.pf("}\n\n")
-		return
-	}
-	g.pf("    const id = ids[ref - 1];\n")
-	g.pf("    const kind = r.u8();\n")
-	g.pf("    let named = false;\n")
-	for _, f := range lists {
-		g.emitExtentListField(st, f, listElement(f))
-	}
-	g.pf("    if (!named) {\n")
-	g.pf("      if (!TableVariableSkip(r, kind)) { break; }\n")
-	g.pf("    }\n")
-	g.pf("  }\n")
-	g.pf("  return at;\n")
-	g.pf("}\n\n")
-}
-
-func (g *variableGen) emitExtentListField(st *ir.Struct, f *ir.Field, el *ir.Struct) {
-	size, align := ir.ListElementLayout(g.unit, f)
-	elemKind := ir.TableWireScalarKind(f)
-	g.pf("    if (id === %s) {\n", jsId(ir.TableFieldWireId(f)))
-	g.pf("      named = true;\n")
-	g.pf("      if (kind !== 14) { if (!TableVariableSkip(r, kind)) { break; } continue; }\n")
-	g.pf("      const L = r.leb();\n")
-	g.pf("      if (r.at + L > r.end) { break; }\n")
-	g.pf("      const sub = new TableVariableReader(r.b, r.at, r.at + L);\n")
-	g.pf("      r.at += L;\n")
-	g.pf("      if (sub.at + 2 > sub.end) { continue; }\n")
-	g.pf("      const ek = sub.u8();\n")
-	g.pf("      const n = sub.leb();\n")
-	g.pf("      if (ek !== %d) { continue; }\n", elemKind)
-	g.pf("      if (n > 0x7fffffff) { return -1; }\n")
-	g.pf("      if (n > Math.floor((sub.end - sub.at) / 2)) { return -1; }\n")
-	g.pf("      at = TableVariableRound(at, %d);\n", align)
-	g.pf("      at += n * %d;\n", size)
-	g.pf("      for (let i = 0; i < n; i++) {\n")
-	g.pf("        if (sub.at >= sub.end) { break; }\n")
-	g.pf("        const elen = sub.leb();\n")
-	g.pf("        if (sub.at + elen > sub.end) { break; }\n")
-	g.pf("        const er = new TableVariableReader(r.b, sub.at, sub.at + elen);\n")
-	g.pf("        sub.at += elen;\n")
-	g.pf("        const rr = %sExtent(er, ids, at);\n", el.Name)
-	g.pf("        if (rr < 0) { return -1; }\n")
-	g.pf("        at = rr;\n")
-	g.pf("      }\n")
-	g.pf("      continue;\n")
-	g.pf("    }\n")
 }
 
 // emitRootLoadMeasure emits <T>LoadMeasure: the region size a caller owes a

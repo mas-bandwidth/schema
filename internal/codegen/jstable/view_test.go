@@ -2,6 +2,7 @@ package jstable
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -146,7 +147,7 @@ func viewRun(t *testing.T, node, dir string) (*ir.Unit, viewDump) {
 	out, err := cmd.Output()
 	if err != nil {
 		var stderr []byte
-		if ee, ok := err.(*exec.ExitError); ok {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 			stderr = ee.Stderr
 		}
 		t.Fatalf("%s: the view probe did not run: %v\n%s", dir, err, stderr)

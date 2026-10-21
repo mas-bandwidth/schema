@@ -379,7 +379,7 @@ var wideProbeTexts = []struct{ name, text string }{
 }
 
 // the damage pair: the WRITER's bounds are wider than the READER's, so a
-// payload the writer carries whole is over-long for the reader (§3)
+// payload the writer carries whole is over-long for the reader (§3).
 const wideDamageWriterSrc = `package widedamage
 
 type Inner
