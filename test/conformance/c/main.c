@@ -119,6 +119,15 @@ static uint8_t * slurp( const char * path, size_t * bytes )
    what the leg did answer (test/conformance/README.md). */
 static int spill_absent( const char * dir, const char * name );
 
+/* spill_refusal writes a NAMED absence: the C runtime refuses this wire's
+   value by a name the corpus pins (the manifest's c-refusal= marker), so the
+   answer is that name and not bytes. The reader loads a shared blob and the
+   writer's measure refuses it without a reason; the name is the one the
+   runtime's reason-carrying load measure gives the same wire. It answers 1
+   when it wrote the marker, 0 when the codec names no refusal for this wire,
+   and -1 when the write failed. */
+static int spill_refusal( const ConformanceCodec * codec, const uint8_t * wire, size_t bytes, const char * dir, const char * name );
+
 /* no_text marks an instance the corpus carries on the WIRE only — past the text
    form's depth cap by the form's own rule (docs/SPEC-TABLES.md 16.7) — so no
    leg is asked for its text. */
@@ -234,11 +243,27 @@ static int surface_wire( const char * out )
         if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
         value = codec->storage();
         memset( &report, 0, sizeof( report ) );
-        if ( !codec->load( value, wire, (int64_t) bytes, &report ) ) { free( wire ); return 1; }
+        if ( !codec->load( value, wire, (int64_t) bytes, &report ) || !save_into( codec, value, out, f->field[1] ) )
+        {
+            int named = spill_refusal( codec, wire, bytes, out, f->field[1] );
+            free( wire );
+            if ( named == 1 ) { continue; }
+            return 1;
+        }
         free( wire );
-        if ( !save_into( codec, value, out, f->field[1] ) ) { return 1; }
     }
     return 0;
+}
+
+static int spill_refusal( const ConformanceCodec * codec, const uint8_t * wire, size_t bytes, const char * dir, const char * name )
+{
+    char marker[1024];
+    const char * reason;
+    if ( codec->load_refusal == NULL ) { return 0; }
+    reason = codec->load_refusal( wire, (int64_t) bytes );
+    if ( reason == NULL ) { return 0; }
+    snprintf( marker, sizeof( marker ), "%s.absent", name );
+    return spill( dir, marker, reason, strlen( reason ) ) ? 1 : -1;
 }
 
 static int spill_absent( const char * dir, const char * name )
@@ -508,8 +533,18 @@ static int surface_cook_write(const char * out)
         if(codec==NULL) { return 2; }
         wire=slurp(instance->field[4],&wire_bytes); if(wire==NULL) { return 1; }
         value=codec->storage();
-        if(!codec->load(value,wire,(int64_t)wire_bytes,&report)) { free(wire); return 1; } free(wire);
-        need=codec->cook_measure(value); if(need<=0) { return 1; }
+        if(!codec->load(value,wire,(int64_t)wire_bytes,&report) || (need=codec->cook_measure(value))<=0) {
+            /* a value the runtime refuses by name (SPEC-TABLES 2.5) has no
+               cooked file: both answer an absence carrying that name, which
+               the harness counts as this leg's missing case on cook-write
+               (c-refusal= pins the name on the wire surface) */
+            char be[1024]; int named=spill_refusal(codec,wire,wire_bytes,out,f->field[1]);
+            snprintf(be,sizeof(be),"%s-be",f->field[1]);
+            if(named==1) { named=spill_refusal(codec,wire,wire_bytes,out,be); }
+            free(wire);
+            if(named==1) { continue; }
+            return 1;
+        } free(wire);
         file=(uint8_t *)malloc((size_t)need); if(file==NULL) { return 1; }
         for(big=0;big<2;big++) {
             char name[1024]; int ok=codec->cook(value,file,(uint64_t)need,big);

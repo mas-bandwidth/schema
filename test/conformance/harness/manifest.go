@@ -39,6 +39,11 @@ type Instance struct {
 	// GoWireRefusal names a Go wire writer refusal the corpus requires this
 	// instance's Go leg to report instead of emitting bytes.
 	GoWireRefusal string
+	// WireRefusals names, per leg, the refusal the corpus requires that leg's
+	// wire answer to carry instead of bytes (`<lang>-refusal=<name>`): the Go
+	// and C writers refuse a shared blob when they measure it (SPEC-TABLES
+	// §2.5). WireRefusals["go"] is GoWireRefusal.
+	WireRefusals map[string]string
 }
 
 // Counts is a read report (docs/SPEC-TABLES.md §4), which is the whole
@@ -450,6 +455,18 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 						return nil, fmt.Errorf("%s: duplicate Go wire refusal marker", where)
 					}
 					inst.GoWireRefusal = strings.TrimPrefix(marker, "go-refusal=")
+					if inst.WireRefusals == nil {
+						inst.WireRefusals = map[string]string{}
+					}
+					inst.WireRefusals["go"] = inst.GoWireRefusal
+				case strings.HasPrefix(marker, "c-refusal=") && strings.TrimPrefix(marker, "c-refusal=") != "":
+					if inst.WireRefusals["c"] != "" {
+						return nil, fmt.Errorf("%s: duplicate C wire refusal marker", where)
+					}
+					if inst.WireRefusals == nil {
+						inst.WireRefusals = map[string]string{}
+					}
+					inst.WireRefusals["c"] = strings.TrimPrefix(marker, "c-refusal=")
 				default:
 					return nil, fmt.Errorf("%s: %q is not a valid instance marker", where, marker)
 				}

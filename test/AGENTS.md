@@ -34,6 +34,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `js/` | JS packet tests | `make test-js` | `make test-js` |
 | `js-ludicrous/` | JS int128 tests | `make test-js` | `make test-js` |
 | `js-tables/` | JS table tests | `make test-js` | `make test-js` |
+| `lua/` | Lua interpreter harness | `make test-lua` | `make test-lua` |
 | `packet-defaults/` | packet default-value gates | `make test` | `make test` |
 | `packet-text/` | packet UTF-8 gates | `make test` | `make test` |
 | `packet-void/` | packet void-arm gates | `make test` | `make test` |

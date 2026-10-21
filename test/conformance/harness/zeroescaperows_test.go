@@ -12,8 +12,10 @@ import (
 // PLACE in text storage refuses the read (`text_holds_zero: <Table>.<field>`),
 // while a string it only SKIPS stores nothing and is not the event. The rule is
 // held first in Go, so the two refusals state the standard's answer with
-// `carried-by=go` and every other port keeps its BASE counters; the skipped
-// value is the clean §4 report with the unknown key counted.
+// `carried-by=go` and every other port keeps its BASE counters; Lua's reader
+// refuses a zero placed in a text value and in a map key too (the bounded rows
+// and the map-key row), so both rows are `carried-by=go,lua`. The skipped value
+// is the clean §4 report with the unknown key counted.
 //
 // A Go answer of the clean counters on the value row must score red, because
 // the exemption is a different expectation and never a skip.
@@ -31,13 +33,21 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 	const baseCounters = "0,0,0,0,0,false,read"
 
 	refusals := []string{"str-zero-escape-value", "str-zero-escape-map-key"}
+	carriers := map[string]string{"str-zero-escape-value": "go,lua", "str-zero-escape-map-key": "go,lua"}
 	for _, caseName := range refusals {
 		row := findHostile(t, m, caseName)
 		if !row.Refused || row.Verdict() != "refused" {
 			t.Fatalf("%s: the standard verdict is %q; §16.3 refuses a zero placed in text", caseName, row.Verdict())
 		}
-		if strings.Join(row.CarriedBy, ",") != "go" {
-			t.Fatalf("%s: carried-by=%v; Go holds the rule first and every other port keeps its behaviour", caseName, row.CarriedBy)
+		if strings.Join(row.CarriedBy, ",") != carriers[caseName] {
+			t.Fatalf("%s: carried-by=%v, want %s; Go holds the rule first and every other port keeps its behaviour", caseName, row.CarriedBy, carriers[caseName])
+		}
+		wantLua := baseCounters
+		if strings.Contains(carriers[caseName], "lua") {
+			wantLua = "refused"
+		}
+		if got := row.VerdictFor("lua"); got != wantLua {
+			t.Fatalf("%s: lua owes %q, got %q", caseName, wantLua, got)
 		}
 		if row.Uncarried != baseCounters {
 			t.Fatalf("%s: uncarried=%q; every other port stores the zero and answers %q", caseName, row.Uncarried, baseCounters)

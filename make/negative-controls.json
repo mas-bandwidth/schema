@@ -3,7 +3,7 @@
     {
       "name": "base",
       "when": "pull-request",
-      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, the float-NaN widening control, the C/C++ fixed-runtime twin gate's planted leftover-line control, the generated-tree gate's ten planted verdicts (seven red, three green, on prepared directories — no regeneration), and the fixed form's run-copy bound in both systems legs beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them.",
+      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, the float-NaN widening control, the C/C++ fixed-runtime twin gate's planted leftover-line control, the generated-tree gate's ten planted verdicts (seven red, three green, on prepared directories \u2014 no regeneration), and the fixed form's run-copy bound in both systems legs beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them.",
       "targets": [
         "check-enum-bound-negative-control",
         "check-zero-range-negative-control",
@@ -77,6 +77,7 @@
         "conformance-negative-control-go-walk",
         "tables-go-wire-fuzz-negative-control",
         "conformance-negative-control-reference-surface",
+        "conformance-negative-control-lua",
         "conformance-go-rows-negative-control"
       ]
     },
@@ -512,7 +513,7 @@
     {
       "name": "dart",
       "when": "pull-request",
-      "why": "the Dart port's controls and its four packet families: eight controls, the fixed form's among them. Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of §5.7. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
+      "why": "the Dart port's controls and its four packet families: eight controls, the fixed form's among them. Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of \u00a75.7. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
       "targets": [
         "cards-dart-conformance-negative-control",
         "packet-arm-defaults-dart-negative-control",
@@ -530,7 +531,7 @@
     {
       "name": "java",
       "when": "pull-request",
-      "why": "the Java port's controls and its four packet families: nine controls, the eighth being the FIXED FORM's (docs/SPEC-TABLES.md §3.4), which writes one text length a byte too high and must red the C++ reference's byte match, and the ninth the VERSIONING gate's (§5.3 of docs/FIXED-FORM-ALGORITHM.md), which answers `noLayout` for a file outside the lineage where `layoutNewer` is the whole answer, so only a suite that checks the NAME can red it. Measured 6 s over 10 controls before the previous-form table legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the versioning control adds the reference's own dump (~7 s) and one submake over both columns of every row of §5.7 beside it, about twenty seconds on the author's machine. The card facade's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 6 s over 3 controls on the author's machine.",
+      "why": "the Java port's controls and its four packet families: nine controls, the eighth being the FIXED FORM's (docs/SPEC-TABLES.md \u00a73.4), which writes one text length a byte too high and must red the C++ reference's byte match, and the ninth the VERSIONING gate's (\u00a75.3 of docs/FIXED-FORM-ALGORITHM.md), which answers `noLayout` for a file outside the lineage where `layoutNewer` is the whole answer, so only a suite that checks the NAME can red it. Measured 6 s over 10 controls before the previous-form table legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the versioning control adds the reference's own dump (~7 s) and one submake over both columns of every row of \u00a75.7 beside it, about twenty seconds on the author's machine. The card facade's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 6 s over 3 controls on the author's machine.",
       "targets": [
         "cards-java-conformance-negative-control",
         "cards-java-conformance-upgrade-negative-control",
@@ -571,17 +572,18 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120, and the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control). The message form's four blades run on the pull request, so what moves nightly is those passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
+      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120, and the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control). The Lua generated-luacheck plant is here because its checker is fleet software and its corpus build is the one part of that lens that spends seconds; the lens itself runs on the card's own push workflow. The message form's four blades run on the pull request, so what moves nightly is those passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
       "targets": [
         "tables-message-form-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control",
-        "schema-go-generated-golangci-lint-gate-negative-control-ratchet"
+        "schema-go-generated-golangci-lint-gate-negative-control-ratchet",
+        "tables-lua-luacheck-negative-control"
       ]
     },
     {
       "name": "go-containers",
       "when": "pull-request",
-      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md §3.4).",
+      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md \u00a73.4).",
       "targets": [
         "tables-go-containers-negative-controls",
         "tables-go-accessor-negative-control",
@@ -649,6 +651,18 @@
     {
       "target": "tables-c-big-endian-negative-control",
       "reason": "the C twin of tables-big-endian-negative-control: ci.yml's big-endian job runs it on every pull request already, after the C++ put16 control. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. Issue #684 owns the job's budget, so the control is named here rather than placed in a group."
+    },
+    {
+      "target": "schema-lua-fuzz-negative-control",
+      "reason": "the planted-bad-pattern control for the Lua port's nightly fuzz lane. It runs on the lane's own fast job (push and pull request) in .github/workflows/schema-lua-nightly-fuzz.yml (make schema-lua-fuzz-negative-control), and that job builds the port's pinned Lua 5.4.8 with make dist-lua from www.lua.org at the sha256 make/lua.mk names; the shared negative-control leg has no Lua toolchain to run it. The friction target's oracle needs the generated Lua readers and the seeded mutation run, so it stays on the lane's own bench rather than the base row."
+    },
+    {
+      "target": "schema-lua-version-differential-negative-control",
+      "reason": "the card's own workflow (.github/workflows/schema-lua-version-differential.yml) runs the four-interpreter differential on the nightly schedule and on workflow_dispatch, and its negative-control job runs this plant there. The shared leg carries no Lua toolchain; running it here too would need the four interpreters on a runner and prove the same gate a second time."
+    },
+    {
+      "target": "schema-lua-resource-bounds-negative-control",
+      "reason": "the Lua port's own workflow (.github/workflows/schema-lua-resource-bounds.yml) runs this planted-pattern control on its fast job on push and pull request (path-filtered to the lane's make file, test file and workflow), and that job builds the pinned Lua 5.4.8 with make dist-lua; the shared negative-control leg has no Lua toolchain to run it."
     }
   ]
 }

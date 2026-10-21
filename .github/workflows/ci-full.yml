@@ -809,6 +809,18 @@ jobs:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
 
+      # The LUA leg's toolchain is the pinned PUC-Rio interpreter, built from
+      # source exactly as `make dist-lua` builds it (make/lua.mk holds the pin
+      # and its sha256; the row's `lua` field is the version). The row's env
+      # carries LUA=lua, so the built interpreter lands on PATH.
+      - name: install the pinned Lua interpreter
+        if: matrix.lua != ''
+        run: |
+          make dist-lua
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$PWD/dist/lua-${{ matrix.lua }}/src/lua" "$HOME/.local/bin/lua"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
       # stops fitting. The row's env is the make overrides CI needs: a JDK on
