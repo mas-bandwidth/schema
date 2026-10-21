@@ -1517,7 +1517,9 @@ defmodule Bench.FixedRuntime do
           end
         end)
 
-      entry = {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple([their_variants | remap])}
+      entry =
+        {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi),
+         List.to_tuple([their_variants | remap])}
 
       {guarded(acc, guard, tag, entry), report}
     end
