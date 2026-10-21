@@ -240,12 +240,15 @@ struct Erase
     static void reset( void * p ) { new ( p ) T(); }
 };
 
+// The surfaces ask what the TOLERANT read reports, so the codecs call the
+// named tolerant reads; the plain names are strict (docs/SPEC-TABLES.md
+// §16.11), as the Go driver's rows call ...Tolerant too.
 #define CODEC( unit_key, ns, type )                                                            \
     {                                                                                          \
         unit_key, #type,                                                                       \
         []( void * v, const uint8_t * b, int64_t n, Report * r ) {                             \
             ns::TableReport inner;                                                             \
-            bool ok = ns::type##Load( *(ns::type *) v, b, n, &inner );                         \
+            bool ok = ns::type##LoadTolerant( *(ns::type *) v, b, n, &inner );                 \
             copy_report( inner, r );                                                           \
             return ok;                                                                         \
         },                                                                                     \
@@ -255,7 +258,7 @@ struct Erase
         },                                                                                     \
         []( void * v, const char * t, int64_t n, Report * r ) {                                \
             ns::TableReport inner;                                                             \
-            bool ok = ns::type##FromJson( *(ns::type *) v, t, n, &inner );                     \
+            bool ok = ns::type##FromJsonTolerant( *(ns::type *) v, t, n, &inner );             \
             copy_report( inner, r );                                                           \
             return ok;                                                                         \
         },                                                                                     \
@@ -347,7 +350,7 @@ struct VarCodec
             int64_t need = ns::type##LoadMeasure( b, n );                                       \
             region.assign( (size_t) need, 0 );                                                  \
             ns::TableReport inner;                                                              \
-            const ns::type * root = ns::type##Load( region.data(), need, b, n, &inner );        \
+            const ns::type * root = ns::type##LoadTolerant( region.data(), need, b, n, &inner ); \
             copy_report( inner, r );                                                            \
             return (const void *) root;                                                         \
         },                                                                                     \
@@ -364,7 +367,7 @@ struct VarCodec
         []( const char * t, int64_t n, Report * r, std::vector<uint8_t> & bytes ) {             \
             ns::type##Builder builder;                                                          \
             ns::TableReport inner;                                                              \
-            bool ok = ns::type##FromJson( builder, t, n, &inner );                              \
+            bool ok = ns::type##FromJsonTolerant( builder, t, n, &inner );                      \
             copy_report( inner, r );                                                            \
             if ( !ok ) return false;                                                            \
             int64_t size = ns::type##Measure( builder );                                        \
