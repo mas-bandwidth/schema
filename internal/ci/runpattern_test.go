@@ -87,6 +87,11 @@ func runRecipes(name, text string) []runRecipe {
 				pattern = pattern[1 : len(pattern)-1]
 			}
 			pattern = strings.ReplaceAll(pattern, "$$", "$")
+			// a FUZZ run spells -run '^$' on purpose: it runs no unit test and
+			// hands the package to -fuzz, so the empty selection is the intent
+			if pattern == "^$" && strings.Contains(inv, " -fuzz ") {
+				continue
+			}
 
 			var pkg string
 			if pm := goPackageArg.FindStringSubmatch(inv); pm != nil {
@@ -211,15 +216,15 @@ type runPatternException struct {
 // builds them; and one is a $(3) template with no value until the caller
 // expands it.
 var runPatternExceptions = []runPatternException{
-	{"make/go.mk:253", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root"},
-	{"make/go.mk:350", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'"},
-	{"make/go.mk:392", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root"},
-	{"make/go.mk:397", "same separate test/go-tables module, -run Fuzz"},
-	{"make/go.mk:398", "same separate test/go-tables module, -run Fuzz under -race"},
-	{"make/go.mk:435", "same separate test/go-tables module, and it runs under a -overlay built at recipe time"},
-	{"make/go.mk:704", "same separate test/go-tables module, -run '^TestSoak$$'"},
-	{"make/go.mk:817", "same separate test/go-tables module, -run '^TestUsage$$'"},
-	{"Makefile:5247", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
+	{"make/go.mk:312", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root"},
+	{"make/go.mk:409", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'"},
+	{"make/go.mk:479", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root"},
+	{"make/go.mk:509", "same separate test/go-tables module, -run Fuzz"},
+	{"make/go.mk:510", "same separate test/go-tables module, -run Fuzz under -race"},
+	{"make/go.mk:547", "same separate test/go-tables module, and it runs under a -overlay built at recipe time"},
+	{"make/go.mk:866", "same separate test/go-tables module, -run '^TestSoak$$'"},
+	{"make/go.mk:979", "same separate test/go-tables module, -run '^TestUsage$$'"},
+	{"Makefile:5269", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
 }
 
 // checkRunPatterns is the shared code path for both tests. It extracts every

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Issue #611: a json-hostile verdict is COUNTERS AND A VERDICT ONLY, so a port
@@ -20,6 +22,7 @@ import (
 // clamp and the domain bound is the other: two clamps, and 4294967295 on the
 // field. The Go and C# walkers carried the narrow and landed 0.
 func TestIssue611JsonUnsignedOverflowLandsCeiling(t *testing.T) {
+	slowtest.Gate(t, "the Go and .NET toolchains (they compile and run the generated packages)")
 	src := `package p
 fixed table Ship
 {
@@ -59,8 +62,8 @@ func TestIssue611(t *testing.T) {
 	var s Ship
 	ShipReset(&s)
 	var r TableReport
-	if !ShipFromJson(&s, text, &r) {
-		t.Fatal("FromJson failed")
+	if !ShipFromJsonTolerant(&s, text, &r) {
+		t.Fatalf("FromJson failed: %+v", r)
 	}
 	if s.Experience != 4294967295 {
 		t.Fatalf("experience=%d, want 4294967295 (the ceiling, not the floor)", s.Experience)
