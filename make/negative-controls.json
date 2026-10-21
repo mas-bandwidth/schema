@@ -419,9 +419,11 @@
     {
       "name": "cs",
       "when": "pull-request",
-      "why": "the C# port's conformance leg, its soak allocation-count negative control, its four packet families, the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
+      "why": "the C# port's conformance leg, its soak allocation-count negative control, its four packet families, the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached. The card driver's controls (one rendered byte changed, render alone must go red; the upgrade and task-hash switches, each of which must turn the shared-corpus run red) ride here too: 2 s each on the author's machine.",
       "targets": [
         "cards-cs-conformance-negative-control",
+        "cards-cs-conformance-upgrade-negative-control",
+        "cards-cs-conformance-hash-negative-control",
         "conformance-negative-control-cs",
         "cards-cs-retain-negative-control",
         "tables-cs-alloc-runtime-negative-control",
@@ -639,6 +641,10 @@
     }
   ],
   "excluded": [
+    {
+      "target": "tables-cs-clean-negative-control-run",
+      "reason": "the body of tables-cs-clean-negative-control, which calls it only when the pinned dotnet resolves; the cs group already runs the wrapper, so running the body again proves the same planted misindent twice."
+    },
     {
       "target": "packet-arm-defaults-negative-controls",
       "reason": "an alias that re-invokes make once per language for the nine packet-arm-defaults-<lang>-negative-control targets, every one of which this leg already runs in its own toolchain group. Running the alias too would need all seven SDKs on one runner to prove a second time what seven parallel jobs prove once."
