@@ -114,7 +114,7 @@ func malformedUnderParseReport(t *testing.T, out string) malformedUnderDartRepor
 		line = line[:end]
 	}
 	fields := map[string]int{}
-	for _, token := range strings.Fields(line) {
+	for token := range strings.FieldsSeq(line) {
 		key, value, ok := strings.Cut(token, "=")
 		if !ok {
 			t.Fatalf("dart report token %q is not key=value:\n%s", token, out)

@@ -20,7 +20,6 @@ func TestFixedClassOnTableWireDart(t *testing.T) {
 		{"tblr1", "R1"},
 		{"tblr2", "R2"},
 	} {
-		c := c
 		t.Run(c.unit, func(t *testing.T) {
 			t.Parallel()
 			rows := manifestRows(t, repo, c.unit)

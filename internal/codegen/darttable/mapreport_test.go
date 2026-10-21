@@ -91,7 +91,6 @@ func TestWireMapRootsDecodeAndReportDart(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -182,7 +181,7 @@ void main(List<String> args) {
 		t.Fatalf("MapdemoWire %s load/save over the generated library: %v\n%s", root, err, out)
 	}
 	var got mapAnswer
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		k, v, ok := strings.Cut(line, "=")
 		if !ok {
 			t.Fatalf("probe line %q is not key=value", line)

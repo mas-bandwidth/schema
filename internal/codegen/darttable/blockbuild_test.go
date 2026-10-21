@@ -218,7 +218,7 @@ func TestBlockBuildAndCookWriteDart(t *testing.T) {
 // fieldOf reads one `name value` line out of the probe's output.
 func fieldOf(t *testing.T, text, name string) string {
 	t.Helper()
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		if rest, ok := strings.CutPrefix(line, name+" "); ok {
 			return strings.TrimSpace(rest)
 		}

@@ -33,7 +33,6 @@ func TestFixedLibrariesShowAndDeclareOnlyWhatTheyUse(t *testing.T) {
 		{"v1", loadUnit(t, "../../../test/tables/V1.schema")},
 	}
 	for _, c := range corpora {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			files, err := Generate(c.u)
@@ -48,7 +47,6 @@ func TestFixedLibrariesShowAndDeclareOnlyWhatTheyUse(t *testing.T) {
 			}
 			sort.Strings(names)
 			for _, n := range names {
-				n := n
 				t.Run(n, func(t *testing.T) {
 					t.Parallel()
 					src := string(files[n])
@@ -71,7 +69,7 @@ var importShow = regexp.MustCompile(`(?s)import\s+'[^']*'\s+show\s+(.*?);`)
 func shownNames(src string) []string {
 	var out []string
 	for _, m := range importShow.FindAllStringSubmatch(src, -1) {
-		for _, s := range strings.Split(m[1], ",") {
+		for s := range strings.SplitSeq(m[1], ",") {
 			s = strings.TrimSpace(s)
 			if s != "" {
 				out = append(out, s)

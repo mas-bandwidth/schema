@@ -67,7 +67,6 @@ func TestWireFeedChainRegionBytesDart(t *testing.T) {
 
 	model := tabletext.NewModel(u)
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -164,7 +163,7 @@ void main(List<String> args) {
 		t.Fatalf("Streamdemo WireMeasure/Load/Save over the generated library: %v\n%s", err, out)
 	}
 	var got feedChainAnswer
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		k, v, ok := strings.Cut(line, "=")
 		if !ok {
 			t.Fatalf("probe line %q is not key=value", line)
@@ -314,7 +313,7 @@ void main(List<String> args) {
 		t.Fatalf("Card WireMeasure/Load/Save over the generated library: %v\n%s", err, out)
 	}
 	var got feedChainAnswer
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		k, v, ok := strings.Cut(line, "=")
 		if !ok {
 			t.Fatalf("probe line %q is not key=value", line)

@@ -1,6 +1,7 @@
 package dart
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,9 +35,7 @@ func TestDartKeyedArraysAreHeldAtBothEnds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 
 	packet := string(files["Keyed.dart"])
 	fixed := string(files["TabledemoFixed.dart"])

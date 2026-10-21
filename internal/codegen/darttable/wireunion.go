@@ -14,6 +14,7 @@ package darttable
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -264,11 +265,12 @@ func (g *wireGen) emitUnionSave(un *ir.Union) {
 // enumVidExpr is a Dart expression for an enum value's variant-name id (§3):
 // a switch over the 1-based ordinals, 0 for None.
 func enumVidExpr(e *ir.Enum, expr string) string {
-	s := "switch (" + expr + ") {"
+	var s strings.Builder
+	s.WriteString("switch (" + expr + ") {")
 	for i := range e.Variants {
-		s += fmt.Sprintf(" %d => %s,", i+1, dartU64Literal(ir.TableWireId(e.VariantWireName(i))))
+		s.WriteString(fmt.Sprintf(" %d => %s,", i+1, dartU64Literal(ir.TableWireId(e.VariantWireName(i)))))
 	}
-	return s + " _ => 0 }"
+	return s.String() + " _ => 0 }"
 }
 
 // emitPutPayload writes ONE value at its kind's payload framing, with no

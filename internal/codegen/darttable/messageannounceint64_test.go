@@ -74,7 +74,6 @@ func TestMessageAnnounceInt64MinNearFloorDart(t *testing.T) {
 		{name: "uint64_max_above_2_63", schema: announceInt64Uint64Schema, i: int64(wide), u: wide},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			checkAnnounceInt64Case(t, c)

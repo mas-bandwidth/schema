@@ -60,7 +60,6 @@ func TestWireMeasureNoFalseRefusalDart(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.root, func(t *testing.T) {
 			t.Parallel()
 			u := wireMeasureUnit(t, tc.unitDir)

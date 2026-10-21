@@ -43,7 +43,6 @@ func TestWireRepeatedTextIllFormedResetsDart(t *testing.T) {
 		{name: "mutant-A-zero-byte", hex: repeatedTextIllFormedAHex},
 		{name: "mutant-B-invalid-utf8", hex: repeatedTextIllFormedBHex},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

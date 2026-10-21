@@ -136,10 +136,7 @@ void main(List<String> args) {
 }
 
 func firstDiff(a, b string) int {
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
-	}
+	n := min(len(b), len(a))
 	for i := 0; i < n; i++ {
 		if a[i] != b[i] {
 			return i / 2

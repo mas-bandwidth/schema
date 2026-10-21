@@ -40,7 +40,6 @@ func TestCookLibrariesDefineEveryClassTheyName(t *testing.T) {
 		{"pointers", "../../../tables/pointers"},
 		{"examples", "../../../tables/examples"},
 	} {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -206,9 +205,9 @@ func importsOf(src string) map[string][]string {
 			continue
 		}
 		tail := src[loc[1] : loc[1]+semi]
-		if i := strings.Index(tail, "show"); i >= 0 {
+		if _, after, ok := strings.Cut(tail, "show"); ok {
 			var show []string
-			for _, s := range strings.Split(tail[i+4:], ",") {
+			for s := range strings.SplitSeq(after, ",") {
 				if s = strings.TrimSpace(s); s != "" {
 					show = append(show, s)
 				}

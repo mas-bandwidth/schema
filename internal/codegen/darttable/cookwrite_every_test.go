@@ -63,7 +63,7 @@ func init() {
 			schema: `table Root { vals [4]int32 }`,
 			probe:  cookEveryArrayProbe,
 			mutate: func(t *testing.T, m *tabletext.Model, v *tabletext.Instance) {
-				for i := 0; i < 4; i++ {
+				for i := range 4 {
 					v.Fields[0].Elems[i].U = uint64(i + 1)
 				}
 			},

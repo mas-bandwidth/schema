@@ -55,7 +55,6 @@ func TestWireMeasureCountsNodeRecordsDart(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -77,7 +76,6 @@ func TestWireMeasureCountsNodeRecordsDart(t *testing.T) {
 				t.Fatalf("Generate emitted no %s", c.wire)
 			}
 			for _, o := range c.oracles {
-				o := o
 				t.Run(o, func(t *testing.T) {
 					t.Parallel()
 					oracle := filepath.Join("..", "..", "..", "testdata", "wire", "tables", o)

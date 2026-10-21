@@ -21,6 +21,7 @@ package darttable
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -734,13 +735,14 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int) string {
 			et, val, d, item, d, et, d, fieldMember(key), keyExpr, d, fieldMember(value), g.jsonReadExpr(value, item, d+1), d)
 	case isKeyed(f):
 		en := f.KeyEnumRef
-		slots := "const <String, int>{"
+		var slots strings.Builder
+		slots.WriteString("const <String, int>{")
 		for i := 0; i < int(f.ArrayBound) && i < len(en.Variants); i++ {
-			slots += fmt.Sprintf("%s: %d, ", strconv.Quote(en.Variants[i]), i)
+			slots.WriteString(fmt.Sprintf("%s: %d, ", strconv.Quote(en.Variants[i]), i))
 		}
-		slots += "}"
+		slots.WriteString("}")
 		return fmt.Sprintf("_jsonKeyed<%s>(%s, r, %d, () => %s, %s, (%s) => %s)",
-			dartListElemType(f), val, f.ArrayBound, g.elemDefault(f), slots, item, g.jsonReadExpr(singleOf(f), item, d+1))
+			dartListElemType(f), val, f.ArrayBound, g.elemDefault(f), slots.String(), item, g.jsonReadExpr(singleOf(f), item, d+1))
 	case f.Array == ir.ArrayFixed:
 		return fmt.Sprintf("_jsonFixed<%s>(%s, r, %d, () => %s, (%s) => %s)",
 			dartListElemType(f), val, f.ArrayBound, g.elemDefault(f), item, g.jsonReadExpr(singleOf(f), item, d+1))

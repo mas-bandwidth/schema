@@ -38,7 +38,7 @@ func TestCookMapFieldExposesItsEntriesLikeGo(t *testing.T) {
 	}
 	cook := string(files["HoldersCook.dart"])
 	row := dartClassBody(t, cook, "SquadRow")
-	for _, line := range strings.Split(row, "\n") {
+	for line := range strings.SplitSeq(row, "\n") {
 		if strings.Contains(line, "get roster =>") {
 			t.Fatalf("the Dart cook reads the map field Squad.roster as ONE BYTE, not as its entries (§2.8, §7.2): %s", strings.TrimSpace(line))
 		}
@@ -200,7 +200,7 @@ func dartCookProgram(t *testing.T, dart string, files map[string][]byte, program
 
 func oracleLines(out string) string {
 	var b strings.Builder
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(line, "ORACLE ") {
 			b.WriteString(line + "\n")
 		}

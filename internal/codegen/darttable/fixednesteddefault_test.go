@@ -35,7 +35,6 @@ import (
 func TestFixedNestedDefaultCheckIsTyped(t *testing.T) {
 	t.Parallel()
 	for _, dir := range []string{"../../../tables/block", "../../../tables/examples"} {
-		dir := dir
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			t.Parallel()
 			u := loadDirUnit(t, dir)
@@ -168,9 +167,9 @@ void main() {
 		t.Fatalf("the nested-default probe did not run green: %v\n%s", err, out)
 	}
 	line := ""
-	for _, l := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(l, "BYTES ") {
-			line = strings.TrimSpace(strings.TrimPrefix(l, "BYTES "))
+	for l := range strings.SplitSeq(string(out), "\n") {
+		if after, ok := strings.CutPrefix(l, "BYTES "); ok {
+			line = strings.TrimSpace(after)
 		}
 	}
 	if line == "" {
@@ -258,9 +257,9 @@ func TestBytes(t *testing.T) {
 		t.Fatalf("the Go nested-default writer did not run green: %v\n%s", err, out)
 	}
 	line := ""
-	for _, l := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(l, "BYTES ") {
-			line = strings.TrimSpace(strings.TrimPrefix(l, "BYTES "))
+	for l := range strings.SplitSeq(string(out), "\n") {
+		if after, ok := strings.CutPrefix(l, "BYTES "); ok {
+			line = strings.TrimSpace(after)
 		}
 	}
 	if line == "" {

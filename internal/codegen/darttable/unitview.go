@@ -4,6 +4,7 @@ package darttable
 // It names declarations from the IR rather than from the card's wire closure.
 import (
 	"fmt"
+	"maps"
 	"math"
 	"strings"
 
@@ -218,12 +219,8 @@ final class UnitViewInfo {
 			names = sortedKeys(u.Flags)
 		case "union":
 			all := map[string]*ir.Union{}
-			for n, x := range u.Unions {
-				all[n] = x
-			}
-			for n, x := range u.TableUnions {
-				all[n] = x
-			}
+			maps.Copy(all, u.Unions)
+			maps.Copy(all, u.TableUnions)
 			names = sortedKeys(all)
 		}
 		for _, name := range names {

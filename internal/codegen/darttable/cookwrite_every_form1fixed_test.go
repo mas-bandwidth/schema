@@ -96,7 +96,7 @@ func form1ProbeUnit(sources []string, root, instance string) (string, string) {
 		if err != nil {
 			return form1ProbeRoot, fmt.Sprintf("void main() { throw StateError(%q); }\n", "form1-"+instance+": "+err.Error())
 		}
-		for _, line := range strings.Split(string(data), "\n") {
+		for line := range strings.SplitSeq(string(data), "\n") {
 			if !strings.HasPrefix(strings.TrimSpace(line), "package ") {
 				b.WriteString(line + "\n")
 			}
@@ -200,7 +200,7 @@ func form1Goldens(t *testing.T, instance string) ([]byte, []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range strings.Split(string(manifest), "\n") {
+	for line := range strings.SplitSeq(string(manifest), "\n") {
 		f := strings.Fields(line)
 		if len(f) != 4 || f[0] != "cook-write" || f[1] != instance {
 			continue

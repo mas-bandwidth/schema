@@ -21,7 +21,7 @@ func TestUnitViewDescriptorsDart(t *testing.T) {
 	}
 	var corpus string
 	collecting := false
-	for _, line := range strings.Split(string(makefile), "\n") {
+	for line := range strings.SplitSeq(string(makefile), "\n") {
 		if strings.HasPrefix(line, "VIEW_CORPUS :=") {
 			collecting = true
 			line = strings.TrimPrefix(line, "VIEW_CORPUS :=")
@@ -39,7 +39,7 @@ func TestUnitViewDescriptorsDart(t *testing.T) {
 	if corpus == "" {
 		t.Fatal("Makefile has no VIEW_CORPUS")
 	}
-	for _, entry := range strings.Fields(corpus) {
+	for entry := range strings.FieldsSeq(corpus) {
 		parts := strings.SplitN(entry, ":", 2)
 		if len(parts) != 2 {
 			t.Fatalf("VIEW_CORPUS entry %q has no package", entry)

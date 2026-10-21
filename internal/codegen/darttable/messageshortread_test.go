@@ -149,7 +149,7 @@ func parseShortReadDart(t *testing.T, out string) shortReadDart {
 	}
 	fields := map[string]int{}
 	hexStr := ""
-	for _, token := range strings.Fields(line) {
+	for token := range strings.FieldsSeq(line) {
 		key, value, ok := strings.Cut(token, "=")
 		if !ok {
 			t.Fatalf("dart report token %q is not key=value:\n%s", token, out)
@@ -179,7 +179,6 @@ func parseShortReadDart(t *testing.T, out string) shortReadDart {
 func TestMessageShortReadKeepsLandedValueDart(t *testing.T) {
 	t.Parallel()
 	for _, c := range shortReadCases {
-		c := c
 		t.Run(c.root, func(t *testing.T) {
 			t.Parallel()
 			wire, err := hex.DecodeString(c.mutant)

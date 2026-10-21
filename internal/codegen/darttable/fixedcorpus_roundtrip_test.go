@@ -282,8 +282,8 @@ func fixedCorpusClampedCell(t *testing.T, corpus, file, base string, data []byte
 
 func fixedCorpusLE(b []byte) int64 {
 	var u uint64
-	for k := len(b) - 1; k >= 0; k-- {
-		u = u<<8 | uint64(b[k])
+	for _, v := range slices.Backward(b) {
+		u = u<<8 | uint64(v)
 	}
 	shift := 64 - 8*len(b)
 	return int64(u<<shift) >> shift

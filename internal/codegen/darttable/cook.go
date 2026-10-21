@@ -922,7 +922,7 @@ func (g *blockGen) arrowBlock(ind, head, then, otherwise string) {
 // no file for the entry of a map that is itself a map's value, so it is read
 // off the holder, up the MapEntryOf chain ("Holder.field").
 func cookDeclFile(u *ir.Unit, record string) string {
-	for seen := 0; seen < 64; seen++ {
+	for range 64 {
 		if base := u.DeclFile[record]; base != "" {
 			return base
 		}

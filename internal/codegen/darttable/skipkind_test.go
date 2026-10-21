@@ -43,7 +43,7 @@ func TestSkipKindStepsEveryScalarAtItsWidth(t *testing.T) {
 			continue
 		}
 		rest := body[at:]
-		if end := strings.Index(rest, "return true;"); end < 0 || !strings.Contains(rest[:end], fmt.Sprintf("if (!has(%d)) return false;", w)) {
+		if before, _, ok := strings.Cut(rest, "return true;"); !ok || !strings.Contains(before, fmt.Sprintf("if (!has(%d)) return false;", w)) {
 			t.Errorf("skipKind steps kind %d at other than its %d bytes", kind, w)
 		}
 	}

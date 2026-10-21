@@ -2103,7 +2103,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		case 2:
 			g.pf("%s\t\t\t\tif (!r.has(2)) { r.report.malformed = true; return; }\n", ind)
 			g.pf("%s\t\t\t\tvar raw = 0;\n", ind)
-			for b := 0; b < 2; b++ {
+			for b := range 2 {
 				g.pf("%s\t\t\t\traw |= r.readByte() << %d;\n", ind, 8*b)
 			}
 			if signed {
@@ -2312,7 +2312,7 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 				}
 			case 2:
 				g.pf("%s\t\t\t\tvar raw = 0;\n", ind)
-				for b := 0; b < 2; b++ {
+				for b := range 2 {
 					g.pf("%s\t\t\t\traw |= %s.readByte() << %d;\n", ind, arr, 8*b)
 				}
 				if signed {
