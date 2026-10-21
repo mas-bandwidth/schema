@@ -65,7 +65,7 @@ func TestGoLegHasNoCopiedIdioms(t *testing.T) {
 			t.Fatalf("read %s: %v", rel, err)
 		}
 		lines := strings.Split(string(data), "\n")
-		for i := 0; i < len(lines); i++ {
+		for i := range lines {
 			where := rel + ":" + strconv.Itoa(i+1)
 			if sortedKeysByHand.MatchString(lines[i]) {
 				sortedSoon := false

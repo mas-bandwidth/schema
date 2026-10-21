@@ -166,7 +166,7 @@ func TestPlainReadsAlloc(t *testing.T) {
 	}
 	type pair struct{ plain, tolerant int }
 	got := map[string]pair{}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		fields := strings.Split(strings.TrimSpace(line), "\t")
 		if len(fields) == 4 && fields[0] == "ALLOC" {
 			pa, _ := strconv.Atoi(fields[2])

@@ -18,7 +18,7 @@ func goBenchRuntimeVariable(t *testing.T, root string) string {
 		t.Fatalf("read %s: %v", goBenchMakefile, err)
 	}
 	const varName = "GO_BENCH_RUNTIME"
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 3 && fields[0] == varName && fields[1] == ":=" {
 			return fields[2]
@@ -38,7 +38,7 @@ func goBenchGoCommands(t *testing.T, root, rule string) []string {
 	}
 	found := false
 	var cmds []string
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if strings.HasPrefix(line, rule+":") {
 			found = true
 			continue

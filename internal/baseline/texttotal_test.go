@@ -36,7 +36,7 @@ func TestTextTotalRendersOnTheFieldLine(t *testing.T) {
 	t.Parallel()
 	text := baseline.Render(unit(t, totalFixtureSrc)).Text()
 	var rules, repos string
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "field rules "):

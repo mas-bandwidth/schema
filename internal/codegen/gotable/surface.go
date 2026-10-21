@@ -38,7 +38,7 @@ func ParseSurfaces(list string) (Surfaces, error) {
 		return DefaultSurfaces(), nil
 	}
 	s := Surfaces{}
-	for _, item := range strings.Split(list, ",") {
+	for item := range strings.SplitSeq(list, ",") {
 		switch strings.TrimSpace(item) {
 		case "wire":
 			s.Wire = true

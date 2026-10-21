@@ -30,7 +30,7 @@ func TestPortRegistryDefinedOnce(t *testing.T) {
 	const wantDef = "SCHEMA_PORTS := $(sort $(filter-out %-%,$(foreach p,$(patsubst make/%.mk,%,$(wildcard make/*.mk)),$(if $(findstring -,$(p)),,$(p)))))"
 	defCount := 0
 	usedInProbe := false
-	for _, line := range strings.Split(makefile, "\n") {
+	for line := range strings.SplitSeq(makefile, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "SCHEMA_PORTS") && strings.Contains(trimmed, "=") && !strings.HasPrefix(trimmed, "#") {
 			defCount++

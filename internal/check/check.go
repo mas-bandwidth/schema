@@ -357,12 +357,7 @@ func (c *checker) checksLang(lang string) bool {
 	if c.reservedTargets == nil {
 		return true
 	}
-	for _, t := range c.reservedTargets {
-		if t == lang {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.reservedTargets, lang)
 }
 
 // cppNamespaceCollisions are identifiers the generated C++ cannot use as a
@@ -844,7 +839,7 @@ func (c *checker) tableForms(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
 	}
 	seen := map[string]bool{}
 	bad := false
-	for _, raw := range strings.Split(lit.Value, ",") {
+	for raw := range strings.SplitSeq(lit.Value, ",") {
 		name := strings.TrimSpace(raw)
 		if name == "" {
 			c.errf(a.Pos, "table %s: forms = %q contains an empty form name — write a comma-separated list of wire, json, block, cook (docs/SPEC-TABLES.md §2.12)", d.Name, lit.Value)
@@ -3605,11 +3600,8 @@ func (c *checker) reservedTargetLangs(name string) []string {
 	}
 	var out []string
 	for _, l := range langs {
-		for _, t := range c.reservedTargets {
-			if l == t {
-				out = append(out, l)
-				break
-			}
+		if slices.Contains(c.reservedTargets, l) {
+			out = append(out, l)
 		}
 	}
 	return out

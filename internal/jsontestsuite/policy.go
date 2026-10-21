@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -158,7 +159,7 @@ func ParseTable(spec []byte) (map[string]Row, error) {
 	}
 	rows := map[string]Row{}
 	seenHeader := false
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		if !strings.HasPrefix(line, "|") {
 			continue
 		}
@@ -307,15 +308,9 @@ func Check(s *Suite, got map[string]bool) (mismatches, pending []string) {
 // shared, read-only.
 func (s *Suite) Clone() *Suite {
 	c := &Suite{Files: s.Files, Rows: map[string]Row{}, Pending: map[string]string{}, Accept: map[string]bool{}}
-	for k, v := range s.Rows {
-		c.Rows[k] = v
-	}
-	for k, v := range s.Pending {
-		c.Pending[k] = v
-	}
-	for k, v := range s.Accept {
-		c.Accept[k] = v
-	}
+	maps.Copy(c.Rows, s.Rows)
+	maps.Copy(c.Pending, s.Pending)
+	maps.Copy(c.Accept, s.Accept)
 	return c
 }
 

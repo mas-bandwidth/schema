@@ -34,7 +34,7 @@ func TestWireBlobSharedIsANamedRefusal(t *testing.T) {
 			t.Fatalf("manifest wire refusal = %+v, err %v", m.Instances, err)
 		}
 		r := &result{total: 96}
-		for i := 0; i < 95; i++ {
+		for i := range 95 {
 			name := fmt.Sprintf("ordinary_%02d", i)
 			want := []byte(name + " bytes")
 			if err := os.WriteFile(filepath.Join(out, name), want, 0o644); err != nil {

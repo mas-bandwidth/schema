@@ -159,7 +159,6 @@ func TestGoGenerateSurfaceEmitsOnlyWhatItNames(t *testing.T) {
 	}
 
 	for _, cs := range surfaces {
-		cs := cs
 		t.Run(cs.list, func(t *testing.T) {
 			t.Parallel()
 			out := genWithSurfaces(t, u, cs.s)

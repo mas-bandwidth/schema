@@ -31,7 +31,7 @@ func TestGoModulesResolveTheSharedRuntime(t *testing.T) {
 			t.Errorf("%s: no require github.com/mas-bandwidth/schema/v2 v2.0.0 (docs/SPEC-TABLES.md §8.4)", name)
 		}
 		foundReplace := false
-		for _, line := range strings.Split(mod, "\n") {
+		for line := range strings.SplitSeq(mod, "\n") {
 			rest, cut := strings.CutPrefix(strings.TrimSpace(line), "replace github.com/mas-bandwidth/schema/v2 => ")
 			if !cut {
 				continue
@@ -79,7 +79,7 @@ func TestGoModulesResolveTheSharedRuntime(t *testing.T) {
 func cardsGovernModFromMake(mk, root string) (string, string) {
 	const dest = "build/tables-generated-go/cards/go.mod"
 	dir := filepath.Join(root, "build", "tables-generated-go", "cards")
-	for _, line := range strings.Split(mk, "\n") {
+	for line := range strings.SplitSeq(mk, "\n") {
 		if !strings.Contains(line, dest) || !strings.Contains(line, "printf ") {
 			continue
 		}

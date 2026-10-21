@@ -45,7 +45,7 @@ fixed table Fix { n float32
 		f = appendFixedU32(f, uint32(len(old.Layout)))
 		f = append(f, old.Layout...)
 		rec := make([]byte, old.Record)
-		for i := 0; i < 8; i++ {
+		for i := range 8 {
 			rec[i] = byte(old.Wire >> (8 * i))
 		}
 		f = append(f, rec...)

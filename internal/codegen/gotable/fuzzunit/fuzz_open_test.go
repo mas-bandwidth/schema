@@ -265,10 +265,7 @@ func openBase(data []byte) (unsafe.Pointer, int64, unsafe.Pointer, func()) {
 		buf := make([]byte, 1)
 		return unsafe.Pointer(&buf[0]), 0, nil, func() {}
 	}
-	n := len(in)
-	if n < 16 {
-		n = 16
-	}
+	n := max(len(in), 16)
 	probe := append([]byte(nil), make([]byte, n)...)
 	probe = probe[:cap(probe)]
 	copy(probe[len(probe)-len(in):], in)

@@ -2,6 +2,7 @@ package jstable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"regexp"
 	"strconv"
@@ -139,9 +140,7 @@ func TestJSFixedLanesAgree(t *testing.T) {
 	}
 	// and one site alone drifting is caught by name
 	drift := map[string]string{}
-	for k, v := range files {
-		drift[k] = v
-	}
+	maps.Copy(drift, files)
 	drift["fixedroadmap_t08_test.go"] = strings.Replace(drift["fixedroadmap_t08_test.go"],
 		fmt.Sprintf("nums := make([]int, %d)", width), fmt.Sprintf("nums := make([]int, %d)", width+2), 1)
 	if got := laneDisagreements(width, drift, laneSites); len(got) != 1 || !strings.Contains(got[0], "P1's lane slice") {

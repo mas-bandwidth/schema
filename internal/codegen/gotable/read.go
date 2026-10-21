@@ -2,6 +2,7 @@ package gotable
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -710,10 +711,8 @@ func unitHasRequired(u *ir.Unit) bool {
 func (g *tableGen) floatOwner(f *ir.Field) string {
 	for _, m := range []map[string]*ir.Struct{g.unit.Tables, g.unit.Structs} {
 		for _, st := range m {
-			for _, x := range st.Fields {
-				if x == f {
-					return st.Name + "." + f.Name
-				}
+			if slices.Contains(st.Fields, f) {
+				return st.Name + "." + f.Name
 			}
 		}
 	}

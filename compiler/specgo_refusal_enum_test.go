@@ -48,16 +48,16 @@ func TestSpecGoRefusalEnumTable(t *testing.T) {
 
 	const begin = "<!-- refusal-names:begin -->"
 	const end = "<!-- refusal-names:end -->"
-	b := strings.Index(page, begin)
-	if b < 0 {
+	_, after, ok := strings.Cut(page, begin)
+	if !ok {
 		t.Fatalf("docs/SPEC-TABLES.md §6.5: the %q marker is missing", begin)
 	}
-	rest := page[b+len(begin):]
-	e := strings.Index(rest, end)
-	if e < 0 {
+	rest := after
+	before0, _, ok0 := strings.Cut(rest, end)
+	if !ok0 {
 		t.Fatalf("docs/SPEC-TABLES.md §6.5: the %q marker is missing after the begin marker", end)
 	}
-	block := rest[:e]
+	block := before0
 	if strings.Contains(block, begin) {
 		t.Fatalf("docs/SPEC-TABLES.md §6.5: the begin marker appears twice before the end marker")
 	}

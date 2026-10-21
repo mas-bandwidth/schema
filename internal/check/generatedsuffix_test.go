@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -34,7 +35,6 @@ func TestEveryEmittedGoSuffixIsClaimed(t *testing.T) {
 		"GenPastBound",
 	}
 	for _, suffix := range suffixes {
-		suffix := suffix
 		t.Run(suffix, func(t *testing.T) {
 			t.Parallel()
 			src := "package t\ntable Ship { x int32 }\ntype Ship" + suffix + " { y int32 }\n"
@@ -256,13 +256,7 @@ func TestEmitterTemplatesNameOnlyClaimedSuffixes(t *testing.T) {
 					pos := fset.Position(a.Pos())
 					for _, m := range matches {
 						suffix := m[3]
-						claimed := false
-						for _, verb := range tableGeneratedVerbs {
-							if suffix == verb {
-								claimed = true
-								break
-							}
-						}
+						claimed := slices.Contains(tableGeneratedVerbs, suffix)
 						if !claimed {
 							t.Errorf("%s:%d: package-level Go table suffix %s is not in tableGeneratedVerbs", path, pos.Line, suffix)
 						}

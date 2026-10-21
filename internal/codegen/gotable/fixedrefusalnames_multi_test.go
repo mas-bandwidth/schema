@@ -109,7 +109,7 @@ func hostileTooLargeLayout(t *testing.T, myLayout []byte) []byte {
 		children uint32
 	}
 	ents := make([]ent, 0, count)
-	for i := uint32(0); i < count; i++ {
+	for i := range count {
 		base := 4 + int(i)*17
 		if base+17 > len(myLayout) {
 			break

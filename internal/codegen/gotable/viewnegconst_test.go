@@ -32,7 +32,7 @@ fixed table Root
 		{"Big", "int=9223372036854775807 "},
 	} {
 		line := ""
-		for _, candidate := range strings.Split(pin, "\n") {
+		for candidate := range strings.SplitSeq(pin, "\n") {
 			if strings.HasPrefix(candidate, "constant "+want.name+" ") {
 				line = candidate
 				break
@@ -59,7 +59,7 @@ fixed table Root
 		{"Big", "IntValue: 9223372036854775807,"},
 	} {
 		line := ""
-		for _, candidate := range strings.Split(string(view), "\n") {
+		for candidate := range strings.SplitSeq(string(view), "\n") {
 			if strings.Contains(candidate, `Name: "`+want.name+`",`) {
 				line = candidate
 				break

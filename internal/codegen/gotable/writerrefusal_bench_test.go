@@ -118,7 +118,7 @@ func BenchmarkDoneRecordFixedSave95(b *testing.B) { benchDone(b, 95) }
 	line := regexp.MustCompile(`^(Benchmark\S+?)(?:-\d+)?\s+\d+\s+([0-9.]+) ns/op`)
 	samples := map[string][]float64{}
 	var order []string
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		m := line.FindStringSubmatch(l)
 		if m == nil {
 			continue

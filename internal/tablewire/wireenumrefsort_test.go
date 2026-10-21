@@ -72,7 +72,6 @@ func TestEngineWireEnumVariantRefSort(t *testing.T) {
 		{"low_212", lowLoadoutWireSortJSON, 212},
 		{"high_422", highLoadoutWireSortJSON, 422},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			base := build(t, tc.text)

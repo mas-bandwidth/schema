@@ -11,6 +11,7 @@ import (
 	"errors"
 	"math"
 	"math/big"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -808,17 +809,13 @@ func (in *reader) nameZero(table string, fv *Field) {
 // §16.3, §17.4).
 func (m *Model) ownerTable(f *ir.Field) string {
 	for _, st := range m.Unit.Tables {
-		for _, sf := range st.Fields {
-			if sf == f {
-				return st.Name
-			}
+		if slices.Contains(st.Fields, f) {
+			return st.Name
 		}
 	}
 	for _, st := range m.Unit.Structs {
-		for _, sf := range st.Fields {
-			if sf == f {
-				return st.Name
-			}
+		if slices.Contains(st.Fields, f) {
+			return st.Name
 		}
 	}
 	return ""

@@ -9,8 +9,7 @@ import (
 func TestJsonPlantLeadingBomIsAccepted(t *testing.T) {
 	t.Parallel()
 
-	for seed := int64(0); seed < 5; seed++ {
-		seed := seed
+	for seed := range int64(5) {
 		t.Run(fmt.Sprintf("seed%d", seed), func(t *testing.T) {
 			t.Parallel()
 

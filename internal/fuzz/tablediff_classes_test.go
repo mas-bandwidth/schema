@@ -87,7 +87,7 @@ func TestCiFullKeepsFuzzAndOnlyMakeOptsIn(t *testing.T) {
 		t.Fatal(err)
 	}
 	found := false
-	for _, line := range strings.Split(string(ci), "\n") {
+	for line := range strings.SplitSeq(string(ci), "\n") {
 		if strings.Contains(line, "run: go test $(go list ./...") && strings.Contains(line, "grep -v '/internal/codegen/'") {
 			found = true
 			if strings.Contains(line, "/internal/fuzz") {
@@ -118,7 +118,7 @@ func TestCiFullKeepsFuzzAndOnlyMakeOptsIn(t *testing.T) {
 			t.Fatal(err)
 		}
 		inTarget := false
-		for _, line := range strings.Split(string(b), "\n") {
+		for line := range strings.SplitSeq(string(b), "\n") {
 			if !strings.HasPrefix(line, "\t") {
 				inTarget = strings.HasPrefix(line, "fuzz-tables-diff:")
 			}

@@ -164,13 +164,13 @@ func parseDescriptorFields(t *testing.T, files map[string][]byte, typeName strin
 	var body string
 	for _, data := range files {
 		src := string(data)
-		if i := strings.Index(src, marker); i >= 0 {
-			rest := src[i+len(marker):]
-			j := strings.Index(rest, "\n}\n")
-			if j < 0 {
+		if _, after, ok := strings.Cut(src, marker); ok {
+			rest := after
+			before, _, ok := strings.Cut(rest, "\n}\n")
+			if !ok {
 				t.Fatalf("descriptor %s: unterminated fields variable", typeName)
 			}
-			body = rest[:j]
+			body = before
 			break
 		}
 	}

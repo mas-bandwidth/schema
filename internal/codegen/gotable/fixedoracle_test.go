@@ -65,7 +65,7 @@ func TestGoFixedSharedByteOracleAndHostileInput(t *testing.T) {
 			}
 			schema := string(data)
 			pkg := ""
-			for _, line := range strings.Split(schema, "\n") {
+			for line := range strings.SplitSeq(schema, "\n") {
 				if rest, ok := strings.CutPrefix(line, "package "); ok {
 					pkg = strings.TrimSpace(rest)
 					break
@@ -136,9 +136,9 @@ func fixedOracleManifestRecords(t *testing.T, path string) map[string]int {
 		t.Fatal(err)
 	}
 	out := map[string]int{}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		file, count := "", -1
-		for _, field := range strings.Fields(line) {
+		for field := range strings.FieldsSeq(line) {
 			k, v, ok := strings.Cut(field, "=")
 			if !ok {
 				continue

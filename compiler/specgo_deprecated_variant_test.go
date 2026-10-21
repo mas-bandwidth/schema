@@ -67,11 +67,11 @@ func TestSpecGoDeprecatedVariant(t *testing.T) {
 // docSection returns the body under heading, up to the next heading at the
 // same or a higher level. A page that has no such heading returns false.
 func docSection(doc, heading string) (string, bool) {
-	start := strings.Index(doc, heading)
-	if start < 0 {
+	_, after, ok := strings.Cut(doc, heading)
+	if !ok {
 		return "", false
 	}
-	rest := doc[start+len(heading):]
+	rest := after
 	end := len(rest)
 	for _, sep := range []string{"\n## ", "\n### "} {
 		if i := strings.Index(rest, sep); i >= 0 && i < end {

@@ -122,7 +122,6 @@ func (g *tgBounds) body(st *ir.Struct) ([]tgBodyProbe, error) {
 			around = append(around, tgFieldMember(rf, ir.TableWireFieldKind(rf), fill.payload, fill.json, fill.size))
 		}
 		for _, v := range vals {
-			v := v
 			members := append(append([]tgMember(nil), around...), tgMember{
 				line: func(b *strings.Builder, w string, d int) {
 					tgHeader(b, w, f, ir.TableWireFieldKind(f))
@@ -148,10 +147,10 @@ func tgGuardHolds(inner, outer string) bool {
 		return true
 	}
 	have := map[string]bool{}
-	for _, t := range strings.Split(outer, "&&") {
+	for t := range strings.SplitSeq(outer, "&&") {
 		have[strings.TrimSpace(t)] = true
 	}
-	for _, t := range strings.Split(inner, "&&") {
+	for t := range strings.SplitSeq(inner, "&&") {
 		if !have[strings.TrimSpace(t)] {
 			return false
 		}
@@ -178,7 +177,7 @@ func tgGuardMembers(st *ir.Struct, f *ir.Field) ([]tgMember, error) {
 		return nil, nil
 	}
 	var out []tgMember
-	for _, term := range strings.Split(f.Guard, "&&") {
+	for term := range strings.SplitSeq(f.Guard, "&&") {
 		term = strings.TrimSpace(term)
 		want := !strings.HasPrefix(term, "!")
 		name := strings.TrimPrefix(term, "!")
@@ -280,7 +279,6 @@ func (g *tgBounds) field(st *ir.Struct, f *ir.Field) ([]tgVal, error) {
 		n = f.ArrayBound
 	}
 	for _, e := range elems {
-		e := e
 		size := 12 + e.size + (n-1)*fill.size
 		out = append(out, tgVal{
 			name: "[0]" + e.name,
@@ -323,7 +321,6 @@ func (g *tgBounds) keyed(f *ir.Field, where string) ([]tgVal, error) {
 	table := ir.TableWireScalarKind(f) == ir.TableKindTable
 	var out []tgVal
 	for _, v := range elems {
-		v := v
 		size := 32 + v.size
 		out = append(out, tgVal{
 			name: "[" + slot + "]" + v.name,
@@ -399,7 +396,6 @@ func (g *tgBounds) value(f *ir.Field, where string) ([]tgVal, error) {
 			}
 			var out []tgVal
 			for _, p := range inner {
-				p := p
 				size := p.size() + 10
 				out = append(out, tgVal{
 					name: "." + p.name,
@@ -441,7 +437,6 @@ func (g *tgBounds) union(un *ir.Union, where string) ([]tgVal, error) {
 				return nil, err
 			}
 			for _, p := range inner {
-				p := p
 				vals = append(vals, tgVal{
 					name: "." + p.name,
 					payload: func(b *strings.Builder, w string, d int) {
@@ -461,7 +456,6 @@ func (g *tgBounds) union(un *ir.Union, where string) ([]tgVal, error) {
 			continue
 		}
 		for _, p := range vals {
-			p := p
 			name := v.Name
 			size := p.size + 32
 			out = append(out, tgVal{
@@ -640,7 +634,7 @@ func tgFiller(f *ir.Field) (tgFill, bool) {
 // of a probe's expected text (§16.11).
 func tgJSONList(j *tgJSON, v string, n int64) {
 	if n <= 4 {
-		for i := int64(0); i < n; i++ {
+		for i := range n {
 			if i > 0 {
 				j.raw(",")
 			}
@@ -690,7 +684,7 @@ func testgenBoundProbes(b *strings.Builder, st *ir.Struct, variable bool) error 
 		// one entry per nine bytes of body bounds the table from above.
 		size := 1 + p.size() + 8*(p.size()/9+2)
 		fmt.Fprintf(b, "\tcase %q:\n\t\tw0 = &TableWriter{Buffer: make([]byte, %d), Ids: &ids}\n\t\tw0.Put8(1)\n", p.name, size)
-		for _, line := range strings.Split(strings.TrimSuffix(code.String(), "\n"), "\n") {
+		for line := range strings.SplitSeq(strings.TrimSuffix(code.String(), "\n"), "\n") {
 			b.WriteString("\t\t" + line + "\n")
 		}
 	}

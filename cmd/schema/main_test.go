@@ -331,7 +331,6 @@ func TestRefuseRuntimeForTarget(t *testing.T) {
 		{"non-go with bad value refused", true, "invalid", "js", true},
 		{"non-go with no --runtime accepted", false, "", "cpp", false},
 	} {
-		row := row
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			err := refuseRuntimeForTarget(row.runtimeSet, row.runtime, row.lang)

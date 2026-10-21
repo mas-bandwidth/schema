@@ -990,8 +990,8 @@ func removeStaleGoFiles(dir string, files map[string][]byte, pkg string, schemaB
 			return err
 		}
 		firstLine := data
-		if i := bytes.IndexByte(data, '\n'); i >= 0 {
-			firstLine = data[:i]
+		if before, _, ok := bytes.Cut(data, []byte{'\n'}); ok {
+			firstLine = before
 		}
 		if owned[string(firstLine)] {
 			if err := os.Remove(filepath.Join(dir, name)); err != nil {

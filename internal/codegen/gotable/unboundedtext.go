@@ -12,6 +12,8 @@
 package gotable
 
 import (
+	"slices"
+
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -265,12 +267,9 @@ func unboundedTextClosure(u *ir.Unit) map[string]bool {
 			if out[name] {
 				continue
 			}
-			for _, f := range st.Fields {
-				if reaches(f) {
-					out[name] = true
-					changed = true
-					break
-				}
+			if slices.ContainsFunc(st.Fields, reaches) {
+				out[name] = true
+				changed = true
 			}
 		}
 	}

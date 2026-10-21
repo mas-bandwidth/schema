@@ -39,7 +39,6 @@ table Root {
 	}
 
 	for _, sm := range seams {
-		sm := sm
 		t.Run(sm.name, func(t *testing.T) {
 			t.Parallel()
 			perturbed := strings.Replace(base, sm.old, perturbOneByte(sm.old), 1)

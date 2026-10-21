@@ -1,6 +1,7 @@
 package tabletext
 
 import (
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -87,9 +88,7 @@ func TestJSONTestSuitePolicyWitness(t *testing.T) {
 
 	// drop one PENDING line: Check names that file
 	pending := map[string]string{}
-	for k, v := range s.Pending {
-		pending[k] = v
-	}
+	maps.Copy(pending, s.Pending)
 	if len(pending) == 0 {
 		t.Fatal("PENDING is empty, so the PENDING half of the witness proves nothing")
 	}
@@ -119,8 +118,6 @@ func TestJSONTestSuitePolicyWitness(t *testing.T) {
 
 func cloneRows(rows map[string]jsontestsuite.Row) map[string]jsontestsuite.Row {
 	c := make(map[string]jsontestsuite.Row, len(rows))
-	for k, v := range rows {
-		c[k] = v
-	}
+	maps.Copy(c, rows)
 	return c
 }

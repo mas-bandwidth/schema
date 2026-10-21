@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -205,12 +206,7 @@ func variantDeprecatedIndex(e *ir.Enum, i int) bool {
 	if i < 0 || i >= len(e.VariantTags) {
 		return false
 	}
-	for _, tag := range e.VariantTags[i] {
-		if tag == "deprecated" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(e.VariantTags[i], "deprecated")
 }
 
 // enumDefaultOrdinal is the ordinal a deprecated variant lands on: the FIELD's

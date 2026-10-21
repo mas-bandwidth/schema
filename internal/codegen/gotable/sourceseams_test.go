@@ -358,7 +358,6 @@ table Root { m ?map[int32]Leaf }
 func generateSeamSurfaceUnits(t *testing.T) {
 	t.Helper()
 	for _, ex := range surfacesExercises {
-		ex := ex
 		t.Run(ex.name, func(t *testing.T) {
 			t.Parallel()
 			first := generate(t, ex.schema)
@@ -401,7 +400,6 @@ func generateEverySurface(t *testing.T) {
 	}
 	u := unitFrom(t, surfacesExercises[0].schema)
 	for _, s := range surfaces {
-		s := s
 		t.Run(s.name, func(t *testing.T) {
 			t.Parallel()
 			out, err := GenerateLineageSurface(u, nil, s.set)

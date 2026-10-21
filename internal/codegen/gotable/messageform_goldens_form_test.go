@@ -68,7 +68,6 @@ func TestMessageFormGoldensCarryTheBuildVersionForm(t *testing.T) {
 	// (u64) framing the eight build-version bytes, at offset 3.
 	const buildVersionOffset = 3
 	for _, c := range conns {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			expected := ir.BuildVersion(loaded[c.unit])

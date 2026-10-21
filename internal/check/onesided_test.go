@@ -147,7 +147,6 @@ table OneSided
 			{"on a type body field", "package t\ntype P\n{\n    x int32 | min = 0\n}\n", "min without max (or vice versa) is a compile error"},
 		}
 		for _, tc := range cases {
-			tc := tc
 			t.Run(tc.name, func(t *testing.T) {
 				errs := runUnit(t, map[string]string{"T.schema": tc.src})
 				if len(errs) == 0 {

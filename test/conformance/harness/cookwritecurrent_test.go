@@ -30,7 +30,6 @@ func TestCookWriteFixturesAreTheToolsBytes(t *testing.T) {
 	}
 	u := newUnits(m)
 	for _, cw := range m.CookWrites {
-		cw := cw
 		t.Run(cw.Instance, func(t *testing.T) {
 			inst, err := m.LookupInstance(cw.Instance)
 			if err != nil {
@@ -78,10 +77,7 @@ func TestCookWriteFixturesAreTheToolsBytes(t *testing.T) {
 					continue
 				}
 				first := 0
-				limit := len(cooked)
-				if len(want) < limit {
-					limit = len(want)
-				}
+				limit := min(len(want), len(cooked))
 				for first < limit && cooked[first] == want[first] {
 					first++
 				}

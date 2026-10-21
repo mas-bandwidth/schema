@@ -71,7 +71,7 @@ func tableUnit(t *testing.T, src string) *ir.Unit {
 func TestRandomTableGenerator(t *testing.T) {
 	t.Parallel()
 	census := map[string]int{}
-	for seed := 0; seed < 400; seed++ {
+	for seed := range 400 {
 		src, u := randomSchema(rand.New(rand.NewSource(int64(seed))))
 		tableUnit(t, src)
 		if u.Root.Integrity != "" {
@@ -611,7 +611,7 @@ func runSeedFull(t *testing.T, r *rand.Rand, seed int, sabotage, sabotageIntegri
 	src, u := randomSchema(r)
 	unit := tableUnit(t, src)
 	dir := t.TempDir()
-	for i := 0; i < 24; i++ {
+	for i := range 24 {
 		j := randomJSON(r, u, i)
 		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("inst-%d.json", i)), []byte(j), 0o600); err != nil {
 			t.Fatal(err)
@@ -638,7 +638,7 @@ func runSeedFull(t *testing.T, r *rand.Rand, seed int, sabotage, sabotageIntegri
 	}
 	divBytes, _ := os.ReadFile(filepath.Join(dir, "divergences.txt"))
 	skip := map[int]bool{}
-	for _, line := range strings.Split(strings.TrimSpace(string(divBytes)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(divBytes)), "\n") {
 		if strings.HasPrefix(line, "fromjson ") {
 			f := strings.Fields(line)
 			if len(f) >= 2 {
@@ -671,7 +671,7 @@ func runSeedFull(t *testing.T, r *rand.Rand, seed int, sabotage, sabotageIntegri
 	}
 	crcTab := crc32.MakeTable(crc32.Castagnoli)
 	m := tabletext.NewModel(unit)
-	for i := 0; i < 24; i++ {
+	for i := range 24 {
 		if skip[i] {
 			continue
 		}
@@ -868,7 +868,6 @@ func TestRandomTableIntegrityUnits(t *testing.T) {
 		t.Fatalf("found %d integrity seeds in 0..399, want at least 3", len(seeds))
 	}
 	for _, seed := range seeds {
-		seed := seed
 		t.Run(fmt.Sprintf("seed%d", seed), func(t *testing.T) {
 			t.Parallel()
 			unexpected, expected, wrong := runSeedFull(t, rand.New(rand.NewSource(int64(seed))), seed, false, os.Getenv("SCHEMA_TABLE_DIFF_SABOTAGE_INTEGRITY") == "1")

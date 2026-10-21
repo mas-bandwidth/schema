@@ -30,7 +30,7 @@ func retainReplacedListWire(k, n2 int) []byte {
 	b.u8(uint8(ir.TableKindUnion))
 	b.leb(n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if i == k {
 			b.leb(b.ref("alpha"))
 			b.u8(uint8(ir.TableKindTable))
@@ -50,7 +50,7 @@ func retainReplacedListWire(k, n2 int) []byte {
 	array2 := b.openLen()
 	b.u8(uint8(ir.TableKindUnion))
 	b.leb(uint64(n2))
-	for i := 0; i < n2; i++ {
+	for range n2 {
 		b.leb(0)
 	}
 	b.closeLen(array2)
@@ -133,7 +133,6 @@ func TestRetainOracleForgetsEveryArmOfAReplacedList(t *testing.T) {
 		{"more-elements", 10, 20},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			inst := m.New(m.Lookup("Node"))
@@ -163,7 +162,6 @@ func TestRetainOracleForgetsEveryArmOfAReplacedList(t *testing.T) {
 	// occurrence never reaches dies there. Without forgetFieldArms the earlier
 	// index keeps its handle and the save reports retain_lost.
 	for _, tc := range cases {
-		tc := tc
 		t.Run("message-"+tc.name, func(t *testing.T) {
 			t.Parallel()
 			vocabulary, batch := retainReplacedListMessageBatch(t, tc.k, tc.n2)

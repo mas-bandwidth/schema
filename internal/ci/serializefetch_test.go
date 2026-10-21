@@ -122,7 +122,6 @@ func TestSerializeFetchTriesTheMirrorFirst(t *testing.T) {
 	t.Run("deps preserves invalid existing destinations", func(t *testing.T) {
 		t.Parallel()
 		for _, explicit := range []bool{false, true} {
-			explicit := explicit
 			name := "default sibling"
 			if explicit {
 				name = "explicit override"

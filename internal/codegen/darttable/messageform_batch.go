@@ -309,10 +309,7 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 func (g *fixedModule) emitMessageWriteScalar128(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
 	kind, shape := entry.Kind, entry.Shape
 	bits := ir.TableMessageValueBits(kind, shape)
-	lowBits := bits
-	if lowBits > 64 {
-		lowBits = 64
-	}
+	lowBits := min(bits, 64)
 	highBits := bits - lowBits
 	g.pf("%svar lo = %s.lo;\n", ind, expr)
 	g.pf("%svar hi = %s.hi;\n", ind, expr)
@@ -481,10 +478,7 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 func (g *fixedModule) emitMessageReadScalar128(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
 	kind, shape := entry.Kind, entry.Shape
 	bits := ir.TableMessageValueBits(kind, shape)
-	lowBits := bits
-	if lowBits > 64 {
-		lowBits = 64
-	}
+	lowBits := min(bits, 64)
 	highBits := bits - lowBits
 	bad := "r.report.Damage(); return false"
 	cls := "UInt128"

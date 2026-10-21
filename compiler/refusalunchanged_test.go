@@ -321,7 +321,6 @@ func TestRefusalUnchangedCatchesConstructKeyedLeak(t *testing.T) {
 	t.Parallel()
 	c := New()
 	for _, p := range allUnchangedProbes() {
-		p := p
 		// only when the unit uses the construct, a declaration that does not
 		// use it gains a line: the first keep name, and the last when there
 		// are more, so both ends of the keep list are shown caught

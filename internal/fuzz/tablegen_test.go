@@ -142,7 +142,7 @@ func fixedText(k uint64, frac int) string {
 	b.WriteString(strconv.FormatUint(k>>uint(frac), 10))
 	b.WriteByte('.')
 	rem := k & mask
-	for i := 0; i < frac; i++ {
+	for range frac {
 		rem *= 10
 		b.WriteByte(byte('0' + rem>>uint(frac)))
 		rem &= mask
@@ -490,7 +490,7 @@ func tableSource(t *genTable, enumVars []string) string {
 func randomSchema(r *rand.Rand) (string, *genUnit) {
 	u := &genUnit{}
 	ne := 1 + r.Intn(2)
-	for i := 0; i < ne; i++ {
+	for i := range ne {
 		u.Enums = append(u.Enums, fmt.Sprintf("Enum%d", i))
 	}
 	var b strings.Builder
@@ -500,10 +500,10 @@ func randomSchema(r *rand.Rand) (string, *genUnit) {
 	}
 	// inner tables (always fixed), referenced by value from Root or a field
 	ni := r.Intn(3)
-	for i := 0; i < ni; i++ {
+	for i := range ni {
 		t := &genTable{Name: fmt.Sprintf("Inner%d", i), Fixed: true}
 		nf := 1 + r.Intn(3)
-		for j := 0; j < nf; j++ {
+		for j := range nf {
 			f := randomField(r, u.Enums, nil, nil)
 			f.Name = fmt.Sprintf("g%d", j)
 			t.Fields = append(t.Fields, f)
@@ -513,7 +513,7 @@ func randomSchema(r *rand.Rand) (string, *genUnit) {
 	// unions: scalar arms only (a pointer arm would force a variable table,
 	// which needs a builder probe leg), every one referenced from Root
 	nu := r.Intn(3)
-	for i := 0; i < nu; i++ {
+	for i := range nu {
 		un := &genUnion{Name: fmt.Sprintf("U%d", i)}
 		un.Arms = append(un.Arms, &genField{Name: "a", Kind: gInt, Bits: 32})
 		un.Arms = append(un.Arms, &genField{Name: "b", Kind: gInt, Bits: 64})
@@ -549,7 +549,7 @@ func randomSchema(r *rand.Rand) (string, *genUnit) {
 		root.Integrity = "crc32c"
 	}
 	n := 1 + r.Intn(6)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		f := randomField(r, u.Enums, u.Unions, u.Inner)
 		f.Name = fmt.Sprintf("f%d", i)
 		root.Fields = append(root.Fields, f)
@@ -734,7 +734,7 @@ func (u *genUnit) randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 	case gMap:
 		nk := 1 + r.Intn(3)
 		b.WriteString("{")
-		for i := 0; i < nk; i++ {
+		for i := range nk {
 			if i > 0 {
 				b.WriteString(",")
 			}

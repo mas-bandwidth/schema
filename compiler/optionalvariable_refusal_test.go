@@ -73,7 +73,6 @@ func TestOptionalOverVariableClosureIsLegal(t *testing.T) {
 	u := unitFromSource(t, src)
 	c := New()
 	for _, lang := range []string{"go", "c", "cs", "cpp"} {
-		lang := lang
 		t.Run(lang, func(t *testing.T) {
 			t.Parallel()
 			if _, err := c.Generate(u, lang, nil); err != nil {

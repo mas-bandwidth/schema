@@ -2,6 +2,7 @@ package gotable
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,9 +89,7 @@ func goGeneratedLines(t *testing.T, u *ir.Unit, rt Runtime) int {
 		if err != nil {
 			t.Fatalf("shared runtime: %v", err)
 		}
-		for name, data := range shared {
-			files[name] = data
-		}
+		maps.Copy(files, shared)
 	}
 	dir := t.TempDir()
 	lines := 0

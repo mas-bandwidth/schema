@@ -111,7 +111,7 @@ table C
 `
 	var ref string
 	var keys []string
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		out := generate(t, schema)
 		if i == 0 {
 			for k := range out {

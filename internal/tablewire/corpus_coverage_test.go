@@ -28,7 +28,6 @@ func TestCorpusEmptyRoundTrip(t *testing.T) {
 		"ProfileConfig", "WideBlob",
 	}
 	for _, name := range tables {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			inst := m.New(m.Lookup(name))
 			wire, err := tablewire.Encode(m, inst)

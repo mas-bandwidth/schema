@@ -2502,9 +2502,7 @@ func goEscapeLineage(esc *ir.Unit, lineage map[string][]FixedLineageEntry) map[s
 		return nil
 	}
 	out := make(map[string][]FixedLineageEntry, len(lineage))
-	for k, v := range lineage {
-		out[k] = v
-	}
+	maps.Copy(out, lineage)
 	for name, st := range esc.Tables {
 		if st.SchemaName == "" {
 			continue

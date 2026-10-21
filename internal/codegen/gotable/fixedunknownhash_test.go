@@ -58,14 +58,14 @@ func unknownHashImage(t *testing.T, src string, records int) ([]byte, uint64) {
 	}
 	img := make([]byte, 0, 20+len(e.Layout)+records*int(e.Record))
 	img = append(img, 3, 0, 0, 0, 0, 0, 0, 0)
-	for k := 0; k < 8; k++ {
+	for k := range 8 {
 		img = append(img, byte(e.Wire>>(8*k)))
 	}
 	n := len(e.Layout)
 	img = append(img, byte(n), byte(n>>8), byte(n>>16), byte(n>>24))
 	img = append(img, e.Layout...)
-	for r := 0; r < records; r++ {
-		for k := 0; k < 8; k++ {
+	for range records {
+		for k := range 8 {
 			img = append(img, byte(e.Wire>>(8*k)))
 		}
 		img = append(img, make([]byte, int(e.Record)-8)...)

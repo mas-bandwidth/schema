@@ -132,7 +132,7 @@ func TestJSONTestSuiteGenerated(t *testing.T) {
 		t.Fatalf("generated probe: %v\n%s", err, out)
 	}
 	got := map[string]bool{}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		fields := strings.Split(line, "\t")
 		if len(fields) != 3 || fields[0] != "JTS" {
 			continue

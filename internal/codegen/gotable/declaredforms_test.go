@@ -175,7 +175,6 @@ func TestNoop(t *testing.T) {}
 		"wire,cook,block",
 		"wire,json,cook,block",
 	} {
-		dec := dec
 		t.Run("variable/"+dec, func(t *testing.T) {
 			t.Parallel()
 			compileDeclaredFormUnit(t, `package probe
@@ -255,7 +254,6 @@ fixed table Ping
 		{name: "wire,cook", surface: "wire,cook", refuse: []string{"Pong", "cook", `"wire,json"`, "§2.12"}},
 		{name: "wire", surface: "wire"},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			s, err := ParseSurfaces(tc.surface)

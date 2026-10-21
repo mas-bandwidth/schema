@@ -32,10 +32,10 @@ func fixedLoadFixture(t *testing.T, e FixedLineageEntry, n int) string {
 	f = appendFixedU32(f, uint32(len(e.Layout)))
 	f = append(f, e.Layout...)
 	rec := make([]byte, e.Record)
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		rec[i] = byte(e.Wire >> (8 * i))
 	}
-	for i := 0; i < n; i++ {
+	for range n {
 		f = append(f, rec...)
 	}
 	path := filepath.Join(t.TempDir(), "fixture.bin")

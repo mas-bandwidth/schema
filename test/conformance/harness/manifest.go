@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -142,12 +143,7 @@ func (h Hostile) Carries(lang string) bool {
 	if len(h.CarriedBy) == 0 {
 		return true
 	}
-	for _, port := range h.CarriedBy {
-		if port == lang {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(h.CarriedBy, lang)
 }
 
 // VerdictFor is the answer lang owes for this row: the standard's verdict when
@@ -560,10 +556,8 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 					return nil, fmt.Errorf("%s: %q is not carried-by=<ports>", where, f[6])
 				}
 				h.CarriedBy = strings.Split(carried, ",")
-				for _, port := range h.CarriedBy {
-					if port == "" {
-						return nil, fmt.Errorf("%s: carried-by names an empty port", where)
-					}
+				if slices.Contains(h.CarriedBy, "") {
+					return nil, fmt.Errorf("%s: carried-by names an empty port", where)
 				}
 				uncarried, ok := strings.CutPrefix(f[7], "uncarried=")
 				if !ok || uncarried == "" {

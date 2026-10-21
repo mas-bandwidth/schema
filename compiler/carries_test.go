@@ -83,7 +83,6 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 	}
 	c := New()
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.construct, func(t *testing.T) {
 			u := unitFromSource(t, tc.schema)
 			for _, target := range targets {

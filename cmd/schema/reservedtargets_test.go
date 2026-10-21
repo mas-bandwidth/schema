@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -74,11 +75,8 @@ func TestGenerateGoRefusesGoReservedWords(t *testing.T) {
 
 	goReserved := map[string]bool{}
 	for w, langs := range check.ReservedWords() {
-		for _, l := range langs {
-			if l == "Go" {
-				goReserved[w] = true
-				break
-			}
+		if slices.Contains(langs, "Go") {
+			goReserved[w] = true
 		}
 	}
 
@@ -135,13 +133,7 @@ func TestGenerateGoCompilesNonGoReservedWords(t *testing.T) {
 	reserved := check.ReservedWords()
 	var words []string
 	for w, langs := range reserved {
-		goReserves := false
-		for _, l := range langs {
-			if l == "Go" {
-				goReserves = true
-				break
-			}
-		}
+		goReserves := slices.Contains(langs, "Go")
 		if !goReserves && !schemaKeywords[w] {
 			words = append(words, w)
 		}
@@ -201,9 +193,7 @@ func (s *ReadStream) Err() error { return s.err }
 	for _, w := range words {
 		for _, f := range forms {
 			w, f := w, f
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				sem <- struct{}{}
 				defer func() { <-sem }()
 				fail := func(format string, args ...any) {
@@ -239,7 +229,7 @@ func (s *ReadStream) Err() error { return s.err }
 				if _, err := gb.Output(); err != nil {
 					fail("go build: %v", err)
 				}
-			}()
+			})
 		}
 	}
 	wg.Wait()

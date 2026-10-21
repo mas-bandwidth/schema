@@ -110,33 +110,33 @@ func (r *arenaTypeResolver) resolve(expr ast.Expr) reflect.Type {
 		case "bool":
 			return reflect.TypeOf(false)
 		case "string":
-			return reflect.TypeOf("")
+			return reflect.TypeFor[string]()
 		case "int":
-			return reflect.TypeOf(int(0))
+			return reflect.TypeFor[int]()
 		case "int8":
-			return reflect.TypeOf(int8(0))
+			return reflect.TypeFor[int8]()
 		case "int16":
-			return reflect.TypeOf(int16(0))
+			return reflect.TypeFor[int16]()
 		case "int32":
-			return reflect.TypeOf(int32(0))
+			return reflect.TypeFor[int32]()
 		case "int64":
-			return reflect.TypeOf(int64(0))
+			return reflect.TypeFor[int64]()
 		case "uint":
-			return reflect.TypeOf(uint(0))
+			return reflect.TypeFor[uint]()
 		case "uint8", "byte":
-			return reflect.TypeOf(byte(0))
+			return reflect.TypeFor[byte]()
 		case "uint16":
-			return reflect.TypeOf(uint16(0))
+			return reflect.TypeFor[uint16]()
 		case "uint32":
-			return reflect.TypeOf(uint32(0))
+			return reflect.TypeFor[uint32]()
 		case "uint64":
-			return reflect.TypeOf(uint64(0))
+			return reflect.TypeFor[uint64]()
 		case "uintptr":
-			return reflect.TypeOf(uintptr(0))
+			return reflect.TypeFor[uintptr]()
 		case "float32":
-			return reflect.TypeOf(float32(0))
+			return reflect.TypeFor[float32]()
 		case "float64":
-			return reflect.TypeOf(float64(0))
+			return reflect.TypeFor[float64]()
 		}
 		if typ, ok := r.named[e.Name]; ok {
 			return typ
@@ -149,9 +149,9 @@ func (r *arenaTypeResolver) resolve(expr ast.Expr) reflect.Type {
 		}
 		switch pkg.Name + "." + e.Sel.Name {
 		case "sync.Mutex":
-			return reflect.TypeOf(sync.Mutex{})
+			return reflect.TypeFor[sync.Mutex]()
 		case "atomic.Uint64":
-			return reflect.TypeOf(atomic.Uint64{})
+			return reflect.TypeFor[atomic.Uint64]()
 		}
 		r.t.Fatalf("arena type: unsupported selector %s.%s", pkg.Name, e.Sel.Name)
 	case *ast.StarExpr:

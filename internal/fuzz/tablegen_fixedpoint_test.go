@@ -21,7 +21,7 @@ func TestRandomTableGenFixedPoint(t *testing.T) {
 	ufixedSeen := map[[2]int]bool{}
 	fractionSeen := map[string]bool{}
 	floatSeen := map[string]bool{}
-	for seed := 0; seed < 100; seed++ {
+	for seed := range 100 {
 		r := rand.New(rand.NewSource(int64(seed)))
 		src, model := randomSchema(r)
 		unit := tableUnit(t, src)
@@ -111,7 +111,7 @@ func TestRandomTableGenFixedPoint(t *testing.T) {
 func TestRandomTableGenFixedPointPlantClamp(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs generated units)")
-	for seed := 0; seed < 400; seed++ {
+	for seed := range 400 {
 		r := rand.New(rand.NewSource(int64(seed)))
 		src, model := randomSchema(r)
 		var fixedField *genField

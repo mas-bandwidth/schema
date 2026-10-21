@@ -526,7 +526,7 @@ func runBoundsSeed(t *testing.T, r *rand.Rand, seed int, sabotage bool) (unexpec
 	env := map[string]string{"SCHEMA_TABLE_DIFF_DIR": dir}
 	out, err := runGeneratedTableUnit(t, unit, tableBoundsPassProbe, env, "-race")
 	divBytes, _ := os.ReadFile(filepath.Join(dir, "divergences.txt"))
-	for _, line := range strings.Split(strings.TrimSpace(string(divBytes)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(divBytes)), "\n") {
 		if line == "" {
 			continue
 		}

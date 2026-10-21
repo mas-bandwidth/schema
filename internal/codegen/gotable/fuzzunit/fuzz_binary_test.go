@@ -274,8 +274,7 @@ func fillAway(v reflect.Value) {
 		}
 		fillAway(v.Elem())
 	case reflect.Struct:
-		for i := 0; i < v.NumField(); i++ {
-			field := v.Field(i)
+		for _, field := range v.Fields() {
 			if !field.CanSet() {
 				continue
 			}

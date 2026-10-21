@@ -189,7 +189,7 @@ func sharedRun(t *testing.T, u *ir.Unit, testSource string, rt Runtime, edit fun
 
 func outLines(s string) string {
 	var b strings.Builder
-	for _, l := range strings.Split(s, "\n") {
+	for l := range strings.SplitSeq(s, "\n") {
 		if strings.HasPrefix(l, "OUT ") {
 			b.WriteString(l + "\n")
 		}

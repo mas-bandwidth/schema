@@ -41,7 +41,7 @@ func goBenchRecipe(t *testing.T, root, rule string) []goBenchCommand {
 	}
 	found := false
 	var commands []goBenchCommand
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if strings.HasPrefix(line, rule+":") {
 			found = true
 			continue

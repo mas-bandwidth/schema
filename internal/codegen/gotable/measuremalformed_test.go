@@ -529,9 +529,9 @@ table Root {
 
 func measureMalformedWStringProbe() string {
 	probe := measureMalformedSeed2Probe
-	start := strings.Index(probe, " var docs = []string{\n")
+	before, _, _ := strings.Cut(probe, " var docs = []string{\n")
 	end := strings.Index(probe, " // tolerant is the oracle")
-	return probe[:start] + ` var docs = []string{
+	return before + ` var docs = []string{
   "{}",
   "{\"a\":\"ab\"}",
   "{\"a\":\"\\ud83c\\udf0d\",\"l\":[{\"s\":\"x\"},{\"s\":\"\\u03a9\"}],\"u\":{\"w\":\"yz\"}}",

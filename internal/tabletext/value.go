@@ -14,6 +14,7 @@ package tabletext
 
 import (
 	"math/big"
+	"slices"
 	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -418,12 +419,7 @@ func VariantDeprecated(e *ir.Enum, value int64) bool {
 	if e == nil || value < 1 || int(value) > len(e.VariantTags) {
 		return false
 	}
-	for _, tag := range e.VariantTags[value-1] {
-		if tag == "deprecated" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(e.VariantTags[value-1], "deprecated")
 }
 
 // KindWidth is a fixed-width kind's payload size in bytes; 0 for the framed

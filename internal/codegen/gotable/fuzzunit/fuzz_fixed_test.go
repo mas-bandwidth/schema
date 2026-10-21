@@ -129,13 +129,7 @@ func FuzzFixedLoad(f *testing.F) {
 		}
 		target := fixedTargets[int(data[0])%len(fixedTargets)]
 		wire := append([]byte(nil), data[1:]...)
-		count := len(wire)
-		if count > fixedValueCount {
-			count = fixedValueCount
-		}
-		if count < 1 {
-			count = 1
-		}
+		count := max(min(len(wire), fixedValueCount), 1)
 		values := target.blank(count)
 		n := target.load(values, wire, target.plan(), &tabledemo.TableReport{})
 		if n < 0 {

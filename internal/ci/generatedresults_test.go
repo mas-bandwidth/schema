@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"io/fs"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -257,20 +258,16 @@ func isIdentifierWrite(id *ast.Ident, parents map[ast.Node]ast.Node) bool {
 			}
 		}
 	case *ast.ValueSpec:
-		for _, name := range p.Names {
-			if name == id {
-				return true
-			}
+		if slices.Contains(p.Names, id) {
+			return true
 		}
 	case *ast.RangeStmt:
 		return p.Key == id || p.Value == id
 	case *ast.IncDecStmt:
 		return p.X == id
 	case *ast.Field:
-		for _, name := range p.Names {
-			if name == id {
-				return true
-			}
+		if slices.Contains(p.Names, id) {
+			return true
 		}
 	case *ast.FuncDecl:
 		return p.Name == id

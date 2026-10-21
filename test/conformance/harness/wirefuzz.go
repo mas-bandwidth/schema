@@ -570,7 +570,7 @@ func randomPass(pool []*wireSeed, pinned int, seed uint64, n int, draw func(*wir
 	if len(pool) == 0 {
 		return fmt.Sprintf("wire-fuzz: random pass skipped: no manifest seed is live (%d pinned vectors only)", pinned)
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		// randomMutant refuses an empty list; this caller never sends nil.
 		if mut := randomMutant(pool, seed, i); mut != nil {
 			draw(mut)

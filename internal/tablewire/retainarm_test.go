@@ -87,7 +87,7 @@ func retainArmOccurrenceWire() []byte {
 	array2 := b.openLen()
 	b.u8(uint8(ir.TableKindUnion))
 	b.leb(n)
-	for i := 0; i < n; i++ {
+	for range n {
 		b.leb(0)
 	}
 	b.closeLen(array2)
