@@ -702,9 +702,9 @@ func testgenBoundProbes(b *strings.Builder, st *ir.Struct, variable bool) error 
 	testgenSave(b, n)
 	b.WriteString("\t\t\tvar tr TableReport\n")
 	if variable {
-		fmt.Fprintf(b, "\t\t\tvar lb %sBuilder\n\t\t\tif !lb.Init() {\n\t\t\t\tt.Fatal(\"builder init\")\n\t\t\t}\n\t\t\tdefer lb.Shutdown()\n\t\t\tok := %sLoadBuilder(&lb, wire, &tr) && lb.Lock()\n", n, n)
+		fmt.Fprintf(b, "\t\t\tvar lb %sBuilder\n\t\t\tif !lb.Init() {\n\t\t\t\tt.Fatal(\"builder init\")\n\t\t\t}\n\t\t\tdefer lb.Shutdown()\n\t\t\tok := %sLoadBuilderTolerant(&lb, wire, &tr) && lb.Lock()\n", n, n)
 	} else {
-		fmt.Fprintf(b, "\t\t\tread := new(%s)\n\t\t\tok := %sLoad(read, wire, &tr)\n", n, n)
+		fmt.Fprintf(b, "\t\t\tread := new(%s)\n\t\t\tok := %sLoadTolerant(read, wire, &tr)\n", n, n)
 	}
 	b.WriteString("\t\t\tif !ok || tr.Clamped != 1 || tr.Unknown != 0 || tr.KindMismatch != 0 || tr.Widened != 0 || tr.Malformed || !errors.Is(tr.Err(), TableRefuseClamped) {\n\t\t\t\tt.Fatalf(\"%s: the tolerant read: ok=%v report %+v, want one clamped and nothing else\", p.name, ok, tr)\n\t\t\t}\n")
 	if variable {
