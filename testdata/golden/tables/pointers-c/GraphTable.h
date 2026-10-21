@@ -112,6 +112,9 @@ typedef struct TableReport
     int32_t duplicate;
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
+    /* a blob record another slot already named (docs/SPEC-TABLES.md §2.5):
+       the tolerant read keeps the one node and counts each extra naming. */
+    int32_t blob_shared;
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
@@ -2399,7 +2402,18 @@ enum {
     SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
     SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
     SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
-    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13
+    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13,
+    SCHEMA_TABLE_REFUSE_INVALID_VALUE=14,
+    SCHEMA_TABLE_REFUSE_ALLOCATION_FAILED=15,
+    SCHEMA_TABLE_REFUSE_WIRE_DAMAGED=16,
+    SCHEMA_TABLE_REFUSE_MALFORMED=17,
+    SCHEMA_TABLE_REFUSE_CLAMPED=18,
+    SCHEMA_TABLE_REFUSE_KIND_MISMATCH=19,
+    SCHEMA_TABLE_REFUSE_BASE64_DAMAGED=20,
+    SCHEMA_TABLE_REFUSE_BASE64_NOT_CANONICAL=21,
+    SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
+    SCHEMA_TABLE_REFUSE_NON_FINITE=23,
+    SCHEMA_TABLE_REFUSE_BLOB_SHARED=24
 };
 static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,TableRefuseReason reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
@@ -2987,6 +3001,10 @@ static SCHEMA_UNUSED int table_number_build( TableNumbering * n, const TableCtx 
         if ( index )
         {
             if ( n->entries[index-1].open || n->entries[index-1].type->id != visit.type->id ) { return 0; }
+            /* A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): every
+               writer refuses a blob another slot already named, by name
+               blob_shared. Other shared nodes are numbered once. */
+            if ( visit.type->blob ) { return 0; }
             continue;
         }
         if ( n->slot_capacity == 0 || n->count >= n->slot_capacity/2 )
@@ -3147,10 +3165,11 @@ typedef struct TableNodeDirEntry { uint64_t offset, type_id; } TableNodeDirEntry
 typedef struct TableNodeMap
 {
     uint8_t * base;
-    const TableNodeDirEntry * entries;
+    TableNodeDirEntry * entries;
     uint64_t count;
     int good, arena, refused;
     TableSink * sink;
+    uint8_t * blob_named; /* parallel to entries; 1 = the blob node is already named */
 } TableNodeMap;
 
 static SCHEMA_UNUSED void table_node_resolve( const TableNodeMap * nodes, TableRef * slot,
@@ -3165,6 +3184,17 @@ static SCHEMA_UNUSED void table_node_resolve( const TableNodeMap * nodes, TableR
     if ( entry->type_id != target ) { report->kind_mismatch++; return; }
     slot->value = nodes->arena ? (int64_t)entry->offset
         : (int64_t)((nodes->base + entry->offset) - (uint8_t *)(void *)slot);
+}
+
+/* A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): the tolerant read
+   keeps the one node and counts each extra naming. Only a BLOB-pointer field's
+   reader calls this (the writer and the strict read refuse by name), and the
+   named state lives in the load-local blob_named array, not in the directory,
+   so the directory keeps its 16-byte entry and the framing numbers hold. */
+static SCHEMA_UNUSED void table_node_blob_mark( TableNodeMap * nodes, uint64_t index, TableReport * report )
+{
+    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count ) { return; }
+    if ( nodes->blob_named[index-1] ) { report->blob_shared++; } else { nodes->blob_named[index-1] = 1; }
 }
 
 typedef struct TableNodeScan
@@ -11958,6 +11988,7 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_list_node_load_layout_(const Table
     if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);
 }
+static SCHEMA_UNUSED int schema_graphdemo_list_node_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t list_node_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)
 {
     TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
@@ -11965,10 +11996,15 @@ static SCHEMA_UNUSED int64_t list_node_load_measure_ex(const uint8_t * wire, int
     if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_list_node_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
+    if(total>=0 && schema_graphdemo_list_node_wire_blob_shared_(wire,bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;
 }
 static SCHEMA_UNUSED int64_t list_node_load_measure(const uint8_t * wire, int64_t bytes)
-{ return list_node_load_measure_ex(wire,bytes,NULL,NULL); }
+{
+    TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
+    if (!table_wire_open(&reader,wire,bytes,&report)) { return -1; }
+    total=schema_graphdemo_list_node_load_layout_(&reader,&data,&records); return total>=0 ? total : -1;
+}
 static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_(TableReader * reader, ListNode * root, TableNodeMap * nodes, TableNodeDirEntry * directory, TableSink * sink)
 {
     TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id,k=0; int32_t unknown=0;
@@ -12024,10 +12060,10 @@ static SCHEMA_UNUSED const ListNode * list_node_load(uint8_t * region, int64_t r
     if(total<0 || region==NULL || region_bytes<total || ((uintptr_t)region & (kTableAlign-1))!=0) { report->malformed=1; return NULL; }
     memset(region,0,(size_t)total); directory=(TableNodeDirEntry *)(void *)(region+data);
     directory[0].offset=0; directory[0].type_id=UINT64_C(0xf60ec899a5a69fa9);
-    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL;
+    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_list_node_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_list_node_load_graph_(&reader,(ListNode *)(void *)region,&nodes,directory,&sink)) { return NULL; }
-    return (const ListNode *)(const void *)region;
+    if(!schema_graphdemo_list_node_load_graph_(&reader,(ListNode *)(void *)region,&nodes,directory,&sink)) { table_release(table_default_allocator(),nodes.blob_named); return NULL; }
+    table_release(table_default_allocator(),nodes.blob_named); return (const ListNode *)(const void *)region;
 }
 static SCHEMA_UNUSED int list_node_load_builder(ListNodeBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)
 {
@@ -12040,8 +12076,21 @@ static SCHEMA_UNUSED int list_node_load_builder(ListNodeBuilder * builder, const
     directory=(TableNodeDirEntry *)table_allocate(builder->arena.allocator,(records+1)*(int64_t)sizeof(TableNodeDirEntry));
     if(directory==NULL) { report->malformed=1; return 0; }
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0xf60ec899a5a69fa9);
-    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_list_node_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); return ok;
+    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
+    sink.region=NULL; sink.worker=&builder->main;
+    ok=schema_graphdemo_list_node_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); table_release(builder->arena.allocator,nodes.blob_named); return ok;
+}
+/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
+static SCHEMA_UNUSED int schema_graphdemo_list_node_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
+{
+    uint8_t * region; TableReport report; const ListNode * loaded; int shared;
+    region=(uint8_t *)table_allocate(table_default_allocator(),total);
+    if(region==NULL) { return 1; }
+    memset(&report,0,sizeof(report));
+    loaded=list_node_load(region,total,wire,bytes,&report);
+    table_release(table_default_allocator(),region);
+    if(loaded==NULL) { return 1; }
+    shared=report.blob_shared>0; return shared;
 }
 static SCHEMA_UNUSED int schema_graphdemo_list_node_message_graph_save_(TableBitWriter * w,const ListNode * root,TableAllocator allocator)
 {
@@ -12388,6 +12437,7 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_tree_node_load_layout_(const Table
     if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);
 }
+static SCHEMA_UNUSED int schema_graphdemo_tree_node_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t tree_node_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)
 {
     TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
@@ -12395,10 +12445,15 @@ static SCHEMA_UNUSED int64_t tree_node_load_measure_ex(const uint8_t * wire, int
     if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_tree_node_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
+    if(total>=0 && schema_graphdemo_tree_node_wire_blob_shared_(wire,bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;
 }
 static SCHEMA_UNUSED int64_t tree_node_load_measure(const uint8_t * wire, int64_t bytes)
-{ return tree_node_load_measure_ex(wire,bytes,NULL,NULL); }
+{
+    TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
+    if (!table_wire_open(&reader,wire,bytes,&report)) { return -1; }
+    total=schema_graphdemo_tree_node_load_layout_(&reader,&data,&records); return total>=0 ? total : -1;
+}
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_(TableReader * reader, TreeNode * root, TableNodeMap * nodes, TableNodeDirEntry * directory, TableSink * sink)
 {
     TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id,k=0; int32_t unknown=0;
@@ -12454,10 +12509,10 @@ static SCHEMA_UNUSED const TreeNode * tree_node_load(uint8_t * region, int64_t r
     if(total<0 || region==NULL || region_bytes<total || ((uintptr_t)region & (kTableAlign-1))!=0) { report->malformed=1; return NULL; }
     memset(region,0,(size_t)total); directory=(TableNodeDirEntry *)(void *)(region+data);
     directory[0].offset=0; directory[0].type_id=UINT64_C(0xb97e90a3784c431d);
-    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL;
+    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_tree_node_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_tree_node_load_graph_(&reader,(TreeNode *)(void *)region,&nodes,directory,&sink)) { return NULL; }
-    return (const TreeNode *)(const void *)region;
+    if(!schema_graphdemo_tree_node_load_graph_(&reader,(TreeNode *)(void *)region,&nodes,directory,&sink)) { table_release(table_default_allocator(),nodes.blob_named); return NULL; }
+    table_release(table_default_allocator(),nodes.blob_named); return (const TreeNode *)(const void *)region;
 }
 static SCHEMA_UNUSED int tree_node_load_builder(TreeNodeBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)
 {
@@ -12470,8 +12525,21 @@ static SCHEMA_UNUSED int tree_node_load_builder(TreeNodeBuilder * builder, const
     directory=(TableNodeDirEntry *)table_allocate(builder->arena.allocator,(records+1)*(int64_t)sizeof(TableNodeDirEntry));
     if(directory==NULL) { report->malformed=1; return 0; }
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0xb97e90a3784c431d);
-    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_tree_node_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); return ok;
+    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
+    sink.region=NULL; sink.worker=&builder->main;
+    ok=schema_graphdemo_tree_node_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); table_release(builder->arena.allocator,nodes.blob_named); return ok;
+}
+/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
+static SCHEMA_UNUSED int schema_graphdemo_tree_node_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
+{
+    uint8_t * region; TableReport report; const TreeNode * loaded; int shared;
+    region=(uint8_t *)table_allocate(table_default_allocator(),total);
+    if(region==NULL) { return 1; }
+    memset(&report,0,sizeof(report));
+    loaded=tree_node_load(region,total,wire,bytes,&report);
+    table_release(table_default_allocator(),region);
+    if(loaded==NULL) { return 1; }
+    shared=report.blob_shared>0; return shared;
 }
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_message_graph_save_(TableBitWriter * w,const TreeNode * root,TableAllocator allocator)
 {
@@ -12818,6 +12886,7 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_layer_load_layout_(const TableRead
     if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);
 }
+static SCHEMA_UNUSED int schema_graphdemo_layer_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t layer_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)
 {
     TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
@@ -12825,10 +12894,15 @@ static SCHEMA_UNUSED int64_t layer_load_measure_ex(const uint8_t * wire, int64_t
     if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_layer_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
+    if(total>=0 && schema_graphdemo_layer_wire_blob_shared_(wire,bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;
 }
 static SCHEMA_UNUSED int64_t layer_load_measure(const uint8_t * wire, int64_t bytes)
-{ return layer_load_measure_ex(wire,bytes,NULL,NULL); }
+{
+    TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
+    if (!table_wire_open(&reader,wire,bytes,&report)) { return -1; }
+    total=schema_graphdemo_layer_load_layout_(&reader,&data,&records); return total>=0 ? total : -1;
+}
 static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_(TableReader * reader, Layer * root, TableNodeMap * nodes, TableNodeDirEntry * directory, TableSink * sink)
 {
     TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id,k=0; int32_t unknown=0;
@@ -12884,10 +12958,10 @@ static SCHEMA_UNUSED const Layer * layer_load(uint8_t * region, int64_t region_b
     if(total<0 || region==NULL || region_bytes<total || ((uintptr_t)region & (kTableAlign-1))!=0) { report->malformed=1; return NULL; }
     memset(region,0,(size_t)total); directory=(TableNodeDirEntry *)(void *)(region+data);
     directory[0].offset=0; directory[0].type_id=UINT64_C(0x9d167ef77aed79b6);
-    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL;
+    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_layer_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_layer_load_graph_(&reader,(Layer *)(void *)region,&nodes,directory,&sink)) { return NULL; }
-    return (const Layer *)(const void *)region;
+    if(!schema_graphdemo_layer_load_graph_(&reader,(Layer *)(void *)region,&nodes,directory,&sink)) { table_release(table_default_allocator(),nodes.blob_named); return NULL; }
+    table_release(table_default_allocator(),nodes.blob_named); return (const Layer *)(const void *)region;
 }
 static SCHEMA_UNUSED int layer_load_builder(LayerBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)
 {
@@ -12900,8 +12974,21 @@ static SCHEMA_UNUSED int layer_load_builder(LayerBuilder * builder, const uint8_
     directory=(TableNodeDirEntry *)table_allocate(builder->arena.allocator,(records+1)*(int64_t)sizeof(TableNodeDirEntry));
     if(directory==NULL) { report->malformed=1; return 0; }
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x9d167ef77aed79b6);
-    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_layer_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); return ok;
+    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
+    sink.region=NULL; sink.worker=&builder->main;
+    ok=schema_graphdemo_layer_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); table_release(builder->arena.allocator,nodes.blob_named); return ok;
+}
+/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
+static SCHEMA_UNUSED int schema_graphdemo_layer_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
+{
+    uint8_t * region; TableReport report; const Layer * loaded; int shared;
+    region=(uint8_t *)table_allocate(table_default_allocator(),total);
+    if(region==NULL) { return 1; }
+    memset(&report,0,sizeof(report));
+    loaded=layer_load(region,total,wire,bytes,&report);
+    table_release(table_default_allocator(),region);
+    if(loaded==NULL) { return 1; }
+    shared=report.blob_shared>0; return shared;
 }
 static SCHEMA_UNUSED int schema_graphdemo_layer_message_graph_save_(TableBitWriter * w,const Layer * root,TableAllocator allocator)
 {
@@ -13250,6 +13337,7 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_scene_load_layout_(const TableRead
     if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);
 }
+static SCHEMA_UNUSED int schema_graphdemo_scene_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t scene_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)
 {
     TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
@@ -13257,10 +13345,15 @@ static SCHEMA_UNUSED int64_t scene_load_measure_ex(const uint8_t * wire, int64_t
     if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_scene_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
+    if(total>=0 && schema_graphdemo_scene_wire_blob_shared_(wire,bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;
 }
 static SCHEMA_UNUSED int64_t scene_load_measure(const uint8_t * wire, int64_t bytes)
-{ return scene_load_measure_ex(wire,bytes,NULL,NULL); }
+{
+    TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
+    if (!table_wire_open(&reader,wire,bytes,&report)) { return -1; }
+    total=schema_graphdemo_scene_load_layout_(&reader,&data,&records); return total>=0 ? total : -1;
+}
 static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_(TableReader * reader, Scene * root, TableNodeMap * nodes, TableNodeDirEntry * directory, TableSink * sink)
 {
     TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id,k=0; int32_t unknown=0;
@@ -13318,10 +13411,10 @@ static SCHEMA_UNUSED const Scene * scene_load(uint8_t * region, int64_t region_b
     if(total<0 || region==NULL || region_bytes<total || ((uintptr_t)region & (kTableAlign-1))!=0) { report->malformed=1; return NULL; }
     memset(region,0,(size_t)total); directory=(TableNodeDirEntry *)(void *)(region+data);
     directory[0].offset=0; directory[0].type_id=UINT64_C(0x4a9a31623ab5f213);
-    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL;
+    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_scene_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_scene_load_graph_(&reader,(Scene *)(void *)region,&nodes,directory,&sink)) { return NULL; }
-    return (const Scene *)(const void *)region;
+    if(!schema_graphdemo_scene_load_graph_(&reader,(Scene *)(void *)region,&nodes,directory,&sink)) { table_release(table_default_allocator(),nodes.blob_named); return NULL; }
+    table_release(table_default_allocator(),nodes.blob_named); return (const Scene *)(const void *)region;
 }
 static SCHEMA_UNUSED int scene_load_builder(SceneBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)
 {
@@ -13334,8 +13427,21 @@ static SCHEMA_UNUSED int scene_load_builder(SceneBuilder * builder, const uint8_
     directory=(TableNodeDirEntry *)table_allocate(builder->arena.allocator,(records+1)*(int64_t)sizeof(TableNodeDirEntry));
     if(directory==NULL) { report->malformed=1; return 0; }
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x4a9a31623ab5f213);
-    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_scene_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); return ok;
+    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
+    sink.region=NULL; sink.worker=&builder->main;
+    ok=schema_graphdemo_scene_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); table_release(builder->arena.allocator,nodes.blob_named); return ok;
+}
+/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
+static SCHEMA_UNUSED int schema_graphdemo_scene_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
+{
+    uint8_t * region; TableReport report; const Scene * loaded; int shared;
+    region=(uint8_t *)table_allocate(table_default_allocator(),total);
+    if(region==NULL) { return 1; }
+    memset(&report,0,sizeof(report));
+    loaded=scene_load(region,total,wire,bytes,&report);
+    table_release(table_default_allocator(),region);
+    if(loaded==NULL) { return 1; }
+    shared=report.blob_shared>0; return shared;
 }
 static SCHEMA_UNUSED int schema_graphdemo_scene_message_graph_save_(TableBitWriter * w,const Scene * root,TableAllocator allocator)
 {
@@ -13708,6 +13814,7 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_depot_load_layout_(const TableRead
     if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);
 }
+static SCHEMA_UNUSED int schema_graphdemo_depot_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t depot_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)
 {
     TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
@@ -13715,10 +13822,15 @@ static SCHEMA_UNUSED int64_t depot_load_measure_ex(const uint8_t * wire, int64_t
     if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_depot_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
+    if(total>=0 && schema_graphdemo_depot_wire_blob_shared_(wire,bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;
 }
 static SCHEMA_UNUSED int64_t depot_load_measure(const uint8_t * wire, int64_t bytes)
-{ return depot_load_measure_ex(wire,bytes,NULL,NULL); }
+{
+    TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
+    if (!table_wire_open(&reader,wire,bytes,&report)) { return -1; }
+    total=schema_graphdemo_depot_load_layout_(&reader,&data,&records); return total>=0 ? total : -1;
+}
 static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_(TableReader * reader, Depot * root, TableNodeMap * nodes, TableNodeDirEntry * directory, TableSink * sink)
 {
     TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id,k=0; int32_t unknown=0;
@@ -13774,10 +13886,10 @@ static SCHEMA_UNUSED const Depot * depot_load(uint8_t * region, int64_t region_b
     if(total<0 || region==NULL || region_bytes<total || ((uintptr_t)region & (kTableAlign-1))!=0) { report->malformed=1; return NULL; }
     memset(region,0,(size_t)total); directory=(TableNodeDirEntry *)(void *)(region+data);
     directory[0].offset=0; directory[0].type_id=UINT64_C(0x327fe6dc702553fd);
-    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL;
+    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_depot_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_depot_load_graph_(&reader,(Depot *)(void *)region,&nodes,directory,&sink)) { return NULL; }
-    return (const Depot *)(const void *)region;
+    if(!schema_graphdemo_depot_load_graph_(&reader,(Depot *)(void *)region,&nodes,directory,&sink)) { table_release(table_default_allocator(),nodes.blob_named); return NULL; }
+    table_release(table_default_allocator(),nodes.blob_named); return (const Depot *)(const void *)region;
 }
 static SCHEMA_UNUSED int depot_load_builder(DepotBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)
 {
@@ -13790,8 +13902,21 @@ static SCHEMA_UNUSED int depot_load_builder(DepotBuilder * builder, const uint8_
     directory=(TableNodeDirEntry *)table_allocate(builder->arena.allocator,(records+1)*(int64_t)sizeof(TableNodeDirEntry));
     if(directory==NULL) { report->malformed=1; return 0; }
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x327fe6dc702553fd);
-    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_depot_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); return ok;
+    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
+    sink.region=NULL; sink.worker=&builder->main;
+    ok=schema_graphdemo_depot_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); table_release(builder->arena.allocator,nodes.blob_named); return ok;
+}
+/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
+static SCHEMA_UNUSED int schema_graphdemo_depot_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
+{
+    uint8_t * region; TableReport report; const Depot * loaded; int shared;
+    region=(uint8_t *)table_allocate(table_default_allocator(),total);
+    if(region==NULL) { return 1; }
+    memset(&report,0,sizeof(report));
+    loaded=depot_load(region,total,wire,bytes,&report);
+    table_release(table_default_allocator(),region);
+    if(loaded==NULL) { return 1; }
+    shared=report.blob_shared>0; return shared;
 }
 static SCHEMA_UNUSED int schema_graphdemo_depot_message_graph_save_(TableBitWriter * w,const Depot * root,TableAllocator allocator)
 {
@@ -14140,6 +14265,7 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_album_load_layout_(const TableRead
     if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);
 }
+static SCHEMA_UNUSED int schema_graphdemo_album_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t album_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)
 {
     TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
@@ -14147,10 +14273,15 @@ static SCHEMA_UNUSED int64_t album_load_measure_ex(const uint8_t * wire, int64_t
     if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_album_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
+    if(total>=0 && schema_graphdemo_album_wire_blob_shared_(wire,bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;
 }
 static SCHEMA_UNUSED int64_t album_load_measure(const uint8_t * wire, int64_t bytes)
-{ return album_load_measure_ex(wire,bytes,NULL,NULL); }
+{
+    TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
+    if (!table_wire_open(&reader,wire,bytes,&report)) { return -1; }
+    total=schema_graphdemo_album_load_layout_(&reader,&data,&records); return total>=0 ? total : -1;
+}
 static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_(TableReader * reader, Album * root, TableNodeMap * nodes, TableNodeDirEntry * directory, TableSink * sink)
 {
     TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id,k=0; int32_t unknown=0;
@@ -14208,10 +14339,10 @@ static SCHEMA_UNUSED const Album * album_load(uint8_t * region, int64_t region_b
     if(total<0 || region==NULL || region_bytes<total || ((uintptr_t)region & (kTableAlign-1))!=0) { report->malformed=1; return NULL; }
     memset(region,0,(size_t)total); directory=(TableNodeDirEntry *)(void *)(region+data);
     directory[0].offset=0; directory[0].type_id=UINT64_C(0xd858c2cb7f1514cc);
-    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL;
+    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_album_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_album_load_graph_(&reader,(Album *)(void *)region,&nodes,directory,&sink)) { return NULL; }
-    return (const Album *)(const void *)region;
+    if(!schema_graphdemo_album_load_graph_(&reader,(Album *)(void *)region,&nodes,directory,&sink)) { table_release(table_default_allocator(),nodes.blob_named); return NULL; }
+    table_release(table_default_allocator(),nodes.blob_named); return (const Album *)(const void *)region;
 }
 static SCHEMA_UNUSED int album_load_builder(AlbumBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)
 {
@@ -14224,8 +14355,21 @@ static SCHEMA_UNUSED int album_load_builder(AlbumBuilder * builder, const uint8_
     directory=(TableNodeDirEntry *)table_allocate(builder->arena.allocator,(records+1)*(int64_t)sizeof(TableNodeDirEntry));
     if(directory==NULL) { report->malformed=1; return 0; }
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0xd858c2cb7f1514cc);
-    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_album_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); return ok;
+    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
+    sink.region=NULL; sink.worker=&builder->main;
+    ok=schema_graphdemo_album_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); table_release(builder->arena.allocator,nodes.blob_named); return ok;
+}
+/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
+static SCHEMA_UNUSED int schema_graphdemo_album_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
+{
+    uint8_t * region; TableReport report; const Album * loaded; int shared;
+    region=(uint8_t *)table_allocate(table_default_allocator(),total);
+    if(region==NULL) { return 1; }
+    memset(&report,0,sizeof(report));
+    loaded=album_load(region,total,wire,bytes,&report);
+    table_release(table_default_allocator(),region);
+    if(loaded==NULL) { return 1; }
+    shared=report.blob_shared>0; return shared;
 }
 static SCHEMA_UNUSED int schema_graphdemo_album_message_graph_save_(TableBitWriter * w,const Album * root,TableAllocator allocator)
 {

@@ -131,7 +131,14 @@ func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
 				t.Fatalf("%s: the oracle did not decode its own wire: %v", c.name, err)
 			}
 			again, err := tablewire.Encode(m, inst)
-			if err != nil || !bytes.Equal(again, c.wire) {
+			if rep.BlobShared > 0 {
+				// a blob two slots name is refused by every writer (docs/SPEC-TABLES.md
+				// §2.5): the oracle's tolerant read keeps the one node, and its encode
+				// refuses by name rather than reproducing the committed wire
+				if err == nil || !strings.Contains(err.Error(), "blob_shared") {
+					t.Fatalf("%s: the oracle's encode of a shared blob = %v, want the named refusal blob_shared", c.name, err)
+				}
+			} else if err != nil || !bytes.Equal(again, c.wire) {
 				t.Fatalf("%s: the oracle does not re-encode the committed wire (%v)", c.name, err)
 			}
 			if c.refuseText {

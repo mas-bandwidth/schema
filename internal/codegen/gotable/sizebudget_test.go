@@ -22,10 +22,12 @@ import (
 const (
 	// +9 lines from this card's DEPRECATED SLOT default image (§3.4), measured at sprint/schema-go ac4dc34.
 	// +4: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
-	goOneTableLineBudget = 9479
+	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
+	goOneTableLineBudget = 9501
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
-	goExamplesLineBudget = 65244
+	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
+	goExamplesLineBudget = 65266
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
