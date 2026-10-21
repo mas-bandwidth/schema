@@ -118,6 +118,7 @@ static uint8_t * slurp( const char * path, size_t * bytes )
    not a test it failed. The harness counts it and the matrix prints it beside
    what the leg did answer (test/conformance/README.md). */
 static int spill_absent( const char * dir, const char * name );
+static int spill_absent_reason( const char * dir, const char * name, const char * reason );
 
 /* no_text marks an instance the corpus carries on the WIRE only — past the text
    form's depth cap by the form's own rule (docs/SPEC-TABLES.md 16.7) — so no
@@ -236,6 +237,14 @@ static int surface_wire( const char * out )
         memset( &report, 0, sizeof( report ) );
         if ( !codec->load( value, wire, (int64_t) bytes, &report ) ) { free( wire ); return 1; }
         free( wire );
+        /* A BLOB NAMED FROM TWO SLOTS IS REFUSED BY EVERY WRITER (docs/SPEC-
+           TABLES.md §2.5): the tolerant load counted it, Measure answers -1,
+           and the case is a named absence, as the Go leg writes it. */
+        if ( report.blob_shared > 0 && codec->measure( value ) < 0 )
+        {
+            if ( !spill_absent_reason( out, f->field[1], "blob_shared" ) ) { return 1; }
+            continue;
+        }
         if ( !save_into( codec, value, out, f->field[1] ) ) { return 1; }
     }
     return 0;
@@ -243,9 +252,15 @@ static int surface_wire( const char * out )
 
 static int spill_absent( const char * dir, const char * name )
 {
+    return spill_absent_reason( dir, name, "" );
+}
+
+/* a NAMED absence: the marker holds the refusal's name, exactly its bytes */
+static int spill_absent_reason( const char * dir, const char * name, const char * reason )
+{
     char marker[1024];
     snprintf( marker, sizeof( marker ), "%s.absent", name );
-    return spill( dir, marker, "", 0 );
+    return spill( dir, marker, reason, strlen( reason ) );
 }
 
 static int surface_report( const char * out )

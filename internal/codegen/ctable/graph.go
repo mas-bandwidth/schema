@@ -155,8 +155,13 @@ static SCHEMA_UNUSED void table_number_dispose( TableNumbering * n )
     memset(n,0,sizeof(*n));
 }
 
-static SCHEMA_UNUSED int table_number_build( TableNumbering * n, const TableCtx * ctx,
-                                            const void * root, const TableNodeType * type, TableAllocator allocator )
+/* table_number_walk numbers a graph. keep_shared_blobs is the one switch:
+   every WRITER refuses a blob a second slot names (blob_shared, §2.5), and
+   Lock and Cook pack the graph as they find it, the one node numbered once
+   (§2.5, §7.6), so a tolerant read's value still cooks. */
+static SCHEMA_UNUSED int table_number_walk( TableNumbering * n, const TableCtx * ctx,
+                                           const void * root, const TableNodeType * type, TableAllocator allocator,
+                                           int keep_shared_blobs )
 {
     memset(n,0,sizeof(*n)); n->ctx = ctx; n->allocator=allocator;
     if ( root == NULL || !table_number_edge(n,root,type) ) { return 0; }
@@ -173,7 +178,7 @@ static SCHEMA_UNUSED int table_number_build( TableNumbering * n, const TableCtx 
             /* A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): every
                writer refuses a blob another slot already named, by name
                blob_shared. Other shared nodes are numbered once. */
-            if ( visit.type->blob ) { return 0; }
+            if ( visit.type->blob && !keep_shared_blobs ) { return 0; }
             continue;
         }
         if ( n->slot_capacity == 0 || n->count >= n->slot_capacity/2 )
@@ -210,6 +215,12 @@ static SCHEMA_UNUSED int table_number_build( TableNumbering * n, const TableCtx 
     }
     table_release(n->allocator,n->work); n->work = NULL; n->work_capacity = 0;
     return 1;
+}
+
+static SCHEMA_UNUSED int table_number_build( TableNumbering * n, const TableCtx * ctx,
+                                            const void * root, const TableNodeType * type, TableAllocator allocator )
+{
+    return table_number_walk(n,ctx,root,type,allocator,0);
 }
 
 
@@ -298,7 +309,7 @@ static SCHEMA_UNUSED uint8_t * table_graph_pack( const TableCtx * ctx, const voi
     int64_t total=0;
     uint8_t * packed=NULL;
     *bytes=0;
-    if ( !table_number_build(&n,ctx,root,type,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()) ) { table_number_dispose(&n); return NULL; }
+    if ( !table_number_walk(&n,ctx,root,type,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator(),1) ) { table_number_dispose(&n); return NULL; }
     for ( i=0; i<n.count; i++ )
     {
         int64_t size=table_node_storage(&n,n.entries[i].type,n.entries[i].value);
