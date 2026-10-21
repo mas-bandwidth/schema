@@ -468,12 +468,15 @@ function TableVariableWideClamp(s, bound) {
 
 // ---- skipping a field the reader cannot name (docs/SPEC-TABLES.md §3) ------
 
+// Kind 36, the timestamp, skips its eight bytes like any fixed-width kind
+// (§3: kinds 1-11, 18-29 and 36 skip their fixed width), so a field this
+// reader cannot name under it is counted, never malformed.
 function TableVariableSkip(r, kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: { if (r.at + 1 > r.end) return false; r.at += 1; return true; }
     case 3: case 7: case 21: case 26: { if (r.at + 2 > r.end) return false; r.at += 2; return true; }
     case 4: case 8: case 10: case 22: case 27: { if (r.at + 4 > r.end) return false; r.at += 4; return true; }
-    case 5: case 9: case 11: case 23: case 28: { if (r.at + 8 > r.end) return false; r.at += 8; return true; }
+    case 5: case 9: case 11: case 23: case 28: case 36: { if (r.at + 8 > r.end) return false; r.at += 8; return true; }
     case 18: case 19: case 24: case 29: { if (r.at + 16 > r.end) return false; r.at += 16; return true; }
     case 12: case 13: case 14: case 16: case 31: case 32: case 33: {
       const L = r.leb(); if (r.bad) return false; if (r.at + L > r.end) return false; r.at += L; return true;
