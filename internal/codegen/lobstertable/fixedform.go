@@ -241,8 +241,8 @@ func putElement(g *lobster.Gen, f *ir.Field, expr, base string, off, stride int6
 		at = fmt.Sprintf("%s + %d + %s * %d", base, off, idx, stride)
 	}
 	t := f.Type
-	switch {
-	case t.Kind == ir.TNamed:
+	switch t.Kind {
+	case ir.TNamed:
 		switch r := t.Ref.(type) {
 		case *ir.Struct:
 			g.Pf("%sb = %sPut(b, %s, %s)\n", ind, fixedName(r), at, expr)
@@ -258,16 +258,16 @@ func putElement(g *lobster.Gen, f *ir.Field, expr, base string, off, stride int6
 			g.Pf("%sb = write_int64_le(b, %s, %s)\n", ind, at, expr)
 			return
 		}
-	case t.Kind == ir.TBool:
+	case ir.TBool:
 		g.Pf("%sb = write_int8_le(b, %s, if %s: 1 else: 0)\n", ind, at, expr)
 		return
-	case t.Kind == ir.TFloat32:
+	case ir.TFloat32:
 		g.Pf("%sb = write_int32_le(b, %s, schema_rt.fixed_f32bits(%s))\n", ind, at, expr)
 		return
-	case t.Kind == ir.TFloat64:
+	case ir.TFloat64:
 		g.Pf("%sb = write_float64_le(b, %s, %s)\n", ind, at, expr)
 		return
-	case t.Kind == ir.TString || t.Kind == ir.TBytes || t.Kind == ir.TWString:
+	case ir.TString, ir.TBytes, ir.TWString:
 		unit := int64(1)
 		if t.Kind == ir.TWString {
 			unit = 2
@@ -276,7 +276,7 @@ func putElement(g *lobster.Gen, f *ir.Field, expr, base string, off, stride int6
 		g.Pf("%sb = write_int32_le(b, %s, %s)\n", ind, at, length)
 		g.Pf("%sfor(%s * %d) j_%s_%d: b = write_int8_le(b, %s + 4 + j_%s_%d, read_uint8_le(%s, j_%s_%d))\n", ind, length, unit, ir.GoExportName(f.Name), off, at, ir.GoExportName(f.Name), off, expr, ir.GoExportName(f.Name), off)
 		return
-	case t.Kind == ir.TInt || t.Kind == ir.TFixed || t.Kind == ir.TBits:
+	case ir.TInt, ir.TFixed, ir.TBits:
 		if t.Kind == ir.TBits {
 			w := 8
 			if t.Width <= 32 {
@@ -372,8 +372,8 @@ func getElementIndented(g *lobster.Gen, f *ir.Field, expr, base string, off, str
 		at = fmt.Sprintf("%s + %d + %s * %d", base, off, idx, stride)
 	}
 	t := f.Type
-	switch {
-	case t.Kind == ir.TNamed:
+	switch t.Kind {
+	case ir.TNamed:
 		switch r := t.Ref.(type) {
 		case *ir.Struct:
 			g.Pf("%s%s = %sGet(data, %s)\n", ind, expr, fixedName(r), at)
@@ -389,16 +389,16 @@ func getElementIndented(g *lobster.Gen, f *ir.Field, expr, base string, off, str
 			g.Pf("%s%s = read_uint64_le(data, %s)\n", ind, expr, at)
 			return
 		}
-	case t.Kind == ir.TBool:
+	case ir.TBool:
 		g.Pf("%s%s = read_uint8_le(data, %s) != 0\n", ind, expr, at)
 		return
-	case t.Kind == ir.TFloat32:
+	case ir.TFloat32:
 		g.Pf("%s%s = schema_rt.fixed_f32frombits(read_uint32_le(data, %s))\n", ind, expr, at)
 		return
-	case t.Kind == ir.TFloat64:
+	case ir.TFloat64:
 		g.Pf("%s%s = read_float64_le(data, %s)\n", ind, expr, at)
 		return
-	case t.Kind == ir.TString || t.Kind == ir.TBytes || t.Kind == ir.TWString:
+	case ir.TString, ir.TBytes, ir.TWString:
 		unit := int64(1)
 		if t.Kind == ir.TWString {
 			unit = 2
@@ -406,11 +406,11 @@ func getElementIndented(g *lobster.Gen, f *ir.Field, expr, base string, off, str
 		length := slotExpr(expr, f, "Length")
 		tmp := fmt.Sprintf("fbuf_%s_%d", ir.GoExportName(f.Name), off)
 		g.Pf("%s%s = read_int32_le(data, %s)\n", ind, length, at)
-		g.Pf("%svar %s = schema_rt.zeros(%d)\n", ind, tmp, unit*int64(t.Size))
+		g.Pf("%svar %s = schema_rt.zeros(%d)\n", ind, tmp, unit*t.Size)
 		g.Pf("%sfor(%s * %d) j_%s_%d: %s = write_int8_le(%s, j_%s_%d, read_uint8_le(data, %s + 4 + j_%s_%d))\n", ind, length, unit, ir.GoExportName(f.Name), off, tmp, tmp, ir.GoExportName(f.Name), off, at, ir.GoExportName(f.Name), off)
 		g.Pf("%s%s = %s\n", ind, expr, tmp)
 		return
-	case t.Kind == ir.TInt || t.Kind == ir.TFixed || t.Kind == ir.TBits:
+	case ir.TInt, ir.TFixed, ir.TBits:
 		if t.Kind == ir.TBits {
 			w := 8
 			if t.Width <= 32 {

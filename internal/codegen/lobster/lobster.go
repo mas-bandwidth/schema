@@ -401,7 +401,7 @@ func (g *Gen) emitEnum(d *ir.Enum) {
 	g.Pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.Pf("// %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
 	g.Pf("// a Lobster enum; a | max = ... headroom value is %s(v), a value the enum does not name\n", d.Name)
-	g.emitEnumDecl(d.Name, d.Variants, d.VariantDocs, int64(d.Max))
+	g.emitEnumDecl(d.Name, d.Variants, d.VariantDocs, d.Max)
 }
 
 func (g *Gen) emitEnumDecl(name string, variants []string, docs []string, max int64) {

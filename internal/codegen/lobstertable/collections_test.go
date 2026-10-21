@@ -32,8 +32,7 @@ func countCollections(u *ir.Unit) collectionCounts {
 	seen := map[string]bool{}
 	var visitStruct func(*ir.Struct)
 	var visitUnion func(*ir.Union)
-	var visitField func(*ir.Field)
-	visitField = func(f *ir.Field) {
+	var visitField func(*ir.Field) = func(f *ir.Field) {
 		if f.IsMap() {
 			c.maps++
 			if f.MapEntry != nil {

@@ -250,7 +250,7 @@ func TestLobsterNumberModel(t *testing.T) {
 	}
 	words := []uint64{0, 1, 0x7fffffffffffffff, 0x8000000000000000, 0xffffffffffffffff, 0x0123456789abcdef}
 	counts := []int{0, 1, 7, 63, 64, 65}
-	probes := []float64{0.1, 1 + math.Ldexp(1, -24), 1 + 3*math.Ldexp(1, -24), 3.5e38, math.Inf(-1), -0.0}
+	probes := []float64{0.1, 1 + math.Ldexp(1, -24), 1 + 3*math.Ldexp(1, -24), 3.5e38, math.Inf(-1), math.Copysign(0, -1)}
 	var main strings.Builder
 	main.WriteString("import .Tuning\n")
 	var want []string

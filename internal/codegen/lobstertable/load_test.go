@@ -527,11 +527,12 @@ func TestLobsterTableLoadMatchesTheReports(t *testing.T) {
 			line, dump := res.lob[2*i], res.lob[2*i+1]
 			if row.kind == "report" {
 				want, ok := expect[row.name]
-				if !ok {
+				switch {
+				case !ok:
 					t.Errorf("report %s: reports.txt names no such case", row.name)
-				} else if line != want {
+				case line != want:
 					t.Errorf("report %s (%s %s):\nlobster: %s\nwant:    %s", row.name, row.unit, row.root, line, want)
-				} else {
+				default:
 					compared++
 				}
 			} else {

@@ -34,13 +34,14 @@ func emitTextListFacts(g *lobster.Gen) error {
 	for _, t := range g.File.Tables {
 		for i, f := range t.Fields {
 			total, of, unboundedValue, unboundedKey := int64(0), "", false, false
-			if f.IsTextList() {
+			switch {
+			case f.IsTextList():
 				total = f.TextTotal
 				of = f.TextListElem().MapEntryOf
 				unboundedValue = ir.TextListUnbounded(f)
-			} else if f.IsMap() && ir.MapKeyUnbounded(f) {
+			case f.IsMap() && ir.MapKeyUnbounded(f):
 				unboundedKey = true
-			} else {
+			default:
 				continue
 			}
 			facts = append(facts, "let "+factName(t.Name, f.Name)+" = "+rt+".text_list("+t.Name+"Descriptor.fields["+itoa(i)+"], "+

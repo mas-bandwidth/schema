@@ -319,7 +319,7 @@ func emitWriteScalar(g *Gen, c *writeCtx, val, length string, f *ir.Field, inden
 			length = val + "Length"
 		}
 		g.Pf("%sif %s < 0 or %s > %d: return false // the length is in [0, %d] (SPEC §4.7)\n", indent, length, length, size, size)
-		emitLength(g, c, length, big.NewInt(int64(size)), indent)
+		emitLength(g, c, length, big.NewInt(size), indent)
 		g.Pf("%sif not s.serialize_align(): return false // bytes align first (SPEC §4.7)\n", indent)
 		g.Pf("%ss.pack_bytes(%s, 0, %s) // the used bytes, the port's byte copier (SPEC §4.7)\n", indent, val, length)
 		g.Pf("%sif not s.ok(): return false\n", indent)
@@ -329,14 +329,14 @@ func emitWriteScalar(g *Gen, c *writeCtx, val, length string, f *ir.Field, inden
 			length = val + "Length"
 		}
 		g.Pf("%sif %s < 0 or %s > %d: return false // the code unit count is in [0, %d] (SPEC §4.12)\n", indent, length, length, size, size)
-		emitLength(g, c, length, big.NewInt(int64(size)), indent)
+		emitLength(g, c, length, big.NewInt(size), indent)
 		g.Pf("%sfor(%s) _u: // UTF-16 code unit (SPEC §4.12)\n", indent, length)
 		emitCall(g, c, indent+"    ", fmt.Sprintf("s.serialize_bits(read_uint16_le(%s, _u * 2), 32)", val), "")
 	case ir.TNamed:
 		switch ref := t.Ref.(type) {
 		case *ir.Enum:
 			g.Pf("%sif %s < 0 or %s > %d: return false // the enum value (SPEC §4.2)\n", indent, val, val, ref.Max)
-			bits := ir.BitsRequired(big.NewInt(0), big.NewInt(int64(ref.Max)))
+			bits := ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max))
 			if bits == 0 {
 				return
 			}
@@ -497,7 +497,7 @@ func emitWriteUnion(g *Gen, un *ir.Union) {
 	g.Pf("// union %s (SPEC §4.8: None = 0, then each declared arm)\n", un.Name)
 	g.Pf("def Write%s(s:serialize_write_stream, v:%s) -> bool:\n", un.Name, un.Name)
 	g.Pf("    if v.Type < 0 or v.Type > %d: return false // the tag validates BEFORE it rides (SPEC §4.8)\n", un.Max)
-	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(int64(un.Max)))
+	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(un.Max))
 	if bits > 32 {
 		emitCall(g, c, "    ", fmt.Sprintf("s.serialize_bits64(v.Type, %d)", bits), " // the union tag (SPEC §4.8)")
 	} else if bits > 0 {

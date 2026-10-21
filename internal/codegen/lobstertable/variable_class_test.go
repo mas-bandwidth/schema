@@ -165,11 +165,12 @@ func TestLobsterVariableClass(t *testing.T) {
 			}
 			if row.kind == "report" {
 				want, ok := expect[row.name]
-				if !ok {
+				switch {
+				case !ok:
 					t.Errorf("report %s: reports.txt names no such case", row.name)
-				} else if line != want {
+				case line != want:
 					t.Errorf("report %s: lobster %s, reports.txt %s", row.name, line, want)
-				} else {
+				default:
 					reports++
 				}
 			}
