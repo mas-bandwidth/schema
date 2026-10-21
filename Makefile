@@ -457,11 +457,11 @@ tables-zero-cost-negative-control: build/tables-generated/.stamp
 # compiles and runs a probe of the reference emitter.
 .PHONY: tables-accessor-descriptor-agreement tables-accessor-negative-control tables-slot-negative-control
 tables-accessor-descriptor-agreement:
-	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorAgreement$$' -count=1
+	SCHEMA_SLOW=1 go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorAgreement$$' -count=1
 tables-accessor-negative-control:
-	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorScalarNegativeControl$$' -count=1
+	SCHEMA_SLOW=1 go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorScalarNegativeControl$$' -count=1
 tables-slot-negative-control:
-	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorSlotNegativeControl$$' -count=1
+	SCHEMA_SLOW=1 go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorSlotNegativeControl$$' -count=1
 
 .PHONY: tables-json-walk
 tables-json-walk: build/tables-generated/.stamp
@@ -5094,7 +5094,7 @@ tables-cpp-names-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpp-names-nc/cpptable.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/cpp-names-nc/overlay.json
-	@if go test -count=1 -overlay build/cpp-names-nc/overlay.json -run TestCppEmittedRuntimeNamesAreClaimedOrRecorded \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay build/cpp-names-nc/overlay.json -run TestCppEmittedRuntimeNamesAreClaimedOrRecorded \
 			./compiler > build/cpp-names-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the name-claim test stayed green with an unregistered runtime struct planted"; \
 		cat build/cpp-names-nc/log; exit 1; \
