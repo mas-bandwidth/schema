@@ -257,12 +257,15 @@ function TableVariableWideClamp(s, bound) {
 
 // ---- skipping a field the reader cannot name (docs/SPEC-TABLES.md §3) ------
 
+// Kind 36, the timestamp, skips its eight bytes like any fixed-width kind
+// (§3: kinds 1-11, 18-29 and 36 skip their fixed width), so a field this
+// reader cannot name under it is counted, never malformed.
 function TableVariableSkip(r, kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: { if (r.at + 1 > r.end) return false; r.at += 1; return true; }
     case 3: case 7: case 21: case 26: { if (r.at + 2 > r.end) return false; r.at += 2; return true; }
     case 4: case 8: case 10: case 22: case 27: { if (r.at + 4 > r.end) return false; r.at += 4; return true; }
-    case 5: case 9: case 11: case 23: case 28: { if (r.at + 8 > r.end) return false; r.at += 8; return true; }
+    case 5: case 9: case 11: case 23: case 28: case 36: { if (r.at + 8 > r.end) return false; r.at += 8; return true; }
     case 18: case 19: case 24: case 29: { if (r.at + 16 > r.end) return false; r.at += 16; return true; }
     case 12: case 13: case 14: case 16: case 31: case 32: case 33: {
       const L = r.leb(); if (r.bad) return false; if (r.at + L > r.end) return false; r.at += L; return true;
@@ -389,7 +392,7 @@ function tableRetainWidth(kind) {
     case 1: case 2: case 6: case 20: case 25: return 1;
     case 3: case 7: case 21: case 26: return 2;
     case 4: case 8: case 10: case 22: case 27: return 4;
-    case 5: case 9: case 11: case 23: case 28: return 8;
+    case 5: case 9: case 11: case 23: case 28: case 36: return 8;
     case 18: case 19: case 24: case 29: return 16;
     default: return 0;
   }
@@ -923,7 +926,11 @@ function TableVariableFieldEdges(fd, v, out) {
   }
 }
 
-function TableVariableNumber(c, root) {
+// refuseShared is the WRITER'S rule (§2.5): a blob object a second slot
+// names is blob_shared, and Save and Measure refuse it (null, -1) rather than
+// write the edge or a copy per slot. A cook packs the graph as it finds it and
+// passes false.
+function TableVariableNumber(c, root, refuseShared, why) {
   const nodes = new TableVariableNodes();
   nodes.index.set(root, 1);
   const open = new Set([root]);
@@ -932,7 +939,13 @@ function TableVariableNumber(c, root) {
     const top = stack[stack.length - 1];
     if (top.i >= top.edges.length) { open.delete(top.v); stack.pop(); continue; }
     const e = top.edges[top.i++];
-    if (e.blob) { TableVariableBlobNode(nodes, e.holder, e.fd, e.val); continue; }
+    if (e.blob) {
+      if (!TableVariableBlobNode(nodes, e.holder, e.fd, e.val) && refuseShared) {
+        if (why) { why.reason = "blob_shared"; }
+        return null;
+      }
+      continue;
+    }
     if (open.has(e.val)) { return null; }
     if (nodes.index.has(e.val)) { continue; }
     nodes.list.push({ typeId: e.c.typeId, codec: e.c, v: e.val });
@@ -952,11 +965,13 @@ function TableVariableBlobNode(nodes, holder, fd, val) {
       nodes.list.push({ typeId, body: TableVariableUtf8Encode(val) });
       m.set(fd.n, nodes.list.length + 1);
     }
-    return;
+    return true;
   }
-  if (nodes.index.has(val)) { return; }
+  // a blob OBJECT already numbered is one blob a second slot names: shared
+  if (nodes.index.has(val)) { return false; }
   nodes.list.push({ typeId, body: fd.s === "sblob" ? TableVariableUtf8Encode(String(val)) : val });
   nodes.index.set(val, nodes.list.length + 1);
+  return true;
 }
 
 // ---- THE SAVE WALK (docs/SPEC-TABLES.md §3; internal/tablewire/encode.go) ---
@@ -1164,19 +1179,31 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
 // THE SAVE (docs/SPEC-TABLES.md §3, §3.1): the form byte, the root's fields,
 // the retained tail, the node table LAST in the root body under the reserved
 // id at kind 12, the terminator, then the id table and its count. A data cycle
-// or a value with no wire identity refuses the save (null).
-function TableVariableSave(c, v, retain) {
+// or a value with no wire identity refuses the save (null), and so does one
+// blob two slots name, blob_shared (§2.5): every writer refuses it.
+function TableVariableSave(c, v, retain, why) {
   const outer = TableVariableEntryCache;
   TableVariableEntryCache = new Map();
   try {
-    return TableVariableSaveWalk(c, v, retain);
+    return TableVariableSaveWalk(c, v, retain, why);
   } finally {
     TableVariableEntryCache = outer;
   }
 }
 
-function TableVariableSaveWalk(c, v, retain) {
-  const nodes = TableVariableNumber(c, v);
+// THE MEASURE'S REASON TWIN (Go's MeasureReason): [size, null] for a value
+// the wire carries, [-1, reason] for one it refuses — blob_shared for a blob
+// two slots name (§2.5), invalid_value for any other value outside the
+// writer's contract (a data cycle, §3.1; an enum value no variant names, §5).
+function TableVariableMeasureReason(c, v) {
+  const why = { reason: null };
+  const b = TableVariableSave(c, v, null, why);
+  if (b !== null) { return [b.length, null]; }
+  return [-1, why.reason === null ? "invalid_value" : why.reason];
+}
+
+function TableVariableSaveWalk(c, v, retain, why) {
+  const nodes = TableVariableNumber(c, v, true, why);
   if (nodes === null) { return null; }
   const w = new TableVariableWriter();
   w.u8(TableVariableForm);
@@ -4340,7 +4367,7 @@ export const TableCookWrite = (() => {
     const codec = TableVariableCodecs[name];
     const layout = layouts[name];
     if (codec === undefined || layout === undefined) { return { reason: "invalid_value" }; }
-    const nodes = TableVariableNumber(codec, value);
+    const nodes = TableVariableNumber(codec, value, false);
     if (nodes === null) { return { reason: "data_cycle" }; }
     const entries = [{ typeId: layout.typeId, v: value, blob: false, layout, offset: 0 }];
     for (const n of nodes.list) {
@@ -4432,6 +4459,10 @@ export function FixedTableCookFrom(value, buffer, order) {
 export function FixedTableMeasure(v) {
   const b = TableVariableSave(TableVariableCodecs.FixedTable, v, null);
   return b === null ? -1 : b.length;
+}
+
+export function FixedTableMeasureReason(v) {
+  return TableVariableMeasureReason(TableVariableCodecs.FixedTable, v);
 }
 
 export function FixedTableSave(v) {
