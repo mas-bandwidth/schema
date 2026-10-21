@@ -8758,15 +8758,40 @@ static void test_blob_json()
         bool ok = blobdemo::CatalogFromJsonTolerant( b, input.data(), (int64_t) input.size(), &r );
         CHECK( ok && !r.malformed && r.kind_mismatch == 1 );
     }
-    // Invalid bytes, including the alphabet string's NUL terminator,
-    // default the field and count one kind mismatch.
-    for ( unsigned char c : { (unsigned char) 0, (unsigned char) '!', (unsigned char) 0x80, (unsigned char) 0xff } )
+    // A byte that is valid JSON and no base64 symbol defaults the field and
+    // counts one kind mismatch.
+    for ( unsigned char c : { (unsigned char) '!', (unsigned char) '-' } )
     {
         std::string input = std::string( "{\"thumb\":\"QQ" ) + (char) c + "AA\"}";
         blobdemo::CatalogBuilder b;
         blobdemo::TableReport r;
         bool ok = blobdemo::CatalogFromJsonTolerant( b, input.data(), (int64_t) input.size(), &r );
         CHECK( ok && !r.malformed && r.kind_mismatch == 1 );
+    }
+    // THE JSON LAYER DECIDES FIRST (docs/SPEC-TABLES.md §16.2): a raw control
+    // byte (the NUL included), a backslash that begins no escape and a lone
+    // byte at or above 0x80 (string_not_utf8, §16.3) are not a JSON string,
+    // so the read is malformed rather than a kind mismatch.
+    for ( unsigned char c : { (unsigned char) 0, (unsigned char) 0x1f, (unsigned char) '\\', (unsigned char) 0x80, (unsigned char) 0xff } )
+    {
+        std::string input = std::string( "{\"thumb\":\"QQ" ) + (char) c + "AA\"}";
+        blobdemo::CatalogBuilder b;
+        blobdemo::TableReport r;
+        bool ok = blobdemo::CatalogFromJsonTolerant( b, input.data(), (int64_t) input.size(), &r );
+        CHECK( !ok || r.malformed );
+    }
+    // An escape is undone before the alphabet sees it: \/ is '/', a symbol,
+    // and \u0041 is 'A'.
+    for ( const char * escaped : { "\\/w==", "\\u0041Q==" } )
+    {
+        std::string input = std::string( "{\"thumb\":\"" ) + escaped + "\"}";
+        blobdemo::CatalogBuilder b;
+        blobdemo::TableReport r;
+        CHECK( blobdemo::CatalogFromJsonTolerant( b, input.data(), (int64_t) input.size(), &r ) );
+        CHECK( r.kind_mismatch == 0 && !r.malformed );
+        blobdemo::TableArenaCtx ctx = { &b.arena };
+        blobdemo::TableBytesView bytes = blobdemo::TableBytesAt( ctx, b.GetRoot()->thumb );
+        CHECK( bytes.data != NULL && bytes.length == 1 );
     }
 }
 
