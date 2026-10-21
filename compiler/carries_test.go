@@ -7,12 +7,15 @@ import (
 )
 
 // nonGoCarriers lists the constructs the non-Go targets carry: C, C# and C++
-// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3), and
-// every other target carries none at this stage.
+// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3), Luau
+// carries every construct but integrity, and every other target carries none
+// at this stage.
 var nonGoCarriers = map[string][]string{
 	"c":   {carryOptionalVariableClosure},
 	"cs":  {carryOptionalVariableClosure},
 	"cpp": {carryOptionalVariableClosure},
+	// luau is registered under -tags schema_leg_luau (carries_luau.go)
+	"luau": {carryTimestamp, carryRequired, carryForms, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
 }
 
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {

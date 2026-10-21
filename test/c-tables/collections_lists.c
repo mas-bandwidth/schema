@@ -2,7 +2,7 @@
 #include "HoldersTable.h"
 #include "MigrateTable.h"
 #include "ReportTable.h"
-#include "SaveTable.h"
+#include "SaveGameTable.h"
 #include "SharedTable.h"
 
 COLLECTION_CASE(Save,save,list_tables,168)

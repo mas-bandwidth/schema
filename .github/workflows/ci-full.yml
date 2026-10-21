@@ -763,6 +763,14 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
+      # THE LUAU PIN, installed exactly as make/luau.mk's dist-luau does: the
+      # same release archive, the same sha256 refused before it is unpacked,
+      # and the same dist/luau-<version>/ layout the leg's LUAU default names.
+      # The row's field is the version, so a bump moves one file.
+      - name: install the Luau pin
+        if: matrix.luau != ''
+        run: make dist-luau LUAU_VERSION=${{ matrix.luau }}
+
       # One step per toolchain, each keyed on the row's field for it. The
       # version is the leg's to name, and it is the same pin the leg's
       # make/<lang>.mk documents for the repo-local dist/.

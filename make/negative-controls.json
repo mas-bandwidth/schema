@@ -77,6 +77,7 @@
         "conformance-negative-control-go-walk",
         "tables-go-wire-fuzz-negative-control",
         "conformance-negative-control-reference-surface",
+        "conformance-negative-control-luau",
         "conformance-go-rows-negative-control"
       ]
     },
@@ -575,7 +576,8 @@
       "targets": [
         "tables-message-form-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control",
-        "schema-go-generated-golangci-lint-gate-negative-control-ratchet"
+        "schema-go-generated-golangci-lint-gate-negative-control-ratchet",
+        "luau-nightly-fuzz-negative-control"
       ]
     },
     {
@@ -618,6 +620,14 @@
       "why": "the compiled Go unit registry and packet descriptor boundary controls",
       "targets": [
         "tables-go-view-negative-controls"
+      ]
+    },
+    {
+      "name": "luau-analyze",
+      "when": "pull-request",
+      "why": "the Luau lens's one planted strict type error in a scratch copy of the generated output, which luau-analyze must reject and name. Measured 0.4 s over 1 control on the Linux bench, beside the same gate's corpus pass.",
+      "targets": [
+        "schema-luau-generated-analyze-strict-gate-negative-control"
       ]
     }
   ],
