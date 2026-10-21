@@ -713,7 +713,7 @@ public static partial class TableWire
             case 1: case 2: case 6: case 20: case 25: return 1;
             case 3: case 7: case 21: case 26: return 2;
             case 4: case 8: case 10: case 22: case 27: return 4;
-            case 5: case 9: case 11: case 23: case 28: return 8;
+            case 5: case 9: case 11: case 23: case 28: case 36: return 8;
             case 18: case 19: case 24: case 29: return 16;
             default: return 0;
         }

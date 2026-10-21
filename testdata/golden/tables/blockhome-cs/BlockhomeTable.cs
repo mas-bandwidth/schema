@@ -37,6 +37,10 @@ namespace Blockhome
         // zero, and <Name>FromJson is what raises it.
         public int Duplicate;
         public int Widened;
+        // blob_shared counts each extra slot that names a blob record another slot
+        // already names (docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
+        // node, and every writer refuses the value by that name.
+        public int BlobShared;
         public int Retained, RetainLost;
         public bool Refused;
         public string Reason;
@@ -3097,10 +3101,15 @@ namespace Blockhome
                 public object Root;
                 public TableTypeInfo RootType;
                 public bool Good = true;
+                // A blob is owned by ONE slot (docs/SPEC-TABLES.md §2.5): every writer
+                // refuses a blob a second slot names (blob_shared), so the walk refuses
+                // it unless the caller packs the graph as it finds it (Lock, Cook).
+                public bool BlobSharedPacks;
                 public int PayloadOffset, PayloadLength;
                 public System.Collections.Generic.List<Node> Nodes = new System.Collections.Generic.List<Node>();
                 public System.Collections.Generic.Dictionary<object, ulong> Indices = new System.Collections.Generic.Dictionary<object, ulong>(System.Collections.Generic.ReferenceEqualityComparer.Instance);
                 public System.Collections.Generic.HashSet<object> Open = new System.Collections.Generic.HashSet<object>(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+                System.Collections.Generic.HashSet<ulong> blobsNamed;
                 public ulong Index(object o) { return o == null ? 0 : Indices[o]; }
                 public object Resolve(ulong index, TableFieldInfo f, TableReport report)
                 {
@@ -3114,6 +3123,11 @@ namespace Blockhome
                     Node node = Nodes[(int)(index - 2)];
                     if (node.Value == null) { return null; }
                     if (node.TypeId != f.PointerTypeId) { report.KindMismatch++; return null; }
+                    if (f.BlobKind != 0)
+                    {
+                        blobsNamed ??= new System.Collections.Generic.HashSet<ulong>();
+                        if (!blobsNamed.Add(index)) { report.BlobShared++; }
+                    }
                     return node.Value;
                 }
                 public bool Visit(object value, TableTypeInfo type)
@@ -3144,7 +3158,11 @@ namespace Blockhome
                             Uses.TryGetValue(child, out int uses); Uses[child] = uses + 1;
                             if (Open.Contains(child)) { return false; }
                             if (Indices.TryGetValue(child, out ulong old))
-                            { if (old >= 2 && Nodes[(int)old - 2].TypeId != f.PointerTypeId) { return false; } continue; }
+                            {
+                                if (f.BlobKind != 0 && !BlobSharedPacks) { return false; }
+                                if (old >= 2 && Nodes[(int)old - 2].TypeId != f.PointerTypeId) { return false; }
+                                continue;
+                            }
                             Indices.Add(child, (ulong)Nodes.Count + 2);
                             Nodes.Add(new Node { Value = child, Type = f.Table, TypeId = f.PointerTypeId, BlobKind = f.BlobKind });
                             if (f.BlobKind == 0)
@@ -3158,9 +3176,9 @@ namespace Blockhome
                     return true;
                 }
             }
-            internal static Graph Number(object value, TableTypeInfo type)
+            internal static Graph Number(object value, TableTypeInfo type, bool blobSharedPacks = false)
             {
-                Graph graph = new Graph { Root = value, RootType = type };
+                Graph graph = new Graph { Root = value, RootType = type, BlobSharedPacks = blobSharedPacks };
                 graph.Indices.Add(value, 1); graph.Open.Add(value);
                 if (!graph.Visit(value, type)) { return null; }
                 graph.Open.Clear(); return graph;
@@ -3486,7 +3504,7 @@ namespace Blockhome
 
             static int BitCount(ulong n) { return n == 0 ? 0 : System.Numerics.BitOperations.Log2(n) + 1; }
             static bool Reserved(ulong id) { return id >= ulong.MaxValue - 2; }
-            static bool MessageKind(byte kind) { return kind <= 33; }
+            static bool MessageKind(byte kind) { return kind <= 33 || kind == 36; }
             static bool MessageNumber(byte kind) { return kind >= 2 && kind <= 9 || kind >= 18 && kind <= 29; }
             static bool Signed(byte kind) { return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24; }
             static int ValueBits(byte kind, TableMessageShape s)
@@ -4373,7 +4391,7 @@ namespace Blockhome
             public static long Cook(object value, TableTypeInfo type, Span<byte> bytes, TableByteOrder order, bool measure)
             {
                 if (value == null || order != TableByteOrder.Little && order != TableByteOrder.Big) { return -1; }
-                Graph graph = type.Variable ? Number(value, type) : null;
+                Graph graph = type.Variable ? Number(value, type, true) : null;
                 if (type.Variable && graph == null) { return -1; }
                 long data = NativePlace(value, type, graph, out int alignment);
                 if (data < 0) { return -1; }
@@ -4414,7 +4432,7 @@ namespace Blockhome
                     case 1: case 2: case 6: case 20: case 25: return 1;
                     case 3: case 7: case 21: case 26: return 2;
                     case 4: case 8: case 10: case 22: case 27: return 4;
-                    case 5: case 9: case 11: case 23: case 28: return 8;
+                    case 5: case 9: case 11: case 23: case 28: case 36: return 8;
                     case 18: case 19: case 24: case 29: return 16;
                     default: return 0;
                 }
