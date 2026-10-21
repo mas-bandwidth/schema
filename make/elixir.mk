@@ -306,8 +306,8 @@ tables-elixir-fuzz: build/conformance/manifest.txt
 # this one removes the whole layer — and that measurement is half the argument
 # for the SEED knob above.
 CONFORMANCE_NEGATIVE_ELIXIR_FUZZ := build/elixir-fuzz-negative
-ELIXIR_FUZZ_SED := -e 's|rows > bytes - offset_of -> {:halt, :error}|true -> {:cont, used}|' \
-	-e 's|if padding > bytes - used do|if false do|'
+ELIXIR_FUZZ_SED := -e 's|rows > bytes - offset_of -> {:halt, :bad_layout}|true -> {:cont, used}|' \
+	-e 's|padding > bytes - used -> {:error, :truncated}|false -> {:error, :truncated}|'
 
 .PHONY: tables-elixir-fuzz-negative-control
 tables-elixir-fuzz-negative-control: build/conformance/manifest.txt
@@ -333,7 +333,7 @@ tables-elixir-block-lead: build/conformance/manifest.txt
 
 # and its control, on the EMITTER for the fuzz control's reason
 CONFORMANCE_NEGATIVE_ELIXIR_LEAD := build/elixir-lead-negative
-ELIXIR_LEAD_SED := -e 's|or rem(lead, B.align()) != 0 do|or lead < 0 do|'
+ELIXIR_LEAD_SED := -e 's|rem(lead, B.align()) != 0 -> {:error, :unaligned_base}|lead < 0 -> {:error, :unaligned_base}|'
 
 .PHONY: tables-elixir-block-lead-negative-control
 tables-elixir-block-lead-negative-control: build/conformance/manifest.txt
