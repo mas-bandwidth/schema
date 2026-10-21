@@ -461,11 +461,11 @@ func runWireFuzzDifferential(t *testing.T, edit func(name string, src []byte) []
 					fuzzSeed, si, s.name, j, r.unit, r.root, builder, len(data), data)
 				got, err := leg.ask(s.root, data)
 				if err != nil {
-					return mutants, fmt.Errorf("%s\n  the driver died on the mutant: wv\n%s", where, err, leg.stderr.String())
+					return mutants, fmt.Errorf("%s\n  the driver died on the mutant: %w\n%s", where, err, leg.stderr.String())
 				}
 				want, err := fuzzEngine(m, def, variable, data)
 				if err != nil {
-					return mutants, fmt.Errorf("%s\n  wv", where, err)
+					return mutants, fmt.Errorf("%s\n  %w", where, err)
 				}
 				if v := fuzzVerdict(got, want); v != "" {
 					if dump := os.Getenv("SCHEMA_SQUIRREL_FUZZ_FAILED"); dump != "" {
