@@ -2,6 +2,7 @@ package goosetable
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -108,9 +109,7 @@ func TestGooseRegistryCompiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt[RuntimeModule+".goose"] = tables
-	for name, data := range goose.Runtime() {
-		rt[name] = data
-	}
+	maps.Copy(rt, goose.Runtime())
 	dir := t.TempDir()
 	var imports strings.Builder
 	for name, data := range rt {

@@ -17,6 +17,7 @@ package goosetable
 import (
 	"embed"
 	"fmt"
+	"maps"
 	"math/big"
 	"path"
 	"sort"
@@ -132,9 +133,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		out[f.Base+"Table.goose"] = g.Assemble()
 	}
-	for name, data := range Runtime() {
-		out[name] = data
-	}
+	maps.Copy(out, Runtime())
 	return out, nil
 }
 

@@ -130,7 +130,7 @@ func descriptorProgram(t *testing.T, u *ir.Unit, files map[string][]byte, roots 
 		if !strings.HasSuffix(name, "Table.goose") {
 			continue
 		}
-		for _, line := range strings.Split(string(data), "\n") {
+		for line := range strings.SplitSeq(string(data), "\n") {
 			if rest, ok := strings.CutPrefix(line, "let "); ok {
 				if n, _, ok := strings.Cut(rest, "Descriptor: "); ok && !strings.ContainsAny(n, " _") {
 					described[n] = true

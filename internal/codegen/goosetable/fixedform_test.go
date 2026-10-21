@@ -16,6 +16,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -78,9 +79,9 @@ func fixedManifestRecords(t *testing.T, corpus string) map[string]int {
 		t.Fatal(err)
 	}
 	out := map[string]int{}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		file, count := "", -1
-		for _, field := range strings.Fields(line) {
+		for field := range strings.FieldsSeq(line) {
 			k, v, ok := strings.Cut(field, "=")
 			if !ok {
 				continue
@@ -137,21 +138,16 @@ func fixedProgram(t *testing.T, u *ir.Unit, root string, dir string, inputs []st
 	if err != nil {
 		t.Fatalf("goose table surface: %v", err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	var mods []string
 	for name := range files {
-		if strings.HasSuffix(name, ".goose") {
-			mods = append(mods, strings.TrimSuffix(name, ".goose"))
+		if before, ok := strings.CutSuffix(name, ".goose"); ok {
+			mods = append(mods, before)
 		}
 	}
 	sort.Strings(mods)
 	ns := goose.Namespace(u)
-	slots := capacity
-	if slots < 1 {
-		slots = 1
-	}
+	slots := max(capacity, 1)
 	var b strings.Builder
 	b.WriteString("import os;\n")
 	for _, m := range mods {
@@ -201,7 +197,7 @@ func fixedAnswers(t *testing.T, out []byte, want int) []fixedAnswer {
 		t.Fatalf("the probe printed %d lines, want %d:\n%s", len(lines), 3*want, out)
 	}
 	var answers []fixedAnswer
-	for i := 0; i < want; i++ {
+	for i := range want {
 		var a fixedAnswer
 		if _, err := fmt.Sscanf(lines[3*i], "%d %s %d", &a.n, &a.reason, &a.clamped); err != nil {
 			t.Fatalf("probe line %q: %v", lines[3*i], err)
@@ -226,7 +222,6 @@ func TestGooseFixedFormAgreesWithTheByteOracle(t *testing.T) {
 	records := fixedManifestRecords(t, corpus)
 	var compared atomic.Int64
 	for _, v := range fixedVectors {
-		v := v
 		t.Run(strings.TrimSuffix(v.file, ".bin"), func(t *testing.T) {
 			t.Parallel()
 			want, ok := records[v.file]
@@ -372,7 +367,6 @@ func TestGooseFixedFormRoundTripsEveryFixedRoot(t *testing.T) {
 	}
 	var roots atomic.Int64
 	for _, path := range paths {
-		path := path
 		u, err := compiler.New().Load([]string{path})
 		if err != nil {
 			continue // a multi-file unit or a fixture of a refusal: not a unit of its own
@@ -391,7 +385,6 @@ func TestGooseFixedFormRoundTripsEveryFixedRoot(t *testing.T) {
 			continue
 		}
 		for _, st := range fixed {
-			st := st
 			t.Run(strings.TrimSuffix(filepath.Base(path), ".schema")+"/"+st.Name, func(t *testing.T) {
 				t.Parallel()
 				layout, hash, body := fixedRootFacts(st)
@@ -400,7 +393,7 @@ func TestGooseFixedFormRoundTripsEveryFixedRoot(t *testing.T) {
 				file = binary.LittleEndian.AppendUint64(file, hash)
 				file = binary.LittleEndian.AppendUint32(file, uint32(len(layout)))
 				file = append(file, layout...)
-				for k := 0; k < 2; k++ {
+				for k := range 2 {
 					m := &fixedImage{seed: uint32(len(path)*31 + k*7 + 1)}
 					m.b = binary.LittleEndian.AppendUint64(m.b, hash)
 					for _, f := range st.Fields {
@@ -447,7 +440,7 @@ func (m *fixedImage) next() uint64 {
 }
 
 func (m *fixedImage) put(v uint64, w int64) {
-	for i := int64(0); i < w; i++ {
+	for i := range w {
 		m.b = append(m.b, byte(v>>(8*i)))
 	}
 }
@@ -474,7 +467,7 @@ func (m *fixedImage) field(f *ir.Field) {
 	case f.Array == ir.ArrayCounted:
 		c := int64(m.next() % uint64(f.ArrayBound+1))
 		m.put(uint64(c), 4)
-		for i := int64(0); i < c; i++ {
+		for range c {
 			m.elem(el)
 		}
 		m.zeros((f.ArrayBound - c) * ir.TableFixedElementBytes(f))
@@ -486,7 +479,7 @@ func (m *fixedImage) field(f *ir.Field) {
 func (m *fixedImage) text(size int64, unit int64) {
 	n := int64(m.next() % uint64(size+1))
 	m.put(uint64(n), 4)
-	for i := int64(0); i < n; i++ {
+	for range n {
 		m.put('a'+m.next()%26, unit)
 	}
 	m.zeros((size - n) * unit)
@@ -507,7 +500,7 @@ func (m *fixedImage) elem(f *ir.Field) {
 	case ir.TBytes:
 		n := int64(m.next() % uint64(t.Size+1))
 		m.put(uint64(n), 4)
-		for i := int64(0); i < n; i++ {
+		for range n {
 			m.b = append(m.b, byte(m.next()))
 		}
 		m.zeros(t.Size - n)
@@ -549,7 +542,7 @@ func (m *fixedImage) elem(f *ir.Field) {
 		m.put(m.next()&(uint64(1)<<uint(t.Width)-1), w)
 		return
 	}
-	for i := int64(0); i < w; i++ {
+	for range w {
 		m.b = append(m.b, byte(m.next()))
 	}
 }
