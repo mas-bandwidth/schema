@@ -335,26 +335,23 @@ func TestRaggedTailByName(t *testing.T) {
 }
 
 // f8SerializeGo is the serialize.go runtime the probe module replaces its
-// import with: $SERIALIZE_GO when it is set (relative to the repo root, as the
-// Makefile reads it), else the sibling checkout make/go.mk defaults to
-// (../serialize.go), else one staged inside the checkout. A runtime that is not
-// there fails by name rather than as a go.mod read error inside the probe.
+// import with, found the way internal/slowtest.SerializeGo finds it (this
+// module cannot import that package): an absolute $SERIALIZE_GO, then the
+// sibling checkout beside the repository, then the copy make deps provisions
+// under build/serialize.go. A runtime that is not there fails by name rather
+// than as a go.mod read error inside the probe.
 func f8SerializeGo(t *testing.T, repoRoot string) string {
 	t.Helper()
 	var candidates []string
-	if v := os.Getenv("SERIALIZE_GO"); v != "" {
-		if !filepath.IsAbs(v) {
-			v = filepath.Join(repoRoot, v)
-		}
+	if v := os.Getenv("SERIALIZE_GO"); filepath.IsAbs(v) {
 		candidates = append(candidates, v)
-	} else {
-		candidates = append(candidates, filepath.Join(repoRoot, "..", "serialize.go"), filepath.Join(repoRoot, "serialize.go"))
 	}
+	candidates = append(candidates, filepath.Join(filepath.Dir(repoRoot), "serialize.go"), filepath.Join(repoRoot, "build", "serialize.go"))
 	for _, c := range candidates {
-		if _, err := os.Stat(filepath.Join(c, "go.mod")); err == nil {
-			return filepath.Clean(c)
+		if info, err := os.Stat(filepath.Join(c, "go.mod")); err == nil && !info.IsDir() {
+			return c
 		}
 	}
-	t.Fatalf("no serialize.go runtime with a go.mod at %v (make deps provisions the sibling)", candidates)
+	t.Fatalf("no serialize.go runtime with a go.mod at %v: run make deps", candidates)
 	return ""
 }
