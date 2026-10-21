@@ -19,7 +19,7 @@ const TableTypeInfo * NarrowFifteenTableType()
     static const TableFieldInfo fields[] = {
         { "text", NULL, "string", 0x0000000000000000ull, 12, false, true, false, 15, (uint32_t) offsetof( NarrowFifteen, text ), (uint32_t) sizeof( NarrowFifteen::text ), (uint32_t) offsetof( NarrowFifteen, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "NarrowFifteen", (uint32_t) sizeof( NarrowFifteen ), 1, fields, +[]( void * p ) { NarrowFifteenReset( *(NarrowFifteen *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "NarrowFifteen", (uint32_t) sizeof( NarrowFifteen ), 1, fields, +[]( void * p ) { NarrowFifteenReset( *(NarrowFifteen *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -30,7 +30,7 @@ const TableTypeInfo * WideFourTableType()
     static const TableFieldInfo fields[] = {
         { "text", NULL, "wstring", 0x0000000000000000ull, 33, false, true, false, 4, (uint32_t) offsetof( WideFour, text ), (uint32_t) sizeof( WideFour::text ), (uint32_t) offsetof( WideFour, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "WideFour", (uint32_t) sizeof( WideFour ), 1, fields, +[]( void * p ) { WideFourReset( *(WideFour *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "WideFour", (uint32_t) sizeof( WideFour ), 1, fields, +[]( void * p ) { WideFourReset( *(WideFour *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -41,7 +41,7 @@ const TableTypeInfo * WideInteropTableType()
     static const TableFieldInfo fields[] = {
         { "caption", NULL, "wstring", 0x0000000000000000ull, 33, false, true, false, 7, (uint32_t) offsetof( WideInterop, caption ), (uint32_t) sizeof( WideInterop::caption ), (uint32_t) offsetof( WideInterop, caption_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "WideInterop", (uint32_t) sizeof( WideInterop ), 1, fields, +[]( void * p ) { WideInteropReset( *(WideInterop *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "WideInterop", (uint32_t) sizeof( WideInterop ), 1, fields, +[]( void * p ) { WideInteropReset( *(WideInterop *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -52,7 +52,7 @@ const TableTypeInfo * WideSevenTableType()
     static const TableFieldInfo fields[] = {
         { "text", NULL, "wstring", 0x0000000000000000ull, 33, false, true, false, 7, (uint32_t) offsetof( WideSeven, text ), (uint32_t) sizeof( WideSeven::text ), (uint32_t) offsetof( WideSeven, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     };
-    static const TableTypeInfo info = { "WideSeven", (uint32_t) sizeof( WideSeven ), 1, fields, +[]( void * p ) { WideSevenReset( *(WideSeven *) p ); }, TableDocNone, 0, NULL };
+    static const TableTypeInfo info = { "WideSeven", (uint32_t) sizeof( WideSeven ), 1, fields, +[]( void * p ) { WideSevenReset( *(WideSeven *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 

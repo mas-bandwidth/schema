@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <string.h> // the prefill's scalar-array fills
 #include <stddef.h> // offsetof, for the reflection descriptors
+#include <string> // the hand-editable text form's document (§16.9.3)
 
 // ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
 //
@@ -72,62 +73,143 @@
 
 namespace listdemo {
 
+
+
+// WHY A FILE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5, §7, §19.2): the
+// one vocabulary a cook's Open, a block's BlockOpen and a load measure's -1
+// share, because a caller asking "why can I not have this file" is
+// asking one question whichever call refused it. The FIRST failing clause names the
+// reason, in the order §7 enumerates, so one file answers one value in every
+// language. A refusal moves no counter, and a match writes nothing: the
+// out-parameter is touched on the refusal path only.
+//
+// The MESSAGE FORM's names (TableMessageReason, §3.3) are values of this same
+// enum, appended in Go's order: one vocabulary, whichever call refused.
+enum TableRefuseReason : int32_t
+{
+    ok,                    // no clause failed: the only value beside a non-null root (§7)
+    not_a_cook,            // the magic is neither this build's constant nor its byte reversal, or the byte-order word contradicts the magic
+    foreign_order,         // the magic byte-reversed: a cook of the other byte order (§7.1)
+    wrong_build_version,   // the build_version word is not this build's (§20)
+    reserved_not_zero,     // a reserved header word is not zero (§7.1)
+    bad_alignment,         // the alignment word is not a power of two, is below eight, is above sixty-four, or is not a multiple of the root's own alignof
+    truncated,             // the part lengths against the caller's length, or a data part too short to hold the root
+    unaligned_base,        // the pointer the caller passed is not aligned for the region: the caller's defect, not the file's
+    bad_layout,            // BlockOpen (§19.2): a pitch, a count, an offset or an extent that disagrees with this build's or leaves the block
+    unknown_form,          // at a MEASURE (§3, §6.5): a form byte this build does not carry, refused before any read
+    count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
+    count_over_extent_cap, // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
+    blob_over_size_cap,    // a blob whose length is past the derived-size cap (§3.1, §11)
+    data_cycle,            // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
+    invalid_value,         // a writer handed a value outside the declaration: a count, a value or an ordinal past its bound, or ill-formed text (§3.1, §11)
+    allocation_failed,     // an allocation the codec asked for was refused (§7.6)
+    wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
+    malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
+    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
+    kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
+    base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
+    base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
+    integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
+    non_finite,            // a plain float the read landed as a NaN or an infinity (§3.3); the report's reason is non_finite: <field>
+    blob_shared,           // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
+    // THE FORM AND FIXED-FORM NAMES (§3, §3.3, §3.4, §6.5), which the C++ port
+    // once kept in a second, message-path enum. Go appended them here, in
+    // this order, and the one vocabulary is one enum in every target.
+    previous_form,           // a FORM BYTE this form is ahead of: form 1 handed to a fixed reader is the OLDER form, not a newer one (§3, §3.4)
+    newer_form,              // a FORM BYTE this reader does not carry (§3)
+    message_form_as_file,    // a form 2 wire where a FILE was expected: its table is somewhere else
+    layout_unknown,          // a fixed-form file whose layout hash this reader has no lineage for (§3.4, §21.3)
+    layout_unsupported,      // a hash in the lineage below the floor; the report carries the file's hash (bill §12.4)
+    layout_newer,            // a hash this reader has never locked, proved newer; reserved, never emitted (algorithm §5.3)
+    layout_malformed,        // bytes handed to the fixed form as a layout that are not one
+    layout_count_mismatch,   // the entry count does not fit the layout's length exactly
+    layout_kind_unknown,     // a kind OUTSIDE §3's closed set: a newer form byte, not a newer layout
+    layout_kind_invalid,     // a kind this build knows, used in a way its own definition does not allow
+    layout_size_mismatch,    // an entry's stated constant size is not the one its kind or its children fix
+    layout_tree_unclosed,    // the pre-order child walk does not consume exactly the entries
+    layout_too_deep,         // a nesting depth past what this reader walks: a bound on the WALK
+    layout_record_too_large, // a record size that overflows, or is past §3.4's 65536-byte bound
+    plan_too_large,          // a layout whose compiled plan does not fit the caller's plan storage: this codec never allocates
+    no_layout,               // a fixed-form record whose hash names no LAYOUT this reader holds
+    batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
+    text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
+    count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
+    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+};
+
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
 // is not one of §4's events: nothing is decoded, no counter moves and no
 // damage is reported, so five zero counters and a false flag are what a clean
 // read prints too and only the verdict tells them apart. The reason says which
 // refusal it was.
 //
-// This is the MESSAGE PATH's vocabulary and not the cooked form's (§7.4): a
-// caller meeting one of these has been refused a MESSAGE on a connection,
-// which is a different recovery with a different owner than a file a header
-// match turned down.
-enum TableMessageReason
+// THE MESSAGE VOCABULARY'S THREE (§3.3, §11): no_vocabulary,
+// second_announcement and vocabulary_too_large, which Go names in its report's
+// reason text rather than in the enum. They sit in a private high range so a
+// value Go appends later can never collide with them, which the enum's
+// int32_t underlying type keeps inside its own range.
+constexpr TableRefuseReason no_vocabulary        = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
+constexpr TableRefuseReason second_announcement  = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
+constexpr TableRefuseReason vocabulary_too_large = (TableRefuseReason) 0x20000002; // an announcement above the receiver's declared bound, refused before an entry is touched
+
+// THE MESSAGE PATH SPEAKS THE ONE VOCABULARY (§6.5): TableMessageReason is a
+// TableRefuseReason, converting both ways, and not a second enum. It is a
+// struct only so the message path's qualified spellings
+// (TableMessageReason::newer_form, ::no_vocabulary) keep naming the one
+// vocabulary's values; a refusal reason is read only when refused is set.
+struct TableMessageReason
 {
-    newer_form,           // a FORM BYTE this reader does not carry (§3)
-    // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
-    // registry is ordered, so a reader meeting a byte it does not carry can
-    // say WHICH DIRECTION it is: form 1 handed to a fixed reader is the VARIABLE
-    // form, which is older, and calling that newer_form would send a caller
-    // looking for a build that does not exist. The bytes are the same refusal
-    // either way — nothing decoded, no counter moved — and only the name of it
-    // differs.
-    previous_form,
-    no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
-    second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
-    vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
-    message_form_as_file, // a form 2 wire where a FILE was expected: its table is somewhere else
-    batch_too_large,      // a batch of more than 256 bodies on the write side, or of more than the caller has room for on the read side: nothing is written or decoded, and the count says what the wire carries
-    // THE FIXED FORM'S THREE (docs/SPEC-TABLES.md §3.4). Each is a refusal by
-    // name with nothing decoded and no counter moved, on the form byte's own
-    // precedent. THE LAYOUT is what form 1 called the vocabulary block.
-    no_layout,        // a fixed-form record whose hash names no LAYOUT this reader holds
-    layout_malformed, // bytes handed to the fixed form as a layout that are not one: fewer than a header's worth of them
-    plan_too_large,   // a layout whose compiled plan does not fit the plan storage the caller declared: this codec never allocates
-    // THE LAYOUT VALIDATION'S OWN NAMES (docs/SPEC-TABLES.md §3.4). A layout is
-    // the one structure a reader must parse before it knows anything at all,
-    // and it arrives from an UNTRUSTED PEER, so each rule it is held to
-    // refuses under its own name rather than under one word for all of them.
-    // Every one of them runs BEFORE a single record byte is touched.
-    layout_count_mismatch,  // the entry count does not fit the layout's length exactly: the count, and then that many seventeen-byte entries
-    layout_kind_unknown,    // a kind OUTSIDE §3's closed set: a fixed form's kind set is closed, so an unknown kind means a newer FORM BYTE, which is a different form and not a newer layout of this one
-    layout_kind_invalid,    // a kind this build KNOWS, used in a way its own definition does not allow: a root that is not a table, an optional wrapper without exactly one child, a keyed array without exactly two, an enum whose children are not variants
-    layout_size_mismatch,   // an entry's stated constant size is not the one its kind's definition fixes, or not the one its children account for
-    layout_tree_unclosed,   // the pre-order child walk does not consume exactly the entries: the tree runs out of layout, or the layout outlasts the tree
-    layout_too_deep,        // a nesting depth past what this reader walks: a bound on the WALK, so a hostile layout cannot spend a reader's stack
-    layout_record_too_large, // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
-    // THE BACKWARD-READ REFUSALS (bill §4, §6b, algorithm §5.3). A hash this
-    // reader has never locked is layout_newer; a hash in the lineage below the
-    // floor is layout_unsupported. Both carry the file's hash and nothing else
-    // (bill §12.4).
-    layout_newer,
-    layout_unsupported,
-    // A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
-    // string(N)'s used bytes that are not well-formed UTF-8 — or a wstring(N)'s
-    // used units that are not paired UTF-16 — refuses the read BY NAME, the
-    // verdict the packet reader gives, this form having no L to continue past.
-    // Nothing is decoded and no counter moves.
-    text_ill_formed
+    TableRefuseReason value;
+    constexpr TableMessageReason( TableRefuseReason v = TableRefuseReason::newer_form ) : value( v ) {}
+    constexpr operator TableRefuseReason() const { return value; }
+    static constexpr TableRefuseReason ok = TableRefuseReason::ok;
+    static constexpr TableRefuseReason not_a_cook = TableRefuseReason::not_a_cook;
+    static constexpr TableRefuseReason foreign_order = TableRefuseReason::foreign_order;
+    static constexpr TableRefuseReason wrong_build_version = TableRefuseReason::wrong_build_version;
+    static constexpr TableRefuseReason reserved_not_zero = TableRefuseReason::reserved_not_zero;
+    static constexpr TableRefuseReason bad_alignment = TableRefuseReason::bad_alignment;
+    static constexpr TableRefuseReason truncated = TableRefuseReason::truncated;
+    static constexpr TableRefuseReason unaligned_base = TableRefuseReason::unaligned_base;
+    static constexpr TableRefuseReason bad_layout = TableRefuseReason::bad_layout;
+    static constexpr TableRefuseReason unknown_form = TableRefuseReason::unknown_form;
+    static constexpr TableRefuseReason count_over_length = TableRefuseReason::count_over_length;
+    static constexpr TableRefuseReason count_over_extent_cap = TableRefuseReason::count_over_extent_cap;
+    static constexpr TableRefuseReason blob_over_size_cap = TableRefuseReason::blob_over_size_cap;
+    static constexpr TableRefuseReason data_cycle = TableRefuseReason::data_cycle;
+    static constexpr TableRefuseReason invalid_value = TableRefuseReason::invalid_value;
+    static constexpr TableRefuseReason allocation_failed = TableRefuseReason::allocation_failed;
+    static constexpr TableRefuseReason wire_damaged = TableRefuseReason::wire_damaged;
+    static constexpr TableRefuseReason malformed = TableRefuseReason::malformed;
+    static constexpr TableRefuseReason clamped = TableRefuseReason::clamped;
+    static constexpr TableRefuseReason kind_mismatch = TableRefuseReason::kind_mismatch;
+    static constexpr TableRefuseReason base64_damaged = TableRefuseReason::base64_damaged;
+    static constexpr TableRefuseReason base64_not_canonical = TableRefuseReason::base64_not_canonical;
+    static constexpr TableRefuseReason integrity_mismatch = TableRefuseReason::integrity_mismatch;
+    static constexpr TableRefuseReason non_finite = TableRefuseReason::non_finite;
+    static constexpr TableRefuseReason blob_shared = TableRefuseReason::blob_shared;
+    static constexpr TableRefuseReason previous_form = TableRefuseReason::previous_form;
+    static constexpr TableRefuseReason newer_form = TableRefuseReason::newer_form;
+    static constexpr TableRefuseReason message_form_as_file = TableRefuseReason::message_form_as_file;
+    static constexpr TableRefuseReason layout_unknown = TableRefuseReason::layout_unknown;
+    static constexpr TableRefuseReason layout_unsupported = TableRefuseReason::layout_unsupported;
+    static constexpr TableRefuseReason layout_newer = TableRefuseReason::layout_newer;
+    static constexpr TableRefuseReason layout_malformed = TableRefuseReason::layout_malformed;
+    static constexpr TableRefuseReason layout_count_mismatch = TableRefuseReason::layout_count_mismatch;
+    static constexpr TableRefuseReason layout_kind_unknown = TableRefuseReason::layout_kind_unknown;
+    static constexpr TableRefuseReason layout_kind_invalid = TableRefuseReason::layout_kind_invalid;
+    static constexpr TableRefuseReason layout_size_mismatch = TableRefuseReason::layout_size_mismatch;
+    static constexpr TableRefuseReason layout_tree_unclosed = TableRefuseReason::layout_tree_unclosed;
+    static constexpr TableRefuseReason layout_too_deep = TableRefuseReason::layout_too_deep;
+    static constexpr TableRefuseReason layout_record_too_large = TableRefuseReason::layout_record_too_large;
+    static constexpr TableRefuseReason plan_too_large = TableRefuseReason::plan_too_large;
+    static constexpr TableRefuseReason no_layout = TableRefuseReason::no_layout;
+    static constexpr TableRefuseReason batch_too_large = TableRefuseReason::batch_too_large;
+    static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
+    static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
+    static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason no_vocabulary = ::listdemo::no_vocabulary;
+    static constexpr TableRefuseReason second_announcement = ::listdemo::second_announcement;
+    static constexpr TableRefuseReason vocabulary_too_large = ::listdemo::vocabulary_too_large;
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -158,6 +240,11 @@ struct TableReport
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
+    // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
+    // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
+    // the ONE node, never a copy per slot, and the strict read refuses
+    // blob_shared. The Go oracle is internal/codegen/gotable/gotable.go.
+    int32_t blob_shared = 0;
     // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
     // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
     // zero counters and a false flag are what a clean read prints too, so the
@@ -167,6 +254,10 @@ struct TableReport
     // was not refused has no reason, and this member is the one the caller
     // must not look at then (docs/SPEC-TABLES.md §3.3).
     TableMessageReason reason = newer_form;
+    // WHOLE-FILE DAMAGE can have a named cause even when it is not a refusal:
+    // integrity_mismatch is §2.14's checked-trailer damage. Read this member
+    // when malformed is true; the reason above remains the message refusal name.
+    TableRefuseReason damage_reason = ok;
     // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
     // the reason duplicate is: a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
@@ -174,50 +265,15 @@ struct TableReport
     // says what a READER could not name and that stays true.
     int32_t retained = 0;    // unknown fields whose bytes were kept
     int32_t retain_lost = 0; // every unknown this load or save could not keep
+    // THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): the
+    // same TableRefuseReason a measure's -1 and a cook's Open answer, set by
+    // the plain names and ReadStrict on every refusal and ok otherwise.
+    // unknown, widened and retained alone leave it ok.
+    TableRefuseReason refuse_reason = ok;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
-    // the hash and nothing else. Zero on every other path.
+    // the hash and nothing else. Zero on every other path, and it stays LAST on
+    // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
-};
-
-
-// WHY A FILE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5, §7, §19.2): the
-// one vocabulary a cook's Open, a block's BlockOpen and a load measure's -1
-// share, because a caller asking "why can I not have this file" is
-// asking one question whichever call refused it. The FIRST failing clause names the
-// reason, in the order §7 enumerates, so one file answers one value in every
-// language. A refusal moves no counter, and a match writes nothing: the
-// out-parameter is touched on the refusal path only.
-//
-// It is not the MESSAGE FORM's vocabulary (TableMessageReason, §3.3): a caller
-// meeting one of these has been refused a FILE, by a header match or by a
-// measure.
-enum TableRefuseReason
-{
-    ok,                    // no clause failed: the only value beside a non-null root (§7)
-    not_a_cook,            // the magic is neither this build's constant nor its byte reversal, or the byte-order word contradicts the magic
-    foreign_order,         // the magic byte-reversed: a cook of the other byte order (§7.1)
-    wrong_build_version,   // the build_version word is not this build's (§20)
-    reserved_not_zero,     // a reserved header word is not zero (§7.1)
-    bad_alignment,         // the alignment word is not a power of two, is below eight, is above sixty-four, or is not a multiple of the root's own alignof
-    truncated,             // the part lengths against the caller's length, or a data part too short to hold the root
-    unaligned_base,        // the pointer the caller passed is not aligned for the region: the caller's defect, not the file's
-    bad_layout,            // BlockOpen (§19.2): a pitch, a count, an offset or an extent that disagrees with this build's or leaves the block
-    unknown_form,          // at a MEASURE (§3, §6.5): a form byte this build does not carry, refused before any read
-    count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
-    count_over_extent_cap, // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
-    blob_over_size_cap,    // a blob whose length is past the derived-size cap (§3.1, §11)
-    data_cycle,            // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
-    invalid_value,         // a writer handed a value outside the declaration: a count, a value or an ordinal past its bound, or ill-formed text (§3.1, §11)
-    allocation_failed,     // an allocation the codec asked for was refused (§7.6)
-    wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
-    malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
-    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
-    kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
-    base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
-    base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
-    integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
-    non_finite,            // a plain float the read landed as a NaN or an infinity (§3.3); the report's reason is non_finite: <field>
-    blob_shared            // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
 };
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
@@ -2255,6 +2311,20 @@ inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 )
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
+// THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
+// (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
+// -1 of <T>FixedLoad carries one, and a framing-damage return keeps
+// "malformed" set BESIDE it. They are the one vocabulary's own values
+// (TableRefuseReason, §6.5), named here as well so the fixed form's callers
+// keep the spelling they already read.
+#define SCHEMA_HAS_FIXED_REASON_NAMES 1
+struct TableFixedReason
+{
+    static constexpr TableRefuseReason layout_unknown    = TableRefuseReason::layout_unknown;
+    static constexpr TableRefuseReason truncated         = TableRefuseReason::truncated;
+    static constexpr TableRefuseReason reserved_not_zero = TableRefuseReason::reserved_not_zero;
+};
+
 // ---------------------------------------------------------------------------
 // THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 // ---------------------------------------------------------------------------
@@ -2274,6 +2344,7 @@ constexpr uint8_t kTableFixedForm = 3;
 // was stamped by.
 constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
+
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries copy, count, text and
 // bool; the rest are what a plan compiled from another writer's layout adds.
@@ -2721,6 +2792,65 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     }
     report->clamped += clamped;
     report->widened += widened;
+}
+
+// ---- THE COUNT AND TEXT PRE-SCAN -------------------------------------------
+//
+// A COUNT OR LENGTH PAST THE PLAN'S BOUND REFUSES BY NAME (docs/SPEC-TABLES.md
+// §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5): count_over_bound for a count,
+// length_over_bound for a text length, checked before any destination byte is
+// written — the count or length lying about the wire and not about the slack.
+// REFUSE is total: no counter moves, nothing is decoded, and not one destination
+// byte is written. It walks each entry under its own guards, reads only the
+// source and writes nothing. It answers true with the refusal in why; false
+// means the plan holds the record's counts and lengths.
+inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, int32_t guarded,
+                                 const uint8_t * src,
+                                 const TableFixedGuardLink * guard_pool,
+                                 TableMessageReason & why )
+{
+    for ( int32_t i = 0; i < count; ++i )
+    {
+        const TableFixedEntry & p = plan[i];
+        // A PLAN IS PARTITIONED (§4.1): every UNGUARDED entry first, then every
+        // guarded one. Below the split there is no guard to test — the guard
+        // lane is kTableFixedNoGuard and must never be read as an offset. Above
+        // it, an arm's entry runs only under its own tag and refuses only when
+        // it runs.
+        if ( i >= guarded )
+        {
+            if ( p.guard_count > 0 )
+            {
+                // THE POOLED CHAIN (§5.8 row 6): same walk the run uses.
+                bool matches = true;
+                for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+                {
+                    const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
+                        ( ( const uint8_t * ) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                    if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+                }
+                if ( !matches ) { continue; }
+            }
+            else
+            {
+                if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+                if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+            }
+        }
+        if ( p.op == kTableFixedCount )
+        {
+            int32_t v = (int32_t) TableFixedGet32( src + p.src );
+            if ( v < 0 || v > (int32_t) p.size ) { why = count_over_bound; return true; }
+        }
+        else if ( p.op == kTableFixedText )
+        {
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t cap = p.size / unit;
+            int32_t v = (int32_t) TableFixedGet32( src + p.src );
+            if ( v < 0 || (uint32_t) v > cap ) { why = length_over_bound; return true; }
+        }
+    }
+    return false;
 }
 
 // ---- THE PREFILL -----------------------------------------------------------
@@ -3743,6 +3873,43 @@ inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntr
     }
 }
 
+// THE CRC-32C OF every byte before a file's trailer (docs/SPEC-TABLES.md
+// §2.14). The Go oracle is hash/crc32.Checksum with crc32.Castagnoli; the
+// fixed test values in integrity_test.go are that function's answers.
+inline uint32_t schema_crc32c( const uint8_t * data, int64_t bytes )
+{
+    uint32_t crc = 0xFFFFFFFFu;
+    for ( int64_t i = 0; i < bytes; ++i )
+    {
+        crc ^= (uint32_t) data[i];
+        for ( int k = 0; k < 8; ++k )
+        {
+            const uint32_t mask = (uint32_t) ( -(int32_t) ( crc & 1u ) );
+            crc = ( crc >> 1 ) ^ ( 0x82F63B78u & mask );
+        }
+    }
+    return crc ^ 0xFFFFFFFFu;
+}
+
+// schema_integrity_holds is §2.14's READ check: four trailer bytes, little-endian,
+// equal to the CRC-32C of everything before them. A file too short to hold a
+// trailer does not hold one either, which is damage named integrity_mismatch
+// and never a refusal.
+inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
+{
+    if ( data == NULL || bytes < 5 ) { return false; }
+    const int64_t n = bytes - 4;
+    return TableFixedGet32( data + n ) == schema_crc32c( data, n );
+}
+
+// schema_integrity_seal is §2.14's WRITE: the trailer after the n bytes already
+// written, and the file's longer length.
+inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
+{
+    TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
+    return n + 4;
+}
+
 } // namespace listdemo
 
 #endif // LISTDEMO_SCHEMA_TABLE_PRIMITIVES
@@ -4478,6 +4645,11 @@ struct TableNumbering
     TableNodeEntry * entries = NULL;
     int64_t count = 0;
     int64_t capacity = 0;
+    // ONE BLOB RECORD NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5, §16.7):
+    // every writer refuses the graph by name, blob_shared, rather than writing
+    // a copy per slot. The Go oracle is internal/codegen/gotable/regions.go
+    // (TableNumbering.shared).
+    bool shared = false;
 };
 
 // The numbering allocates through the map's pair rather than carrying a second
@@ -4488,6 +4660,7 @@ inline void TableNumberingInit( TableNumbering & n, TableAllocator allocator )
     n.entries = NULL;
     n.count = 0;
     n.capacity = 0;
+    n.shared = false;
 }
 
 inline void TableNumberingShutdown( TableNumbering & n )
@@ -4650,7 +4823,10 @@ struct TableExtentCarve;
 struct TableNodeMap
 {
     uint8_t * base = NULL;
-    const TableNodeDirEntry * entries = NULL;
+    // MUTABLE because an ONCE read marks a blob's entry when a slot first
+    // names it (docs/SPEC-TABLES.md §2.5): a second slot names the same node
+    // and is counted, never decoded again.
+    TableNodeDirEntry * entries = NULL;
     int64_t count = 0;   // the ROOT's entry included, so it is records + 1
     bool good = false;   // the node table read whole; a numbering that failed resolves nothing
     // WHERE THE NODES LIVE, and therefore what a resolved slot holds: a region
@@ -4672,6 +4848,11 @@ struct TableNodeMap
     // int32 cap met while a body decoded. LoadBuilder answers NULL for it
     // and moves no counter; mutable for the reason the cursor is.
     mutable bool refused = false;
+    // ONCE is the file and message REGION reads' rule (§2.5, §16.7): the first
+    // slot naming a blob marks its directory entry, and every later slot naming
+    // it is one blob_shared event and resolves to the ONE decoded node. The Go
+    // oracle is internal/codegen/gotable/regions.go (TableNodeMap.Once).
+    bool once = false;
 };
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
@@ -4698,8 +4879,21 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     }
     if ( entry.type_id != target )
     {
-        report->kind_mismatch++;
-        return;
+        // A blob named from two slots (docs/SPEC-TABLES.md §2.5, §16.7): the
+        // first slot marked the entry with the complement of its type id, so a
+        // second slot naming it is blob_shared and still resolves to the one
+        // node. No other target has this reading.
+        if ( !map.once || entry.type_id != ~target ||
+             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
+        {
+            report->kind_mismatch++;
+            return;
+        }
+        report->blob_shared++;
+    }
+    else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
+    {
+        map.entries[index - 1].type_id = ~target;
     }
     slot.value = map.arena ? (int64_t) entry.offset
                           : (int64_t) ( ( map.base + entry.offset ) - (const uint8_t *) &slot );
@@ -10180,7 +10374,9 @@ inline int64_t BytesMeasureWire( const Ctx & ctx, const Bytes & root, TableAlloc
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     int64_t bytes = -1;
-    if ( BytesNumberFrom( ctx, numbering, root ) )
+    // A BLOB NAMED FROM TWO SLOTS is refused by name, blob_shared, and
+    // never measured as a copy per slot (docs/SPEC-TABLES.md §2.5, §16.7).
+    if ( BytesNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableIds ids;
         bytes = BytesMeasureBody( ctx, numbering, ids, root );
@@ -10201,7 +10397,9 @@ inline int64_t BytesSaveWire( const Ctx & ctx, const Bytes & root, uint8_t * buf
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
-    if ( !BytesNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
+    // THE WRITERS REFUSE A GRAPH WHOSE TWO SLOTS NAME ONE BLOB, by name
+    // blob_shared, never with a bare -1 from a copy per slot (docs/SPEC-TABLES.md §2.5, §16.7).
+    if ( !BytesNumberFrom( ctx, numbering, root ) || numbering.shared ) { TableNumberingShutdown( numbering ); return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -10254,19 +10452,23 @@ inline int64_t BytesSave( const BytesBuilder & builder, uint8_t * buffer, int64_
 // fields, then the zero reference. Measure derives the numbering and save
 // derives the same one, and nothing passes between them (§3.1).
 template <typename Ctx>
-inline int64_t BytesMessageBodyBits( const Ctx & ctx, const Bytes & root, int64_t at, TableAllocator allocator )
+inline int64_t BytesMessageBodyBits( const Ctx & ctx, const Bytes & root, int64_t at, TableAllocator allocator, TableRefuseReason * reason = NULL )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     int64_t bits = -1;
-    if ( BytesNumberFrom( ctx, numbering, root ) )
+    if ( BytesNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
     {
-        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-        const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
-        if ( table >= 0 )
+        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
+        else
         {
-            const int64_t body = BytesMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
-            bits = body < 0 ? -1 : table + body;
+            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+            const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
+            if ( table >= 0 )
+            {
+                const int64_t body = BytesMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
+                bits = body < 0 ? -1 : table + body;
+            }
         }
     }
     TableNumberingShutdown( numbering );
@@ -10274,15 +10476,19 @@ inline int64_t BytesMessageBodyBits( const Ctx & ctx, const Bytes & root, int64_
 }
 
 template <typename Ctx>
-inline bool BytesMessageBodySave( const Ctx & ctx, const Bytes & root, TableBitWriter & w, TableAllocator allocator )
+inline bool BytesMessageBodySave( const Ctx & ctx, const Bytes & root, TableBitWriter & w, TableAllocator allocator, TableRefuseReason * reason = NULL )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     bool ok = false;
-    if ( BytesNumberFrom( ctx, numbering, root ) )
+    if ( BytesNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
     {
-        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-        ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && BytesSaveMessageBody( ctx, numbering, index_bits, w, root );
+        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
+        else
+        {
+            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+            ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && BytesSaveMessageBody( ctx, numbering, index_bits, w, root );
+        }
     }
     TableNumberingShutdown( numbering );
     return ok && !w.overflow;
@@ -10301,8 +10507,9 @@ inline int64_t BytesMeasureMessages( const Bytes * const * roots, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( roots[i] == NULL ) { return -1; }
-        const int64_t body = BytesMessageBodyBits( ctx, *roots[i], bits, allocator );
-        if ( body < 0 ) { return -1; }
+        TableRefuseReason why = ok;
+        const int64_t body = BytesMessageBodyBits( ctx, *roots[i], bits, allocator, &why );
+        if ( body < 0 ) { if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } return -1; } // §2.5, §16.7
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8;
@@ -10317,7 +10524,13 @@ inline int64_t BytesSaveMessages( const Bytes * const * roots, int64_t count, ui
     TableRegionCtx ctx;
     for ( int64_t i = 0; i < count; i++ )
     {
-        if ( roots[i] == NULL || !BytesMessageBodySave( ctx, *roots[i], batch.w, allocator ) ) { return -1; }
+        if ( roots[i] == NULL ) { return -1; }
+        TableRefuseReason why = ok;
+        if ( !BytesMessageBodySave( ctx, *roots[i], batch.w, allocator, &why ) )
+        {
+            if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } // §2.5, §16.7
+            return -1;
+        }
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == BytesMeasureMessages( roots, count, report, allocator )
@@ -10427,6 +10640,7 @@ inline bool BytesLoadMessageBodyInto( TableBitReader & r, const TableVocabulary 
     nodes.entries = directory;
     nodes.count = count + 1;
     nodes.good = false;
+    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
 
     // PASS ONE: the numbering from the framing, every node placed, no body read
     const int64_t records_start = r.offset;
@@ -10546,7 +10760,8 @@ inline int64_t BytesLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     // a FORM BYTE this build does not carry is refused by name (§3, §6.5);
-    // a trailer that cannot be read whole is damage and names no reason
+    // a short or mismatched form-1 trailer is damage named integrity_mismatch;
+    // empty and other-form inputs keep TableOpen's classification.
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict == TableOpenRefused ) { if ( reason_out != NULL ) { *reason_out = unknown_form; } return -1; }
     if ( verdict != TableOpenOk ) { return -1; }
@@ -10577,13 +10792,13 @@ inline int64_t BytesLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
     return data + attribution;
 }
 
-// BytesLoad: decode the tolerant wire into the caller's exact-sized region and
+// BytesLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
 // return the root. LOAD IS A SCAN, and that is the whole of its bound: it
 // follows no reference, so there is no depth cap, no visited set and no
 // ordering rule on the indices. Partial results are kept, as everywhere on
 // this wire — the report says what happened. NULL means the CALLER's buffer
 // was wrong.
-inline const Bytes * BytesLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+inline const Bytes * BytesLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
@@ -10595,12 +10810,14 @@ inline const Bytes * BytesLoad( uint8_t * region, int64_t region_bytes, const ui
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return NULL;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -10634,8 +10851,9 @@ inline const Bytes * BytesLoad( uint8_t * region, int64_t region_bytes, const ui
 
     TableNodeMap nodes;
     nodes.base = region;
-    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
+    nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xeeeea7adc131a244ull;
@@ -10706,11 +10924,40 @@ inline const Bytes * BytesLoad( uint8_t * region, int64_t region_bytes, const ui
     return root;
 }
 
-// BytesLoadBuilder: the TOOL's path — the same tolerant decode into a fresh
+// The PLAIN BytesLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
+// refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with a NULL root and
+// the supplied report overwritten with this read's report and its reason
+// set. unknown and widened alone never refuse.
+inline const Bytes * BytesLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const Bytes * root = BytesLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        return NULL;
+    }
+    out->refuse_reason = ok;
+    return root;
+}
+
+// BytesLoadBuilderTolerant: the TOOL's path — the same tolerant decode into a fresh
 // builder, so loaded data can be edited and locked again. The numbering is
 // the same one; what differs is where a node lives and therefore what a
 // resolved slot holds — an arena offset here, a self-relative delta there.
-inline bool BytesLoadBuilder( BytesBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+inline bool BytesLoadBuilderTolerant( BytesBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
@@ -10719,12 +10966,14 @@ inline bool BytesLoadBuilder( BytesBuilder & builder, const uint8_t * wire_file,
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; }
         return false;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return false;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -10753,6 +11002,7 @@ inline bool BytesLoadBuilder( BytesBuilder & builder, const uint8_t * wire_file,
     nodes.entries = directory;
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
+    nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -10803,6 +11053,73 @@ inline bool BytesLoadBuilder( BytesBuilder & builder, const uint8_t * wire_file,
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
     return ok;
+}
+
+// The PLAIN BytesLoadBuilder IS THE STRICT READ (docs/SPEC-TABLES.md §6.5):
+// it refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with false as its
+// refusal value and the supplied report overwritten with this read's report
+// and its reason set. unknown and widened alone never refuse.
+inline bool BytesLoadBuilder( BytesBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const bool decoded = BytesLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        return false;
+    }
+    out->refuse_reason = ok;
+    return true;
+}
+
+// BytesReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, its
+// OWN builder, the root or a refusal with ONE typed reason. The caller does
+// not measure and does not Init: the measure and the builder are this call's.
+// The packed root it returns is the caller's to release with the allocator it
+// passed (table_release( allocator, root ), the default pair when none).
+inline const Bytes * BytesReadStrict( const uint8_t * wire_file, int64_t wire_file_bytes, TableRefuseReason * reason = NULL, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( reason != NULL ) { *reason = ok; }
+    int64_t attribution = 0;
+    TableRefuseReason why = ok;
+    const int64_t size = BytesLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
+    if ( size < 0 ) { if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; } return NULL; }
+    BytesBuilder builder( allocator );
+    TableReport report;
+    const bool decoded = BytesLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    {
+        if ( reason != NULL )
+        {
+            if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }
+            else if ( report.refused ) { *reason = unknown_form; }
+            else if ( report.malformed ) { *reason = wire_damaged; }
+            else if ( report.blob_shared ) { *reason = blob_shared; } // §2.5, §16.7
+            else if ( report.clamped ) { *reason = clamped; }
+            else if ( report.kind_mismatch ) { *reason = kind_mismatch; }
+            else { *reason = wire_damaged; }
+        }
+        return NULL;
+    }
+    if ( !builder.Lock() ) { if ( reason != NULL ) { *reason = allocation_failed; } return NULL; }
+    const Bytes * root = builder.AsConst();
+    // the packed region is the caller's from here on, not the builder's
+    builder.region = NULL;
+    builder.region_bytes = 0;
+    if ( reason != NULL ) { *reason = ok; }
+    return root;
 }
 
 // ---- Ints: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
@@ -11055,7 +11372,9 @@ inline int64_t IntsMeasureWire( const Ctx & ctx, const Ints & root, TableAllocat
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     int64_t bytes = -1;
-    if ( IntsNumberFrom( ctx, numbering, root ) )
+    // A BLOB NAMED FROM TWO SLOTS is refused by name, blob_shared, and
+    // never measured as a copy per slot (docs/SPEC-TABLES.md §2.5, §16.7).
+    if ( IntsNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableIds ids;
         bytes = IntsMeasureBody( ctx, numbering, ids, root );
@@ -11076,7 +11395,9 @@ inline int64_t IntsSaveWire( const Ctx & ctx, const Ints & root, uint8_t * buffe
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
-    if ( !IntsNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
+    // THE WRITERS REFUSE A GRAPH WHOSE TWO SLOTS NAME ONE BLOB, by name
+    // blob_shared, never with a bare -1 from a copy per slot (docs/SPEC-TABLES.md §2.5, §16.7).
+    if ( !IntsNumberFrom( ctx, numbering, root ) || numbering.shared ) { TableNumberingShutdown( numbering ); return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11129,19 +11450,23 @@ inline int64_t IntsSave( const IntsBuilder & builder, uint8_t * buffer, int64_t 
 // fields, then the zero reference. Measure derives the numbering and save
 // derives the same one, and nothing passes between them (§3.1).
 template <typename Ctx>
-inline int64_t IntsMessageBodyBits( const Ctx & ctx, const Ints & root, int64_t at, TableAllocator allocator )
+inline int64_t IntsMessageBodyBits( const Ctx & ctx, const Ints & root, int64_t at, TableAllocator allocator, TableRefuseReason * reason = NULL )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     int64_t bits = -1;
-    if ( IntsNumberFrom( ctx, numbering, root ) )
+    if ( IntsNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
     {
-        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-        const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
-        if ( table >= 0 )
+        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
+        else
         {
-            const int64_t body = IntsMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
-            bits = body < 0 ? -1 : table + body;
+            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+            const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
+            if ( table >= 0 )
+            {
+                const int64_t body = IntsMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
+                bits = body < 0 ? -1 : table + body;
+            }
         }
     }
     TableNumberingShutdown( numbering );
@@ -11149,15 +11474,19 @@ inline int64_t IntsMessageBodyBits( const Ctx & ctx, const Ints & root, int64_t 
 }
 
 template <typename Ctx>
-inline bool IntsMessageBodySave( const Ctx & ctx, const Ints & root, TableBitWriter & w, TableAllocator allocator )
+inline bool IntsMessageBodySave( const Ctx & ctx, const Ints & root, TableBitWriter & w, TableAllocator allocator, TableRefuseReason * reason = NULL )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     bool ok = false;
-    if ( IntsNumberFrom( ctx, numbering, root ) )
+    if ( IntsNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
     {
-        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-        ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && IntsSaveMessageBody( ctx, numbering, index_bits, w, root );
+        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
+        else
+        {
+            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+            ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && IntsSaveMessageBody( ctx, numbering, index_bits, w, root );
+        }
     }
     TableNumberingShutdown( numbering );
     return ok && !w.overflow;
@@ -11176,8 +11505,9 @@ inline int64_t IntsMeasureMessages( const Ints * const * roots, int64_t count, T
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( roots[i] == NULL ) { return -1; }
-        const int64_t body = IntsMessageBodyBits( ctx, *roots[i], bits, allocator );
-        if ( body < 0 ) { return -1; }
+        TableRefuseReason why = ok;
+        const int64_t body = IntsMessageBodyBits( ctx, *roots[i], bits, allocator, &why );
+        if ( body < 0 ) { if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } return -1; } // §2.5, §16.7
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8;
@@ -11192,7 +11522,13 @@ inline int64_t IntsSaveMessages( const Ints * const * roots, int64_t count, uint
     TableRegionCtx ctx;
     for ( int64_t i = 0; i < count; i++ )
     {
-        if ( roots[i] == NULL || !IntsMessageBodySave( ctx, *roots[i], batch.w, allocator ) ) { return -1; }
+        if ( roots[i] == NULL ) { return -1; }
+        TableRefuseReason why = ok;
+        if ( !IntsMessageBodySave( ctx, *roots[i], batch.w, allocator, &why ) )
+        {
+            if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } // §2.5, §16.7
+            return -1;
+        }
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == IntsMeasureMessages( roots, count, report, allocator )
@@ -11302,6 +11638,7 @@ inline bool IntsLoadMessageBodyInto( TableBitReader & r, const TableVocabulary &
     nodes.entries = directory;
     nodes.count = count + 1;
     nodes.good = false;
+    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
 
     // PASS ONE: the numbering from the framing, every node placed, no body read
     const int64_t records_start = r.offset;
@@ -11421,7 +11758,8 @@ inline int64_t IntsLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     // a FORM BYTE this build does not carry is refused by name (§3, §6.5);
-    // a trailer that cannot be read whole is damage and names no reason
+    // a short or mismatched form-1 trailer is damage named integrity_mismatch;
+    // empty and other-form inputs keep TableOpen's classification.
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict == TableOpenRefused ) { if ( reason_out != NULL ) { *reason_out = unknown_form; } return -1; }
     if ( verdict != TableOpenOk ) { return -1; }
@@ -11452,13 +11790,13 @@ inline int64_t IntsLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
     return data + attribution;
 }
 
-// IntsLoad: decode the tolerant wire into the caller's exact-sized region and
+// IntsLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
 // return the root. LOAD IS A SCAN, and that is the whole of its bound: it
 // follows no reference, so there is no depth cap, no visited set and no
 // ordering rule on the indices. Partial results are kept, as everywhere on
 // this wire — the report says what happened. NULL means the CALLER's buffer
 // was wrong.
-inline const Ints * IntsLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+inline const Ints * IntsLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
@@ -11470,12 +11808,14 @@ inline const Ints * IntsLoad( uint8_t * region, int64_t region_bytes, const uint
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return NULL;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -11509,8 +11849,9 @@ inline const Ints * IntsLoad( uint8_t * region, int64_t region_bytes, const uint
 
     TableNodeMap nodes;
     nodes.base = region;
-    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
+    nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x2034c5d17c00ceb7ull;
@@ -11581,11 +11922,40 @@ inline const Ints * IntsLoad( uint8_t * region, int64_t region_bytes, const uint
     return root;
 }
 
-// IntsLoadBuilder: the TOOL's path — the same tolerant decode into a fresh
+// The PLAIN IntsLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
+// refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with a NULL root and
+// the supplied report overwritten with this read's report and its reason
+// set. unknown and widened alone never refuse.
+inline const Ints * IntsLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const Ints * root = IntsLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        return NULL;
+    }
+    out->refuse_reason = ok;
+    return root;
+}
+
+// IntsLoadBuilderTolerant: the TOOL's path — the same tolerant decode into a fresh
 // builder, so loaded data can be edited and locked again. The numbering is
 // the same one; what differs is where a node lives and therefore what a
 // resolved slot holds — an arena offset here, a self-relative delta there.
-inline bool IntsLoadBuilder( IntsBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+inline bool IntsLoadBuilderTolerant( IntsBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
@@ -11594,12 +11964,14 @@ inline bool IntsLoadBuilder( IntsBuilder & builder, const uint8_t * wire_file, i
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; }
         return false;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return false;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -11628,6 +12000,7 @@ inline bool IntsLoadBuilder( IntsBuilder & builder, const uint8_t * wire_file, i
     nodes.entries = directory;
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
+    nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -11678,6 +12051,73 @@ inline bool IntsLoadBuilder( IntsBuilder & builder, const uint8_t * wire_file, i
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
     return ok;
+}
+
+// The PLAIN IntsLoadBuilder IS THE STRICT READ (docs/SPEC-TABLES.md §6.5):
+// it refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with false as its
+// refusal value and the supplied report overwritten with this read's report
+// and its reason set. unknown and widened alone never refuse.
+inline bool IntsLoadBuilder( IntsBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const bool decoded = IntsLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        return false;
+    }
+    out->refuse_reason = ok;
+    return true;
+}
+
+// IntsReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, its
+// OWN builder, the root or a refusal with ONE typed reason. The caller does
+// not measure and does not Init: the measure and the builder are this call's.
+// The packed root it returns is the caller's to release with the allocator it
+// passed (table_release( allocator, root ), the default pair when none).
+inline const Ints * IntsReadStrict( const uint8_t * wire_file, int64_t wire_file_bytes, TableRefuseReason * reason = NULL, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( reason != NULL ) { *reason = ok; }
+    int64_t attribution = 0;
+    TableRefuseReason why = ok;
+    const int64_t size = IntsLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
+    if ( size < 0 ) { if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; } return NULL; }
+    IntsBuilder builder( allocator );
+    TableReport report;
+    const bool decoded = IntsLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    {
+        if ( reason != NULL )
+        {
+            if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }
+            else if ( report.refused ) { *reason = unknown_form; }
+            else if ( report.malformed ) { *reason = wire_damaged; }
+            else if ( report.blob_shared ) { *reason = blob_shared; } // §2.5, §16.7
+            else if ( report.clamped ) { *reason = clamped; }
+            else if ( report.kind_mismatch ) { *reason = kind_mismatch; }
+            else { *reason = wire_damaged; }
+        }
+        return NULL;
+    }
+    if ( !builder.Lock() ) { if ( reason != NULL ) { *reason = allocation_failed; } return NULL; }
+    const Ints * root = builder.AsConst();
+    // the packed region is the caller's from here on, not the builder's
+    builder.region = NULL;
+    builder.region_bytes = 0;
+    if ( reason != NULL ) { *reason = ok; }
+    return root;
 }
 
 // ---- Floats: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
@@ -11930,7 +12370,9 @@ inline int64_t FloatsMeasureWire( const Ctx & ctx, const Floats & root, TableAll
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     int64_t bytes = -1;
-    if ( FloatsNumberFrom( ctx, numbering, root ) )
+    // A BLOB NAMED FROM TWO SLOTS is refused by name, blob_shared, and
+    // never measured as a copy per slot (docs/SPEC-TABLES.md §2.5, §16.7).
+    if ( FloatsNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableIds ids;
         bytes = FloatsMeasureBody( ctx, numbering, ids, root );
@@ -11951,7 +12393,9 @@ inline int64_t FloatsSaveWire( const Ctx & ctx, const Floats & root, uint8_t * b
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
-    if ( !FloatsNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
+    // THE WRITERS REFUSE A GRAPH WHOSE TWO SLOTS NAME ONE BLOB, by name
+    // blob_shared, never with a bare -1 from a copy per slot (docs/SPEC-TABLES.md §2.5, §16.7).
+    if ( !FloatsNumberFrom( ctx, numbering, root ) || numbering.shared ) { TableNumberingShutdown( numbering ); return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -12004,19 +12448,23 @@ inline int64_t FloatsSave( const FloatsBuilder & builder, uint8_t * buffer, int6
 // fields, then the zero reference. Measure derives the numbering and save
 // derives the same one, and nothing passes between them (§3.1).
 template <typename Ctx>
-inline int64_t FloatsMessageBodyBits( const Ctx & ctx, const Floats & root, int64_t at, TableAllocator allocator )
+inline int64_t FloatsMessageBodyBits( const Ctx & ctx, const Floats & root, int64_t at, TableAllocator allocator, TableRefuseReason * reason = NULL )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     int64_t bits = -1;
-    if ( FloatsNumberFrom( ctx, numbering, root ) )
+    if ( FloatsNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
     {
-        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-        const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
-        if ( table >= 0 )
+        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
+        else
         {
-            const int64_t body = FloatsMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
-            bits = body < 0 ? -1 : table + body;
+            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+            const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
+            if ( table >= 0 )
+            {
+                const int64_t body = FloatsMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
+                bits = body < 0 ? -1 : table + body;
+            }
         }
     }
     TableNumberingShutdown( numbering );
@@ -12024,15 +12472,19 @@ inline int64_t FloatsMessageBodyBits( const Ctx & ctx, const Floats & root, int6
 }
 
 template <typename Ctx>
-inline bool FloatsMessageBodySave( const Ctx & ctx, const Floats & root, TableBitWriter & w, TableAllocator allocator )
+inline bool FloatsMessageBodySave( const Ctx & ctx, const Floats & root, TableBitWriter & w, TableAllocator allocator, TableRefuseReason * reason = NULL )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     bool ok = false;
-    if ( FloatsNumberFrom( ctx, numbering, root ) )
+    if ( FloatsNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
     {
-        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-        ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && FloatsSaveMessageBody( ctx, numbering, index_bits, w, root );
+        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
+        else
+        {
+            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+            ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && FloatsSaveMessageBody( ctx, numbering, index_bits, w, root );
+        }
     }
     TableNumberingShutdown( numbering );
     return ok && !w.overflow;
@@ -12051,8 +12503,9 @@ inline int64_t FloatsMeasureMessages( const Floats * const * roots, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( roots[i] == NULL ) { return -1; }
-        const int64_t body = FloatsMessageBodyBits( ctx, *roots[i], bits, allocator );
-        if ( body < 0 ) { return -1; }
+        TableRefuseReason why = ok;
+        const int64_t body = FloatsMessageBodyBits( ctx, *roots[i], bits, allocator, &why );
+        if ( body < 0 ) { if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } return -1; } // §2.5, §16.7
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8;
@@ -12067,7 +12520,13 @@ inline int64_t FloatsSaveMessages( const Floats * const * roots, int64_t count, 
     TableRegionCtx ctx;
     for ( int64_t i = 0; i < count; i++ )
     {
-        if ( roots[i] == NULL || !FloatsMessageBodySave( ctx, *roots[i], batch.w, allocator ) ) { return -1; }
+        if ( roots[i] == NULL ) { return -1; }
+        TableRefuseReason why = ok;
+        if ( !FloatsMessageBodySave( ctx, *roots[i], batch.w, allocator, &why ) )
+        {
+            if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } // §2.5, §16.7
+            return -1;
+        }
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == FloatsMeasureMessages( roots, count, report, allocator )
@@ -12177,6 +12636,7 @@ inline bool FloatsLoadMessageBodyInto( TableBitReader & r, const TableVocabulary
     nodes.entries = directory;
     nodes.count = count + 1;
     nodes.good = false;
+    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
 
     // PASS ONE: the numbering from the framing, every node placed, no body read
     const int64_t records_start = r.offset;
@@ -12296,7 +12756,8 @@ inline int64_t FloatsLoadMeasure( const uint8_t * wire_file, int64_t wire_file_b
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     // a FORM BYTE this build does not carry is refused by name (§3, §6.5);
-    // a trailer that cannot be read whole is damage and names no reason
+    // a short or mismatched form-1 trailer is damage named integrity_mismatch;
+    // empty and other-form inputs keep TableOpen's classification.
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict == TableOpenRefused ) { if ( reason_out != NULL ) { *reason_out = unknown_form; } return -1; }
     if ( verdict != TableOpenOk ) { return -1; }
@@ -12327,13 +12788,13 @@ inline int64_t FloatsLoadMeasure( const uint8_t * wire_file, int64_t wire_file_b
     return data + attribution;
 }
 
-// FloatsLoad: decode the tolerant wire into the caller's exact-sized region and
+// FloatsLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
 // return the root. LOAD IS A SCAN, and that is the whole of its bound: it
 // follows no reference, so there is no depth cap, no visited set and no
 // ordering rule on the indices. Partial results are kept, as everywhere on
 // this wire — the report says what happened. NULL means the CALLER's buffer
 // was wrong.
-inline const Floats * FloatsLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+inline const Floats * FloatsLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
@@ -12345,12 +12806,14 @@ inline const Floats * FloatsLoad( uint8_t * region, int64_t region_bytes, const 
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return NULL;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -12384,8 +12847,9 @@ inline const Floats * FloatsLoad( uint8_t * region, int64_t region_bytes, const 
 
     TableNodeMap nodes;
     nodes.base = region;
-    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
+    nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x91638659f8f6ad42ull;
@@ -12456,11 +12920,40 @@ inline const Floats * FloatsLoad( uint8_t * region, int64_t region_bytes, const 
     return root;
 }
 
-// FloatsLoadBuilder: the TOOL's path — the same tolerant decode into a fresh
+// The PLAIN FloatsLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
+// refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with a NULL root and
+// the supplied report overwritten with this read's report and its reason
+// set. unknown and widened alone never refuse.
+inline const Floats * FloatsLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const Floats * root = FloatsLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        return NULL;
+    }
+    out->refuse_reason = ok;
+    return root;
+}
+
+// FloatsLoadBuilderTolerant: the TOOL's path — the same tolerant decode into a fresh
 // builder, so loaded data can be edited and locked again. The numbering is
 // the same one; what differs is where a node lives and therefore what a
 // resolved slot holds — an arena offset here, a self-relative delta there.
-inline bool FloatsLoadBuilder( FloatsBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+inline bool FloatsLoadBuilderTolerant( FloatsBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
@@ -12469,12 +12962,14 @@ inline bool FloatsLoadBuilder( FloatsBuilder & builder, const uint8_t * wire_fil
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; }
         return false;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return false;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -12503,6 +12998,7 @@ inline bool FloatsLoadBuilder( FloatsBuilder & builder, const uint8_t * wire_fil
     nodes.entries = directory;
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
+    nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -12553,6 +13049,73 @@ inline bool FloatsLoadBuilder( FloatsBuilder & builder, const uint8_t * wire_fil
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
     return ok;
+}
+
+// The PLAIN FloatsLoadBuilder IS THE STRICT READ (docs/SPEC-TABLES.md §6.5):
+// it refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with false as its
+// refusal value and the supplied report overwritten with this read's report
+// and its reason set. unknown and widened alone never refuse.
+inline bool FloatsLoadBuilder( FloatsBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const bool decoded = FloatsLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        return false;
+    }
+    out->refuse_reason = ok;
+    return true;
+}
+
+// FloatsReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, its
+// OWN builder, the root or a refusal with ONE typed reason. The caller does
+// not measure and does not Init: the measure and the builder are this call's.
+// The packed root it returns is the caller's to release with the allocator it
+// passed (table_release( allocator, root ), the default pair when none).
+inline const Floats * FloatsReadStrict( const uint8_t * wire_file, int64_t wire_file_bytes, TableRefuseReason * reason = NULL, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( reason != NULL ) { *reason = ok; }
+    int64_t attribution = 0;
+    TableRefuseReason why = ok;
+    const int64_t size = FloatsLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
+    if ( size < 0 ) { if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; } return NULL; }
+    FloatsBuilder builder( allocator );
+    TableReport report;
+    const bool decoded = FloatsLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    {
+        if ( reason != NULL )
+        {
+            if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }
+            else if ( report.refused ) { *reason = unknown_form; }
+            else if ( report.malformed ) { *reason = wire_damaged; }
+            else if ( report.blob_shared ) { *reason = blob_shared; } // §2.5, §16.7
+            else if ( report.clamped ) { *reason = clamped; }
+            else if ( report.kind_mismatch ) { *reason = kind_mismatch; }
+            else { *reason = wire_damaged; }
+        }
+        return NULL;
+    }
+    if ( !builder.Lock() ) { if ( reason != NULL ) { *reason = allocation_failed; } return NULL; }
+    const Floats * root = builder.AsConst();
+    // the packed region is the caller's from here on, not the builder's
+    builder.region = NULL;
+    builder.region_bytes = 0;
+    if ( reason != NULL ) { *reason = ok; }
+    return root;
 }
 
 template <typename Ctx>
@@ -13607,12 +14170,14 @@ inline const Bytes * BytesLoadRetain( uint8_t * region, int64_t region_bytes, co
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return NULL;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -13646,8 +14211,9 @@ inline const Bytes * BytesLoadRetain( uint8_t * region, int64_t region_bytes, co
 
     TableNodeMap nodes;
     nodes.base = region;
-    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
+    nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xeeeea7adc131a244ull;
@@ -13779,6 +14345,7 @@ inline bool BytesLoadMessageBodyIntoRetain( TableBitReader & r, const TableVocab
     nodes.entries = directory;
     nodes.count = count + 1;
     nodes.good = false;
+    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
 
     // PASS ONE: the numbering from the framing, every node placed, no body read
     const int64_t records_start = r.offset;
@@ -14053,12 +14620,14 @@ inline const Ints * IntsLoadRetain( uint8_t * region, int64_t region_bytes, cons
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return NULL;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -14092,8 +14661,9 @@ inline const Ints * IntsLoadRetain( uint8_t * region, int64_t region_bytes, cons
 
     TableNodeMap nodes;
     nodes.base = region;
-    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
+    nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x2034c5d17c00ceb7ull;
@@ -14225,6 +14795,7 @@ inline bool IntsLoadMessageBodyIntoRetain( TableBitReader & r, const TableVocabu
     nodes.entries = directory;
     nodes.count = count + 1;
     nodes.good = false;
+    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
 
     // PASS ONE: the numbering from the framing, every node placed, no body read
     const int64_t records_start = r.offset;
@@ -14499,12 +15070,14 @@ inline const Floats * FloatsLoadRetain( uint8_t * region, int64_t region_bytes, 
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return NULL;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -14538,8 +15111,9 @@ inline const Floats * FloatsLoadRetain( uint8_t * region, int64_t region_bytes, 
 
     TableNodeMap nodes;
     nodes.base = region;
-    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
+    nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x91638659f8f6ad42ull;
@@ -14671,6 +15245,7 @@ inline bool FloatsLoadMessageBodyIntoRetain( TableBitReader & r, const TableVoca
     nodes.entries = directory;
     nodes.count = count + 1;
     nodes.good = false;
+    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
 
     // PASS ONE: the numbering from the framing, every node placed, no body read
     const int64_t records_start = r.offset;
@@ -15681,6 +16256,7 @@ inline const TableTypeInfo * FloatsTableType() { return &FloatsTableInfo; }
 // builder, written from a region's const root. A node named more than once
 // carries `&node` in the text. Defined in ReportTable.cpp; link it to use them.
 bool BytesFromJson( BytesBuilder & builder, const char * text, int64_t bytes, TableReport * report );
+bool BytesFromJsonTolerant( BytesBuilder & builder, const char * text, int64_t bytes, TableReport * report );
 int64_t BytesToJsonMeasure( const Bytes * root, TableAllocator allocator = TableDefaultAllocator() );
 int64_t BytesToJson( const Bytes * root, char * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() );
 
@@ -15688,6 +16264,7 @@ int64_t BytesToJson( const Bytes * root, char * buffer, int64_t capacity, TableA
 // builder, written from a region's const root. A node named more than once
 // carries `&node` in the text. Defined in ReportTable.cpp; link it to use them.
 bool IntsFromJson( IntsBuilder & builder, const char * text, int64_t bytes, TableReport * report );
+bool IntsFromJsonTolerant( IntsBuilder & builder, const char * text, int64_t bytes, TableReport * report );
 int64_t IntsToJsonMeasure( const Ints * root, TableAllocator allocator = TableDefaultAllocator() );
 int64_t IntsToJson( const Ints * root, char * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() );
 
@@ -15695,7 +16272,97 @@ int64_t IntsToJson( const Ints * root, char * buffer, int64_t capacity, TableAll
 // builder, written from a region's const root. A node named more than once
 // carries `&node` in the text. Defined in ReportTable.cpp; link it to use them.
 bool FloatsFromJson( FloatsBuilder & builder, const char * text, int64_t bytes, TableReport * report );
+bool FloatsFromJsonTolerant( FloatsBuilder & builder, const char * text, int64_t bytes, TableReport * report );
 int64_t FloatsToJsonMeasure( const Floats * root, TableAllocator allocator = TableDefaultAllocator() );
 int64_t FloatsToJson( const Floats * root, char * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() );
+
+// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----
+
+#ifndef LISTDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
+#define LISTDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
+// TableTextFormEdit replaces one existing scalar value (§16.9.3): path
+// names it as "field", "field[2]" or "field.child", and text is its
+// replacement spelling, one token of this form.
+struct TableTextFormEdit
+{
+    const char * path;
+    const char * text;
+};
+#endif // LISTDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
+
+// BytesLoadTextForm reads one Bytes from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool BytesLoadTextForm( const char * text, int64_t bytes, BytesBuilder & builder, const char ** refusal );
+
+// BytesLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
+// *document and *document_bytes are the caller's own text, so a read then
+// BytesSaveTextForm with no edit is the input byte for byte.
+bool BytesLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, BytesBuilder & builder, const char ** refusal );
+
+// BytesSaveTextForm writes the document a Load or Edit returned
+// (docs/SPEC-TABLES.md §16.9.3): the retained bytes, so a read then a
+// write with no edit is the input byte for byte. It answers the byte
+// count, or -1 when capacity cannot hold the document.
+int64_t BytesSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity );
+
+// BytesEditTextForm replaces existing scalar values (§16.9.3): each edit's
+// token span and nothing else, all spans taken from the original document,
+// a semantic no-op keeping the old spelling. On success *edited_bytes is
+// the edited document's length; a short buffer answers false with
+// *edited_bytes set to what it needs. A refusal names itself in *refusal
+// and leaves the old document untouched.
+bool BytesEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, BytesBuilder & builder, const char ** refusal );
+
+// IntsLoadTextForm reads one Ints from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool IntsLoadTextForm( const char * text, int64_t bytes, IntsBuilder & builder, const char ** refusal );
+
+// IntsLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
+// *document and *document_bytes are the caller's own text, so a read then
+// IntsSaveTextForm with no edit is the input byte for byte.
+bool IntsLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, IntsBuilder & builder, const char ** refusal );
+
+// IntsSaveTextForm writes the document a Load or Edit returned
+// (docs/SPEC-TABLES.md §16.9.3): the retained bytes, so a read then a
+// write with no edit is the input byte for byte. It answers the byte
+// count, or -1 when capacity cannot hold the document.
+int64_t IntsSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity );
+
+// IntsEditTextForm replaces existing scalar values (§16.9.3): each edit's
+// token span and nothing else, all spans taken from the original document,
+// a semantic no-op keeping the old spelling. On success *edited_bytes is
+// the edited document's length; a short buffer answers false with
+// *edited_bytes set to what it needs. A refusal names itself in *refusal
+// and leaves the old document untouched.
+bool IntsEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, IntsBuilder & builder, const char ** refusal );
+
+// FloatsLoadTextForm reads one Floats from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool FloatsLoadTextForm( const char * text, int64_t bytes, FloatsBuilder & builder, const char ** refusal );
+
+// FloatsLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
+// *document and *document_bytes are the caller's own text, so a read then
+// FloatsSaveTextForm with no edit is the input byte for byte.
+bool FloatsLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, FloatsBuilder & builder, const char ** refusal );
+
+// FloatsSaveTextForm writes the document a Load or Edit returned
+// (docs/SPEC-TABLES.md §16.9.3): the retained bytes, so a read then a
+// write with no edit is the input byte for byte. It answers the byte
+// count, or -1 when capacity cannot hold the document.
+int64_t FloatsSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity );
+
+// FloatsEditTextForm replaces existing scalar values (§16.9.3): each edit's
+// token span and nothing else, all spans taken from the original document,
+// a semantic no-op keeping the old spelling. On success *edited_bytes is
+// the edited document's length; a short buffer answers false with
+// *edited_bytes set to what it needs. A refusal names itself in *refusal
+// and leaves the old document untouched.
+bool FloatsEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, FloatsBuilder & builder, const char ** refusal );
 
 } // namespace listdemo
