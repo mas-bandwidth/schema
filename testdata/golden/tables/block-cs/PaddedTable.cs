@@ -698,158 +698,158 @@ namespace Blockdemo
                 switch (p.Op)
                 {
                     case TableFixedWire.Copy:
-                    {
-                        if (p.Size == 1) { PaddedRowFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
-                        else if (p.Size == 2) { PaddedRowFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
-                        else if (p.Size == 4) { PaddedRowFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
-                        else if (p.Size == 8) { PaddedRowFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
-                        else if (p.Size == 16)
                         {
-                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
-                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
-                            PaddedRowFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                            if (p.Size == 1) { PaddedRowFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                            else if (p.Size == 2) { PaddedRowFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 4) { PaddedRowFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 8) { PaddedRowFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 16)
+                            {
+                                ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                                ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                                PaddedRowFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                            }
+                            else { PaddedRowFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                            break;
                         }
-                        else { PaddedRowFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
-                        break;
-                    }
                     case TableFixedWire.Flat:
-                    {
-                        PaddedRowFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
-                        break;
-                    }
+                        {
+                            PaddedRowFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                            break;
+                        }
                     case TableFixedWire.FlatWiden:
-                    {
-                        int sw = p.Meta == 0 ? 1 : p.Meta;
-                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
-                        int runs = (int)p.Size / sw;
-                        int need = runs * dw;
-                        if (widenScratch == null || widenScratch.Length < need)
                         {
-                            widenScratch = new byte[need];
-                        }
-                        Span<byte> wide = widenScratch.AsSpan(0, need);
-                        for (int e = 0; e < runs; ++e)
-                        {
-                            int at = (int)p.Src + e * sw;
-                            if (p.Sign == 2)
+                            int sw = p.Meta == 0 ? 1 : p.Meta;
+                            int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                            int runs = (int)p.Size / sw;
+                            int need = runs * dw;
+                            if (widenScratch == null || widenScratch.Length < need)
                             {
-                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
-                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
-                                continue;
+                                widenScratch = new byte[need];
                             }
-                            ulong raw = 0;
-                            if (sw == 1) raw = src[at];
-                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
-                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
-                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
-                            if (p.Sign == 1)
+                            Span<byte> wide = widenScratch.AsSpan(0, need);
+                            for (int e = 0; e < runs; ++e)
                             {
-                                int bits = sw * 8;
-                                ulong top = 1UL << (bits - 1);
-                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                int at = (int)p.Src + e * sw;
+                                if (p.Sign == 2)
+                                {
+                                    double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                    BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                    continue;
+                                }
+                                ulong raw = 0;
+                                if (sw == 1) raw = src[at];
+                                else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                                else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                                else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                                if (p.Sign == 1)
+                                {
+                                    int bits = sw * 8;
+                                    ulong top = 1UL << (bits - 1);
+                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                }
+                                Span<byte> cell = wide.Slice(e * dw, dw);
+                                if (dw == 1) cell[0] = (byte)raw;
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
-                            Span<byte> cell = wide.Slice(e * dw, dw);
-                            if (dw == 1) cell[0] = (byte)raw;
-                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
-                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                            PaddedRowFixedSetBytes(dst, p.Dst, wide, need);
+                            if (report != null) { report.Widened += runs; }
+                            break;
                         }
-                        PaddedRowFixedSetBytes(dst, p.Dst, wide, need);
-                        if (report != null) { report.Widened += runs; }
-                        break;
-                    }
                     case TableFixedWire.Count:
-                    {
-                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
-                        PaddedRowFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                        break;
-                    }
+                        {
+                            int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            PaddedRowFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                            break;
+                        }
                     case TableFixedWire.Text:
-                    {
-                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                        uint cap = p.Size / unit;
-                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
-                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
-                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                         {
-                            return "text_ill_formed";
+                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                            uint cap = p.Size / unit;
+                            int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                            if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                            {
+                                return "text_ill_formed";
+                            }
+                            PaddedRowFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                            if (p.Meta == TableFixedWire.TextWide)
+                            {
+                                PaddedRowFixedSetChars(dst, p.Aux, textBytes, v);
+                            }
+                            else
+                            {
+                                PaddedRowFixedSetBytes(dst, p.Aux, textBytes, v);
+                            }
+                            break;
                         }
-                        PaddedRowFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                        if (p.Meta == TableFixedWire.TextWide)
-                        {
-                            PaddedRowFixedSetChars(dst, p.Aux, textBytes, v);
-                        }
-                        else
-                        {
-                            PaddedRowFixedSetBytes(dst, p.Aux, textBytes, v);
-                        }
-                        break;
-                    }
                     case TableFixedWire.Ordinal:
-                    {
-                        ulong raw = 0;
-                        if (p.Size == 1) raw = src[(int)p.Src];
-                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
-                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
-                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
-                        uint v = 0;
-                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
                         {
-                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
-                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
-                            if (raw != 0 && raw <= count)
+                            ulong raw = 0;
+                            if (p.Size == 1) raw = src[(int)p.Src];
+                            else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            uint v = 0;
+                            if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
                             {
-                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                                ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                                ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                                if (raw != 0 && raw <= count)
+                                {
+                                    v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                                }
+                                if (raw > count) { forgedOrdinal++; }
                             }
-                            if (raw > count) { forgedOrdinal++; }
+                            PaddedRowFixedSetRaw(dst, p.Dst, v, report);
+                            break;
                         }
-                        PaddedRowFixedSetRaw(dst, p.Dst, v, report);
-                        break;
-                    }
                     case TableFixedWire.Widen:
-                    {
-                        ulong raw = 0;
-                        if (p.Size == 1) raw = src[(int)p.Src];
-                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
-                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
-                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
-                        if (p.Sign != 0)
                         {
-                            int bits = (int)p.Size * 8;
-                            ulong top = 1UL << (bits - 1);
-                            if ((raw & top) != 0)
+                            ulong raw = 0;
+                            if (p.Size == 1) raw = src[(int)p.Src];
+                            else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            if (p.Sign != 0)
                             {
-                                raw |= ~((top << 1) - 1UL);
+                                int bits = (int)p.Size * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0)
+                                {
+                                    raw |= ~((top << 1) - 1UL);
+                                }
                             }
+                            if (p.DstSize == 16)
+                            {
+                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                PaddedRowFixedSetWide(dst, p.Dst, w);
+                            }
+                            else
+                            {
+                                PaddedRowFixedSetRaw(dst, p.Dst, raw, report);
+                            }
+                            if (report != null) { report.Widened++; }
+                            break;
                         }
-                        if (p.DstSize == 16)
-                        {
-                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
-                            PaddedRowFixedSetWide(dst, p.Dst, w);
-                        }
-                        else
-                        {
-                            PaddedRowFixedSetRaw(dst, p.Dst, raw, report);
-                        }
-                        if (report != null) { report.Widened++; }
-                        break;
-                    }
                     case TableFixedWire.WidenF:
-                    {
-                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
-                        PaddedRowFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
-                        if (report != null) { report.Widened++; }
-                        break;
-                    }
+                        {
+                            float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                            PaddedRowFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                            if (report != null) { report.Widened++; }
+                            break;
+                        }
                     case TableFixedWire.Const:
-                    {
-                        PaddedRowFixedSetRaw(dst, p.Dst, p.Aux, report);
-                        break;
-                    }
+                        {
+                            PaddedRowFixedSetRaw(dst, p.Dst, p.Aux, report);
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -3865,158 +3865,158 @@ namespace Blockdemo
                 switch (p.Op)
                 {
                     case TableFixedWire.Copy:
-                    {
-                        if (p.Size == 1) { PaddedFrameFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
-                        else if (p.Size == 2) { PaddedFrameFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
-                        else if (p.Size == 4) { PaddedFrameFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
-                        else if (p.Size == 8) { PaddedFrameFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
-                        else if (p.Size == 16)
                         {
-                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
-                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
-                            PaddedFrameFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                            if (p.Size == 1) { PaddedFrameFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                            else if (p.Size == 2) { PaddedFrameFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 4) { PaddedFrameFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 8) { PaddedFrameFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 16)
+                            {
+                                ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                                ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                                PaddedFrameFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                            }
+                            else { PaddedFrameFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                            break;
                         }
-                        else { PaddedFrameFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
-                        break;
-                    }
                     case TableFixedWire.Flat:
-                    {
-                        PaddedFrameFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
-                        break;
-                    }
+                        {
+                            PaddedFrameFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                            break;
+                        }
                     case TableFixedWire.FlatWiden:
-                    {
-                        int sw = p.Meta == 0 ? 1 : p.Meta;
-                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
-                        int runs = (int)p.Size / sw;
-                        int need = runs * dw;
-                        if (widenScratch == null || widenScratch.Length < need)
                         {
-                            widenScratch = new byte[need];
-                        }
-                        Span<byte> wide = widenScratch.AsSpan(0, need);
-                        for (int e = 0; e < runs; ++e)
-                        {
-                            int at = (int)p.Src + e * sw;
-                            if (p.Sign == 2)
+                            int sw = p.Meta == 0 ? 1 : p.Meta;
+                            int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                            int runs = (int)p.Size / sw;
+                            int need = runs * dw;
+                            if (widenScratch == null || widenScratch.Length < need)
                             {
-                                double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
-                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
-                                continue;
+                                widenScratch = new byte[need];
                             }
-                            ulong raw = 0;
-                            if (sw == 1) raw = src[at];
-                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
-                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
-                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
-                            if (p.Sign == 1)
+                            Span<byte> wide = widenScratch.AsSpan(0, need);
+                            for (int e = 0; e < runs; ++e)
                             {
-                                int bits = sw * 8;
-                                ulong top = 1UL << (bits - 1);
-                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                int at = (int)p.Src + e * sw;
+                                if (p.Sign == 2)
+                                {
+                                    double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                    BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                    continue;
+                                }
+                                ulong raw = 0;
+                                if (sw == 1) raw = src[at];
+                                else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                                else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                                else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                                if (p.Sign == 1)
+                                {
+                                    int bits = sw * 8;
+                                    ulong top = 1UL << (bits - 1);
+                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                }
+                                Span<byte> cell = wide.Slice(e * dw, dw);
+                                if (dw == 1) cell[0] = (byte)raw;
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
-                            Span<byte> cell = wide.Slice(e * dw, dw);
-                            if (dw == 1) cell[0] = (byte)raw;
-                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
-                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                            PaddedFrameFixedSetBytes(dst, p.Dst, wide, need);
+                            if (report != null) { report.Widened += runs; }
+                            break;
                         }
-                        PaddedFrameFixedSetBytes(dst, p.Dst, wide, need);
-                        if (report != null) { report.Widened += runs; }
-                        break;
-                    }
                     case TableFixedWire.Count:
-                    {
-                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
-                        PaddedFrameFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                        break;
-                    }
+                        {
+                            int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            PaddedFrameFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                            break;
+                        }
                     case TableFixedWire.Text:
-                    {
-                        uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                        uint cap = p.Size / unit;
-                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                        if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
-                        ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
-                        if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                         {
-                            return "text_ill_formed";
+                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                            uint cap = p.Size / unit;
+                            int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                            if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                            {
+                                return "text_ill_formed";
+                            }
+                            PaddedFrameFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                            if (p.Meta == TableFixedWire.TextWide)
+                            {
+                                PaddedFrameFixedSetChars(dst, p.Aux, textBytes, v);
+                            }
+                            else
+                            {
+                                PaddedFrameFixedSetBytes(dst, p.Aux, textBytes, v);
+                            }
+                            break;
                         }
-                        PaddedFrameFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                        if (p.Meta == TableFixedWire.TextWide)
-                        {
-                            PaddedFrameFixedSetChars(dst, p.Aux, textBytes, v);
-                        }
-                        else
-                        {
-                            PaddedFrameFixedSetBytes(dst, p.Aux, textBytes, v);
-                        }
-                        break;
-                    }
                     case TableFixedWire.Ordinal:
-                    {
-                        ulong raw = 0;
-                        if (p.Size == 1) raw = src[(int)p.Src];
-                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
-                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
-                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
-                        uint v = 0;
-                        if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
                         {
-                            ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
-                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
-                            if (raw != 0 && raw <= count)
+                            ulong raw = 0;
+                            if (p.Size == 1) raw = src[(int)p.Src];
+                            else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            uint v = 0;
+                            if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
                             {
-                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                                ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                                ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                                if (raw != 0 && raw <= count)
+                                {
+                                    v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                                }
+                                if (raw > count) { forgedOrdinal++; }
                             }
-                            if (raw > count) { forgedOrdinal++; }
+                            PaddedFrameFixedSetRaw(dst, p.Dst, v, report);
+                            break;
                         }
-                        PaddedFrameFixedSetRaw(dst, p.Dst, v, report);
-                        break;
-                    }
                     case TableFixedWire.Widen:
-                    {
-                        ulong raw = 0;
-                        if (p.Size == 1) raw = src[(int)p.Src];
-                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
-                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
-                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
-                        if (p.Sign != 0)
                         {
-                            int bits = (int)p.Size * 8;
-                            ulong top = 1UL << (bits - 1);
-                            if ((raw & top) != 0)
+                            ulong raw = 0;
+                            if (p.Size == 1) raw = src[(int)p.Src];
+                            else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            if (p.Sign != 0)
                             {
-                                raw |= ~((top << 1) - 1UL);
+                                int bits = (int)p.Size * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0)
+                                {
+                                    raw |= ~((top << 1) - 1UL);
+                                }
                             }
+                            if (p.DstSize == 16)
+                            {
+                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                PaddedFrameFixedSetWide(dst, p.Dst, w);
+                            }
+                            else
+                            {
+                                PaddedFrameFixedSetRaw(dst, p.Dst, raw, report);
+                            }
+                            if (report != null) { report.Widened++; }
+                            break;
                         }
-                        if (p.DstSize == 16)
-                        {
-                            UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
-                            PaddedFrameFixedSetWide(dst, p.Dst, w);
-                        }
-                        else
-                        {
-                            PaddedFrameFixedSetRaw(dst, p.Dst, raw, report);
-                        }
-                        if (report != null) { report.Widened++; }
-                        break;
-                    }
                     case TableFixedWire.WidenF:
-                    {
-                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
-                        PaddedFrameFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
-                        if (report != null) { report.Widened++; }
-                        break;
-                    }
+                        {
+                            float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                            PaddedFrameFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                            if (report != null) { report.Widened++; }
+                            break;
+                        }
                     case TableFixedWire.Const:
-                    {
-                        PaddedFrameFixedSetRaw(dst, p.Dst, p.Aux, report);
-                        break;
-                    }
+                        {
+                            PaddedFrameFixedSetRaw(dst, p.Dst, p.Aux, report);
+                            break;
+                        }
                     default: break;
                 }
             }
