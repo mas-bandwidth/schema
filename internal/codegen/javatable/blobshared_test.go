@@ -16,6 +16,8 @@ import (
 // the one node for both slots, and a later save, measure-by-save and toJson of
 // that value refuse; a fresh value whose two slots hold one byte[] is refused
 // the same way, while two equal but distinct arrays are two records and save.
+// A String is an immutable value, so one interned literal in two *string slots
+// is two values: it saves as two records and loads back as two strings.
 func TestJavaWritersRefuseASharedBlob(t *testing.T) {
 	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
@@ -63,6 +65,18 @@ public final class BlobSharedDriver {
         System.out.println("fresh-save " + (` + pkg + `.CatalogVariable.save(fresh) == null ? "refused" : "written"));
         fresh.alias = new byte[] {1, 2, 3};
         System.out.println("equal-save " + (` + pkg + `.CatalogVariable.save(fresh) == null ? "refused" : "written"));
+        // A String is an immutable value: one interned literal in two *string
+        // slots is two values and two records, never blob_shared.
+        ` + pkg + `.CatalogVariable.Value words = new ` + pkg + `.CatalogVariable.Value();
+        words.note = "the same literal";
+        words.head = new ` + pkg + `.AssetVariable.Value();
+        words.head.caption = "the same literal";
+        byte[] wordsWire = ` + pkg + `.CatalogVariable.save(words);
+        System.out.println("literal-save " + (wordsWire == null ? "refused" : "written"));
+        ` + pkg + `.TableVariable.Report again = new ` + pkg + `.TableVariable.Report();
+        ` + pkg + `.CatalogVariable.Value back = wordsWire == null ? null : ` + pkg + `.CatalogVariable.load(wordsWire, again);
+        System.out.println("literal-back " + (back != null && "the same literal".equals(back.note) && back.head != null
+                && "the same literal".equals(back.head.caption) && back.note != back.head.caption));
     }
 }
 `
@@ -88,7 +102,7 @@ public final class BlobSharedDriver {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
 	got := strings.TrimSpace(string(out))
-	want := "loaded true one-node true\nloaded-save refused\nloaded-json refused\nfresh-save refused\nequal-save written"
+	want := "loaded true one-node true\nloaded-save refused\nloaded-json refused\nfresh-save refused\nequal-save written\nliteral-save written\nliteral-back true"
 	if got != want {
 		t.Fatalf("the Java writers on a shared blob (§2.5):\n%s\nwant:\n%s", got, want)
 	}

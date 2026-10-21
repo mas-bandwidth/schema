@@ -656,8 +656,9 @@ public final class Driver {
     }
 
     // sharesABlob answers whether two slots of the value graph hold the SAME
-    // String or byte[] instance: the one node a tolerant load keeps for a blob
-    // two slots name (docs/SPEC-TABLES.md §2.5), which every writer refuses.
+    // byte[] instance: the one node a tolerant load keeps for a blob two slots
+    // name (docs/SPEC-TABLES.md §2.5), which every writer refuses. A String is
+    // an immutable value and is never counted.
     private static boolean sharesABlob(Object root) {
         java.util.IdentityHashMap<Object, Boolean> seen = new java.util.IdentityHashMap<>();
         java.util.IdentityHashMap<Object, Boolean> blobs = new java.util.IdentityHashMap<>();
@@ -670,8 +671,8 @@ public final class Driver {
             }
             if (o instanceof java.util.List) {
                 for (Object e : (java.util.List<?>) o) {
-                    if (e instanceof String || e instanceof byte[]) {
-                        if (!"".equals(e) && blobs.put(e, Boolean.TRUE) != null) return true;
+                    if (e instanceof byte[]) {
+                        if (blobs.put(e, Boolean.TRUE) != null) return true;
                     } else if (e != null) {
                         work.push(e);
                     }
@@ -686,10 +687,8 @@ public final class Driver {
                 Object v;
                 try { v = fd.get(o); } catch (IllegalAccessException e) { continue; }
                 if (v == null) continue;
-                if (v instanceof String || v instanceof byte[]) {
-                    // an empty String is the shared "" default literal, never a
-                    // node the load handed out, so it is not counted
-                    if (!"".equals(v) && blobs.put(v, Boolean.TRUE) != null) return true;
+                if (v instanceof byte[]) {
+                    if (blobs.put(v, Boolean.TRUE) != null) return true;
                 } else if (!fd.getType().isPrimitive()) {
                     work.push(v);
                 }

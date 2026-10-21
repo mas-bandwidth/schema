@@ -1437,6 +1437,15 @@ public final class TableVariable {
         private int[] keyUses = new int[16];
         private boolean[] keyOpen = new boolean[16];
         private int keyCount;
+        // A *string SLOT is numbered by the slot, never by the String's
+        // identity: a Java String is an immutable value and two slots that
+        // hold one interned instance are two values, two blob records
+        // (docs/SPEC-TABLES.md §2.5). The slot is (owner, field id), in an
+        // open-addressed table allocated on first use.
+        private Object[] stringOwner;
+        private long[] stringField;
+        private long[] stringIndex;
+        private int stringCount;
         private Object[] nodeValue = new Object[8];
         private long[] nodeType = new long[8];
         private boolean[] nodeBlob = new boolean[8];
@@ -1455,6 +1464,10 @@ public final class TableVariable {
             }
             if (!labels.isEmpty()) {
                 labels.clear();
+            }
+            if (stringCount > 0) {
+                java.util.Arrays.fill(stringOwner, null);
+                stringCount = 0;
             }
         }
 
@@ -1537,8 +1550,10 @@ public final class TableVariable {
                 return false;
             }
             // A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): a second
-            // slot naming the same blob is blob_shared, and every writer
-            // refuses it rather than writing it once or a copy per slot.
+            // slot naming the same MUTABLE blob (one byte[]) is blob_shared,
+            // and every writer refuses it rather than writing it once or a
+            // copy per slot. A *string never reaches here: recordString
+            // numbers it by its slot.
             if (isBlob && keyIndex[i] != 0) {
                 return false;
             }
@@ -1557,6 +1572,67 @@ public final class TableVariable {
                 nodeCount++;
             }
             return true;
+        }
+
+        private int stringSlot(Object owner, long field) {
+            int mask = stringOwner.length - 1;
+            int h = System.identityHashCode(owner) * 31 + (int) (field ^ (field >>> 32));
+            int i = (h ^ (h >>> 16)) & mask;
+            while (stringOwner[i] != null && (stringOwner[i] != owner || stringField[i] != field)) {
+                i = (i + 1) & mask;
+            }
+            return i;
+        }
+
+        // recordString numbers the blob a *string slot holds: one node per
+        // slot, so equal strings in two slots are two records.
+        public void recordString(Object owner, long field, String value) {
+            if (stringOwner == null) {
+                stringOwner = new Object[16];
+                stringField = new long[16];
+                stringIndex = new long[16];
+            }
+            if ((stringCount + 1) * 2 > stringOwner.length) {
+                Object[] oo = stringOwner;
+                long[] of = stringField;
+                long[] oi = stringIndex;
+                int cap = oo.length * 2;
+                stringOwner = new Object[cap];
+                stringField = new long[cap];
+                stringIndex = new long[cap];
+                for (int j = 0; j < oo.length; j++) {
+                    if (oo[j] != null) {
+                        int k = stringSlot(oo[j], of[j]);
+                        stringOwner[k] = oo[j];
+                        stringField[k] = of[j];
+                        stringIndex[k] = oi[j];
+                    }
+                }
+            }
+            int i = stringSlot(owner, field);
+            if (stringOwner[i] == owner && stringField[i] == field) {
+                return;
+            }
+            if (nodeCount == nodeValue.length) {
+                int cap = nodeCount * 2;
+                nodeValue = java.util.Arrays.copyOf(nodeValue, cap);
+                nodeType = java.util.Arrays.copyOf(nodeType, cap);
+                nodeBlob = java.util.Arrays.copyOf(nodeBlob, cap);
+            }
+            stringOwner[i] = owner;
+            stringField[i] = field;
+            stringIndex[i] = (long) (nodeCount + 2);
+            stringCount++;
+            nodeValue[nodeCount] = value;
+            nodeType[nodeCount] = STRING_ID;
+            nodeBlob[nodeCount] = true;
+            nodeCount++;
+        }
+
+        public long stringIndex(Object owner, long field) {
+            if (stringOwner == null) return 0;
+            int i = stringSlot(owner, field);
+            return stringOwner[i] == owner && stringField[i] == field ? stringIndex[i] : 0;
         }
 
         public int nodeCount() {
@@ -4561,7 +4637,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	case isScalarArray(f):
 		writeArrayFieldSave(b, u, st, f)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(F_%s)); w.put8(17); w.putLeb(graph.index(v.%s)); }\n", m, m, m)
+		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(F_%s)); w.put8(17); w.putLeb(graph.stringIndex(v, F_%s)); }\n", m, m, m)
 	case f.Type.Kind == ir.TBytes && f.Type.Blob():
 		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(F_%s)); w.put8(17); w.putLeb(graph.index(v.%s)); }\n", m, m, m)
 	case f.Type.Pointer && isStruct(f):
@@ -4644,7 +4720,7 @@ func writeVariableGraphField(b *strings.Builder, f *ir.Field) {
 	}
 	switch {
 	case f.Type.Kind == ir.TString && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%s != null) { if (!g.recordPointer(v.%s, TableVariable.STRING_ID, true)) return false; }\n", m, m)
+		fmt.Fprintf(b, "        if (v.%s != null) { g.recordString(v, F_%s, v.%s); }\n", m, m, m)
 	case f.Type.Kind == ir.TBytes && f.Type.Blob():
 		fmt.Fprintf(b, "        if (v.%s != null) { if (!g.recordPointer(v.%s, TableVariable.BYTES_ID, true)) return false; }\n", m, m)
 	case isPointerArray(f):
