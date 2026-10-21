@@ -3149,11 +3149,11 @@ build/hostile-values/.stamp: bin/schema $(HOSTILE_MANIFEST) $(HOSTILE_TREES)
 
 build/schema_test_hostile: build/tables-generated/.stamp test/tables/hostile_main.cpp
 	@mkdir -p build
-	$(CXX) $(PACK_CXXFLAGS) $(PACK_INCLUDES) test/tables/hostile_main.cpp $(PACK_JSON_SOURCES) -o $@
+	$(CXX) $(PACK_CXXFLAGS) $(PACK_INCLUDES) -Ibuild/tables-generated/maps test/tables/hostile_main.cpp $(PACK_JSON_SOURCES) build/tables-generated/maps/TextTable.cpp -o $@
 
 build/schema_test_hostile_asan: build/tables-generated/.stamp test/tables/hostile_main.cpp
 	@mkdir -p build
-	$(CXX) $(PACK_CXXFLAGS) $(PACK_SANITIZE) $(PACK_INCLUDES) test/tables/hostile_main.cpp $(PACK_JSON_SOURCES) -o $@
+	$(CXX) $(PACK_CXXFLAGS) $(PACK_SANITIZE) $(PACK_INCLUDES) -Ibuild/tables-generated/maps test/tables/hostile_main.cpp $(PACK_JSON_SOURCES) build/tables-generated/maps/TextTable.cpp -o $@
 
 .PHONY: tables-hostile-values
 tables-hostile-values: build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp

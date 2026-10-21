@@ -20,6 +20,15 @@
 //
 // A case the manifest says is REFUSED must be refused by both.
 //
+// A row whose rule was HELD FIRST IN GO carries `carried-by=<ports>
+// uncarried=<verdict>` (the MANIFEST's own header, docs/SPEC-TABLES.md §16.3):
+// a port the list names owes the standard verdict, and every other port owes
+// the uncarried one, the behaviour it had before the ruling. This driver is
+// the cpp port's, so a row that does not name cpp is checked against its
+// uncarried verdict and the exemption is printed by name; the row is never
+// skipped. When the standard verdict is `refused`, schema pack wrote no bytes
+// for it, so the uncarried read is held to its report alone.
+//
 // THE MANIFEST IS THE CONFORMANCE HARNESS's (testdata/conformance/tables/
 // MANIFEST.txt), and the trees live beside it: the battery was always data, so
 // it moved there whole rather than keeping a registry of its own. The rows this
@@ -45,6 +54,8 @@
 #include "StreamTable.h"
 // the BYTE BUFFER unit: §2.5's rows name Catalog, whose text reads into a builder
 #include "AssetsTable.h"
+// the MAP unit: §2.8's text rows name Text, whose maps read into a builder
+#include "TextTable.h"
 
 static int failures = 0;
 static int checked = 0;
@@ -140,6 +151,7 @@ static void check_case( const char * name, const char * text, long text_size,
                 want.unknown, want.kind_mismatch, want.clamped, want.duplicate, (int) want.malformed );
         failures++;
     }
+    if ( packed == NULL ) { return; } // an uncarried row of a refused standard: no engine bytes
 
     // 2. and the bytes it saves are the bytes schema pack wrote
     int64_t from_text_size = measure( from_text );
@@ -254,6 +266,7 @@ static void check_scene_case( const char * name, const char * text, long text_si
                 want.unknown, want.kind_mismatch, want.clamped, want.duplicate, (int) want.malformed );
         failures++;
     }
+    if ( packed == NULL ) { return; } // an uncarried row of a refused standard: no engine bytes
 
     // 2. and the bytes the builder saves are the bytes schema pack wrote
     int64_t from_text_size = graphdemo::SceneMeasure( from_text );
@@ -357,6 +370,7 @@ static void check_feed_case( const char * name, const char * text, long text_siz
                 want.unknown, want.kind_mismatch, want.clamped, want.duplicate, (int) want.malformed );
         failures++;
     }
+    if ( packed == NULL ) { return; } // an uncarried row of a refused standard: no engine bytes
 
     int64_t from_text_size = streamdemo::FeedMeasure( from_text );
     if ( from_text_size != size )
@@ -443,6 +457,7 @@ static void check_catalog_case( const char * name, const char * text, long text_
                 want.unknown, want.kind_mismatch, want.clamped, want.duplicate, (int) want.malformed );
         failures++;
     }
+    if ( packed == NULL ) { return; } // an uncarried row of a refused standard: no engine bytes
 
     // 2. and the bytes the builder saves are the bytes schema pack wrote
     int64_t from_text_size = blobdemo::CatalogMeasure( from_text );
@@ -513,6 +528,108 @@ static void check_catalog_case( const char * name, const char * text, long text_
     free( region );
 }
 
+// the MAP unit's Text root (docs/SPEC-TABLES.md §2.8, §16.2). Its rows today are
+// refused by the standard, so the engine writes no bytes for them and the
+// question is the text read's alone; a Text row that PACKS would owe the wire
+// and load questions too, and this driver says it does not ask them rather
+// than passing such a row on its report.
+static bool same_map_report( const mapdemo::TableReport & got, const Expected & want )
+{
+    return got.unknown == want.unknown && got.kind_mismatch == want.kind_mismatch &&
+           got.widened == want.widened && got.clamped == want.clamped && got.duplicate == want.duplicate &&
+           got.malformed == want.malformed;
+}
+
+static void check_text_case( const char * name, const char * text, long text_size,
+                             const uint8_t * packed, bool refused, const Expected & want )
+{
+    checked++;
+
+    mapdemo::TextBuilder from_text;
+    mapdemo::TableReport text_report;
+    bool text_ok = mapdemo::TextFromJsonTolerant( from_text, text, text_size, &text_report );
+    if ( refused )
+    {
+        if ( text_ok && !text_report.malformed )
+        {
+            printf( "FAIL %s: the manifest says the text is refused; FromJson accepted it\n", name );
+            failures++;
+        }
+        return;
+    }
+    if ( !text_ok )
+    {
+        printf( "FAIL %s: FromJson refused a text the manifest says reads\n", name );
+        failures++;
+        return;
+    }
+    if ( !same_map_report( text_report, want ) )
+    {
+        printf( "FAIL %s: FromJson reports %d,%d,%d,%d,%d; the manifest says %d,%d,%d,%d,%d\n",
+                name, text_report.unknown, text_report.kind_mismatch, text_report.clamped,
+                text_report.duplicate, (int) text_report.malformed,
+                want.unknown, want.kind_mismatch, want.clamped, want.duplicate, (int) want.malformed );
+        failures++;
+    }
+    if ( packed != NULL )
+    {
+        printf( "FAIL %s: a Text row that packs owes the wire and load checks, which this driver does not build\n", name );
+        failures++;
+    }
+}
+
+// One json-hostile row's marks (the MANIFEST header): `carried-by=<ports>
+// uncarried=<verdict>`, both or neither, read exactly as the conformance
+// harness reads them (test/conformance/harness/manifest.go). Answers whether
+// cpp carries the row, and the verdict cpp owes; false on a malformed mark.
+static bool read_marks( const char * name, int fields, const char * carried_mark, const char * uncarried_mark,
+                        const char * standard, bool & carries, char * owed, size_t owed_size )
+{
+    carries = true;
+    snprintf( owed, owed_size, "%s", standard );
+    if ( fields == 6 ) { return true; }
+    if ( fields != 8 )
+    {
+        printf( "FAIL %s: json-hostile takes case, unit, root, tree, verdict, and optionally carried-by=<ports> uncarried=<verdict>\n", name );
+        return false;
+    }
+    const char * carried = "carried-by=";
+    const char * uncarried = "uncarried=";
+    if ( strncmp( carried_mark, carried, strlen( carried ) ) != 0 || carried_mark[strlen( carried )] == 0 )
+    {
+        printf( "FAIL %s: \"%s\" is not carried-by=<ports>\n", name, carried_mark );
+        return false;
+    }
+    if ( strncmp( uncarried_mark, uncarried, strlen( uncarried ) ) != 0 || uncarried_mark[strlen( uncarried )] == 0 )
+    {
+        printf( "FAIL %s: \"%s\" is not uncarried=<verdict>\n", name, uncarried_mark );
+        return false;
+    }
+    // the port list, comma separated, no port empty
+    carries = false;
+    const char * port = carried_mark + strlen( carried );
+    for ( ;; )
+    {
+        const char * comma = strchr( port, ',' );
+        const size_t length = comma != NULL ? (size_t) ( comma - port ) : strlen( port );
+        if ( length == 0 )
+        {
+            printf( "FAIL %s: carried-by names an empty port\n", name );
+            return false;
+        }
+        if ( length == 3 && strncmp( port, "cpp", 3 ) == 0 ) { carries = true; }
+        if ( comma == NULL ) { break; }
+        port = comma + 1;
+    }
+    if ( !carries )
+    {
+        snprintf( owed, owed_size, "%s", uncarried_mark + strlen( uncarried ) );
+        printf( "EXEMPT cpp / json-hostile / %s: the row is carried by %s; cpp keeps %s (docs/SPEC-TABLES.md §16.3)\n",
+                name, carried_mark + strlen( carried ), owed );
+    }
+    return true;
+}
+
 int main( int argc, char ** argv )
 {
     if ( argc < 3 )
@@ -529,17 +646,31 @@ int main( int argc, char ** argv )
     char line[1024];
     while ( fgets( line, sizeof( line ), manifest ) != NULL )
     {
-        // json-hostile <case> <unit> <root> <tree> <verdict>
-        char kind[32], name[128], unit[64], root[64], tree[512], verdict[64];
+        // json-hostile <case> <unit> <root> <tree> <verdict> [carried-by=<ports> uncarried=<verdict>]
+        char kind[32], name[128], unit[64], root[64], tree[512], verdict[64], carried_mark[128], uncarried_mark[128],
+            extra[8];
         if ( line[0] == '#' || line[0] == '\n' ) { continue; }
-        if ( sscanf( line, "%31s %127s %63s %63s %511s %63s", kind, name, unit, root, tree, verdict ) != 6 )
+        if ( sscanf( line, "%31s", kind ) != 1 || strcmp( kind, "json-hostile" ) != 0 ) { continue; }
+        const int fields = sscanf( line, "%31s %127s %63s %63s %511s %63s %127s %127s %7s", kind, name, unit, root, tree,
+                                   verdict, carried_mark, uncarried_mark, extra );
+        if ( fields < 6 )
         {
+            printf( "FAIL: a json-hostile row this gate cannot read: %s", line );
+            failures++;
             continue;
         }
-        if ( strcmp( kind, "json-hostile" ) != 0 ) { continue; }
-        bool refused = strcmp( verdict, "refused" ) == 0;
+        bool carries = true;
+        char owed[128];
+        if ( !read_marks( name, fields, carried_mark, uncarried_mark, verdict, carries, owed, sizeof( owed ) ) )
+        {
+            failures++;
+            continue;
+        }
+        // schema pack wrote bytes exactly when the STANDARD verdict reads
+        const bool packs = strcmp( verdict, "refused" ) != 0;
+        bool refused = strcmp( owed, "refused" ) == 0;
         Expected want = {};
-        if ( !refused && !parse_expected( verdict, want ) )
+        if ( !refused && !parse_expected( owed, want ) )
         {
             printf( "FAIL %s: the manifest names no outcome this gate knows\n", name );
             failures++;
@@ -558,7 +689,7 @@ int main( int argc, char ** argv )
         }
         long size = 0;
         uint8_t * packed = NULL;
-        if ( !refused )
+        if ( !refused && packs )
         {
             snprintf( path, sizeof( path ), "%s/%s.bin", argv[2], name );
             packed = slurp( path, size );
@@ -603,6 +734,10 @@ int main( int argc, char ** argv )
             check_case<scalardemo::SimState>( name, (const char *) text, text_size, packed, size, refused, want,
                                               scalardemo::SimStateFromJsonTolerant, scalardemo::SimStateLoad,
                                               scalardemo::SimStateMeasure, scalardemo::SimStateSave );
+        }
+        else if ( strcmp( root, "Text" ) == 0 )
+        {
+            check_text_case( name, (const char *) text, text_size, packed, refused, want );
         }
         else
         {
