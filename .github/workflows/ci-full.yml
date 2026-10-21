@@ -139,9 +139,13 @@ jobs:
   # The compiler's own test suite, and the only job in this file that reads a
   # Go source file. `go test ./...` covers internal/fuzz, whose seeded corpus
   # re-executes every crasher ever found — a short, bounded run, not a
-  # campaign. `go vet` rides here because an emitter codebase built almost
-  # entirely out of format strings is exactly where printf-verb mismatches
-  # live (issue #31).
+  # campaign (the unit-rest row runs it, with its property and oracle tests).
+  # The one campaign in that package, the random-schema table differential
+  # (TestRandomTableDifferential and its negative control), skips itself here:
+  # it runs only under SCHEMA_TABLE_DIFF=1, which only `make fuzz-tables-diff`
+  # sets, nightly in certify.yml. `go vet` rides here because an emitter
+  # codebase built almost entirely out of format strings is exactly where
+  # printf-verb mismatches live (issue #31).
   #
   # The two C sibling checkouts are not optional decoration: internal/fuzz's
   # compile check SKIPS ITSELF when ../serialize and ../serialize.c are absent,
@@ -331,6 +335,14 @@ jobs:
       - name: every slowtest gate is run by somebody, by name (schema#988)
         if: matrix.group == 'unit-rest'
         run: make slow-gate-coverage
+
+      # THE GO CONFORMANCE ROWS (docs/SPEC-CARD-CONTRACT.md): the rows in
+      # test/conformance/go/rows, which `go test ./...` never sees because they
+      # live in the test/conformance/go module. The gate self-provisions its
+      # build stamps and the C++ reference corpus.
+      - name: the Go conformance rows
+        if: matrix.group == 'versioning'
+        run: make conformance-go-rows
 
       # THE FIXED FORM'S VERSIONING SUITE (§5 of docs/FIXED-FORM-ALGORITHM.md),
       # which the step above does NOT run. Its harness reads the C++

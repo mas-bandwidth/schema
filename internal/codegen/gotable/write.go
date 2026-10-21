@@ -97,7 +97,7 @@ func (g *tableGen) emitArithMeasureField(f *ir.Field, cond, ind string) {
 	id := ir.TableFieldWireId(f)
 	ride := cond
 	if !f.Type.Optional && !f.Required {
-		elide := expr + " != " + fieldDefaultExpr(f)
+		elide := g.elideDiffers(f, expr, fieldDefaultExpr(f))
 		if ride != "" {
 			ride += " && " + elide
 		} else {
@@ -109,6 +109,9 @@ func (g *tableGen) emitArithMeasureField(f *ir.Field, cond, ind string) {
 		if ride != "" {
 			g.pf("%sif %s {\n", ind, ride)
 			inner = ind + "\t"
+		}
+		if enumHasDeprecated(e) {
+			g.pf("%sif %s.TableEnumDeprecated() { return -1 }\n", inner, expr)
 		}
 		g.pf("%sref := ids.refAtHit(%d, 0x%016x)\n", inner, g.knownOrdinal(id), id)
 		g.pf("%svar vref uint64\n", inner)
@@ -178,6 +181,7 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 			g.pf("%sif %s {\n", ind, cond)
 			ind += "\t"
 		}
+		g.emitTextTotalWrite(f, "value."+member(f), "w.Ids.Numbering.arena", ind)
 		g.emitWireField(f, "value."+member(f), ind)
 		if cond != "" {
 			g.pf("\t}\n")
@@ -256,7 +260,10 @@ func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
 		}
 		return
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+	if f.Type.TextUnbounded() {
+		// unbounded text (docs/SPEC-TABLES.md §2.13.1): no length bound beyond
+		// the blob record's own, which the text rule below reads
+	} else if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
 		g.pf("%sif %sLength < 0 || %sLength > %d { return false }\n", ind, expr, expr, f.Type.Size)
 	} else if f.Array == ir.ArrayCounted {
 		g.pf("%sif %sCount < 0 || %sCount > %d { return false }\n", ind, expr, expr, f.ArrayBound)
@@ -275,6 +282,10 @@ func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
 	if f.Type.Pointer && f.Array == ir.ArrayNone {
 		return expr + " != 0"
 	}
+	if f.Type.TextUnbounded() {
+		// unbounded text rides when it holds a byte (docs/SPEC-TABLES.md §2.13.1)
+		return "tableTextRides(&" + expr + ",w.Ids.Numbering.arena)"
+	}
 	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 		return byteValueRides(f, expr)
 	}
@@ -288,18 +299,37 @@ func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
 		if isStructRef(f.Type) && !f.Type.Pointer {
 			return "true"
 		}
-		lhs, def := expr+"[i]", fieldDefaultExpr(f)
+		differs := g.elideDiffers(f, expr+"[i]", fieldDefaultExpr(f))
 		if isUnionRef(f.Type) {
-			lhs += ".Type"
-			def = f.Type.Name + "TypeNone"
+			differs = expr + "[i].Type != " + f.Type.Name + "TypeNone"
 		}
-		g.pf("%sallDefault := true; for i := range %s { if %s != %s { allDefault = false; break } }\n", ind, expr, lhs, def)
+		g.pf("%sallDefault := true; for i := range %s { if %s { allDefault = false; break } }\n", ind, expr, differs)
 		return "!allDefault"
 	}
 	if isUnionRef(f.Type) {
 		return expr + ".Type != " + f.Type.Name + "TypeNone"
 	}
-	return expr + " != " + fieldDefaultExpr(f)
+	return g.elideDiffers(f, expr, fieldDefaultExpr(f))
+}
+
+// elideDiffers is the default-elision test: the field rides when it differs
+// from its default. A PLAIN float compares BIT PATTERNS, not values
+// (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL VALUES"): under ==, -0
+// equals +0 and would be elided and read back as +0, so the wire and the text
+// of one value would disagree. A compressed float keeps ==, because its -0 IS
+// +0 by §3.3's compressed-float rule.
+func (g *tableGen) elideDiffers(f *ir.Field, lhs, def string) string {
+	if !f.HasFloatRange {
+		switch f.Type.Kind {
+		case ir.TFloat32:
+			g.needsMath = true
+			return "math.Float32bits(" + lhs + ") != math.Float32bits(" + def + ")"
+		case ir.TFloat64:
+			g.needsMath = true
+			return "math.Float64bits(" + lhs + ") != math.Float64bits(" + def + ")"
+		}
+	}
+	return lhs + " != " + def
 }
 
 // framed adds the ordinary value's L. A union arm already supplies its own
@@ -319,6 +349,14 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 		g.pf("%s} else { index,ok := %s.Ids.Numbering.Index(&%s);if !ok {return false}\n", ind, writer, expr)
 		g.emitPutLeb(ind+"\t", writer, "index")
 		g.pf("%s}\n", ind)
+	case f.Type.TextUnbounded():
+		// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): the blob's bytes under
+		// kind 12, refused when not well-formed UTF-8 or holding a zero byte
+		g.pf("%s{ text,ok:=tableTextBytes(&%s,%s.Ids.Numbering.arena);if !ok||!tableUtf8Valid(text) {return false}\n", ind, expr, writer)
+		if framed {
+			g.emitPutLeb(ind+"\t", writer, "uint64(len(text))")
+		}
+		g.pf("%s\t%s.Raw(text) }\n", ind, writer)
 	case f.Type.Kind == ir.TString:
 		// THE WRITE-SIDE TEXT RULE (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/USAGE.md
 		// "Writes are the caller's responsibility"): the reader refuses text that
@@ -378,7 +416,7 @@ func (g *tableGen) nextWireWriter() string {
 const arrayLengthCacheBytes = 1024
 
 func (g *tableGen) cacheArrayLengths(f *ir.Field) bool {
-	return !g.regional && !g.retain && f.KeyEnum == "" && !f.Type.Pointer && isStructRef(f.Type) &&
+	return !g.regional && !g.retain && f.KeyEnum == "" && !f.Type.Pointer && isStructRef(f.Type) && !ir.TextListPlain(f) &&
 		(f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted) && f.ArrayBound > 0 && f.ArrayBound <= arrayLengthCacheBytes/8
 }
 
@@ -455,6 +493,17 @@ func (g *tableGen) emitWireArrayElement(f *ir.Field, expr, writer, ind string) {
 	g.retainIndex = "i"
 	g.retainArm = false
 	defer func() { g.retainIndex = oldIndex; g.retainArm = oldArm }()
+	if ir.TextListPlain(f) {
+		// A PLAIN TEXT LIST's element is kind 12's payload (docs/SPEC-TABLES.md
+		// §2.13, §3): its own L and its bytes, written from the element record's
+		// value under string(M)'s own storage check and text rule
+		g.wireSerial++ // keep the temporary-name sequence the record path takes
+		value := *ir.TextListValue(f)
+		g.pf("%s{ text := &%s\n", ind, expr)
+		g.emitWireValue(&value, "text."+member(&value), writer, ind+"\t", true)
+		g.pf("%s}\n", ind)
+		return
+	}
 	element := g.nextWireWriter()
 	elem := *f
 	elem.Array = ir.ArrayNone
@@ -473,7 +522,7 @@ func (g *tableGen) emitWireArrayElement(f *ir.Field, expr, writer, ind string) {
 	g.pf("%smark := %s.Ids.Count\n%sid, named := %s(i+1).TableEnumId(); if !named { return false }; ref := %s.Ids.Ref(id); start := %s.Ids.Count\n", i, writer, i, f.KeyEnum, writer, writer)
 	g.pf("%s%s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, element, writer)
 	g.emitWireValue(&elem, expr, element, i, false)
-	cond := expr + " != " + fieldDefaultExpr(&elem)
+	cond := g.elideDiffers(&elem, expr, fieldDefaultExpr(&elem))
 	if isStructRef(elem.Type) {
 		cond = element + ".Offset > 1"
 	} else if isUnionRef(elem.Type) {
@@ -551,6 +600,11 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 
 func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 	if e := enumRef(f); e != nil {
+		if enumHasDeprecated(e) {
+			// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md
+			// §2.15): the value is the caller's, so it is invalid_value.
+			g.pf("%sif %s.TableEnumDeprecated() { return false }\n", ind, expr)
+		}
 		// Each arm is a compile-time id, so RefAt is one load and one
 		// compare. None is still reference zero and is not interned.
 		g.pf("%sswitch %s {\n%scase %sNone:\n", ind, expr, ind, e.Name)

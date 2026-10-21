@@ -172,6 +172,12 @@ func TableScalarKind(f *Field) int {
 		case *Flags:
 			return TableKindU64
 		case *Struct:
+			// A PLAIN TEXT LIST rides as an array of element kind 12
+			// (docs/SPEC-TABLES.md §2.13, §3): each element its own L and
+			// bytes, though its storage is an array of the element record
+			if TextListPlain(f) {
+				return TableKindString
+			}
 			// A POINTER to a table is a NODE INDEX, not a nested body: it rides
 			// as four bytes under kind 17 into the flat node table
 			// (docs/SPEC-TABLES.md §3.1). Spending the distinct kind costs no
@@ -427,7 +433,7 @@ func TableTypeSpelling(f *Field) string {
 	case TBytes:
 		return "bytes"
 	case TNamed:
-		return f.Type.Name
+		return f.Type.DeclaredName()
 	case TMap:
 		// a MAP spells its two halves (docs/SPEC-TABLES.md §2.8), so a
 		// descriptor and a diagnostic name the declaration a reader wrote —
@@ -435,7 +441,7 @@ func TableTypeSpelling(f *Field) string {
 		// map[K]T and map[K]*T are two declarations
 		key, value := MapKeyField(f), MapValueField(f)
 		spelling := "map[" + TableTypeSpelling(key)
-		if key.Type.Kind == TString {
+		if key.Type.Kind == TString && !key.Type.Unbounded {
 			spelling += "(" + itoa(int(key.Type.Size)) + ")"
 		}
 		spelling += "]"
@@ -480,8 +486,10 @@ func FieldTypeSpelling(f *Field) string {
 	}
 	switch f.Type.Kind {
 	case TString, TWString, TBytes:
-		if f.Type.Pointer {
-			return prefix + TableTypeSpelling(f) // *bytes / *string: a buffer at its used size
+		if f.Type.Pointer || f.Type.Unbounded {
+			// *bytes / *string: a buffer at its used size; a bare `string`:
+			// unbounded text (docs/SPEC-TABLES.md §2.13.1)
+			return prefix + TableTypeSpelling(f)
 		}
 		return prefix + TableTypeSpelling(f) + "(" + itoa64(f.Type.Size) + ")"
 	}

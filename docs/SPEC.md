@@ -506,7 +506,13 @@ from this projection rather than carried in it.
   float64 string wstring bytes fixed ufixed`, and the integer family `int8
   int16 int32 int64 uint8 uint16 uint32 uint64 int128 uint128` — plus `int` and
   `uint`, reserved so `int` gets a "did you mean int32?" diagnostic instead
-  of a parse error. Reserved words cannot be used as names. Attribute keys
+  of a parse error. Reserved words cannot be used as names — except inside an
+  `enum` or `flags` body, where a variant name may be any identifier-shaped
+  word, a reserved word included, because a variant name is only ever read
+  inside its own declaration's body or after `E.` and so never meets a type
+  position. The words a variant still may not be are those already refused:
+  `None` and `Max` on an enum, `Count` on flags, and a target's own reserved
+  words (SPEC §4.6). Attribute keys
   (`min`, `max`, `resolution`, ...) are contextual — they live only right of
   `|` and are not reserved.
 - **Newlines terminate declarations and fields — there are no semicolons,
@@ -586,9 +592,14 @@ Enum        = "enum" ident ( VariantList
             | AttrSection NL VariantList ) NL .
 VariantList = "{" [ Variant { VariantSep Variant } [ VariantSep ] ] "}" .
 Variant     = ident [ AttrSection ] .                              // the qualification carries TAGS,
-                                                                   // and on an enum variant `was`,
-                                                                   // the rename (§4.2); a flags
-                                                                   // variant takes tags alone
+                                                                    // and on an enum variant `was`,
+                                                                    // the rename (§4.2); a flags
+                                                                    // variant takes tags alone.
+                                                                    // `ident` here INCLUDES reserved
+                                                                    // words (§4.1): a variant name is
+                                                                    // read only inside its own body or
+                                                                    // after `E.`, never at a type
+                                                                    // position
 VariantSep  = "," | NL .                                           // a comma, or the newline that
                                                                    // ends a qualified variant's line;
                                                                    // a trailing separator is OK
@@ -599,7 +610,8 @@ TableDecl   = "table" ident ( Block
             | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
                                                         // a type body, plus pointers and `was`.
                                                         // A table declaration's qualification
-                                                        // carries TAGS and `was` (§4.2)
+                                                        // carries TAGS, `was` and `forms`
+                                                        // (§4.2, SPEC-TABLES.md §2.12)
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
@@ -934,15 +946,16 @@ sequence    uint16
   declarations take the `cpp_native`/`cpp_include` pair (below); a field of a
   **table** body takes `was` (below) and `json` (SPEC-TABLES.md §16.4), a
   field of a **type** that a table closure reaches takes `was` and `json`
-  on the same terms, a **table** declaration, an **enum variant** and a
-  union **arm** take `was` (below), and a **union** declaration, a
-  **constant** and a **flags variant** take no valued key at all. **The
+  on the same terms, a **table** declaration takes `was` (below) and
+  `forms` (SPEC-TABLES.md §2.12), an **enum variant** and a union **arm**
+  take `was` (below), and a **union** declaration, a **constant** and a
+  **flags variant** take no valued key at all. **The
   VALUELESS half is open at every one of them** — that is the tag, below.
 - **A bare identifier that spells a known valued key is refused by name**,
   never taken as a tag: `| min` draws "min takes a value: write min = 0". The
   open namespace must not be able to swallow a typo in the closed one.
   **The lookup is against the UNION of every valued key the language has, on
-  every line kind** — `min`, `max`, `resolution`, `was`, `json`,
+  every line kind** — `min`, `max`, `resolution`, `was`, `json`, `forms`,
   `cpp_native`, `cpp_include` — **plus the keys refused by name**
   (`doc`, `round`; §4.11). It is deliberately not the line's own vocabulary:
   `| min` on a `string(N)` field, where `min` was never legal, is the exact
@@ -1345,6 +1358,18 @@ All compile errors with positions:
   `int8 | min = 0, max = 1000` is a compile error — the range determines the
   wire, the type name determines the storage, and a legal wire value the
   storage truncates would be silent corruption that passes read validation.
+- **A one-sided integer range on a table field is the two-sided declaration:**
+  on a field of a `table` or a `fixed table` whose type is an integer
+  (`int8`..`int64`, `uint8`..`uint64`), `| min = A` alone means
+  `| min = A, max = <the type's maximum>` and `| max = B` alone means
+  `| min = <the type's minimum>, max = B` (docs/SPEC-TABLES.md §4). The
+  one-sided spelling IS the two-sided declaration: the same projection, build
+  version, lock line, tables baseline row, wire and generated code, byte for
+  byte. A one-sided range is still refused by name on a float, a fixed-point,
+  `int128` or `uint128` field, a timestamp or a named type, beside
+  `resolution`, and on a field of a `type` body or a packet — the sentence
+  below is scoped to those. A one-sided range whose given side excludes zero
+  needs a default in range exactly as a two-sided one does.
 - **A range that excludes zero requires a declared default in range:**
   `x uint8 | min = 1, max = 255` is a compile error, because zero
   initialization is the rule (§4.2) and a field whose range starts above zero
@@ -1352,6 +1377,13 @@ All compile errors with positions:
   `x uint8 = 1 | min = 1, max = 255` is the fix, on integer, `int128`,
   `fixed`/`ufixed` and compressed-float ranges alike. An array takes no
   specified default, so an array field's ELEMENT range must reach zero.
+
+  **A field marked `| required` (docs/SPEC-TABLES.md §2.3) is exempt and
+  takes no default:** its fresh value is the storage zero, which is outside
+  the range, so the writer refuses the record until the field is set, and a
+  stored record lacking it is `missing_required` on read. A declared default
+  on such a field stays legal. The text form refuses the same absence: a JSON
+  object that omits the key is refused, naming the field.
 
   **A counted array's COUNT bound is the stated exception, and it is legal.**
   `[A..B]T` with A above zero compiles with no declared default, because the
@@ -1448,11 +1480,51 @@ All compile errors with positions:
   fields.
 - Cycles in type composition, undefined types, duplicate declarations,
   `package` mismatch.
-- **Target-name safety:** a declaration or field name that is a reserved word
-  in any target language (`type`, `match`, `impl`, `func`, `class`, ...) or
-  that collides with another name after Go export-casing (`atRest` →
-  `AtRest`) is rejected, with a diagnostic naming the target and the
-  collision. No escaping machinery; rename at the source.
+- **Target-name safety:** a declaration or field name is checked against the
+  reserved words of the targets being generated (SPEC §4.6): `schema generate --lang L` checks L's words only, and `schema check` — and every command
+  that names no target — checks every target's words. A target the checker
+  has no reserved-word list of its own for has no words to narrow to, so
+  `generate` on it checks every target's words rather than none: a collision
+  the checker knows how to refuse is never let through because the target
+  being generated does not carry a list. A name that is a
+  reserved word in a checked target (`type`, `match`, `impl`, `func`,
+  `class`, ...), or that collides with another name after Go export-casing
+  (`atRest` → `AtRest`), is rejected, with one diagnostic per name listing
+  every checked target it collides with; every collision in the unit is
+  reported in the same run. Outside the Go escape below there is no escaping
+  machinery; rename at the source.
+- **The Go escape.** Go is the one target that carries a reserved word
+  instead of refusing it. Under `--lang go` (and in `schema check`, whose Go
+  half is the same rule), a name that is one of Go's words
+  in the checker's list (a Go keyword, or a predeclared identifier the Go
+  output would collide with, such as `byte` or `true`) is not refused in
+  these positions:
+  (1) a field name, a union arm name, and an enum or flags variant: Go never
+  emits these bare. A field and an arm are emitted under their exported
+  spelling (`select` → `Select`, `select_count` → `SelectCount`), a variant
+  under its declaration's name followed by the variant (`Kind { go }` →
+  `Kindgo`), and no Go keyword or predeclared identifier is spelled either
+  way, so no escape is needed;
+  (2) a `table` name, which Go emits verbatim as the type's identifier, is
+  emitted as the name followed by ONE underscore: `table func` is
+  `type func_ struct`, and every Go name derived from the table takes the
+  escaped spelling (`func_Reset`, `func_Measure`, `func_Load`).
+  The escape is the Go spelling and nothing else: the wire name, every id,
+  the JSON keys, the projections (the protocol id's, the build version's,
+  the fixed layout's), the descriptors' and the view's names, and every
+  diagnostic keep the schema name, unchanged, so a table's Go output and its
+  C++ output carry one identity. The escape cannot collide with a generated
+  name: a Go word is lowercase letters only, every name generated from a
+  declaration joins that declaration's name to a capitalised verb or prefix
+  (`Reset`, `Write`, `Init`, ...), and §6.1's length, count and presence
+  companions are members inside the type rather than package-scope names, so
+  `w_` and `w_Verb` are spelled by nothing generated except the escaped
+  table's own. A declaration actually named `w_` (or one whose generated
+  names include an escaped table's) is refused by name, as a collision with
+  the escape, in a run that generates Go. Every other declaration kind
+  (`type`, `enum`, `flags`, `union`, `const`) and the package name keep
+  refusing Go's words by name until the Go emitter carries the escape for
+  them, and every other target keeps refusing its own words by name.
 - **Package-name safety:** the package ident maps to every target's
   namespace/module/package concept verbatim (§6.1), which exposes it to three
   collision classes no declaration or field name can hit, each refused with a

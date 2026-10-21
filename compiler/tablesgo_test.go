@@ -16,10 +16,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 )
 
-// goFiles generates the go target's whole output for one source.
+// goFiles generates the go target's whole output for one source. Standalone is
+// named because this scan reads the emitter's own names, not either packaging
+// of them (docs/SPEC-TABLES.md §8.4).
 func goFiles(t *testing.T, src string) map[string][]byte {
 	t.Helper()
-	files, err := New().Generate(unitFromSource(t, src), "go", Options{})
+	files, err := New().Generate(unitFromSource(t, src), "go", Options{"runtime": "standalone"})
 	if err != nil {
 		t.Fatalf("--lang go: %v", err)
 	}
@@ -227,10 +229,24 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 		goRuntimeSrc + "\ntable Lists {rows []int32}\n",
 		goRuntimeSrc + "\ntable Wide {label wstring(16)\n}\n",
 		goRuntimeSrc + "\ntable Drift {ratio float64\n}\n",
+		goRuntimeSrc + "\ntable Texts {words []string(8)\n}\n",
+		goRuntimeSrc + "\ntable Sealed | integrity = \"crc32c\" {n int32\n}\n",
+		goRuntimeSrc + "\ntable Totals {words []string(8) | total = 16\nnames [..4]?string(8) | total = 16\n}\n",
+		goRuntimeSrc + "\ntable Needs {id int32 | required\n}\n",
+		goRuntimeSrc + "\ntable Unbounded {words []string\nkeys map[string]int32\n}\n",
 	} {
 		for name, data := range goFiles(t, source) {
 			files[fmt.Sprintf("%d/%s", i, name)] = data
 		}
+	}
+	// the textform surface (docs/SPEC-TABLES.md §16.9) is selected by name
+	// only, so its runtime is scanned from a generate that names it
+	textform, err := New().Generate(unitFromSource(t, goRuntimeSrc), "go", Options{"runtime": "standalone", "surface": "wire,fixed,json,cook,block,view,message,retain,textform"})
+	if err != nil {
+		t.Fatalf("--lang go --surface ...,textform: %v", err)
+	}
+	for name, data := range textform {
+		files["textform/"+name] = data
 	}
 	emitted, declared := goEmittedNames(t, files)
 	if len(emitted) == 0 {

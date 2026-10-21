@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -15,7 +16,11 @@ import (
 func generateViewFile(u *ir.Unit, closure map[string]bool, arms map[string]int) (map[string][]byte, error) {
 	base := ir.GoExportName(u.Package) + "View"
 	types := slices.Sorted(maps.Keys(u.Structs))
-	tables := slices.Sorted(maps.Keys(u.Tables))
+	// in DECLARED-name order, and named by it (SPEC.md §4.6, the Go escape):
+	// an escaped table keeps the row and the place its schema name gives it
+	tables := slices.SortedFunc(maps.Keys(u.Tables), func(a, b string) int {
+		return strings.Compare(u.Tables[a].DeclaredName(), u.Tables[b].DeclaredName())
+	})
 	unions := slices.Sorted(maps.Keys(u.Unions))
 	g := &tableGen{unit: u, viewPacket: map[string]int{}, viewUnions: map[string]int{}, unionArmSlot: arms}
 	for i, n := range types {
@@ -90,7 +95,7 @@ func generateViewFile(u *ir.Unit, closure map[string]bool, arms map[string]int) 
 			if !closure[n] {
 				ref = fmt.Sprintf("&tableViewPacketTypes[%d]", g.viewPacket[n])
 			}
-			g.pf("{Name:%q,File:%q,Table:%v,Type:%s,%s},\n", n, viewFile(u, n), set.table, ref, viewAnnotation(st.Doc, st.Tags))
+			g.pf("{Name:%q,File:%q,Table:%v,Type:%s,%s},\n", declaredName(u, n), viewFile(u, n), set.table, ref, viewAnnotation(st.Doc, st.Tags))
 		}
 		g.pf("},\n")
 	}
@@ -200,7 +205,14 @@ func generateViewFile(u *ir.Unit, closure map[string]bool, arms map[string]int) 
 		if c.IsFloat {
 			real = formatFloat64(c.Float)
 		} else if c.Int != nil {
-			integer = int64(c.Int.Uint64())
+			// docs/SPEC-TABLES.md §8.3: int_value is the folded value, so a
+			// negative constant keeps its sign. A value outside int64 keeps the
+			// two's-complement pattern the column holds, as the C++ emitter does.
+			if c.Int.IsInt64() {
+				integer = c.Int.Int64()
+			} else {
+				integer = int64(c.Int.Uint64())
+			}
 		}
 		g.pf("{Name:%q,File:%q,TypeName:%q,IsFloat:%v,IntValue:%d,FloatValue:%s,%s},\n", n, viewFile(u, n), c.Storage, c.IsFloat, integer, real, viewAnnotation(c.Doc, c.Tags))
 	}

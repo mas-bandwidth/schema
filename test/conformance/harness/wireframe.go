@@ -902,6 +902,13 @@ func (r *splitmix64) below(n int) int {
 // randomMutant is mutant `index` of the random pass: a seed chosen by the
 // generator, then one to three strategies stacked on it.
 func randomMutant(seeds []*wireSeed, seed uint64, index int) *wireMutant {
+	// An empty seed list has no basis for a mutation, and below(0) answers 0,
+	// which would index [0] of nothing. Refuse before drawing; the caller names
+	// the skip rather than sending a nil mutant (test/conformance/README.md,
+	// "The wire-fuzz driver"; docs/SPEC-TABLES.md §4.2).
+	if len(seeds) == 0 {
+		return nil
+	}
 	r := &splitmix64{state: seed ^ (uint64(index) * 0xD1B54A32D192ED03)}
 	s := seeds[r.below(len(seeds))]
 	data := append([]byte(nil), s.wire...)

@@ -89,7 +89,7 @@ func TestEnumExtentEmitted(t *testing.T) {
 		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
 		"type Box { w Weapon }\n\n" +
 		"type Ball { y uint8 }\n\n" +
-		"union Shape {\n    box  Box\n    ball Ball\n}\n"
+		"union Shape {\n    rect  Box\n    ball Ball\n}\n"
 	f, perrs := parser.Parse("Extent.schema", []byte(src))
 	if len(perrs) > 0 {
 		t.Fatalf("parse: %v", perrs[0])
@@ -159,12 +159,12 @@ func TestEnumExtentEmitted(t *testing.T) {
 	}
 }
 
-// Every generated enum carries its DECLARED variant count as the member
-// Count beside the extent Max (SPEC §4.2), in each target's own idiom and in
-// all nine. Without headroom the two numbers coincide; under | max = K they
-// part, and that is the case a loop written against Max alone gets wrong —
-// so both enums are pinned here, and Count < Max is asserted on the widened
-// one.
+// An enum has no Count (SPEC §4.2, the 2026-09-13 ruling): its declared
+// variant count is its Max, and Go emits no <E>Count. The other targets below
+// still emit their Count, which the owner has parked; the Go expectation is
+// the inverse of what this test used to pin. Without headroom the two numbers
+// coincide; under | max = K they part, so both enums are pinned here and
+// Count < Max is asserted on the widened one.
 func TestEnumDeclaredCountEmitted(t *testing.T) {
 	src := "package t\n\n" +
 		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
@@ -205,8 +205,8 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 	// matched against a space-collapsed copy: symbol, value and comment
 	// together, without a column position baked into the test
 	addTarget("Go", collapseColumns(goFiles), goErr,
-		expectation{"WeaponCount Weapon = 2 // the declared variant count (SPEC §4.2)", 1},
-		expectation{"TeamCount Team = 3 // the declared variant count (SPEC §4.2)", 1},
+		expectation{"WeaponCount", 0},
+		expectation{"TeamCount", 0},
 		expectation{"WeaponMax Weapon = 15 // the exported extent (SPEC §4.2)", 1})
 	rustFiles, rustErr := rust.Generate(u)
 	addTarget("Rust", rustFiles, rustErr,
@@ -256,7 +256,7 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 		}
 		for _, e := range tgt.expects {
 			if got := countAcross(tgt.files, e.needle); got != e.count {
-				t.Errorf("%s: %q emitted %d times, want %d — every generated enum carries Count beside Max (SPEC §4.2)", tgt.name, e.needle, got, e.count)
+				t.Errorf("%s: %q emitted %d times, want %d — the generated enum surface must match SPEC §4.2", tgt.name, e.needle, got, e.count)
 			}
 		}
 	}
@@ -271,7 +271,7 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 	src := "package t\n\n" +
 		"type Box { x uint8 }\n\n" +
 		"type Ball { r uint16 }\n\n" +
-		"union Shape {\n    box  Box\n    ball Ball\n}\n\n" +
+		"union Shape {\n    rect  Box\n    ball Ball\n}\n\n" +
 		"type Holder { shape Shape }\n"
 	f, perrs := parser.Parse("Unions.schema", []byte(src))
 	if len(perrs) > 0 {
@@ -556,10 +556,7 @@ func TestEnumNameTakesTheEnumType(t *testing.T) {
 		"type LaserFire\n{\n    target_id uint16\n}\n\n"+
 		"union WeaponFire\n{\n    laser LaserFire\n}\n\n"+
 		"type FireCommand\n{\n    fire WeaponFire\n}\n")
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	files["probe.go"] = []byte("package typed\n\n" +
 		"func probe(ship *Ship, command *FireCommand) (string, string) {\n" +
@@ -661,10 +658,7 @@ func TestClampTopOfRange(t *testing.T) {
 }
 `, steps, reference, reference)
 
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
 	files["clamp_test.go"] = []byte(probe)
 

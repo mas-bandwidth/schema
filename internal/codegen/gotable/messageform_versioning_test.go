@@ -29,7 +29,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
@@ -86,10 +85,7 @@ func TestPeer(t *testing.T) {
 %s
 }
 `, setup, asserts)
-	runtime, err := filepath.Abs("../../../../serialize.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime := slowtest.SerializeGo(t, "../../../")
 	root := map[string][]byte{
 		"go.mod":          []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)),
 		"version_test.go": []byte(src),
@@ -387,6 +383,13 @@ func TestOwnBuildVersion(t *testing.T) {
 	t.Run("widened_and_kind_mismatch", func(t *testing.T) {
 		t.Parallel()
 		runMessagePair(t, widenedWriter, widenedReader, "\tw.A = 1\n\tw.B = -5\n\tw.C = 9", `
+	// the plain LoadMessages is strict (docs/SPEC-TABLES.md §6.5) and refuses
+	// the kind mismatch; the tolerant read is the one that counts it
+	if ok || report.Err() != error(new.TableRefuseKindMismatch) {
+		t.Fatalf("the plain read took a kind-mismatched batch: %+v", report)
+	}
+	report = new.TableReport{}
+	count, ok = new.RootLoadMessagesTolerant(decoded, &vocab, out, &report)
 	if !ok {
 		t.Fatalf("a widening writer's batch was refused: %+v", report)
 	}

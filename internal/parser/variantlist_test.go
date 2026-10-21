@@ -7,6 +7,8 @@ package parser
 import (
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/check"
 )
 
 func errorTexts(src string) []string {
@@ -82,5 +84,47 @@ func TestPipeIsNeverAnOperator(t *testing.T) {
 	got := errorTexts("package bad\n\nconst X = 1 | 2\n")
 	if len(got) != 1 || !strings.Contains(got[0], "| is never an operator") {
 		t.Errorf("want the operator refusal, got %v", got)
+	}
+}
+
+// checkErrTexts parses and checks one file, returning the checker's errors.
+func checkErrTexts(src string) []string {
+	f, perrs := Parse("Bad.schema", []byte(src))
+	if len(perrs) > 0 {
+		out := make([]string, 0, len(perrs))
+		for _, e := range perrs {
+			out = append(out, e.Error())
+		}
+		return out
+	}
+	_, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Bad.schema", Name: "Bad.schema", Base: "Bad", Bytes: []byte(src), AST: f,
+	}})
+	out := make([]string, 0, len(cerrs))
+	for _, e := range cerrs {
+		out = append(out, e.Error())
+	}
+	return out
+}
+
+// An enum or flags variant may be named a reserved word (SPEC §4.1): a variant
+// name is read only inside its own body or after E., so it never meets a type
+// position. A variant named None or Max is still refused by name, and a field
+// named int is still refused.
+func TestEnumVariantMayBeATypeWord(t *testing.T) {
+	t.Parallel()
+	if got := names(t, "package ok\n\nenum FieldType { text, int, enum, list, bool }\n"); strings.Join(got, ",") != "text,int,enum,list,bool" {
+		t.Errorf("enum: want text,int,enum,list,bool, got %v", got)
+	}
+	if got := names(t, "package ok\n\nflags F { string, bytes }\n"); strings.Join(got, ",") != "string,bytes" {
+		t.Errorf("flags: want string,bytes, got %v", got)
+	}
+	if got := errorTexts("package bad\n\ntype T { int int32 }\n"); len(got) == 0 || !strings.Contains(got[0], "expected") {
+		t.Errorf("field named int: want a parse refusal, got %v", got)
+	}
+	for _, v := range []string{"None", "Max"} {
+		if got := checkErrTexts("package bad\n\nenum E { " + v + " }\n"); len(got) == 0 || !strings.Contains(got[0], v+" is a compile error") {
+			t.Errorf("variant %s: want the compile-error refusal, got %v", v, got)
+		}
 	}
 }

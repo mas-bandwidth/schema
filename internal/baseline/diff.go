@@ -129,7 +129,11 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// extent exactly as `bound` is.
 	"keykind":  RuleFixed,
 	"keybound": RuleShrink,
-	"was":      RulePass, // `was` is the rename that PRESERVES identity — that is its whole job
+	// A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13, §18.2): a reader keeps the
+	// prefix within its own total and counts clamped, so a lowered or newly
+	// declared total warns and a raised or removed one passes
+	"total": RuleShrink,
+	"was":   RulePass, // `was` is the rename that PRESERVES identity — that is its whole job
 	// PRESENCE IS RECORDED AND JUDGED ON NOTHING: T, ?T and *T are one
 	// framing, so a field moving between them moves no byte (§3.1, §18.1)
 	"optional": RulePass,
@@ -716,7 +720,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 			if shape, _ := bf.Get("array"); shape == "keyed" {
 				continue
 			}
-			if !tightened(d.policy[bt.Key], bt.Value, lv) {
+			if !tightened(d.policy[bt.Key], bt.Key, bt.Value, lv) {
 				continue
 			}
 			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s -> %s (%s)", tokenNoun(bt.Key), bt.Value, lv, tightenNote(bt.Key))})
@@ -766,7 +770,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 // comparison is exact and shape-agnostic — a bound is an integer, a
 // compressed float's range is not — so a value neither side can read as a
 // number is left alone rather than guessed at.
-func tightened(rule TokenRule, was, now string) bool {
+func tightened(rule TokenRule, key, was, now string) bool {
 	before, ok1 := new(big.Rat).SetString(was)
 	after, ok2 := new(big.Rat).SetString(now)
 	if !ok1 || !ok2 {
@@ -774,6 +778,17 @@ func tightened(rule TokenRule, was, now string) bool {
 	}
 	if rule == RuleRaise {
 		return after.Cmp(before) > 0
+	}
+	// A MAP KEY'S BOUND OF 0 IS UNBOUNDED (docs/SPEC-TABLES.md §2.13.1), so
+	// it is the capacity's widest value: a bound moving to 0 is growth and a
+	// bound introduced from 0 is a shrink (docs/SPEC-TABLES.md §18.2).
+	if key == "keybound" {
+		if was == "0" {
+			return true
+		}
+		if now == "0" {
+			return false
+		}
 	}
 	return after.Cmp(before) < 0
 }
@@ -1011,6 +1026,8 @@ func tightenNote(key string) string {
 		return "a stored value longer than the new capacity is truncated and counts clamped"
 	case "keybound":
 		return "an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)"
+	case "total":
+		return "a stored text list whose elements sum past the new total keeps the prefix within it, drops the rest and counts clamped (docs/SPEC-TABLES.md §2.13)"
 	case "min":
 		return "a stored value below the new minimum reads back AS the minimum and counts clamped"
 	case "max":
@@ -1040,6 +1057,8 @@ func tokenNoun(key string) string {
 		return "map key kind"
 	case "keybound":
 		return "map key capacity"
+	case "total":
+		return "text list total"
 	case "min":
 		return "declared minimum"
 	case "max":
