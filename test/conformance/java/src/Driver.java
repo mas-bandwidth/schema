@@ -753,6 +753,13 @@ public final class Driver {
                 Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
                 if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
                 byte[] saved = codec.save(value);
+                if (saved == null && f.length > 5 && java.util.Arrays.asList(f).contains("go-refusal=blob_shared")) {
+                    // §2.5: a blob two slots name is refused by every writer; the
+                    // tolerant load kept the one node, so the save refuses it by
+                    // name rather than writing the reference's bytes
+                    Files.write(Path.of(out, f[1] + ".absent"), "blob_shared".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    continue;
+                }
                 if (saved == null) return failInt(f[1] + ": save refused the value");
                 spill(out, f[1], saved);
             } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": wire codec failed: " + failure); }
