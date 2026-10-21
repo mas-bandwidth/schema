@@ -888,6 +888,7 @@ public final class TableRetain {
             case 11:
             case 23:
             case 28:
+            case 36:
                 if (r.limit - r.off >= 8) {
                     r.off += 8;
                     return true;
@@ -1128,6 +1129,7 @@ public final class TableRetain {
             case 11:
             case 23:
             case 28:
+            case 36:
                 w.putBytes(b, at[0], 8);
                 at[0] += 8;
                 return true;
