@@ -31,7 +31,7 @@ table Squad
 table Army
 {
     squads []Squad // an element that holds a MAP: the element array first, then each map
-    after  int32
+    past  int32 | was = "after"
 }
 
 // AN UNREACHED NON-EMPTY LIST SLOT IS REFUSED by Cook and by Lock (§7.6): a
@@ -40,5 +40,5 @@ table Army
 table Deck
 {
     hands [..3]Row
-    after int32
+    past int32 | was = "after"
 }

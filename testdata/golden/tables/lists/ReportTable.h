@@ -8013,21 +8013,21 @@ namespace listdemo {
 // member initializers (docs/SPEC-TABLES.md)
 struct Bytes {
     TableList<uint8_t> data; // uint8: the element array, empty until an Add
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // table Ints — TABLE-wire storage: relocatable, bounded, defaults in the
 // member initializers (docs/SPEC-TABLES.md)
 struct Ints {
     TableList<int32_t> values; // int32: the element array, empty until an Add
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // table Floats — TABLE-wire storage: relocatable, bounded, defaults in the
 // member initializers (docs/SPEC-TABLES.md)
 struct Floats {
     TableList<float> values; // float32: the element array, empty until an Add
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
@@ -8041,7 +8041,7 @@ inline void BytesReset( Bytes & value )
     value.data.elements.value = 0; // uint8: empty
     value.data.count = 0;
     value.data.padding = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline void IntsReset( Ints & value )
@@ -8049,7 +8049,7 @@ inline void IntsReset( Ints & value )
     value.values.elements.value = 0; // int32: empty
     value.values.count = 0;
     value.values.padding = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline void FloatsReset( Floats & value )
@@ -8057,7 +8057,7 @@ inline void FloatsReset( Floats & value )
     value.values.elements.value = 0; // float32: empty
     value.values.count = 0;
     value.values.padding = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 template <typename Ctx> inline int64_t BytesMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Bytes & value );
@@ -8172,7 +8172,7 @@ inline int64_t BytesMeasureBody( const Ctx & ctx, const TableNumbering & numberi
             bytes += TableLebBytes( ref_data ) + 1 + TableLebBytes( (uint64_t) ( body_data ) ) + ( body_data );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -8197,10 +8197,10 @@ inline bool BytesSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -8296,7 +8296,7 @@ inline bool BytesLoadBody( TableReader & r, const TableNodeMap & nodes, Bytes & 
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -8307,7 +8307,7 @@ inline bool BytesLoadBody( TableReader & r, const TableNodeMap & nodes, Bytes & 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -8319,7 +8319,7 @@ inline bool BytesLoadBody( TableReader & r, const TableNodeMap & nodes, Bytes & 
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -8356,7 +8356,7 @@ inline int64_t BytesMeasureMessageBody( const Ctx & ctx, const TableNumbering & 
             bits += (int64_t) ( cursor_data.count ) * 8;
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -8387,10 +8387,10 @@ inline bool BytesSaveMessageBody( const Ctx & ctx, const TableNumbering & number
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 4, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -8486,7 +8486,7 @@ inline bool BytesLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -8509,7 +8509,7 @@ inline bool BytesLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -8532,7 +8532,7 @@ inline bool BytesLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -8562,7 +8562,7 @@ inline int64_t IntsMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             bytes += TableLebBytes( ref_values ) + 1 + TableLebBytes( (uint64_t) ( body_values ) ) + ( body_values );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -8587,10 +8587,10 @@ inline bool IntsSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -8716,7 +8716,7 @@ inline bool IntsLoadBody( TableReader & r, const TableNodeMap & nodes, Ints & va
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -8727,7 +8727,7 @@ inline bool IntsLoadBody( TableReader & r, const TableNodeMap & nodes, Ints & va
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -8739,7 +8739,7 @@ inline bool IntsLoadBody( TableReader & r, const TableNodeMap & nodes, Ints & va
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -8775,7 +8775,7 @@ inline int64_t IntsMeasureMessageBody( const Ctx & ctx, const TableNumbering & n
             bits += (int64_t) ( cursor_values.count ) * 32;
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -8805,10 +8805,10 @@ inline bool IntsSaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 4, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -8908,7 +8908,7 @@ inline bool IntsLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -8931,7 +8931,7 @@ inline bool IntsLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -8954,7 +8954,7 @@ inline bool IntsLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -8984,7 +8984,7 @@ inline int64_t FloatsMeasureBody( const Ctx & ctx, const TableNumbering & number
             bytes += TableLebBytes( ref_values ) + 1 + TableLebBytes( (uint64_t) ( body_values ) ) + ( body_values );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -9009,10 +9009,10 @@ inline bool FloatsSaveBodyFields( const Ctx & ctx, const TableNumbering & number
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -9107,7 +9107,7 @@ inline bool FloatsLoadBody( TableReader & r, const TableNodeMap & nodes, Floats 
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -9118,7 +9118,7 @@ inline bool FloatsLoadBody( TableReader & r, const TableNodeMap & nodes, Floats 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -9130,7 +9130,7 @@ inline bool FloatsLoadBody( TableReader & r, const TableNodeMap & nodes, Floats 
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -9166,7 +9166,7 @@ inline int64_t FloatsMeasureMessageBody( const Ctx & ctx, const TableNumbering &
             bits += (int64_t) ( cursor_values.count ) * 32;
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -9196,10 +9196,10 @@ inline bool FloatsSaveMessageBody( const Ctx & ctx, const TableNumbering & numbe
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 4, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -9300,7 +9300,7 @@ inline bool FloatsLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -9323,7 +9323,7 @@ inline bool FloatsLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -9346,7 +9346,7 @@ inline bool FloatsLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -12478,7 +12478,7 @@ inline int64_t BytesMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
             bytes += TableLebBytes( ref_data ) + 1 + TableLebBytes( (uint64_t) ( body_data ) ) + ( body_data );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -12504,10 +12504,10 @@ inline bool BytesSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -12609,7 +12609,7 @@ inline bool BytesLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, By
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -12620,7 +12620,7 @@ inline bool BytesLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, By
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -12632,7 +12632,7 @@ inline bool BytesLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, By
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -12719,7 +12719,7 @@ inline bool BytesLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -12742,7 +12742,7 @@ inline bool BytesLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -12765,7 +12765,7 @@ inline bool BytesLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -12799,7 +12799,7 @@ inline int64_t IntsMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             bytes += TableLebBytes( ref_values ) + 1 + TableLebBytes( (uint64_t) ( body_values ) ) + ( body_values );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -12825,10 +12825,10 @@ inline bool IntsSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -12960,7 +12960,7 @@ inline bool IntsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Int
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -12971,7 +12971,7 @@ inline bool IntsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Int
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -12983,7 +12983,7 @@ inline bool IntsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Int
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -13075,7 +13075,7 @@ inline bool IntsLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -13098,7 +13098,7 @@ inline bool IntsLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -13121,7 +13121,7 @@ inline bool IntsLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -13155,7 +13155,7 @@ inline int64_t FloatsMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
             bytes += TableLebBytes( ref_values ) + 1 + TableLebBytes( (uint64_t) ( body_values ) ) + ( body_values );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -13181,10 +13181,10 @@ inline bool FloatsSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -13285,7 +13285,7 @@ inline bool FloatsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, F
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -13296,7 +13296,7 @@ inline bool FloatsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, F
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -13308,7 +13308,7 @@ inline bool FloatsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, F
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -13401,7 +13401,7 @@ inline bool FloatsLoadMessageBodyRetain( TableBitReader & r, const TableVocabula
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -13424,7 +13424,7 @@ inline bool FloatsLoadMessageBodyRetain( TableBitReader & r, const TableVocabula
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -13447,7 +13447,7 @@ inline bool FloatsLoadMessageBodyRetain( TableBitReader & r, const TableVocabula
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -14912,7 +14912,7 @@ template <typename Ctx> inline bool BytesCookBody( const Ctx & ctx, const TableC
     (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // data: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -14921,7 +14921,7 @@ template <typename Ctx> inline bool IntsCookBody( const Ctx & ctx, const TableCo
     (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // values: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -14930,7 +14930,7 @@ template <typename Ctx> inline bool FloatsCookBody( const Ctx & ctx, const Table
     (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // values: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -15530,15 +15530,15 @@ static_assert( __is_standard_layout( Floats ), "Floats must stay standard-layout
 static_assert( sizeof( Bytes ) == 24, "Bytes's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Bytes ) == 8, "Bytes's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Bytes, data ) == 0, "Bytes's field data moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Bytes, after ) == 16, "Bytes's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Bytes, past ) == 16, "Bytes's field past moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( sizeof( Ints ) == 24, "Ints's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Ints ) == 8, "Ints's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Ints, values ) == 0, "Ints's field values moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Ints, after ) == 16, "Ints's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Ints, past ) == 16, "Ints's field past moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( sizeof( Floats ) == 24, "Floats's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Floats ) == 8, "Floats's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Floats, values ) == 0, "Floats's field values moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Floats, after ) == 16, "Floats's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Floats, past ) == 16, "Floats's field past moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 
 static_assert( alignof( uint8_t ) <= kTableAlign, "Bytes.data: an unbounded array's element alignment must fit the arena's" );
 static_assert( alignof( int32_t ) <= kTableAlign, "Ints.values: an unbounded array's element alignment must fit the arena's" );
@@ -15561,21 +15561,21 @@ extern const TableTypeInfo FloatsTableInfo;
 
 inline const TableFieldInfo BytesTableFields[] = {
     { "data", "data", "uint8", 0x855b556730a34a05ull, 6, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Bytes, data ), (uint32_t) sizeof( uint8_t ), (uint32_t) offsetof( Bytes, data.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<uint8_t> *) slot ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Bytes, after ), (uint32_t) sizeof( Bytes::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Bytes, past ), (uint32_t) sizeof( Bytes::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo BytesTableInfo = { "Bytes", (uint32_t) sizeof( Bytes ), 2, BytesTableFields, +[]( void * p ) { BytesReset( *(Bytes *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * BytesTableType() { return &BytesTableInfo; }
 
 inline const TableFieldInfo IntsTableFields[] = {
     { "values", "values", "int32", 0x21277bcf1a4d67fbull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ints, values ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Ints, values.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ints, after ), (uint32_t) sizeof( Ints::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ints, past ), (uint32_t) sizeof( Ints::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo IntsTableInfo = { "Ints", (uint32_t) sizeof( Ints ), 2, IntsTableFields, +[]( void * p ) { IntsReset( *(Ints *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * IntsTableType() { return &IntsTableInfo; }
 
 inline const TableFieldInfo FloatsTableFields[] = {
     { "values", "values", "float32", 0x21277bcf1a4d67fbull, 10, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Floats, values ), (uint32_t) sizeof( float ), (uint32_t) offsetof( Floats, values.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<float> *) slot ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Floats, after ), (uint32_t) sizeof( Floats::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Floats, past ), (uint32_t) sizeof( Floats::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo FloatsTableInfo = { "Floats", (uint32_t) sizeof( Floats ), 2, FloatsTableFields, +[]( void * p ) { FloatsReset( *(Floats *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * FloatsTableType() { return &FloatsTableInfo; }

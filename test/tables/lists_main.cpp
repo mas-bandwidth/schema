@@ -528,7 +528,7 @@ struct IntsSpec
     int64_t declared_n;   // -1: n itself
     uint8_t element_kind; // 0: int32's own kind
     int64_t body_len;     // -1: the body's own length; else a FORGED array body length
-    int32_t after;
+    int32_t past;
 };
 
 static IntsSpec ints_spec()
@@ -561,8 +561,8 @@ static Wire build_ints( const IntsSpec & spec )
         b.leb( (uint64_t) spec.body_len );
         for ( int64_t i = 0; i < spec.body_len; i++ ) { b.u8( i == 0 ? 4 : 0 ); }
     }
-    b.field( "after", 4 );
-    b.u32( (uint32_t) spec.after );
+    b.field( "past", 4 );
+    b.u32( (uint32_t) spec.past );
     b.end();
     Wire w;
     w.size = b.finish( w.bytes );
@@ -573,7 +573,7 @@ struct Verdict
 {
     int32_t count;
     TableReport report;
-    int32_t after;
+    int32_t past;
     int32_t decoded[3];
 };
 
@@ -588,7 +588,7 @@ static Verdict read_ints( const Wire & w )
     if ( ints != NULL )
     {
         v.count = ints->values.size();
-        v.after = ints->after;
+        v.past = ints->past;
         for ( int32_t i = 0; i < v.count && i < 3; i++ ) { v.decoded[i] = ints->values[i]; }
     }
     free( region );
@@ -609,7 +609,7 @@ static void test_reader()
         const Verdict v = read_ints( build_ints( ints_spec() ) );
         CHECK_EQ( v.count, 3 );
         CHECK_EQ( v.decoded[2], 30 );
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
         report_silent( v.report, "a good Ints wire" );
     }
     {
@@ -627,7 +627,7 @@ static void test_reader()
         if ( floats != NULL )
         {
             CHECK_EQ( floats->values.size(), 0 );
-            CHECK_EQ( floats->after, 777 );
+            CHECK_EQ( floats->past, 777 );
         }
         CHECK_EQ( r.kind_mismatch, 1 );
         CHECK_EQ( r.unknown + r.clamped + r.duplicate + (int) r.malformed, 0 );
@@ -639,7 +639,7 @@ static void test_reader()
         CHECK_EQ( v.count, 0 );
         CHECK_EQ( v.report.kind_mismatch, 1 );
         CHECK( !v.report.malformed );
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
     }
     {
         // A COUNT THE BODY CANNOT COVER (§2.9): into a REGION, LoadMeasure
@@ -658,7 +658,7 @@ static void test_reader()
         CHECK( t.malformed );
         CHECK_EQ( t.kind_mismatch + t.clamped + t.unknown + t.duplicate, 0 );
         CHECK_EQ( into.GetRoot()->values.count, 3 ); // the prefix the body covers
-        CHECK_EQ( into.GetRoot()->after, 777 );
+        CHECK_EQ( into.GetRoot()->past, 777 );
     }
     {
         // A BODY TOO SHORT TO CARRY ITS OWN HEADER IS INERT (§4): no element,
@@ -668,7 +668,7 @@ static void test_reader()
         const Verdict v = read_ints( build_ints( spec ) );
         CHECK_EQ( v.count, 0 );
         report_silent( v.report, "an inert list body" );
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
     }
     {
         // an EMPTY list on the wire: a header and a zero count
@@ -677,7 +677,7 @@ static void test_reader()
         const Verdict v = read_ints( build_ints( spec ) );
         CHECK_EQ( v.count, 0 );
         report_silent( v.report, "an empty list body" );
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
     }
     {
         // A DAMAGED ELEMENT inside a good count: a list of TABLES whose third
@@ -743,7 +743,7 @@ static void test_clamp_control()
         if ( e == NULL ) { printf( "FAIL: Add answered NULL at %d\n", i ); failures++; return; }
         *e = (uint8_t) ( i & 0xff );
     }
-    bytes->after = 4242;
+    bytes->past = 4242;
     CHECK_EQ( bytes->data.count, kElements );
     const int64_t measured = BytesMeasure( b );
     uint8_t * wire = (uint8_t *) MEASURED_CALLOC( measured, 0 );
@@ -766,7 +766,7 @@ static void test_clamp_control()
         bool intact = loaded->data.size() == kElements;
         for ( int32_t i = 0; intact && i < kElements; i++ ) { if ( loaded->data[i] != (uint8_t) ( i & 0xff ) ) { intact = false; } }
         CHECK( intact );
-        CHECK_EQ( loaded->after, 4242 );
+        CHECK_EQ( loaded->past, 4242 );
     }
     BytesBuilder into;
     TableReport t;
@@ -860,7 +860,7 @@ static Wire build_army( uint64_t squads, uint64_t entries, int32_t real_entries 
         b.close_len( squad );
     }
     b.close_len( body );
-    b.field( "after", 4 );
+    b.field( "past", 4 );
     b.u32( 8 );
     b.end();
     Wire w;
@@ -1192,7 +1192,7 @@ static void test_nested()
             SquadRosterInsert( b.main, squad->roster, (uint8_t) ( 9 - i ) )->count = 90 + i;
             SquadRosterInsert( b.main, squad->roster, (uint8_t) ( 2 + i ) )->count = 20 + i;
         }
-        army->after = 8;
+        army->past = 8;
         static uint8_t wire[1u << 16];
         const int64_t n = ArmySave( b, wire, sizeof( wire ) );
         CHECK_EQ( ArmyMeasure( b ), n );
@@ -1217,7 +1217,7 @@ static void test_nested()
                 CHECK( low != NULL && low->count == 20 + i );
                 if ( squad.roster.size() == 2 ) { CHECK_EQ( squad.roster.begin().at->key, 2 + i ); } // sorted
             }
-            CHECK_EQ( loaded->after, 8 );
+            CHECK_EQ( loaded->past, 8 );
             static uint8_t again[1u << 16];
             CHECK_EQ( ArmySave( loaded, again, sizeof( again ) ), n );
             CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -1381,12 +1381,12 @@ static void test_text()
     // `[]` is an empty list, null is kind_mismatch, a wrong-shaped element
     // counts and keeps its slot at defaults, and EVERY element the text
     // carries is read, because there is no bound to drop a tail against
-    struct TextRow { const char * text; int32_t count; int32_t mismatch; int32_t after; };
+    struct TextRow { const char * text; int32_t count; int32_t mismatch; int32_t past; };
     const TextRow rows[] = {
-        { "{\"values\":[],\"after\":5}", 0, 0, 5 },
-        { "{\"values\":null,\"after\":5}", 0, 1, 5 },
-        { "{\"values\":[1,\"x\",3],\"after\":5}", 3, 1, 5 },
-        { "{\"values\":[1,2],\"values\":[9],\"after\":5}", 1, 0, 5 }, // LAST WINS, whole
+        { "{\"values\":[],\"past\":5}", 0, 0, 5 },
+        { "{\"values\":null,\"past\":5}", 0, 1, 5 },
+        { "{\"values\":[1,\"x\",3],\"past\":5}", 3, 1, 5 },
+        { "{\"values\":[1,2],\"values\":[9],\"past\":5}", 1, 0, 5 }, // LAST WINS, whole
     };
     for ( int i = 0; i < 4; i++ )
     {
@@ -1396,7 +1396,7 @@ static void test_text()
         CHECK_EQ( rb.GetRoot()->values.count, rows[i].count );
         CHECK_EQ( r.kind_mismatch, rows[i].mismatch );
         CHECK_EQ( r.clamped, 0 );
-        CHECK_EQ( rb.GetRoot()->after, rows[i].after );
+        CHECK_EQ( rb.GetRoot()->past, rows[i].past );
     }
     {
         static char many[8192];

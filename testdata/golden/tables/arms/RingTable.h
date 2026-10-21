@@ -7306,7 +7306,7 @@ struct Node {
 // SlotType: union Slot's tag — None = 0, then each variant in declared order (SPEC §4.8)
 enum class SlotType : uint8_t {
     None = 0,
-    Node = 1,
+    Vertex = 1,
     Plain = 2,
     Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
@@ -7318,7 +7318,7 @@ inline const char * EnumName( SlotType value )
     switch ( value )
     {
         case SlotType::None: return "None";
-        case SlotType::Node: return "Node";
+        case SlotType::Vertex: return "Vertex";
         case SlotType::Plain: return "Plain";
         default: return "???";
     }
@@ -7331,7 +7331,7 @@ inline const char * EnumName( SlotType value )
 // `value_length` or `value_count`. Such a union has no packet wire and lives
 // here, after its arms. Construction is None: the tag alone is initialized; an
 // arm's storage is established when the arm is selected — by SlotLoadBody
-// before it decodes, or by assigning it: value.node = a *Node.
+// before it decodes, or by assigning it: value.vertex = a *Node.
 // Bytes of unselected arms are indeterminate.
 struct Slot
 {
@@ -7339,7 +7339,7 @@ struct Slot
 
     union
     {
-        TableRef node; // *Node — a node index on the wire (§3.1)
+        TableRef vertex; // *Node — a node index on the wire (§3.1)
         int32_t plain;
     };
 
@@ -7350,7 +7350,7 @@ struct Slot
 // member initializers (docs/SPEC-TABLES.md)
 struct Ring {
     TableList<Slot> items; // Slot: the element array, empty until an Add
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // SlotsType: union Slots's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -7400,7 +7400,7 @@ struct Slots
 // member initializers (docs/SPEC-TABLES.md)
 struct Rack {
     TableList<Slots> items; // Slots: the element array, empty until an Add
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // table Tray — TABLE-wire storage: relocatable, bounded, defaults in the
@@ -7408,7 +7408,7 @@ struct Rack {
 struct Tray {
     Slots entries[2]; // used count beside it; count in [0, 2]
     int32_t entries_count = 0;
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
@@ -7428,7 +7428,7 @@ inline void RingReset( Ring & value )
     value.items.elements.value = 0; // Slot: empty
     value.items.count = 0;
     value.items.padding = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline void RackReset( Rack & value )
@@ -7436,7 +7436,7 @@ inline void RackReset( Rack & value )
     value.items.elements.value = 0; // Slots: empty
     value.items.count = 0;
     value.items.padding = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline void TrayReset( Tray & value )
@@ -7447,7 +7447,7 @@ inline void TrayReset( Tray & value )
     value.entries[0].type = SlotsType::None;
     for ( int32_t i = 1; i < 2; i++ ) { value.entries[i] = value.entries[0]; }
     value.entries_count = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline int64_t NodeMeasureMessageBody( int64_t at, const Node & value );
@@ -7944,12 +7944,12 @@ inline int64_t RingMeasureBody( const Ctx & ctx, const TableNumbering & numberin
                     switch ( cursor_items[elem_i_items].type )
                     {
                         case SlotType::None: break;
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 8, 0x3c2f1bbad18642adull );
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return -1; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
@@ -7972,7 +7972,7 @@ inline int64_t RingMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             bytes += TableLebBytes( ref_items ) + 1 + TableLebBytes( (uint64_t) ( body_items ) ) + ( body_items );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -7995,12 +7995,12 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     switch ( cursor_items[elem_i_items].type )
                     {
                         case SlotType::None: break;
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 8, 0x3c2f1bbad18642adull );
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return -1; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
@@ -8029,19 +8029,19 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                 {
                     switch ( cursor_items[elem_i_items].type )
                     {
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             const uint64_t arm_ref_itemsu = ids.ref_at( 8, 0x3c2f1bbad18642adull );
                             int64_t arm_payload_itemsu = 0;
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return false; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
                             }
-                            w.header( arm_ref_itemsu, 17 ); w.putleb( (uint64_t) arm_payload_itemsu ); // node
+                            w.header( arm_ref_itemsu, 17 ); w.putleb( (uint64_t) arm_payload_itemsu ); // vertex
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return false; }
                                 w.putleb( arm_index_itemsu ); // a node index, null as 0 (§3.1)
@@ -8063,10 +8063,10 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -8163,18 +8163,18 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                                         TableReader elem_arm_items( sub.buffer + sub.offset, (int64_t) elem_arm_len_items, r.report, r.ids );
                                         switch ( elem_arm_id_items ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                                         {
-                                            case 0x3c2f1bbad18642adull: // node
+                                            case 0x3c2f1bbad18642adull: // vertex
                                             {
                                                 if ( elem_arm_kind_items != 17 )
                                                 {
                                                     ( *slot ).type = SlotType::None; r.report->kind_mismatch++; break;
                                                 }
-                                                ( *slot ).type = SlotType::Node;
+                                                ( *slot ).type = SlotType::Vertex;
                                                 {
                                                     uint64_t node_index_itemsa = 0;
                                                     if ( !elem_arm_items.getleb( node_index_itemsa ) ) { ( *slot ).type = SlotType::None; r.report->malformed = true; break; }
                                                     if ( elem_arm_items.offset != elem_arm_items.size ) { ( *slot ).type = SlotType::None; r.report->malformed = true; break; }
-                                                    TableNodeResolve( nodes, ( *slot ).node, node_index_itemsa, 0x66bd1cc6d2f6b68dull, r.report ); // *Node
+                                                    TableNodeResolve( nodes, ( *slot ).vertex, node_index_itemsa, 0x66bd1cc6d2f6b68dull, r.report ); // *Node
                                                 }
                                                 break;
                                             }
@@ -8220,7 +8220,7 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -8231,7 +8231,7 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -8243,7 +8243,7 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -8286,13 +8286,13 @@ inline int64_t RingMeasureMessageBody( const Ctx & ctx, const TableNumbering & n
                 {
                     switch ( cursor_items[i].type )
                     {
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             bits += kTableMessageRefBitsHere;
                             {
-                                const Node * pointee_node = NodeAt( ctx, cursor_items[i].node ); // *Node
-                                uint64_t index_node = 0;
-                                if ( pointee_node != NULL && !TableNumberingIndex( numbering, (const void *) pointee_node, index_node ) ) { return -1; }
+                                const Node * pointee_vertex = NodeAt( ctx, cursor_items[i].vertex ); // *Node
+                                uint64_t index_vertex = 0;
+                                if ( pointee_vertex != NULL && !TableNumberingIndex( numbering, (const void *) pointee_vertex, index_vertex ) ) { return -1; }
                                 bits += index_bits;
                             }
                             break;
@@ -8309,7 +8309,7 @@ inline int64_t RingMeasureMessageBody( const Ctx & ctx, const TableNumbering & n
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -8343,14 +8343,14 @@ inline bool RingSaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
                 {
                     switch ( cursor_items[i].type )
                     {
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             w.put( 17, kTableMessageRefBitsHere );
                             {
-                                const Node * pointee_node = NodeAt( ctx, cursor_items[i].node ); // *Node
-                                uint64_t index_node = 0;
-                                if ( pointee_node != NULL && !TableNumberingIndex( numbering, (const void *) pointee_node, index_node ) ) { return false; }
-                                w.put( index_node, index_bits );
+                                const Node * pointee_vertex = NodeAt( ctx, cursor_items[i].vertex ); // *Node
+                                uint64_t index_vertex = 0;
+                                if ( pointee_vertex != NULL && !TableNumberingIndex( numbering, (const void *) pointee_vertex, index_vertex ) ) { return false; }
+                                w.put( index_vertex, index_bits );
                             }
                             break;
                         }
@@ -8366,10 +8366,10 @@ inline bool RingSaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -8458,7 +8458,7 @@ inline bool RingLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             {
                                 switch ( arm_2.id )
                                 {
-                                    case 0x3c2f1bbad18642adull: // node
+                                    case 0x3c2f1bbad18642adull: // vertex
                                     {
                                         if ( arm_2.kind != 17 || arm_2.elem_kind != 0 )
                                         {
@@ -8466,11 +8466,11 @@ inline bool RingLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                             if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
                                             break;
                                         }
-                                        ( *slot ).type = SlotType::Node;
+                                        ( *slot ).type = SlotType::Vertex;
                                         {
                                             uint64_t node_index_3 = 0;
                                             if ( !r.get( node_index_3, index_bits ) ) { report->malformed = true; return false; }
-                                            TableNodeResolve( nodes, ( *slot ).node, node_index_3, 0x66bd1cc6d2f6b68dull, report ); // *Node
+                                            TableNodeResolve( nodes, ( *slot ).vertex, node_index_3, 0x66bd1cc6d2f6b68dull, report ); // *Node
                                         }
                                         break;
                                     }
@@ -8536,7 +8536,7 @@ inline bool RingLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -8559,7 +8559,7 @@ inline bool RingLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -8582,7 +8582,7 @@ inline bool RingLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -8648,7 +8648,7 @@ inline int64_t RackMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             bytes += TableLebBytes( ref_items ) + 1 + TableLebBytes( (uint64_t) ( body_items ) ) + ( body_items );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -8754,10 +8754,10 @@ inline bool RackSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -8929,7 +8929,7 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -8940,7 +8940,7 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -8952,7 +8952,7 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -9015,7 +9015,7 @@ inline int64_t RackMeasureMessageBody( const Ctx & ctx, const TableNumbering & n
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -9075,10 +9075,10 @@ inline bool RackSaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -9265,7 +9265,7 @@ inline bool RackLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -9288,7 +9288,7 @@ inline bool RackLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -9311,7 +9311,7 @@ inline bool RackLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -9373,7 +9373,7 @@ inline int64_t TrayMeasureBody( const Ctx & ctx, const TableNumbering & numberin
         }
         bytes += TableLebBytes( ref_entries ) + 1 + TableLebBytes( (uint64_t) ( body_entries ) ) + ( body_entries ); // entries
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -9476,10 +9476,10 @@ inline bool TraySaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -9651,7 +9651,7 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -9662,7 +9662,7 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -9674,7 +9674,7 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -9734,7 +9734,7 @@ inline int64_t TrayMeasureMessageBody( const Ctx & ctx, const TableNumbering & n
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -9791,10 +9791,10 @@ inline bool TraySaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -9958,7 +9958,7 @@ inline bool TrayLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -9981,7 +9981,7 @@ inline bool TrayLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -10004,7 +10004,7 @@ inline bool TrayLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -10643,10 +10643,10 @@ inline bool RingNumber( const Ctx & ctx, TableNumbering & numbering, const Ring 
         {
             switch ( cursor_items[i].type ) // items: the set arm is the edge
             {
-                case SlotType::Node:
+                case SlotType::Vertex:
                 {
             {
-                const Node * pointee = NodeAt( ctx, cursor_items[i].node ); // node
+                const Node * pointee = NodeAt( ctx, cursor_items[i].vertex ); // vertex
                 if ( pointee != NULL )
                 {
                     bool taken = false;
@@ -10698,10 +10698,10 @@ inline int64_t RingPackMeasure( const Ctx & ctx, TablePackMap & seen, const Ring
         {
             switch ( cursor_items[i].type ) // items: the set arm is the edge
             {
-                case SlotType::Node:
+                case SlotType::Vertex:
                 {
             {
-                const Node * pointee = NodeAt( ctx, cursor_items[i].node ); // node
+                const Node * pointee = NodeAt( ctx, cursor_items[i].vertex ); // vertex
                 if ( pointee != NULL )
                 {
                     bool taken = false;
@@ -10764,11 +10764,11 @@ inline bool RingPackEdges( const Ctx & ctx, TablePackMap & seen, const Ring & sr
         {
             switch ( cursor_items[i].type ) // items: the set arm is the edge
             {
-                case SlotType::Node:
+                case SlotType::Vertex:
                 {
             {
-                placed_items[i].node.value = 0; // node
-                const Node * pointee = NodeAt( ctx, cursor_items[i].node );
+                placed_items[i].vertex.value = 0; // vertex
+                const Node * pointee = NodeAt( ctx, cursor_items[i].vertex );
                 if ( pointee != NULL )
                 {
                     int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
@@ -10779,14 +10779,14 @@ inline bool RingPackEdges( const Ctx & ctx, TablePackMap & seen, const Ring & sr
                     if ( !taken )
                     {
                         if ( entry->open != 0 ) { return false; } // a data cycle
-                        placed_items[i].node.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &placed_items[i].node ); // the one body it already has
+                        placed_items[i].vertex.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &placed_items[i].vertex ); // the one body it already has
                     }
                     else
                     {
                         if ( at + (int64_t) sizeof( Node ) > capacity ) { return false; }
                         used = at + TableAlignUp64( (int64_t) sizeof( Node ) );
                         Node * child = new ( base + at ) Node; // lifetime only: the Pack below memcpy's the whole node over it
-                        placed_items[i].node.value = (int64_t) ( ( base + at ) - (const uint8_t *) &placed_items[i].node );
+                        placed_items[i].vertex.value = (int64_t) ( ( base + at ) - (const uint8_t *) &placed_items[i].vertex );
                         if ( !NodePack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }
                         TablePackMapClose( seen, (const void *) pointee, slot );
                     }
@@ -14054,12 +14054,12 @@ inline int64_t RingMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
                     switch ( cursor_items[elem_i_items].type )
                     {
                         case SlotType::None: break;
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 8, 0x3c2f1bbad18642adull );
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return -1; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
@@ -14082,7 +14082,7 @@ inline int64_t RingMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             bytes += TableLebBytes( ref_items ) + 1 + TableLebBytes( (uint64_t) ( body_items ) ) + ( body_items );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -14106,12 +14106,12 @@ inline bool RingSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     switch ( cursor_items[elem_i_items].type )
                     {
                         case SlotType::None: break;
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 8, 0x3c2f1bbad18642adull );
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return -1; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
@@ -14140,19 +14140,19 @@ inline bool RingSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                 {
                     switch ( cursor_items[elem_i_items].type )
                     {
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             const uint64_t arm_ref_itemsu = ids.ref_at( 8, 0x3c2f1bbad18642adull );
                             int64_t arm_payload_itemsu = 0;
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return false; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
                             }
-                            w.header( arm_ref_itemsu, 17 ); w.putleb( (uint64_t) arm_payload_itemsu ); // node
+                            w.header( arm_ref_itemsu, 17 ); w.putleb( (uint64_t) arm_payload_itemsu ); // vertex
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return false; }
                                 w.putleb( arm_index_itemsu ); // a node index, null as 0 (§3.1)
@@ -14174,10 +14174,10 @@ inline bool RingSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -14283,18 +14283,18 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                                         TableReader elem_arm_items( sub.buffer + sub.offset, (int64_t) elem_arm_len_items, r.report, r.ids );
                                         switch ( elem_arm_id_items ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                                         {
-                                            case 0x3c2f1bbad18642adull: // node
+                                            case 0x3c2f1bbad18642adull: // vertex
                                             {
                                                 if ( elem_arm_kind_items != 17 )
                                                 {
                                                     ( *slot ).type = SlotType::None; r.report->kind_mismatch++; break;
                                                 }
-                                                ( *slot ).type = SlotType::Node;
+                                                ( *slot ).type = SlotType::Vertex;
                                                 {
                                                     uint64_t node_index_itemsa = 0;
                                                     if ( !elem_arm_items.getleb( node_index_itemsa ) ) { ( *slot ).type = SlotType::None; r.report->malformed = true; break; }
                                                     if ( elem_arm_items.offset != elem_arm_items.size ) { ( *slot ).type = SlotType::None; r.report->malformed = true; break; }
-                                                    TableNodeResolve( nodes, ( *slot ).node, node_index_itemsa, 0x66bd1cc6d2f6b68dull, r.report ); // *Node
+                                                    TableNodeResolve( nodes, ( *slot ).vertex, node_index_itemsa, 0x66bd1cc6d2f6b68dull, r.report ); // *Node
                                                 }
                                                 break;
                                             }
@@ -14340,7 +14340,7 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -14351,7 +14351,7 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -14363,7 +14363,7 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -14447,7 +14447,7 @@ inline bool RingLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                             {
                                 switch ( arm_2.id )
                                 {
-                                    case 0x3c2f1bbad18642adull: // node
+                                    case 0x3c2f1bbad18642adull: // vertex
                                     {
                                         if ( arm_2.kind != 17 || arm_2.elem_kind != 0 )
                                         {
@@ -14455,11 +14455,11 @@ inline bool RingLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                                             if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
                                             break;
                                         }
-                                        ( *slot ).type = SlotType::Node;
+                                        ( *slot ).type = SlotType::Vertex;
                                         {
                                             uint64_t node_index_3 = 0;
                                             if ( !r.get( node_index_3, index_bits ) ) { report->malformed = true; return false; }
-                                            TableNodeResolve( nodes, ( *slot ).node, node_index_3, 0x66bd1cc6d2f6b68dull, report ); // *Node
+                                            TableNodeResolve( nodes, ( *slot ).vertex, node_index_3, 0x66bd1cc6d2f6b68dull, report ); // *Node
                                         }
                                         break;
                                     }
@@ -14525,7 +14525,7 @@ inline bool RingLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -14548,7 +14548,7 @@ inline bool RingLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -14571,7 +14571,7 @@ inline bool RingLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -14641,7 +14641,7 @@ inline int64_t RackMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             bytes += TableLebBytes( ref_items ) + 1 + TableLebBytes( (uint64_t) ( body_items ) ) + ( body_items );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -14748,10 +14748,10 @@ inline bool RackSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -14932,7 +14932,7 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -14943,7 +14943,7 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -14955,7 +14955,7 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -15137,7 +15137,7 @@ inline bool RackLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -15160,7 +15160,7 @@ inline bool RackLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -15183,7 +15183,7 @@ inline bool RackLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -15249,7 +15249,7 @@ inline int64_t TrayMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
         }
         bytes += TableLebBytes( ref_entries ) + 1 + TableLebBytes( (uint64_t) ( body_entries ) ) + ( body_entries ); // entries
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -15353,10 +15353,10 @@ inline bool TraySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -15537,7 +15537,7 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -15548,7 +15548,7 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -15560,7 +15560,7 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -15745,7 +15745,7 @@ inline bool TrayLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -15768,7 +15768,7 @@ inline bool TrayLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -15791,7 +15791,7 @@ inline bool TrayLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -17404,7 +17404,7 @@ template <typename Ctx> inline bool RingCookBody( const Ctx & ctx, const TableCo
     (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // items: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -17413,7 +17413,7 @@ template <typename Ctx> inline bool RackCookBody( const Ctx & ctx, const TableCo
     (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // items: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -17445,7 +17445,7 @@ template <typename Ctx> inline bool TrayCookBody( const Ctx & ctx, const TableCo
         }
     }
     table_cook_put( at + 64, (uint64_t) (uint32_t) value.entries_count, 4, order );
-    table_cook_put( at + 68, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 68, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -17484,9 +17484,9 @@ template <typename Ctx> inline bool RingCookExtent( const Ctx & ctx, const Table
                 table_cook_put( array + i * 16, (uint64_t) cursor[i].type, 1, order ); // the tag; None is the tag alone
                 switch ( cursor[i].type )
                 {
-                    case SlotType::Node:
+                    case SlotType::Vertex:
                     {
-                        if ( !table_cook_ref( region, array + i * 16 + 8, (const void *) NodeAt( ctx, cursor[i].node ), order ) ) { return false; } // node
+                        if ( !table_cook_ref( region, array + i * 16 + 8, (const void *) NodeAt( ctx, cursor[i].vertex ), order ) ) { return false; } // vertex
                         break;
                     }
                     case SlotType::Plain:
@@ -18198,15 +18198,15 @@ static_assert( offsetof( Node, v ) == 0, "Node's field v moved: the build versio
 static_assert( sizeof( Ring ) == 24, "Ring's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Ring ) == 8, "Ring's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Ring, items ) == 0, "Ring's field items moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Ring, after ) == 16, "Ring's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Ring, past ) == 16, "Ring's field past moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( sizeof( Rack ) == 24, "Rack's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Rack ) == 8, "Rack's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Rack, items ) == 0, "Rack's field items moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Rack, after ) == 16, "Rack's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Rack, past ) == 16, "Rack's field past moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( sizeof( Tray ) == 72, "Tray's sizeof moved: the build version was taken over 72, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Tray ) == 8, "Tray's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Tray, entries ) == 0, "Tray's field entries moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Tray, after ) == 68, "Tray's field after moved: the build version was taken over offset 68 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Tray, past ) == 68, "Tray's field past moved: the build version was taken over offset 68 (docs/SPEC-TABLES.md §20.3)" );
 
 static_assert( alignof( Slot ) <= kTableAlign, "Ring.items: an unbounded array's element alignment must fit the arena's" );
 static_assert( alignof( Slots ) <= kTableAlign, "Rack.items: an unbounded array's element alignment must fit the arena's" );
@@ -18235,22 +18235,22 @@ inline const TableTypeInfo NodeTableInfo = { "Node", (uint32_t) sizeof( Node ), 
 inline const TableTypeInfo * NodeTableType() { return &NodeTableInfo; }
 
 inline const TableFieldInfo RingTableFields[] = {
-    { "items", "items", "Slot", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ring, items ), (uint32_t) sizeof( Slot ), (uint32_t) offsetof( Ring, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "node"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x3c2f1bbad18642adull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slot[] = { { "node", "node", "Node", 0x3c2f1bbad18642adull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Slot, node ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slot, plain ), (uint32_t) sizeof( Slot::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slot, node ), NULL, &arm_fields_Slot[0], 8 }, { (uint32_t) offsetof( Slot, plain ), NULL, &arm_fields_Slot[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slot, type ), (uint32_t) sizeof( Slot::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Slot> *) slot ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ring, after ), (uint32_t) sizeof( Ring::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "items", "items", "Slot", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ring, items ), (uint32_t) sizeof( Slot ), (uint32_t) offsetof( Ring, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "vertex"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x3c2f1bbad18642adull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slot[] = { { "vertex", "vertex", "Node", 0x3c2f1bbad18642adull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Slot, vertex ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slot, plain ), (uint32_t) sizeof( Slot::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slot, vertex ), NULL, &arm_fields_Slot[0], 8 }, { (uint32_t) offsetof( Slot, plain ), NULL, &arm_fields_Slot[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slot, type ), (uint32_t) sizeof( Slot::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Slot> *) slot ); }, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ring, past ), (uint32_t) sizeof( Ring::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo RingTableInfo = { "Ring", (uint32_t) sizeof( Ring ), 2, RingTableFields, +[]( void * p ) { RingReset( *(Ring *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * RingTableType() { return &RingTableInfo; }
 
 inline const TableFieldInfo RackTableFields[] = {
     { "items", "items", "Slots", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Rack, items ), (uint32_t) sizeof( Slots ), (uint32_t) offsetof( Rack, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "many"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x1f6459a2cea1fc02ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slots[] = { { "many", "many", "Node", 0x1f6459a2cea1fc02ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Slots, many.value ), (uint32_t) sizeof( Slots::many.value[0] ), (uint32_t) offsetof( Slots, many.value_count ), 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, plain ), (uint32_t) sizeof( Slots::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slots, many ), NULL, &arm_fields_Slots[0], 24 }, { (uint32_t) offsetof( Slots, plain ), NULL, &arm_fields_Slots[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slots, type ), (uint32_t) sizeof( Slots::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Slots> *) slot ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Rack, after ), (uint32_t) sizeof( Rack::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Rack, past ), (uint32_t) sizeof( Rack::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo RackTableInfo = { "Rack", (uint32_t) sizeof( Rack ), 2, RackTableFields, +[]( void * p ) { RackReset( *(Rack *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * RackTableType() { return &RackTableInfo; }
 
 inline const TableFieldInfo TrayTableFields[] = {
     { "entries", "entries", "Slots", 0xc5b2a72c0845a253ull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( Tray, entries ), (uint32_t) sizeof( Tray::entries[0] ), (uint32_t) offsetof( Tray, entries_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "many"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x1f6459a2cea1fc02ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slots[] = { { "many", "many", "Node", 0x1f6459a2cea1fc02ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Slots, many.value ), (uint32_t) sizeof( Slots::many.value[0] ), (uint32_t) offsetof( Slots, many.value_count ), 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, plain ), (uint32_t) sizeof( Slots::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slots, many ), NULL, &arm_fields_Slots[0], 24 }, { (uint32_t) offsetof( Slots, plain ), NULL, &arm_fields_Slots[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slots, type ), (uint32_t) sizeof( Slots::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Tray, after ), (uint32_t) sizeof( Tray::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Tray, past ), (uint32_t) sizeof( Tray::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo TrayTableInfo = { "Tray", (uint32_t) sizeof( Tray ), 2, TrayTableFields, +[]( void * p ) { TrayReset( *(Tray *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * TrayTableType() { return &TrayTableInfo; }

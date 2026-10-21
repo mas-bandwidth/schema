@@ -3916,7 +3916,7 @@ struct Script {
 // member initializers (docs/SPEC-TABLES.md)
 struct Selection {
     Cursor start;
-    Cursor end;
+    Cursor stop;
 };
 
 // OriginType: union Origin's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -4244,7 +4244,7 @@ inline void ScriptReset( Script & value )
 inline void SelectionReset( Selection & value )
 {
     CursorReset( value.start );
-    CursorReset( value.end );
+    CursorReset( value.stop );
 }
 
 inline void InsertTextReset( InsertText & value )
@@ -5183,12 +5183,12 @@ inline int64_t SelectionMeasureBody( TableIds & ids, const Selection & value )
         else { ids.truncate( mark_start ); } // an all-default nested table elides, and costs no entry
     }
     {
-        const int32_t mark_end = ids.count;
-        const uint64_t ref_end = ids.ref_at( 42, 0xc2f00318f053500aull );
-        const int64_t body_end = CursorMeasureBody( ids, value.end );
-        if ( body_end < 0 ) { return -1; }
-        if ( body_end > 1 ) { bytes += TableLebBytes( ref_end ) + 1 + TableLebBytes( (uint64_t) ( body_end ) ) + ( body_end ); } // end
-        else { ids.truncate( mark_end ); } // an all-default nested table elides, and costs no entry
+        const int32_t mark_stop = ids.count;
+        const uint64_t ref_stop = ids.ref_at( 42, 0xc2f00318f053500aull );
+        const int64_t body_stop = CursorMeasureBody( ids, value.stop );
+        if ( body_stop < 0 ) { return -1; }
+        if ( body_stop > 1 ) { bytes += TableLebBytes( ref_stop ) + 1 + TableLebBytes( (uint64_t) ( body_stop ) ) + ( body_stop ); } // stop
+        else { ids.truncate( mark_stop ); } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -5216,16 +5216,16 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionSaveBody( TableWriter & w, TableIds & ids
         else { ids.truncate( mark_start ); }
     }
     {
-        const int32_t mark_end = ids.count;
-        const uint64_t ref_end = ids.ref_at( 42, 0xc2f00318f053500aull );
-        const int64_t body_end = CursorMeasureBody( ids, value.end );
-        if ( body_end < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_end > 1 ) // all-default nested elides
+        const int32_t mark_stop = ids.count;
+        const uint64_t ref_stop = ids.ref_at( 42, 0xc2f00318f053500aull );
+        const int64_t body_stop = CursorMeasureBody( ids, value.stop );
+        if ( body_stop < 0 ) return false; // storage invariant, refused as measure refuses it
+        if ( body_stop > 1 ) // all-default nested elides
         {
-            w.header( ref_end, 13 ); w.putleb( (uint64_t) body_end ); // end
-            if ( !CursorSaveBody( w, ids, value.end ) ) return false;
+            w.header( ref_stop, 13 ); w.putleb( (uint64_t) body_stop ); // stop
+            if ( !CursorSaveBody( w, ids, value.stop ) ) return false;
         }
-        else { ids.truncate( mark_end ); }
+        else { ids.truncate( mark_stop ); }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -5291,7 +5291,7 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBody( TableReader & r, Selection & va
                 r.offset += (int64_t) body_len;
                 break;
             }
-            case 0xc2f00318f053500aull: // end
+            case 0xc2f00318f053500aull: // stop
             {
                 if ( kind != 13 )
                 {
@@ -5305,11 +5305,11 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBody( TableReader & r, Selection & va
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
-                    CursorLoadBody( sub, value.end );
+                    CursorLoadBody( sub, value.stop );
                     if ( sub.offset != sub.size )
                     {
                         r.report->malformed = true;
-                        CursorReset( value.end );
+                        CursorReset( value.stop );
                     }
                 }
                 r.offset += (int64_t) body_len;
@@ -5392,12 +5392,12 @@ inline int64_t SelectionMeasureMessageBody( int64_t at, const Selection & value 
         }
     }
     {
-        const int64_t body_end = CursorMeasureMessageBody( at + bits, value.end );
-        if ( body_end < 0 ) { return -1; }
-        if ( body_end > kTableMessageRefBitsHere ) // an all-default nested table elides
+        const int64_t body_stop = CursorMeasureMessageBody( at + bits, value.stop );
+        if ( body_stop < 0 ) { return -1; }
+        if ( body_stop > kTableMessageRefBitsHere ) // an all-default nested table elides
         {
             bits += kTableMessageRefBitsHere;
-            bits += CursorMeasureMessageBody( at + bits, value.end );
+            bits += CursorMeasureMessageBody( at + bits, value.stop );
         }
     }
     bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
@@ -5420,12 +5420,12 @@ inline bool SelectionSaveMessageBody( TableBitWriter & w, const Selection & valu
         }
     }
     {
-        const int64_t body_end = CursorMeasureMessageBody( 0, value.end );
-        if ( body_end < 0 ) { return false; }
-        if ( body_end > kTableMessageRefBitsHere ) // an all-default nested table elides
+        const int64_t body_stop = CursorMeasureMessageBody( 0, value.stop );
+        if ( body_stop < 0 ) { return false; }
+        if ( body_stop > kTableMessageRefBitsHere ) // an all-default nested table elides
         {
             w.put( 17, kTableMessageRefBitsHere );
-            if ( !CursorSaveMessageBody( w, value.end ) ) { return false; }
+            if ( !CursorSaveMessageBody( w, value.stop ) ) { return false; }
         }
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -5467,7 +5467,7 @@ inline bool SelectionLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 if ( !CursorLoadMessageBody( r, vocabulary, report, index_bits, value.start ) ) { return false; }
                 break;
             }
-            case 0xc2f00318f053500aull: // end
+            case 0xc2f00318f053500aull: // stop
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -5478,7 +5478,7 @@ inline bool SelectionLoadMessageBody( TableBitReader & r, const TableVocabulary 
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
                 }
-                if ( !CursorLoadMessageBody( r, vocabulary, report, index_bits, value.end ) ) { return false; }
+                if ( !CursorLoadMessageBody( r, vocabulary, report, index_bits, value.stop ) ) { return false; }
                 break;
             }
             default:
@@ -14753,7 +14753,7 @@ static_assert( (uint32_t) __builtin_offsetof( Cursor, line ) == 0, "Cursor.line:
 static_assert( (uint32_t) __builtin_offsetof( Cursor, column ) == 4, "Cursor.column: the fixed form's plan lands here" );
 static_assert( sizeof( Selection ) == 16, "Selection: the fixed form's plan is laid out for this size" );
 static_assert( (uint32_t) __builtin_offsetof( Selection, start ) == 0, "Selection.start: the fixed form's plan lands here" );
-static_assert( (uint32_t) __builtin_offsetof( Selection, end ) == 8, "Selection.end: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( Selection, stop ) == 8, "Selection.stop: the fixed form's plan lands here" );
 static_assert( sizeof( InsertText ) == 304, "InsertText: the fixed form's plan is laid out for this size" );
 static_assert( (uint32_t) __builtin_offsetof( InsertText, at ) == 0, "InsertText.at: the fixed form's plan lands here" );
 static_assert( (uint32_t) __builtin_offsetof( InsertText, text ) == 8, "InsertText.text: the fixed form's plan lands here" );
@@ -14860,7 +14860,7 @@ inline void SelectionFixedWriteBody( uint8_t * b, const Selection & value )
 {
     (void) b; (void) value;
     CursorFixedWriteBody( b + 0, value.start );
-    CursorFixedWriteBody( b + 8, value.end );
+    CursorFixedWriteBody( b + 8, value.stop );
 }
 
 // InsertText's stores. The prefill — the hash, then zeros — is memcpy'd first,
@@ -16190,7 +16190,7 @@ constexpr TableFixedDst SelectionFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
 };
@@ -16866,7 +16866,7 @@ constexpr TableFixedDst RemoveTextFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
 };
@@ -17229,7 +17229,7 @@ constexpr TableFixedDst EditFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 4, 0, 0, 0, 0 }, // tally
@@ -18383,7 +18383,7 @@ constexpr TableFixedDst TransactionFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 4, 0, 0, 0, 0 }, // tally
@@ -18428,7 +18428,7 @@ constexpr TableFixedDst TransactionFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 4, 0, 0, 0, 0 }, // tally
@@ -18448,7 +18448,7 @@ constexpr TableFixedDst TransactionFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
 };
@@ -19549,7 +19549,7 @@ constexpr TableFixedDst ToolMessageFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 4, 0, 0, 0, 0 }, // tally
@@ -19594,7 +19594,7 @@ constexpr TableFixedDst ToolMessageFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 4, 0, 0, 0, 0 }, // tally
@@ -19614,7 +19614,7 @@ constexpr TableFixedDst ToolMessageFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 8, 0, 0, 0, 0 }, // ping
@@ -19682,7 +19682,7 @@ constexpr TableFixedDst ToolMessageFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 4, 0, 0, 0, 0 }, // tally
@@ -19727,7 +19727,7 @@ constexpr TableFixedDst ToolMessageFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 4, 0, 0, 0, 0 }, // tally
@@ -19747,7 +19747,7 @@ constexpr TableFixedDst ToolMessageFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 8, 0, 0, 0, 0 }, // ping
@@ -22541,7 +22541,7 @@ inline void ScriptCookBody( uint8_t * at, const Script & value, TableByteOrder o
 inline void SelectionCookBody( uint8_t * at, const Selection & value, TableByteOrder order )
 {
     CursorCookBody( at + 0, value.start, order );
-    CursorCookBody( at + 8, value.end, order );
+    CursorCookBody( at + 8, value.stop, order );
 }
 
 inline void InsertTextCookBody( uint8_t * at, const InsertText & value, TableByteOrder order )
@@ -23424,7 +23424,7 @@ static_assert( offsetof( Script, line ) == 72, "Script's field line moved: the b
 static_assert( sizeof( Selection ) == 16, "Selection's sizeof moved: the build version was taken over 16, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Selection ) == 4, "Selection's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Selection, start ) == 0, "Selection's field start moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Selection, end ) == 8, "Selection's field end moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Selection, stop ) == 8, "Selection's field stop moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( sizeof( InsertText ) == 304, "InsertText's sizeof moved: the build version was taken over 304, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( InsertText ) == 4, "InsertText's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( InsertText, at ) == 0, "InsertText's field at moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
@@ -23508,7 +23508,7 @@ inline const TableTypeInfo * SelectionTableType()
 {
     static const TableFieldInfo fields[] = {
         { "start", "start", "Cursor", 0xee5d97ad45ad251full, 13, false, false, false, 0, (uint32_t) offsetof( Selection, start ), (uint32_t) sizeof( Selection::start ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "end", "end", "Cursor", 0xc2f00318f053500aull, 13, false, false, false, 0, (uint32_t) offsetof( Selection, end ), (uint32_t) sizeof( Selection::end ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "stop", "stop", "Cursor", 0xc2f00318f053500aull, 13, false, false, false, 0, (uint32_t) offsetof( Selection, stop ), (uint32_t) sizeof( Selection::stop ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
     static const TableTypeInfo info = { "Selection", (uint32_t) sizeof( Selection ), 2, fields, +[]( void * p ) { SelectionReset( *(Selection *) p ); }, TableDocNone, 0, NULL };
     return &info;

@@ -83,8 +83,14 @@ func TestReservedDeclarationNamesRefused(t *testing.T) {
 			Path: "Res.schema", Name: "Res.schema", Base: "Res",
 			Bytes: []byte(c.src), AST: f,
 		}})
+		// SPEC §4.6: the one reserved-word table holds Dart's shadow
+		// hazards, so the checker refuses the name before the emitter runs,
+		// whatever target is generated.
 		if len(cerrs) > 0 {
-			t.Fatalf("check: %v", cerrs[0])
+			if msg := cerrs[0].Error(); !strings.Contains(msg, `"`+c.needle+`" is a reserved word in`) || !strings.Contains(msg, "Dart") {
+				t.Errorf("declaration %q: the checker's refusal does not name it as a Dart word: %v", c.needle, msg)
+			}
+			continue
 		}
 		_, err := Generate(u)
 		if err == nil {

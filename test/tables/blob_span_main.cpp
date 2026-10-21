@@ -52,7 +52,7 @@ static void test_blob_span()
     // allocate AFTER the span: a chain of assets and a second blob, so the
     // cursor moves on over whatever the span left behind
     blobdemo::TableSlot<blobdemo::Asset> head = builder.Alloc<blobdemo::Asset>();
-    memcpy( head->name, "after", 6 );
+    memcpy( head->name, "past", 6 );
     head->name_length = 5;
     CHECK( blobdemo::TableStringEmplace( builder.main, head->caption, "tail", 4 ) != NULL );
     root->head = head;

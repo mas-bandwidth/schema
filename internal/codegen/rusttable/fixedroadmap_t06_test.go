@@ -382,7 +382,7 @@ union Outer
 
 fixed table T
 {
-    node Outer
+    vertex Outer
     seq  int32 = 0
 }
 `

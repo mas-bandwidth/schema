@@ -8227,7 +8227,7 @@ struct SlotsSeatsEntry {
 // member initializers (docs/SPEC-TABLES.md)
 struct Slots {
     TableMap<SlotsSeatsEntry> seats; // map[int32]int32 — the sorted entry array, empty until an insert
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // Slot on the TABLE wire: a value rides under its OWN kind 30, carrying the
@@ -8314,7 +8314,7 @@ inline void SlotsReset( Slots & value )
     value.seats.entries.value = 0; // map[int32]int32: empty
     value.seats.count = 0;
     value.seats.padding = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline int64_t SlotsSeatsEntryMeasureMessageBody( int64_t at, const SlotsSeatsEntry & value );
@@ -8967,7 +8967,7 @@ inline int64_t SlotsMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         }
         TableMapRelease( order_seats );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -9000,10 +9000,10 @@ inline bool SlotsSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         }
         TableMapRelease( order_seats );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -9131,7 +9131,7 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
                 r.offset = body_end; // the remaining entries skip by the map's L
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -9142,7 +9142,7 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -9154,7 +9154,7 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -9196,7 +9196,7 @@ inline int64_t SlotsMeasureMessageBody( const Ctx & ctx, const TableNumbering & 
         }
         TableMapRelease( order_seats );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -9227,10 +9227,10 @@ inline bool SlotsSaveMessageBody( const Ctx & ctx, const TableNumbering & number
         }
         TableMapRelease( order_seats );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 18, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -9350,7 +9350,7 @@ inline bool SlotsLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -9373,7 +9373,7 @@ inline bool SlotsLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -9396,7 +9396,7 @@ inline bool SlotsLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -10901,7 +10901,7 @@ inline int64_t SlotsMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         }
         TableMapRelease( order_seats );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -10935,10 +10935,10 @@ inline bool SlotsSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         }
         TableMapRelease( order_seats );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -11075,7 +11075,7 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
                 r.offset = body_end; // the remaining entries skip by the map's L
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -11086,7 +11086,7 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -11098,7 +11098,7 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -11213,7 +11213,7 @@ inline bool SlotsLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -11236,7 +11236,7 @@ inline bool SlotsLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -11259,7 +11259,7 @@ inline bool SlotsLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -11779,7 +11779,7 @@ template <typename Ctx> inline bool SlotsCookBody( const Ctx & ctx, const TableC
     (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // seats: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -12024,7 +12024,7 @@ static_assert( offsetof( SlotsSeatsEntry, value ) == 4, "SlotsSeatsEntry's field
 static_assert( sizeof( Slots ) == 24, "Slots's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Slots ) == 8, "Slots's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Slots, seats ) == 0, "Slots's field seats moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Slots, after ) == 16, "Slots's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Slots, past ) == 16, "Slots's field past moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 
 
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
@@ -12049,7 +12049,7 @@ inline const TableTypeInfo * SlotsSeatsEntryTableType() { return &SlotsSeatsEntr
 
 inline const TableFieldInfo SlotsTableFields[] = {
     { "seats", "seats", "map[int32]int32", 0x7f6548303072b061ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Slots, seats ), (uint32_t) sizeof( SlotsSeatsEntry ), (uint32_t) offsetof( Slots, seats.count ), 0xffffffffu, &SlotsSeatsEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SlotsSeatsEntry> *) slot, (int32_t) key_value ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, after ), (uint32_t) sizeof( Slots::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, past ), (uint32_t) sizeof( Slots::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo SlotsTableInfo = { "Slots", (uint32_t) sizeof( Slots ), 2, SlotsTableFields, +[]( void * p ) { SlotsReset( *(Slots *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * SlotsTableType() { return &SlotsTableInfo; }

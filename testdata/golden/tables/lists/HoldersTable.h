@@ -8053,7 +8053,7 @@ struct Squad {
 // member initializers (docs/SPEC-TABLES.md)
 struct Army {
     TableList<Squad> squads; // Squad: the element array, empty until an Add
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // table Deck — TABLE-wire storage: relocatable, bounded, defaults in the
@@ -8061,7 +8061,7 @@ struct Army {
 struct Deck {
     Row hands[3]; // used count beside it; count in [0, 3]
     int32_t hands_count = 0;
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
@@ -8120,7 +8120,7 @@ inline void ArmyReset( Army & value )
     value.squads.elements.value = 0; // Squad: empty
     value.squads.count = 0;
     value.squads.padding = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline void DeckReset( Deck & value )
@@ -8128,7 +8128,7 @@ inline void DeckReset( Deck & value )
     RowReset( value.hands[0] );
     for ( int32_t i = 1; i < 3; i++ ) { value.hands[i] = value.hands[0]; }
     value.hands_count = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline int64_t SampleMeasureMessageBody( int64_t at, const Sample & value );
@@ -10626,7 +10626,7 @@ inline int64_t ArmyMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             bytes += TableLebBytes( ref_squads ) + 1 + TableLebBytes( (uint64_t) ( body_squads ) ) + ( body_squads );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -10665,10 +10665,10 @@ inline bool ArmySaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -10769,7 +10769,7 @@ inline bool ArmyLoadBody( TableReader & r, const TableNodeMap & nodes, Army & va
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -10780,7 +10780,7 @@ inline bool ArmyLoadBody( TableReader & r, const TableNodeMap & nodes, Army & va
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -10792,7 +10792,7 @@ inline bool ArmyLoadBody( TableReader & r, const TableNodeMap & nodes, Army & va
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -10833,7 +10833,7 @@ inline int64_t ArmyMeasureMessageBody( const Ctx & ctx, const TableNumbering & n
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -10863,10 +10863,10 @@ inline bool ArmySaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 4, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -10952,7 +10952,7 @@ inline bool ArmyLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -10975,7 +10975,7 @@ inline bool ArmyLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -10998,7 +10998,7 @@ inline bool ArmyLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -11028,7 +11028,7 @@ inline int64_t DeckMeasureBody( const Ctx & ctx, const TableNumbering & numberin
         }
         bytes += TableLebBytes( ref_hands ) + 1 + TableLebBytes( (uint64_t) ( body_hands ) ) + ( body_hands ); // hands
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -11064,10 +11064,10 @@ inline bool DeckSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -11165,7 +11165,7 @@ inline bool DeckLoadBody( TableReader & r, const TableNodeMap & nodes, Deck & va
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -11176,7 +11176,7 @@ inline bool DeckLoadBody( TableReader & r, const TableNodeMap & nodes, Deck & va
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -11188,7 +11188,7 @@ inline bool DeckLoadBody( TableReader & r, const TableNodeMap & nodes, Deck & va
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -11226,7 +11226,7 @@ inline int64_t DeckMeasureMessageBody( const Ctx & ctx, const TableNumbering & n
             bits += elem;
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -11253,10 +11253,10 @@ inline bool DeckSaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
             if ( !RowSaveMessageBody( ctx, numbering, index_bits, w, value.hands[i] ) ) { return false; }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 4, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -11346,7 +11346,7 @@ inline bool DeckLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -11369,7 +11369,7 @@ inline bool DeckLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -11392,7 +11392,7 @@ inline bool DeckLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -18965,7 +18965,7 @@ inline int64_t ArmyMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             bytes += TableLebBytes( ref_squads ) + 1 + TableLebBytes( (uint64_t) ( body_squads ) ) + ( body_squads );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -19000,10 +19000,10 @@ inline bool ArmySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -19113,7 +19113,7 @@ inline bool ArmyLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Arm
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -19124,7 +19124,7 @@ inline bool ArmyLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Arm
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -19136,7 +19136,7 @@ inline bool ArmyLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Arm
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -19216,7 +19216,7 @@ inline bool ArmyLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -19239,7 +19239,7 @@ inline bool ArmyLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -19262,7 +19262,7 @@ inline bool ArmyLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -19296,7 +19296,7 @@ inline int64_t DeckMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
         }
         bytes += TableLebBytes( ref_hands ) + 1 + TableLebBytes( (uint64_t) ( body_hands ) ) + ( body_hands ); // hands
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 48, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -19328,10 +19328,10 @@ inline bool DeckSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 48, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -19438,7 +19438,7 @@ inline bool DeckLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Dec
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -19449,7 +19449,7 @@ inline bool DeckLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Dec
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -19461,7 +19461,7 @@ inline bool DeckLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Dec
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -19545,7 +19545,7 @@ inline bool DeckLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -19568,7 +19568,7 @@ inline bool DeckLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -19591,7 +19591,7 @@ inline bool DeckLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -22224,7 +22224,7 @@ template <typename Ctx> inline bool ArmyCookBody( const Ctx & ctx, const TableCo
     (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // squads: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -22236,7 +22236,7 @@ template <typename Ctx> inline bool DeckCookBody( const Ctx & ctx, const TableCo
         if ( !RowCookBody( ctx, region, at + 0 + i * 24, value.hands[ i ], order ) ) { return false; }
     }
     table_cook_put( at + 72, (uint64_t) (uint32_t) value.hands_count, 4, order );
-    table_cook_put( at + 76, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 76, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -23430,11 +23430,11 @@ static_assert( offsetof( Squad, name ) == 16, "Squad's field name moved: the bui
 static_assert( sizeof( Army ) == 24, "Army's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Army ) == 8, "Army's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Army, squads ) == 0, "Army's field squads moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Army, after ) == 16, "Army's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Army, past ) == 16, "Army's field past moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( sizeof( Deck ) == 80, "Deck's sizeof moved: the build version was taken over 80, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Deck ) == 8, "Deck's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Deck, hands ) == 0, "Deck's field hands moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Deck, after ) == 76, "Deck's field after moved: the build version was taken over offset 76 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Deck, past ) == 76, "Deck's field past moved: the build version was taken over offset 76 (docs/SPEC-TABLES.md §20.3)" );
 
 static_assert( alignof( Sample ) <= kTableAlign, "Row.items: an unbounded array's element alignment must fit the arena's" );
 static_assert( alignof( Row ) <= kTableAlign, "Sheet.rows: an unbounded array's element alignment must fit the arena's" );
@@ -23507,14 +23507,14 @@ inline const TableTypeInfo * SquadTableType() { return &SquadTableInfo; }
 
 inline const TableFieldInfo ArmyTableFields[] = {
     { "squads", "squads", "Squad", 0x7848019b0c02a926ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Army, squads ), (uint32_t) sizeof( Squad ), (uint32_t) offsetof( Army, squads.count ), 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Squad> *) slot ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Army, after ), (uint32_t) sizeof( Army::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Army, past ), (uint32_t) sizeof( Army::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo ArmyTableInfo = { "Army", (uint32_t) sizeof( Army ), 2, ArmyTableFields, +[]( void * p ) { ArmyReset( *(Army *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * ArmyTableType() { return &ArmyTableInfo; }
 
 inline const TableFieldInfo DeckTableFields[] = {
     { "hands", "hands", "Row", 0x81b46a69304ee2c9ull, 13, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( Deck, hands ), (uint32_t) sizeof( Deck::hands[0] ), (uint32_t) offsetof( Deck, hands_count ), 0xffffffffu, &RowTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Deck, after ), (uint32_t) sizeof( Deck::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Deck, past ), (uint32_t) sizeof( Deck::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo DeckTableInfo = { "Deck", (uint32_t) sizeof( Deck ), 2, DeckTableFields, +[]( void * p ) { DeckReset( *(Deck *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * DeckTableType() { return &DeckTableInfo; }

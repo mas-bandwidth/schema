@@ -816,12 +816,9 @@ compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
 `if` branches, and declared types as field groups. (The last two are the
 variable class's: a guarded field and a plain nested table are refused in a
 `fixed table` — §2.2.) A table's declared name and its fields' names pass the
-same target-name safety as packet declarations (SPEC.md §4.6), narrowed to the
-targets being generated: `schema generate --lang L` checks L's reserved words
-only, and `schema check` — and every command that names no target — checks
-every target's. A target with no reserved-word list of its own has no words
-to narrow to, so `generate` on it checks every target's words rather than
-none. Go escapes instead of refusing (SPEC.md §4.6, the Go escape): a table
+same target-name safety as packet declarations (SPEC.md §4.6): every
+command checks the reserved words of EVERY supported language, whatever
+target it generates. Go escapes instead of refusing (SPEC.md §4.6, the Go escape): a table
 named with one of Go's words is emitted as `type <name>_ struct` with every
 derived Go name on the escaped spelling, a field or variant so named needs no
 escape (Go emits it exported or prefixed), and the table's node type id, its

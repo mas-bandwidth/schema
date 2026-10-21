@@ -511,7 +511,7 @@ from this projection rather than carried in it.
   word, a reserved word included, because a variant name is only ever read
   inside its own declaration's body or after `E.` and so never meets a type
   position. The words a variant still may not be are those already refused:
-  `None` and `Max` on an enum, `Count` on flags, and a target's own reserved
+  `None` and `Max` on an enum, `Count` on flags, and any supported language's reserved
   words (SPEC §4.6). Attribute keys
   (`min`, `max`, `resolution`, ...) are contextual — they live only right of
   `|` and are not reserved.
@@ -1480,22 +1480,25 @@ All compile errors with positions:
   fields.
 - Cycles in type composition, undefined types, duplicate declarations,
   `package` mismatch.
-- **Target-name safety:** a declaration or field name is checked against the
-  reserved words of the targets being generated (SPEC §4.6): `schema generate --lang L` checks L's words only, and `schema check` — and every command
-  that names no target — checks every target's words. A target the checker
-  has no reserved-word list of its own for has no words to narrow to, so
-  `generate` on it checks every target's words rather than none: a collision
-  the checker knows how to refuse is never let through because the target
-  being generated does not carry a list. A name that is a
-  reserved word in a checked target (`type`, `match`, `impl`, `func`,
-  `class`, ...), or that collides with another name after Go export-casing
-  (`atRest` → `AtRest`), is rejected, with one diagnostic per name listing
-  every checked target it collides with; every collision in the unit is
-  reported in the same run. Outside the Go escape below there is no escaping
+- **Target-name safety:** a schema name is legal in EVERY supported language,
+  whatever target is generated (Glenn, 2026-10-21: "generated output never
+  puts out keywords in Y"). Every command — `check`, `generate --lang L` for
+  any L, and the rest — checks a declaration or field name against the
+  reserved words of all fourteen languages: C, C++, C#, Go, Rust, Java,
+  JavaScript, Dart, Elixir, Lua, Luau, Squirrel, Goose and Lobster. The words
+  live in ONE table in the checker (a language's keywords and literals, plus
+  the predeclared names its generated code would shadow: Go's universe block,
+  Dart's dart:core types and Object members, Elixir's arity-0 Kernel
+  imports); an emitter that tests the spelling it maps a name to reads its
+  language's words from that table, never from a copy, and a port cannot
+  register without its row. A name that is a reserved word in any language
+  (`type`, `match`, `impl`, `func`, `class`, `end`, `after`, ...), or that
+  collides with another name after Go export-casing (`atRest` → `AtRest`), is
+  rejected, with one diagnostic per name listing every language it collides
+  with; every collision in the unit is reported in the same run. Outside the Go escape below there is no escaping
   machinery; rename at the source.
 - **The Go escape.** Go is the one target that carries a reserved word
-  instead of refusing it. Under `--lang go` (and in `schema check`, whose Go
-  half is the same rule), a name that is one of Go's words
+  instead of refusing it. In every command, a name that is one of Go's words
   in the checker's list (a Go keyword, or a predeclared identifier the Go
   output would collide with, such as `byte` or `true`) is not refused in
   these positions:
@@ -1524,15 +1527,13 @@ All compile errors with positions:
   the escape, in a run that generates Go. Every other declaration kind
   (`type`, `enum`, `flags`, `union`, `const`) and the package name keep
   refusing Go's words by name until the Go emitter carries the escape for
-  them, and every other target keeps refusing its own words by name.
+  them. The escape exempts Go alone: a word Go reserves that another
+  language also reserves (`new`, `var`, `true`, ...) is still refused by name
+  for that language, so only a word Go alone reserves reaches the Go output.
   **The output never calls a predeclared function a carried name could
-  shadow**: a word another target reserves and Go does not (`new`, `class`,
-  `auto`, ...) is carried bare under `--lang go`, and a table so named is a
-  package-scope type that shadows a builtin of the same spelling, so the
-  emitted code allocates by composite literal (`&T{}`) and sizes by
-  `unsafe.Sizeof(*(*T)(nil))` rather than through `new`
-  (`TestGenerateGoCompilesNonGoReservedWords`, cmd/schema: every such word, in
-  every declaration form, builds).
+  shadow**: an escaped table is a package-scope type, so the emitted code
+  allocates by composite literal (`&T{}`) and sizes by
+  `unsafe.Sizeof(*(*T)(nil))` rather than through `new`.
   **Go's predeclared identifiers are Go words.** The Go list carries the whole
   universe block: the builtin functions (`append cap clear close complex copy
   delete imag len make max min new panic print println real recover`), the
@@ -1542,17 +1543,18 @@ All compile errors with positions:
   equal to one takes exactly what every other Go word takes: a table is
   escaped (`table len` is `type len_ struct`), a field, union arm or variant is
   carried under its exported spelling, and every other declaration kind and
-  the package name are refused by name under `--lang go` and in `schema check`
+  the package name are refused by name in every command
   (the names the schema grammar already reserves, `bool`, `int32`, `string`
-  and the rest, never reach this rule). Proved, class by class, by
-  `TestGenerateGoCompilesNonGoReservedWords` (each word as a table and a field
-  builds) and `TestGenerateGoRefusesGoReservedWords` (each word as a `type` is
-  refused).
+  and the rest, never reach this rule). Proved by `TestGenerateGoCompilesGoOnlyWords`
+  (each word Go alone reserves, as a table and a field, builds),
+  `TestGenerateGoRefusesGoReservedWords` (each Go word as a `type` is
+  refused) and, for every language, `TestEveryReservedWordAsEveryNameKindIsRefused`
+  (internal/check: every word of the table in every name position).
 - **Package-name safety:** the package ident maps to every target's
   namespace/module/package concept verbatim (§6.1), which exposes it to three
   collision classes no declaration or field name can hit, each refused with a
-  diagnostic naming the mechanism and the fix (rename the package). (1) A
-  target reserved word: `package for` would generate `namespace for` and
+  diagnostic naming the mechanism and the fix (rename the package), whatever
+  target is generated. (1) A reserved word of any supported language: `package for` would generate `namespace for` and
   `package for`. (2) A C standard library identifier visible at C++ namespace
   scope — functions, types, and object-like macros of the C11 headers, which
   implementations also declare in the global namespace: `package exit` would
@@ -1763,7 +1765,7 @@ union Value
   works in integer expressions (§4.2); no generated set is a declarable
   field type. Variant names pass
   the same target-name safety and post-export uniqueness rules as field
-  names (§4.6): a variant named a target's reserved word is refused, and
+  names (§4.6): a variant named any language's reserved word is refused, and
   two variants whose exported spellings collide (`box_a`/`boxA`) are
   refused.
 - **The tag enum carries a DEBUG-NAME function in every target**, on the

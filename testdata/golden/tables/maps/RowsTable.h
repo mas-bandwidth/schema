@@ -8228,7 +8228,7 @@ struct RowEntriesEntry {
 // member initializers (docs/SPEC-TABLES.md)
 struct Row {
     TableMap<RowEntriesEntry> entries; // map[string(8)]Item — the sorted entry array, empty until an insert
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // table WideRowEntriesEntry — TABLE-wire storage: relocatable, bounded, defaults in the
@@ -8242,7 +8242,7 @@ struct WideRowEntriesEntry {
 // member initializers (docs/SPEC-TABLES.md)
 struct WideRow {
     TableMap<WideRowEntriesEntry> entries; // map[uint32]Item — the sorted entry array, empty until an insert
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // table EdgeRowNamesEntry — TABLE-wire storage: relocatable, bounded, defaults in the
@@ -8265,7 +8265,7 @@ struct EdgeRowIdsEntry {
 struct EdgeRow {
     TableMap<EdgeRowNamesEntry> names; // map[string(300)]Item — the sorted entry array, empty until an insert
     TableMap<EdgeRowIdsEntry> ids; // map[uint64]Item — the sorted entry array, empty until an insert
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
@@ -8290,7 +8290,7 @@ inline void RowReset( Row & value )
     value.entries.entries.value = 0; // map[string(8)]Item: empty
     value.entries.count = 0;
     value.entries.padding = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline void WideRowEntriesEntryReset( WideRowEntriesEntry & value )
@@ -8304,7 +8304,7 @@ inline void WideRowReset( WideRow & value )
     value.entries.entries.value = 0; // map[uint32]Item: empty
     value.entries.count = 0;
     value.entries.padding = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline void EdgeRowNamesEntryReset( EdgeRowNamesEntry & value )
@@ -8328,7 +8328,7 @@ inline void EdgeRowReset( EdgeRow & value )
     value.ids.entries.value = 0; // map[uint64]Item: empty
     value.ids.count = 0;
     value.ids.padding = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline int64_t RowEntriesEntryMeasureMessageBody( int64_t at, const RowEntriesEntry & value );
@@ -9275,7 +9275,7 @@ inline int64_t RowMeasureBody( const Ctx & ctx, const TableNumbering & numbering
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -9308,10 +9308,10 @@ inline bool RowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -9439,7 +9439,7 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
                 r.offset = body_end; // the remaining entries skip by the map's L
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -9450,7 +9450,7 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -9462,7 +9462,7 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -9504,7 +9504,7 @@ inline int64_t RowMeasureMessageBody( const Ctx & ctx, const TableNumbering & nu
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -9535,10 +9535,10 @@ inline bool RowSaveMessageBody( const Ctx & ctx, const TableNumbering & numberin
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 18, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -9658,7 +9658,7 @@ inline bool RowLoadMessageBody( TableBitReader & r, const TableVocabulary & voca
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -9681,7 +9681,7 @@ inline bool RowLoadMessageBody( TableBitReader & r, const TableVocabulary & voca
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -9704,7 +9704,7 @@ inline bool RowLoadMessageBody( TableBitReader & r, const TableVocabulary & voca
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -9990,7 +9990,7 @@ inline int64_t WideRowMeasureBody( const Ctx & ctx, const TableNumbering & numbe
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -10023,10 +10023,10 @@ inline bool WideRowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbe
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -10154,7 +10154,7 @@ inline bool WideRowLoadBody( TableReader & r, const TableNodeMap & nodes, WideRo
                 r.offset = body_end; // the remaining entries skip by the map's L
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -10165,7 +10165,7 @@ inline bool WideRowLoadBody( TableReader & r, const TableNodeMap & nodes, WideRo
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -10177,7 +10177,7 @@ inline bool WideRowLoadBody( TableReader & r, const TableNodeMap & nodes, WideRo
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -10219,7 +10219,7 @@ inline int64_t WideRowMeasureMessageBody( const Ctx & ctx, const TableNumbering 
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -10250,10 +10250,10 @@ inline bool WideRowSaveMessageBody( const Ctx & ctx, const TableNumbering & numb
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 18, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -10373,7 +10373,7 @@ inline bool WideRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -10396,7 +10396,7 @@ inline bool WideRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -10419,7 +10419,7 @@ inline bool WideRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -10972,7 +10972,7 @@ inline int64_t EdgeRowMeasureBody( const Ctx & ctx, const TableNumbering & numbe
         }
         TableMapRelease( order_ids );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -11030,10 +11030,10 @@ inline bool EdgeRowSaveBodyFields( const Ctx & ctx, const TableNumbering & numbe
         }
         TableMapRelease( order_ids );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -11249,7 +11249,7 @@ inline bool EdgeRowLoadBody( TableReader & r, const TableNodeMap & nodes, EdgeRo
                 r.offset = body_end; // the remaining entries skip by the map's L
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -11260,7 +11260,7 @@ inline bool EdgeRowLoadBody( TableReader & r, const TableNodeMap & nodes, EdgeRo
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -11272,7 +11272,7 @@ inline bool EdgeRowLoadBody( TableReader & r, const TableNodeMap & nodes, EdgeRo
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -11330,7 +11330,7 @@ inline int64_t EdgeRowMeasureMessageBody( const Ctx & ctx, const TableNumbering 
         }
         TableMapRelease( order_ids );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -11375,10 +11375,10 @@ inline bool EdgeRowSaveMessageBody( const Ctx & ctx, const TableNumbering & numb
         }
         TableMapRelease( order_ids );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 18, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -11574,7 +11574,7 @@ inline bool EdgeRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -11597,7 +11597,7 @@ inline bool EdgeRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -11620,7 +11620,7 @@ inline bool EdgeRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -15301,7 +15301,7 @@ inline int64_t RowMeasureBodyRetain( const Ctx & ctx, const TableNumbering & num
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -15335,10 +15335,10 @@ inline bool RowSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & num
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -15475,7 +15475,7 @@ inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row 
                 r.offset = body_end; // the remaining entries skip by the map's L
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -15486,7 +15486,7 @@ inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -15498,7 +15498,7 @@ inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row 
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -15613,7 +15613,7 @@ inline bool RowLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary 
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -15636,7 +15636,7 @@ inline bool RowLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary 
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -15659,7 +15659,7 @@ inline bool RowLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary 
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -15923,7 +15923,7 @@ inline int64_t WideRowMeasureBodyRetain( const Ctx & ctx, const TableNumbering &
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -15957,10 +15957,10 @@ inline bool WideRowSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering &
         }
         TableMapRelease( order_entries );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -16097,7 +16097,7 @@ inline bool WideRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                 r.offset = body_end; // the remaining entries skip by the map's L
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -16108,7 +16108,7 @@ inline bool WideRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -16120,7 +16120,7 @@ inline bool WideRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -16235,7 +16235,7 @@ inline bool WideRowLoadMessageBodyRetain( TableBitReader & r, const TableVocabul
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -16258,7 +16258,7 @@ inline bool WideRowLoadMessageBodyRetain( TableBitReader & r, const TableVocabul
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -16281,7 +16281,7 @@ inline bool WideRowLoadMessageBodyRetain( TableBitReader & r, const TableVocabul
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -16780,7 +16780,7 @@ inline int64_t EdgeRowMeasureBodyRetain( const Ctx & ctx, const TableNumbering &
         }
         TableMapRelease( order_ids );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -16839,10 +16839,10 @@ inline bool EdgeRowSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering &
         }
         TableMapRelease( order_ids );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -17070,7 +17070,7 @@ inline bool EdgeRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                 r.offset = body_end; // the remaining entries skip by the map's L
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -17081,7 +17081,7 @@ inline bool EdgeRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -17093,7 +17093,7 @@ inline bool EdgeRowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -17274,7 +17274,7 @@ inline bool EdgeRowLoadMessageBodyRetain( TableBitReader & r, const TableVocabul
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -17297,7 +17297,7 @@ inline bool EdgeRowLoadMessageBodyRetain( TableBitReader & r, const TableVocabul
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -17320,7 +17320,7 @@ inline bool EdgeRowLoadMessageBodyRetain( TableBitReader & r, const TableVocabul
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -18796,7 +18796,7 @@ template <typename Ctx> inline bool RowCookBody( const Ctx & ctx, const TableCoo
     (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // entries: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -18811,7 +18811,7 @@ template <typename Ctx> inline bool WideRowCookBody( const Ctx & ctx, const Tabl
     (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // entries: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -18835,7 +18835,7 @@ template <typename Ctx> inline bool EdgeRowCookBody( const Ctx & ctx, const Tabl
     table_cook_put( at + 8, 0, 4, order ); // and its count
     table_cook_put( at + 16, 0, 8, order ); // ids: the array's delta, filled by the extent writer
     table_cook_put( at + 24, 0, 4, order ); // and its count
-    table_cook_put( at + 32, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 32, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -19537,7 +19537,7 @@ static_assert( offsetof( RowEntriesEntry, value ) == 16, "RowEntriesEntry's fiel
 static_assert( sizeof( Row ) == 24, "Row's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Row ) == 8, "Row's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Row, entries ) == 0, "Row's field entries moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Row, after ) == 16, "Row's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Row, past ) == 16, "Row's field past moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( sizeof( WideRowEntriesEntry ) == 8, "WideRowEntriesEntry's sizeof moved: the build version was taken over 8, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( WideRowEntriesEntry ) == 4, "WideRowEntriesEntry's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( WideRowEntriesEntry, key ) == 0, "WideRowEntriesEntry's field key moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
@@ -19545,7 +19545,7 @@ static_assert( offsetof( WideRowEntriesEntry, value ) == 4, "WideRowEntriesEntry
 static_assert( sizeof( WideRow ) == 24, "WideRow's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( WideRow ) == 8, "WideRow's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( WideRow, entries ) == 0, "WideRow's field entries moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( WideRow, after ) == 16, "WideRow's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( WideRow, past ) == 16, "WideRow's field past moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( sizeof( EdgeRowNamesEntry ) == 312, "EdgeRowNamesEntry's sizeof moved: the build version was taken over 312, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( EdgeRowNamesEntry ) == 4, "EdgeRowNamesEntry's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( EdgeRowNamesEntry, key ) == 0, "EdgeRowNamesEntry's field key moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
@@ -19558,7 +19558,7 @@ static_assert( sizeof( EdgeRow ) == 40, "EdgeRow's sizeof moved: the build versi
 static_assert( alignof( EdgeRow ) == 8, "EdgeRow's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( EdgeRow, names ) == 0, "EdgeRow's field names moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( EdgeRow, ids ) == 16, "EdgeRow's field ids moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( EdgeRow, after ) == 32, "EdgeRow's field after moved: the build version was taken over offset 32 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( EdgeRow, past ) == 32, "EdgeRow's field past moved: the build version was taken over offset 32 (docs/SPEC-TABLES.md §20.3)" );
 
 
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
@@ -19593,7 +19593,7 @@ inline const TableTypeInfo * RowEntriesEntryTableType() { return &RowEntriesEntr
 
 inline const TableFieldInfo RowTableFields[] = {
     { "entries", "entries", "map[string(8)]Item", 0xc5b2a72c0845a253ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Row, entries ), (uint32_t) sizeof( RowEntriesEntry ), (uint32_t) offsetof( Row, entries.count ), 0xffffffffu, &RowEntriesEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<RowEntriesEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Row, after ), (uint32_t) sizeof( Row::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Row, past ), (uint32_t) sizeof( Row::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo RowTableInfo = { "Row", (uint32_t) sizeof( Row ), 2, RowTableFields, +[]( void * p ) { RowReset( *(Row *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * RowTableType() { return &RowTableInfo; }
@@ -19607,7 +19607,7 @@ inline const TableTypeInfo * WideRowEntriesEntryTableType() { return &WideRowEnt
 
 inline const TableFieldInfo WideRowTableFields[] = {
     { "entries", "entries", "map[uint32]Item", 0xc5b2a72c0845a253ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( WideRow, entries ), (uint32_t) sizeof( WideRowEntriesEntry ), (uint32_t) offsetof( WideRow, entries.count ), 0xffffffffu, &WideRowEntriesEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<WideRowEntriesEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRow, after ), (uint32_t) sizeof( WideRow::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRow, past ), (uint32_t) sizeof( WideRow::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo WideRowTableInfo = { "WideRow", (uint32_t) sizeof( WideRow ), 2, WideRowTableFields, +[]( void * p ) { WideRowReset( *(WideRow *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * WideRowTableType() { return &WideRowTableInfo; }
@@ -19629,7 +19629,7 @@ inline const TableTypeInfo * EdgeRowIdsEntryTableType() { return &EdgeRowIdsEntr
 inline const TableFieldInfo EdgeRowTableFields[] = {
     { "names", "names", "map[string(300)]Item", 0xafb728fff268814full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( EdgeRow, names ), (uint32_t) sizeof( EdgeRowNamesEntry ), (uint32_t) offsetof( EdgeRow, names.count ), 0xffffffffu, &EdgeRowNamesEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<EdgeRowNamesEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL },
     { "ids", "ids", "map[uint64]Item", 0x2b7dea192bb7be29ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( EdgeRow, ids ), (uint32_t) sizeof( EdgeRowIdsEntry ), (uint32_t) offsetof( EdgeRow, ids.count ), 0xffffffffu, &EdgeRowIdsEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<EdgeRowIdsEntry> *) slot, (uint64_t) key_value ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EdgeRow, after ), (uint32_t) sizeof( EdgeRow::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EdgeRow, past ), (uint32_t) sizeof( EdgeRow::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo EdgeRowTableInfo = { "EdgeRow", (uint32_t) sizeof( EdgeRow ), 3, EdgeRowTableFields, +[]( void * p ) { EdgeRowReset( *(EdgeRow *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * EdgeRowTableType() { return &EdgeRowTableInfo; }
