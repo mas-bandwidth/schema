@@ -145,7 +145,6 @@ func pinCookWrite(t *testing.T, elixirBin, root string) {
 		{"tblp3", []string{"test/tables/P3.schema"}, "Chain", "chain_optional.bin", "chain_optional"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			paths := make([]string, len(c.schema))

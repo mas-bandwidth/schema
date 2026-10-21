@@ -285,7 +285,7 @@ func exComma(i, n int) string {
 func exBlock(items []string) string {
 	multi := func(s string) bool {
 		code := 0
-		for _, line := range strings.Split(strings.TrimSuffix(s, "\n"), "\n") {
+		for line := range strings.SplitSeq(strings.TrimSuffix(s, "\n"), "\n") {
 			if t := strings.TrimSpace(line); t != "" && !strings.HasPrefix(t, "#") {
 				code++
 			}

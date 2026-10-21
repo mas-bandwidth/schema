@@ -209,7 +209,7 @@ func elixirStampUnits(t *testing.T, root string) map[string]bool {
 		t.Fatal("make/elixir.mk declares no ELIXIR_TABLE_UNITS")
 	}
 	var b strings.Builder
-	for _, line := range strings.Split(src[start+1:], "\n") {
+	for line := range strings.SplitSeq(src[start+1:], "\n") {
 		b.WriteString(strings.TrimSuffix(line, "\\"))
 		b.WriteString(" ")
 		if !strings.HasSuffix(line, "\\") {
@@ -217,7 +217,7 @@ func elixirStampUnits(t *testing.T, root string) map[string]bool {
 		}
 	}
 	out := map[string]bool{}
-	for _, f := range strings.Fields(strings.TrimPrefix(b.String(), "ELIXIR_TABLE_UNITS := ")) {
+	for f := range strings.FieldsSeq(strings.TrimPrefix(b.String(), "ELIXIR_TABLE_UNITS := ")) {
 		out[strings.SplitN(f, ":", 2)[0]] = true
 	}
 	return out

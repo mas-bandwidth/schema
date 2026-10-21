@@ -48,7 +48,7 @@ func TestSchemaElixirRunsHostileCorpusWiring(t *testing.T) {
 		t.Fatalf("the committed manifest is missing: %v", err)
 	}
 	cases := map[string]string{}
-	for _, line := range strings.Split(string(manifestBytes), "\n") {
+	for line := range strings.SplitSeq(string(manifestBytes), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -71,7 +71,7 @@ func TestSchemaElixirRunsHostileCorpusWiring(t *testing.T) {
 		t.Fatalf("the carried-findings list is missing: %v", err)
 	}
 	carried := 0
-	for _, line := range strings.Split(string(findingsBytes), "\n") {
+	for line := range strings.SplitSeq(string(findingsBytes), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}

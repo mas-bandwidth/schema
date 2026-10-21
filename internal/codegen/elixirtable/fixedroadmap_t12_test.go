@@ -97,11 +97,11 @@ func t12R27(t *testing.T) {
 			continue
 		}
 		found = true
-		idx := strings.Index(line, "values=")
-		if idx < 0 {
+		_, after, ok := strings.Cut(line, "values=")
+		if !ok {
 			t.Fatal("R27: file=fx1.bin line in manifest.txt carries no values=")
 		}
-		for _, kv := range strings.Split(line[idx+len("values="):], ",") {
+		for kv := range strings.SplitSeq(after, ",") {
 			eq := strings.Index(kv, "=")
 			if eq <= 0 {
 				continue

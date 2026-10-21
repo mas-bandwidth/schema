@@ -1,6 +1,7 @@
 package elixirtable
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -435,9 +436,7 @@ func measureOrdinary(t *testing.T, elixirBin string, unit *ir.Unit, runtime, rea
 	figures := map[string]map[string]float64{}
 	for _, v := range []struct{ name, text string }{{"real", real}, {"control", control}, {"boxed", boxed}} {
 		variant := map[string][]byte{}
-		for k, d := range files {
-			variant[k] = d
-		}
+		maps.Copy(variant, files)
 		variant[runtime] = []byte(strings.Replace(string(src), real, v.text, 1))
 		dir := t.TempDir()
 		names := writeModuleDir(t, dir, variant)
