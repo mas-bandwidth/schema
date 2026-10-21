@@ -122,13 +122,13 @@ static partial class Program
             var list=builder.CreateWorker().List<int>(ref builder.GetRoot()->Scores,L.Schema.SaveTableType().Fields[2]);
             Check(list.Count==1 && *list.At(0)==42,"builder retains the decoded prefix");
         }
-        byte[] cappedList=Fixture(Join(new byte[] {1,6,5,2,14,6,4},Var((ulong)int.MaxValue+1),new byte[] {3,6,7,0}),"before","scores","past");
+        byte[] cappedList=Fixture(Join(new byte[] {1,6,5,2,14,6,4},Var((ulong)int.MaxValue+1),new byte[] {3,6,7,0}),"before","scores","after");
         using(var builder=new L.SaveBuilder())
         {
             var report=new L.TableReport();
             Check(!L.Schema.SaveLoadBuilder(builder,cappedList,report) && report.Unknown==1 && report.KindMismatch==0 && report.Widened==0 && report.Duplicate==0 && !report.Malformed && !report.Refused && report.Clamped==0,"builder count-cap refusal preserves exactly the preceding report");
         }
-        byte[] cappedMap=Fixture(Join(new byte[] {1,6,5,2,14,6,13},Var((ulong)int.MaxValue+1),new byte[] {3,6,7,0}),"before","tiers","past");
+        byte[] cappedMap=Fixture(Join(new byte[] {1,6,5,2,14,6,13},Var((ulong)int.MaxValue+1),new byte[] {3,6,7,0}),"before","tiers","after");
         using(var builder=new M.FleetBuilder())
         {
             var report=new M.TableReport();

@@ -561,7 +561,7 @@ static Wire build_ints( const IntsSpec & spec )
         b.leb( (uint64_t) spec.body_len );
         for ( int64_t i = 0; i < spec.body_len; i++ ) { b.u8( i == 0 ? 4 : 0 ); }
     }
-    b.field( "past", 4 );
+    b.field( "after", 4 );
     b.u32( (uint32_t) spec.past );
     b.end();
     Wire w;
@@ -860,7 +860,7 @@ static Wire build_army( uint64_t squads, uint64_t entries, int32_t real_entries 
         b.close_len( squad );
     }
     b.close_len( body );
-    b.field( "past", 4 );
+    b.field( "after", 4 );
     b.u32( 8 );
     b.end();
     Wire w;

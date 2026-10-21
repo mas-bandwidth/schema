@@ -376,12 +376,12 @@ static void build_ring( RingBuilder & b )
 {
     Ring * ring = b.GetRoot();
     Slot * first = RingItemsAdd( b.main, ring->items );
-    first->type = SlotType::Node;
-    Node * shared = NodeEmplace( b.main, first->node );
+    first->type = SlotType::Vertex;
+    Node * shared = NodeEmplace( b.main, first->vertex );
     shared->v = 7;
     Slot * second = RingItemsAdd( b.main, ring->items );
-    second->type = SlotType::Node;
-    second->node = first->node; // two elements, one node
+    second->type = SlotType::Vertex;
+    second->vertex = first->vertex; // two elements, one node
     Slot * third = RingItemsAdd( b.main, ring->items );
     third->type = SlotType::Plain;
     third->plain = 5;
@@ -396,14 +396,14 @@ static void check_ring( const Ring * r, const uint8_t * base, int64_t bytes, con
     if ( r->items.size() != 4 ) { return; }
     const Slot & first = r->items[0];
     const Slot & second = r->items[1];
-    CHECK( first.type == SlotType::Node );
-    CHECK( second.type == SlotType::Node );
-    CHECK( ref_inside( base, bytes, first.node, (int64_t) sizeof( Node ) ) );
-    CHECK( ref_inside( base, bytes, second.node, (int64_t) sizeof( Node ) ) );
-    if ( ref_inside( base, bytes, first.node, (int64_t) sizeof( Node ) ) && ref_inside( base, bytes, second.node, (int64_t) sizeof( Node ) ) )
+    CHECK( first.type == SlotType::Vertex );
+    CHECK( second.type == SlotType::Vertex );
+    CHECK( ref_inside( base, bytes, first.vertex, (int64_t) sizeof( Node ) ) );
+    CHECK( ref_inside( base, bytes, second.vertex, (int64_t) sizeof( Node ) ) );
+    if ( ref_inside( base, bytes, first.vertex, (int64_t) sizeof( Node ) ) && ref_inside( base, bytes, second.vertex, (int64_t) sizeof( Node ) ) )
     {
-        const Node * a = NodeAt( first.node );
-        const Node * again = NodeAt( second.node );
+        const Node * a = NodeAt( first.vertex );
+        const Node * again = NodeAt( second.vertex );
         CHECK( a != NULL && a == again ); // one node, two elements
         if ( a != NULL ) { CHECK_EQ( a->v, 7 ); }
     }

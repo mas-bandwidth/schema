@@ -520,7 +520,7 @@ static RowWire build_row( const RowSpec & spec )
         b.close_len( entry );
     }
     b.close_len( map_body );
-    b.field( "past", 4 );
+    b.field( "after", 4 );
     b.u32( (uint32_t) spec.past );
     b.end();
     RowWire w;
@@ -721,7 +721,7 @@ static void test_key_kind()
             b.close_len( entry );
         }
         b.close_len( map_body );
-        b.field( "past", 4 );
+        b.field( "after", 4 );
         b.u32( 555 );
         b.end();
         size = b.finish( mixed );
