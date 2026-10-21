@@ -254,7 +254,7 @@ func (g *tgBounds) field(st *ir.Struct, f *ir.Field) ([]tgVal, error) {
 			out = append(out, tgVal{
 				name: ":count",
 				payload: tgFramed(size, func(b *strings.Builder, w string, d int) {
-					fmt.Fprintf(b, "%s.Put8(%d)\n%s.PutLeb(%d)\nfor i := range %d {\n", w, elemKind, w, n+1, n+1)
+					fmt.Fprintf(b, "%s.Put8(%d)\n%s.PutLeb(%d)\nfor range %d {\n", w, elemKind, w, n+1, n+1)
 					fill.payload(b, w, d)
 					b.WriteString("}\n")
 				}),
@@ -286,7 +286,7 @@ func (g *tgBounds) field(st *ir.Struct, f *ir.Field) ([]tgVal, error) {
 				fmt.Fprintf(b, "%s.Put8(%d)\n%s.PutLeb(%d)\n", w, elemKind, w, n)
 				e.payload(b, w, d)
 				if n > 1 {
-					fmt.Fprintf(b, "for i := range %d {\n", n-1)
+					fmt.Fprintf(b, "for range %d {\n", n-1)
 					fill.payload(b, w, d)
 					b.WriteString("}\n")
 				}
