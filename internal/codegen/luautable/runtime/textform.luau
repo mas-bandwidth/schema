@@ -752,7 +752,7 @@ local function flags(r: ResolverT, v: Node, f: any, owner: any): boolean
 	if v.kind ~= "(" then return r:fail(KIND_MISMATCH, v, v.start) end
 	local names = flag_names(owner, f)
 	if names == nil then return r:fail(KIND_MISMATCH, v, v.start) end
-	local bits, list = 0, {}
+	local bits = 0
 	r:raw("[")
 	for i, item in v.items do
 		r:mark(item, index_path(v.path, i - 1))
@@ -832,7 +832,6 @@ local function mapping(r: ResolverT, v: Node, f: any, path: string, owner: any):
 		local k = pair.items[1]
 		local kp = index_path(pp, 0)
 		r:mark(k, kp)
-		local mark = #r.out
 		local ok
 		if key.s == "str" then
 			local bound = key.bound or -1

@@ -533,17 +533,6 @@ local function key_token(v: any): any
 	return "n" .. tostring(v)
 end
 
--- the identity an entry landed under: a string key is its used bytes (§2.8)
-local function entry_key(keyfd: any, inst: any): any
-	local k = inst[keyfd.slot]
-	if typeof(k) == "buffer" then
-		local n = inst[keyfd.slot .. "Length"]
-		if n == nil then n = buffer.len(k) end
-		return "s" .. buffer.readstring(k, 0, n)
-	end
-	return key_token(k)
-end
-
 -- A CLAMP KEEPS WHOLE CODE POINTS (docs/SPEC-TABLES.md §3, KIND 12 / 33): a
 -- string past its bound keeps the last whole UTF-8 code point within it, and
 -- a wide string its first N code units less an orphan high surrogate.

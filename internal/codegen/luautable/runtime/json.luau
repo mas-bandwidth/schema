@@ -540,7 +540,6 @@ end
 
 local MAX64_TEXT = "18446744073709551615"
 local TEN = integer.create(10)
-local ZERO = 0i
 
 local function dec_integer(digits: string, neg: boolean): integer
   local v = 0i
@@ -929,7 +928,7 @@ local function map_int_key(fd: any, key: string): (any, string?)
   local token = scan_number(probe)
   if token == nil or probe.p ~= #key + 1 then return false, "malformed" end
   local integral = not (token:find("[%.eE]") ~= nil)
-  local digits, neg, finite, frac = norm_digits(token, integral)
+  local _, _, finite, frac = norm_digits(token, integral)
   if not finite or frac then return false, "mismatch" end
   local v = place_integer(fd, token, integral, { kindMismatch = 0, clamped = 0 })
   if v == nil then return false, "mismatch" end
@@ -1940,7 +1939,6 @@ local function write_base64(w: any, data: string)
   put(w, '"')
 end
 
-local U64_MAX_TEXT = "18446744073709551615"
 
 -- the unsigned decimal of a 64-bit pattern, with integer arithmetic never a
 -- float and never a signed `%d` (docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS)
@@ -2635,12 +2633,6 @@ local function vlen(x: any): number
   return 0
 end
 
-local function used_len(v: any, slot: string, wide: boolean?): number
-  local n = v[slot .. "Length"]
-  if n == nil then n = 0 end
-  return n
-end
-
 local function to_string(b: any, n: number?): string
   if typeof(b) == "string" then return b end
   if typeof(b) ~= "buffer" then return "" end
@@ -2905,7 +2897,6 @@ to_lua = function(desc: any, v: any, A: any, memo: any): any
   memo.l2v = memo.l2v or {}
   memo.l2v[out] = v
   for _, fd in desc.fields do
-    local slot = fd.raw.slot or fd.raw.name
     local luau_slot = fd.raw.slot or fd.raw.name
     if fd.raw.s == "str" or fd.raw.s == "bytes" then
       memo.len = memo.len or {}
@@ -2980,7 +2971,7 @@ local function adapted(root: string): (any, any, any)
 end
 
 function J.FromJson(root: string, text: buffer, report: any): any
-  local desc, A, adesc = adapted(root)
+  local _, A, adesc = adapted(root)
   local input = buffer.readstring(text, 0, buffer.len(text))
   local lua = core_from(A, root, input, report)
   -- FromJson answers no value on any refusal (docs/SPEC-TABLES.md §16.3,
@@ -2996,13 +2987,19 @@ end
 -- ill-formed or zero-holding text, a text or count past its bound. The name
 -- is Go's name for the same refusal.
 function J.ToJson(root: string, v: any, report: any): buffer?
-  local desc, A, adesc = adapted(root)
+  local _, A, adesc = adapted(root)
   local memo: any = { l2u = {}, u2l = {}, len = {} }
   refuse_reason = ""
   local lua = to_lua(adesc, v, A, memo)
-  if memo.invalid then if report then report.reason = refuse_reason ~= "" and refuse_reason or "clamped" end return nil end
+  if memo.invalid then
+    if report then report.reason = refuse_reason ~= "" and refuse_reason or "clamped" end
+    return nil
+  end
   local text = core_to(A, root, lua)
-  if text == nil then if report then report.reason = refuse_reason ~= "" and refuse_reason or "clamped" end return nil end
+  if text == nil then
+    if report then report.reason = refuse_reason ~= "" and refuse_reason or "clamped" end
+    return nil
+  end
   return from_string(text)
 end
 
