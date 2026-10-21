@@ -1200,8 +1200,10 @@ tables-java-alloc-negative-control: build/java-tables/.stamp
 test-java: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-alloc-negative-control tables-java-soak-short tables-java-soak-negative-control
 
 # the twenty-second form `make test` reaches; the hour is `make tables-java-soak`
+# The stamp is the parent's prerequisite, so under -j the sub-make finds it
+# built and never races a sibling recipe that is writing build/java-tables.
 .PHONY: tables-java-soak-short
-tables-java-soak-short:
+tables-java-soak-short: build/java-tables/.stamp
 	$(MAKE) tables-java-soak SOAK_SECONDS=20
 
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Java side.

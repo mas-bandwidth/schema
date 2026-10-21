@@ -2301,7 +2301,9 @@ public final class TableJson {
                             v = Long.parseUnsignedLong(tok);
                         } catch (NumberFormatException e) {
                             rep.clamped++; // past what sixty-four bits hold
-                            v = -1L; // the largest unsigned magnitude; the range checks below add a second clamp when the bound is narrower than uint64
+                            // the largest unsigned magnitude; the range checks below add
+                            // a second clamp when the bound is narrower than uint64
+                            v = -1L;
                         }
                     }
                 }
@@ -3059,20 +3061,35 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("    // pointer-reachable TABLE types it can place, plus the two reserved\n")
 	b.WriteString("    // BLOB type ids this root's pointer closure names (docs/SPEC-TABLES.md\n")
 	b.WriteString("    // §2.5, §3.1, §6.5). A type id outside that set commands no region.\n")
-	b.WriteString("    private static final TableVariable.NodeSizer NODE_SIZER = new TableVariable.NodeSizer() {\n")
-	b.WriteString("        public long size(long typeId, TableVariable.Reader r, int off, int len, TableVariable.Measure m) {\n")
+	// written in google-java-format --aosp's own shape (docs/JAVA-DIALECT.md,
+	// make tables-java-clean): the initializer breaks after `=` and the
+	// signature one parameter per line, which Canonical does not lay out
+	b.WriteString("    private static final TableVariable.NodeSizer NODE_SIZER =\n")
+	b.WriteString("            new TableVariable.NodeSizer() {\n")
+	b.WriteString("                public long size(\n")
+	b.WriteString("                        long typeId,\n")
+	b.WriteString("                        TableVariable.Reader r,\n")
+	b.WriteString("                        int off,\n")
+	b.WriteString("                        int len,\n")
+	b.WriteString("                        TableVariable.Measure m) {\n")
 	for _, reach := range ir.PointerReachable(st) {
-		fmt.Fprintf(b, "            if (typeId == %sVariable.TYPE_ID) { return %sVariable.measureNode(r, off, len); }\n", reach.Name, reach.Name)
+		fmt.Fprintf(b, "                    if (typeId == %sVariable.TYPE_ID) {\n", reach.Name)
+		fmt.Fprintf(b, "                        return %sVariable.measureNode(r, off, len);\n", reach.Name)
+		b.WriteString("                    }\n")
 	}
 	if strBlob {
-		b.WriteString("            if (typeId == TableVariable.STRING_ID) { return (8 + len + 1 + ALIGN - 1) & -ALIGN; }\n")
+		b.WriteString("                    if (typeId == TableVariable.STRING_ID) {\n")
+		b.WriteString("                        return (8 + len + 1 + ALIGN - 1) & -ALIGN;\n")
+		b.WriteString("                    }\n")
 	}
 	if bytesBlob {
-		b.WriteString("            if (typeId == TableVariable.BYTES_ID) { return (8 + len + ALIGN - 1) & -ALIGN; }\n")
+		b.WriteString("                    if (typeId == TableVariable.BYTES_ID) {\n")
+		b.WriteString("                        return (8 + len + ALIGN - 1) & -ALIGN;\n")
+		b.WriteString("                    }\n")
 	}
-	b.WriteString("            return 0;\n")
-	b.WriteString("        }\n")
-	b.WriteString("    };\n\n")
+	b.WriteString("                    return 0;\n")
+	b.WriteString("                }\n")
+	b.WriteString("            };\n\n")
 	b.WriteString("    // The one-argument form allocates ONE Measure handle per call; a caller\n")
 	b.WriteString("    // that keeps a Measure measures with no allocation at all: the walk reads\n")
 	b.WriteString("    // every nested body in place on the Measure's one reader (Reader.bodyEnd)\n")
