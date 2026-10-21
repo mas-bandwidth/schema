@@ -1442,19 +1442,24 @@ so and passes.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #423 | ❌ #423 | ❌ #423 | ✅ `tables-go-release` | ❌ #423 | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` |
+| ❌ #423 | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ❌ #423 | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` |
 
 ### J4 — Emitted text is analyzer-clean and format-canonical
 
 **Method.** Every generated table unit is held to what the language's
 analyzer or linter accepts and what its formatter writes, as a gate — so an
 emitter that drifts from the language's own conventions goes red on the
-diff rather than on a reviewer.
+diff rather than on a reviewer. Each leg runs its own authority over the
+generated table tree: `clang-format` for C++ and C, `gofmt` and `go vet` for
+Go, `dotnet format` for C#, `google-java-format` for Java, `eslint` for
+JavaScript, `dart format` and the analyzer for Dart, `cargo clippy` for Rust,
+and `mix format` for Elixir.
 
 **Reference.** `tables-dart-clean` (analyzer and `dart format
 --set-exit-if-changed`); `tables-rust-clippy`.
 
-**Proven in.** Dart.
+**Proven in.** Dart; carried to every other leg by the targets in the row
+below.
 
 **Measured effect.** Structural.
 
@@ -1464,7 +1469,7 @@ diff rather than on a reviewer.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ❌ #424 | ❌ #424 | ❌ #424 | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
+| ❌ #424 | ✅ `tables-c-clean` (`clang-format`) | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ❌ #424 | ❌ #424 | ❌ #424 | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
 
 ### J5 — The bench leg's golden gate runs before the clock
 
@@ -1475,7 +1480,8 @@ reproduce the corpus refuses to time it rather than posting a number.
 **Reference.** `tables-go-bench-gate` in the Makefile. Elixir proved the
 technique in and lost the leg with its table wire (#515).
 
-**Proven in.** Elixir, before its wire was cut; Go.
+**Proven in.** C++, C, C# and Go; Elixir proved the technique in before it lost
+the leg with its table wire (#515).
 
 **Measured effect.** Structural.
 
@@ -1485,4 +1491,4 @@ technique in and lost the leg with its table wire (#515).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #425 | ❌ #425 | — no table-wire bench | ✅ `tables-go-bench-gate` | ❌ #425 | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench |
+| ❌ #425 | ✅ `tables-c-bench-gate` | — no table-wire bench | ✅ `tables-go-bench-gate` | ❌ #425 | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench |
