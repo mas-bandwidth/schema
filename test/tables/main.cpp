@@ -6093,8 +6093,8 @@ static void build_golden_message_transaction( messagedemo::ToolMessage & m )
     b.body.type = messagedemo::EditBodyType::Remove;
     b.body.remove = messagedemo::RemoveText{};
     b.body.remove.span.start.line = 1;
-    b.body.remove.span.end.line = 2;
-    b.body.remove.span.end.column = 2;
+    b.body.remove.span.stop.line = 2;
+    b.body.remove.span.stop.column = 2;
     messagedemo::Edit & c = m.body.transact.edits[2];
     c.revision = 3;
     c.body.type = messagedemo::EditBodyType::Insert;
@@ -6471,7 +6471,7 @@ static void test_message_three_depths()
     CHECK( back.body.transact.edits[0].body.insert.origin.type == messagedemo::OriginType::User );
     CHECK( strcmp( back.body.transact.edits[0].body.insert.origin.user.name, "rowan" ) == 0 );
     CHECK( back.body.transact.edits[1].body.type == messagedemo::EditBodyType::Remove );
-    CHECK( back.body.transact.edits[1].body.remove.span.end.column == 2 );
+    CHECK( back.body.transact.edits[1].body.remove.span.stop.column == 2 );
     CHECK( back.body.transact.edits[2].body.insert.origin.type == messagedemo::OriginType::Script );
     CHECK( back.body.transact.edits[2].body.insert.origin.script.line == 12 );
 
@@ -7895,8 +7895,8 @@ static void build_golden_message_trace( messagedemo::ToolMessage & m )
     // defaults
     m.body.transact.snapshots_present = true;
     m.body.transact.snapshots[0].start.line = 3;
-    m.body.transact.snapshots[0].end.line = 4;
-    m.body.transact.snapshots[0].end.column = 6;
+    m.body.transact.snapshots[0].stop.line = 4;
+    m.body.transact.snapshots[0].stop.column = 6;
     // depth one: trace is COUNTED ?[..3]Script in the root, present with a
     // live element and an ALL-DEFAULT element, which rides in its place
     m.trace_present = true;
@@ -7922,8 +7922,8 @@ static void check_message_trace( const messagedemo::ToolMessage & m )
     CHECK( m.body.transact.edits[0].body.insert.modes_count == 0 );
     CHECK( m.body.transact.snapshots_present );
     CHECK( m.body.transact.snapshots[0].start.line == 3 );
-    CHECK( m.body.transact.snapshots[0].end.line == 4 && m.body.transact.snapshots[0].end.column == 6 );
-    CHECK( m.body.transact.snapshots[1].start.line == 0 && m.body.transact.snapshots[1].end.line == 0 );
+    CHECK( m.body.transact.snapshots[0].stop.line == 4 && m.body.transact.snapshots[0].stop.column == 6 );
+    CHECK( m.body.transact.snapshots[1].start.line == 0 && m.body.transact.snapshots[1].stop.line == 0 );
     CHECK( m.trace_present );
     CHECK( m.trace_count == 2 );
     CHECK( strcmp( m.trace[0].path, "boot.lua" ) == 0 && m.trace[0].line == 1 );
@@ -8060,7 +8060,7 @@ static void test_optional_arrays_elision()
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_tables );
     CHECK( messagedemo::ToolMessageLoad( back, wire, with_tables, &report ) );
     CHECK( !report.malformed && back.body.transact.snapshots_present );
-    CHECK( back.body.transact.snapshots[0].start.line == 0 && back.body.transact.snapshots[1].end.column == 0 );
+    CHECK( back.body.transact.snapshots[0].start.line == 0 && back.body.transact.snapshots[1].stop.column == 0 );
     CHECK( !back.trace_present && !back.marks_present );
 
     // the fixed spelling over ENUM elements: every declared slot rides as a
