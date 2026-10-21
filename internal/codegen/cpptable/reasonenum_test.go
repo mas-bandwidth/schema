@@ -120,15 +120,15 @@ func cppReasonEnumValues(body string) (map[string]uint64, bool) {
 	values := map[string]uint64{}
 	body = cppReasonCommentRE.ReplaceAllString(body, "")
 	var next uint64
-	for _, entry := range strings.Split(body, ",") {
+	for entry := range strings.SplitSeq(body, ",") {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
 			continue
 		}
 		name := entry
-		if eq := strings.IndexByte(entry, '='); eq >= 0 {
-			name = strings.TrimSpace(entry[:eq])
-			raw := strings.TrimSpace(entry[eq+1:])
+		if before, after, ok := strings.Cut(entry, "="); ok {
+			name = strings.TrimSpace(before)
+			raw := strings.TrimSpace(after)
 			v, err := strconv.ParseUint(raw, 0, 64)
 			if err != nil {
 				return nil, false
@@ -306,7 +306,7 @@ func TestCPPGeneratedHeadersCompileUnderClangAndGxxWerror(t *testing.T) {
 		t.Fatalf("the reversed witness compiled: clang accepted enum TableRefuseReason with no underlying type and the 0x20000000 cast")
 	}
 	line := ""
-	for _, l := range strings.Split(string(out), "\n") {
+	for l := range strings.SplitSeq(string(out), "\n") {
 		// clang 21 names the variable; clang 18 names the value and the enum
 		if (strings.Contains(l, "error: constexpr variable 'no_vocabulary'") &&
 			strings.Contains(l, "must be initialized by a constant expression")) ||

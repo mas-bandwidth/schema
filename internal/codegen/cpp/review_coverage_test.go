@@ -204,7 +204,7 @@ type Ranges {
 			t.Errorf("WriteRanges: want %q\n%s", want, write)
 		}
 	}
-	for _, line := range strings.Split(write, "\n") {
+	for line := range strings.SplitSeq(write, "\n") {
 		if strings.Contains(line, "write_bits(") && (strings.Contains(line, "pinned64") || strings.Contains(line, "pinnedU")) {
 			t.Errorf("WriteRanges puts a degenerate range on the wire: %s", strings.TrimSpace(line))
 		}

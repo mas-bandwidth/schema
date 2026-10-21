@@ -100,12 +100,12 @@ func cppRefuseReasonNames(t *testing.T, src string) []string {
 		t.Fatalf("the C++ %s carries no opening brace", marker)
 	}
 	body := rest[open+1:]
-	end := strings.Index(body, "};")
-	if end < 0 {
+	before, _, ok := strings.Cut(body, "};")
+	if !ok {
 		t.Fatalf("the C++ %s carries no closing \"};\"", marker)
 	}
 	var names []string
-	for _, line := range strings.Split(body[:end], "\n") {
+	for line := range strings.SplitSeq(before, "\n") {
 		if i := strings.Index(line, "//"); i >= 0 {
 			line = line[:i]
 		}
@@ -130,7 +130,7 @@ func goRefuseReasonNames(t *testing.T, src string) []string {
 	const prefix = "TableRefuse"
 	var names []string
 	inBlock := false
-	for _, line := range strings.Split(src, "\n") {
+	for line := range strings.SplitSeq(src, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "const (" {
 			inBlock = true

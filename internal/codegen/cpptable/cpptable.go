@@ -634,7 +634,7 @@ func tableMessageReasonMembers(refuseReason, pkg string) string {
 		panic("cpptable: the refusal enum has no body")
 	}
 	var b strings.Builder
-	for _, line := range strings.Split(refuseReason[open+1:end], "\n") {
+	for line := range strings.SplitSeq(refuseReason[open+1:end], "\n") {
 		if i := strings.Index(line, "//"); i >= 0 {
 			line = line[:i]
 		}

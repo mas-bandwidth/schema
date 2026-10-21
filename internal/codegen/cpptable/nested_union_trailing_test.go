@@ -26,6 +26,7 @@ package cpptable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -98,9 +99,7 @@ func TestNestedUnionArmWithTrailingBytesIsMalformed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 
 	header, ok := files["NestTrailTable.h"]
 	if !ok {

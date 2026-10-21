@@ -169,7 +169,6 @@ func TestCPPTextFormDocumentEdits(t *testing.T) {
 		{"roadmap", roadmap},
 		{"layout", layout},
 	} {
-		tc := tc
 		t.Run(tc.stem+"/rewrite", func(t *testing.T) {
 			t.Parallel()
 			input := read(t, tc.stem+".input.sexp")

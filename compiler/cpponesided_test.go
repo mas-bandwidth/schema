@@ -54,7 +54,7 @@ func TestCPPOneSidedIntegerRange(t *testing.T) {
 	} {
 		prefix := `{ "` + row.name + `", "` + row.name + `", `
 		var line string
-		for _, l := range strings.Split(header, "\n") {
+		for l := range strings.SplitSeq(header, "\n") {
 			if strings.HasPrefix(strings.TrimSpace(l), prefix) {
 				line = l
 				break

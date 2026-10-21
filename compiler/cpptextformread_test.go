@@ -165,7 +165,6 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 		{"roadmap", string(cppMustRead(t, "roadmap.input.sexp")), roadmap},
 		{"layout", string(cppMustRead(t, "layout.input.sexp")), layout},
 	} {
-		tc := tc
 		t.Run(tc.stem, func(t *testing.T) {
 			t.Parallel()
 			same(t, tc.stem, jsonRun(t, tc.input), tc.want)
@@ -232,7 +231,6 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 		{"variable/roadmap", string(cppMustRead(t, "roadmap.input.sexp")), roadmap},
 		{"variable/layout", string(cppMustRead(t, "layout.input.sexp")), layout},
 	} {
-		tc := tc
 		t.Run(tc.stem, func(t *testing.T) {
 			t.Parallel()
 			same(t, tc.stem, vjsonRun(t, tc.input), tc.want)

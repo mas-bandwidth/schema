@@ -130,7 +130,7 @@ func TestUnionArmSetterLeavesTheWireUnmoved(t *testing.T) {
 			}
 			continue
 		}
-		for _, line := range strings.Split(string(want), "\n") {
+		for line := range strings.SplitSeq(string(want), "\n") {
 			if strings.Contains(line, "MaxBits =") || strings.Contains(line, "MaxBytes =") {
 				if !strings.Contains(string(got), line+"\n") {
 					t.Errorf("%s: a Max constant moved: %q", name, line)

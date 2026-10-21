@@ -56,7 +56,7 @@ func TestCPPExactIntegerRangeBounds(t *testing.T) {
 		t.Fatal("the descriptor carries no exact integer-range column (range_int_max)")
 	}
 	var wideRow string
-	for _, line := range strings.Split(header, "\n") {
+	for line := range strings.SplitSeq(header, "\n") {
 		if strings.Contains(line, `{ "w", "w", "int128"`) {
 			wideRow = line
 			break

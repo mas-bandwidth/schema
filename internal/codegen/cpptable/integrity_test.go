@@ -388,9 +388,9 @@ int main()
 `
 
 func parseHexLine(out []byte, prefix string) ([]byte, bool) {
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(line, prefix) {
-			body := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if after, ok := strings.CutPrefix(line, prefix); ok {
+			body := strings.TrimSpace(after)
 			b, err := hex.DecodeString(body)
 			if err != nil {
 				return nil, false

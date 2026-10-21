@@ -51,7 +51,7 @@ func TestFixedClampCheckMirrorsTheBody(t *testing.T) {
 			if counts != ors {
 				t.Errorf("%s: %s: the body has %d count sites and the check %d `bad |=`", f, name, counts, ors)
 			}
-			for _, line := range strings.Split(c, "\n") {
+			for line := range strings.SplitSeq(c, "\n") {
 				l := strings.TrimSpace(line)
 				if l == "int bad = 0;" || strings.HasPrefix(l, "for (") || strings.HasPrefix(l, "//") {
 					continue

@@ -217,7 +217,7 @@ func t18Emitted(t *testing.T, u *ir.Unit, root string) (uint64, []byte) {
 		t.Fatalf("the emitted %q has no end", layTok)
 	}
 	var out []byte
-	for _, f := range strings.Split(rest[:j], ",") {
+	for f := range strings.SplitSeq(rest[:j], ",") {
 		f = strings.TrimSpace(f)
 		if f == "" {
 			continue

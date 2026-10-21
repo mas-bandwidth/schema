@@ -75,7 +75,7 @@ table Scene {
 `)
 	table := specTablesBetween(t, "**THE SPELLING, PER BACKEND.**", "**THE GENERATED STRUCT IS THE COOKED RECORD**")
 	cells := map[string]string{}
-	for _, line := range strings.Split(table, "\n") {
+	for line := range strings.SplitSeq(table, "\n") {
 		parts := strings.Split(strings.TrimSpace(line), "|")
 		if len(parts) < 4 || !strings.HasPrefix(strings.TrimSpace(line), "|") {
 			continue
