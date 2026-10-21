@@ -1710,6 +1710,9 @@ jobs:
         if: matrix.node != ''
         with:
           node-version: ${{ matrix.node }}
+      # The pinned eslint the JS leg's tables-js-clean gate requires (make/js.mk).
+      - uses: ./.github/actions/eslint
+        if: matrix.node != ''
 
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         if: matrix.dart != ''
