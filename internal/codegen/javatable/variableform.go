@@ -4071,10 +4071,10 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		one := *f
 		one.Type.Optional = false
 		var condition strings.Builder
-		condition.WriteString(fmt.Sprintf("kind==%d", variableWireKind(f)))
+		fmt.Fprintf(&condition, "kind==%d", variableWireKind(f))
 		for kind := 1; kind <= 33; kind++ {
 			if ir.TableKindWidens(kind, variableWireKind(f)) {
-				condition.WriteString(fmt.Sprintf("||kind==%d", kind))
+				fmt.Fprintf(&condition, "||kind==%d", kind)
 			}
 		}
 		fmt.Fprintf(b, "                boolean selected=(%s);\n", condition.String())

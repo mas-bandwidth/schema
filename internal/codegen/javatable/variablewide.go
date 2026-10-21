@@ -74,10 +74,10 @@ func variableRawBounds(f *ir.Field) (string, string) {
 }
 func variableCompatibleKinds(kind int, expr string) string {
 	var cond strings.Builder
-	cond.WriteString(fmt.Sprintf("%s==%d", expr, kind))
+	fmt.Fprintf(&cond, "%s==%d", expr, kind)
 	for k := 1; k <= 33; k++ {
 		if ir.TableKindWidens(k, kind) {
-			cond.WriteString(fmt.Sprintf("||%s==%d", expr, k))
+			fmt.Fprintf(&cond, "||%s==%d", expr, k)
 		}
 	}
 	return cond.String()

@@ -35,14 +35,15 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		entry := f.MapEntry.Name + "Variable.Value"
 		key := ir.MapKeyField(f)
 		compare := "Integer.compare(a.key,b.key)"
-		if key.Type.Kind == ir.TString {
+		switch {
+		case key.Type.Kind == ir.TString:
 			compare = "java.util.Arrays.compareUnsigned(a.key.getBytes(StandardCharsets.UTF_8),b.key.getBytes(StandardCharsets.UTF_8))"
-		} else if key.Type.Width > 32 {
+		case key.Type.Width > 32:
 			compare = "Long.compare(a.key,b.key)"
 			if !key.Type.Signed {
 				compare = "Long.compareUnsigned(a.key,b.key)"
 			}
-		} else if !key.Type.Signed {
+		case !key.Type.Signed:
 			compare = "Integer.compareUnsigned(a.key,b.key)"
 		}
 		fmt.Fprintf(b, "    static int compare_%s(%s a, %s b) { return %s; }\n", m, entry, entry, compare)
@@ -99,14 +100,15 @@ func writeJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	key := ir.MapKeyField(f)
 	fmt.Fprintf(b, "        { List<%s> entries = "+st.Name+"Variable.order_%s(v.%s); b.append('{'); for(int i=0;i<entries.size();i++) { if(i>0)b.append(','); TableJson.indent(b,depth+1); %s entry=entries.get(i);\n", entry, m, m, entry)
 	keyText := "Integer.toString(entry.key)"
-	if key.Type.Kind == ir.TString {
+	switch {
+	case key.Type.Kind == ir.TString:
 		keyText = "entry.key"
-	} else if key.Type.Width > 32 {
+	case key.Type.Width > 32:
 		keyText = "Long.toString(entry.key)"
 		if !key.Type.Signed {
 			keyText = "Long.toUnsignedString(entry.key)"
 		}
-	} else if !key.Type.Signed {
+	case !key.Type.Signed:
 		keyText = "Integer.toUnsignedString(entry.key)"
 	}
 	fmt.Fprintf(b, "        TableJson.esc(b,%s); b.append(\": \");\n", keyText)

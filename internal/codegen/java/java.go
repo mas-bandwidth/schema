@@ -3310,14 +3310,14 @@ func joinTokens(t []jtok) string {
 		case p.s == "@":
 			space = false
 		case k.s == "++" || k.s == "--":
-			space = p.kind == 'o' && javaBinary[p.s] && !(p.s == ">" && gen[i-1])
+			space = p.kind == 'o' && javaBinary[p.s] && (p.s != ">" || !gen[i-1])
 			if p.s == "(" || p.s == "[" {
 				space = false
 			}
 		case p.s == "++" || p.s == "--":
-			space = !(k.kind == 'i' || k.kind == 'n') || (i >= 2 && (t[i-2].kind == 'i' || t[i-2].s == ")" || t[i-2].s == "]"))
+			space = (k.kind != 'i' && k.kind != 'n') || (i >= 2 && (t[i-2].kind == 'i' || t[i-2].s == ")" || t[i-2].s == "]"))
 		case k.s == "(":
-			space = p.kind == 'i' && javaSpaceParen[p.s] || (p.kind == 'o' && javaBinary[p.s] && !(p.s == ">" && gen[i-1])) || p.s == "," || p.kind == 'c'
+			space = p.kind == 'i' && javaSpaceParen[p.s] || (p.kind == 'o' && javaBinary[p.s] && (p.s != ">" || !gen[i-1])) || p.s == "," || p.kind == 'c'
 			if p.s == "!" || p.s == "~" || unary(i-1) || p.s == "(" || p.s == "[" {
 				space = false
 			}

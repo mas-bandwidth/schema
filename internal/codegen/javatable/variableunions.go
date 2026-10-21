@@ -169,11 +169,11 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			one.Name = mem[i]
 			expected := ir.TableWireFieldKind(&one)
 			var condition strings.Builder
-			condition.WriteString(fmt.Sprintf("kind==%d", expected))
+			fmt.Fprintf(&condition, "kind==%d", expected)
 			widenKinds := []int{}
 			for k := 1; k <= 33; k++ {
 				if ir.TableKindWidens(k, expected) {
-					condition.WriteString(fmt.Sprintf("||kind==%d", k))
+					fmt.Fprintf(&condition, "||kind==%d", k)
 					widenKinds = append(widenKinds, k)
 				}
 			}
