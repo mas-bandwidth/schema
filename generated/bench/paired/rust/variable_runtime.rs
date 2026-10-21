@@ -580,7 +580,7 @@ pub fn table_kind_width(kind: u8) -> usize {
         1 | 2 | 6 => 1,
         3 | 7 => 2,
         4 | 8 | 10 => 4,
-        5 | 9 | 11 => 8,
+        5 | 9 | 11 | 36 => 8,
         18 | 19 => 16,
         _ => 0,
     }
@@ -670,7 +670,8 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         1 | 2 | 6 | 20 | 25 => fixed(off, 1),
         3 | 7 | 21 | 26 => fixed(off, 2),
         4 | 8 | 10 | 22 | 27 => fixed(off, 4),
-        5 | 9 | 11 | 23 | 28 => fixed(off, 8),
+        // kind 36, a timestamp, is one eight-byte payload (§2.11, §3)
+        5 | 9 | 11 | 23 | 28 | 36 => fixed(off, 8),
         18 | 19 | 24 | 29 => fixed(off, 16),
         17 | 30 => {
             if let Some(_) = leb_read(bounded, off) { *off <= end } else { false }
@@ -892,7 +893,7 @@ fn retain_skip(c: &mut RetainCur, kind: u8) -> bool {
         1 | 2 | 6 | 20 | 25 => w(c, 1),
         3 | 7 | 21 | 26 => w(c, 2),
         4 | 8 | 10 | 22 | 27 => w(c, 4),
-        5 | 9 | 11 | 23 | 28 => w(c, 8),
+        5 | 9 | 11 | 23 | 28 | 36 => w(c, 8),
         18 | 19 | 24 | 29 => w(c, 16),
         12 | 31 | 32 | 33 => {
             let Some(n) = c.leb() else { return false; };
