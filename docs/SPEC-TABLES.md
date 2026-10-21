@@ -4111,9 +4111,11 @@ a count past the reader's `N` reads the first `N` elements and counts
 `clamped`; ill-formed UTF-8 or a zero byte in an element is `malformed`. The
 JSON text holds the same rule at its own entry: an element or a map key whose
 string decodes to `U+0000` refuses the read (§16.3). A read
-that clamped an element of a text list records the field in the report's
-`Reason` as `clamped: <Table>.<field>`, so `ReadStrict` refuses it with
-`TableRefuseReason` `clamped` (`errors.Is`) and an error text naming the field.
+that clamped an element of a text list names the field, `<Table>.<field>`, in
+the report's clamped-field slot (apart from `Reason`, §6.5: the first clamp
+named wins), so `ReadStrict` refuses it with the clamped refusal naming the
+field (`clamped: <Table>.<field>`, `TableClampedField`; `errors.Is` matches
+`TableRefuseReason` `clamped`).
 
 **THE TOTAL: `| total = N`.** A list of `[..N]` elements of `M` bytes each
 bounds every element and the count, and nothing bounds their SUM, so what one
@@ -4148,9 +4150,10 @@ read each other's bytes under §4.
   keeps the longest PREFIX of the list whose sum is within `N`, each element
   first clamped at `M` as above, and DROPS the first element that would carry
   the sum past `N` and every element after it, counting `clamped` ONCE for the
-  field and recording `clamped: <Table>.<field>` in the report's `Reason`, so
-  `ReadStrict` refuses it with `TableRefuseReason` `clamped` (`errors.Is`) and
-  an error text naming the field. It is a prefix, as the count's clamp is, so
+  field and naming it in the report's clamped-field slot (§6.5), so
+  `ReadStrict` refuses it with the clamped refusal naming the field
+  (`clamped: <Table>.<field>`, `TableClampedField`; `errors.Is` matches
+  `clamped`). It is a prefix, as the count's clamp is, so
   a short element after a long one is dropped too and the kept elements are
   always the first ones. A count past `[..N]` is clamped first, and both are
   counted.

@@ -20,7 +20,7 @@ import (
 //   - THE READERS: a wire written by a table with the same field ids and no
 //     total (Wide), past the total on each list in turn, reads with the
 //     longest prefix within the total kept, the rest dropped, clamped counted
-//     once and named in Reason, the kept elements' sum within N; ReadStrict
+//     once and named in ClampedField, the kept elements' sum within N; ReadStrict
 //     refuses it with TableRefuseClamped naming the field; base64, the
 //     retaining load and a nested table read it the same way; a JSON text
 //     past the total reads with the same prefix kept, clamped counted once and
@@ -338,7 +338,7 @@ func TestTextListTotal(t *testing.T) {
 		name := "L." + c.field
 		check := func(t *testing.T, how string, got *L, report TableReport) {
 			t.Helper()
-			if got == nil || report.Clamped != 1 || report.Malformed || report.Reason != "clamped: "+name {
+			if got == nil || report.Clamped != 1 || report.Malformed || report.ClampedField != name {
 				t.Fatalf("%s %s: %+v", c.field, how, report)
 			}
 			s, count := sum(t, got, c.field)
@@ -375,7 +375,7 @@ func TestTextListTotal(t *testing.T) {
 	HolderWideSave(nx, nested, &nw.Arena)
 	report = TableReport{}
 	hgot := HolderLoadTolerant(make([]byte, 1<<14), nested, &report)
-	if hgot == nil || report.Clamped != 1 || report.Reason != "clamped: L.names" || hgot.Inner.NamesCount != 3 {
+	if hgot == nil || report.Clamped != 1 || report.ClampedField != "L.names" || hgot.Inner.NamesCount != 3 {
 		t.Fatalf("nested read %+v", report)
 	}
 	if _, err := HolderReadStrict(nested); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), "L.names") {
@@ -395,7 +395,7 @@ func TestTextListTotal(t *testing.T) {
 		var jb LBuilder
 		jb.Init()
 		report = TableReport{}
-		if !LFromJsonTolerant(&jb, []byte(c.text), &report) || report.Clamped != 1 || report.Malformed || report.Reason != "clamped: L."+c.field {
+		if !LFromJsonTolerant(&jb, []byte(c.text), &report) || report.Clamped != 1 || report.Malformed || report.ClampedField != "L."+c.field {
 			t.Fatalf("%s FromJson %+v", c.field, report)
 		}
 		if err := report.Err(); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), "L."+c.field) {
