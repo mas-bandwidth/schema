@@ -122,12 +122,12 @@ func (c *checker) refusePositionalEnumBound(where, scope, reach string, f *ir.Fi
 // in. An arm is a field line (§2.6), so the arm and the table body's own field
 // take one rule and one sentence.
 //
-// THE WALK IS THE FENCE. It starts at TABLE bodies and descends UNIONS alone,
-// so a `type` a table closure reaches is never visited. That case has two
-// answers that exclude each other, refusing the shape in every reached `type`
-// or keying the table wire for an enum-extent array wherever it is declared,
-// and it is ruled on schema#606. Widening this walk to `type` bodies is the
-// one edit that decides the ruling, so it is not made here.
+// THE WALK IS THE REFUSAL'S SCOPE. It starts at TABLE bodies and descends
+// UNIONS alone, so the `type` a table closure reaches is never REFUSED here:
+// schema#606 ruled that case the other way, keying the table wire for an
+// enum-extent array wherever it is declared (keyTypeHeldEnumExtents), so the
+// positional spelling stays legal in a reached `type` and rides under the
+// keyed kind there.
 //
 // The PACKET WIRE is untouched for the same reason: a `type` no table reaches
 // is not in the closure, its `[E.Max]T` is a plain positional array whose
@@ -160,6 +160,46 @@ func (c *checker) checkPositionalEnumBoundInClosure() {
 			c.refusePositionalEnumBound(fmt.Sprintf("table %s: field %s", name, f.Name), "a table body", "", f)
 			if un, ok := f.Type.Ref.(*ir.Union); ok && f.Type.Kind == ir.TNamed {
 				c.checkUnionArmBounds(un, name, f.Name, reported, map[*ir.Union]bool{})
+			}
+		}
+	}
+}
+
+// keyTypeHeldEnumExtents is schema#606's ruling: on the TABLE wire an
+// enum-extent array rides KEYED wherever it is declared. A positional spelling
+// whose bound folds from an enum is the same construct as `[E]T` (§2.4), so a
+// `type` the table closure reaches rides it under kind `16` rather than the
+// positional kind `14`, and the closed class §4.1 counts cannot be reopened
+// one body away by spelling the bound another way. The field's packet storage
+// and bytes are unmoved: the key is a table-wire fact, and the two spellings
+// share one projection and one protocol id
+// (TestKeyedSpellingIsTheSameTypeWire).
+//
+// The walk visits the closure's `type` members alone. A table body and a union
+// arm REFUSE the positional spelling by name (checkPositionalEnumBoundInClosure),
+// so no field there reaches this pass, and a `type` no table reaches is not in
+// the closure at all, so the packet wire is untouched.
+func (c *checker) keyTypeHeldEnumExtents() {
+	for name := range c.tableClosure {
+		st := c.closureMember(name)
+		if st == nil || st.IsTable {
+			continue
+		}
+		for _, f := range st.Fields {
+			// the POSITIONAL spelling only: `[E]T` already carries its key,
+			// and a bound that folds from no enum is a plain array.
+			if f.Array != ir.ArrayFixed || f.KeyEnum != "" || f.ArrayExpr == nil {
+				continue
+			}
+			found, ok := c.enumBoundProvenance(f.ArrayExpr, map[string]bool{})
+			if !ok {
+				continue
+			}
+			// an enum that failed its own checks already carries a diagnostic,
+			// so the unit is refused before any codec could read the key
+			if en := c.enums[found.enum]; en != nil {
+				f.KeyEnum = found.enum
+				f.KeyEnumRef = en
 			}
 		}
 	}

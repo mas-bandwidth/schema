@@ -2461,10 +2461,14 @@ namespace Tabledemo
                     }
                 }
                 if (saturated) { input.Report.Clamped++; }
+                // an unsigned magnitude past long.MaxValue rides as a negative long —
+                // that is the storage's own image of it and not a negative number, so
+                // the range sees the magnitude the same scale the reference's does
+                double valueScale = isSigned ? (double)value2 : (double)(ulong)value2;
                 if (f.HasRange)
                 {
-                    if ((double)value2 < f.RangeMin) { value2 = (long)f.RangeMin; input.Report.Clamped++; }
-                    else if ((double)value2 > f.RangeMax) { value2 = (long)f.RangeMax; input.Report.Clamped++; }
+                    if (valueScale < f.RangeMin) { value2 = (long)f.RangeMin; input.Report.Clamped++; }
+                    else if (valueScale > f.RangeMax) { value2 = (long)f.RangeMax; input.Report.Clamped++; }
                 }
                 // the field's own storage width is the last bound: a value past it
                 // clamps rather than wrapping, which is what the wire does too
@@ -2480,14 +2484,22 @@ namespace Tabledemo
                     else
                     {
                         ulong high = (1ul << (f.ElemWidth * 8)) - 1;
-                        if (value2 < 0) { value2 = 0; input.Report.Clamped++; }
+                        if (value2 < 0)
+                        {
+                            // a magnitude past what sixty-four bits hold, carried as a
+                            // negative long, lands the field's CEILING: the domain is
+                            // established before any cast, so the saturation is one
+                            // clamp and the domain bound is the other
+                            value2 = (long)high;
+                            input.Report.Clamped++;
+                        }
                         else if ((ulong)value2 > high) { value2 = (long)high; input.Report.Clamped++; }
                     }
                 }
                 // at eight bytes the storage IS the parser's width, and an unsigned
-                // value past long.MaxValue rides here as a negative long by design —
-                // the token parser already turned a NEGATIVE token for an unsigned
-                // field into a clamped zero, so there is nothing left to bound.
+                // value past long.MaxValue rides here as its bit pattern by design —
+                // the domain bound above already handled it, and a NEGATIVE token for
+                // an unsigned field was turned into a clamped zero before this point.
                 f.SetRaw(owner, index, unchecked((ulong)value2));
                 return true;
             }
@@ -5240,29 +5252,29 @@ namespace Tabledemo
             static bool DistinctVocabulary(ReadOnlySpan<byte> vocabulary)
             {
                 int count = vocabulary.Length / 8;
-                if (count >= 16 && count <= 256)
+                if (count >= 16)
                 {
-                    // One KiB, independent of the input's claimed count. Slots store
-                    // ordinal+1, so the identity zero remains an ordinary identity.
-                    // At most 256 entries occupy 512 slots: even deliberately colliding
-                    // identities reach an empty slot after at most 256 occupied probes.
-                    Span<ushort> slots = stackalloc ushort[512];
+                    // Slots store ordinal+1, so the identity zero remains an ordinary
+                    // identity. At most 4096 entries occupy 8192 slots: even deliberately
+                    // colliding identities reach an empty slot after at most 4096
+                    // occupied probes, so the whole walk is bounded and allocation-free
+                    // (docs/SPEC-TABLES.md §3, the bounded-work contract).
+                    Span<ushort> slots = stackalloc ushort[8192];
                     slots.Clear();
                     for (int i = 0; i < count; i++)
                     {
                         ulong id = Read64(vocabulary, i * 8);
-                        int slot = (int)(unchecked(id * 0x9e3779b97f4a7c15ul) >> 55);
+                        int slot = (int)(unchecked(id * 0x9e3779b97f4a7c15ul) >> 51);
                         while (slots[slot] != 0)
                         {
                             if (id == Read64(vocabulary, (slots[slot] - 1) * 8)) { return false; }
-                            slot = (slot + 1) & 511;
+                            slot = (slot + 1) & 8191;
                         }
                         slots[slot] = (ushort)(i + 1);
                     }
                     return true;
                 }
-                // Tiny vocabularies avoid scratch initialization. Larger foreign
-                // vocabularies keep the existing allocation-free validation path.
+                // Tiny vocabularies avoid scratch initialization.
                 for (int i = 0; i < vocabulary.Length; i += 8)
                 {
                     ulong id = Read64(vocabulary, i);
@@ -5287,6 +5299,10 @@ namespace Tabledemo
                 if (bytes.Length < 9) { Damage(report); return Finish(report, Verdict.Damaged); }
                 ulong count = Read64(bytes, bytes.Length - 8);
                 if (count > (ulong)(bytes.Length - 9) / 8) { Damage(report); return Finish(report, Verdict.Damaged); }
+                // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+                // claims more than 4096 entries is malformed, so the distinctness walk
+                // stays bounded no matter how large the file is.
+                if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }
                 int end = bytes.Length - 8 - (int)count * 8;
                 ReadOnlySpan<byte> vocabulary = bytes.Slice(end, (int)count * 8);
                 if (!DistinctVocabulary(vocabulary)) { Damage(report); return Finish(report, Verdict.Damaged); }

@@ -23,16 +23,19 @@ func TestGoTableOpenDistinctnessIsBounded(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"n < 8 || n > 256",
-		"var seen [512]uint64",
-		"var used [512]uint8",
-		"probes < 512",
+		"if n > 4096 {",
+		"if n < 8",
+		"var seen [8192]uint64",
+		"var used [8192]uint8",
 		"seen[slot] == id",
 		"for i := 0; i < len(r.Ids); i += 8 {",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("tableOpen is missing %q", want)
 		}
+	}
+	if strings.Contains(body, "n > 256") {
+		t.Errorf("tableOpen still carries the unbounded pairwise fallback (n > 256)")
 	}
 }
 

@@ -14,5 +14,5 @@ fixed table Floats
     quiet      float64
     wide       float64
     samples    [3]float32
-    after      int32
+    past      int32 | was = "after"
 }

@@ -12,7 +12,7 @@ import (
 
 func TestWideRegionFramingAlignment(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "Wide.schema")
-	if err := os.WriteFile(path, []byte("package wideprobe\ntable Node { n uint64 }\ntable Root { wide uint128\nnode *Node }\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("package wideprobe\ntable Node { n uint64 }\ntable Root { wide uint128\nvertex *Node }\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	c := compiler.New()
@@ -27,7 +27,7 @@ func TestWideRegionFramingAlignment(t *testing.T) {
 	}
 	value := root.model.New(root.def)
 	var report tabletext.Report
-	if !root.model.Read(value, []byte(`{"wide":1,"node":{"n":2}}`), &report) {
+	if !root.model.Read(value, []byte(`{"wide":1,"vertex":{"n":2}}`), &report) {
 		t.Fatalf("json %+v", report)
 	}
 	wire, err := tablewire.Encode(root.model, value)

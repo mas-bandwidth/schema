@@ -8,6 +8,7 @@
 #define SCHEMA_EXAMPLE_CLAUSES_H
 
 #include <stdint.h>
+#include <string.h>   /* memset — the zero form (SPEC §4.2) */
 
 #ifndef SCHEMA_UNUSED
 #if defined(__GNUC__) || defined(__clang__)
@@ -173,6 +174,23 @@ typedef struct EmptyUnion {
 
 #define EMPTY_UNION_MAX_BITS 2   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
 #define EMPTY_UNION_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+
+/* Selectors for EmptyUnion: each sets the tag and initializes the arm together,
+   the arm with its declared defaults as a read does (SPEC §4.8), and returns
+   the fresh arm to populate; a payload-free arm's selector sets the tag alone. */
+static SCHEMA_UNUSED EmptyA * empty_union_select_a( EmptyUnion * value )
+{
+    value->type = EMPTY_UNION_TYPE_A;
+    memset( &value->as.a, 0, sizeof( value->as.a ) );
+    return &value->as.a;
+}
+
+static SCHEMA_UNUSED EmptyB * empty_union_select_b( EmptyUnion * value )
+{
+    value->type = EMPTY_UNION_TYPE_B;
+    memset( &value->as.b, 0, sizeof( value->as.b ) );
+    return &value->as.b;
+}
 
 
 /* type HoldsEmptyUnion */

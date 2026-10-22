@@ -99,7 +99,7 @@ static void test_identity()
     CHECK( bits_of_double( value.wide ) == kDoubleWide );
     CHECK( bits_of_float( value.samples[0] ) == kFloatSample0 );
     CHECK( bits_of_float( value.samples[2] ) == kFloatSample2 );
-    CHECK( value.after == 7 );
+    CHECK( value.past == 7 );
     // THE QUIET BIT IS BIT 22, and it is CLEAR on the two signalling ones: a
     // conversion anywhere on the path would have set it, which is the whole
     // failure this pin exists to catch

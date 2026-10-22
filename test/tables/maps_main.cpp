@@ -474,7 +474,7 @@ struct RowSpec
     int32_t n;
     uint8_t element_kind; // 0: kind 13, an array of entry bodies
     int64_t declared_n;   // -1: the entry count itself
-    int32_t after;
+    int32_t past;
 };
 
 static RowSpec ascending_spec()
@@ -491,7 +491,7 @@ static RowSpec ascending_spec()
     spec.n = 3;
     spec.element_kind = 0;
     spec.declared_n = -1;
-    spec.after = 777;
+    spec.past = 777;
     return spec;
 }
 
@@ -521,7 +521,7 @@ static RowWire build_row( const RowSpec & spec )
     }
     b.close_len( map_body );
     b.field( "after", 4 );
-    b.u32( (uint32_t) spec.after );
+    b.u32( (uint32_t) spec.past );
     b.end();
     RowWire w;
     w.size = b.finish( w.bytes );
@@ -535,7 +535,7 @@ struct Verdict
     int32_t count;
     int32_t unknown, kind_mismatch, clamped, duplicate;
     bool malformed;
-    int32_t after;
+    int32_t past;
     int32_t decoded[3];
 };
 
@@ -551,7 +551,7 @@ static Verdict read_row( const RowWire & w )
     if ( row != NULL )
     {
         v.count = row->entries.size();
-        v.after = row->after;
+        v.past = row->past;
         int i = 0;
         for ( auto [ key, item ] : row->entries )
         {
@@ -587,7 +587,7 @@ static void test_reader()
     {
         const Verdict v = read_row( good_row() );
         CHECK_EQ( v.count, 3 );
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
         CHECK_EQ( v.unknown + v.kind_mismatch + v.clamped + v.duplicate + (int) v.malformed, 0 );
     }
     {
@@ -610,7 +610,7 @@ static void test_reader()
         const Verdict v = read_row( build_row( spec ) );
         CHECK( v.malformed );
         CHECK_EQ( v.count, 2 );
-        CHECK_EQ( v.after, 777 ); // the PARENT read on past the field's length
+        CHECK_EQ( v.past, 777 ); // the PARENT read on past the field's length
     }
     {
         // CONTROL: the duplicate rule is dropped, first wins or both kept. The
@@ -625,7 +625,7 @@ static void test_reader()
         CHECK_EQ( v.count, 2 );      // the map's count EXCLUDES the repeat
         CHECK_EQ( v.duplicate, 1 );
         CHECK_EQ( v.decoded[1], 0 ); // LAST WINS WHOLE
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
     }
     {
         // CONTROL: the reader CLAMPS a key instead of dropping its entry. The
@@ -639,7 +639,7 @@ static void test_reader()
         CHECK_EQ( v.clamped, 1 );     // one count per entry
         CHECK_EQ( v.decoded[0], 10 ); // `aa`
         CHECK_EQ( v.decoded[1], 12 ); // `cc`: the skipped entry neither reordered nor collided
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
     }
     {
         // CONTROL: an ELEMENT KIND that is not 13 is §4's ordinary array kind
@@ -650,7 +650,7 @@ static void test_reader()
         CHECK_EQ( v.count, 0 );
         CHECK_EQ( v.kind_mismatch, 1 );
         CHECK( !v.malformed );
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
     }
     {
         // An `N` past the int32 cap, in a row of a few dozen bytes: LoadMeasure
@@ -689,7 +689,7 @@ static void test_key_kind()
     CHECK_EQ( r.clamped, 0 );
     CHECK_EQ( r.duplicate, 0 );
     CHECK( !r.malformed );
-    CHECK_EQ( wide->after, 777 );        // the parent reads on
+    CHECK_EQ( wide->past, 777 );        // the parent reads on
     free( region );
 
     // CONTROL: the key-kind event is counted PER ENTRY instead of once for the
@@ -734,7 +734,7 @@ static void test_key_kind()
     CHECK( mixed_row != NULL );
     CHECK_EQ( mixed_row->entries.size(), 0 ); // a map with half its keys is not a map
     CHECK_EQ( r2.kind_mismatch, 1 );          // ONE, at the first entry that disagrees
-    CHECK_EQ( mixed_row->after, 555 ); // the parent reads on past the map's L
+    CHECK_EQ( mixed_row->past, 555 ); // the parent reads on past the map's L
     free( region2 );
 }
 
@@ -972,9 +972,9 @@ static void test_text()
     // range is kind_mismatch for that entry, dropped and never clamped.
     struct Row { const char * text; int32_t count; int32_t dup; int32_t clamp; int32_t mismatch; };
     const Row rows[] = {
-        { "{\"entries\":{},\"after\":5}", 0, 0, 0, 0 },
-        { "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{\"count\":2}},\"after\":5}", 1, 1, 0, 0 },
-        { "{\"entries\":{\"aaaaaaaaaaaa\":{\"count\":1}},\"after\":5}", 0, 0, 1, 0 },
+        { "{\"entries\":{},\"past\":5}", 0, 0, 0, 0 },
+        { "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{\"count\":2}},\"past\":5}", 1, 1, 0, 0 },
+        { "{\"entries\":{\"aaaaaaaaaaaa\":{\"count\":1}},\"past\":5}", 0, 0, 1, 0 },
     };
     for ( int i = 0; i < 3; i++ )
     {
@@ -985,7 +985,7 @@ static void test_text()
         CHECK_EQ( r.duplicate, rows[i].dup );
         CHECK_EQ( r.clamped, rows[i].clamp );
         CHECK_EQ( r.kind_mismatch, rows[i].mismatch );
-        CHECK_EQ( rb.GetRoot()->after, 5 );
+        CHECK_EQ( rb.GetRoot()->past, 5 );
     }
     {
         // the duplicate's value is the LAST one, whole
@@ -1064,7 +1064,7 @@ static void test_text()
         memcpy( (void *) second, first, sizeof( first ) );
         second[255] = 'c';
         char both[1024];
-        snprintf( both, sizeof( both ), "{\"names\":{\"%s\":{\"count\":1},\"%s\":{\"count\":2}},\"after\":5}",
+        snprintf( both, sizeof( both ), "{\"names\":{\"%s\":{\"count\":1},\"%s\":{\"count\":2}},\"past\":5}",
                   first, second );
         EdgeRowBuilder eb;
         TableReport r;
@@ -1080,7 +1080,7 @@ static void test_text()
                 failures++;
             }
         }
-        CHECK_EQ( eb.GetRoot()->after, 5 ); // and the parent read on
+        CHECK_EQ( eb.GetRoot()->past, 5 ); // and the parent read on
     }
     {
         // A uint64 KEY is read by §16.2's integer rule and by nothing else, and
@@ -1321,7 +1321,7 @@ static void test_depth()
     d->arm.type = ForceType::Squad;
     SquadReset( d->arm.squad );
     SquadRosterInsert( b.main, d->arm.squad.roster, (uint8_t) 7 )->count = 77;
-    d->after = 9;
+    d->past = 9;
 
     const int64_t measured = DepthMeasure( b );
     static uint8_t wire[1u << 16];
@@ -1358,7 +1358,7 @@ static void test_depth()
             const Item * armed = loaded->arm.squad.roster.Find( (uint8_t) 7 );
             CHECK( armed != NULL && armed->count == 77 );
         }
-        CHECK_EQ( loaded->after, 9 ); // and the parent read past all of them
+        CHECK_EQ( loaded->past, 9 ); // and the parent read past all of them
 
         // the region is EXACT: one byte short is refused, so the extent scan
         // counted every one of those four reaches and not one twice
@@ -1462,7 +1462,7 @@ static void test_text_values()
             entry->value_length = (int32_t) sizeof( payload[i] );
         }
     }
-    t->after = 9;
+    t->past = 9;
 
     // the builder's Find hands back the same entry an Insert did
     const TextNamesEntry * found = TextNamesFind( b.arena, t->names, "alpha" );
@@ -1508,7 +1508,7 @@ static void test_text_values()
         const TextBlobsEntry * high = loaded->blobs.Find( (int32_t) 2 );
         CHECK( high != NULL && high->value_length == 4 && high->value[0] == 0x00 && high->value[3] == 0xff );
 
-        CHECK_EQ( loaded->after, 9 ); // and the parent read on past all three
+        CHECK_EQ( loaded->past, 9 ); // and the parent read on past all three
 
         // the region's VARIABLE FORM is the builder's, byte for byte
         static uint8_t again[1u << 16];
@@ -1613,7 +1613,7 @@ static void test_array_values()
         if ( rows == NULL ) { return; }
         for ( int j = 0; j < 3; j++ ) { ( *rows )[j] = (int32_t) ( i * 10 + j ); }
     }
-    c->after = 7;
+    c->past = 7;
 
     const CellsRowsEntryValue * found = CellsRowsFind( b.arena, c->rows, "alpha" );
     CHECK( found != NULL && ( *found )[0] == 10 && ( *found )[2] == 12 );
@@ -1638,7 +1638,7 @@ static void test_array_values()
         CHECK( alpha != NULL && ( *alpha )[0] == 10 && ( *alpha )[1] == 11 && ( *alpha )[2] == 12 );
         const CellsRowsEntryValue * beta = loaded->rows.Find( "beta" );
         CHECK( beta != NULL && ( *beta )[0] == 0 && ( *beta )[2] == 2 );
-        CHECK_EQ( loaded->after, 7 ); // and the parent read on past the map
+        CHECK_EQ( loaded->past, 7 ); // and the parent read on past the map
         static uint8_t again[1u << 16];
         CHECK_EQ( CellsSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -1699,7 +1699,7 @@ static void test_counted_array_values()
         entry->value_count = i + 1;
         for ( int j = 0; j <= i; j++ ) { entry->value[j].count = (int32_t) ( keys[i] * 10 + j ); }
     }
-    r->after = 3;
+    r->past = 3;
 
     const int64_t measured = RunsMeasure( b );
     static uint8_t wire[1u << 16];
@@ -1722,7 +1722,7 @@ static void test_counted_array_values()
         CHECK( four != NULL && four->value[0].count == 40 && four->value[1].count == 41 );
         const RunsSpansEntry * nine = loaded->spans.Find( (uint16_t) 9 );
         CHECK( nine != NULL && nine->value_count == 1 && nine->value[0].count == 90 );
-        CHECK_EQ( loaded->after, 3 );
+        CHECK_EQ( loaded->past, 3 );
         static uint8_t again[1u << 16];
         CHECK_EQ( RunsSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -1785,7 +1785,7 @@ static void test_enum_extent_values()
         ( *seats )[Slot::Alpha] = (int32_t) ( i + 1 );
         ( *seats )[Slot::Beta] = (int32_t) ( i + 100 );
     }
-    s->after = 5;
+    s->past = 5;
 
     const int64_t measured = SlotsMeasure( b );
     static uint8_t wire[1u << 16];
@@ -1807,7 +1807,7 @@ static void test_enum_extent_values()
         CHECK( low != NULL && ( *low )[Slot::Alpha] == 2 && ( *low )[Slot::Beta] == 101 );
         const TableKeyed<int32_t, Slot> * high = loaded->seats.Find( (int32_t) 6 );
         CHECK( high != NULL && ( *high )[Slot::Alpha] == 1 && ( *high )[Slot::Beta] == 100 );
-        CHECK_EQ( loaded->after, 5 );
+        CHECK_EQ( loaded->past, 5 );
         static uint8_t again[1u << 16];
         CHECK_EQ( SlotsSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -1873,7 +1873,7 @@ static void test_unbounded_values()
             item->count = (int32_t) ( keys[i] * 10 + j );
         }
     }
-    s->after = 4;
+    s->past = 4;
 
     const int64_t measured = SpansMeasure( b );
     static uint8_t wire[1u << 16];
@@ -1911,7 +1911,7 @@ static void test_unbounded_values()
         {
             CHECK( eight->Elements()[0].count == 80 && eight->Elements()[1].count == 81 );
         }
-        CHECK_EQ( loaded->after, 4 );
+        CHECK_EQ( loaded->past, 4 );
         static uint8_t again[1u << 16];
         CHECK_EQ( SpansSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -1973,7 +1973,7 @@ static void test_blob_values()
         if ( slot == NULL ) { return; }
         CHECK( TableStringEmplace( b.main, *slot, texts[i], (int64_t) strlen( texts[i] ) ) != NULL );
     }
-    d->after = 6;
+    d->past = 6;
 
     const int64_t measured = DocsMeasure( b );
     static uint8_t wire[1u << 16];
@@ -1999,7 +1999,7 @@ static void test_blob_values()
         const TableStringView beta_text = TableStringViewOf( beta );
         CHECK( beta_text.length == 11 && memcmp( beta_text.data, "second page", 11 ) == 0 );
         CHECK( loaded->pages.Find( "gamma" ) == NULL );
-        CHECK_EQ( loaded->after, 6 );
+        CHECK_EQ( loaded->past, 6 );
         static uint8_t again[1u << 16];
         CHECK_EQ( DocsSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -2059,7 +2059,7 @@ static void test_byte_blob_values()
         if ( bytes == NULL ) { return; }
         memcpy( (void *) bytes, payload[i], 4 );
     }
-    c->after = 8;
+    c->past = 8;
 
     const int64_t chunk_measured = ChunksMeasure( cb );
     static uint8_t chunk_wire[1u << 16];
@@ -2081,7 +2081,7 @@ static void test_byte_blob_values()
         CHECK( low.length == 4 && low.data != NULL && low.data[0] == 0xde && low.data[3] == 0xef );
         const TableBytesView high = TableBytesViewOf( chunks->blobs.Find( (int32_t) 2 ) );
         CHECK( high.length == 4 && high.data != NULL && high.data[0] == 0x00 && high.data[3] == 0xff );
-        CHECK_EQ( chunks->after, 8 );
+        CHECK_EQ( chunks->past, 8 );
         static uint8_t chunk_again[1u << 16];
         CHECK_EQ( ChunksSave( chunks, chunk_again, sizeof( chunk_again ) ), cn );
         CHECK( memcmp( chunk_again, chunk_wire, (size_t) cn ) == 0 );
@@ -2139,7 +2139,7 @@ static void test_pointer_array_values()
         // key 4 names the same node twice; key 9 leaves the second slot null
         if ( keys[i] == 4 ) { ( *slots )[1] = ( *slots )[0]; }
     }
-    p->after = 5;
+    p->past = 5;
 
     PairsSlotsEntryValue * found = PairsSlotsFind( b.arena, p->slots, 4u );
     CHECK( found != NULL );
@@ -2182,7 +2182,7 @@ static void test_pointer_array_values()
             CHECK( only != NULL && only->count == 90 );
             CHECK( ItemAt( ( *nine )[1] ) == NULL ); // the null slot stayed null
         }
-        CHECK_EQ( loaded->after, 5 ); // and the parent read on past the map
+        CHECK_EQ( loaded->past, 5 ); // and the parent read on past the map
         static uint8_t again[1u << 16];
         CHECK_EQ( PairsSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -2253,7 +2253,7 @@ static void test_counted_pointer_array_values()
             item->count = (int32_t) ( keys[i] * 10 + j );
         }
     }
-    c->after = 2;
+    c->past = 2;
 
     const int64_t measured = CrewsMeasure( b );
     static uint8_t wire[1u << 16];
@@ -2290,7 +2290,7 @@ static void test_counted_pointer_array_values()
             const Item * only = ItemAt( nine->value[0] );
             CHECK( only != NULL && only->count == 90 );
         }
-        CHECK_EQ( loaded->after, 2 );
+        CHECK_EQ( loaded->past, 2 );
         static uint8_t again[1u << 16];
         CHECK_EQ( CrewsSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -2368,7 +2368,7 @@ static void test_unbounded_pointer_array_values()
             CHECK( TrailsStepsEntryValueAdd( b.main, *steps ) != NULL );
         }
     }
-    t->after = 1;
+    t->past = 1;
 
     const int64_t measured = TrailsMeasure( b );
     static uint8_t wire[1u << 16];
@@ -2407,7 +2407,7 @@ static void test_unbounded_pointer_array_values()
             const Item * only = ( *nine )[0];
             CHECK( only != NULL && only->count == 90 );
         }
-        CHECK_EQ( loaded->after, 1 );
+        CHECK_EQ( loaded->past, 1 );
         static uint8_t again[1u << 16];
         CHECK_EQ( TrailsSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );

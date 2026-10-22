@@ -491,13 +491,13 @@ func TestARangedOffsetAboveTheSendersMax(t *testing.T) {
 // comes after the array. Red if a leg lands on the wrong bit, which the
 // following field's value catches, or counts more than one `clamped`.
 func TestAnOverLongArrayOfNonFixedElements(t *testing.T) {
-	writer := tempUnit(t, "package rowdemo\n\ntype Name\n{\n    s string(32)\n}\n\ntable Roster\n{\n    names [..16]Name\n    after uint32 = 0\n}\n")
-	reader := tempUnit(t, "package rowdemo\n\ntype Name\n{\n    s string(32)\n}\n\ntable Roster\n{\n    names [..4]Name\n    after uint32 = 0\n}\n")
+	writer := tempUnit(t, "package rowdemo\n\ntype Name\n{\n    s string(32)\n}\n\ntable Roster\n{\n    names [..16]Name\n    past uint32 = 0\n}\n")
+	reader := tempUnit(t, "package rowdemo\n\ntype Name\n{\n    s string(32)\n}\n\ntable Roster\n{\n    names [..4]Name\n    past uint32 = 0\n}\n")
 	wm, rm := tabletext.NewModel(writer), tabletext.NewModel(reader)
 	wv := vocabularyOf(t, writer)
 	inst := wm.New(wm.Lookup("Roster"))
 	var read tabletext.Report
-	if !wm.Read(inst, []byte(`{"names":[{"s":"a"},{"s":"bb"},{"s":"ccc"},{"s":"dddd"},{"s":"eeeee"},{"s":"ffffff"},{"s":"g"},{"s":"hh"},{"s":"iii"}],"after":4242}`), &read) || !read.Silent() {
+	if !wm.Read(inst, []byte(`{"names":[{"s":"a"},{"s":"bb"},{"s":"ccc"},{"s":"dddd"},{"s":"eeeee"},{"s":"ffffff"},{"s":"g"},{"s":"hh"},{"s":"iii"}],"past":4242}`), &read) || !read.Silent() {
 		t.Fatalf("the writer's text did not read: %+v", read)
 	}
 	message, err := tablewire.EncodeMessage(wm, inst)
@@ -518,8 +518,8 @@ func TestAnOverLongArrayOfNonFixedElements(t *testing.T) {
 	if got := string(instStr(t, names.Elems[0].Tab, "s")); got != "a" {
 		t.Errorf("element zero reads %q: a walked surplus element landed on it", got)
 	}
-	if instU64(t, back, "after") != 4242 {
-		t.Errorf("the field after the array reads %d, not 4242: the walk landed on the wrong bit", instU64(t, back, "after"))
+	if instU64(t, back, "past") != 4242 {
+		t.Errorf("the field after the array reads %d, not 4242: the walk landed on the wrong bit", instU64(t, back, "past"))
 	}
 }
 

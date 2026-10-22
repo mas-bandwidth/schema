@@ -17,7 +17,7 @@ func TestIssue715Base64ReaderDefaults(t *testing.T) {
 fixed table Ship
 {
     tag bytes(4) = "ab"
-    after int32
+    past int32
 }
 `
 	u := unitFromSource(t, src)
@@ -43,21 +43,21 @@ using namespace p;
 int main(void) {
     // 1. Malformed Base64 body: must report kind_mismatch == 1 and preserve declared default "ab" (len 2)
     {
-        const char * text = "{\"tag\":\"not_valid_base64!!!\",\"after\":42}";
+        const char * text = "{\"tag\":\"not_valid_base64!!!\",\"past\":42}";
         Ship s;
         TableReport r;
         bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
         if ( !ok ) { fprintf(stderr, "case 1: FromJson failed\n"); return 1; }
         if ( r.kind_mismatch != 1 ) { fprintf(stderr, "case 1: kind_mismatch=%d, want 1\n", r.kind_mismatch); return 2; }
         if ( r.malformed ) { fprintf(stderr, "case 1: malformed is true\n"); return 3; }
-        if ( s.after != 42 ) { fprintf(stderr, "case 1: after=%d, want 42\n", s.after); return 4; }
+        if ( s.past != 42 ) { fprintf(stderr, "case 1: after=%d, want 42\n", s.past); return 4; }
         if ( s.tag_length != 2 ) { fprintf(stderr, "case 1: tag_length=%d, want 2 (default wiped!)\n", s.tag_length); return 5; }
         if ( s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 1: tag content corrupted\n"); return 6; }
     }
 
     // 2. Mid-string '=' padding ("YQ=B"): must report kind_mismatch == 1 and preserve default
     {
-        const char * text = "{\"tag\":\"YQ=B\",\"after\":42}";
+        const char * text = "{\"tag\":\"YQ=B\",\"past\":42}";
         Ship s;
         TableReport r;
         bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
@@ -68,7 +68,7 @@ int main(void) {
 
     // 3. Lone character ("Q", 6 bits, cannot form a byte): must report kind_mismatch == 1
     {
-        const char * text = "{\"tag\":\"Q\",\"after\":42}";
+        const char * text = "{\"tag\":\"Q\",\"past\":42}";
         Ship s;
         TableReport r;
         bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
@@ -79,22 +79,22 @@ int main(void) {
 
     // 4. Valid unpadded Base64 ("YWI" -> "ab")
     {
-        const char * text = "{\"tag\":\"YWI\",\"after\":42}";
+        const char * text = "{\"tag\":\"YWI\",\"past\":42}";
         Ship s;
         TableReport r;
         bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
         if ( !ok || r.kind_mismatch != 0 || r.malformed ) { fprintf(stderr, "case 4 failed\n"); return 13; }
-        if ( s.after != 42 || s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 4 data mismatch\n"); return 14; }
+        if ( s.past != 42 || s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 4 data mismatch\n"); return 14; }
     }
 
     // 5. Valid padded Base64 ("YWI=" -> "ab")
     {
-        const char * text = "{\"tag\":\"YWI=\",\"after\":42}";
+        const char * text = "{\"tag\":\"YWI=\",\"past\":42}";
         Ship s;
         TableReport r;
         bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
         if ( !ok || r.kind_mismatch != 0 || r.malformed ) { fprintf(stderr, "case 5 failed\n"); return 15; }
-        if ( s.after != 42 || s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 5 data mismatch\n"); return 16; }
+        if ( s.past != 42 || s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 5 data mismatch\n"); return 16; }
     }
 
     return 0;
@@ -121,21 +121,21 @@ int main(void) {
 int main(void) {
     // 1. Malformed Base64 body: must report kind_mismatch == 1 and preserve declared default "ab" (len 2)
     {
-        const char * text = "{\"tag\":\"not_valid_base64!!!\",\"after\":42}";
+        const char * text = "{\"tag\":\"not_valid_base64!!!\",\"past\":42}";
         Ship s;
         TableReport r = {0};
         int ok = ship_from_json( &s, text, (int64_t) strlen(text), &r );
         if ( !ok ) { fprintf(stderr, "C case 1: from_json failed\n"); return 1; }
         if ( r.kind_mismatch != 1 ) { fprintf(stderr, "C case 1: kind_mismatch=%d, want 1\n", r.kind_mismatch); return 2; }
         if ( r.malformed ) { fprintf(stderr, "C case 1: malformed is true\n"); return 3; }
-        if ( s.after != 42 ) { fprintf(stderr, "C case 1: after=%d, want 42\n", s.after); return 4; }
+        if ( s.past != 42 ) { fprintf(stderr, "C case 1: after=%d, want 42\n", s.past); return 4; }
         if ( s.tag_length != 2 ) { fprintf(stderr, "C case 1: tag_length=%d, want 2 (default wiped!)\n", s.tag_length); return 5; }
         if ( s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "C case 1: tag content corrupted\n"); return 6; }
     }
 
     // 2. Mid-string '=' padding ("YQ=B"): must report kind_mismatch == 1 and preserve default
     {
-        const char * text = "{\"tag\":\"YQ=B\",\"after\":42}";
+        const char * text = "{\"tag\":\"YQ=B\",\"past\":42}";
         Ship s;
         TableReport r = {0};
         int ok = ship_from_json( &s, text, (int64_t) strlen(text), &r );
@@ -175,7 +175,7 @@ import (
 func TestIssue715(t *testing.T) {
 	// 1. Malformed Base64 body: must report kind_mismatch == 1 and preserve declared default "ab" (len 2)
 	{
-		text := []byte("{\"tag\":\"not_valid_base64!!!\",\"after\":42}")
+		text := []byte("{\"tag\":\"not_valid_base64!!!\",\"past\":42}")
 		var s Ship
 		ShipReset(&s)
 		var r TableReport
@@ -183,14 +183,14 @@ func TestIssue715(t *testing.T) {
 		if !ok { t.Fatal("Go case 1: FromJson failed") }
 		if r.KindMismatch != 1 { t.Fatalf("Go case 1: kind_mismatch=%d, want 1", r.KindMismatch) }
 		if r.Malformed { t.Fatal("Go case 1: malformed is true") }
-		if s.After != 42 { t.Fatalf("Go case 1: after=%d, want 42", s.After) }
+		if s.Past != 42 { t.Fatalf("Go case 1: after=%d, want 42", s.Past) }
 		if s.TagLength != 2 { t.Fatalf("Go case 1: tag_length=%d, want 2 (default wiped!)", s.TagLength) }
 		if s.Tag[0] != 'a' || s.Tag[1] != 'b' { t.Fatal("Go case 1: tag content corrupted") }
 	}
 
 	// 2. Mid-string '=' padding ("YQ=B"): must report kind_mismatch == 1 and preserve default
 	{
-		text := []byte("{\"tag\":\"YQ=B\",\"after\":42}")
+		text := []byte("{\"tag\":\"YQ=B\",\"past\":42}")
 		var s Ship
 		ShipReset(&s)
 		var r TableReport
@@ -247,21 +247,21 @@ class Program {
     static int Main() {
         // 1. Malformed Base64 body: must report kind_mismatch == 1 and preserve declared default "ab" (len 2)
         {
-            byte[] text = Encoding.UTF8.GetBytes("{\"tag\":\"not_valid_base64!!!\",\"after\":42}");
+            byte[] text = Encoding.UTF8.GetBytes("{\"tag\":\"not_valid_base64!!!\",\"past\":42}");
             Ship s = new Ship();
             TableReport r = new TableReport();
             bool ok = Schema.ShipFromJson(s, text, r);
             if (!ok) { Console.Error.WriteLine("CS case 1: FromJson failed"); return 1; }
             if (r.KindMismatch != 1) { Console.Error.WriteLine($"CS case 1: kind_mismatch={r.KindMismatch}, want 1"); return 2; }
             if (r.Malformed) { Console.Error.WriteLine("CS case 1: malformed is true"); return 3; }
-            if (s.After != 42) { Console.Error.WriteLine($"CS case 1: after={s.After}, want 42"); return 4; }
+            if (s.Past != 42) { Console.Error.WriteLine($"CS case 1: after={s.Past}, want 42"); return 4; }
             if (s.TagLength != 2) { Console.Error.WriteLine($"CS case 1: tag_length={s.TagLength}, want 2 (default wiped!)"); return 5; }
             if (s.Tag[0] != (byte)'a' || s.Tag[1] != (byte)'b') { Console.Error.WriteLine("CS case 1: tag content corrupted"); return 6; }
         }
 
         // 2. Mid-string '=' padding ("YQ=B"): must report kind_mismatch == 1 and preserve default
         {
-            byte[] text = Encoding.UTF8.GetBytes("{\"tag\":\"YQ=B\",\"after\":42}");
+            byte[] text = Encoding.UTF8.GetBytes("{\"tag\":\"YQ=B\",\"past\":42}");
             Ship s = new Ship();
             TableReport r = new TableReport();
             bool ok = Schema.ShipFromJson(s, text, r);
@@ -285,7 +285,7 @@ class Program {
 	})
 
 	t.Run("emitted_text", func(t *testing.T) {
-		uNoDefault := unitFromSource(t, "package p\ntable Ship { tag bytes(4)\n after int32 }\n")
+		uNoDefault := unitFromSource(t, "package p\ntable Ship { tag bytes(4)\n past int32 }\n")
 		// Rust, Dart, JavaScript, Elixir and Java emit no text form: their previous-form
 		// table wire was removed; only the block and cook readers remain
 		// (#518, #514, #516, #515, #517).

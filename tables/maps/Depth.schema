@@ -26,5 +26,5 @@ table Depth
     many  [..3]Squad     // inside an ARRAY of them
     keyed [Slot]Squad    // inside an ENUM-KEYED array of them
     arm   Force          // and inside a UNION ARM (§2.6)
-    after int32          // and a field past all of them, so a stop is visible
+    past int32 | was = "after"  // and a field past all of them, so a stop is visible
 }

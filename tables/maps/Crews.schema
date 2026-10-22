@@ -10,5 +10,5 @@ package mapdemo
 table Crews
 {
     members map[uint32][..2]*Item // [..N]*T: pointer slots and the used count beside them
-    after   int32
+    past   int32 | was = "after"
 }

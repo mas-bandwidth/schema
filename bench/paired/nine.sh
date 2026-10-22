@@ -2,7 +2,7 @@
 # THE NINE-LANGUAGE TABLE, from one command. Run from the repository root.
 #
 #   bench/paired/nine.sh [--lane N] [--rounds 1|2|3] [--out DIR] [--note TEXT]
-#   bench/paired/nine.sh --read-arm --receipt TEXT [--out DIR]
+#   bench/paired/nine.sh --read-arm --receipt TEXT [--leg cpp|c] [--pin CORE] [--out DIR]
 #
 # It builds the driver and every leg, then runs `-mode table`, which asks the
 # TREE which table runners it carries (bench/tables/<lang>/), measures exactly
@@ -37,6 +37,12 @@
 # for that window and is required. An INVALID window prints its numbers with
 # no verdict and the script exits non-zero.
 #
+# --leg c is the C leg's board: the C runner's --read-arm, bracketed by the C
+# packet control leg, and with the lineage corpus on the tree
+# (bench/tables/c/lineage/) its PLAN lane too, all three reads out of the one
+# plan build. --pin CORE runs the measuring pass under `taskset -c CORE` and
+# records the core on the board.
+#
 # THE RESULT IS NOT CERTIFIED. It is the fast diagnostic's numbers in the
 # published table's shape: reduced iteration counts, no bracketing drift
 # controls, no quiet-window seal. The certified sitting stays `-mode run` on
@@ -49,6 +55,8 @@ OUT=
 NOTE=
 READ_ARM=
 RECEIPT=
+LEG=cpp
+PIN_CORE=
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -58,8 +66,10 @@ while [ $# -gt 0 ]; do
     --note)   NOTE="$2"; shift 2 ;;
     --read-arm) READ_ARM=1; shift ;;
     --receipt) RECEIPT="$2"; shift 2 ;;
+    --leg)    LEG="$2"; shift 2 ;;
+    --pin)    PIN_CORE="$2"; shift 2 ;;
     -h|--help)
-        sed -n '2,43p' "$0" | cut -c 3-
+        sed -n '2,49p' "$0" | cut -c 3-
         exit 0 ;;
     *)
         echo "nine.sh: unknown argument $1" >&2
@@ -78,17 +88,27 @@ done
 # one on the board; anything else refuses here as it does for the table.
 if [ -n "$READ_ARM" ]; then
     [ -n "$RECEIPT" ] || { echo "nine.sh: --read-arm needs --receipt (the operator's READY/START record)" >&2; exit 2; }
-    [ -z "$LANE" ] || { echo "nine.sh: --read-arm does not take --lane" >&2; exit 2; }
+    [ -z "$LANE" ] || { echo "nine.sh: --read-arm does not take --lane (use --pin)" >&2; exit 2; }
     if [ -n "$(git status --porcelain 2>/dev/null | grep -v '^ M generated/')" ]; then
         echo "nine.sh: the tree is dirty outside generated/, and the read arm measures a named checkpoint:" >&2
         git status --porcelain >&2
         exit 2
     fi
+    case "$LEG" in
+    cpp|c) ;;
+    *) echo "nine.sh: --leg takes cpp or c (the legs whose runner has a read arm)" >&2; exit 2 ;;
+    esac
     : "${OUT:=build/paired-read/$(date -u +%Y%m%dT%H%M%SZ)}"
     go build -o bin/schema-paired ./bench/paired
-    bin/schema-paired -mode build -langs cpp
-    bin/schema-paired -mode gate -reuse-build -langs cpp
-    exec bin/schema-paired -mode plan-read -langs cpp -quiet-window "$RECEIPT" -out "$OUT"
+    bin/schema-paired -mode build -langs "$LEG"
+    bin/schema-paired -mode gate -reuse-build -langs "$LEG"
+    if [ -n "$PIN_CORE" ]; then
+        case "$PIN_CORE" in
+        *[!0-9]*) echo "nine.sh: --pin takes a core number" >&2; exit 2 ;;
+        esac
+        exec taskset -c "$PIN_CORE" bin/schema-paired -mode plan-read -langs "$LEG" -quiet-window "$RECEIPT" -lane "$PIN_CORE" -out "$OUT"
+    fi
+    exec bin/schema-paired -mode plan-read -langs "$LEG" -quiet-window "$RECEIPT" -out "$OUT"
 fi
 
 if [ -n "$(git status --porcelain 2>/dev/null)" ]; then

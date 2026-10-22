@@ -120,8 +120,8 @@ items []int16 }
 table Item { samples []uint8 }
 union Action { number uint32
 blob *bytes
-node *Node }
-table Root { node *Node
+vertex *Node }
+table Root { vertex *Node
 aliases [..3]*Node
 blob *bytes
 title *string
@@ -130,7 +130,7 @@ zeroes []int32 | min = 0, max = 0
 entries map[int32]Item
 action Action }
 `)
-	text := `{"node":{"&node":1,"n":7,"items":[2,3]},"aliases":[{"&node":1},null],"blob":"AAEC","title":"hi","numbers":[1,2],"zeroes":[0,0],"entries":{"7":{"samples":[4,5]},"2":{"samples":[9]}},"action":{"node":{"n":11}}}`
+	text := `{"vertex":{"&node":1,"n":7,"items":[2,3]},"aliases":[{"&node":1},null],"blob":"AAEC","title":"hi","numbers":[1,2],"zeroes":[0,0],"entries":{"7":{"samples":[4,5]},"2":{"samples":[9]}},"action":{"vertex":{"n":11}}}`
 	m := tabletext.NewModel(u)
 	v := m.New(m.Lookup("Root"))
 	var report tabletext.Report
@@ -160,7 +160,7 @@ int main(void){
  storage=root_load_measure_messages_ex(&vocabulary,expected,sizeof(expected),&attribution,&reason);CHECK(storage>attribution&&reason==99);
  region=(uint8_t *)malloc((size_t)storage+8);CHECK(region!=NULL);memset(region,0xa5,(size_t)storage+8);
  count=2;CHECK(root_load_messages(loaded,&count,region,storage,&vocabulary,expected,sizeof(expected),&report));CHECK(count==2&&!report.malformed&&!report.refused&&!report.unknown&&!report.clamped&&!report.kind_mismatch);
- CHECK(region[storage]==0xa5);CHECK(node_at(NULL,&loaded[0]->node)==node_at(NULL,&loaded[0]->aliases[0]));
+ CHECK(region[storage]==0xa5);CHECK(node_at(NULL,&loaded[0]->vertex)==node_at(NULL,&loaded[0]->aliases[0]));
  CHECK(root_save_messages(loaded,2,buffer,n,&report)==n);CHECK(!memcmp(buffer,expected,sizeof(expected)));
  count=1;CHECK(!root_load_messages(loaded,&count,region,storage,&vocabulary,expected,sizeof(expected),&report));CHECK(count==2&&report.reason==SCHEMA_TABLE_BATCH_TOO_LARGE);
  root_builder_shutdown(&a);root_builder_shutdown(&b);free(region);return 0;
@@ -258,7 +258,7 @@ func TestCTableMessageZeroWidthListCapacity(t *testing.T) {
 func TestCTableMessagePartialRoot(t *testing.T) {
 	u := unitFromSource(t, `package probe
 fixed table Node { x uint32 }
-table Root { node *Node
+table Root { vertex *Node
 value uint64 }
 `)
 	slot := ir.TableVocabularySlots(u)[ir.TableFieldEntry(u.Tables["Root"].Fields[1]).Key()]

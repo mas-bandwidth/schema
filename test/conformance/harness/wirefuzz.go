@@ -102,6 +102,27 @@ const nodeDirEntryBytes = int64(16)
 // type id and its length. It bounds how many records a wire can carry.
 const nodeRecordHeaderBytes = int64(2)
 
+// amplificationCeiling is the pinned ceiling on the region a table read may be
+// made to materialize from a wire of the given size (schema#466,
+// docs/SPEC-TABLES.md §6.5, docs/SECURITY.md). A hostile record costs its type
+// id reference and its length — nodeRecordHeaderBytes, two wire bytes — and
+// commands at most the largest record this root can place plus one directory
+// entry, so a wire can command no more than the root, one record per two
+// bytes, and the largest element a list or map under the root can add. The
+// row this constant pins is the amplification ratio (region bytes over wire
+// bytes): a mutant above the ceiling is a divergence even before the leg and
+// the oracle are compared, and it is the same number the oracle's exact
+// answer takes as its upper form.
+func (r *wireRoot) amplificationCeiling(wireBytes int) int64 {
+	records := int64(wireBytes)/nodeRecordHeaderBytes + 1
+	ceiling := r.rootStorage + records*(r.maxStorage+nodeDirEntryBytes)
+	ceiling += int64(wireBytes) * (r.maxElement + 16)
+	if r.blobBytes || r.blobString {
+		ceiling += int64(wireBytes) + records*16
+	}
+	return ceiling
+}
+
 func (r *wireRoot) roundStorage(n int64) int64 { return (n + r.align - 1) & -r.align }
 
 // THE RETENTION ARM'S TWO CAPACITIES (docs/SPEC-TABLES.md §6.6), and they are
@@ -189,6 +210,12 @@ type legReply struct {
 	measure  int64
 	saved    []byte
 	saveFail bool
+	// blobShared marks a save refused BY NAME as blob_shared (docs/SPEC-
+	// TABLES.md §2.5): a leg answers the saved length -2 for it. Every writer
+	// of the standard refuses a blob two slots name; the C++ reference still
+	// writes one, so a differential against it reads this refusal as the
+	// standard's answer and not as a divergence.
+	blobShared bool
 	// RETENTION'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6). They ride beside
 	// Counts rather than inside it, because Counts is the MANIFEST's own
 	// report spelling, which every port's `report` surface prints and which
@@ -455,6 +482,7 @@ func (l *wireLeg) receive() (legReply, error) {
 	n := int64(binary.LittleEndian.Uint64(head[39:]))
 	if n < 0 {
 		rep.saveFail = true
+		rep.blobShared = n == -2
 		return rep, nil
 	}
 	rep.saved = make([]byte, n)
@@ -484,7 +512,7 @@ func (l *wireLeg) kill() {
 
 // wireVerdict compares one leg reply with the oracle's answer and names the
 // first disagreement, or "" when there is none.
-func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
+func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int) string {
 	if root.builder {
 		if reply.loaded == ans.builderStopped {
 			return "builder completion differs from the oracle"
@@ -549,6 +577,15 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
 		}
 		if reply.measure > ans.bytes {
 			return fmt.Sprintf("LoadMeasure asks for %d region bytes; the framing can command at most %d", reply.measure, ans.bytes)
+		}
+		// THE AMPLIFICATION ROW (schema#466, docs/SPEC-TABLES.md §6.5): the
+		// pinned maximum region-over-wire ratio, independent of the oracle's
+		// per-mutant answer. A hostile record is two wire bytes and commands
+		// at most the largest record the root can place, so a mutant above
+		// this ceiling is a divergence on the bound the page states.
+		if wireBytes > 0 && reply.measure > root.amplificationCeiling(wireBytes) {
+			return fmt.Sprintf("LoadMeasure asks for %d region bytes from %d wire bytes; the amplification ceiling is %d",
+				reply.measure, wireBytes, root.amplificationCeiling(wireBytes))
 		}
 	}
 	return ""
@@ -796,7 +833,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 			leg.kill()
 			return wireFailure(opts, mut, total, err.Error(), "")
 		}
-		if verdict := wireVerdict(root, reply, ans); verdict != "" {
+		if verdict := wireVerdict(root, reply, ans, len(mut.data)); verdict != "" {
 			leg.kill()
 			// THE TWO ANSWERS BESIDE THE MUTANT: a divergence in the decoded
 			// VALUE is a diff, and a diff needs both sides on disk

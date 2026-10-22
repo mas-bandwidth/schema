@@ -1,0 +1,41 @@
+# Re-applies the caa allowlist to the schema main tip.
+#
+# contributor-assistant/github-action is pull-request-only (see cla.yml), so it
+# cannot be the thing that watches main. This job is that watch. It reads the
+# allowlist from cla.yml and decides the way the action does
+# (src/graphql.ts extractUserFromCommit, src/checkAllowList.ts): author login,
+# else committer login, else the git author name; exact pattern, or a
+# lodash-escaped glob with an unanchored test. GitHub Actions' own user id
+# 41898282 is dropped, as the action drops it.
+#
+# Red on drift: main's tip is not covered, or one of the unlinked house names
+# the open pulls use has fallen off the list. Those names are not on the tip
+# (the tip is a linked login), so a tip-only check would stay green through
+# the failure mode in #1799. Both are checked.
+#
+# No secrets. The caa job and its org token stay in cla.yml, on
+# pull_request_target only. This file does not define a job named caa, so a
+# run here cannot satisfy or replace that required check.
+
+name: CAA self-test
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, fixed-table-form]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  caa-self-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: CAA check on schema main tip
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/caa-self-test.py
