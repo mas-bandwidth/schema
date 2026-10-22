@@ -67,7 +67,7 @@ func TestWasRowsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
-		if target == "cpp" || target == "c" || target == "cs" || target == "go" || target == "dart" {
+		if target == "cpp" || target == "c" || target == "cs" || target == "go" || target == "dart" || target == "js" || target == "rust" {
 			if err != nil {
 				t.Fatalf("%s carries the was rows and refused: %v", target, err)
 			}

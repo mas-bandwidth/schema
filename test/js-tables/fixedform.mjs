@@ -202,11 +202,14 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     ["entities count", AT_ENTITIES, 9999, 8, (v) => v.EntitiesCount],
     ["entities count, negative", AT_ENTITIES, -1, 0, (v) => v.EntitiesCount],
     ["stats count", AT_STATS, 0x7fffffff, 80, (v) => v.StatsCount],
-    ["player_name length", AT_NAME, 9999, 15, (v) => v.PlayerNameLength],
+    ["player_name length", AT_NAME, 9999, 15, (v) => v.PlayerNameLength, (bytes) => {
+      bytes.fill(0x41, BODY + AT_NAME + 4, BODY + AT_NAME + 4 + 15);
+    }],
     ["payload length", AT_PAYLOAD, 9999, 16, (v) => v.PayloadLength],
   ];
-  for (const [what, at, plant, bound, get] of forged) {
+  for (const [what, at, plant, bound, get, prep] of forged) {
     const bytes = oneRecord();
+    if (prep) { prep(bytes); }
     new DataView(bytes.buffer).setInt32(BODY + at, plant, true);
     // A text field clamped to its bound reads that many UNITS as content, and a zero
     // byte there is damage (the runtime refuses text_ill_formed): fill the bound so the
@@ -219,6 +222,21 @@ function forgedCounts(check, bench, fixed, corpusDir) {
       `IDENTITY CLAMP: a forged ${what} of ${plant} reaches the consumer as this reader's bound ${bound} (got ${get(r.v)})`);
     check(r.report.clamped === 1,
       `IDENTITY CLAMP: a forged ${what} moves clamped exactly once (got ${r.report.clamped})`);
+  }
+
+  // §4.5 fix 11 and §5.3: a forged player_name length over the writer's zero
+  // bytes clamps to 15 and then fails the content check over those 15 used
+  // units; REFUSE is total, so no counter moves and PlayerNameLength stays 0.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setInt32(BODY + AT_NAME, 9999, true);
+    const r = read(bytes);
+    check(r.n === -1 && r.report.refused === bench.TableFixedRefusal.TextIllFormed && !r.report.malformed,
+      `IDENTITY REFUSE: a forged player_name length over the writer's zero bytes refuses with TextIllFormed (n=${r.n} refused=${r.report.refused} malformed=${r.report.malformed})`);
+    check(r.report.clamped === 0 && r.report.widened === 0,
+      `IDENTITY REFUSE: REFUSE is total — clamped and widened stay 0 on player_name length over the writer's zero bytes (clamped=${r.report.clamped} widened=${r.report.widened})`);
+    check(r.v.PlayerNameLength === 0,
+      `IDENTITY REFUSE: REFUSE is total — destination PlayerNameLength stays 0 on player_name length over the writer's zero bytes (got ${r.v.PlayerNameLength})`);
   }
 
   // A COUNT ALREADY IN BOUNDS IS NOT TOUCHED, and the counter does not move
@@ -455,7 +473,7 @@ async function pairedCorpus(check, bench, fixed, corpusDir) {
   // the hash the same number and the record positional against the same layout.
   let blockSame = true;
   for (let i = 0; i < blockBytes; i++) {
-    if (corpus[LAYOUT_AT + i] !== fixed.FixedTableFixedLayout[i]) { blockSame = false; break; }
+    if (corpus[LAYOUT_AT + i] !== fixed.FixedTableFixedLayoutCopy()[i]) { blockSame = false; break; }
   }
   check(blockSame, "fixed form: the layout is byte-identical to the C++ reference's");
 
@@ -580,8 +598,8 @@ function f64bits(x) { CONV.setFloat64(0, x, true); return CONV.getBigUint64(0, t
 // TableFixedRun, the same loop identity and compiled both take.
 // ---------------------------------------------------------------------------
 function guardComparedAtArgW(check, home) {
-  check(home.TableFixedLanes === 9,
-    `ArgW: a plan entry is nine int32 lanes, got ${home.TableFixedLanes}`);
+  check(home.TableFixedLanes === 11,
+    `ArgW: a plan entry is eleven int32 lanes, got ${home.TableFixedLanes}`);
 
   const run = (lanes, srcBytes) => {
     const src = new Uint8Array(srcBytes);
@@ -590,20 +608,21 @@ function guardComparedAtArgW(check, home) {
     const dstView = new DataView(dst.buffer);
     const r = new home.TableFixedReport();
     // op=COPY src=2 dst=0 size=1 aux=0 guard=0 arg=1 meta=0 argw=lanes[8]
+    // guards=0 guardCount=0: one tag, so the guard lane is the whole chain (§4.1)
     home.TableFixedRun(new Int32Array(lanes), 1, src, srcView, 0, dst, dstView, null, r);
     return dst[0];
   };
   // COPY of the payload at byte 2, guarded at 0, answering to arm 1, width 2
-  const twoByte = [0, 2, 0, 1, 0, 0, 1, 0, 2];
+  const twoByte = [0, 2, 0, 1, 0, 0, 1, 0, 2, 0, 0];
   check(run(twoByte, [0x01, 0x01, 0xAA]) === 0,
     "ArgW: a two-byte tag 0x0101 whose low byte is 1 does NOT run arm 1");
   check(run(twoByte, [0x01, 0x00, 0xAA]) === 0xAA,
     "ArgW: a two-byte tag 0x0001 DOES run arm 1");
   // ArgW 0 means 1, as C++: only the first byte is the tag
-  const zeroMeansOne = [0, 2, 0, 1, 0, 0, 1, 0, 0];
+  const zeroMeansOne = [0, 2, 0, 1, 0, 0, 1, 0, 0, 0, 0];
   check(run(zeroMeansOne, [0x01, 0x01, 0xAA]) === 0xAA,
     "ArgW: zero is read as one, so a 0x0101 prefix matches arm 1 at width 0");
-  const fourByte = [0, 4, 0, 1, 0, 0, 1, 0, 4];
+  const fourByte = [0, 4, 0, 1, 0, 0, 1, 0, 4, 0, 0];
   check(run(fourByte, [0x01, 0x01, 0x00, 0x00, 0xBB]) === 0,
     "ArgW: a four-byte tag 0x00000101 whose low byte is 1 does NOT run arm 1");
   check(run(fourByte, [0x01, 0x00, 0x00, 0x00, 0xBB]) === 0xBB,
@@ -635,10 +654,10 @@ function guardComparedAtArgW(check, home) {
 // THE DESTINATION ROWS ARE NOT THE ASSERTION. `dst` carries the reader's landing
 // offsets, which place bytes and never choose a half; the partition is a fact of
 // the GUARD lane and `split` alone, so the rows are zero here. A plan entry is
-// nine int32 lanes (TableFixedLanes) and the guard is lane 5; TableFixedNoGuard
-// is -1 (Tblut1Table.js, `TableFixedLanes`/`TableFixedNoGuard`).
+// eleven int32 lanes (TableFixedLanes: nine, and the guard chain's
+// offset+count, §4.1) and the guard is lane 5; TableFixedNoGuard is -1 (Tblut1Table.js, `TableFixedLanes`/`TableFixedNoGuard`).
 function partitionIsHeld(check, home, layout, bodyBytes, who) {
-  const LANES = 9, GUARD = 5, OP = 0, SRC = 1, DST = 2, SIZE = 3, ARG = 6, ARGW = 8;
+  const LANES = 11, GUARD = 5, OP = 0, SRC = 1, DST = 2, SIZE = 3, ARG = 6, ARGW = 8;
   const NO_GUARD = -1, COPY = 0;
 
   const theirs = new home.TableFixedLayoutView();
@@ -687,7 +706,7 @@ function partitionIsHeld(check, home, layout, bodyBytes, who) {
 export function planPartition(check, ut1, ut1home, fx1, fx1home) {
   // A PLAN WITH BOTH HALVES: UT1 carries a union, so its arms' entries are
   // guarded and the scalars around them are not.
-  const u = partitionIsHeld(check, ut1home, ut1.UtRootFixedLayout, ut1.UtRootFixedBodyBytes, "UT1 plan");
+  const u = partitionIsHeld(check, ut1home, ut1.UtRootFixedLayoutCopy(), ut1.UtRootFixedBodyBytes, "UT1 plan");
   if (u !== null) {
     check(u.split > 0 && u.split < u.count,
       `W6: UT1's plan really has BOTH halves, so the case is not vacuous (split ${u.split} of ${u.count})`);
@@ -696,7 +715,7 @@ export function planPartition(check, ut1, ut1home, fx1, fx1home) {
   // A PLAN WITH NO GUARDED ENTRY AT ALL: the split is then the whole plan, and
   // `split` being a count of UNGUARDED entries rather than of guarded ones is
   // what makes that come out right.
-  const f = partitionIsHeld(check, fx1home, fx1.FxRootFixedLayout, fx1.FxRootFixedBodyBytes, "FX1 plan");
+  const f = partitionIsHeld(check, fx1home, fx1.FxRootFixedLayoutCopy(), fx1.FxRootFixedBodyBytes, "FX1 plan");
   if (f !== null) {
     check(f.split === f.count,
       `W6: a plan with no guarded entry has its split at the END, not at zero (split ${f.split} of ${f.count})`);
@@ -728,13 +747,13 @@ export function planPartition(check, ut1, ut1home, fx1, fx1home) {
 // driver that read them out of the code under test would agree with
 // whatever that code happened to say.
 export function wideTextCodeUnits(check, home) {
-  check(home.TableFixedLanes === 9,
-    `C5: a plan entry is nine int32 lanes, got ${home.TableFixedLanes}`);
+  check(home.TableFixedLanes === 11,
+    `C5: a plan entry is eleven int32 lanes, got ${home.TableFixedLanes}`);
 
   // op=TEXT src=0 dst=0 size=16 aux=4 guard=NONE(-1) arg=0 meta=WIDE(2)
-  // argw=1 — a wstring(8): the length word at the record's head, 2N = 16
+  // argw=1 guards=0 guardCount=0 — a wstring(8): the length word at the record's head, 2N = 16
   // bytes of span behind it, and the same twenty bytes in the image.
-  const plan = [2, 0, 0, 16, 4, -1, 0, 2, 1];
+  const plan = [2, 0, 0, 16, 4, -1, 0, 2, 1, 0, 0];
 
   const run = (length, units) => {
     const src = new Uint8Array(20);
@@ -797,8 +816,8 @@ export function wideTextCodeUnits(check, home) {
 // width-8 read is two u32 lanes and whose `hi !== 0` arm is the whole fact.
 // ---------------------------------------------------------------------------
 export function ordinalWidth8ReadWhole(check, home) {
-  // THE PLAN ENTRY IS NINE int32 LANES, in the order this loop reads them:
-  //   [op, src, dst, size, aux, guard, arg, meta, argw]
+  // THE PLAN ENTRY IS ELEVEN int32 LANES, in the order this loop reads them:
+  //   [op, src, dst, size, aux, guard, arg, meta, argw, guards, guardCount]
   // op 3 is TableFixedOpOrdinal (fixedruntime.go:98); guard -1 is
   // TableFixedNoGuard (fixedruntime.go:107), an unguarded top-level entry;
   // meta's low byte is the ordinal's DESTINATION width, 8 here; size is the
@@ -814,7 +833,7 @@ export function ordinalWidth8ReadWhole(check, home) {
     // the table's slot 0 is its length (one entry), slot 1 is variant 1's own
     // ordinal — the same shape as the reference's uint16 map { 1, 1 }
     const remap = new Int32Array([1, 1]);
-    const lanes = [3, 0, 0, 8, 0, -1, 0, 8, 1];
+    const lanes = [3, 0, 0, 8, 0, -1, 0, 8, 1, 0, 0];
     home.TableFixedRun(new Int32Array(lanes), 1, src, srcView, 0, dst, dstView, remap, r);
     return { landed: dstView.getBigUint64(0, true), clamped: r.clamped };
   };

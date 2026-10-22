@@ -71,6 +71,10 @@ type vcCase struct {
 	Wire       string `json:"wire"`
 	Text       string `json:"text"` // "" for a wire-only instance (no-text)
 	RefuseText bool   `json:"refuseText"`
+	// RefuseSave: the value the load keeps is one every writer refuses (a
+	// blob two slots name, blob_shared, §2.5), so Save answers null and
+	// Measure -1, as the oracle's encode refuses it
+	RefuseSave bool `json:"refuseSave"`
 	// Same names two slots that must land as ONE object after the load (the
 	// shared node or blob the wire numbers once, §3.1)
 	Same []string `json:"same"`
@@ -120,6 +124,7 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 			func() *vcCase {
 				c := corpus("blob_shared", "Catalog", false, "thumb", "alias")
 				c.RefuseText = true
+				c.RefuseSave = true
 				return c
 			}(),
 			corpus("blob_str8", "Catalog", true),
@@ -381,7 +386,11 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 			if err := os.WriteFile(c.Wire, c.wire, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			want = append(want, "WIRE "+c.Name+" OK", "MEASURE "+c.Name+" OK")
+			if c.RefuseSave {
+				want = append(want, "WIRE "+c.Name+" SAVEREFUSED OK", "MEASURE "+c.Name+" REFUSED OK")
+			} else {
+				want = append(want, "WIRE "+c.Name+" OK", "MEASURE "+c.Name+" OK")
+			}
 			if c.text != nil {
 				c.Text = filepath.Join(work, c.Name+".json")
 				if err := os.WriteFile(c.Text, c.text, 0o600); err != nil {
@@ -667,10 +676,17 @@ for (const c of spec.cases) {
   const v = m[c.root + "Load"](wire, rep);
   if (v === null) { console.log("WIRE " + c.name + " REFUSED " + JSON.stringify(rep)); continue; }
   const saved = m[c.root + "Save"](v);
-  if (same(saved, wire) && clean(rep)) { console.log("WIRE " + c.name + " OK"); }
+  if (c.refuseSave) {
+    // every writer refuses a blob two slots name (§2.5): null and -1
+    console.log("WIRE " + c.name + (saved === null && !rep.malformed ? " SAVEREFUSED OK" : " SAVED " + (saved === null ? "null" : saved.length)));
+    const refusedMeasure = m[c.root + "Measure"](v);
+    console.log("MEASURE " + c.name + (refusedMeasure === -1 ? " REFUSED OK" : " DIFF " + refusedMeasure));
+  } else if (same(saved, wire) && clean(rep)) { console.log("WIRE " + c.name + " OK"); }
   else { console.log("WIRE " + c.name + " DIFF " + firstDiff(saved, wire) + " report " + JSON.stringify(rep)); }
-  const measured = m[c.root + "Measure"](v);
-  console.log("MEASURE " + c.name + (saved !== null && measured === saved.length ? " OK" : " DIFF " + measured));
+  if (!c.refuseSave) {
+    const measured = m[c.root + "Measure"](v);
+    console.log("MEASURE " + c.name + (saved !== null && measured === saved.length ? " OK" : " DIFF " + measured));
+  }
   if (c.same !== null && c.same.length === 2) {
     const a = v[c.same[0]], b = v[c.same[1]];
     console.log("SAME " + c.name + (a !== null && a === b ? " OK" : " DIFF"));

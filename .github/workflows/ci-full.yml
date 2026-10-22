@@ -1175,8 +1175,10 @@ jobs:
       - name: render smoke — the headline table renders from a committed CSV
         run: |
           # newest committed sweep: older CSVs predate the round_trip contract
-          # and the render REFUSES them by design (#175)
-          csv=$(ls bench/results/*.csv | tail -1)
+          # and the render REFUSES them by design (#175). A plan-read sitting's
+          # raw rounds (bench/BENCH-STANDARD.md, the plan-read arm) are not a
+          # sweep and have no headline section, so they are not candidates.
+          csv=$(ls bench/results/*.csv | grep -v -- '-plan-read-' | tail -1)
           out=$(./bench/run.sh --render "$csv" 2>&1)
           echo "$out"
           echo "$out" | grep -q "language        %" || { echo "::error::render printed no table header"; exit 1; }
@@ -1736,6 +1738,9 @@ jobs:
         if: matrix.node != ''
         with:
           node-version: ${{ matrix.node }}
+      # The pinned eslint the JS leg's tables-js-clean gate requires (make/js.mk).
+      - uses: ./.github/actions/eslint
+        if: matrix.node != ''
 
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         if: matrix.dart != ''

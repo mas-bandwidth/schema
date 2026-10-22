@@ -930,6 +930,105 @@ function checkAllocation(iterations) {
   }
 }
 
+// ---- float32 values against the oracle's bit patterns ----
+//
+// The oracle writes a float32 as its IEEE-754 bit pattern verbatim (Go's
+// math.Float32bits, docs/PORTING.md M21: no canonicalisation), so the
+// pattern IS the value the bytes carry. Every generated float32 accessor —
+// a record object's and a block handle's inline one — must hand back a double
+// whose float32 bits are that pattern: Math.fround reproduces them for every
+// non-NaN, and a NaN's payload comes back through the same bit surgery the
+// writer narrows with. This is the proof an optimisation of the accessor
+// changed no value; the allocation gate is the proof of what it costs.
+
+const f32Scratch = new DataView(new ArrayBuffer(8));
+function f32BitsOf(v) {
+  if (v !== v) {
+    f32Scratch.setFloat64(0, v, true);
+    const lo = f32Scratch.getUint32(0, true), hi = f32Scratch.getUint32(4, true);
+    let payload = (((hi & 0xfffff) << 3) | (lo >>> 29)) & 0x7fffff;
+    if (payload === 0) { payload = 0x400000; }
+    return ((hi & 0x80000000) | 0x7f800000 | payload) >>> 0;
+  }
+  f32Scratch.setFloat32(0, Math.fround(v), true);
+  return f32Scratch.getUint32(0, true);
+}
+
+function float32OraclePatterns() {
+  const out = [
+    0x00000000, // 0
+    0x80000000, // -0
+    0x00000001, // the smallest subnormal
+    0x007fffff, // the largest subnormal
+    0x00800000, // the smallest normal
+    0x7f7fffff, // the largest finite
+    0x7f800000, // +Inf
+    0xff800000, // -Inf
+    0x7fc00000, // a quiet NaN
+    0x7f800001, // a signalling NaN with a payload
+  ];
+  let x = 0x9e3779b9; // xorshift32, a fixed seed: the same 1000 every run
+  for (let i = 0; i < 1000; i++) {
+    x ^= x << 13; x >>>= 0;
+    x ^= x >>> 17;
+    x ^= x << 5; x >>>= 0;
+    out.push(x);
+  }
+  return out;
+}
+
+function checkFloat32Oracle() {
+  // every block handle of the render unit with an inline float32 (the
+  // block's own accessor, in a module that imports the conversion), and the
+  // ship row's record accessor (in the unit's block home, which defines it)
+  const inline = [];
+  let maxBytes = 0;
+  for (const name of Object.keys(renderBlock).sort()) {
+    const block = renderBlock[name];
+    if (!name.endsWith("Block") || block === null || typeof block !== "object" || block.Type === undefined) { continue; }
+    for (const f of block.Type.Fields) {
+      if (!f.OutOfLine && f.Kind === 10 && f.ElementRef === null) {
+        inline.push({ block, name, f });
+        maxBytes = Math.max(maxBytes, block.MaxBytes);
+      }
+    }
+  }
+  const ships = renderBlock.RenderFrameBlock.Type.Fields.find((f) => f.OutOfLine && f.Name === "ships");
+  const shipInfo = ships.ElementRef();
+  const shipRow = rowOfName(shipInfo.Name);
+  const record = shipInfo.Fields.filter((f) => f.Kind === 10 && f.ElementRef === null);
+  check(inline.length > 0 && record.length > 0,
+    "the float32 oracle check reaches no float32 accessor: inline " + inline.length + ", record " + record.length);
+  const bytes = new Uint8Array(new ArrayBuffer(Math.max(maxBytes, shipRow.Size)));
+  const view = new DataView(bytes.buffer);
+  const handle = { View: view, Bytes: bytes };
+  const patterns = float32OraclePatterns();
+  let reads = 0, wrong = 0;
+  const read = (what, want, got) => {
+    reads++;
+    const bits = f32BitsOf(got);
+    if (bits !== (want >>> 0)) {
+      wrong++;
+      if (wrong <= 5) {
+        check(false, what + " reads 0x" + (want >>> 0).toString(16) + " back as 0x" + bits.toString(16));
+      }
+    }
+  };
+  for (const want of patterns) {
+    for (const { block, name, f } of inline) {
+      view.setUint32(f.Offset, want, true);
+      read(name + "." + f.Name, want, block[capitalize(f.Name)](handle));
+    }
+    for (const f of record) {
+      view.setUint32(f.Offset, want, true);
+      read(shipInfo.Name + "Row." + f.Name, want, shipRow.Fields[f.Name](bytes, view, 0, 0));
+    }
+  }
+  check(wrong === 0, "float32 oracle: " + wrong + " of " + reads + " reads moved a bit");
+  console.log("float32 oracle: " + patterns.length + " patterns x " + (inline.length + record.length) +
+    " accessors, " + reads + " reads, " + (reads - wrong) + " bit-exact");
+}
+
 // ---- main
 
 const mode = process.argv[2];
@@ -954,6 +1053,7 @@ if (mode === "fuzz") {
   checkBlockAccessors("testdata/wire/tables/block_render.bin", renderBlock.RenderFrameBlock);
   checkBlockAccessors("testdata/wire/tables/block_padded.bin", paddedBlock.PaddedFrameBlock);
   checkCookAccessors("build/js-fuzz-scene.cook", graphCook.SceneCook);
+  checkFloat32Oracle();
   if (!failed) {
     console.log("tables JS leg: a file of the other byte order is refused twice over, " +
       "every block and cook module re-exports the unit's whole surface, Open " +

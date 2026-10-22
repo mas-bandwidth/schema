@@ -1,0 +1,49 @@
+#!/bin/sh
+# THE JAVASCRIPT LEG's WALK negative control (docs/PORTING.md I11).
+#
+# One statement of the GENERATED text reader is changed in a COPY of the
+# generated tree: the bool arm of the from-text walk stores false where the
+# text said true. The driver (test/conformance/js/main.mjs) imports from
+# SCHEMA_JS_GENERATED, so it is aimed at the copy and nothing tracked is
+# written to. The matrix must go red on `js / json-read` and on no other
+# surface: json-write and wire do not run the reader, so they stay green, which
+# is what says the harness found a defect in generated code and localized it.
+set -eu
+
+mode=${1:-walk}
+[ "$mode" = walk ] || { echo "unknown control: $mode" >&2; exit 1; }
+src=build/tables-generated-js
+out=build/js-conformance-negative
+file=examples/TabledemoVariable.js
+anchor='        holder\[key\] = true;'
+
+rm -rf "$out"
+mkdir -p "$out"
+cp -R "$src" "$out/generated"
+
+n=$(grep -c "^$anchor\$" "$src/$file")
+if [ "$n" != 1 ]; then
+    echo "negative control anchor matched $n times in $src/$file, want exactly 1" >&2
+    exit 1
+fi
+sed "s/^$anchor\$/        holder[key] = false;/" "$src/$file" > "$out/generated/$file"
+if cmp -s "$src/$file" "$out/generated/$file"; then
+    echo "negative control patched nothing: $mode" >&2
+    exit 1
+fi
+
+root=$(pwd)
+printf '#!/bin/sh\nSCHEMA_JS_GENERATED=%s/%s/generated exec %s/test/conformance/js/driver "$@"\n' "$root" "$out" "$root" > "$out/driver"
+chmod +x "$out/driver"
+printf 'js %s/%s/driver\n' "$root" "$out" > "$out/drivers.txt"
+
+if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+    echo "negative control failed: $mode left conformance green" >&2
+    exit 1
+fi
+cat "$out/log"
+grep -q 'js / json-read' "$out/log"
+grep -q 'json-read     FAIL' "$out/log"
+grep -Eq '^ *json-write +pass' "$out/log"
+grep -Eq '^ *wire +pass' "$out/log"
+echo "JavaScript walk negative control: $mode detected by js / json-read"

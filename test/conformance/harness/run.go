@@ -459,10 +459,10 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 		want[s] = e
 	}
 
-	goWireRefusals := map[string]string{}
+	wireRefusals := map[string]Instance{}
 	for _, instance := range m.Instances {
 		if instance.GoWireRefusal != "" {
-			goWireRefusals[instance.Name] = instance.GoWireRefusal
+			wireRefusals[instance.Name] = instance
 		}
 	}
 	results := map[string]map[string]*result{}
@@ -536,7 +536,7 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
 			for _, e := range legWant {
-				scoreAnswer(d.lang, s, out, e, goWireRefusals[e.name], r)
+				scoreAnswer(d.lang, s, out, e, wireRefusals[e.name], r)
 			}
 			if reference && r.missing > r.named {
 				r.failures = append(r.failures, fmt.Sprintf(
@@ -550,11 +550,13 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 	return report(w, langs, results), nil
 }
 
-// scoreAnswer scores one case written by a leg. The Go blob-shared marker
-// changes that one wire expectation from bytes to a named writer refusal.
-func scoreAnswer(lang, surface, out string, e expectation, goWireRefusal string, r *result) {
+// scoreAnswer scores one case written by a leg. The blob-shared marker
+// changes that one wire expectation from bytes to a named writer refusal, for
+// Go and for every port refused-by= names (inst.WireRefusal); inst is the zero
+// Instance for a case that carries no marker.
+func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *result) {
 	answer := filepath.Join(out, e.name)
-	if surface == "wire" && lang == "go" && goWireRefusal != "" {
+	if goWireRefusal := inst.WireRefusal(lang); surface == "wire" && goWireRefusal != "" {
 		if _, err := os.Stat(answer); err == nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: expected named writer refusal %q, got bytes", e.name, goWireRefusal))
 			return
@@ -579,9 +581,9 @@ func scoreAnswer(lang, surface, out string, e expectation, goWireRefusal string,
 	// ANOTHER LEG MAY GIVE THE SAME NAMED REFUSAL, and must give it by that
 	// name: §2.5 makes every writer refuse the value. A leg that still writes
 	// bytes is held to them below, as before.
-	if surface == "wire" && goWireRefusal != "" {
+	if surface == "wire" && inst.GoWireRefusal != "" {
 		if _, err := os.Stat(answer); errors.Is(err, os.ErrNotExist) {
-			if reason, err := os.ReadFile(answer + ".absent"); err == nil && string(reason) == goWireRefusal {
+			if reason, err := os.ReadFile(answer + ".absent"); err == nil && string(reason) == inst.GoWireRefusal {
 				r.missing++
 				r.named++
 				return

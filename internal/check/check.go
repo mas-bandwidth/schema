@@ -2727,7 +2727,6 @@ func (c *checker) checkTables() {
 	c.tableClosure = closure
 	c.checkTableArmsReached(closure)
 	c.checkPositionalEnumBoundInClosure()
-	c.keyTypeHeldEnumExtents()
 
 	names := make([]string, 0, len(closure))
 	for name := range closure {
@@ -3303,9 +3302,8 @@ func (c *checker) checkBlobSpelling(f *ast.Field, what string, inTable bool) boo
 // refused by name (docs/SPEC-TABLES.md §11). An optional is a table-body
 // construct: it costs one presence bool beside the value — the array and its
 // count included — and PRESENCE, not content, decides whether the field
-// rides. An optional over a VARIABLE-length closure is legal (docs/SPEC-TABLES.md
-// §2.3): the one declaration-order walk gates every edge on the presence
-// companion, so an absent optional descends nothing and is not an edge (§3.1).
+// rides. The variable-closure refusal runs later, in checkTables, because the
+// mode is a closure fact this function cannot see.
 func (c *checker) checkOptionalSpelling(f *ast.Field, out *ir.Field, inTable bool) bool {
 	spelling := "?" + scalarSpelling(f.Type)
 	if !inTable {
@@ -4558,6 +4556,9 @@ var tableGeneratedVerbs = []string{
 	// allocation per record, and the pair is claimed beside FixedHash rather
 	// than instead of it, because both spellings are emitted somewhere.
 	"FixedDecode", "FixedPrefill", "FixedIdentity", "FixedNewPlan", "FixedHashLo", "FixedHashHi",
+	// The fixed tables are module-private and frozen on the JS leg, and each
+	// is handed out by a copying accessor instead: four more per declaration.
+	"FixedDstCopy", "FixedIdentityCopy", "FixedLayoutCopy", "FixedPrefillCopy",
 	// AND §5'S THREE (docs/FIXED-FORM-ALGORITHM.md §5.2): a fixed table reads
 	// BACKWARD and never forward, so every root carries its LINEAGE as static
 	// data — the known layouts oldest first, the floor as one number, and one

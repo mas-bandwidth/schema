@@ -405,7 +405,7 @@ fixed table T
 	// THE IDENTITY PROJECTION refuses by name as well: the body is one COPY, so
 	// no text op ran, and the decode is where the byte string's content is held.
 	t02Has(t, t02Norm(src),
-		"if (!TableFixedTextOk(TableFixedTextUtf8, view, at + 4, value.LabelLength)) { report.refused = TableFixedRefusal.TextIllFormed; return; }",
+		"if (!TableFixedTextOk(TableFixedTextUtf8, view, at + 4, n)) { report.refused = TableFixedRefusal.TextIllFormed; return; }",
 		"C4 the byte string refuses by name in the projection")
 }
 

@@ -39,6 +39,23 @@ type Instance struct {
 	// GoWireRefusal names a Go wire writer refusal the corpus requires this
 	// instance's Go leg to report instead of emitting bytes.
 	GoWireRefusal string
+	// WireRefusedBy names the ports BESIDES Go whose wire writer has taken the
+	// same refusal (marker refused-by=<ports>, which needs go-refusal=): their
+	// wire answer is the named absence too. A port not listed is still held to
+	// the committed bytes, as the reference is (docs/SPEC-TABLES.md §2.5).
+	WireRefusedBy []string
+}
+
+// WireRefusal answers the named wire writer refusal lang owes for this
+// instance, or "" when it owes the committed bytes.
+func (inst Instance) WireRefusal(lang string) string {
+	if inst.GoWireRefusal == "" {
+		return ""
+	}
+	if lang == "go" || slices.Contains(inst.WireRefusedBy, lang) {
+		return inst.GoWireRefusal
+	}
+	return ""
 }
 
 // Counts is a read report (docs/SPEC-TABLES.md §4), which is the whole
@@ -450,9 +467,20 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 						return nil, fmt.Errorf("%s: duplicate Go wire refusal marker", where)
 					}
 					inst.GoWireRefusal = strings.TrimPrefix(marker, "go-refusal=")
+				case strings.HasPrefix(marker, "refused-by="):
+					if inst.WireRefusedBy != nil {
+						return nil, fmt.Errorf("%s: duplicate refused-by marker", where)
+					}
+					inst.WireRefusedBy = strings.Split(strings.TrimPrefix(marker, "refused-by="), ",")
+					if slices.Contains(inst.WireRefusedBy, "") || slices.Contains(inst.WireRefusedBy, "go") {
+						return nil, fmt.Errorf("%s: refused-by names an empty port or go (go-refusal= already holds go)", where)
+					}
 				default:
 					return nil, fmt.Errorf("%s: %q is not a valid instance marker", where, marker)
 				}
+			}
+			if inst.WireRefusedBy != nil && inst.GoWireRefusal == "" {
+				return nil, fmt.Errorf("%s: refused-by= needs go-refusal= to name the refusal", where)
 			}
 			m.Instances = append(m.Instances, inst)
 		case "connection":

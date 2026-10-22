@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,7 +22,7 @@ import (
 // clamp and the domain bound is the other: two clamps, and 4294967295 on the
 // field. The Go and C# walkers carried the narrow and landed 0.
 func TestIssue611JsonUnsignedOverflowLandsCeiling(t *testing.T) {
-	slowtest.Gate(t, "the Go and .NET toolchains (it builds and runs the generated unit)")
+	slowtest.Gate(t, "the Go and .NET toolchains (they compile and run the generated packages)")
 	src := `package p
 fixed table Ship
 {
@@ -32,8 +33,7 @@ fixed table Ship
 	c := New()
 
 	t.Run("go", func(t *testing.T) {
-		// standalone keeps the probe module self-contained (docs/SPEC-TABLES.md §8.4)
-		files, err := c.Generate(u, "go", Options{"runtime": "standalone"})
+		files, err := c.Generate(u, "go", Options{})
 		if err != nil {
 			t.Fatalf("generate go: %v", err)
 		}
@@ -43,7 +43,14 @@ fixed table Ship
 				t.Fatal(err)
 			}
 		}
-		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module testpkg\n\ngo 1.24.0\n"), 0644); err != nil {
+		// the generated package imports the shared Go runtime (docs/SPEC-TABLES.md
+		// §8.4), so the probe module resolves it from this checkout
+		root, err := filepath.Abs("..")
+		if err != nil {
+			t.Fatal(err)
+		}
+		gomod := fmt.Sprintf("module testpkg\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", root)
+		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0644); err != nil {
 			t.Fatal(err)
 		}
 		testSrc := `package p
@@ -58,7 +65,7 @@ func TestIssue611(t *testing.T) {
 	// the plain FromJson is the strict read and refuses a clamp
 	// (docs/SPEC-TABLES.md §16.11); the landed value is the tolerant read's
 	if !ShipFromJsonTolerant(&s, text, &r) {
-		t.Fatal("FromJsonTolerant failed")
+		t.Fatalf("FromJsonTolerant failed: %+v", r)
 	}
 	if s.Experience != 4294967295 {
 		t.Fatalf("experience=%d, want 4294967295 (the ceiling, not the floor)", s.Experience)

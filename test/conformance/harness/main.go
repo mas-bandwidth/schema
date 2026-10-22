@@ -132,7 +132,16 @@ func main() {
 		if exp == "" {
 			exp = filepath.Join(*corpus, "expected")
 		}
-		ok, err := runCards(os.Stdout, *corpus, exp, *driver, *require, "build/cards-conformance", nil)
+		// --work names the run's own scratch directory, so two cards runs side
+		// by side under make -j never score each other's answers; unset, it is
+		// build/cards-conformance as it always was
+		cardsWork := "build/cards-conformance"
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "work" {
+				cardsWork = *work
+			}
+		})
+		ok, err := runCards(os.Stdout, *corpus, exp, *driver, *require, cardsWork, nil)
 		if err != nil {
 			fatalf("%v", err)
 		}

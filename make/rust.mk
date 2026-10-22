@@ -6,7 +6,10 @@
 # test/rust/Cargo.toml and its ludicrous twin carry the same relative path
 SERIALIZE_RS ?= ../serialize.rs
 
-# cargo lives in the rustup keg, which is not on PATH by default
+# cargo lives in the rustup keg, which is not on PATH by default. A recipe
+# that runs `go test` APPENDS it, so the caller's go stays first: a runner
+# whose cargo directory also holds an older go would otherwise run the Go
+# tests under it (go.mod needs go >= 1.26). A cargo or rustc recipe prepends.
 RUSTUP_BIN ?= /opt/homebrew/opt/rustup/bin
 
 build/packet-text/rust/.stamp: bin/schema test/packet-text/Narrow.schema test/packet-text/rust/src/main.rs make/rust.mk
@@ -109,6 +112,7 @@ MIRI_MAX_SEED_BYTES ?= 4224
 .PHONY: tables-rust-features
 tables-rust-features: build/tables-generated-rust/.stamp
 	@for unit in build/tables-generated-rust/*/; do \
+		[ -f $$unit/Cargo.toml ] || continue; \
 		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet ) || exit 1; \
 		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features ) || exit 1; \
 		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features --features cook ) || exit 1; \
@@ -119,6 +123,7 @@ tables-rust-features: build/tables-generated-rust/.stamp
 .PHONY: tables-rust-clippy
 tables-rust-clippy: build/tables-generated-rust/.stamp
 	@for unit in build/tables-generated-rust/*/; do \
+		[ -f $$unit/Cargo.toml ] || continue; \
 		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --quiet ) || exit 1; \
 	done
 	@echo "rust clippy gate: every generated unit builds under a consumer's clippy"
@@ -287,14 +292,21 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 # table runtime. The crates carry a generated Cargo.toml each; nothing here is
 # checked in.
 RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
-	blobdemo:tables/blobs \
-	blockdemo:tables/block blockhome:tables/blockhome \
+	blobdemo:tables/blobs mapdemo:tables/maps listdemo:tables/lists \
+	messagedemo:tables/messages streamdemo:tables/stream \
+	scalars:tables/scalars blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
+	tblm1:test/tables/M1.schema tblm2:test/tables/M2.schema \
+	tbla2:test/tables/A2.schema tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema \
 	tblfx1:test/tables/FX1.schema tblfx2:test/tables/FX2.schema \
 	tblfe1:test/tables/FE1.schema tblfe2:test/tables/FE2.schema \
-	tblfu1:test/tables/FU1.schema tblfu2:test/tables/FU2.schema
+	tblfu1:test/tables/FU1.schema tblfu2:test/tables/FU2.schema \
+	tblw1:test/tables/W1.schema tblw2:test/tables/W2.schema \
+	tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema \
+	backenddemo:tables/backend vocabdemo:tables/vocab vocab9demo:tables/vocab9 \
+	widedemo:examples-wide/Caption.schema
 
 # THE PAIRED BENCH UNIT is TWO SCHEMA FILES AS ONE UNIT
 # (bench/corpus/FixedTable.schema wraps Bench.schema's own BenchMixed), so it
@@ -305,7 +317,7 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 # those bytes (docs/SPEC-TABLES.md §3.4, §15).
 RUST_TABLE_BENCH_SCHEMAS := bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema $(RUST_TABLE_BENCH_SCHEMAS)
+build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema examples-wide/Caption.schema $(RUST_TABLE_BENCH_SCHEMAS)
 	@mkdir -p build/tables-generated-rust
 	@for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -366,8 +378,8 @@ tables-rust-fixedform: build/tables-generated-rust/.stamp build/fixedform-corpus
 # compile `serialize-official` behind each of them.
 .PHONY: tables-rust-versioning
 tables-rust-versioning: tables-fixedform-corpus
-	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 \
-		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedVersioning|TestFixedRoadmapRustT12FramingText'
 	@echo 'tables Rust versioning: §5 read both columns of every row against the C++ reference bytes'
 
 build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
@@ -417,6 +429,75 @@ tables-rust-fixed-matched: generated/bench/paired/rust/.stamp
 	./build/paired/rust/release/table-rust --gate --indexed \
 		--wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
 
+# THE RUST TABLES SOAK (docs/PORTING.md I9, issue #416), the twin of
+# tables-c-soak over the same units: Load, the reads, Measure and Save on the
+# root of every case for SOAK_SECONDS of real time, under a counting
+# #[global_allocator] (test/rust-soak/src/main.rs). The GATE IS THE CALL COUNT,
+# taken at every sample: it must not move after the warmup pass. The live-heap
+# byte count is gated beside it (it sees retention), and the resident set is
+# reported as the weaker instrument. It is a FUNCTIONAL soak — real seconds —
+# so it is this target and never a unit test; `make test` runs 20 s through
+# test-rust, and the hour is the release act (`make tables-rust-soak
+# SOAK_SECONDS=3600`, the Makefile's default).
+#
+# THE FILES ARE THE FIXED FORM'S. This port's table surface for these units is
+# form byte 3, and a fixed reader refuses the tolerant wire the C soak reads by
+# name, so the soak reads the C++ reference's own dump where it writes the root
+# (build/fixedform-corpus) and writes the rest itself, before the clock.
+#
+# THE CRATE IS COPIED INTO build/ AND BUILT THERE, so its Cargo.lock and target/
+# land in the ignored tree and the checkout stays clean. Its path dependencies
+# resolve the same from build/rust-soak as from test/rust-soak: both sit two
+# levels below the root. RELEASE, because that is the build a caller ships and
+# the one whose write-side debug_asserts are gone.
+RUST_SOAK_SRCS := test/rust-soak/Cargo.toml test/rust-soak/src/main.rs
+
+.PHONY: tables-rust-soak
+tables-rust-soak: build/tables-generated-rust/.stamp build/fixedform-corpus/.stamp $(RUST_SOAK_SRCS)
+	@mkdir -p build/rust-soak/src
+	@cp test/rust-soak/Cargo.toml build/rust-soak/Cargo.toml
+	@cp test/rust-soak/src/main.rs build/rust-soak/src/main.rs
+	cd build/rust-soak && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release
+	./build/rust-soak/target/release/rust-soak $(SOAK_SECONDS) build/fixedform-corpus
+
+# THE SOAK'S NEGATIVE CONTROL, the twin of tables-c-soak-negative-control. The
+# live-byte sample is a LEAK instrument: a matched alloc/free pair inside the
+# loop returns it to where it was before it is ever read, so it reads flat
+# forever. The CALL COUNT is what makes the claim, and a counter nobody has
+# watched go red is a counter nobody can size.
+#
+# The pair is planted through the crate's `negative-control` feature (a cfg
+# flag in the soak binary, never a change to generated code): one Box per case
+# per iteration, freed at once, held past the optimiser by black_box. The run
+# must exit non-zero ON THE COUNT, and the drift line must run and stay flat —
+# that silence is the half being demonstrated.
+.PHONY: tables-rust-soak-negative-control
+tables-rust-soak-negative-control: build/tables-generated-rust/.stamp build/fixedform-corpus/.stamp $(RUST_SOAK_SRCS)
+	@mkdir -p build/rust-soak-sabotage/src
+	@cp test/rust-soak/Cargo.toml build/rust-soak-sabotage/Cargo.toml
+	@cp test/rust-soak/src/main.rs build/rust-soak-sabotage/src/main.rs
+	@grep -q '#\[cfg(feature = "negative-control")\]' build/rust-soak-sabotage/src/main.rs || \
+		{ echo "NEGATIVE CONTROL: the soak carries no planted pair to turn on"; exit 1; }
+	cd build/rust-soak-sabotage && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --features negative-control
+	@if ./build/rust-soak-sabotage/target/release/rust-soak 2 build/fixedform-corpus > build/rust-soak-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a matched alloc/free pair per iteration left the soak green"; \
+		cat build/rust-soak-sabotage/log; exit 1; \
+	fi
+	@grep -q "SABOTAGED build" build/rust-soak-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the negative-control feature did not reach the binary"; \
+		  cat build/rust-soak-sabotage/log; exit 1; }
+	@grep -q "SOAK FAILED: the allocator call count moved" build/rust-soak-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the soak went red, but not on the call count"; \
+		  cat build/rust-soak-sabotage/log; exit 1; }
+	@grep -q "live allocation" build/rust-soak-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the drift half did not run"; cat build/rust-soak-sabotage/log; exit 1; }
+	@! grep -q "SOAK FAILED: live allocation moved" build/rust-soak-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the drift gate went red, so the planted pair is not matched"; \
+		  cat build/rust-soak-sabotage/log; exit 1; }
+	@grep "live allocation" build/rust-soak-sabotage/log
+	@grep -m1 "SOAK FAILED" build/rust-soak-sabotage/log
+	@echo "negative control: a matched alloc/free pair per iteration is INVISIBLE to the drift gate and turns the Rust soak's CALL COUNT red"
+
 # THE RUST LEG of `make test`: the clippy and feature gates, the names
 # control, the big-endian check, the bench crates' compile gates, and the
 # packet tests — the corpus binaries in BOTH build modes (see below).
@@ -436,6 +517,10 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	# corpus's, the file loads, it saves back identical, reused storage
 	# round-trips twice.
 	$(MAKE) tables-rust-fixed-matched
+	# THE SOAK (docs/PORTING.md I9): 20 s gated on the allocator call count,
+	# and the control that watches the count go red on a planted pair
+	$(MAKE) tables-rust-soak SOAK_SECONDS=20
+	$(MAKE) tables-rust-soak-negative-control
 	$(MAKE) tables-rust-runtime-home
 	$(MAKE) tables-rust-runtime-home-negative-control
 	# the generated Rust table surface CHECKED for a big-endian target, layout
@@ -541,12 +626,176 @@ test-rust: packet-wide-rust packet-wide-rust-negative-control
 # never passes on a SKIP.
 .PHONY: tables-rust-variable-class
 tables-rust-variable-class:
-	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 \
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 \
 		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m \
 		-run 'TestVariableClassBeyondCardConstructsRust|TestOtherVariableConstructsAreRefusedByName' -v
 	@echo 'tables Rust variable class: the class beyond the card constructs round-trips and the rest is refused by name'
 
 test-rust: tables-rust-variable-class
+
+# THE BLOCK BUILD AND THE COOK WRITE (docs/SPEC-TABLES.md §19.1, §7.6): the
+# Rust leg's producer surfaces, pinned to the Go builder and Go's cook writer
+# (gotable/blockbuild.go, gotable/cookwrite.go) by
+# TestBlockBuildAndCookWriteRust, which recomputes every emitted constant from
+# the same ir layouts the Go emitter holds. SCHEMA_REQUIRE_CORPUS=1 makes the
+# functional test fail by name rather than skip, so this target never passes
+# on a SKIP.
+tables-rust-block-build:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m \
+		-run TestBlockBuildAndCookWriteRust -v
+	@echo 'tables Rust block build and cook write: the producer surfaces match the Go reference'
+
+test-rust: tables-rust-block-build
+
+# Maps and union arms on the variable wire (docs/SPEC-TABLES.md §2.6, §2.8, §3).
+# SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a failure, so the target
+# never passes on a SKIP.
+.PHONY: tables-rust-variable-arms
+tables-rust-variable-arms:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m \
+		-run 'TestMapsAndUnionArmsOnTheTableWireRust|TestOtherVariableConstructsAreRefusedByName|TestWideTextOnTheTableWireRust' -v
+	@echo 'tables Rust variable arms: maps, union arms and wstring(N) round-trip and the rest is refused by name'
+
+test-rust: tables-rust-variable-arms
+
+# THE FIXED CLASS ON THE TABLE WIRE (docs/SPEC-TABLES.md §2.2, §3, §4.2, §5):
+# a `fixed table` rides the VARIABLE FORM as well as the fixed one, so a
+# closure holding a fixed table gets the form-1 codec — load, save and the text
+# verbs — byte for byte against the Go oracle (internal/tablewire, the bytes
+# internal/codegen/gotable/wire.go writes): the V, W and R evolution pairs, the
+# string, bytes and flags defaults, the table rename and the variant, arm and
+# type-field renames under `was`, every report row equal to the oracle's.
+# TestAcceleratorsEmitted holds that a fixed-table unit emits the form-1
+# runtime. SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a failure, so the
+# target never passes on a SKIP.
+.PHONY: tables-rust-variable-fixed-class
+tables-rust-variable-fixed-class:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedClassOnTableWireRust|TestAcceleratorsEmitted' -v
+	@echo 'tables Rust variable fixed class: a fixed table carries the form-1 codec, its defaults and its renames, byte for byte against the oracle'
+
+test-rust: tables-rust-variable-fixed-class
+
+# THE MESSAGE FORM's BATCH on the Rust leg (docs/SPEC-TABLES.md §3.3):
+# MeasureMessages, SaveMessages and LoadMessages, byte for byte against the
+# manifest's message rows and the Go codec, beside the announcement.
+# SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a failure, so the target
+# never passes on a SKIP.
+.PHONY: tables-rust-message-batch
+tables-rust-message-batch:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestMessageFormBatchRust|TestMessageFormAnnounceRust' -v
+	@echo 'tables Rust message batch: the message form reads and writes the reference bytes'
+
+test-rust: tables-rust-message-batch
+
+# THE RUST UNIT REGISTRY GATE (docs/SPEC-TABLES.md §8.7): the same registry
+# listing oracle as the reference, through the Rust surface, mirroring
+# tables-c-view. For each VIEW_CORPUS unit the target generates the unit with
+# bin/schema into build/rust-view/unit, builds test/rust-view (copied beside
+# it, so its Cargo.lock and target stay in build/) against that unit and
+# nothing else, writes build/rust-view/<pkg>.listing, and the listing gate
+# compares every listing with the one the compiler produces from its own IR.
+#
+# A UNIT THE RUST LEG REFUSES WHOLE is named, never skipped silently: its
+# refusal must be the leg's own named follow-on (today `was` on an enum
+# variant, a union arm or a type's field, docs/SPEC-TABLES.md §5, which is
+# messages and wide), the gate compares every unit it carries, and any other
+# generate failure fails the target.
+.PHONY: tables-rust-view
+tables-rust-view: bin/schema test/rust-view/src/main.rs test/rust-view/Cargo.toml
+	@rm -rf build/rust-view
+	@mkdir -p build/rust-view/prog/src
+	@cp test/rust-view/Cargo.toml build/rust-view/prog/Cargo.toml
+	@cp test/rust-view/src/main.rs build/rust-view/prog/src/main.rs
+	@set -e; carried=; refused=; for entry in $(VIEW_CORPUS); do \
+		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		rm -rf build/rust-view/unit; mkdir -p build/rust-view/unit; \
+		if ! ./bin/schema generate --lang rust --out build/rust-view/unit/src $$source > build/rust-view/$$pkg.generate.log 2>&1; then \
+			if grep -q 'the rust form is a named follow-on' build/rust-view/$$pkg.generate.log; then \
+				echo "tables-rust-view: $$pkg is refused whole by the Rust leg, by name: $$(grep -o 'unit declares was on [^;]*' build/rust-view/$$pkg.generate.log)"; \
+				refused="$$refused $$pkg"; continue; \
+			fi; \
+			cat build/rust-view/$$pkg.generate.log; exit 1; \
+		fi; \
+		printf '[package]\nname = "viewunit"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" \
+			> build/rust-view/unit/Cargo.toml; \
+		PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path build/rust-view/prog/Cargo.toml; \
+		./build/rust-view/prog/target/debug/rust-view > build/rust-view/$$pkg.listing; \
+		carried="$$carried,$$pkg"; \
+	done; \
+	echo "$$carried" | cut -c2- > build/rust-view/carried; echo "$$refused" > build/rust-view/refused
+	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/rust-view" SCHEMA_VIEW_LISTING_UNITS="$$(cat build/rust-view/carried)" \
+		go test ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR -v
+	@echo "Rust unit registry: $$(tr ',' ' ' < build/rust-view/carried | wc -w) of $(words $(VIEW_CORPUS)) VIEW_CORPUS units match the independent listing; refused whole by name:$$(cat build/rust-view/refused)"
+
+test-rust: tables-rust-view
+
+# THE RUST LEG OVER EVERY ROOT (docs/SPEC-TABLES.md §3, §4, §4.2, §6.6): the
+# wire fuzzer and retain-unknown over every variable-class FILE root of the
+# harness's default roster whose unit the Rust generator gives a codec, not the
+# Card root alone. build/conformance-rust-all is the hand-written driver in
+# test/conformance/rust/src/wire_fuzz_all.rs, compiled with rustc beside each
+# unit's generated variable-wire modules by test/conformance/rust/wire-fuzz-all-build.
+#
+# The Go test runs first: TestRetainsAndWidensOnEveryRootRust holds the
+# driver's ROOTS equal, both ways, to the roster roots the generator carries,
+# fails on any of them the driver cannot open, drives every pinned seed of every
+# carried root through the plain and the retaining pair against the Go oracle,
+# and pins widening on read. SCHEMA_REQUIRE_CORPUS=1 turns its rustc skip into a
+# failure, so the target never passes on a SKIP. Then the harness's own fuzzer,
+# the arm tables-go-wire-fuzz runs (make/go.mk) and its retain arm, both with
+# the all-roots driver; each must report 0 divergences. The roster roots the
+# harness counts absent are the ones no Rust codec exists for: fixed-class
+# roots' form-1 files, form-2 message entries, and units the generator refuses.
+.PHONY: tables-rust-wire-fuzz-all tables-rust-retain-negative-control
+build/tables-generated-rust/tblrt1/src/lib.rs: bin/schema test/tables/RT1.schema
+	@mkdir -p build/tables-generated-rust/tblrt1/src
+	./bin/schema generate --lang rust --out build/tables-generated-rust/tblrt1/src test/tables/RT1.schema
+	@printf '[package]\nname = "tblrt1"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' > build/tables-generated-rust/tblrt1/Cargo.toml
+
+build/conformance-rust: build/tables-generated-rust/tblrt1/src/lib.rs
+
+build/conformance-rust-all: bin/schema test/conformance/rust/src/wire_fuzz_all.rs test/conformance/rust/wire-fuzz-all-build
+	PATH="$(RUSTUP_BIN):$$PATH" sh test/conformance/rust/wire-fuzz-all-build $@
+
+tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run TestRetainsAndWidensOnEveryRootRust -v
+	@set -e; for arm in '' '--retain'; do \
+		./build/conformance-harness wire-fuzz --driver 'build/conformance-rust-all' $$arm --seed $(SEED) --n $(N) \
+			> build/rust-wire-fuzz-all.log 2>&1 || { cat build/rust-wire-fuzz-all.log; exit 1; }; \
+		cat build/rust-wire-fuzz-all.log; \
+		grep -q ' 0 divergences' build/rust-wire-fuzz-all.log; \
+	done
+
+# THE RETENTION NEGATIVE CONTROL (docs/SPEC-TABLES.md §6.6): the generated
+# retaining load's capacity check is sabotaged to keep nothing, through a
+# `go test -overlay` of internal/codegen/rusttable/variablecodec.go so no
+# tracked file is edited, and TestRetainsAndWidensOnEveryRootRust must go red
+# on a retaining seed's counters. A retention that has never been turned off
+# proves nothing about the gate above.
+tables-rust-retain-negative-control:
+	@rm -rf build/rust-retain-control && mkdir -p build/rust-retain-control
+	@sed 's|if ret.bytes.len() + need <= ret.bytes.capacity() {|if false {|' \
+		internal/codegen/rusttable/variablecodec.go > build/rust-retain-control/variablecodec.go.txt
+	@cmp -s internal/codegen/rusttable/variablecodec.go build/rust-retain-control/variablecodec.go.txt && \
+		{ echo "NEGATIVE CONTROL: the retention sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variablecodec.go":"%s/build/rust-retain-control/variablecodec.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-retain-control/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
+			-overlay=build/rust-retain-control/overlay.json \
+			-run TestRetainsAndWidensOnEveryRootRust ./internal/codegen/rusttable/ > build/rust-retain-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the suite stayed green with Rust retention turned off"; \
+		exit 1; \
+	fi
+	@grep -q 'retain=true): the leg reports' build/rust-retain-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on retention"; \
+		  cat build/rust-retain-control/log; exit 1; }
+	@grep -m1 'retain=true): the leg reports' build/rust-retain-control/log
+	@echo "rust retention negative control: turning retention off turns the every-root gate RED on it"
+
+test-rust: tables-rust-wire-fuzz-all tables-rust-retain-negative-control
 
 # THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
 # Rust side of the cards wire-fuzz gate: they mirror the Go leg's
