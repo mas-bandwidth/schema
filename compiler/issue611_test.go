@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -42,7 +43,15 @@ fixed table Ship
 				t.Fatal(err)
 			}
 		}
-		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module testpkg\n\ngo 1.24.0\n"), 0644); err != nil {
+		// the default unit imports the shared runtime (docs/SPEC-TABLES.md
+		// §8.4), which is where the JSON walker under test lives, so the
+		// module resolves tables/goruntime from this checkout
+		root, err := filepath.Abs("..")
+		if err != nil {
+			t.Fatal(err)
+		}
+		mod := "module testpkg\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => " + strconv.Quote(root) + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0644); err != nil {
 			t.Fatal(err)
 		}
 		testSrc := `package p
@@ -54,8 +63,10 @@ func TestIssue611(t *testing.T) {
 	var s Ship
 	ShipReset(&s)
 	var r TableReport
-	if !ShipFromJson(&s, text, &r) {
-		t.Fatal("FromJson failed")
+	// FromJson is STRICT (SPEC-TABLES §6.5) and resets the value on a clamp,
+	// so the value a clamp LANDS is the tolerant read's
+	if !ShipFromJsonTolerant(&s, text, &r) {
+		t.Fatal("FromJsonTolerant failed")
 	}
 	if s.Experience != 4294967295 {
 		t.Fatalf("experience=%d, want 4294967295 (the ceiling, not the floor)", s.Experience)
