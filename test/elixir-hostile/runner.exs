@@ -32,6 +32,7 @@ tables = %{
   "tables/pointers" => Graphdemo.Table,
   "tables/scalars" => Scalardemo.Table,
   "tables/stream" => Streamdemo.Table,
+  "tables/maps" => Mapdemo.Table,
   "schemas/probe.schema" => Probe.Table
 }
 

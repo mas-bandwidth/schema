@@ -3630,6 +3630,8 @@ defmodule Bench.Table do
   # JSON type is skipped and counted as kind_mismatch, and the field keeps its
   # default. A value outside a bound clamps and counts, never truncates (§16.2).
   defp json_fields(desc, pairs) when is_list(pairs) do
+    outer = Process.put(:elixir_json_table, desc.name)
+
     {value, _seen, report} =
       Enum.reduce(pairs, {%{}, MapSet.new(), empty_report()}, fn {k, raw},
                                                                  {value, seen, report} ->
@@ -3661,6 +3663,10 @@ defmodule Bench.Table do
           end
         end
       end)
+
+    if outer == nil,
+      do: Process.delete(:elixir_json_table),
+      else: Process.put(:elixir_json_table, outer)
 
     {value, report}
   end
@@ -3697,6 +3703,8 @@ defmodule Bench.Table do
   defp json_read_field(%{optional: true}, nil, report), do: {nil, report}
 
   defp json_read_field(%{t: :string} = f, raw, report) when is_binary(raw) do
+    report = json_text_zero(f, raw, report)
+
     if byte_size(raw) > f.size do
       {binary_part(raw, 0, f.size), %{report | clamped: report.clamped + 1}}
     else
@@ -3731,6 +3739,7 @@ defmodule Bench.Table do
   # wstring(N) (docs/SPEC-TABLES.md §3, §16.2): the text is UTF-8; past N
   # UTF-16 code units it clamps and counts.
   defp json_read_field(%{t: :wstring} = f, raw, report) when is_binary(raw) do
+    report = json_text_zero(f, raw, report)
     units = utf16(raw)
 
     if div(byte_size(units), 2) > f.size do
@@ -3833,7 +3842,9 @@ defmodule Bench.Table do
     end
   end
 
-  defp json_read_field(%{t: :blob}, raw, report) when is_binary(raw), do: {raw, report}
+  defp json_read_field(%{t: :blob} = f, raw, report) when is_binary(raw),
+    do: {raw, json_text_zero(f, raw, report)}
+
   defp json_read_field(%{t: :blob}, nil, report), do: {nil, report}
 
   defp json_read_field(%{t: :blob}, raw, report) do
@@ -3874,6 +3885,8 @@ defmodule Bench.Table do
     pairs
     |> Enum.sort_by(fn {key, _} -> map_sort_key(f, key) end)
     |> Enum.reduce({%{}, report}, fn {key, input}, {acc, report} ->
+      # a map key is a JSON string whatever its kind, bound for text storage
+      report = json_text_zero(f, key, report)
       {value, report} = json_read_field(value_field, input, report)
       {Map.put(acc, key, value), report}
     end)
@@ -3946,6 +3959,26 @@ defmodule Bench.Table do
     {[], %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
+  # json_text_zero is the one rule for a zero in text (docs/SPEC-TABLES.md
+  # §16.2, "A ZERO IN TEXT TAKES ONE RULE IN EVERY FORM: NO READ STORES IT"):
+  # a JSON string the read would PLACE in text storage that decodes to U+0000
+  # refuses the read, malformed, and the reason names the innermost field that
+  # held it as text_holds_zero: <Table>.<field>.
+  defp json_text_zero(f, text, report) do
+    if :binary.match(text, <<0>>) == :nomatch do
+      report
+    else
+      Process.put(:elixir_json_bad, true)
+      reason = "text_holds_zero: " <> Process.get(:elixir_json_table, "") <> "." <> f.name
+
+      %{report | malformed: true}
+      |> Map.update(:reason, reason, fn
+        "" -> reason
+        held -> held
+      end)
+    end
+  end
+
   # clamp_json_int clamps a JSON integer to the field's declared range and
   # then to its storage domain, counting each clamp (docs/SPEC-TABLES.md §16.2).
   defp clamp_json_int(v, f, report) do
@@ -4003,6 +4036,8 @@ defmodule Bench.Table do
   end
 
   defp json_read_list_elem(%{elem_kind: 12} = f, e, report) when is_binary(e) do
+    report = json_text_zero(f, e, report)
+
     if byte_size(e) > f.size do
       {binary_part(e, 0, f.size), %{report | clamped: report.clamped + 1}}
     else
