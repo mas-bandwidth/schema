@@ -25,7 +25,7 @@ import (
 
 // runRecipe is one `go test ... -run <pattern>` recipe line.
 type runRecipe struct {
-	where   string // "make/go.mk:399"
+	where   string // "make/go.mk:438"
 	pattern string // the regex handed to -run, with $$ folded to $
 	pkg     string // the repo-relative package, or "" when unresolvable
 }
@@ -212,15 +212,15 @@ type runPatternException struct {
 // expands it.
 var runPatternExceptions = []runPatternException{
 	{"make/go.mk:312", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root"},
-	{"make/go.mk:409", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'"},
-	{"make/go.mk:481", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root"},
-	{"make/go.mk:511", "same separate test/go-tables module, -run Fuzz"},
-	{"make/go.mk:512", "same separate test/go-tables module, -run Fuzz under -race"},
-	{"make/go.mk:549", "same separate test/go-tables module, and it runs under a -overlay built at recipe time"},
-	{"make/go.mk:868", "same separate test/go-tables module, -run '^TestSoak$$'"},
-	{"make/go.mk:981", "same separate test/go-tables module, -run '^TestUsage$$'"},
-	{"make/go.mk:491", "-run '^$$' runs no test on purpose: the recipe runs the fuzz target FuzzTableFrontEnd alone"},
-	{"make/go.mk:505", "-run '^$$' runs no test on purpose: the recipe runs a fuzz target alone"},
+	{"make/go.mk:448", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'"},
+	{"make/go.mk:520", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root"},
+	{"make/go.mk:550", "same separate test/go-tables module, -run Fuzz"},
+	{"make/go.mk:551", "same separate test/go-tables module, -run Fuzz under -race"},
+	{"make/go.mk:588", "same separate test/go-tables module, and it runs under a -overlay built at recipe time"},
+	{"make/go.mk:907", "same separate test/go-tables module, -run '^TestSoak$$'"},
+	{"make/go.mk:1020", "same separate test/go-tables module, -run '^TestUsage$$'"},
+	{"make/go.mk:530", "-run '^$$' runs no test on purpose: the recipe runs the fuzz target FuzzTableFrontEnd alone"},
+	{"make/go.mk:544", "-run '^$$' runs no test on purpose: the recipe runs a fuzz target alone"},
 	{"Makefile:5269", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
 }
 
