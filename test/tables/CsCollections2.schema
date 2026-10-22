@@ -3,7 +3,7 @@ package cscollections2
 table Row
 {
     values []uint64 | min = 0, max = 0
-    after uint8
+    past uint8 | was = "after"
 }
 
 fixed table WideNode { value uint128 }

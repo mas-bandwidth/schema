@@ -8214,7 +8214,7 @@ struct ChunksBlobsEntry {
 // member initializers (docs/SPEC-TABLES.md)
 struct Chunks {
     TableMap<ChunksBlobsEntry> blobs; // map[int32]*bytes — the sorted entry array, empty until an insert
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
@@ -8233,7 +8233,7 @@ inline void ChunksReset( Chunks & value )
     value.blobs.entries.value = 0; // map[int32]*bytes: empty
     value.blobs.count = 0;
     value.blobs.padding = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 template <typename Ctx> inline int64_t ChunksBlobsEntryMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const ChunksBlobsEntry & value );
@@ -8754,7 +8754,7 @@ inline int64_t ChunksMeasureBody( const Ctx & ctx, const TableNumbering & number
         }
         TableMapRelease( order_blobs );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -8786,10 +8786,10 @@ inline bool ChunksSaveBodyFields( const Ctx & ctx, const TableNumbering & number
         }
         TableMapRelease( order_blobs );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -8917,7 +8917,7 @@ inline bool ChunksLoadBody( TableReader & r, const TableNodeMap & nodes, Chunks 
                 r.offset = body_end; // the remaining entries skip by the map's L
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -8928,7 +8928,7 @@ inline bool ChunksLoadBody( TableReader & r, const TableNodeMap & nodes, Chunks 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -8940,7 +8940,7 @@ inline bool ChunksLoadBody( TableReader & r, const TableNodeMap & nodes, Chunks 
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -8982,7 +8982,7 @@ inline int64_t ChunksMeasureMessageBody( const Ctx & ctx, const TableNumbering &
         }
         TableMapRelease( order_blobs );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -9013,10 +9013,10 @@ inline bool ChunksSaveMessageBody( const Ctx & ctx, const TableNumbering & numbe
         }
         TableMapRelease( order_blobs );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 18, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -9136,7 +9136,7 @@ inline bool ChunksLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -9159,7 +9159,7 @@ inline bool ChunksLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -9182,7 +9182,7 @@ inline bool ChunksLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -10767,7 +10767,7 @@ inline int64_t ChunksMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
         }
         TableMapRelease( order_blobs );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -10800,10 +10800,10 @@ inline bool ChunksSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
         }
         TableMapRelease( order_blobs );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -10940,7 +10940,7 @@ inline bool ChunksLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, C
                 r.offset = body_end; // the remaining entries skip by the map's L
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -10951,7 +10951,7 @@ inline bool ChunksLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, C
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -10963,7 +10963,7 @@ inline bool ChunksLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, C
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -11078,7 +11078,7 @@ inline bool ChunksLoadMessageBodyRetain( TableBitReader & r, const TableVocabula
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -11101,7 +11101,7 @@ inline bool ChunksLoadMessageBodyRetain( TableBitReader & r, const TableVocabula
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -11124,7 +11124,7 @@ inline bool ChunksLoadMessageBodyRetain( TableBitReader & r, const TableVocabula
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -11663,7 +11663,7 @@ template <typename Ctx> inline bool ChunksCookBody( const Ctx & ctx, const Table
     (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // blobs: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -11933,7 +11933,7 @@ static_assert( offsetof( ChunksBlobsEntry, value ) == 8, "ChunksBlobsEntry's fie
 static_assert( sizeof( Chunks ) == 24, "Chunks's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Chunks ) == 8, "Chunks's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Chunks, blobs ) == 0, "Chunks's field blobs moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Chunks, after ) == 16, "Chunks's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Chunks, past ) == 16, "Chunks's field past moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 
 
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
@@ -11958,7 +11958,7 @@ inline const TableTypeInfo * ChunksBlobsEntryTableType() { return &ChunksBlobsEn
 
 inline const TableFieldInfo ChunksTableFields[] = {
     { "blobs", "blobs", "map[int32]*bytes", 0x14e2eaab9cde925bull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Chunks, blobs ), (uint32_t) sizeof( ChunksBlobsEntry ), (uint32_t) offsetof( Chunks, blobs.count ), 0xffffffffu, &ChunksBlobsEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<ChunksBlobsEntry> *) slot, (int32_t) key_value ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Chunks, after ), (uint32_t) sizeof( Chunks::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Chunks, past ), (uint32_t) sizeof( Chunks::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo ChunksTableInfo = { "Chunks", (uint32_t) sizeof( Chunks ), 2, ChunksTableFields, +[]( void * p ) { ChunksReset( *(Chunks *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * ChunksTableType() { return &ChunksTableInfo; }

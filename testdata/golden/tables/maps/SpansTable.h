@@ -8215,7 +8215,7 @@ struct SpansTracksEntry {
 // member initializers (docs/SPEC-TABLES.md)
 struct Spans {
     TableMap<SpansTracksEntry> tracks; // map[uint8]Item — the sorted entry array, empty until an insert
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
@@ -8236,7 +8236,7 @@ inline void SpansReset( Spans & value )
     value.tracks.entries.value = 0; // map[uint8]Item: empty
     value.tracks.count = 0;
     value.tracks.padding = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 template <typename Ctx> inline int64_t SpansTracksEntryMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const SpansTracksEntry & value );
@@ -8824,7 +8824,7 @@ inline int64_t SpansMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         }
         TableMapRelease( order_tracks );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -8857,10 +8857,10 @@ inline bool SpansSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         }
         TableMapRelease( order_tracks );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -8989,7 +8989,7 @@ inline bool SpansLoadBody( TableReader & r, const TableNodeMap & nodes, Spans & 
                 r.offset = body_end; // the remaining entries skip by the map's L
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -9000,7 +9000,7 @@ inline bool SpansLoadBody( TableReader & r, const TableNodeMap & nodes, Spans & 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -9012,7 +9012,7 @@ inline bool SpansLoadBody( TableReader & r, const TableNodeMap & nodes, Spans & 
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -9054,7 +9054,7 @@ inline int64_t SpansMeasureMessageBody( const Ctx & ctx, const TableNumbering & 
         }
         TableMapRelease( order_tracks );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -9085,10 +9085,10 @@ inline bool SpansSaveMessageBody( const Ctx & ctx, const TableNumbering & number
         }
         TableMapRelease( order_tracks );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 18, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -9208,7 +9208,7 @@ inline bool SpansLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -9231,7 +9231,7 @@ inline bool SpansLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -9254,7 +9254,7 @@ inline bool SpansLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -10854,7 +10854,7 @@ inline int64_t SpansMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         }
         TableMapRelease( order_tracks );
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -10888,10 +10888,10 @@ inline bool SpansSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         }
         TableMapRelease( order_tracks );
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -11029,7 +11029,7 @@ inline bool SpansLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sp
                 r.offset = body_end; // the remaining entries skip by the map's L
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -11040,7 +11040,7 @@ inline bool SpansLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sp
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -11052,7 +11052,7 @@ inline bool SpansLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sp
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -11167,7 +11167,7 @@ inline bool SpansLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -11190,7 +11190,7 @@ inline bool SpansLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -11213,7 +11213,7 @@ inline bool SpansLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -11732,7 +11732,7 @@ template <typename Ctx> inline bool SpansCookBody( const Ctx & ctx, const TableC
     (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // tracks: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -11996,7 +11996,7 @@ static_assert( offsetof( SpansTracksEntry, value ) == 8, "SpansTracksEntry's fie
 static_assert( sizeof( Spans ) == 24, "Spans's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Spans ) == 8, "Spans's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Spans, tracks ) == 0, "Spans's field tracks moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Spans, after ) == 16, "Spans's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Spans, past ) == 16, "Spans's field past moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 
 static_assert( alignof( Item ) <= kTableAlign, "SpansTracksEntry.value: an unbounded array's element alignment must fit the arena's" );
 
@@ -12022,7 +12022,7 @@ inline const TableTypeInfo * SpansTracksEntryTableType() { return &SpansTracksEn
 
 inline const TableFieldInfo SpansTableFields[] = {
     { "tracks", "tracks", "map[uint8]Item", 0x755332609c470fbdull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Spans, tracks ), (uint32_t) sizeof( SpansTracksEntry ), (uint32_t) offsetof( Spans, tracks.count ), 0xffffffffu, &SpansTracksEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SpansTracksEntry> *) slot, (uint8_t) key_value ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Spans, after ), (uint32_t) sizeof( Spans::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Spans, past ), (uint32_t) sizeof( Spans::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo SpansTableInfo = { "Spans", (uint32_t) sizeof( Spans ), 2, SpansTableFields, +[]( void * p ) { SpansReset( *(Spans *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * SpansTableType() { return &SpansTableInfo; }

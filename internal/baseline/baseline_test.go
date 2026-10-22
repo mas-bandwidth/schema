@@ -881,7 +881,7 @@ func TestAbsorbedEdits(t *testing.T) {
 		{"an array bound grown", replace(t, "const Slots = 8", "const Slots = 64")},
 		{"a string capacity grown", replace(t, "name    string(32)", "name    string(128)")},
 		{"a bounded array made fixed", replace(t, "slots   [..Slots]int32", "slots   [Slots]int32")},
-		{"a field moved under a guard", replace(t, "    hits    int32", "    guard   bool\n    if guard\n    {\n        hits int32\n    }")},
+		{"a field moved under a guard", replace(t, "    hits    int32", "    gate    bool\n    if gate\n    {\n        hits int32\n    }")},
 		{"a table added", baseSrc + "\ntable Extra\n{\n    x int32 = 1\n}\n"},
 		// T, ?T and *T are one framing (docs/SPEC-TABLES.md §3.1): presence is
 		// recorded in the file and judged on nothing

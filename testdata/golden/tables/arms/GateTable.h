@@ -7341,7 +7341,7 @@ struct Reach
 // member initializers (docs/SPEC-TABLES.md)
 struct Gate {
     Reach reach;
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
@@ -7360,7 +7360,7 @@ inline void GateReset( Gate & value )
     value.reach.text.value = 0; // *string — null
     value.reach.plain = 0;
     value.reach.type = ReachType::None;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline int64_t OnlyMeasureMessageBody( int64_t at, const Only & value );
@@ -7841,7 +7841,7 @@ inline int64_t GateMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             default: return -1; // invalid tag — the write side refuses it too
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -7903,10 +7903,10 @@ inline bool GateSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             default: return false; // write validates the tag before it rides
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -8051,7 +8051,7 @@ inline bool GateLoadBody( TableReader & r, const TableNodeMap & nodes, Gate & va
                 r.offset += (int64_t) body_len;
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -8062,7 +8062,7 @@ inline bool GateLoadBody( TableReader & r, const TableNodeMap & nodes, Gate & va
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -8074,7 +8074,7 @@ inline bool GateLoadBody( TableReader & r, const TableNodeMap & nodes, Gate & va
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -8136,7 +8136,7 @@ inline int64_t GateMeasureMessageBody( const Ctx & ctx, const TableNumbering & n
             default: return -1; // a tag no arm names has no wire identity
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -8189,10 +8189,10 @@ inline bool GateSaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
             default: return false; // a tag no arm names has no wire identity
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -8332,7 +8332,7 @@ inline bool GateLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -8355,7 +8355,7 @@ inline bool GateLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -8378,7 +8378,7 @@ inline bool GateLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -10158,7 +10158,7 @@ inline int64_t GateMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             default: return -1; // invalid tag — the write side refuses it too
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -10221,10 +10221,10 @@ inline bool GateSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             default: return false; // write validates the tag before it rides
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -10376,7 +10376,7 @@ inline bool GateLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Gat
                 r.offset += (int64_t) body_len;
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -10387,7 +10387,7 @@ inline bool GateLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Gat
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -10399,7 +10399,7 @@ inline bool GateLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Gat
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -10561,7 +10561,7 @@ inline bool GateLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -10584,7 +10584,7 @@ inline bool GateLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -10607,7 +10607,7 @@ inline bool GateLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -11259,7 +11259,7 @@ template <typename Ctx> inline bool GateCookBody( const Ctx & ctx, const TableCo
             default: break; // every byte outside the set arm stays zero
         }
     }
-    table_cook_put( at + 16, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -11566,7 +11566,7 @@ static_assert( offsetof( Only, w ) == 0, "Only's field w moved: the build versio
 static_assert( sizeof( Gate ) == 24, "Gate's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Gate ) == 8, "Gate's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Gate, reach ) == 0, "Gate's field reach moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Gate, after ) == 16, "Gate's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Gate, past ) == 16, "Gate's field past moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 
 
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
@@ -11590,7 +11590,7 @@ inline const TableTypeInfo * OnlyTableType() { return &OnlyTableInfo; }
 
 inline const TableFieldInfo GateTableFields[] = {
     { "reach", "reach", "Reach", 0x891da1f305deb858ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, reach ), (uint32_t) sizeof( Gate::reach ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "only"; case 2: return "text"; case 3: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x072ddab46af04ab7ull; case 2: return 0xfa04f4ef1995407eull; case 3: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Reach[] = { { "only", "only", "Only", 0x072ddab46af04ab7ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) OnlyAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) OnlyEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Reach, only ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &OnlyTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "text", "text", "string", 0xfa04f4ef1995407eull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Reach, text ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Reach, plain ), (uint32_t) sizeof( Reach::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Reach, only ), NULL, &arm_fields_Reach[0], 8 }, { (uint32_t) offsetof( Reach, text ), NULL, &arm_fields_Reach[1], 8 }, { (uint32_t) offsetof( Reach, plain ), NULL, &arm_fields_Reach[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Reach, type ), (uint32_t) sizeof( Reach::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, after ), (uint32_t) sizeof( Gate::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, past ), (uint32_t) sizeof( Gate::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
 };
 inline const TableTypeInfo GateTableInfo = { "Gate", (uint32_t) sizeof( Gate ), 2, GateTableFields, +[]( void * p ) { GateReset( *(Gate *) p ); }, true, TableDocNone, 0, NULL };
 inline const TableTypeInfo * GateTableType() { return &GateTableInfo; }

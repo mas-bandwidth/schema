@@ -11,5 +11,5 @@ package mapdemo
 table Pairs
 {
     slots map[uint32][2]*Item // [N]*T: a fixed extent of pointer slots
-    after int32
+    past int32 | was = "after"
 }

@@ -21,7 +21,7 @@ fixed table Node
 
 table Wrapped
 {
-    node *Node
+    vertex *Node | was = "node"
 }
 
 table Guarded

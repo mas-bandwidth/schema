@@ -37,7 +37,7 @@ table Script
 
 table Selection
     field start id=0xee5d97ad45ad251f kind=13 type=Cursor
-    field end id=0xc2f00318f053500a kind=13 type=Cursor
+    field stop id=0xc2f00318f053500a kind=13 type=Cursor was=end
 
 table ToolMessage
     field sequence id=0xaa38aca481f528a8 kind=8
@@ -97,3 +97,6 @@ union ToolBody
 
 ### 2026-09-07 (UTC) — the EditBody arm count is renamed to tally under was: every union's tag enum now carries the member Count, so the name is reserved (#601)
 - no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-10-21 (UTC) — schema#reserved-words: fields renamed off every supported language's reserved words (SPEC §4.6, Glenn 2026-10-21) under was =, so the wire ids hold; the JSON keys follow the new names
+- Selection.stop: renamed under was = "end", which keeps the wire id and NOT the text key — the JSON key is now "stop"; pair json = "end" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
