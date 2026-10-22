@@ -126,6 +126,7 @@ table Node
 			if src == "" {
 				t.Fatalf("%s has no generated open method", name)
 			}
+			src = javaOpenWithCheck(t, name, string(data), src, "private static long openCheck(byte[] data, int offset, long bytes) {")
 			for _, want := range []string{
 				"TableBlockInfo.magic", "BuildVersion.value", "TableBlockInfo.byteOrder",
 				"stride !=", "count >", "Long.compareUnsigned(offsetOf,", "bytes",
@@ -140,6 +141,7 @@ table Node
 			if src == "" {
 				t.Fatalf("%s has no generated open method", name)
 			}
+			src = javaOpenWithCheck(t, name, string(data), src, "private static long openCheck(byte[] data, int offset, long length) {")
 			for _, want := range []string{
 				"TableCookInfo.magic", "BuildVersion.value", "TableCookInfo.byteOrder",
 				"dataLength", "attribution", "alignment", "rootSize",
@@ -153,6 +155,23 @@ table Node
 	if blocks == 0 || cooks == 0 {
 		t.Fatalf("the scan found %d block and %d cook readers — it is the scan, not the emitter, that is broken", blocks, cooks)
 	}
+}
+
+// javaOpenWithCheck follows `open` into the openCheck it delegates to: the
+// Java reader keeps every comparison in one private openCheck so that `open`
+// and `openReason` refuse on the same checks. When open calls openCheck the
+// claim is about both bodies together; an open that calls it but whose file
+// has no such method is a broken scan, not a pass.
+func javaOpenWithCheck(t *testing.T, name, file, open, checkSignature string) string {
+	t.Helper()
+	if !strings.Contains(open, "openCheck(") {
+		return open
+	}
+	check := javaOpenBody(file, checkSignature)
+	if check == "" {
+		t.Fatalf("%s open calls openCheck but the file has no %q", name, checkSignature)
+	}
+	return open + "\n" + check
 }
 
 // javaOpenBody returns the text of a Java method from its signature through its

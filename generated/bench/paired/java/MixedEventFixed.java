@@ -15,51 +15,64 @@ public final class MixedEventFixed {
 
     /** the tag: None, then each arm in declared order from 1. */
     public static final int none = 0;
+
     public static final int hit = 1;
     public static final int chat = 2;
     public static final int pickup = 3;
 
     /** the tag's own storage width, in bytes. */
     public static final int tagBytes = 1;
+
     /** the tag, then the widest arm. */
     public static final int bodyBytes = 14;
 
-    /** MixedEvent's storage: the tag beside one pre-allocated arm per variant,
-     *  which is the packet codec's own union shape. */
+    /**
+     * MixedEvent's storage: the tag beside one pre-allocated arm per variant, which is the packet
+     * codec's own union shape.
+     */
     public static final class Value {
         public int type = none;
+
         /** MixedHitEvent */
         public final MixedHitEventFixed.Value hit = new MixedHitEventFixed.Value();
+
         /** MixedChatEvent */
         public final MixedChatEventFixed.Value chat = new MixedChatEventFixed.Value();
+
         /** MixedPickupEvent */
         public final MixedPickupEventFixed.Value pickup = new MixedPickupEventFixed.Value();
     }
 
-    /** the tag, then the SELECTED arm; THE SLACK BEHIND IT IS ZEROED HERE — the
-     *  writer lays no template down, so every byte an arm does not store is
-     *  one this store zeroes, and None zeroes the whole of it. */
+    /**
+     * the tag, then the SELECTED arm; THE SLACK BEHIND IT IS ZEROED HERE — the writer lays no
+     * template down, so every byte an arm does not store is one this store zeroes, and None zeroes
+     * the whole of it.
+     */
     public static void writeBody(byte[] b, int at, Value v) {
         TableFixed.put8(b, at + 0, v.type);
         switch (v.type) {
-            case 1: {
-                MixedHitEventFixed.writeBody(b, at + 1 + 0, v.hit);
-                break;
-            }
-            case 2: {
-                MixedChatEventFixed.writeBody(b, at + 1 + 0, v.chat);
-                java.util.Arrays.fill(b, at + 9, at + 14, (byte) 0);
-                break;
-            }
-            case 3: {
-                MixedPickupEventFixed.writeBody(b, at + 1 + 0, v.pickup);
-                java.util.Arrays.fill(b, at + 9, at + 14, (byte) 0);
-                break;
-            }
-            default: {
-                java.util.Arrays.fill(b, at + 1, at + 14, (byte) 0);
-                break;
-            }
+            case 1:
+                {
+                    MixedHitEventFixed.writeBody(b, at + 1 + 0, v.hit);
+                    break;
+                }
+            case 2:
+                {
+                    MixedChatEventFixed.writeBody(b, at + 1 + 0, v.chat);
+                    java.util.Arrays.fill(b, at + 9, at + 14, (byte) 0);
+                    break;
+                }
+            case 3:
+                {
+                    MixedPickupEventFixed.writeBody(b, at + 1 + 0, v.pickup);
+                    java.util.Arrays.fill(b, at + 9, at + 14, (byte) 0);
+                    break;
+                }
+            default:
+                {
+                    java.util.Arrays.fill(b, at + 1, at + 14, (byte) 0);
+                    break;
+                }
         }
     }
 
@@ -70,21 +83,28 @@ public final class MixedEventFixed {
         // is a value this reader's own storage does not admit, and
         // landing it raw would hand a caller a `type` that names no arm
         // and that its own switch cannot answer.
-        if (v.type > 3) { v.type = none; r.clamped++; }
+        if (v.type > 3) {
+            v.type = none;
+            r.clamped++;
+        }
         switch (v.type) {
-            case 1: {
-                MixedHitEventFixed.scatter(b, at + 1 + 0, v.hit, r);
+            case 1:
+                {
+                    MixedHitEventFixed.scatter(b, at + 1 + 0, v.hit, r);
+                    break;
+                }
+            case 2:
+                {
+                    MixedChatEventFixed.scatter(b, at + 1 + 0, v.chat, r);
+                    break;
+                }
+            case 3:
+                {
+                    MixedPickupEventFixed.scatter(b, at + 1 + 0, v.pickup, r);
+                    break;
+                }
+            default:
                 break;
-            }
-            case 2: {
-                MixedChatEventFixed.scatter(b, at + 1 + 0, v.chat, r);
-                break;
-            }
-            case 3: {
-                MixedPickupEventFixed.scatter(b, at + 1 + 0, v.pickup, r);
-                break;
-            }
-            default: break;
         }
     }
 }

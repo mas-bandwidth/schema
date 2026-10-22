@@ -32,6 +32,7 @@ goes red everywhere localises nothing:
 | `conformance-negative-control-go-walk` | the Go walk's field offset | `go / json-read` | `json-write` |
 | `conformance-negative-control-js-walk` | the bool arm of the generated JavaScript text reader | `js / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-java-block` | the array PITCH CHECK in the Java `open` | `java / forgery` | `block`, `block-dump` |
+| `conformance-negative-control-java-walk` | the field-key match in the Java `fromJson` | `java / json-read` | `json-write`, `wire` |
 
 Two of those rows are the reason two surfaces exist at all. The row-dump one is
 why `block-dump` is separate from `block`: `Open` reads the prologue and the
@@ -42,10 +43,12 @@ which no valid image can show you.
 
 **A PER-BACKEND WALK CONTROL, one per port with a text form**, because a
 walker's break is the backend's and not the data's:
-`conformance-negative-control-go-walk` breaks the Go walk's offset arithmetic.
-It has the same second half as every control here, and it is the point:
-`json-read` goes red and `json-write` stays green, which is what says the
-break is the READER's. (Elixir emits no text form and has no walk control;
+`conformance-negative-control-go-walk` breaks the Go walk's offset arithmetic,
+`conformance-negative-control-c` breaks the C walk's field index, and
+`conformance-negative-control-java-walk` breaks the Java `fromJson`'s field-key
+match. Each has the same second half as every control here, and it is the
+point: `json-read` goes red and `json-write` stays green, which is what says
+the break is the READER's. (Elixir emits no text form and has no walk control;
 schema#515 brings its wire.)
 
 ## The shape
