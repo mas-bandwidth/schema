@@ -473,21 +473,21 @@ tables-cs-alloc-runtime-negative-control: build/tables-generated-cs/.stamp
 
 # THE C# TABLES SOAK (docs/PORTING.md I9, issue #416): loops Load with a
 # supplied report, Load with no report, Measure, Save and the round trip over
-# the tabledemo root for SOAK_SECONDS of real time (3600 s at release, 20 s in
-# `make test`), reads GC.GetAllocatedBytesForCurrentThread at every sample, and
-# fails if the byte count moves after warmup, reporting managed-heap and
-# working-set drift beside it as the weaker instrument that sees retention.
+# the tabledemo root for TABLES_CS_SOAK_ITERATIONS passes (a count, not a
+# clock: about an hour at release, the short form in `make test`), reads
+# GC.GetAllocatedBytesForCurrentThread at every sample, and fails if the byte
+# count moves after warmup, reporting managed-heap and working-set drift beside it as the weaker instrument that sees retention.
 # Its negative control plants a matched short-lived allocation per iteration
 # (allocated and dropped so the GC reclaims it) and requires the count gate to
 # go red while the managed-heap drift line stays green.
 .PHONY: tables-cs-soak tables-cs-soak-negative-control
 tables-cs-soak: build/tables-generated-cs/.stamp
-	cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" $(DOTNET) run -c Release -- soak $(SOAK_SECONDS)
+	cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" $(DOTNET) run -c Release -- soak $(TABLES_CS_SOAK_ITERATIONS)
 
 tables-cs-soak-negative-control: build/tables-generated-cs/.stamp
 	@mkdir -p build/cs-soak-control
 	@cd test/cs-tables && $(DOTNET) build -c Release --nologo -v quiet
-	@if ( cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" SCHEMA_CS_SOAK_PLANT=1 $(DOTNET) run -c Release --no-build -- soak 2 ) > build/cs-soak-control/log 2>&1; then \
+	@if ( cd test/cs-tables && SCHEMA_CS_ALLOC_PIN="$(CS_ALLOC_PIN)" SCHEMA_CS_SOAK_PLANT=1 $(DOTNET) run -c Release --no-build -- soak 65536 ) > build/cs-soak-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a short-lived allocation per iteration left the C# soak green"; \
 		cat build/cs-soak-control/log; exit 1; \
 	fi
@@ -860,7 +860,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-leg
 	$(MAKE) tables-cs-alloc
 	$(MAKE) tables-cs-alloc-runtime-negative-control
-	$(MAKE) tables-cs-soak SOAK_SECONDS=20
+	$(MAKE) tables-cs-soak TABLES_CS_SOAK_ITERATIONS=1048576
 	$(MAKE) tables-cs-soak-negative-control
 	$(MAKE) tables-cs-versioning
 	$(MAKE) tables-cs-wire-fuzz
