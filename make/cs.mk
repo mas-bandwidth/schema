@@ -743,7 +743,7 @@ test-cs: tables-cs-clean
 # red for another reason, fails the control.
 TABLES_CS_CLEAN_NEG := build/tables-cs-clean-negative
 .PHONY: tables-cs-clean-negative-control
-tables-cs-clean-negative-control: build/tables-generated-cs/.stamp
+tables-cs-clean-negative-control: build/tables-generated-cs/.stamp cards-cs-generate
 	$(call cs_clean_probe,tables-cs-clean-negative-control)
 	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory tables-cs-clean-negative-control-run; fi
 
