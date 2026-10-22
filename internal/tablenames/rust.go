@@ -18,6 +18,11 @@ func init() {
 		Name{Name: "TableCookInfo", What: "a cooked record's reflection descriptor"},
 		Name{Name: "TableCookFieldInfo", What: "a cooked field's reflection descriptor"},
 		Name{Name: "TableCookStorage", What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
+		Name{Name: "TableCookRefuse", What: "the cook write's refusal reasons, each one by name (§7.6); the Rust spelling of gotable/refusal.go's TableRefuseInvalidValue for the fixed path"},
+		Name{Name: "TableCookOpenReason", What: "the first failed cook-open clause by the Go reference's refusal names (§7)"},
+		Name{Name: "TableCookPut", What: "the cook write's one unaligned scalar put, in the chosen byte order (§7.6)", Scoped: true},
+		Name{Name: "TableCookWriteRecord", What: "the cook write's record walk over the cook descriptors; a null buffer measures and validates only, so a refusal changes no byte (§7.6)", Scoped: true},
+		Name{Name: "TableCookRaw", What: "the cook write's raw slot read at the descriptor's width (§7.6)", Scoped: true},
 		// THE FIXED FORM's runtime (docs/SPEC-TABLES.md §3.4), form byte 3.
 		// Emitted for a unit that carries a fixed root, and claimed beside
 		// any table on this list's own rule: a name free today is a
@@ -54,6 +59,29 @@ func init() {
 		Name{Name: "TableMessageVocabularyFieldId", What: "the reserved id the announcement's vocabulary field rides under (§3.3)", RustConst: true},
 		Name{Name: "TableMessageMaxBytes", What: "the announcement's conforming byte bound (§3.3)", RustConst: true},
 		Name{Name: "TableReason", What: "the message form's refusal reasons, each one by name"},
+		// THE MESSAGE FORM's BATCH (docs/SPEC-TABLES.md §3.3): the bit stream,
+		// the batch bound and the writer's reference width, and the shared
+		// walkers every <base>_message.rs body calls.
+		Name{Name: "TableMessageBatchMax", What: "a batch's greatest body count, 256 (§3.3)", RustConst: true},
+		Name{Name: "TableMessageRefBits", What: "the width of a reference on a body this build writes, over its own vocabulary (§3.3)", RustConst: true},
+		Name{Name: "TableBitWriter", What: "the message form's bit writer, low bit first, measuring or writing (§3.3)"},
+		Name{Name: "TableBitReader", What: "the message form's bit reader over one batch's bodies (§3.3)"},
+		Name{Name: "TableMessageBits", What: "bits_required(0, n), the width of a count or a reference (§3.3)", Scoped: true},
+		Name{Name: "TableMessageKindWidth", What: "a fixed-width kind's storage bytes (§3)", Scoped: true},
+		Name{Name: "TableMessageValueBits", What: "the bits one value of an announced entry takes on a body (§3.3)", Scoped: true},
+		Name{Name: "TableMessageCount", What: "an array's or a text's count read at its announced range (§3.3)", Scoped: true},
+		Name{Name: "TableMessageWidens", What: "the widening ladder on a batch read (§4)", Scoped: true},
+		Name{Name: "TableMessageWidenF32", What: "a float32 widened into a float64 bit-exactly, NaN payload included (§4)", Scoped: true},
+		Name{Name: "TableMessageUtf8", What: "§3's content rule for a string on a body: well-formed UTF-8 with no zero", Scoped: true},
+		Name{Name: "TableMessageUtf8Clamp", What: "a UTF-8 clamp that never cuts a character (§4)", Scoped: true},
+		Name{Name: "TableMessageSigned", What: "a peer's value sign-extended from its announced kind (§3.3)", Scoped: true},
+		Name{Name: "TableMessageUnsigned", What: "a peer's value zero-extended from its announced kind (§3.3)", Scoped: true},
+		Name{Name: "TableMessageReadScalar", What: "one scalar read by the peer's announced shape (§3.3)", Scoped: true},
+		Name{Name: "TableMessageWriteScalar", What: "one scalar written by this build's own shape (§3.3)", Scoped: true},
+		Name{Name: "TableMessageSkip", What: "the tolerant skip of one value by the peer's shape (§3.3)", Scoped: true},
+		Name{Name: "TableMessageSkipBody", What: "a nested body skipped whole to its zero reference (§3.3)", Scoped: true},
+		Name{Name: "TableMessageBatchOpen", What: "the batch's form byte, vocabulary and count checks (§3.3)", Scoped: true},
+		Name{Name: "TableMessageBatchClose", What: "the batch's zero pad and nothing after it (§3.3)", Scoped: true},
 		// THE VARIABLE WIRE's runtime (docs/SPEC-TABLES.md §3, §3.1), emitted for
 		// a unit with a variable table the Rust leg carries: the save's node
 		// numbering, the load's node reader and its slots, the scalar ladder,
@@ -61,13 +89,31 @@ func init() {
 		Name{Name: "TableNodeGraph", What: "the save's node numbering: first-visit order over pointer edges (§3.1)"},
 		Name{Name: "TableNodeRecord", What: "one record of the save's numbering: a table node or a blob (§3.1, §2.5)"},
 		Name{Name: "TableNodeReader", What: "the node table a load gathers before any body (§3.1)"},
+		Name{Name: "TableRefuseReason", What: "the variable form's refused-by-name result (§5), using the Go reference's names"},
 		Name{Name: "TableNodeSlot", What: "one record's state in a load's numbering (§3.1)"},
 		Name{Name: "TableKindWidth", What: "a fixed-width kind's payload size (§3)", Scoped: true},
 		Name{Name: "TableKindWidens", What: "the widening ladder: a narrower kind decoded exactly into a wider declaration (§4)", Scoped: true},
 		Name{Name: "TableScalarRead", What: "one scalar read at its kind's own width (§3, §4)", Scoped: true},
+		Name{Name: "TableWideUnits", What: "a kind 33 payload as UTF-16 code units, or None for an odd L, an unpaired surrogate or a zero unit (§3, §4)", Scoped: true},
+		Name{Name: "TableWideBoundary", What: "a wstring(N) clamp at N code units that never splits a pair (§3)", Scoped: true},
+		Name{Name: "TableWideFit", What: "the writer's wstring(N) bound: over N is the save's refusal by name (§3, SPEC §4.12)", Scoped: true},
+		Name{Name: "TableWidePut", What: "wstring(N) code units written little-endian under the caller's L (§3)", Scoped: true},
 		Name{Name: "TableWidenF32", What: "a float32 widened into a float64 bit-exactly, NaN payload included (§4)", Scoped: true},
 		Name{Name: "TableRetainDepthCap", What: "the retain walk's nesting cap (§6.6)", RustConst: true},
 		Name{Name: "TableDesc", What: "one table's descriptor in the card descriptors (§8.1)"},
 		Name{Name: "TableFieldDesc", What: "one field's descriptor in the card descriptors (§8.1)"},
+		// THE VIEW (docs/SPEC-TABLES.md §8): every table's and every type's
+		// descriptors and the unit registry, in unit_view.rs, emitted for a
+		// unit with tables and glob re-exported like every table module.
+		Name{Name: "TableFieldInfo", What: "a field's reflection descriptor (§8.1)"},
+		Name{Name: "TableTypeInfo", What: "a table's or a type's reflection descriptor (§8.1, §8.2)"},
+		Name{Name: "TableUnionInfo", What: "a union field's tag and its arms (§8.1)"},
+		Name{Name: "TableUnionArmInfo", What: "one union arm's payload and descriptor (§8.1)"},
+		Name{Name: "TableDocNone", What: "the one shared empty doc every unannotated descriptor row names (§8.1)", RustConst: true},
+		Name{Name: "TableViewConstant", What: "one constant in the unit registry (§8.3); the Rust spelling of the reference's ViewConstant, Table-prefixed because the crate root is glob-exported"},
+		Name{Name: "TableViewVariant", What: "one enum variant, flags bit or union arm in the unit registry (§8.3)"},
+		Name{Name: "TableViewVocabulary", What: "one enum, flags or union declaration in the unit registry (§8.3)"},
+		Name{Name: "TableViewType", What: "one type or table in the unit registry (§8.3)"},
+		Name{Name: "TableUnitView", What: "the unit registry unit_view() returns (§8.3); the Rust spelling of the reference's UnitViewInfo"},
 	)
 }

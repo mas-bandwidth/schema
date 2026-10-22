@@ -437,6 +437,41 @@ fn surface_cook_forgery(manifest: &Manifest, out: &str) {
     }
 }
 
+// The reason surfaces use the same forged pointer and caller extent as the
+// open surfaces, then name the first failed clause (§7, §19.2).
+fn surface_reason(manifest: &Manifest, out: &str, kind: &str) {
+    for f in manifest.of_kind("forgery") {
+        if f[2] != kind { continue; }
+        let data = slurp(&f[4]);
+        let extent: i64 = parse_int(&f[5]);
+        let claim = if extent < 0 { data.len() as i64 } else { extent };
+        let null_buffer = f[6] == "null";
+        let lead = if null_buffer { 0 } else { parse_int(&f[6]) as usize };
+        let storage = Aligned::placed(&data, claim, lead);
+        let base = if null_buffer { std::ptr::null() } else { storage.at(lead) as *const u8 };
+        let reason = unsafe {
+            if kind == "block" {
+                if f[3].starts_with("block_render") {
+                    blockdemo::RenderFrameBlock::open_reason(base, claim)
+                } else if f[3].starts_with("block_padded") {
+                    blockdemo::PaddedFrameBlock::open_reason(base, claim)
+                } else { fail(&format!("no block named {}", f[3])) }
+            } else {
+                let (size, align) = match f[3].as_str() {
+                    "Scene" => (graphdemo::SceneCook::ROOT_SIZE, graphdemo::SceneCook::ROOT_ALIGN),
+                    "Depot" => (graphdemo::DepotCook::ROOT_SIZE, graphdemo::DepotCook::ROOT_ALIGN),
+                    "Album" => (graphdemo::AlbumCook::ROOT_SIZE, graphdemo::AlbumCook::ROOT_ALIGN),
+                    "TreeNode" => (graphdemo::TreeNodeCook::ROOT_SIZE, graphdemo::TreeNodeCook::ROOT_ALIGN),
+                    "ListNode" => (graphdemo::ListNodeCook::ROOT_SIZE, graphdemo::ListNodeCook::ROOT_ALIGN),
+                    _ => fail(&format!("no cook root named {}", f[3])),
+                };
+                graphdemo::table_cook_open_reason(base, claim as u64, size, align)
+            }
+        };
+        spill(out, &f[1], format!("{reason}\n").as_bytes());
+    }
+}
+
 fn parse_int(text: &str) -> i64 {
     let text = text.trim();
     let (negative, digits) = match text.strip_prefix('-') {
@@ -774,12 +809,14 @@ fn surface_cook(manifest: &Manifest, out: &str) {
 // ---------------------------------------------------------------------------
 //
 // The variable form, form byte 1, over the roots this leg's variable wire
-// carries: the pointer corpus's Scene (graphdemo) and the byte-buffer corpus's
-// Catalog (blobdemo). Every other case is answered `<case>.absent` — a root
-// whose unit this leg does not carry yet (a union, a map, an optional, an
-// enum-keyed array, a fixed root's own form-1 file, or a unit the compiler
-// refuses for rust whole, as tables/lists is for its union), which the matrix
-// counts as the row of work that is left, never as a pass.
+// carries: the pointer corpus's Scene (graphdemo), the byte-buffer corpus's
+// Catalog (blobdemo), the map corpus's roots (mapdemo) and the fixed roots of
+// the three evolution pairs (tblv1/tblv2, tblw1/tblw2, tblr1/tblr2) and the
+// wide-text unit's roots (widedemo). Every
+// other case is answered `<case>.absent` — a root this driver does not name
+// yet, or a unit the compiler refuses for rust whole, as tables/lists is for
+// its union — which the matrix counts as the row of work that is left, never
+// as a pass.
 
 // One root's codec, by its unit and root name: the four verbs the surfaces
 // drive, each answering through the root's own generated functions. The
@@ -790,12 +827,267 @@ macro_rules! with_root {
         match ($unit, $root) {
             ("graphdemo", "Scene") => {
                 #[allow(unused_imports)]
-                use graphdemo::{scene_from_json as $from_json, scene_load as $load, scene_save as $save, scene_to_json_checked as $to_json};
+                use graphdemo::{scene_from_json as $from_json, scene_load as $load, scene_save_checked as $save, scene_to_json_checked as $to_json};
                 Some($body)
             }
             ("blobdemo", "Catalog") => {
                 #[allow(unused_imports)]
-                use blobdemo::{catalog_from_json as $from_json, catalog_load as $load, catalog_save as $save, catalog_to_json_checked as $to_json};
+                use blobdemo::{catalog_from_json as $from_json, catalog_load as $load, catalog_save_checked as $save, catalog_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Cells") => {
+                #[allow(unused_imports)]
+                use mapdemo::{cells_from_json as $from_json, cells_load as $load, cells_save_checked as $save, cells_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Chunks") => {
+                #[allow(unused_imports)]
+                use mapdemo::{chunks_from_json as $from_json, chunks_load as $load, chunks_save_checked as $save, chunks_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Crews") => {
+                #[allow(unused_imports)]
+                use mapdemo::{crews_from_json as $from_json, crews_load as $load, crews_save_checked as $save, crews_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Depth") => {
+                #[allow(unused_imports)]
+                use mapdemo::{depth_from_json as $from_json, depth_load as $load, depth_save_checked as $save, depth_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Docs") => {
+                #[allow(unused_imports)]
+                use mapdemo::{docs_from_json as $from_json, docs_load as $load, docs_save_checked as $save, docs_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Fleet") => {
+                #[allow(unused_imports)]
+                use mapdemo::{fleet_from_json as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Pairs") => {
+                #[allow(unused_imports)]
+                use mapdemo::{pairs_from_json as $from_json, pairs_load as $load, pairs_save_checked as $save, pairs_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Slots") => {
+                #[allow(unused_imports)]
+                use mapdemo::{slots_from_json as $from_json, slots_load as $load, slots_save_checked as $save, slots_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Spans") => {
+                #[allow(unused_imports)]
+                use mapdemo::{spans_from_json as $from_json, spans_load as $load, spans_save_checked as $save, spans_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Trails") => {
+                #[allow(unused_imports)]
+                use mapdemo::{trails_from_json as $from_json, trails_load as $load, trails_save_checked as $save, trails_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Runs") => {
+                #[allow(unused_imports)]
+                use mapdemo::{runs_from_json as $from_json, runs_load as $load, runs_save_checked as $save, runs_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tabledemo", "RootConfig") => {
+                #[allow(unused_imports)]
+                use tabledemo::{root_config_from_json as $from_json, root_config_load as $load, root_config_save_checked as $save, root_config_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tabledemo", "PackConfig") => {
+                #[allow(unused_imports)]
+                use tabledemo::{pack_config_from_json as $from_json, pack_config_load as $load, pack_config_save_checked as $save, pack_config_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tabledemo", "LoadoutConfig") => {
+                #[allow(unused_imports)]
+                use tabledemo::{loadout_config_from_json as $from_json, loadout_config_load as $load, loadout_config_save_checked as $save, loadout_config_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tabledemo", "ProfileConfig") => {
+                #[allow(unused_imports)]
+                use tabledemo::{profile_config_from_json as $from_json, profile_config_load as $load, profile_config_save_checked as $save, profile_config_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tabledemo", "ArchiveConfig") => {
+                #[allow(unused_imports)]
+                use tabledemo::{archive_config_from_json as $from_json, archive_config_load as $load, archive_config_save_checked as $save, archive_config_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tabledemo", "KeyedConfig") => {
+                #[allow(unused_imports)]
+                use tabledemo::{keyed_config_from_json as $from_json, keyed_config_load as $load, keyed_config_save_checked as $save, keyed_config_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tabledemo", "WideBlob") => {
+                #[allow(unused_imports)]
+                use tabledemo::{wide_blob_from_json as $from_json, wide_blob_load as $load, wide_blob_save_checked as $save, wide_blob_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("streamdemo", "Feed") => {
+                #[allow(unused_imports)]
+                use streamdemo::{feed_from_json as $from_json, feed_load as $load, feed_save_checked as $save, feed_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("listdemo", "Album") => {
+                #[allow(unused_imports)]
+                use listdemo::{album_from_json as $from_json, album_load as $load, album_save_checked as $save, album_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("listdemo", "Army") => {
+                #[allow(unused_imports)]
+                use listdemo::{army_from_json as $from_json, army_load as $load, army_save_checked as $save, army_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("listdemo", "Mixed") => {
+                #[allow(unused_imports)]
+                use listdemo::{mixed_from_json as $from_json, mixed_load as $load, mixed_save_checked as $save, mixed_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("listdemo", "Save") => {
+                #[allow(unused_imports)]
+                use listdemo::{save_from_json as $from_json, save_load as $load, save_save_checked as $save, save_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("listdemo", "Sheet") => {
+                #[allow(unused_imports)]
+                use listdemo::{sheet_from_json as $from_json, sheet_load as $load, sheet_save_checked as $save, sheet_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("listdemo", "Unbounded") => {
+                #[allow(unused_imports)]
+                use listdemo::{unbounded_from_json as $from_json, unbounded_load as $load, unbounded_save_checked as $save, unbounded_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("messagedemo", "ToolMessage") => {
+                #[allow(unused_imports)]
+                use messagedemo::{tool_message_from_json as $from_json, tool_message_load as $load, tool_message_save_checked as $save, tool_message_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("backenddemo", "LoginRequest") => {
+                #[allow(unused_imports)]
+                use backenddemo::{login_request_from_json as $from_json, login_request_load as $load, login_request_save_checked as $save, login_request_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("backenddemo", "MatchResult") => {
+                #[allow(unused_imports)]
+                use backenddemo::{match_result_from_json as $from_json, match_result_load as $load, match_result_save_checked as $save, match_result_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("backenddemo", "StorePurchase") => {
+                #[allow(unused_imports)]
+                use backenddemo::{store_purchase_from_json as $from_json, store_purchase_load as $load, store_purchase_save_checked as $save, store_purchase_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("vocabdemo", "Wide00") => {
+                #[allow(unused_imports)]
+                use vocabdemo::{wide00_from_json as $from_json, wide00_load as $load, wide00_save_checked as $save, wide00_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("vocabdemo", "Wide09") => {
+                #[allow(unused_imports)]
+                use vocabdemo::{wide09_from_json as $from_json, wide09_load as $load, wide09_save_checked as $save, wide09_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("vocab9demo", "Wide00") => {
+                #[allow(unused_imports)]
+                use vocab9demo::{wide00_from_json as $from_json, wide00_load as $load, wide00_save_checked as $save, wide00_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("vocab9demo", "Wide19") => {
+                #[allow(unused_imports)]
+                use vocab9demo::{wide19_from_json as $from_json, wide19_load as $load, wide19_save_checked as $save, wide19_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblv1", "Cfg") => {
+                #[allow(unused_imports)]
+                use tblv1::{cfg_from_json as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblv2", "Cfg") => {
+                #[allow(unused_imports)]
+                use tblv2::{cfg_from_json as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblp1", "Chain") => {
+                #[allow(unused_imports)]
+                use tblp1::{chain_from_json as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblp2", "Chain") => {
+                #[allow(unused_imports)]
+                use tblp2::{chain_from_json as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblp3", "Chain") => {
+                #[allow(unused_imports)]
+                use tblp3::{chain_from_json as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblm1", "Msg") => {
+                #[allow(unused_imports)]
+                use tblm1::{msg_from_json as $from_json, msg_load as $load, msg_save_checked as $save, msg_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblm2", "Msg") => {
+                #[allow(unused_imports)]
+                use tblm2::{msg_from_json as $from_json, msg_load as $load, msg_save_checked as $save, msg_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tbla2", "Root") => {
+                #[allow(unused_imports)]
+                use tbla2::{root_from_json as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblk1", "Root") => {
+                #[allow(unused_imports)]
+                use tblk1::{root_from_json as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblk2", "Root") => {
+                #[allow(unused_imports)]
+                use tblk2::{root_from_json as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblw1", "Fleet") => {
+                #[allow(unused_imports)]
+                use tblw1::{fleet_from_json as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblw2", "Fleet") => {
+                #[allow(unused_imports)]
+                use tblw2::{fleet_from_json as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblr1", "Cfg") => {
+                #[allow(unused_imports)]
+                use tblr1::{cfg_from_json as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblr2", "Cfg") => {
+                #[allow(unused_imports)]
+                use tblr2::{cfg_from_json as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                Some($body)
+            }
+            // wstring(N) ON THE TABLE WIRE (docs/SPEC-TABLES.md §3 kind 33,
+            // SPEC.md §4.12): widedemo's fixed roots ride the variable form
+            // (§2.2), so Caption carries the kind at every site the wire has
+            // (its own field, a `type` it reaches, an element and a union arm)
+            // and Stamp beside it; map_text is the kind as a MAP VALUE (§2.8)
+            ("widedemo", "Caption") => {
+                #[allow(unused_imports)]
+                use widedemo::{caption_from_json as $from_json, caption_load as $load, caption_save_checked as $save, caption_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("widedemo", "Stamp") => {
+                #[allow(unused_imports)]
+                use widedemo::{stamp_from_json as $from_json, stamp_load as $load, stamp_save_checked as $save, stamp_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("mapdemo", "Text") => {
+                #[allow(unused_imports)]
+                use mapdemo::{text_from_json as $from_json, text_load as $load, text_save_checked as $save, text_to_json_checked as $to_json};
                 Some($body)
             }
             _ => None,
@@ -817,12 +1109,15 @@ fn surface_wire(manifest: &Manifest, out: &str) {
         let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, save, _to, _from| {
             let mut report = Default::default();
             match load(&data, &mut report) {
+                // the writer's NAMED refusal (docs/SPEC-TABLES.md §2.5, §3): a
+                // blob two slots name, and nothing else, answers absent by name
                 Some(v) => save(&v),
                 None => fail(&format!("{}: load refused {}", f[1], f[4])),
             }
         });
         match answer {
-            Some(bytes) => spill(out, &f[1], &bytes),
+            Some(Ok(bytes)) => spill(out, &f[1], &bytes),
+            Some(Err(why)) => spill(out, &format!("{}.absent", f[1]), why.as_bytes()),
             None => spill_absent(out, &f[1]),
         }
     }
@@ -848,6 +1143,54 @@ fn surface_report(manifest: &Manifest, out: &str) {
     }
 }
 
+// The file-form retention rows exercise §6.6 with caller-owned capacities.
+// A short store is measured from the full retaining read, then reduced by one
+// byte so the loss is caused by capacity rather than a different input wire.
+fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
+    for f in manifest.lines.iter().filter(|f| f[0] == "retain" || f[0] == "retain-message") {
+        if saves && f.last().is_some_and(|v| v == "-") {
+            continue;
+        }
+        if f[0] == "retain-message" || f[2] != "tblrt1" || f[3] != "Node" {
+            spill_absent(out, &f[1]);
+            continue;
+        }
+        use tblrt1::{TableRetain, TableReport, node_load_retain, node_save_retain};
+        let wire = slurp(&f[4]);
+        let id_capacity = if f[6] == "full" { 1 << 17 } else {
+            f[6].parse::<usize>().unwrap_or_else(|_| fail(&format!("{}: invalid id capacity", f[1])))
+        };
+        let mut capacity = 1 << 20;
+        if f[5] == "short" {
+            let mut probe = TableRetain { bytes: Vec::with_capacity(capacity), ids: Vec::with_capacity(id_capacity) };
+            let mut report = TableReport::default();
+            let _ = node_load_retain(&wire, &mut probe, &mut report)
+                .unwrap_or_else(|| fail(&format!("{}: capacity probe refused", f[1])));
+            capacity = probe.bytes.len().saturating_sub(1);
+        }
+        let mut store = TableRetain { bytes: Vec::with_capacity(capacity), ids: Vec::with_capacity(id_capacity) };
+        let mut report = TableReport::default();
+        let value = node_load_retain(&wire, &mut store, &mut report)
+            .unwrap_or_else(|| fail(&format!("{}: retaining load refused", f[1])));
+        if report.malformed { fail(&format!("{}: retaining load malformed", f[1])); }
+        let retained = report.retained;
+        let lost = report.retain_lost;
+        let unknown = report.unknown;
+        let saved = node_save_retain(&value, &mut store, &mut report);
+        let save_lost = report.retain_lost - lost;
+        let mut second = TableReport::default();
+        let again = node_save_retain(&value, &mut store, &mut second);
+        if again != saved || second.retain_lost != save_lost {
+            fail(&format!("{}: retaining save is not repeatable", f[1]));
+        }
+        if saves {
+            spill(out, &f[1], &saved);
+        } else {
+            spill(out, &f[1], format!("{retained},{lost},{unknown} {save_lost}\n").as_bytes());
+        }
+    }
+}
+
 fn surface_json_read(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("instance") {
         if no_text(f) {
@@ -861,7 +1204,7 @@ fn surface_json_read(manifest: &Manifest, out: &str) {
             };
             let mut report = Default::default();
             match from_json(&text, &mut report) {
-                Some(v) => save(&v),
+                Some(v) => save(&v).unwrap_or_else(|why| fail(&format!("{}: the save refused the value: {why}", f[1]))),
                 None => fail(&format!("{}: FromJson refused the text", f[1])),
             }
         });
@@ -896,6 +1239,126 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
     }
 }
 
+// JSON-HOSTILE (docs/SPEC-TABLES.md §16.2, §16.3; FORMAT.md): one tree per
+// rule the text form states, and the verdict is `refused` or the §4 report the
+// read produces, `u,k,w,c,d,false,read`. The tree is what `schema pack` reads,
+// so the text is <tree>/<root>.json (§17). A root this leg's text form does not
+// carry answers ABSENT, one row at a time, exactly as json-read does.
+fn surface_json_hostile(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("json-hostile") {
+        let path = format!("{}/{}.json", f[4], f[3]);
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, _save, _to, from_json| {
+            let text = match fs::read(&path) {
+                Ok(t) => t,
+                Err(e) => fail(&format!("cannot read {path}: {e}")),
+            };
+            let text = String::from_utf8_lossy(&text);
+            let mut report = Default::default();
+            let value = from_json(&text, &mut report);
+            let r = &report;
+            if value.is_none() || r.malformed || r.refused {
+                "refused\n".to_string()
+            } else {
+                format!(
+                    "{},{},{},{},{},false,read\n",
+                    r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate
+                )
+            }
+        });
+        match answer {
+            Some(verdict) => spill(out, &f[1], verdict.as_bytes()),
+            None => spill_absent(out, &f[1]),
+        }
+    }
+}
+
+// COOK WRITE (docs/SPEC-TABLES.md §7.6) is answered ABSENT for every row today.
+// The emitted cook runtime has <T>_cook_measure / <T>_cook_measure_reason /
+// <T>_cook_from (internal/codegen/rusttable/cook.go), and since
+// vt/fixed-class/rust a FIXED table has its form-1 reader too
+// (<name>_load, internal/codegen/rusttable/variablecodec.go), so the value the
+// reference leg's driver loads before it measures and writes now exists here.
+// What is left is the bridge from that loaded value to the cook row and the
+// driving of <T>_cook_from per row, which is vt/cook-write/rust's work and not
+// this surface's; until it lands every row stays `.absent`, counted as work
+// left and never as a pass.
+fn surface_cook_write(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("cook-write") {
+        spill_absent(out, &f[1]);
+        spill_absent(out, &format!("{}-be", f[1]));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// the MESSAGE surface (docs/SPEC-TABLES.md §3.3, test/conformance/README.md)
+// ---------------------------------------------------------------------------
+//
+// The one surface that reads two files: the CONNECTION's announcement into one
+// direction's vocabulary, then the message-form batch against it. The verbs are
+// PLURAL — LoadMessages, MeasureMessages and SaveMessages over the batch — and
+// the bytes written are SaveMessages' own. A row whose root is a plain `table`
+// carries no verbs ("`fixed table T` may ride here, a plain `table T` may
+// not", §3.3), so it is answered ABSENT with the reason, as the Go driver does.
+
+macro_rules! message_round_trip {
+    ($krate:ident, $row:ident, $load:ident, $measure:ident, $save:ident, $ann:expr, $wire:expr) => {{
+        use $krate as k;
+        let mut storage = vec![k::TableMessageEntry::default(); 4096];
+        let mut vocabulary = k::TableVocabulary::new(&mut storage);
+        let mut report = k::TableReport::default();
+        if !k::announce_read(&mut vocabulary, $ann, &mut report) {
+            None
+        } else {
+            let mut values = vec![k::$row::default(); k::TABLE_MESSAGE_BATCH_MAX];
+            let (count, ok) = k::$load(&mut values, &vocabulary, $wire, &mut report);
+            if !ok || count < 1 {
+                None
+            } else {
+                let mut ignored = k::TableReport::default();
+                let n = k::$measure(&values[..count], &mut ignored);
+                let mut bytes = vec![0u8; n.max(0) as usize];
+                if n < 0 || k::$save(&values[..count], &mut bytes, &mut ignored) != n {
+                    None
+                } else {
+                    Some(bytes)
+                }
+            }
+        }
+    }};
+}
+
+// One message root's round trip, by its connection's unit and the row's root:
+// None for a root this leg carries no message verbs for, Some(None) for a batch
+// it refused.
+fn message_codec(unit: &str, root: &str, ann: &[u8], wire: &[u8]) -> Option<Option<Vec<u8>>> {
+    Some(match (unit, root) {
+        ("backenddemo", "LoginRequest") => message_round_trip!(backenddemo, LoginRequestRow, login_request_load_messages, login_request_measure_messages, login_request_save_messages, ann, wire),
+        ("backenddemo", "MatchResult") => message_round_trip!(backenddemo, MatchResultRow, match_result_load_messages, match_result_measure_messages, match_result_save_messages, ann, wire),
+        ("backenddemo", "StorePurchase") => message_round_trip!(backenddemo, StorePurchaseRow, store_purchase_load_messages, store_purchase_measure_messages, store_purchase_save_messages, ann, wire),
+        ("backenddemo", "Envelope") => message_round_trip!(backenddemo, EnvelopeRow, envelope_load_messages, envelope_measure_messages, envelope_save_messages, ann, wire),
+        ("vocabdemo", "Wide00") => message_round_trip!(vocabdemo, Wide00Row, wide00_load_messages, wide00_measure_messages, wide00_save_messages, ann, wire),
+        ("vocabdemo", "Wide09") => message_round_trip!(vocabdemo, Wide09Row, wide09_load_messages, wide09_measure_messages, wide09_save_messages, ann, wire),
+        ("vocab9demo", "Wide00") => message_round_trip!(vocab9demo, Wide00Row, wide00_load_messages, wide00_measure_messages, wide00_save_messages, ann, wire),
+        ("vocab9demo", "Wide19") => message_round_trip!(vocab9demo, Wide19Row, wide19_load_messages, wide19_measure_messages, wide19_save_messages, ann, wire),
+        _ => return None,
+    })
+}
+
+fn surface_message(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("message") {
+        let Some(c) = manifest.of_kind("connection").find(|c| c[1] == f[2]) else {
+            fail(&format!("message {} names no connection {}", f[1], f[2]));
+        };
+        let ann = slurp(&c[4]);
+        let wire = slurp(&f[5]);
+        match message_codec(c[2].as_str(), f[3].as_str(), &ann, &wire) {
+            Some(Some(bytes)) => spill(out, &f[1], &bytes),
+            Some(None) => fail(&format!("{}: message load/save refused {}", f[1], f[5])),
+            None => spill(out, &format!("{}.absent", f[1]), b"plain table: \xc2\xa73.3"),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 
 fn main() {
@@ -914,10 +1377,10 @@ fn main() {
             // the WIRE-CARRYING surfaces ride the id-table form (docs/SPEC-TABLES.md
             // §3, §3.1, §16.7) for the roots this leg's variable wire carries —
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
-            // case ABSENT, one by one; the message and retain surfaces are still
-            // absent whole (the message form's batch and retention beyond the card
-            // constructs are their own rows)
-            "wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
+            // case ABSENT, one by one; the message surface rides the message form's
+            // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
+            // (§3.3); the retaining file rows read through tblrt1 (§6.6).
+            "wire\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nblock-reason\ncook-reason"
         );
         return;
     }
@@ -929,15 +1392,22 @@ fn main() {
     match surface {
         "wire" => surface_wire(&manifest, out),
         "report" => surface_report(&manifest, out),
+        "retain" => surface_retain(&manifest, out, false),
+        "retain-save" => surface_retain(&manifest, out, true),
         "json-read" => surface_json_read(&manifest, out),
         "json-write" => surface_json_write(&manifest, out),
+        "json-hostile" => surface_json_hostile(&manifest, out),
         "cook" => surface_cook(&manifest, out),
+        "cook-write" => surface_cook_write(&manifest, out),
         "cook-foreign" => surface_cook_foreign(&manifest, out),
         "block-foreign" => surface_block_foreign(&manifest, out),
         "block-dump" => surface_block_dump(&manifest, out),
         "cook-forgery" => surface_cook_forgery(&manifest, out),
         "block" => surface_block(&manifest, out),
         "forgery" => surface_forgery(&manifest, out),
+        "block-reason" => surface_reason(&manifest, out, "block"),
+        "cook-reason" => surface_reason(&manifest, out, "cook"),
+        "message" => surface_message(&manifest, out),
         _ => exit(2),
     }
 }

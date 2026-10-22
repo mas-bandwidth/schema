@@ -11,7 +11,9 @@
     clippy::manual_is_multiple_of,
     clippy::match_single_binding,
     clippy::module_inception,
+    clippy::needless_borrow,
     clippy::needless_option_as_deref,
+    clippy::needless_range_loop,
     clippy::redundant_pattern_matching,
     clippy::too_many_arguments,
     clippy::unnecessary_cast
@@ -803,6 +805,12 @@ fn upgrade_seam(wire: &[u8], retain_bytes: usize, retain_ids: usize) -> Result<(
         None => return Err("cards: upgrade: wire is malformed".to_string()),
     };
     check_card(&card)?;
+    // THE WRITER'S NAMED REFUSAL (docs/SPEC-TABLES.md §2.5: a blob two slots
+    // name) is the rewrite's answer, never the retaining save's panic on a
+    // hostile card
+    if let Err(why) = card_save_checked(&card) {
+        return Err(format!("cards: upgrade: {why}"));
+    }
     let out = card_save_retain(&card, &mut retain, &mut report);
     if let Some(e) = loss_err(&report) {
         return Err(e);
