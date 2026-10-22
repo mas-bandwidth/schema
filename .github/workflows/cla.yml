@@ -132,32 +132,23 @@ jobs:
           branch: cla-signatures
           path-to-signatures: signatures/caa.json
           path-to-document: https://github.com/mas-bandwidth/.github/blob/main/CAA.md
-          # our own accounts and bots never need to sign. The family's lines
-          # commit under their own names with unlinked addresses (the bot then
-          # reports "X seems not to be a GitHub user"), and this action matches an
-          # unlinked committer by the commit author name, so the names are listed
-          # beside the logins. Added 2026-09-10 on Glenn's word ("Please add the
-          # family to CAA" / "You have my permission").
-          # Widened 2026-10-14 on Glenn's word ("friends are exempt from CAA,
-          # because they work for Mas Bandwidth"): every friend under every
-          # name their commits carry (Aurora Muse, Zhi, Alex, Emma Antigravity
-          # joined the list), Rowan's per-card names (Rowan Claude*), Glenn's
-          # own name, and the sprint and fleet machinery's commit identities
-          # (nova-sprint, nova-merge, Nova Fleet, nova, worker, Worker N).
-          # Promotion #1903 went red on Aurora Muse, nova-sprint and worker.
-          #
-          # The match is one identity per commit (src/graphql.ts
-          # extractUserFromCommit): author login, else committer login, else the
-          # git author name. A name with no GitHub user has no numeric id, and
-          # the signature ledger matches on id, so it can never record these.
-          # Only this list can. Issue #1799, the three names that first went red:
-          #   Glenn Fiedler — glenn@studio.local, not linked to gafferongames
-          #     (glenn@networknext.com is, which is why those commits already pass)
-          #   Nova Fleet — nova@superman.local
-          #   nova-merge — nova-merge@localhost, the local merge commits
-          # *[bot] does not match any of the three. The self-test that re-applies
-          # this list to schema's main tip is .github/workflows/caa-self-test.yml.
-          allowlist: gafferongames,Glenn Fiedler,rowan-claude,Rowan,rowan,Rowan Claude*,Johnny,Johnny Grok,Emma,Emma Gemini,Emma Antigravity,Stella,Stella Codex,Freddy,Freddy Mercury,Aurora,Aurora Muse,Zhi,zhi,Zhi Yǎ Wén,Alex,nova-sprint,nova-merge,Nova Fleet,nova,worker,Worker *,*[bot]
+          # LOGINS ONLY (Glenn, 2026-10-22: "remove all name entries from the CAA
+          # allowlist in every repo, allow-list logins only"; "So it's my login
+          # and yours"). The action matches a commit that has no linked GitHub
+          # account by its git author NAME, which anyone can set, so every name
+          # entry, and every wildcard (*[bot] included: the name match applies
+          # to it too), let an outsider skip the CAA. A login is verified by
+          # GitHub and cannot be spoofed. Our agents commit as
+          # Rowan Claude <305107455+rowan-claude@users.noreply.github.com>,
+          # which GitHub links to the rowan-claude login. The action always
+          # skips github-actions[bot] itself (user id 41898282); any other bot,
+          # dependabot included, is not on this list and fails it. Never add a
+          # name or a wildcard here: a red caa check is fixed by committing
+          # under a linked identity, never by widening this list. This replaces
+          # the name list of 2026-10-14 (issue #1799, PR #2160). The self-test
+          # .github/workflows/caa-self-test.yml holds the list to these logins
+          # and re-applies it to schema's main tip.
+          allowlist: gafferongames,rowan-claude
           custom-notsigned-prcomment: 'Thanks for the contribution. Before it can be merged, please read the [Contributor Assignment Agreement](https://github.com/mas-bandwidth/.github/blob/main/CAA.md) and sign it by posting the exact sentence below as a comment on this PR.'
           custom-pr-sign-comment: 'I have read the CAA and I hereby sign it, assigning copyright in my contributions to Más Bandwidth LLC.'
           custom-allsigned-prcomment: 'All contributors have signed the CAA. Thank you.'
