@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -13,7 +14,7 @@ import (
 func TestOptionalVariableRefusedOffGo(t *testing.T) {
 	t.Parallel()
 	c := New()
-	src := "package probe\ntable Inner\n{\n    text *string\n}\ntable Outer\n{\n    inner ?Inner\n}\n"
+	src := "package probe\ntable Leaf\n{\n    n int32\n}\ntable Inner\n{\n    child *Leaf\n}\ntable Outer\n{\n    inner ?Inner\n}\n"
 	u := unitFromSource(t, src)
 	for _, lang := range c.Targets() {
 		_, err := c.Generate(u, lang, nil)
@@ -36,10 +37,16 @@ func TestOptionalVariableRefusedOffGo(t *testing.T) {
 	// be discovered on its OWN: a unit holding only the array carries no
 	// scalar ?T to trip the gate for it. Every non-carrier refuses it by
 	// name; the four carriers generate it.
-	pair := unitFromSource(t, "package probe\ntable Inner\n{\n    text *string\n}\ntable Outer\n{\n    pair ?[2]Inner\n}\n")
+	pair := unitFromSource(t, "package probe\ntable Leaf\n{\n    n int32\n}\ntable Inner\n{\n    child *Leaf\n}\ntable Outer\n{\n    pair ?[2]Inner\n}\n")
 	for _, lang := range c.Targets() {
 		_, err := c.Generate(pair, lang, nil)
 		if carries(lang, carryOptionalVariableClosure) {
+			// A carrier that does not also carry the optional array refuses
+			// this SHAPE for that other construct (§2.3), not for the
+			// closure; the scalar case above is the one this key names.
+			if !slices.Contains(optionalArrayTargets, lang) {
+				continue
+			}
 			if err != nil {
 				t.Errorf("target %s refused by-value ?[2]T over a variable closure: %v", lang, err)
 			}

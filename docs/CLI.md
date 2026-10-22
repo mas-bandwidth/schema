@@ -18,3 +18,12 @@ option `runtime=standalone` embeds that machinery in the unit instead
 (`compiler.Options{"runtime": "standalone"}`; SPEC-TABLES.md §8.4). Any other
 `runtime` value is refused by name, and the refusal names shared as the
 default.
+
+`schema testgen --lang go|squirrel --out <dir> [dir|files...]` writes the
+generated round-trip and damage tests of every table beside the code `generate`
+wrote (docs/SPEC-TABLES.md §16.11): one `<Base>Table_gen_test.go` for go and one
+`<Base>Table_gen_test.nut` for squirrel per schema file declaring a root table.
+Each value crosses the binary wire, the base64 text and the JSON text and comes
+back equal, and a damaged input is refused by name; a table whose forms leave
+out wire or json is refused by name at testgen. Go and squirrel carry it; every
+other `--lang` is refused by name.
