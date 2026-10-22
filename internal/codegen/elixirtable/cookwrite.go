@@ -59,16 +59,17 @@ func writeCookLayout(b *strings.Builder, u *ir.Unit, f *ir.Field, fl *ir.FieldLa
 		}
 	}
 	fmt.Fprintf(b, ", cook_off: %d, count_off: %d, present_off: %d", off, countOff, presentOff)
-	switch f.Array {
-	case ir.ArrayList:
-		b.WriteString(", array: :list")
-	case ir.ArrayCounted:
-		b.WriteString(", array: :counted")
-	case ir.ArrayFixed:
-		b.WriteString(", array: :fixed")
-	}
-	if f.KeyEnum != "" {
+	// one :array key per descriptor: a keyed array is a fixed one whose index
+	// is an enum, and :keyed is the shape the cook dispatches on
+	switch {
+	case f.KeyEnum != "":
 		b.WriteString(", array: :keyed")
+	case f.Array == ir.ArrayList:
+		b.WriteString(", array: :list")
+	case f.Array == ir.ArrayCounted:
+		b.WriteString(", array: :counted")
+	case f.Array == ir.ArrayFixed:
+		b.WriteString(", array: :fixed")
 	}
 	if f.Type.Pointer && f.Type.Blob() {
 		fmt.Fprintf(b, ", cook_type_id: 0x%016X", ir.BlobTypeId(f))
@@ -112,6 +113,39 @@ func writeCookLayout(b *strings.Builder, u *ir.Unit, f *ir.Field, fl *ir.FieldLa
 			fmt.Fprintf(b, ", elem_signed: %v", f.Type.Signed)
 		}
 	}
+}
+
+// extentWalkClauses are the cook writer's clauses that descend into a nested
+// record for its extent (docs/SPEC-TABLES.md §7.2), each guarded by the nested
+// table's has_extent. In a unit where no table has an extent every one of
+// those guards reads a literal false, which Elixir's type checker reports as a
+// branch that cannot match; each clause's answer is then exactly its
+// function's fallback clause's, so such a unit is emitted without them.
+var extentWalkClauses = []string{
+	"  defp cook_extent_field(%{t: :list, elem_t: :record, elem: elem} = f, value, at) do\n",
+	"  defp cook_extent_field(%{t: :table, elem: elem, name: name}, value, at) do\n",
+	"  defp cook_extent_after(%{elem_kind: 13, elem: elem}, elems, at) do\n",
+	"  defp cook_carve_field(\n         %{t: :table, elem: elem, cook_off: off, name: name},\n",
+	"  defp cook_carve_field(\n         %{t: :list, elem_t: :record, elem: elem, cook_off: off, elem_size: step} = f,\n",
+	"  defp cook_carve_after(\n         %{elem: elem, elem_size: step},\n",
+}
+
+// withoutExtentWalks drops extentWalkClauses from the cook writer, each from
+// its head through its `end` and the blank line after it. Every clause must
+// be found exactly once, so a template edit that moves one fails loudly.
+func withoutExtentWalks(cook string) string {
+	for _, head := range extentWalkClauses {
+		if strings.Count(cook, head) != 1 {
+			panic("elixirtable: extent walk clause not found exactly once: " + head)
+		}
+		i := strings.Index(cook, head)
+		j := strings.Index(cook[i:], "\n  end\n\n")
+		if j < 0 {
+			panic("elixirtable: extent walk clause has no end: " + head)
+		}
+		cook = cook[:i] + cook[i+j+len("\n  end\n\n"):]
+	}
+	return cook
 }
 
 // cookWriteSource is the runtime cook writer (docs/SPEC-TABLES.md §7.6):
@@ -467,7 +501,6 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
   defp cook_slots(f, v, base, index, order, buf, counted) do
     elems = if(is_list(v), do: v, else: throw(:invalid))
-    bound = Map.get(f, :bound) || Map.get(f, :array_bound) || length(elems)
     # cardBound overwrites :bound with nil; the array maximum is the first bound
     # the descriptor wrote, kept here as the list's own length ceiling when the
     # field named one. A missing ceiling is the element's own.
@@ -528,7 +561,7 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
   defp cook_elem(_, _, _, _, _, buf), do: buf
 
-  defp cook_ord(%{ords: ords}, nil), do: 0
+  defp cook_ord(%{ords: _ords}, nil), do: 0
 
   defp cook_ord(%{ords: ords}, v) when is_binary(v) do
     case Map.fetch(ords, v) do
@@ -543,7 +576,7 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
   defp cook_ord(_, _), do: throw(:invalid)
 
-  defp cook_ref(buf, at, _id, nil, _index, _order), do: buf
+  defp cook_ref(buf, _at, _id, nil, _index, _order), do: buf
 
   defp cook_ref(buf, at, id, v, index, order) do
     case Map.fetch(index, {id, v}) do
