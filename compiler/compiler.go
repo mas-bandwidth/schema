@@ -71,13 +71,6 @@ type Compiler struct {
 	// exposes it as `--fixed-record-limit` (docs/SPEC-TABLES.md §3.4).
 	FixedRecordLimit int64
 
-	// ReservedTargets restricts SPEC.md §4.6's reserved-word checks (the
-	// checker's own display names: "C++", "C#", "Go", "Rust"); nil checks every
-	// target, an empty slice checks none. The generate command sets it from
-	// --lang; every command that names no target leaves it nil and checks every
-	// target's words.
-	ReservedTargets []string
-
 	// SchemaLock turns on the SCHEMA LOCK check (docs/SPEC-TABLES.md §2.10):
 	// when a schema.lock sits in the unit's directory, Load compares every
 	// FIXED table's field sequence against the locked one and REFUSES ANY
@@ -118,37 +111,38 @@ func New() *Compiler {
 	return c
 }
 
-// ReservedWordDisplay maps a --lang token to the display name the checker's
-// §4.6 reserved-word tables use for that target. A target with no display name
-// returns ""; the caller then leaves ReservedTargets nil, and every target's
-// words are checked rather than none (SPEC §4.6).
-func ReservedWordDisplay(lang string) string {
-	switch lang {
-	case "go":
-		return "Go"
-	case "cpp":
-		return "C++"
-	case "cs", "csharp":
-		return "C#"
-	case "rust":
-		return "Rust"
-	}
-	return ""
-}
-
 // Diagnostics is a compilation's error list — every parse and check error the
 // unit produced, in report order, rather than the first one. Load returns it
 // as the error when the unit does not compile; a caller that wants to print
 // them all reaches it with errors.AsType.
 type Diagnostics []error
 
-// Error joins the diagnostics one per line.
+// HasSection reports whether any diagnostic cites a spec section (a "§"): a
+// refusal batch is dated once, by one version line, never per diagnostic.
+func (d Diagnostics) HasSection() bool {
+	for _, e := range d {
+		if strings.Contains(e.Error(), "§") {
+			return true
+		}
+	}
+	return false
+}
+
+// Error joins the diagnostics one per line, and appends the build's version
+// line when any diagnostic cites a spec section: the section is cited as it
+// stands in the build that printed the refusal, so a message pasted from a
+// stale binary dates itself instead of contradicting the page as it reads
+// today. The version rides once, at the end, never per diagnostic.
 func (d Diagnostics) Error() string {
 	msgs := make([]string, 0, len(d))
 	for _, e := range d {
 		msgs = append(msgs, e.Error())
 	}
-	return strings.Join(msgs, "\n")
+	s := strings.Join(msgs, "\n")
+	if d.HasSection() {
+		s += "\nschema " + version.Version()
+	}
+	return s
 }
 
 // Load gathers the given *.schema files into one compilation unit (SPEC §3.2):
@@ -191,13 +185,7 @@ func (c *Compiler) Load(paths []string) (*ir.Unit, error) {
 	if len(diags) > 0 {
 		return nil, diags
 	}
-	var u *ir.Unit
-	var cerrs []error
-	if c.ReservedTargets != nil {
-		u, cerrs = check.UnitForTargets(files, c.ReservedTargets)
-	} else {
-		u, cerrs = check.Unit(files)
-	}
+	u, cerrs := check.Unit(files)
 	if len(cerrs) > 0 {
 		return nil, Diagnostics(cerrs)
 	}

@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strings"
 
+	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -38,29 +39,9 @@ const tkU8 = 6
 
 func tableScalarKind(f *ir.Field) int { return ir.TableScalarKind(f) }
 
-// dartReserved is the Dart surface a generated spelling must not land on. It
-// is the packet emitter's list plus the members every object inherits, which
-// matter here because the per-enum vocabularies are static MEMBERS of
-// TableEnumVocab and the per-type accessors are static members of
-// <Name>TableFields.
-var dartReserved = map[string]bool{
-	"assert": true, "break": true, "case": true, "catch": true,
-	"class": true, "const": true, "continue": true, "default": true,
-	"do": true, "else": true, "enum": true, "extends": true, "false": true,
-	"final": true, "finally": true, "for": true, "if": true, "in": true,
-	"is": true, "new": true, "null": true, "rethrow": true, "return": true,
-	"super": true, "switch": true, "this": true, "throw": true, "true": true,
-	"try": true, "var": true, "void": true, "when": true, "while": true,
-	"with": true,
-	"bool": true, "double": true, "int": true, "num": true, "String": true,
-	"List": true, "Object": true, "Endian": true, "ByteData": true,
-	"dynamic": true,
-	// Object's members: a static member sharing one of these names is a
-	// declaration error in Dart, and these are reachable from an enum name
-	// (an enum `HashCode` spells the member `hashCode`).
-	"hashCode": true, "runtimeType": true, "toString": true,
-	"noSuchMethod": true,
-}
+// dartReserved is Dart's reserved words, read from the one table (check.ReservedIn,
+// SPEC §4.6) and never copied here.
+var dartReserved = schemacheck.ReservedIn("Dart")
 
 // dartName maps a schema member/variant name into Dart's lowerCamelCase: the
 // first-letter-lowered form of ir.GoExportName. It is the packet emitter's

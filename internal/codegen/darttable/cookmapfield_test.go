@@ -282,7 +282,7 @@ table Keys
     names map[string(8)]Child
     wide  map[int64]uint16
     big   map[uint64]int32
-    after int32
+    trailer int32
 }
 `
 
@@ -294,7 +294,7 @@ func TestCookMapOracle(t *testing.T) {
 	b.Init()
 	defer b.Shutdown()
 	r := b.GetRoot()
-	r.After = 99
+	r.Trailer = 99
 	for i, k := range []string{"z", "a", "mm", "abcdefgh", "", "b"} {
 		KeysNamesInsert(&b.Main, &r.Names, k).N = int32(i + 1)
 	}
@@ -352,6 +352,6 @@ func TestCookMapOracle(t *testing.T) {
 			fmt.Printf("ORACLE big find %d none\n", key)
 		}
 	}
-	fmt.Printf("ORACLE after %d\n", k.After)
+	fmt.Printf("ORACLE trailer %d\n", k.Trailer)
 }
 `

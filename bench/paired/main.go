@@ -351,6 +351,12 @@ func abs(p string) string {
 	}
 	return s
 }
+
+// pairedSchemas are the paired unit's two schema files, generated as ONE unit
+// for every leg (and a second time, beside the lineage's lock, for the C, C#
+// and Dart plan lanes: table.go, buildCPlan, buildCSPlan, buildDartPlan).
+var pairedSchemas = []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}
+
 func binary(wire, lang string) string {
 	// AN INTERPRETED LEG HAS NO BUILD PRODUCT, so the thing this driver pins,
 	// hashes and runs is the runner source itself. Its generated modules are
@@ -552,7 +558,7 @@ func corpusID(wire string) (string, error) {
 
 // corpusPaths maps the basename a runner hashes to the file it loads, for one
 // wire. The read arm (-mode plan-read) loads BOTH wires' files in one
-// invocation and hashes their union (corpusIDOf over readArmCorpusPaths), so its id differs from
+// invocation and hashes their union (corpusIDOf over readArmCorpusPathsFor), so its id differs from
 // either wire's by §1.6's own definition and its rows are never divisible
 // against a row of an ordinary pass.
 func corpusPaths(wire string) map[string]string {
@@ -598,12 +604,9 @@ func corpusIDOf(paths map[string]string) (string, error) {
 	return fmt.Sprintf("%016x", h), nil
 }
 
-// pairedSchemas are the two files of the paired table unit: the corpus shape
-// and its fixed root wrapper.
-var pairedSchemas = []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}
-
-// cppBuildFlags is the ONE C++ flag line: the packet leg, the table leg and
-// the §3.4 straight-line anchor all compile with it.
+// cppBuildFlags is the ONE C++ flag line: the table leg, the packet leg and
+// the read arm's straight-line anchor all compile with it, so the anchor's
+// ratio is never a flag difference.
 func cppBuildFlags(cxx, opt string) []string {
 	flags := []string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-ffp-contract=off", "-fno-rtti", "-" + opt, "-DNDEBUG", "-DBENCH_OPT=\"" + opt + "\""}
 	if version, e := capture(command{args: []string{cxx, "--version"}}); e == nil && (strings.Contains(strings.ToLower(string(version)), "gcc") || strings.Contains(strings.ToLower(string(version)), "g++")) {
@@ -721,6 +724,15 @@ func generateAndBuild(langs []string) error {
 			if e := run(a...); e != nil {
 				return e
 			}
+			// AND THE PLAN LANE'S BINARY (BENCH-STANDARD.md §1.10), when the
+			// lineage corpus is on the tree: the same runner source, against
+			// the unit generated beside the lineage's lock (table.go,
+			// buildCPlan). -mode plan-read -langs c runs this one.
+			if cPlanRefusal(fileExists) == "" {
+				if e := buildCPlan(schema, cc, cFlags, serC); e != nil {
+					return e
+				}
+			}
 		case "go":
 			if e := os.WriteFile("generated/bench/paired/go/go.mod", []byte("module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../../serialize.go\n"), 0644); e != nil {
 				return e
@@ -762,6 +774,15 @@ func generateAndBuild(langs []string) error {
 					project = "bench/paired/cs"
 				}
 				if e := run("dotnet", "build", project, "-c", "Release", "-v", "q", "--nologo", "-property:UseSharedCompilation=false", "-property:SerializeCsRoot="+serCs, "--output", filepath.Dir(binary(wire, lang))); e != nil {
+					return e
+				}
+			}
+			// AND THE PLAN LANE'S ASSEMBLY (BENCH-STANDARD.md §1.10), when the
+			// lineage corpus is on the tree: the same runner source, against
+			// the unit generated beside the lineage's lock (table.go,
+			// buildCSPlan). -mode plan-read -langs cs runs this one.
+			if csPlanRefusal(fileExists) == "" {
+				if e := buildCSPlan(schema, serCs); e != nil {
 					return e
 				}
 			}
@@ -982,7 +1003,34 @@ func generateAndBuild(langs []string) error {
 	info.Tools["cpp_packet_flags"] = strings.Join(cppFlags, " ") + " -DSERIALIZE_RELEASE"
 	info.Tools["cpp_table_flags"] = strings.Join(cppFlags, " ") + " -DBENCH_MATCHED"
 	info.Tools["c_packet_flags"] = strings.Join(cFlags, " ")
+	if contains(langs, "c") && cPlanRefusal(fileExists) == "" {
+		info.Tools["c_plan_flags"] = strings.Join(cFlags, " ") + " " + strings.Join(cPlanDefines, " ")
+		for _, p := range append(cPlanModules(), binary("plan", "c")) {
+			h, e := hashFile(p)
+			if e != nil {
+				return e
+			}
+			info.Binaries[p] = h
+		}
+	}
 	info.Tools["c_table_flags"] = strings.Join(cFlags, " ") + " -DBENCH_MATCHED -ffp-contract=off"
+	if contains(langs, "cs") {
+		info.Tools["cs_table_flags"] = "dotnet build -c Release -property:UseSharedCompilation=false; DefineConstants=BENCH_MATCHED AllowUnsafeBlocks=true"
+		if b, e := capture(command{args: []string{"dotnet", "--version"}}); e == nil {
+			info.Tools["cs"] = "dotnet " + strings.TrimSpace(string(b))
+		}
+		if csPlanRefusal(fileExists) == "" {
+			info.Tools["cs_plan_flags"] = "dotnet build -c Release -property:UseSharedCompilation=false; DefineConstants=BENCH_MATCHED;BENCH_PLAN AllowUnsafeBlocks=true"
+			p := binary("plan", "cs")
+			for _, f := range append(csPlanModules(), p, strings.TrimSuffix(p, ".dll")+".deps.json", strings.TrimSuffix(p, ".dll")+".runtimeconfig.json") {
+				h, e := hashFile(f)
+				if e != nil {
+					return e
+				}
+				info.Binaries[f] = h
+			}
+		}
+	}
 	if contains(langs, "rust") {
 		// The Rust leg's "flags" are cargo settings; the level is also stamped
 		// into the binary, so a row's `opt` column and this line agree or the
@@ -1024,6 +1072,14 @@ func generateAndBuild(langs []string) error {
 	}
 	info.Binaries["build/paired/corpus"] = hash
 	corpora := []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema", "testdata/wire/bench_mixed.bin", "bench/corpus/variants/bench_mixed.variants.bin", "bench/paired/corpus/bench_table.bin", "bench/paired/corpus/bench_table.variants.bin", "bench/paired/corpus/bench_table.lengths", "bench/paired/corpus/bench_fixed.bin", "bench/paired/corpus/bench_fixed.layout"}
+	if contains(langs, "c") && cPlanRefusal(fileExists) == "" {
+		// the C plan lane's lineage, lock included: a re-pin after the build
+		// refuses the sitting like any other corpus change
+		corpora = append(corpora, cLineageCorpus...)
+	}
+	if contains(langs, "cs") && csPlanRefusal(fileExists) == "" {
+		corpora = append(corpora, csLineageCorpus...)
+	}
 	if contains(langs, "dart") && dartPlanRefusal(fileExists) == "" {
 		// the Dart plan lane's lineage, lock included: a re-pin after the build
 		// refuses the sitting like any other corpus change
@@ -1521,7 +1577,7 @@ func renderReport(dir string, writeOutputs bool) error {
 	return nil
 }
 func main() {
-	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, plan-read (the read arm, C++ or Dart), run confirmation, or render")
+	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, plan-read (the read arm, C++, C, C# or Dart), run confirmation, or render")
 	out := flag.String("out", "", "new results directory (or existing directory for render)")
 	langsFlag := flag.String("langs", "cpp,c,go,cs", "comma-separated required build/gate languages")
 	rounds := flag.Int("rounds", 7, "interleaved measured rounds")

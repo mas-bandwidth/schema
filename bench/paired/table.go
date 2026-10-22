@@ -649,6 +649,165 @@ func planLaneRefusal(present func(string) bool) string {
 	return "the C++ runner has no plan lane yet (BENCH-STANDARD §1.10 work list item 8)"
 }
 
+// THE C LEG'S PLAN LANE reads the lineage pair the Rust leg committed
+// (bench/tables/rust/lineage/ on 337aaacf), carried byte for byte under the C
+// leg's own paths because the standard's home for it (bench/corpus/ +
+// bench/paired/corpus/, §1.10 items 1–6) is outside this leg's card. The
+// runner loads the .bin and the .layout (they ride its corpus id); the lock is
+// compiled in (the unit generated beside it) and is recorded with the build.
+const cLineageDir = "bench/tables/c/lineage"
+
+var cLineageCorpus = []string{cLineageDir + "/schema.lock", cLineageDir + "/bench_lineage.bin", cLineageDir + "/bench_lineage.layout"}
+
+// cPlanRefusal is "" when the C plan lane can be built from this tree.
+func cPlanRefusal(present func(string) bool) string {
+	var missing []string
+	for _, p := range cLineageCorpus {
+		if !present(p) {
+			missing = append(missing, p)
+		}
+	}
+	if len(missing) > 0 {
+		return "no lineage corpus on this tree: " + strings.Join(missing, ", ") + " absent (BENCH-STANDARD §1.10 work list items 1–7)"
+	}
+	return ""
+}
+
+// cPlanBuild is where the C plan lane's unit is staged and generated: the
+// paired unit's two schema files beside the lineage's lock, generated a second
+// time so its lineage holds the older layout. Nothing under it is committed.
+const cPlanBuild = "build/paired/plan-c-unit"
+
+// cPlanDefines are what the plan build adds to the C table leg's flag line:
+// the table leg's own two, and BENCH_PLAN, which compiles the plan lane in.
+var cPlanDefines = []string{"-ffp-contract=off", "-DBENCH_MATCHED", "-DBENCH_PLAN"}
+
+// cPlanModules are the generated headers the plan binary was compiled from,
+// recorded with the build so a regeneration after it refuses the sitting.
+func cPlanModules() []string {
+	found, _ := filepath.Glob(filepath.Join(cPlanBuild, "new", "*.h"))
+	sort.Strings(found)
+	return found
+}
+
+// buildCPlan generates the paired unit beside the lineage's lock and compiles
+// the C table runner against it with -DBENCH_PLAN.
+func buildCPlan(schema, cc string, cFlags []string, serC string) error {
+	if err := os.RemoveAll(cPlanBuild); err != nil {
+		return err
+	}
+	unit := filepath.Join(cPlanBuild, "unit")
+	if err := os.MkdirAll(unit, 0755); err != nil {
+		return err
+	}
+	var unitSchemas []string
+	for _, from := range append(append([]string(nil), pairedSchemas...), cLineageDir+"/schema.lock") {
+		b, err := os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+		to := filepath.Join(unit, filepath.Base(from))
+		if err := os.WriteFile(to, b, 0644); err != nil {
+			return err
+		}
+		if strings.HasSuffix(to, ".schema") {
+			unitSchemas = append(unitSchemas, to)
+		}
+	}
+	newDir := filepath.Join(cPlanBuild, "new")
+	if err := run(append([]string{schema, "generate", "--lang", "c", "--out", newDir}, unitSchemas...)...); err != nil {
+		return fmt.Errorf("generating the paired unit beside %s/schema.lock: %w", cLineageDir, err)
+	}
+	_ = os.Remove(binary("plan", "c")) // a stale binary must never stand in for this build's
+	a := append([]string{cc}, cFlags...)
+	a = append(a, cPlanDefines...)
+	a = append(a, "-I"+newDir, "-I"+serC, "bench/tables/c/table_main.c", filepath.Join(serC, "serialize.c"), "-o", binary("plan", "c"), "-lm")
+	return run(a...)
+}
+
+// THE C# LEG'S PLAN LANE reads the same lineage pair under bench/tables/cs/lineage/
+// and compiles a second assembly with BENCH_PLAN defined against the unit
+// generated beside bench/tables/cs/lineage/schema.lock.
+const csLineageDir = "bench/tables/cs/lineage"
+
+var csLineageCorpus = []string{csLineageDir + "/schema.lock", csLineageDir + "/bench_lineage.bin", csLineageDir + "/bench_lineage.layout"}
+
+func csPlanRefusal(present func(string) bool) string {
+	var missing []string
+	for _, p := range csLineageCorpus {
+		if !present(p) {
+			missing = append(missing, p)
+		}
+	}
+	if len(missing) > 0 {
+		return "no lineage corpus on this tree: " + strings.Join(missing, ", ") + " absent (BENCH-STANDARD §1.10 work list items 1–7)"
+	}
+	return ""
+}
+
+const csPlanBuild = "build/paired/plan-cs-unit"
+
+func csPlanModules() []string {
+	found, _ := filepath.Glob(filepath.Join(csPlanBuild, "new", "*.cs"))
+	sort.Strings(found)
+	return found
+}
+
+const csPlanProject = `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);BENCH_MATCHED;BENCH_PLAN</DefineConstants>
+    <SerializeCsRoot Condition="'$(SerializeCsRoot)' == ''">../../../../serialize.cs</SerializeCsRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../bench/tables/cs/src/Program.cs" />
+    <Compile Include="new/*.cs" Exclude="new/*Block.cs;new/*Cook.cs" />
+    <Compile Include="$(SerializeCsRoot)/src/Serialize.cs" />
+    <Compile Include="$(SerializeCsRoot)/src/Int128Pair.cs" />
+  </ItemGroup>
+</Project>
+`
+
+func buildCSPlan(schema, serCs string) error {
+	if err := os.RemoveAll(csPlanBuild); err != nil {
+		return err
+	}
+	unit := filepath.Join(csPlanBuild, "unit")
+	if err := os.MkdirAll(unit, 0755); err != nil {
+		return err
+	}
+	var unitSchemas []string
+	for _, from := range append(append([]string(nil), pairedSchemas...), csLineageDir+"/schema.lock") {
+		b, err := os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+		to := filepath.Join(unit, filepath.Base(from))
+		if err := os.WriteFile(to, b, 0644); err != nil {
+			return err
+		}
+		if strings.HasSuffix(to, ".schema") {
+			unitSchemas = append(unitSchemas, to)
+		}
+	}
+	newDir := filepath.Join(csPlanBuild, "new")
+	if err := run(append([]string{schema, "generate", "--lang", "cs", "--out", newDir}, unitSchemas...)...); err != nil {
+		return fmt.Errorf("generating the paired unit beside %s/schema.lock: %w", csLineageDir, err)
+	}
+	proj := filepath.Join(csPlanBuild, "paired.csproj")
+	if err := os.WriteFile(proj, []byte(csPlanProject), 0644); err != nil {
+		return err
+	}
+	_ = os.Remove(binary("plan", "cs"))
+	return run("dotnet", "build", proj, "-c", "Release", "-v", "q", "--nologo", "-property:UseSharedCompilation=false", "-property:SerializeCsRoot="+serCs, "--output", filepath.Dir(binary("plan", "cs")))
+}
+
 // THE DART LEG'S PLAN LANE reads the lineage pair the Rust leg committed
 // (bench/tables/rust/lineage/ on 337aaacf), carried byte for byte under the
 // Dart leg's own paths because the standard's home for it (bench/corpus/ +
@@ -735,6 +894,36 @@ func buildDartPlan(schema, dart string) error {
 	return run(dart, "compile", "exe", "-o", binary("plan", "dart"), runnerSource)
 }
 
+func lineageDirFor(leg string) string {
+	switch leg {
+	case "cs":
+		return csLineageDir
+	case "dart":
+		return dartLineageDir
+	}
+	return cLineageDir
+}
+
+// planGateClaim is the sentence the board prints for what the leg's plan gate
+// checked before the clock. It names only checks the leg's runner makes, and it
+// is the same name and signature as the Elixir leg's (commit 286194156, PR
+// #1987 on sprint/schema-elixir), so the two merge as one function.
+//
+// The C runner (bench/tables/c/table_main.c, gates P2 to P4) derives the plan's
+// answer from the 64 identity records it already held byte for byte to the C++
+// reference (plan_expected_build, after bfb8be239's plan_expected), requires the
+// plan read to save to those bytes with the counters exactly docs/
+// FIXED-FORM-ALGORITHM.md section 5.4's (widened = 64 records x min(their_n,
+// my_n) = 64 x 64 = 4096, every other counter zero), reads again into a
+// poisoned destination (gate P3), and refuses an answer equal to the identity
+// corpus's (gate P4).
+func planGateClaim(leg string) string {
+	if leg == "c" {
+		return "its gate before the clock requires all 64 records to equal the plan's answer derived from the byte-gated identity corpus (every OLD field value, and the appended field at its declared default), the counters exactly widened 4096 (64 per record, min(their_n, my_n) of the stats bound) with every other counter zero, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
+	}
+	return "its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
+}
+
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
@@ -743,11 +932,16 @@ func fileExists(p string) bool {
 // readArmCorpusPaths is the read arm's corpus; the plan build also loads the
 // lineage pair, so its ONE id covers all three lanes' files.
 func readArmCorpusPaths(plan bool) map[string]string {
+	return readArmCorpusPathsFor("c", plan)
+}
+
+func readArmCorpusPathsFor(leg string, plan bool) map[string]string {
 	paths := corpusPaths("table")
 	maps.Copy(paths, corpusPaths("packet"))
 	if plan {
+		dir := lineageDirFor(leg)
 		for _, name := range []string{"bench_lineage.bin", "bench_lineage.layout"} {
-			paths[name] = dartLineageDir + "/" + name
+			paths[name] = dir + "/" + name
 		}
 	}
 	return paths
@@ -771,7 +965,7 @@ func buildAnchor(cxx string, flags []string, ser string) anchorBuild {
 	if err == nil {
 		return anchorBuild{Command: args}
 	}
-	_, _ = os.Stderr.Write(output)
+	_, _ = os.Stderr.Write(output) // the compiler's own words; the refusal below names the first error
 	return anchorBuild{Command: args, Refusal: "does not compile: " + firstCompilerError(string(output), err)}
 }
 
@@ -1052,6 +1246,8 @@ func legTitle(leg string) string {
 		return "C++"
 	case "c":
 		return "C"
+	case "cs":
+		return "C#"
 	case "dart":
 		return "Dart"
 	}
@@ -1133,7 +1329,7 @@ func (b readArmBoard) markdown() string {
 	w.WriteString("\nleg      identity read    plan read    packet read    GATE identity  GATE plan    plan/identity\n")
 	w.WriteString("         ns/record        ns/record    ns/record      vs packet      vs packet    x (reported)\n")
 	ratio := "—"
-	if planMeasured && len(b.Identity.Samples) > 0 {
+	if planMeasured && b.windowOK() && len(b.Identity.Samples) > 0 {
 		ratio = fmt.Sprintf("%.2f", b.Plan.BestNs/b.Identity.BestNs)
 	}
 	fmt.Fprintf(&w, "%-8s %12s %12s %14s    %-14s %-12s %s\n", leg, nsCell(b.Identity), nsCell(b.Plan), nsCell(b.Packet), b.GateIdentity, b.GatePlan, ratio)
@@ -1235,13 +1431,13 @@ func porcelain() (string, error) {
 }
 
 // readArmLegs are the legs whose runner carries `--read-arm` on this tree.
-var readArmLegs = []string{"cpp", "dart"}
+var readArmLegs = []string{"cpp", "c", "cs", "dart"}
 
-// planReadPassOn is the whole of `-mode plan-read`: gate, window, control,
-// rounds, control, verdicts, board, with the sitting's pinned core recorded.
+// planReadPassOn is the whole of `-mode plan-read` (gate, window, control,
+// rounds, control, verdicts, board), with the sitting's pinned core recorded.
 func planReadPassOn(langs []string, out string, rounds int, info buildInfo, receipt, lane string) (resultErr error) {
 	if len(langs) != 1 || !contains(readArmLegs, langs[0]) {
-		return errors.New("plan-read measures ONE leg per sitting, and only a leg whose runner has a read arm (-langs cpp or -langs dart)")
+		return errors.New("plan-read measures ONE leg per sitting, and only a leg whose runner has a read arm (-langs cpp, -langs c, -langs cs or -langs dart)")
 	}
 	leg := langs[0]
 	if rounds < 7 {
@@ -1266,11 +1462,28 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 			return fmt.Errorf("cached build lacks %s/%s; build it first (-mode build -langs %s)", leg, wire, leg)
 		}
 	}
-	// THE PLAN LANE runs where the leg's plan build ran: the C leg, with the
-	// lineage corpus on the tree. That one binary then times all three reads.
+	// THE PLAN LANE runs where the leg's plan build ran: the C, C# and Dart legs,
+	// with the lineage corpus on the tree. That one binary then times all three reads.
 	planRefusal := planLaneRefusal(fileExists)
 	readWire, plan := "table", false
-	if leg == "dart" {
+	switch leg {
+	case "c":
+		planRefusal = cPlanRefusal(fileExists)
+		if planRefusal == "" && info.Binaries[binary("plan", "c")] == "" {
+			planRefusal = "the cached build has no C plan binary (" + binary("plan", "c") + "); rebuild with -mode build -langs c"
+		}
+		if planRefusal == "" {
+			readWire, plan = "plan", true
+		}
+	case "cs":
+		planRefusal = csPlanRefusal(fileExists)
+		if planRefusal == "" && info.Binaries[binary("plan", "cs")] == "" {
+			planRefusal = "the cached build has no C# plan assembly (" + binary("plan", "cs") + "); rebuild with -mode build -langs cs"
+		}
+		if planRefusal == "" {
+			readWire, plan = "plan", true
+		}
+	case "dart":
 		planRefusal = dartPlanRefusal(fileExists)
 		if planRefusal == "" && info.Binaries[binary("plan", "dart")] == "" {
 			planRefusal = "the cached build has no Dart plan binary (" + binary("plan", "dart") + "); rebuild with -mode build -langs dart"
@@ -1279,7 +1492,7 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 			readWire, plan = "plan", true
 		}
 	}
-	id, err := corpusIDOf(readArmCorpusPaths(plan))
+	id, err := corpusIDOf(readArmCorpusPathsFor(leg, plan))
 	if err != nil {
 		return err
 	}
@@ -1287,7 +1500,7 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 		a := append([]string{"--read-arm"}, flags...)
 		a = append(a, "--packet-wire-dir", "testdata/wire", "--packet-variant-dir", "bench/corpus/variants")
 		if plan {
-			a = append(a, "--lineage-dir", dartLineageDir)
+			a = append(a, "--lineage-dir", lineageDirFor(leg))
 		}
 		return a
 	}
@@ -1326,15 +1539,29 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 	if e = os.WriteFile(filepath.Join(tmp, "build.json"), append(b, '\n'), 0644); e != nil {
 		return e
 	}
-	serialize, flags := info.Runtimes["serialize"], info.Tools[leg+"_table_flags"]
-	if leg == "dart" {
+	serialize, flags, compiler := info.Runtimes["serialize"], info.Tools[leg+"_table_flags"], firstLine(info.Tools[leg])
+	switch leg {
+	case "c":
+		serialize = info.Runtimes["serialize.c"]
+		if plan {
+			flags = info.Tools["c_plan_flags"]
+		}
+	case "cs":
+		serialize = info.Runtimes["serialize.cs"]
+		if plan && info.Tools["cs_plan_flags"] != "" {
+			flags = info.Tools["cs_plan_flags"]
+		}
+		if compiler == "" {
+			compiler = firstLine(info.Tools["dotnet"])
+		}
+	case "dart":
 		serialize = "none (generated AOT)"
 		if plan {
 			flags = info.Tools["dart_plan_flags"]
 		}
 	}
 	board := readArmBoard{
-		Host: info.Host, OS: info.OS, Arch: info.Arch, CPU: info.CPU, Compiler: firstLine(info.Tools[leg]), Flags: flags,
+		Host: info.Host, OS: info.OS, Arch: info.Arch, CPU: info.CPU, Compiler: compiler, Flags: flags,
 		Revision: info.Revision, Serialize: serialize, Dirty: dirty, Rounds: rounds, Iterations: readArmIterations, AnchorReps: anchorReps,
 		CorpusID: id, PlanRefusal: planRefusal, Window: "INVALID", Receipt: strings.TrimSpace(receipt), Absent: otherLegsBut(leg),
 		GatePlan: "— (absent)", Leg: leg, Lane: lane,
@@ -1444,7 +1671,7 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 	}
 	if plan {
 		board.Plan = statsOf(planNs)
-		board.Widened = "its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
+		board.Widened = planGateClaim(leg)
 		if len(planNs) == rounds {
 			board.GatePlan = faster(board.Plan, board.Packet, board.windowOK())
 		} else {

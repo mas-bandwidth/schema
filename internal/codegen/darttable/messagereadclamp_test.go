@@ -11,8 +11,8 @@ import (
 
 // TestMessageReadClampsDeclaredRangeDart pins that the Dart message read clamps
 // a decoded value to the reader's own declaration and counts it, exactly as
-// the Go oracle does (internal/tablewire/messagedecode.go, `scalar`; docs/SPEC-
-// TABLES.md §3.3, §4). A ranged field rides at bits_required(0, max - min), so
+// the Go oracle does (internal/tablewire/messagedecode.go, `scalar`;
+// docs/SPEC-TABLES.md §3.3, §4). A ranged field rides at bits_required(0, max - min), so
 // an offset above max - min decodes to a value above max; the generated Dart
 // payload the base and stored with no range check and no count, so Dart landed
 // 11..16 where Go lands 10 and counted 0 where Go counts 1. The vector is the
@@ -85,7 +85,7 @@ fixed table ClampItem
 fixed table ClampBox
 {
     items [..2]ClampItem
-    after uint8 = 0
+    trailer uint8 = 0
 }
 `
 
@@ -120,7 +120,7 @@ func countedArrayClampMutant(t *testing.T) (*ir.Unit, []byte) {
 		}
 	}
 	for i := range inst.Fields {
-		if inst.Fields[i].Def.Name == "after" {
+		if inst.Fields[i].Def.Name == "trailer" {
 			inst.Fields[i].Cell.I = 9
 			inst.Fields[i].Cell.U = 9
 		}

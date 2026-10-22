@@ -248,8 +248,8 @@ func TestRowR20NarrowIntWidensExactly(t *testing.T) {
 			t.Errorf("key[%d] landed %d, want the narrow wire's %d", i, got, want)
 		}
 	}
-	if ch.After != 8 {
-		t.Errorf("the scalar beside the widened map did not land: after=%d", ch.After)
+	if ch.Past != 8 {
+		t.Errorf("the scalar beside the widened map did not land: after=%d", ch.Past)
 	}
 }
 

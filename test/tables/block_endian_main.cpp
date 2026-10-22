@@ -126,7 +126,7 @@ int main( int argc, char ** argv )
             printf( "FAIL the block storage did not allocate\n" );
             return 1;
         }
-        memset( storage.base, 0, (size_t) RenderFrameBlockMaxBytes );
+        memset( (void *) storage.base, 0, (size_t) RenderFrameBlockMaxBytes );
         RenderFrameBlock block;
         CHECK( RenderFrameBlockBegin( block, storage, counts ) );
         block.projection->version = RenderVersion;
@@ -201,7 +201,7 @@ int main( int argc, char ** argv )
         // whole point of returning false
         RenderFrameBlockStorage storage;
         CHECK( storage.Create( TableBlockDefaultAllocator() ) );
-        memset( storage.base, 0, (size_t) RenderFrameBlockMaxBytes );
+        memset( (void *) storage.base, 0, (size_t) RenderFrameBlockMaxBytes );
         RenderFrameBlock own;
         CHECK( RenderFrameBlockBegin( own, storage, counts ) );
         fill( own, counts );

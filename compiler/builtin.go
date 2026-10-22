@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -55,7 +56,12 @@ var stringTargets []string
 // they carry BOTH byte buffers — `*bytes` and `*string`; a target that carries
 // one and not the other registers the string blob alone through
 // registerStringCarrier.
+//
+// A target cannot register without its language's reserved words in the one
+// table (check.ReservedLanguageOf, SPEC §4.6): every name it generates must be
+// one the checker has already proven legal in it.
 func registerBuiltin(g Generator, tables, arms, unionArrays, blobs bool) {
+	requireReservedWords(g.Names()[0])
 	builtinTargets = append(builtinTargets, g)
 	if tables {
 		tableTargets = append(tableTargets, g.Names()[0])
@@ -69,6 +75,14 @@ func registerBuiltin(g Generator, tables, arms, unionArrays, blobs bool) {
 	if blobs {
 		blobTargets = append(blobTargets, g.Names()[0])
 		stringTargets = append(stringTargets, g.Names()[0])
+	}
+}
+
+// requireReservedWords panics when target's language has no row in the one
+// reserved-word table (SPEC §4.6): a port is added by adding its words first.
+func requireReservedWords(target string) {
+	if _, ok := check.ReservedLanguageOf(target); !ok {
+		panic("compiler: target " + target + " has no reserved words in internal/check's table (SPEC §4.6); add its row before registering it")
 	}
 }
 

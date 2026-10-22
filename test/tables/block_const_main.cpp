@@ -160,7 +160,7 @@ int main( int argc, char ** argv )
         return 1;
     }
     uint8_t * offset_base = (uint8_t *) ( ( (uintptr_t) offset_allocation + 63 ) & ~(uintptr_t) 63 ) + 8;
-    memcpy( offset_base, region, (size_t) bytes );
+    memcpy( (void *) offset_base, region, (size_t) bytes );
     reason = ok;
     check( !RenderFrameBlockOpen( refused, (const uint8_t *) offset_base, bytes, &reason ),
            "an unaligned const base refuses" );
