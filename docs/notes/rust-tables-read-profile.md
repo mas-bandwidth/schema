@@ -51,7 +51,7 @@ are shown. Every binary passed `--gate` (table corpus `066b2822b3e5d487`, contro
 byte-identical to the same build made on amd-3.
 
 **The window is certified, by the read arm's rule.** The sitting driver
-(`tools/sitting.sh`) follows the C++ read arm (`bench/paired`, 2ac615b86) and BENCH-STANDARD
+(`tools/sitting.sh`, since removed; see "Reproducing it") follows the C++ read arm (`bench/paired`, 2ac615b86) and BENCH-STANDARD
 §2.5–§2.6:
 
 - **Control legs.** Each sitting begins and ends with the same leg, the C++ family `gen`
@@ -231,8 +231,12 @@ surface. The hetzner2 take, uncertified, gave clang 1.251x and Rust/clang-restri
 
 ## Reproducing it
 
-The certified sittings are reproduced on a Linux bench (never the Studio) by the scripts
-committed beside the rows, in `bench/results/2026-10-16-rust-tables-read-amd-2/tools/`:
+The certified sittings were reproduced on a Linux bench (never the Studio) by scratch
+scripts once committed beside the rows in `bench/results/2026-10-16-rust-tables-read-amd-2/tools/`.
+They were removed from the tree because `make shape-gate` refuses hand-written measurement
+outside the sanctioned bench; they are in git history at
+`0375a0352b3a6fb27a7b6b09b86006afca28451c` (`git show 0375a0352b3a:bench/results/2026-10-16-rust-tables-read-amd-2/tools/<name>`).
+What they did:
 
     bash tools/setup.sh      # clone schema + serialize v1.16.2 + serialize.rs, paired build, clang and __restrict legs, --gate each
     bash tools/hunt.sh OUTROOT 8 DEADLINE_EPOCH   # wait for load1 < 1 and no build/bench, then base + confirm (+ exp)

@@ -110,19 +110,21 @@ SCHEMAS_TABLES_BACKEND := $(wildcard tables/backend/*.schema)
 SCHEMAS_TABLES_VOCAB := $(wildcard tables/vocab/*.schema)
 SCHEMAS_TABLES_VOCAB9 := $(wildcard tables/vocab9/*.schema)
 
-# The soak length the clocked legs' soaks take, in seconds (the C++ and C#
-# soaks are counted instead, below). The hour is the release act — `make
+# The soak length the clocked legs' soaks take, in seconds (the C++, C# and
+# Rust soaks are counted instead, below). The hour is the release act — `make
 # tables-<lang>-soak SOAK_SECONDS=3600` — and `make test` runs the short forms
 # with an explicit value.
 SOAK_SECONDS ?= 3600
 
-# The C++ and C# soaks are COUNTED, not clocked: each takes a number of passes,
-# because a pass is what the allocation count is read across, and because
-# `make shape-gate` refuses a timing primitive outside the sanctioned bench.
+# The C++, C# and Rust soaks are COUNTED, not clocked: each takes a number of
+# passes, because a pass is what the allocation count is read across, and
+# because `make shape-gate` refuses a timing primitive outside the sanctioned
+# bench.
 # The defaults are the release act, about an hour each on the studio; `make
 # test` runs the short forms with an explicit value.
 TABLES_CPP_SOAK_ITERATIONS ?= 1000000
 TABLES_CS_SOAK_ITERATIONS ?= 250000000
+TABLES_RUST_SOAK_ITERATIONS ?= 800000000
 
 all: bin/schema
 
