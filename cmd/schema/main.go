@@ -822,13 +822,21 @@ func fatalf(format string, args ...any) {
 
 // fail reports a driver error and exits nonzero: a unit's diagnostics one per
 // line with a count — there is no first error worth privileging when a file
-// has twenty — and anything else as the single line it is.
+// has twenty — and anything else as the single line it is. A refusal batch is
+// dated once: when any diagnostic cites a spec section, one 'schema <version>'
+// line follows the count.
 func fail(err error) {
 	if diags, ok := errors.AsType[compiler.Diagnostics](err); ok {
 		for _, e := range diags {
 			fmt.Fprintln(os.Stderr, e)
 		}
 		fmt.Fprintf(os.Stderr, "schema: %d error(s)\n", len(diags))
+		if diags.HasSection() {
+			// the dating line is the last line Diagnostics.Error builds, so the
+			// CLI prints the one the public API composes rather than its own
+			s := diags.Error()
+			fmt.Fprintln(os.Stderr, s[strings.LastIndex(s, "\n")+1:])
+		}
 		os.Exit(1)
 	}
 	fatalf("%v", err)

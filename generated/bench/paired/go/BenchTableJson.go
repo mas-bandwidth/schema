@@ -1676,7 +1676,11 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		} else {
 			high := uint64(1)<<(f.ElemSize*8) - 1
 			if value < 0 {
-				value = 0
+				// a magnitude past what sixty-four bits hold, carried as a
+				// negative int64, lands the field's CEILING: the domain is
+				// established before any cast, so the saturation is one clamp
+				// and the domain bound is the other
+				value = int64(high)
 				in.report.Clamped++
 			} else if uint64(value) > high {
 				value = int64(high)
@@ -1685,9 +1689,9 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		}
 	}
 	// at eight bytes the storage IS the parser's width, and an unsigned value
-	// past MaxInt64 rides here as a negative int64 by design — the token parser
-	// already turned a NEGATIVE token for an unsigned field into a clamped
-	// zero, so there is nothing left to bound.
+	// past MaxInt64 rides here as its bit pattern by design — the domain bound
+	// above already handled it, and a NEGATIVE token for an unsigned field was
+	// turned into a clamped zero before this point.
 	tableJsonSetRaw(storage, f.ElemSize, uint64(value))
 	return true
 }
