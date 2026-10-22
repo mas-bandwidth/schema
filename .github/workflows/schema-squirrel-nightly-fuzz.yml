@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Tool presence check: go
+      - name: 'Tool presence check: go'
         run: |
           want="$(sed -nE 's/^go ([0-9]+\.[0-9]+)$/\1/p' go.mod)"
           got="$(go version | sed -nE 's/.*go([0-9]+\.[0-9]+).*/\1/p')"
@@ -64,7 +64,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Tool presence check: go
+      - name: 'Tool presence check: go'
         run: |
           want="$(sed -nE 's/^go ([0-9]+\.[0-9]+)$/\1/p' go.mod)"
           got="$(go version | sed -nE 's/.*go([0-9]+\.[0-9]+).*/\1/p')"
