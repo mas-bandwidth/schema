@@ -47,6 +47,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -98,23 +99,9 @@ func is128(t ir.FieldType) bool {
 	return (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Width == 128
 }
 
-// dartReserved is every spelling a generated Dart identifier must not take:
-// the reserved words of Dart 3, plus the dart:core type names generated
-// files use unqualified — shadowing `int` with a top-level constant would
-// corrupt every declaration below it.
-var dartReserved = map[string]bool{
-	"assert": true, "break": true, "case": true, "catch": true,
-	"class": true, "const": true, "continue": true, "default": true,
-	"do": true, "else": true, "enum": true, "extends": true, "false": true,
-	"final": true, "finally": true, "for": true, "if": true, "in": true,
-	"is": true, "new": true, "null": true, "rethrow": true, "return": true,
-	"super": true, "switch": true, "this": true, "throw": true, "true": true,
-	"try": true, "var": true, "void": true, "when": true, "while": true,
-	"with": true,
-	"bool": true, "double": true, "int": true, "num": true, "String": true,
-	"List": true, "Object": true, "Endian": true, "ByteData": true,
-	"dynamic": true,
-}
+// dartReserved is Dart's reserved words, read from the one table (check.ReservedIn,
+// SPEC §4.6) and never copied here.
+var dartReserved = schemacheck.ReservedIn("Dart")
 
 // dartName maps an exported member/constant/variant name into Dart's
 // lowerCamelCase: the first-letter-lowered form of ir.GoExportName. The two

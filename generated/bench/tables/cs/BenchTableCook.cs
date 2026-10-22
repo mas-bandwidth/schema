@@ -159,85 +159,85 @@ namespace Benchtable
             TableBlockLayout.Verify();
             {
                 TableChatEventRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("TableChatEventRow", Unsafe.SizeOf<TableChatEventRow>(), 8);
-                Offset("TableChatEventRow.Channel", (byte*) &probe.Channel - at, 0);
-                Offset("TableChatEventRow.Speaker", (byte*) &probe.Speaker - at, 4);
+                Offset("TableChatEventRow.Channel", (byte*)&probe.Channel - at, 0);
+                Offset("TableChatEventRow.Speaker", (byte*)&probe.Speaker - at, 4);
             }
             {
                 TableEntityRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("TableEntityRow", Unsafe.SizeOf<TableEntityRow>(), 64);
-                Offset("TableEntityRow.EntityId", (byte*) &probe.EntityId - at, 0);
-                Offset("TableEntityRow.PosX", (byte*) &probe.PosX - at, 4);
-                Offset("TableEntityRow.PosY", (byte*) &probe.PosY - at, 8);
-                Offset("TableEntityRow.PosZ", (byte*) &probe.PosZ - at, 12);
-                Offset("TableEntityRow.Yaw", (byte*) &probe.Yaw - at, 16);
-                Offset("TableEntityRow.Pitch", (byte*) &probe.Pitch - at, 20);
-                Offset("TableEntityRow.VelX", (byte*) &probe.VelX - at, 24);
-                Offset("TableEntityRow.VelY", (byte*) &probe.VelY - at, 28);
-                Offset("TableEntityRow.VelZ", (byte*) &probe.VelZ - at, 32);
-                Offset("TableEntityRow.Health", (byte*) &probe.Health - at, 36);
-                Offset("TableEntityRow.Weapon", (byte*) &probe.Weapon - at, 40);
-                Offset("TableEntityRow.Damage", (byte*) &probe.Damage - at, 48);
-                Offset("TableEntityRow.Moving", (byte*) &probe.Moving - at, 56);
-                Offset("TableEntityRow.Firing", (byte*) &probe.Firing - at, 57);
+                Offset("TableEntityRow.EntityId", (byte*)&probe.EntityId - at, 0);
+                Offset("TableEntityRow.PosX", (byte*)&probe.PosX - at, 4);
+                Offset("TableEntityRow.PosY", (byte*)&probe.PosY - at, 8);
+                Offset("TableEntityRow.PosZ", (byte*)&probe.PosZ - at, 12);
+                Offset("TableEntityRow.Yaw", (byte*)&probe.Yaw - at, 16);
+                Offset("TableEntityRow.Pitch", (byte*)&probe.Pitch - at, 20);
+                Offset("TableEntityRow.VelX", (byte*)&probe.VelX - at, 24);
+                Offset("TableEntityRow.VelY", (byte*)&probe.VelY - at, 28);
+                Offset("TableEntityRow.VelZ", (byte*)&probe.VelZ - at, 32);
+                Offset("TableEntityRow.Health", (byte*)&probe.Health - at, 36);
+                Offset("TableEntityRow.Weapon", (byte*)&probe.Weapon - at, 40);
+                Offset("TableEntityRow.Damage", (byte*)&probe.Damage - at, 48);
+                Offset("TableEntityRow.Moving", (byte*)&probe.Moving - at, 56);
+                Offset("TableEntityRow.Firing", (byte*)&probe.Firing - at, 57);
             }
             {
                 TableHitEventRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("TableHitEventRow", Unsafe.SizeOf<TableHitEventRow>(), 16);
-                Offset("TableHitEventRow.TargetId", (byte*) &probe.TargetId - at, 0);
-                Offset("TableHitEventRow.Damage", (byte*) &probe.Damage - at, 4);
-                Offset("TableHitEventRow.HitKind", (byte*) &probe.HitKind - at, 8);
-                Offset("TableHitEventRow.Crit", (byte*) &probe.Crit - at, 12);
+                Offset("TableHitEventRow.TargetId", (byte*)&probe.TargetId - at, 0);
+                Offset("TableHitEventRow.Damage", (byte*)&probe.Damage - at, 4);
+                Offset("TableHitEventRow.HitKind", (byte*)&probe.HitKind - at, 8);
+                Offset("TableHitEventRow.Crit", (byte*)&probe.Crit - at, 12);
             }
             {
                 TableMixedRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("TableMixedRow", Unsafe.SizeOf<TableMixedRow>(), 1352);
-                Offset("TableMixedRow.ProtocolMagic", (byte*) &probe.ProtocolMagic - at, 0);
-                Offset("TableMixedRow.Sequence", (byte*) &probe.Sequence - at, 4);
-                Offset("TableMixedRow.AckSequence", (byte*) &probe.AckSequence - at, 8);
-                Offset("TableMixedRow.AckBits", (byte*) &probe.AckBits - at, 12);
-                Offset("TableMixedRow.SessionId", (byte*) &probe.SessionId - at, 16);
-                Offset("TableMixedRow.ClientId", (byte*) &probe.ClientId - at, 24);
-                Offset("TableMixedRow.Nonce", (byte*) &probe.Nonce - at, 32);
-                Offset("TableMixedRow.WorldTime", (byte*) &probe.WorldTime - at, 40);
-                Offset("TableMixedRow.FrameTick", (byte*) &probe.FrameTick - at, 48);
-                Offset("TableMixedRow.ServerTime", (byte*) &probe.ServerTime - at, 56);
-                Offset("TableMixedRow.Entities", (byte*) &probe.Entities0 - at, 64);
-                Offset("TableMixedRow.Stats", (byte*) &probe.Stats0 - at, 580);
-                Offset("TableMixedRow.GameEvent", (byte*) &probe.GameEvent - at, 1224);
-                Offset("TableMixedRow.Loadout", (byte*) probe.Loadout - at, 1244);
-                Offset("TableMixedRow.PlayerName", (byte*) probe.PlayerName - at, 1248);
-                Offset("TableMixedRow.Payload", (byte*) probe.Payload - at, 1268);
-                Offset("TableMixedRow.AimX", (byte*) &probe.AimX - at, 1288);
-                Offset("TableMixedRow.AimY", (byte*) &probe.AimY - at, 1292);
-                Offset("TableMixedRow.AimZ", (byte*) &probe.AimZ - at, 1296);
-                Offset("TableMixedRow.Recoil", (byte*) &probe.Recoil - at, 1300);
-                Offset("TableMixedRow.Drift", (byte*) &probe.Drift - at, 1304);
-                Offset("TableMixedRow.WideKey", (byte*) &probe.WideKey - at, 1312);
-                Offset("TableMixedRow.Flux", (byte*) &probe.Flux - at, 1320);
-                Offset("TableMixedRow.Ping", (byte*) &probe.Ping - at, 1328);
-                Offset("TableMixedRow.CrcHint", (byte*) &probe.CrcHint - at, 1332);
-                Offset("TableMixedRow.HasExtra", (byte*) &probe.HasExtra - at, 1336);
-                Offset("TableMixedRow.Extra", (byte*) &probe.Extra - at, 1340);
-                Offset("TableMixedRow.IdleTicks", (byte*) &probe.IdleTicks - at, 1344);
+                Offset("TableMixedRow.ProtocolMagic", (byte*)&probe.ProtocolMagic - at, 0);
+                Offset("TableMixedRow.Sequence", (byte*)&probe.Sequence - at, 4);
+                Offset("TableMixedRow.AckSequence", (byte*)&probe.AckSequence - at, 8);
+                Offset("TableMixedRow.AckBits", (byte*)&probe.AckBits - at, 12);
+                Offset("TableMixedRow.SessionId", (byte*)&probe.SessionId - at, 16);
+                Offset("TableMixedRow.ClientId", (byte*)&probe.ClientId - at, 24);
+                Offset("TableMixedRow.Nonce", (byte*)&probe.Nonce - at, 32);
+                Offset("TableMixedRow.WorldTime", (byte*)&probe.WorldTime - at, 40);
+                Offset("TableMixedRow.FrameTick", (byte*)&probe.FrameTick - at, 48);
+                Offset("TableMixedRow.ServerTime", (byte*)&probe.ServerTime - at, 56);
+                Offset("TableMixedRow.Entities", (byte*)&probe.Entities0 - at, 64);
+                Offset("TableMixedRow.Stats", (byte*)&probe.Stats0 - at, 580);
+                Offset("TableMixedRow.GameEvent", (byte*)&probe.GameEvent - at, 1224);
+                Offset("TableMixedRow.Loadout", (byte*)probe.Loadout - at, 1244);
+                Offset("TableMixedRow.PlayerName", (byte*)probe.PlayerName - at, 1248);
+                Offset("TableMixedRow.Payload", (byte*)probe.Payload - at, 1268);
+                Offset("TableMixedRow.AimX", (byte*)&probe.AimX - at, 1288);
+                Offset("TableMixedRow.AimY", (byte*)&probe.AimY - at, 1292);
+                Offset("TableMixedRow.AimZ", (byte*)&probe.AimZ - at, 1296);
+                Offset("TableMixedRow.Recoil", (byte*)&probe.Recoil - at, 1300);
+                Offset("TableMixedRow.Drift", (byte*)&probe.Drift - at, 1304);
+                Offset("TableMixedRow.WideKey", (byte*)&probe.WideKey - at, 1312);
+                Offset("TableMixedRow.Flux", (byte*)&probe.Flux - at, 1320);
+                Offset("TableMixedRow.Ping", (byte*)&probe.Ping - at, 1328);
+                Offset("TableMixedRow.CrcHint", (byte*)&probe.CrcHint - at, 1332);
+                Offset("TableMixedRow.HasExtra", (byte*)&probe.HasExtra - at, 1336);
+                Offset("TableMixedRow.Extra", (byte*)&probe.Extra - at, 1340);
+                Offset("TableMixedRow.IdleTicks", (byte*)&probe.IdleTicks - at, 1344);
             }
             {
                 TablePickupEventRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("TablePickupEventRow", Unsafe.SizeOf<TablePickupEventRow>(), 8);
-                Offset("TablePickupEventRow.ItemId", (byte*) &probe.ItemId - at, 0);
-                Offset("TablePickupEventRow.Amount", (byte*) &probe.Amount - at, 4);
+                Offset("TablePickupEventRow.ItemId", (byte*)&probe.ItemId - at, 0);
+                Offset("TablePickupEventRow.Amount", (byte*)&probe.Amount - at, 4);
             }
             {
                 TableStatRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("TableStatRow", Unsafe.SizeOf<TableStatRow>(), 8);
-                Offset("TableStatRow.StatId", (byte*) &probe.StatId - at, 0);
-                Offset("TableStatRow.Delta", (byte*) &probe.Delta - at, 4);
+                Offset("TableStatRow.StatId", (byte*)&probe.StatId - at, 0);
+                Offset("TableStatRow.Delta", (byte*)&probe.Delta - at, 4);
             }
             Size("TableEventRow", Unsafe.SizeOf<TableEventRow>(), 20);
             { TableEventRow probe = default; byte* at = (byte*)&probe; Offset("TableEventRow.Type", (byte*)&probe.Type - at, 0); Offset("TableEventRow.Hit", (byte*)&probe.Hit - at, 4); Offset("TableEventRow.Chat", (byte*)&probe.Chat - at, 4); Offset("TableEventRow.Pickup", (byte*)&probe.Pickup - at, 4); }
@@ -536,8 +536,8 @@ namespace Benchtable
         // which is what a `ref` cannot carry across a field access.
         public byte* Region { get { return region; } }
         public long RegionLength { get { return regionLength; } }
-        public TableEntityRow* RootPointer { get { return (TableEntityRow*) region; } }
-        public ref readonly TableEntityRow Root { get { return ref *(TableEntityRow*) region; } }
+        public TableEntityRow* RootPointer { get { return (TableEntityRow*)region; } }
+        public ref readonly TableEntityRow Root { get { return ref *(TableEntityRow*)region; } }
 
         // Open checks the header and POINTS, and this is the WHOLE check
         // (docs/SPEC-TABLES.md §7): the magic read bytewise, the byte order it
@@ -564,8 +564,8 @@ namespace Benchtable
             TableCookLayout.Verify();
             if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }
             if (length < 64) { reason = TableRefuseReason.truncated; return false; }
-            byte* at = (byte*) pointer;
-            ulong bytes = (ulong) length;
+            byte* at = (byte*)pointer;
+            ulong bytes = (ulong)length;
 
             // THE MAGIC, read BYTEWISE before anything else: it is what establishes
             // the byte order every other header word is written in. A cook of the
@@ -599,7 +599,7 @@ namespace Benchtable
             // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader
             // computes is a fact two writers cannot disagree about, and it is 64 for
             // every unit this language can declare.
-            ulong dataOffset = ((ulong) 64 + alignment - 1) & ~(alignment - 1);
+            ulong dataOffset = ((ulong)64 + alignment - 1) & ~(alignment - 1);
 
             // THE TWO PART LENGTHS against the length the caller passed. The whole
             // file is dataOffset + data + attribution, and a size that is not exactly
@@ -624,9 +624,9 @@ namespace Benchtable
             // aligned; one that is not is a caller's buffer this form cannot be read
             // out of. The alignment divides 64, so the derived data offset carries
             // the property from the file's base to the region's.
-            if ((((ulong) at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
+            if ((((ulong)at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
 
-            cook = new TableEntityCook(at + dataOffset, (long) dataLength);
+            cook = new TableEntityCook(at + dataOffset, (long)dataLength);
             return true;
         }
 
@@ -644,7 +644,7 @@ namespace Benchtable
         {
             fixed (byte* p = bytes)
             {
-                return Open(out cook, (IntPtr) p, bytes.Length);
+                return Open(out cook, (IntPtr)p, bytes.Length);
             }
         }
 
@@ -661,7 +661,7 @@ namespace Benchtable
         {
             long delta = *slot;
             if (delta == 0) { return null; }
-            return (TableEntityRow*) ((byte*) slot + delta);
+            return (TableEntityRow*)((byte*)slot + delta);
         }
 
         // The pieces a consumer reads THROUGH rather than at: each is a SPAN over
@@ -672,7 +672,10 @@ namespace Benchtable
         // field column, so a walker reaches the whole graph from the root.
         private static readonly TableCookInfo cookRecordTableEntity = new TableCookInfo
         {
-            Name = "TableEntity", Size = 64, Align = 8, NumFields = 14,
+            Name = "TableEntity",
+            Size = 64,
+            Align = 8,
+            NumFields = 14,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "entity_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
@@ -733,8 +736,8 @@ namespace Benchtable
         // which is what a `ref` cannot carry across a field access.
         public byte* Region { get { return region; } }
         public long RegionLength { get { return regionLength; } }
-        public TableStatRow* RootPointer { get { return (TableStatRow*) region; } }
-        public ref readonly TableStatRow Root { get { return ref *(TableStatRow*) region; } }
+        public TableStatRow* RootPointer { get { return (TableStatRow*)region; } }
+        public ref readonly TableStatRow Root { get { return ref *(TableStatRow*)region; } }
 
         // Open checks the header and POINTS, and this is the WHOLE check
         // (docs/SPEC-TABLES.md §7): the magic read bytewise, the byte order it
@@ -761,8 +764,8 @@ namespace Benchtable
             TableCookLayout.Verify();
             if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }
             if (length < 64) { reason = TableRefuseReason.truncated; return false; }
-            byte* at = (byte*) pointer;
-            ulong bytes = (ulong) length;
+            byte* at = (byte*)pointer;
+            ulong bytes = (ulong)length;
 
             // THE MAGIC, read BYTEWISE before anything else: it is what establishes
             // the byte order every other header word is written in. A cook of the
@@ -796,7 +799,7 @@ namespace Benchtable
             // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader
             // computes is a fact two writers cannot disagree about, and it is 64 for
             // every unit this language can declare.
-            ulong dataOffset = ((ulong) 64 + alignment - 1) & ~(alignment - 1);
+            ulong dataOffset = ((ulong)64 + alignment - 1) & ~(alignment - 1);
 
             // THE TWO PART LENGTHS against the length the caller passed. The whole
             // file is dataOffset + data + attribution, and a size that is not exactly
@@ -821,9 +824,9 @@ namespace Benchtable
             // aligned; one that is not is a caller's buffer this form cannot be read
             // out of. The alignment divides 64, so the derived data offset carries
             // the property from the file's base to the region's.
-            if ((((ulong) at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
+            if ((((ulong)at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
 
-            cook = new TableStatCook(at + dataOffset, (long) dataLength);
+            cook = new TableStatCook(at + dataOffset, (long)dataLength);
             return true;
         }
 
@@ -841,7 +844,7 @@ namespace Benchtable
         {
             fixed (byte* p = bytes)
             {
-                return Open(out cook, (IntPtr) p, bytes.Length);
+                return Open(out cook, (IntPtr)p, bytes.Length);
             }
         }
 
@@ -858,7 +861,7 @@ namespace Benchtable
         {
             long delta = *slot;
             if (delta == 0) { return null; }
-            return (TableStatRow*) ((byte*) slot + delta);
+            return (TableStatRow*)((byte*)slot + delta);
         }
 
         // The pieces a consumer reads THROUGH rather than at: each is a SPAN over
@@ -869,7 +872,10 @@ namespace Benchtable
         // field column, so a walker reaches the whole graph from the root.
         private static readonly TableCookInfo cookRecordTableStat = new TableCookInfo
         {
-            Name = "TableStat", Size = 8, Align = 4, NumFields = 2,
+            Name = "TableStat",
+            Size = 8,
+            Align = 4,
+            NumFields = 2,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "stat_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
@@ -918,8 +924,8 @@ namespace Benchtable
         // which is what a `ref` cannot carry across a field access.
         public byte* Region { get { return region; } }
         public long RegionLength { get { return regionLength; } }
-        public TableMixedRow* RootPointer { get { return (TableMixedRow*) region; } }
-        public ref readonly TableMixedRow Root { get { return ref *(TableMixedRow*) region; } }
+        public TableMixedRow* RootPointer { get { return (TableMixedRow*)region; } }
+        public ref readonly TableMixedRow Root { get { return ref *(TableMixedRow*)region; } }
 
         // Open checks the header and POINTS, and this is the WHOLE check
         // (docs/SPEC-TABLES.md §7): the magic read bytewise, the byte order it
@@ -946,8 +952,8 @@ namespace Benchtable
             TableCookLayout.Verify();
             if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }
             if (length < 64) { reason = TableRefuseReason.truncated; return false; }
-            byte* at = (byte*) pointer;
-            ulong bytes = (ulong) length;
+            byte* at = (byte*)pointer;
+            ulong bytes = (ulong)length;
 
             // THE MAGIC, read BYTEWISE before anything else: it is what establishes
             // the byte order every other header word is written in. A cook of the
@@ -981,7 +987,7 @@ namespace Benchtable
             // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader
             // computes is a fact two writers cannot disagree about, and it is 64 for
             // every unit this language can declare.
-            ulong dataOffset = ((ulong) 64 + alignment - 1) & ~(alignment - 1);
+            ulong dataOffset = ((ulong)64 + alignment - 1) & ~(alignment - 1);
 
             // THE TWO PART LENGTHS against the length the caller passed. The whole
             // file is dataOffset + data + attribution, and a size that is not exactly
@@ -1006,9 +1012,9 @@ namespace Benchtable
             // aligned; one that is not is a caller's buffer this form cannot be read
             // out of. The alignment divides 64, so the derived data offset carries
             // the property from the file's base to the region's.
-            if ((((ulong) at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
+            if ((((ulong)at) % alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }
 
-            cook = new TableMixedCook(at + dataOffset, (long) dataLength);
+            cook = new TableMixedCook(at + dataOffset, (long)dataLength);
             return true;
         }
 
@@ -1026,7 +1032,7 @@ namespace Benchtable
         {
             fixed (byte* p = bytes)
             {
-                return Open(out cook, (IntPtr) p, bytes.Length);
+                return Open(out cook, (IntPtr)p, bytes.Length);
             }
         }
 
@@ -1043,7 +1049,7 @@ namespace Benchtable
         {
             long delta = *slot;
             if (delta == 0) { return null; }
-            return (TableMixedRow*) ((byte*) slot + delta);
+            return (TableMixedRow*)((byte*)slot + delta);
         }
 
         // The pieces a consumer reads THROUGH rather than at: each is a SPAN over
@@ -1090,7 +1096,10 @@ namespace Benchtable
         // field column, so a walker reaches the whole graph from the root.
         private static readonly TableCookInfo cookRecordTableChatEvent = new TableCookInfo
         {
-            Name = "TableChatEvent", Size = 8, Align = 4, NumFields = 2,
+            Name = "TableChatEvent",
+            Size = 8,
+            Align = 4,
+            NumFields = 2,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "channel", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
@@ -1100,7 +1109,10 @@ namespace Benchtable
 
         private static readonly TableCookInfo cookRecordTableEntity = new TableCookInfo
         {
-            Name = "TableEntity", Size = 64, Align = 8, NumFields = 14,
+            Name = "TableEntity",
+            Size = 64,
+            Align = 8,
+            NumFields = 14,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "entity_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
@@ -1122,7 +1134,10 @@ namespace Benchtable
 
         private static readonly TableCookInfo cookRecordTableHitEvent = new TableCookInfo
         {
-            Name = "TableHitEvent", Size = 16, Align = 4, NumFields = 4,
+            Name = "TableHitEvent",
+            Size = 16,
+            Align = 4,
+            NumFields = 4,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "target_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
@@ -1134,7 +1149,10 @@ namespace Benchtable
 
         private static readonly TableCookInfo cookRecordTableMixed = new TableCookInfo
         {
-            Name = "TableMixed", Size = 1352, Align = 8, NumFields = 28,
+            Name = "TableMixed",
+            Size = 1352,
+            Align = 8,
+            NumFields = 28,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "protocol_magic", Offset = 0, Size = 2, ElemSize = 2, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
@@ -1170,7 +1188,10 @@ namespace Benchtable
 
         private static readonly TableCookInfo cookRecordTablePickupEvent = new TableCookInfo
         {
-            Name = "TablePickupEvent", Size = 8, Align = 4, NumFields = 2,
+            Name = "TablePickupEvent",
+            Size = 8,
+            Align = 4,
+            NumFields = 2,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "item_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
@@ -1180,7 +1201,10 @@ namespace Benchtable
 
         private static readonly TableCookInfo cookRecordTableStat = new TableCookInfo
         {
-            Name = "TableStat", Size = 8, Align = 4, NumFields = 2,
+            Name = "TableStat",
+            Size = 8,
+            Align = 4,
+            NumFields = 2,
             Fields = new TableCookFieldInfo[]
             {
                 new TableCookFieldInfo { Name = "stat_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },

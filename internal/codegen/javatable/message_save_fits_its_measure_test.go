@@ -44,9 +44,9 @@ func TestJavaMessageSaveFitsItsMeasure(t *testing.T) {
 				"Edit", "OpenDocument", "SaveDocument", "Transaction", "ToolMessage",
 			},
 			seeded: map[string]string{
-				"Selection":    `{"start":{"line":1,"column":2},"end":{"line":3,"column":4}}`,
+				"Selection":    `{"start":{"line":1,"column":2},"stop":{"line":3,"column":4}}`,
 				"InsertText":   `{"at":{"line":1,"column":2},"text":"hi"}`,
-				"RemoveText":   `{"span":{"start":{"line":9,"column":8},"end":{"line":7,"column":6}}}`,
+				"RemoveText":   `{"span":{"start":{"line":9,"column":8},"stop":{"line":7,"column":6}}}`,
 				"OpenDocument": `{"path":"a.txt","cursor":{"line":1,"column":2}}`,
 				"ToolMessage":  `{"sequence":7}`,
 			},

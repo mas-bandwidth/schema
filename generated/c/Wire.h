@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x8656ae68c06b97a7 */
+   package example — protocol id 0xeb26c970fde3fd71 */
 
 #ifndef SCHEMA_EXAMPLE_WIRE_H
 #define SCHEMA_EXAMPLE_WIRE_H
@@ -246,6 +246,23 @@ typedef struct ProbeShape {
 
 #define PROBE_SHAPE_MAX_BITS 18   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
 #define PROBE_SHAPE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+
+/* Selectors for ProbeShape: each sets the tag and initializes the arm together,
+   the arm with its declared defaults as a read does (SPEC §4.8), and returns
+   the fresh arm to populate; a payload-free arm's selector sets the tag alone. */
+static SCHEMA_UNUSED ProbeRing * probe_shape_select_ring( ProbeShape * value )
+{
+    value->type = PROBE_SHAPE_TYPE_RING;
+    memset( &value->as.ring, 0, sizeof( value->as.ring ) );
+    return &value->as.ring;
+}
+
+static SCHEMA_UNUSED ProbeSlab * probe_shape_select_slab( ProbeShape * value )
+{
+    value->type = PROBE_SHAPE_TYPE_SLAB;
+    memset( &value->as.slab, 0, sizeof( value->as.slab ) );
+    return &value->as.slab;
+}
 
 
 /* type ProbeCollider */

@@ -14,8 +14,14 @@
         "tables-block-const-negative-control",
         "tables-block-fill-refuser-negative-control",
         "tables-block-race-negative-control",
+        "tables-block-zero-cost-negative-control",
+        "tables-c-accessor-negative-control",
         "tables-c-ref-ordinal-negative-control",
+        "tables-c-runtime-home-negative-control",
+        "tables-c-slot-negative-control",
         "tables-clamp-limits-negative-control",
+        "tables-cpp-names-negative-control",
+        "tables-cpp-runtime-home-negative-control",
         "tables-doctags-negative-controls",
         "tables-fixed-twin-negative-control",
         "tables-fixedform-run-copy-negative-control",
@@ -23,7 +29,9 @@
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-list-walk-negative-controls",
+        "tables-json-map-walk-negative-controls",
         "tables-json-negative-control",
+        "tables-py-packet-negative-control",
         "tables-ref-ordinal-negative-control",
         "tables-ref-ordinal-shared-negative-control",
         "tables-retain-fixed-class-negative-control",
@@ -34,6 +42,8 @@
         "tables-was-negative-control",
         "tables-wasrows-negative-control",
         "tables-zero-cost-negative-control",
+        "tables-accessor-negative-control",
+        "tables-slot-negative-control",
         "toolchain-negative-control"
       ]
     },
@@ -78,6 +88,14 @@
         "tables-go-wire-fuzz-negative-control",
         "conformance-negative-control-reference-surface",
         "conformance-go-rows-negative-control"
+      ]
+    },
+    {
+      "name": "base-conformance-cpp",
+      "when": "pull-request",
+      "why": "The C++ reference's emitter-side conformance control, alone: it overlay-rebuilds the compiler, regenerates the whole C++ table tree through it and rebuilds the reference driver, which is the compile weight of a complete-driver rebuild. The driver-flip control in base-conformance shares a job with the harness controls; this one is the emitter rebuild they deliberately do not carry.",
+      "targets": [
+        "conformance-negative-control-cpp"
       ]
     },
     {
@@ -232,7 +250,7 @@
     {
       "name": "base-cook",
       "when": "pull-request",
-      "why": "the cook's controls, the blob span and read hooks, and the C leg's fuzz, soak and keyed refusal: one cooked corpus, built once, that every one of them reads. Measured 34 s over 11 controls.",
+      "why": "the cook's controls, the blob span and read hooks, the C leg's fuzz, soak and keyed refusal, and the C++ soak's control beside its C twin: one cooked corpus, built once, that every one of them reads, and the same generated tables tree the C++ soak compiles. Measured 34 s over 11 controls, plus 22 s for tables-cpp-soak-negative-control on the Linux bench (hetzner2, 17 s of it the compile; it goes red on its first sample).",
       "targets": [
         "tables-blob-read-hooks-negative-control",
         "tables-blob-span-negative-control",
@@ -241,6 +259,7 @@
         "tables-c-keyed-none-refusal-negative-control",
         "tables-c-keyed-max-refusal-negative-control",
         "tables-c-soak-negative-control",
+        "tables-cpp-soak-negative-control",
         "tables-cook-fuzz-negative-control",
         "tables-cook-open-lengths-negative-control",
         "tables-cook-open-root-negative-control",
@@ -273,6 +292,7 @@
       "when": "pull-request",
       "why": "the pack golden's framing control: elide a present `?T` in the Go encoder and the byte comparison against the C++ Save has to go red. Measured 7 s off one warm build.",
       "targets": [
+        "tables-json-differential-negative-control",
         "tables-pack-negative-control"
       ]
     },
@@ -418,18 +438,60 @@
     {
       "name": "cs",
       "when": "pull-request",
-      "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
+      "why": "the C# port's conformance leg and its runtime counters: the conformance driver's planted defect, the allocation gate's off-pin runtime refusal, the soak allocation-count control (a short-lived managed allocation per sample, invisible to drift), and the retain control. Split three ways from one cs group when the merged stream's fourteen controls ran the job past its 5-minute timeout on the runner (the job was cancelled during the last control, about 4m40s after the controls began).",
       "targets": [
-        "cards-cs-conformance-negative-control",
         "conformance-negative-control-cs",
-        "tables-cs-retain-negative-control",
+        "tables-cs-alloc-runtime-negative-control",
+        "tables-cs-soak-negative-control",
+        "tables-cs-retain-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-tables",
+      "when": "pull-request",
+      "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout.",
+      "targets": [
         "tables-cs-pack-negative-control",
         "tables-cs-message-blob-endian-negative-control",
         "tables-cs-fixedform-arm-negative-control",
+        "tables-cs-json-differential-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-packet",
+      "when": "pull-request",
+      "why": "the C# packet families (arm defaults, defaults, UTF-8, wide), the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Split from the cs group for its 5-minute timeout.",
+      "targets": [
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",
-        "packet-wide-cs-negative-control"
+        "packet-wide-cs-negative-control",
+        "packet-clean-cs-negative-control",
+        "tables-cs-clean-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-cards",
+      "when": "pull-request",
+      "why": "the C# card driver's controls, split from the cs group when the merged stream took that job past its 5-minute timeout: one rendered byte changed (render alone must go red), the upgrade and task-hash switches (each must turn the shared-corpus run red), and the retained-unknown-field control on the Card codec. 2 s each on the author's machine, plus the SDK build.",
+      "targets": [
+        "cards-cs-conformance-negative-control",
+        "cards-cs-conformance-upgrade-negative-control",
+        "cards-cs-conformance-hash-negative-control",
+        "cards-cs-retain-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-accessor",
+      "when": "pull-request",
+      "why": "the accessor/descriptor agreement controls, scalar and pointer slot: each sabotages one emitter line (codecs.go:826 and :814) through a go build -overlay and requires the agreement gate to go red on its own message. Measured 3.2 s and 3.6 s on the runner.",
+      "targets": [
+        "tables-cs-accessor-negative-control",
+        "tables-cs-slot-negative-control"
       ],
       "dotnet": "pin"
     },
@@ -485,7 +547,7 @@
     {
       "name": "js",
       "when": "pull-request",
-      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them \u2014 one byte off the write template, one off an optional's present byte, and \u00a75's own \u2014 the wrong name on a file outside the lineage \u2014 for thirteen controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash) and the fixed roadmap's layout-hash-collision control (the held layout's byte comparison dropped through go test -overlay, so the second layout under a held hash must red) ride here too: 6 s over 4 controls on the author's machine.",
+      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them — one byte off the write template, one off an optional's present byte, and §5's own — the wrong name on a file outside the lineage — for thirteen controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash) and the fixed roadmap's layout-hash-collision control (the held layout's byte comparison dropped through go test -overlay, so the second layout under a held hash must red) ride here too: 6 s over 4 controls on the author's machine.",
       "targets": [
         "cards-js-conformance-negative-control",
         "cards-js-conformance-upgrade-negative-control",
@@ -514,7 +576,7 @@
       "when": "pull-request",
       "why": "the Dart port's controls and its four packet families: eight controls, the fixed form's among them. Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of §5.7. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
       "targets": [
-        "cards-dart-conformance-negative-control",
+        "cards-dart-conformance-negative-control", "cards-dart-conformance-upgrade-negative-control", "cards-dart-conformance-hash-negative-control",
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
         "packet-utf8-dart-negative-control",
@@ -659,6 +721,10 @@
   ],
   "excluded": [
     {
+      "target": "tables-cs-clean-negative-control-run",
+      "reason": "the body of tables-cs-clean-negative-control, which calls it only when the pinned dotnet resolves; the cs-packet group already runs the wrapper, so running the body again proves the same planted misindent twice."
+    },
+    {
       "target": "packet-arm-defaults-negative-controls",
       "reason": "an alias that re-invokes make once per language for the nine packet-arm-defaults-<lang>-negative-control targets, every one of which this leg already runs in its own toolchain group. Running the alias too would need all seven SDKs on one runner to prove a second time what seven parallel jobs prove once."
     },
@@ -680,11 +746,15 @@
     },
     {
       "target": "tables-big-endian-negative-control",
-      "reason": "the body of ci.yml's big-endian job, which runs it on every pull request already: the job cross-compiles the tables battery for s390x, runs it under qemu and then compiles it a second time for this control. Issue #684 owns moving that job, so the control is named here rather than placed in a group, and this leg does not cross-compile it a second time."
+      "reason": "the C++ byte-order control, run on every pull request by ci.yml's `big-endian` job in the `control` row as `tables-big-endian-control-only`: issue #684 sharded that job by unit so the control is its own job rather than the tail of the leg. The control cross-compiles the sabotaged tables battery for s390x and compiles it a second time; this leg does not cross-compile it a second time."
     },
     {
       "target": "tables-c-big-endian-negative-control",
-      "reason": "the C twin of tables-big-endian-negative-control: ci.yml's big-endian job runs it on every pull request already, after the C++ put16 control. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. Issue #684 owns the job's budget, so the control is named here rather than placed in a group."
+      "reason": "the C twin of tables-big-endian-negative-control, run on every pull request by ci.yml's `big-endian` job in the `c-control` row: issue #684 sharded that job by unit so the control is a job of its own. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. This leg does not cross-compile it a second time."
+    },
+    {
+      "target": "schema-shared-hostile-corpus-negative-control",
+      "reason": "the hostile-corpus card's own planted-bad-pattern control: .github/workflows/schema-shared-hostile-corpus.yml runs it on its schedule and on dispatch, beside the drift gate that job runs on every push and pull request, so this leg would run it a second time."
     }
   ]
 }

@@ -23,7 +23,7 @@ union Choice { leaf Leaf
 many Many }
 table Node { leaf Leaf
 next *Node }
-table Root { node *Node
+table Root { vertex *Node
 leaf Leaf
 list []Leaf
 array [..3]Leaf
@@ -37,7 +37,7 @@ entries map[int32]Leaf }
 	m := tabletext.NewModel(newer)
 	value := m.New(m.Lookup("Root"))
 	var report tabletext.Report
-	fixture := `{"node":{"leaf":{"future":31}},"leaf":{"future":32},"list":[{"future":33},{"future":34}],"array":[{"future":35},{"future":36}],"slots":{"A":{"future":37},"B":{"future":38}},"choice":{"many":{"items":[{"future":39},{"future":40}]}},"entries":{"2":{"future":41},"7":{"future":42}},"extra":"kept"}`
+	fixture := `{"vertex":{"leaf":{"future":31}},"leaf":{"future":32},"list":[{"future":33},{"future":34}],"array":[{"future":35},{"future":36}],"slots":{"A":{"future":37},"B":{"future":38}},"choice":{"many":{"items":[{"future":39},{"future":40}]}},"entries":{"2":{"future":41},"7":{"future":42}},"extra":"kept"}`
 	if !m.Read(value, []byte(fixture), &report) || !report.Silent() {
 		t.Fatalf("fixture: %+v", report)
 	}

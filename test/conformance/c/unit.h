@@ -28,6 +28,7 @@
         ( to )->malformed = ( from ).malformed; \
         ( to )->refused = ( from ).refused; \
         ( to )->widened = ( from ).widened; \
+        ( to )->blob_shared = ( from ).blob_shared; \
     } while ( 0 )
 
 #define SCHEMA_CONFORMANCE_CODEC( TYPE, FN ) \

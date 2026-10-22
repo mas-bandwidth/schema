@@ -156,7 +156,7 @@ table Root {
  names map[string(16)]Item
  ids map[uint64]*Item
  nested map[int16]map[uint8]int32
- after int32
+ tail int32
 }
 `
 	if err := os.WriteFile(filepath.Join(dir, "Root.schema"), []byte(schema), 0644); err != nil {
@@ -166,7 +166,7 @@ table Root {
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables["Root"])
 	report := new(tabletext.Report)
-	if !model.Read(value, []byte(`{"names":{"\ue000":{"count":2},"😀":{"count":3}},"ids":{"18446744073709551615":{"count":7},"0":{"count":8}},"nested":{"-3":{"2":11},"2":{"1":12}},"after":19}`), report) {
+	if !model.Read(value, []byte(`{"names":{"\ue000":{"count":2},"😀":{"count":3}},"ids":{"18446744073709551615":{"count":7},"0":{"count":8}},"nested":{"-3":{"2":11},"2":{"1":12}},"tail":19}`), report) {
 		t.Fatalf("reference: %+v", report)
 	}
 	wire, err := tablewire.Encode(model, value)

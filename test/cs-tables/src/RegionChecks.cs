@@ -26,6 +26,10 @@ static partial class Program
             long nativeSize=regionMeasure((IntPtr)relocated); Check(nativeSize==bytes.Length,name+" native save measure");
             if(nativeSize>=0) { byte[] native=new byte[nativeSize]; Check(regionSave((IntPtr)relocated,native)==nativeSize && native.AsSpan().SequenceEqual(bytes),name+" native writer reproduces C++ wire"); }
             T value=copy((IntPtr)relocated); long wireSize=fileMeasure(value);
+            // a blob two slots name is refused by every writer of the wire
+            // (docs/SPEC-TABLES.md §2.5, blob_shared): the copy holds the one
+            // node the region holds, and its Measure answers -1
+            if(name=="blob_shared") { Check(wireSize<0,name+" relocated value's writer refuses the shared blob"); return; }
             Check(wireSize==bytes.Length,name+" relocated region preserves wire length");
             if(wireSize<0) { return; }
             byte[] back=new byte[wireSize];

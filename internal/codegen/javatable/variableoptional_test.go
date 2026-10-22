@@ -57,9 +57,9 @@ table Root {
  pair ?[2]uint32
  rows ?[..3]Child
  absent ?[..2]int32
- after int32
+ tail int32
 }
-`, "Root", `{"n":0,"child":{"value":0},"pair":[0,0],"rows":[],"absent":null,"after":17}`, `{"n":null,"child":null,"pair":null,"rows":null,"absent":null,"after":17}`, `{"n":0,"child":{"value":0},"pair":[],"rows":[],"absent":null,"after":17}`, `{"n":7,"child":{"value":8},"pair":[1,2],"rows":[{"value":9}],"absent":[3],"after":17}`)
+`, "Root", `{"n":0,"child":{"value":0},"pair":[0,0],"rows":[],"absent":null,"tail":17}`, `{"n":null,"child":null,"pair":null,"rows":null,"absent":null,"tail":17}`, `{"n":0,"child":{"value":0},"pair":[],"rows":[],"absent":null,"tail":17}`, `{"n":7,"child":{"value":8},"pair":[1,2],"rows":[{"value":9}],"absent":[3],"tail":17}`)
 }
 
 func TestJavaVariableKeyedValues(t *testing.T) {
@@ -71,9 +71,9 @@ table Root {
  scalars [Axis]int32
  ranks [Axis]Axis
  children [Axis]Child
- after int32
+ tail int32
 }
-`, "Root", `{"scalars":{"Z":7,"X":2},"ranks":{"X":"Z","Z":"Y"},"children":{"Y":{"value":4}},"after":17}`, `{"scalars":{},"ranks":{},"children":{},"after":0}`)
+`, "Root", `{"scalars":{"Z":7,"X":2},"ranks":{"X":"Z","Z":"Y"},"children":{"Y":{"value":4}},"tail":17}`, `{"scalars":{},"ranks":{},"children":{},"tail":0}`)
 }
 
 // General arms previously reached the fixed emitter's scalar adapter and
@@ -134,7 +134,7 @@ public final class Driver {
 
 func TestJavaVariableKeyedUnionRetention(t *testing.T) {
 	t.Parallel()
-	u := unitFrom(t, "package probe\nenum Axis { X,Y }\ntype Child { value int32 }\nunion Choice {\n item Child\n word string(8)\n}\ntable Root {\n slots [Axis]Child\n choice Choice\n after int32\n}\n")
+	u := unitFrom(t, "package probe\nenum Axis { X,Y }\ntype Child { value int32 }\nunion Choice {\n item Child\n word string(8)\n}\ntable Root {\n slots [Axis]Child\n choice Choice\n tail int32\n}\n")
 	driver := `package probe;
 public final class Driver {
  static void check(boolean ok,String why){if(!ok)throw new AssertionError(why);}
@@ -143,18 +143,18 @@ public final class Driver {
   w.putLeb(w.ref(RootVariable.F_slots));w.put8(16);TableVariable.Writer keyed=w.sub(new byte[1024]);keyed.put8(13);keyed.putLeb(1);keyed.putLeb(keyed.ref(unknown?9999:AXIS_X));TableVariable.Writer body=child(w,tail);keyed.putLeb(body.off);keyed.putBytes(body.buf,0,body.off);w.putLeb(keyed.off);w.putBytes(keyed.buf,0,keyed.off);
   w.putLeb(w.ref(RootVariable.F_choice));w.put8(15);w.putLeb(w.ref(unknown?8888:CHOICE_ITEM));w.put8(13);body=child(w,tail);w.putLeb(body.off);w.putBytes(body.buf,0,body.off);
  }
- static byte[] frame(int mode){TableVariable.Writer w=new TableVariable.Writer(new byte[4096],new TableVariable.Ids(64));w.put8(1);fields(w,true,mode==1);if(mode==2)fields(w,false,false);w.putLeb(w.ref(RootVariable.F_after));w.put8(4);w.put32(17);w.put8(0);w.trailer();return java.util.Arrays.copyOf(w.buf,w.off);}
+ static byte[] frame(int mode){TableVariable.Writer w=new TableVariable.Writer(new byte[4096],new TableVariable.Ids(64));w.put8(1);fields(w,true,mode==1);if(mode==2)fields(w,false,false);w.putLeb(w.ref(RootVariable.F_tail));w.put8(4);w.put32(17);w.put8(0);w.trailer();return java.util.Arrays.copyOf(w.buf,w.off);}
  public static void main(String[] args){
   for(int mode=0;mode<3;mode++){
    TableRetain retain=new TableRetain(4096,128);TableVariable.Report report=new TableVariable.Report();RootVariable.Value v=RootRetain.loadRetain(frame(mode),retain,report);
-   check(v!=null&&!report.malformed&&!report.refused&&report.unknown==2&&v.after==17,"retaining load mode "+mode);
+   check(v!=null&&!report.malformed&&!report.refused&&report.unknown==2&&v.tail==17,"retaining load mode "+mode);
    check(report.retainLost==(mode==1?2:0)&&report.retained==(mode==1?0:2),"retained/excluded counters mode "+mode);
    check((retain.used>0)==(mode==0),"replacement tail disposal mode "+mode);
    byte[] saved=RootRetain.saveRetain(v,retain,report);TableVariable.Report again=new TableVariable.Report();RootVariable.Value loaded=RootVariable.load(saved,again);
-   check(loaded!=null&&!again.malformed&&again.unknown==(mode==0?2:0)&&loaded.after==17,"retaining resave mode "+mode);
+   check(loaded!=null&&!again.malformed&&again.unknown==(mode==0?2:0)&&loaded.tail==17,"retaining resave mode "+mode);
    if(mode!=1)check(loaded.slots.get(0).value==0&&loaded.choice.tag==1&&loaded.choice.item.value==0,"known child values");
   }
-  TableVariable.Writer damaged=new TableVariable.Writer(new byte[1024],new TableVariable.Ids(64));damaged.put8(1);damaged.putLeb(damaged.ref(RootVariable.F_choice));damaged.put8(15);damaged.putLeb(damaged.ref(CHOICE_WORD));damaged.put8(12);damaged.putLeb(1);damaged.put8(0);damaged.putLeb(damaged.ref(RootVariable.F_after));damaged.put8(4);damaged.put32(17);damaged.put8(0);damaged.trailer();TableVariable.Report bad=new TableVariable.Report();RootVariable.Value empty=RootVariable.load(java.util.Arrays.copyOf(damaged.buf,damaged.off),bad);check(empty!=null&&bad.malformed&&empty.choice.tag==0&&empty.after==17,"malformed direct text arm resets None and continues parent");
+  TableVariable.Writer damaged=new TableVariable.Writer(new byte[1024],new TableVariable.Ids(64));damaged.put8(1);damaged.putLeb(damaged.ref(RootVariable.F_choice));damaged.put8(15);damaged.putLeb(damaged.ref(CHOICE_WORD));damaged.put8(12);damaged.putLeb(1);damaged.put8(0);damaged.putLeb(damaged.ref(RootVariable.F_tail));damaged.put8(4);damaged.put32(17);damaged.put8(0);damaged.trailer();TableVariable.Report bad=new TableVariable.Report();RootVariable.Value empty=RootVariable.load(java.util.Arrays.copyOf(damaged.buf,damaged.off),bad);check(empty!=null&&bad.malformed&&empty.choice.tag==0&&empty.tail==17,"malformed direct text arm resets None and continues parent");
   System.out.println("keyed/union child tails retained, unknown slots/arms excluded, replacements discard old tails");
  }
 }`

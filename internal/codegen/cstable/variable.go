@@ -19,10 +19,15 @@ const tableVariableWireSource = `
         public object Root;
         public TableTypeInfo RootType;
         public bool Good = true;
+        // A blob is owned by ONE slot (docs/SPEC-TABLES.md §2.5): every writer
+        // refuses a blob a second slot names (blob_shared), so the walk refuses
+        // it unless the caller packs the graph as it finds it (Lock, Cook).
+        public bool BlobSharedPacks;
         public int PayloadOffset, PayloadLength;
         public System.Collections.Generic.List<Node> Nodes = new System.Collections.Generic.List<Node>();
         public System.Collections.Generic.Dictionary<object, ulong> Indices = new System.Collections.Generic.Dictionary<object, ulong>(System.Collections.Generic.ReferenceEqualityComparer.Instance);
         public System.Collections.Generic.HashSet<object> Open = new System.Collections.Generic.HashSet<object>(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        System.Collections.Generic.HashSet<ulong> blobsNamed;
         public ulong Index(object o) { return o == null ? 0 : Indices[o]; }
         public object Resolve(ulong index, TableFieldInfo f, TableReport report)
         {
@@ -36,6 +41,11 @@ const tableVariableWireSource = `
             Node node = Nodes[(int)(index - 2)];
             if (node.Value == null) { return null; }
             if (node.TypeId != f.PointerTypeId) { report.KindMismatch++; return null; }
+            if (f.BlobKind != 0)
+            {
+                blobsNamed ??= new System.Collections.Generic.HashSet<ulong>();
+                if (!blobsNamed.Add(index)) { report.BlobShared++; }
+            }
             return node.Value;
         }
         public bool Visit(object value, TableTypeInfo type)
@@ -66,7 +76,11 @@ const tableVariableWireSource = `
                     Uses.TryGetValue(child, out int uses); Uses[child] = uses + 1;
                     if (Open.Contains(child)) { return false; }
                     if (Indices.TryGetValue(child, out ulong old))
-                    { if (old >= 2 && Nodes[(int)old - 2].TypeId != f.PointerTypeId) { return false; } continue; }
+                    {
+                        if (f.BlobKind != 0 && !BlobSharedPacks) { return false; }
+                        if (old >= 2 && Nodes[(int)old - 2].TypeId != f.PointerTypeId) { return false; }
+                        continue;
+                    }
                     Indices.Add(child, (ulong)Nodes.Count + 2);
                     Nodes.Add(new Node { Value = child, Type = f.Table, TypeId = f.PointerTypeId, BlobKind = f.BlobKind });
                     if (f.BlobKind == 0)
@@ -80,9 +94,9 @@ const tableVariableWireSource = `
             return true;
         }
     }
-    internal static Graph Number(object value, TableTypeInfo type)
+    internal static Graph Number(object value, TableTypeInfo type, bool blobSharedPacks = false)
     {
-        Graph graph = new Graph { Root = value, RootType = type };
+        Graph graph = new Graph { Root = value, RootType = type, BlobSharedPacks = blobSharedPacks };
         graph.Indices.Add(value, 1); graph.Open.Add(value);
         if (!graph.Visit(value, type)) { return null; }
         graph.Open.Clear(); return graph;

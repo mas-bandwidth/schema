@@ -46,6 +46,7 @@ func registerCarries(target string, constructs ...string) {
 	if target == "" {
 		panic("compiler: cannot register carries for an empty target")
 	}
+	requireReservedWords(target)
 	if _, exists := targetCarries[target]; exists {
 		panic("compiler: carry registration already exists for target " + target)
 	}

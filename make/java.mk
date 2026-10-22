@@ -909,12 +909,11 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 # SCHEMA_REQUIRE_CORPUS=1 a missing JDK is a failure, not a skip, and EACH test
 # must run to its own PASS: a name the -run pattern no longer matches would
 # otherwise leave the gate green having run nothing.
-JAVA_KEYED_TESTS := TestKeyedArrayIndexingJava|TestKeyedFormWireCodeMatchesUnkeyedInTree
 .PHONY: tables-java-keyed tables-java-keyed-negative-control
 tables-java-keyed:
 	@mkdir -p build/java-keyed
 	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '$(JAVA_KEYED_TESTS)' \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestKeyedArrayIndexingJava|TestKeyedFormWireCodeMatchesUnkeyedInTree' \
 		> build/java-keyed/log 2>&1 || { tail -40 build/java-keyed/log; exit 1; }
 	@if grep -q -- '--- SKIP' build/java-keyed/log; then \
 		echo "tables-java-keyed: a keyed test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/java-keyed/log; exit 1; \

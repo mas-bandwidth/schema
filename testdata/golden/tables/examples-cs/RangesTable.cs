@@ -658,30 +658,30 @@ namespace Tabledemo
                 info.StorageSize = 80; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "i8_span", Json = "i8_span", TypeName = "int8", Id = 0x48121511bf702eb5, Kind = 2, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = -128.0, RangeMax = 127.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I8Span; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I8Span = unchecked((sbyte)(long)r); }, MessageSlot = 51, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffffff80ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ful)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I8Span = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { sbyte v = unchecked((sbyte)(long)raw); return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i8_low", Json = "i8_low", TypeName = "int8", Id = 0x942bfe3168090f7d, Kind = 2, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = -128.0, RangeMax = 126.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I8Low; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I8Low = unchecked((sbyte)(long)r); }, MessageSlot = 52, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffffff80ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7eul)), Ordinal = 1, NativeOffset = 1, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I8Low = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { sbyte v = unchecked((sbyte)(long)raw); if (v > 126) { r.Clamped++; v = 126; } return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i8_high", Json = "i8_high", TypeName = "int8", Id = 0xd182acd105b55dd1, Kind = 2, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = -127.0, RangeMax = 127.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I8High; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I8High = unchecked((sbyte)(long)r); }, MessageSlot = 53, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffffff81ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ful)), Ordinal = 2, NativeOffset = 2, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I8High = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { sbyte v = unchecked((sbyte)(long)raw); if (v < -127) { r.Clamped++; v = -127; } return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i8_inside", Json = "i8_inside", TypeName = "int8", Id = 0xef9ded23c8912a81, Kind = 2, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = -127.0, RangeMax = 126.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I8Inside; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I8Inside = unchecked((sbyte)(long)r); }, MessageSlot = 54, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffffff81ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7eul)), Ordinal = 3, NativeOffset = 3, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I8Inside = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { sbyte v = unchecked((sbyte)(long)raw); if (v < -127) { r.Clamped++; v = -127; } if (v > 126) { r.Clamped++; v = 126; } return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i16_span", Json = "i16_span", TypeName = "int16", Id = 0xb655574ea23760b4, Kind = 3, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = -32768.0, RangeMax = 32767.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I16Span; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I16Span = unchecked((short)(long)r); }, MessageSlot = 55, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffff8000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffful)), Ordinal = 4, NativeOffset = 4, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I16Span = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { short v = unchecked((short)(long)raw); return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i16_low", Json = "i16_low", TypeName = "int16", Id = 0xd217b3af8d7a2bde, Kind = 3, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = -32768.0, RangeMax = 32766.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I16Low; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I16Low = unchecked((short)(long)r); }, MessageSlot = 56, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffff8000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffeul)), Ordinal = 5, NativeOffset = 6, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I16Low = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { short v = unchecked((short)(long)raw); if (v > 32766) { r.Clamped++; v = 32766; } return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i16_high", Json = "i16_high", TypeName = "int16", Id = 0x90652f70c9127900, Kind = 3, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = -32767.0, RangeMax = 32767.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I16High; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I16High = unchecked((short)(long)r); }, MessageSlot = 57, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffff8001ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffful)), Ordinal = 6, NativeOffset = 8, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I16High = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { short v = unchecked((short)(long)raw); if (v < -32767) { r.Clamped++; v = -32767; } return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i16_inside", Json = "i16_inside", TypeName = "int16", Id = 0x6a659d7c354db158, Kind = 3, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = -32767.0, RangeMax = 32766.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I16Inside; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I16Inside = unchecked((short)(long)r); }, MessageSlot = 58, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffff8001ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffeul)), Ordinal = 7, NativeOffset = 10, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I16Inside = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { short v = unchecked((short)(long)raw); if (v < -32767) { r.Clamped++; v = -32767; } if (v > 32766) { r.Clamped++; v = 32766; } return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i32_span", Json = "i32_span", TypeName = "int32", Id = 0xe693bd88532c91d6, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -2.147483648e+09, RangeMax = 2.147483647e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I32Span; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I32Span = unchecked((int)(long)r); }, MessageSlot = 59, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffff80000000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffful)), Ordinal = 8, NativeOffset = 12, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I32Span = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i32_low", Json = "i32_low", TypeName = "int32", Id = 0x065ee827cf99fbb4, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -2.147483648e+09, RangeMax = 2.147483646e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I32Low; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I32Low = unchecked((int)(long)r); }, MessageSlot = 60, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffff80000000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffeul)), Ordinal = 9, NativeOffset = 16, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I32Low = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v > 2147483646) { r.Clamped++; v = 2147483646; } return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i32_high", Json = "i32_high", TypeName = "int32", Id = 0xc9b121c4c2a186ee, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -2.147483647e+09, RangeMax = 2.147483647e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I32High; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I32High = unchecked((int)(long)r); }, MessageSlot = 61, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffff80000001ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffful)), Ordinal = 10, NativeOffset = 20, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I32High = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < -2147483647) { r.Clamped++; v = -2147483647; } return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i32_inside", Json = "i32_inside", TypeName = "int32", Id = 0xd363dfa465acf27a, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -2.147483647e+09, RangeMax = 2.147483646e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I32Inside; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I32Inside = unchecked((int)(long)r); }, MessageSlot = 62, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffff80000001ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffeul)), Ordinal = 11, NativeOffset = 24, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I32Inside = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < -2147483647) { r.Clamped++; v = -2147483647; } if (v > 2147483646) { r.Clamped++; v = 2147483646; } return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i64_span", Json = "i64_span", TypeName = "int64", Id = 0x7549c70700c49d6f, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = -9.223372036854776e+18, RangeMax = 9.223372036854776e+18, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I64Span; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I64Span = unchecked((long)(long)r); }, MessageSlot = 63, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0x8000000000000000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffffffffffful)), Ordinal = 12, NativeOffset = 32, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I64Span = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { long v = unchecked((long)(long)raw); return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i64_low", Json = "i64_low", TypeName = "int64", Id = 0x1cce6617419771db, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = -9.223372036854776e+18, RangeMax = 9.223372036854776e+18, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I64Low; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I64Low = unchecked((long)(long)r); }, MessageSlot = 64, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0x8000000000000000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffffffffffeul)), Ordinal = 13, NativeOffset = 40, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I64Low = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { long v = unchecked((long)(long)raw); if (v > 9223372036854775806L) { r.Clamped++; v = 9223372036854775806L; } return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i64_high", Json = "i64_high", TypeName = "int64", Id = 0x3b54fa60620b5597, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = -9.223372036854776e+18, RangeMax = 9.223372036854776e+18, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I64High; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I64High = unchecked((long)(long)r); }, MessageSlot = 65, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0x8000000000000001ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffffffffffful)), Ordinal = 14, NativeOffset = 48, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I64High = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { long v = unchecked((long)(long)raw); if (v < -9223372036854775807L) { r.Clamped++; v = -9223372036854775807L; } return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "i64_inside", Json = "i64_inside", TypeName = "int64", Id = 0xd308fcb98ece5d23, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = -9.223372036854776e+18, RangeMax = 9.223372036854776e+18, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I64Inside; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I64Inside = unchecked((long)(long)r); }, MessageSlot = 66, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0x8000000000000001ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffffffffffeul)), Ordinal = 15, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; value.I64Inside = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { long v = unchecked((long)(long)raw); if (v < -9223372036854775807L) { r.Clamped++; v = -9223372036854775807L; } if (v > 9223372036854775806L) { r.Clamped++; v = 9223372036854775806L; } return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "edges", Json = "edges", TypeName = "int16", Id = 0xc70cde6b85b6197d, Kind = 3, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 2, HasRange = true, RangeMin = -32768.0, RangeMax = 32767.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).Edges[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).Edges[i] = unchecked((short)(long)r); }, GetCount = delegate(object o) { return ((global::Tabledemo.RangedSigned)o).EdgesCount; }, SetCount = delegate(object o, int n) { ((global::Tabledemo.RangedSigned)o).EdgesCount = n; }, MessageSlot = 67, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffff8000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffful)), Ordinal = 16, NativeOffset = 64, NativeElementSize = 2, NativeCountOffset = 72, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedSigned)o; Array.Clear(value.Edges, 0, value.Edges.Length); value.EdgesCount = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { short v = unchecked((short)(long)raw); return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i8_span", Json = "i8_span", TypeName = "int8", Id = 0x48121511bf702eb5, Kind = 2, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = -128.0, RangeMax = 127.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I8Span; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I8Span = unchecked((sbyte)(long)r); }, MessageSlot = 51, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffffff80ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ful)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I8Span = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { sbyte v = unchecked((sbyte)(long)raw); return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i8_low", Json = "i8_low", TypeName = "int8", Id = 0x942bfe3168090f7d, Kind = 2, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = -128.0, RangeMax = 126.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I8Low; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I8Low = unchecked((sbyte)(long)r); }, MessageSlot = 52, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffffff80ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7eul)), Ordinal = 1, NativeOffset = 1, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I8Low = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { sbyte v = unchecked((sbyte)(long)raw); if (v > 126) { r.Clamped++; v = 126; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i8_high", Json = "i8_high", TypeName = "int8", Id = 0xd182acd105b55dd1, Kind = 2, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = -127.0, RangeMax = 127.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I8High; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I8High = unchecked((sbyte)(long)r); }, MessageSlot = 53, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffffff81ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ful)), Ordinal = 2, NativeOffset = 2, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I8High = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { sbyte v = unchecked((sbyte)(long)raw); if (v < -127) { r.Clamped++; v = -127; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i8_inside", Json = "i8_inside", TypeName = "int8", Id = 0xef9ded23c8912a81, Kind = 2, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = -127.0, RangeMax = 126.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I8Inside; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I8Inside = unchecked((sbyte)(long)r); }, MessageSlot = 54, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffffff81ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7eul)), Ordinal = 3, NativeOffset = 3, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I8Inside = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { sbyte v = unchecked((sbyte)(long)raw); if (v < -127) { r.Clamped++; v = -127; } if (v > 126) { r.Clamped++; v = 126; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i16_span", Json = "i16_span", TypeName = "int16", Id = 0xb655574ea23760b4, Kind = 3, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = -32768.0, RangeMax = 32767.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I16Span; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I16Span = unchecked((short)(long)r); }, MessageSlot = 55, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffff8000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffful)), Ordinal = 4, NativeOffset = 4, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I16Span = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { short v = unchecked((short)(long)raw); return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i16_low", Json = "i16_low", TypeName = "int16", Id = 0xd217b3af8d7a2bde, Kind = 3, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = -32768.0, RangeMax = 32766.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I16Low; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I16Low = unchecked((short)(long)r); }, MessageSlot = 56, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffff8000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffeul)), Ordinal = 5, NativeOffset = 6, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I16Low = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { short v = unchecked((short)(long)raw); if (v > 32766) { r.Clamped++; v = 32766; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i16_high", Json = "i16_high", TypeName = "int16", Id = 0x90652f70c9127900, Kind = 3, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = -32767.0, RangeMax = 32767.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I16High; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I16High = unchecked((short)(long)r); }, MessageSlot = 57, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffff8001ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffful)), Ordinal = 6, NativeOffset = 8, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I16High = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { short v = unchecked((short)(long)raw); if (v < -32767) { r.Clamped++; v = -32767; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i16_inside", Json = "i16_inside", TypeName = "int16", Id = 0x6a659d7c354db158, Kind = 3, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = -32767.0, RangeMax = 32766.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I16Inside; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I16Inside = unchecked((short)(long)r); }, MessageSlot = 58, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffff8001ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffeul)), Ordinal = 7, NativeOffset = 10, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I16Inside = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { short v = unchecked((short)(long)raw); if (v < -32767) { r.Clamped++; v = -32767; } if (v > 32766) { r.Clamped++; v = 32766; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i32_span", Json = "i32_span", TypeName = "int32", Id = 0xe693bd88532c91d6, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -2.147483648e+09, RangeMax = 2.147483647e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I32Span; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I32Span = unchecked((int)(long)r); }, MessageSlot = 59, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffff80000000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffful)), Ordinal = 8, NativeOffset = 12, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I32Span = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i32_low", Json = "i32_low", TypeName = "int32", Id = 0x065ee827cf99fbb4, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -2.147483648e+09, RangeMax = 2.147483646e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I32Low; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I32Low = unchecked((int)(long)r); }, MessageSlot = 60, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffff80000000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffeul)), Ordinal = 9, NativeOffset = 16, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I32Low = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v > 2147483646) { r.Clamped++; v = 2147483646; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i32_high", Json = "i32_high", TypeName = "int32", Id = 0xc9b121c4c2a186ee, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -2.147483647e+09, RangeMax = 2.147483647e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I32High; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I32High = unchecked((int)(long)r); }, MessageSlot = 61, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffff80000001ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffful)), Ordinal = 10, NativeOffset = 20, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I32High = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < -2147483647) { r.Clamped++; v = -2147483647; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i32_inside", Json = "i32_inside", TypeName = "int32", Id = 0xd363dfa465acf27a, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -2.147483647e+09, RangeMax = 2.147483646e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I32Inside; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I32Inside = unchecked((int)(long)r); }, MessageSlot = 62, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffff80000001ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffeul)), Ordinal = 11, NativeOffset = 24, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I32Inside = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < -2147483647) { r.Clamped++; v = -2147483647; } if (v > 2147483646) { r.Clamped++; v = 2147483646; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i64_span", Json = "i64_span", TypeName = "int64", Id = 0x7549c70700c49d6f, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = -9.223372036854776e+18, RangeMax = 9.223372036854776e+18, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I64Span; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I64Span = unchecked((long)(long)r); }, MessageSlot = 63, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0x8000000000000000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffffffffffful)), Ordinal = 12, NativeOffset = 32, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I64Span = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { long v = unchecked((long)(long)raw); return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i64_low", Json = "i64_low", TypeName = "int64", Id = 0x1cce6617419771db, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = -9.223372036854776e+18, RangeMax = 9.223372036854776e+18, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I64Low; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I64Low = unchecked((long)(long)r); }, MessageSlot = 64, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0x8000000000000000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffffffffffeul)), Ordinal = 13, NativeOffset = 40, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I64Low = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { long v = unchecked((long)(long)raw); if (v > 9223372036854775806L) { r.Clamped++; v = 9223372036854775806L; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i64_high", Json = "i64_high", TypeName = "int64", Id = 0x3b54fa60620b5597, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = -9.223372036854776e+18, RangeMax = 9.223372036854776e+18, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I64High; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I64High = unchecked((long)(long)r); }, MessageSlot = 65, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0x8000000000000001ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffffffffffful)), Ordinal = 14, NativeOffset = 48, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I64High = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { long v = unchecked((long)(long)raw); if (v < -9223372036854775807L) { r.Clamped++; v = -9223372036854775807L; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "i64_inside", Json = "i64_inside", TypeName = "int64", Id = 0xd308fcb98ece5d23, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = -9.223372036854776e+18, RangeMax = 9.223372036854776e+18, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).I64Inside; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).I64Inside = unchecked((long)(long)r); }, MessageSlot = 66, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0x8000000000000001ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffffffffffffffeul)), Ordinal = 15, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; value.I64Inside = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { long v = unchecked((long)(long)raw); if (v < -9223372036854775807L) { r.Clamped++; v = -9223372036854775807L; } if (v > 9223372036854775806L) { r.Clamped++; v = 9223372036854775806L; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "edges", Json = "edges", TypeName = "int16", Id = 0xc70cde6b85b6197d, Kind = 3, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 2, HasRange = true, RangeMin = -32768.0, RangeMax = 32767.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.RangedSigned)o).Edges[i]; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedSigned)o).Edges[i] = unchecked((short)(long)r); }, GetCount = delegate (object o) { return ((global::Tabledemo.RangedSigned)o).EdgesCount; }, SetCount = delegate (object o, int n) { ((global::Tabledemo.RangedSigned)o).EdgesCount = n; }, MessageSlot = 67, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffffffffff8000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x7ffful)), Ordinal = 16, NativeOffset = 64, NativeElementSize = 2, NativeCountOffset = 72, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedSigned)o; Array.Clear(value.Edges, 0, value.Edges.Length); value.EdgesCount = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { short v = unchecked((short)(long)raw); return (ulong)(long)v; } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Tabledemo.RangedSigned)o); };
+                info.Reset = delegate (object o) { TableReset((global::Tabledemo.RangedSigned)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -709,30 +709,30 @@ namespace Tabledemo
                 info.StorageSize = 104; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "u8_span", Json = "u8_span", TypeName = "uint8", Id = 0x0f8897557f37c021, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = 0.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U8Span; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U8Span = unchecked((byte)r); }, MessageSlot = 68, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfful)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U8Span = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "u8_low", Json = "u8_low", TypeName = "uint8", Id = 0x2e17553f8200a2a1, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = 0.0, RangeMax = 254.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U8Low; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U8Low = unchecked((byte)r); }, MessageSlot = 69, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfeul)), Ordinal = 1, NativeOffset = 1, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U8Low = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); if (v > 254) { r.Clamped++; v = 254; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "u8_high", Json = "u8_high", TypeName = "uint8", Id = 0xa0e5c60df9301b7d, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = 1.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U8High; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U8High = unchecked((byte)r); }, MessageSlot = 70, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfful)), Ordinal = 2, NativeOffset = 2, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U8High = 1; }, DefaultRaw = (ulong)1, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); if (v < 1) { r.Clamped++; v = 1; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "u8_inside", Json = "u8_inside", TypeName = "uint8", Id = 0x1cb2c073a6f5844d, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = 1.0, RangeMax = 254.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U8Inside; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U8Inside = unchecked((byte)r); }, MessageSlot = 71, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfeul)), Ordinal = 3, NativeOffset = 3, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U8Inside = 1; }, DefaultRaw = (ulong)1, ClampRaw = delegate(ulong raw, TableReport r) { byte v = unchecked((byte)raw); if (v < 1) { r.Clamped++; v = 1; } if (v > 254) { r.Clamped++; v = 254; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "u16_span", Json = "u16_span", TypeName = "uint16", Id = 0x4ca0c150b1790960, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = 0.0, RangeMax = 65535.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U16Span; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U16Span = unchecked((ushort)r); }, MessageSlot = 72, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffful)), Ordinal = 4, NativeOffset = 4, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U16Span = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ushort v = unchecked((ushort)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "u16_low", Json = "u16_low", TypeName = "uint16", Id = 0xf252136836b04cb2, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = 0.0, RangeMax = 65534.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U16Low; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U16Low = unchecked((ushort)r); }, MessageSlot = 73, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffeul)), Ordinal = 5, NativeOffset = 6, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U16Low = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ushort v = unchecked((ushort)raw); if (v > 65534) { r.Clamped++; v = 65534; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "u16_high", Json = "u16_high", TypeName = "uint16", Id = 0x4f37e1f216e7610c, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = 1.0, RangeMax = 65535.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U16High; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U16High = unchecked((ushort)r); }, MessageSlot = 74, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffful)), Ordinal = 6, NativeOffset = 8, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U16High = 1; }, DefaultRaw = (ulong)1, ClampRaw = delegate(ulong raw, TableReport r) { ushort v = unchecked((ushort)raw); if (v < 1) { r.Clamped++; v = 1; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "u16_inside", Json = "u16_inside", TypeName = "uint16", Id = 0xd176b605978f3304, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = 1.0, RangeMax = 65534.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U16Inside; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U16Inside = unchecked((ushort)r); }, MessageSlot = 75, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffeul)), Ordinal = 7, NativeOffset = 10, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U16Inside = 1; }, DefaultRaw = (ulong)1, ClampRaw = delegate(ulong raw, TableReport r) { ushort v = unchecked((ushort)raw); if (v < 1) { r.Clamped++; v = 1; } if (v > 65534) { r.Clamped++; v = 65534; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "u32_span", Json = "u32_span", TypeName = "uint32", Id = 0x200b924de7479cda, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 4.294967295e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U32Span; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U32Span = unchecked((uint)r); }, MessageSlot = 76, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffful)), Ordinal = 8, NativeOffset = 12, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U32Span = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "u32_low", Json = "u32_low", TypeName = "uint32", Id = 0xa53d2f2a31b5acb0, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 4.294967294e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U32Low; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U32Low = unchecked((uint)r); }, MessageSlot = 77, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffeul)), Ordinal = 9, NativeOffset = 16, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U32Low = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v > 4294967294) { r.Clamped++; v = 4294967294; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "u32_high", Json = "u32_high", TypeName = "uint32", Id = 0x9759be8ea1a4e3d2, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 1.0, RangeMax = 4.294967295e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U32High; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U32High = unchecked((uint)r); }, MessageSlot = 78, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffful)), Ordinal = 10, NativeOffset = 20, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U32High = 1; }, DefaultRaw = (ulong)1, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v < 1) { r.Clamped++; v = 1; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "u32_inside", Json = "u32_inside", TypeName = "uint32", Id = 0x8dc515fc082e3c0e, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 1.0, RangeMax = 4.294967294e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U32Inside; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U32Inside = unchecked((uint)r); }, MessageSlot = 79, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffeul)), Ordinal = 11, NativeOffset = 24, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U32Inside = 1; }, DefaultRaw = (ulong)1, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v < 1) { r.Clamped++; v = 1; } if (v > 4294967294) { r.Clamped++; v = 4294967294; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "u64_span", Json = "u64_span", TypeName = "uint64", Id = 0xbeecef11dbdf8973, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 0.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U64Span; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U64Span = unchecked((ulong)r); }, MessageSlot = 80, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffffffful)), Ordinal = 12, NativeOffset = 32, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U64Span = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "u64_low", Json = "u64_low", TypeName = "uint64", Id = 0x0117ad66e0fff227, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 0.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U64Low; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U64Low = unchecked((ulong)r); }, MessageSlot = 81, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffffffeul)), Ordinal = 13, NativeOffset = 40, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U64Low = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); if (v > 18446744073709551614ul) { r.Clamped++; v = 18446744073709551614ul; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "u64_high", Json = "u64_high", TypeName = "uint64", Id = 0xf2b45af3b50689db, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 1.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U64High; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U64High = unchecked((ulong)r); }, MessageSlot = 82, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffffffful)), Ordinal = 14, NativeOffset = 48, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U64High = 1ul; }, DefaultRaw = (ulong)1ul, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); if (v < 1ul) { r.Clamped++; v = 1ul; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "u64_inside", Json = "u64_inside", TypeName = "uint64", Id = 0x713e12017eebcaf7, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 1.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U64Inside; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U64Inside = unchecked((ulong)r); }, MessageSlot = 83, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffffffeul)), Ordinal = 15, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U64Inside = 1ul; }, DefaultRaw = (ulong)1ul, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); if (v < 1ul) { r.Clamped++; v = 1ul; } if (v > 18446744073709551614ul) { r.Clamped++; v = 18446744073709551614ul; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "counts", Json = "counts", TypeName = "uint64", Id = 0xc341febe5aae51e5, Kind = 9, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 8, HasRange = true, RangeMin = 0.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).Counts[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).Counts[i] = unchecked((ulong)r); }, GetCount = delegate(object o) { return ((global::Tabledemo.RangedUnsigned)o).CountsCount; }, SetCount = delegate(object o, int n) { ((global::Tabledemo.RangedUnsigned)o).CountsCount = n; }, MessageSlot = 84, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffffffful)), Ordinal = 16, NativeOffset = 64, NativeElementSize = 8, NativeCountOffset = 96, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedUnsigned)o; Array.Clear(value.Counts, 0, value.Counts.Length); value.CountsCount = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "u8_span", Json = "u8_span", TypeName = "uint8", Id = 0x0f8897557f37c021, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = 0.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U8Span; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U8Span = unchecked((byte)r); }, MessageSlot = 68, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfful)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U8Span = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "u8_low", Json = "u8_low", TypeName = "uint8", Id = 0x2e17553f8200a2a1, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = 0.0, RangeMax = 254.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U8Low; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U8Low = unchecked((byte)r); }, MessageSlot = 69, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfeul)), Ordinal = 1, NativeOffset = 1, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U8Low = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); if (v > 254) { r.Clamped++; v = 254; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "u8_high", Json = "u8_high", TypeName = "uint8", Id = 0xa0e5c60df9301b7d, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = 1.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U8High; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U8High = unchecked((byte)r); }, MessageSlot = 70, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfful)), Ordinal = 2, NativeOffset = 2, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U8High = 1; }, DefaultRaw = (ulong)1, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); if (v < 1) { r.Clamped++; v = 1; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "u8_inside", Json = "u8_inside", TypeName = "uint8", Id = 0x1cb2c073a6f5844d, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = true, RangeMin = 1.0, RangeMax = 254.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U8Inside; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U8Inside = unchecked((byte)r); }, MessageSlot = 71, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfeul)), Ordinal = 3, NativeOffset = 3, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U8Inside = 1; }, DefaultRaw = (ulong)1, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); if (v < 1) { r.Clamped++; v = 1; } if (v > 254) { r.Clamped++; v = 254; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "u16_span", Json = "u16_span", TypeName = "uint16", Id = 0x4ca0c150b1790960, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = 0.0, RangeMax = 65535.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U16Span; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U16Span = unchecked((ushort)r); }, MessageSlot = 72, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffful)), Ordinal = 4, NativeOffset = 4, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U16Span = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ushort v = unchecked((ushort)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "u16_low", Json = "u16_low", TypeName = "uint16", Id = 0xf252136836b04cb2, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = 0.0, RangeMax = 65534.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U16Low; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U16Low = unchecked((ushort)r); }, MessageSlot = 73, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffeul)), Ordinal = 5, NativeOffset = 6, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U16Low = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ushort v = unchecked((ushort)raw); if (v > 65534) { r.Clamped++; v = 65534; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "u16_high", Json = "u16_high", TypeName = "uint16", Id = 0x4f37e1f216e7610c, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = 1.0, RangeMax = 65535.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U16High; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U16High = unchecked((ushort)r); }, MessageSlot = 74, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffful)), Ordinal = 6, NativeOffset = 8, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U16High = 1; }, DefaultRaw = (ulong)1, ClampRaw = delegate (ulong raw, TableReport r) { ushort v = unchecked((ushort)raw); if (v < 1) { r.Clamped++; v = 1; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "u16_inside", Json = "u16_inside", TypeName = "uint16", Id = 0xd176b605978f3304, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = true, RangeMin = 1.0, RangeMax = 65534.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U16Inside; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U16Inside = unchecked((ushort)r); }, MessageSlot = 75, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffeul)), Ordinal = 7, NativeOffset = 10, NativeElementSize = 2, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U16Inside = 1; }, DefaultRaw = (ulong)1, ClampRaw = delegate (ulong raw, TableReport r) { ushort v = unchecked((ushort)raw); if (v < 1) { r.Clamped++; v = 1; } if (v > 65534) { r.Clamped++; v = 65534; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "u32_span", Json = "u32_span", TypeName = "uint32", Id = 0x200b924de7479cda, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 4.294967295e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U32Span; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U32Span = unchecked((uint)r); }, MessageSlot = 76, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffful)), Ordinal = 8, NativeOffset = 12, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U32Span = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "u32_low", Json = "u32_low", TypeName = "uint32", Id = 0xa53d2f2a31b5acb0, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 4.294967294e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U32Low; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U32Low = unchecked((uint)r); }, MessageSlot = 77, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffeul)), Ordinal = 9, NativeOffset = 16, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U32Low = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v > 4294967294) { r.Clamped++; v = 4294967294; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "u32_high", Json = "u32_high", TypeName = "uint32", Id = 0x9759be8ea1a4e3d2, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 1.0, RangeMax = 4.294967295e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U32High; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U32High = unchecked((uint)r); }, MessageSlot = 78, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffful)), Ordinal = 10, NativeOffset = 20, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U32High = 1; }, DefaultRaw = (ulong)1, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v < 1) { r.Clamped++; v = 1; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "u32_inside", Json = "u32_inside", TypeName = "uint32", Id = 0x8dc515fc082e3c0e, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 1.0, RangeMax = 4.294967294e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U32Inside; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U32Inside = unchecked((uint)r); }, MessageSlot = 79, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffeul)), Ordinal = 11, NativeOffset = 24, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U32Inside = 1; }, DefaultRaw = (ulong)1, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v < 1) { r.Clamped++; v = 1; } if (v > 4294967294) { r.Clamped++; v = 4294967294; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "u64_span", Json = "u64_span", TypeName = "uint64", Id = 0xbeecef11dbdf8973, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 0.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U64Span; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U64Span = unchecked((ulong)r); }, MessageSlot = 80, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffffffful)), Ordinal = 12, NativeOffset = 32, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U64Span = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "u64_low", Json = "u64_low", TypeName = "uint64", Id = 0x0117ad66e0fff227, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 0.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U64Low; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U64Low = unchecked((ulong)r); }, MessageSlot = 81, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffffffeul)), Ordinal = 13, NativeOffset = 40, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U64Low = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); if (v > 18446744073709551614ul) { r.Clamped++; v = 18446744073709551614ul; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "u64_high", Json = "u64_high", TypeName = "uint64", Id = 0xf2b45af3b50689db, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 1.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U64High; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U64High = unchecked((ulong)r); }, MessageSlot = 82, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffffffful)), Ordinal = 14, NativeOffset = 48, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U64High = 1ul; }, DefaultRaw = (ulong)1ul, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); if (v < 1ul) { r.Clamped++; v = 1ul; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "u64_inside", Json = "u64_inside", TypeName = "uint64", Id = 0x713e12017eebcaf7, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 1.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).U64Inside; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).U64Inside = unchecked((ulong)r); }, MessageSlot = 83, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffffffeul)), Ordinal = 15, NativeOffset = 56, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; value.U64Inside = 1ul; }, DefaultRaw = (ulong)1ul, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); if (v < 1ul) { r.Clamped++; v = 1ul; } if (v > 18446744073709551614ul) { r.Clamped++; v = 18446744073709551614ul; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "counts", Json = "counts", TypeName = "uint64", Id = 0xc341febe5aae51e5, Kind = 9, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 8, HasRange = true, RangeMin = 0.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedUnsigned)o).Counts[i]; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedUnsigned)o).Counts[i] = unchecked((ulong)r); }, GetCount = delegate (object o) { return ((global::Tabledemo.RangedUnsigned)o).CountsCount; }, SetCount = delegate (object o, int n) { ((global::Tabledemo.RangedUnsigned)o).CountsCount = n; }, MessageSlot = 84, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffffffful)), Ordinal = 16, NativeOffset = 64, NativeElementSize = 8, NativeCountOffset = 96, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedUnsigned)o; Array.Clear(value.Counts, 0, value.Counts.Length); value.CountsCount = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Tabledemo.RangedUnsigned)o); };
+                info.Reset = delegate (object o) { TableReset((global::Tabledemo.RangedUnsigned)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -760,19 +760,19 @@ namespace Tabledemo
                 info.StorageSize = 40; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "b8", Json = "b8", TypeName = "bits(8)", Id = 0x08a60c07b54d8dc7, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedWidths)o).B8; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedWidths)o).B8 = unchecked((uint)r); }, MessageSlot = 85, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfful)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedWidths)o; value.B8 = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v > 255ul) { r.Clamped++; v = 255; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "b16", Json = "b16", TypeName = "bits(16)", Id = 0xff95701912ad97be, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 65535.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedWidths)o).B16; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedWidths)o).B16 = unchecked((uint)r); }, MessageSlot = 86, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffful)), Ordinal = 1, NativeOffset = 4, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedWidths)o; value.B16 = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v > 65535ul) { r.Clamped++; v = 65535; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "b32", Json = "b32", TypeName = "bits(32)", Id = 0xff9c5c1912b39470, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 4.294967295e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedWidths)o).B32; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedWidths)o).B32 = unchecked((uint)r); }, MessageSlot = 87, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffful)), Ordinal = 2, NativeOffset = 8, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedWidths)o; value.B32 = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v > 4294967295ul) { r.Clamped++; v = 4294967295; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "b64", Json = "b64", TypeName = "bits(64)", Id = 0xff92701912ab61e7, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 0.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedWidths)o).B64; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedWidths)o).B64 = unchecked((ulong)r); }, MessageSlot = 88, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffffffful)), Ordinal = 3, NativeOffset = 16, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedWidths)o; value.B64 = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "b12", Json = "b12", TypeName = "bits(12)", Id = 0xff95741912ad9e8a, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 4095.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedWidths)o).B12; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedWidths)o).B12 = unchecked((uint)r); }, MessageSlot = 89, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xffful)), Ordinal = 4, NativeOffset = 24, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedWidths)o; value.B12 = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v > 4095ul) { r.Clamped++; v = 4095; } return (ulong)v; } },
-                    new TableFieldInfo { Name = "b48", Json = "b48", TypeName = "bits(48)", Id = 0xff8b681912a535a1, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 0.0, RangeMax = 2.81474976710655e+14, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Tabledemo.RangedWidths)o).B48; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.RangedWidths)o).B48 = unchecked((ulong)r); }, MessageSlot = 90, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffful)), Ordinal = 5, NativeOffset = 32, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.RangedWidths)o; value.B48 = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); if (v > 281474976710655ul) { r.Clamped++; v = 281474976710655; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "b8", Json = "b8", TypeName = "bits(8)", Id = 0x08a60c07b54d8dc7, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedWidths)o).B8; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedWidths)o).B8 = unchecked((uint)r); }, MessageSlot = 85, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfful)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedWidths)o; value.B8 = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v > 255ul) { r.Clamped++; v = 255; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "b16", Json = "b16", TypeName = "bits(16)", Id = 0xff95701912ad97be, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 65535.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedWidths)o).B16; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedWidths)o).B16 = unchecked((uint)r); }, MessageSlot = 86, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffful)), Ordinal = 1, NativeOffset = 4, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedWidths)o; value.B16 = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v > 65535ul) { r.Clamped++; v = 65535; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "b32", Json = "b32", TypeName = "bits(32)", Id = 0xff9c5c1912b39470, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 4.294967295e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedWidths)o).B32; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedWidths)o).B32 = unchecked((uint)r); }, MessageSlot = 87, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffful)), Ordinal = 2, NativeOffset = 8, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedWidths)o; value.B32 = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v > 4294967295ul) { r.Clamped++; v = 4294967295; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "b64", Json = "b64", TypeName = "bits(64)", Id = 0xff92701912ab61e7, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 0.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedWidths)o).B64; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedWidths)o).B64 = unchecked((ulong)r); }, MessageSlot = 88, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffffffful)), Ordinal = 3, NativeOffset = 16, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedWidths)o; value.B64 = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "b12", Json = "b12", TypeName = "bits(12)", Id = 0xff95741912ad9e8a, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 4095.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedWidths)o).B12; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedWidths)o).B12 = unchecked((uint)r); }, MessageSlot = 89, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xffful)), Ordinal = 4, NativeOffset = 24, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedWidths)o; value.B12 = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v > 4095ul) { r.Clamped++; v = 4095; } return (ulong)v; } },
+                    new TableFieldInfo { Name = "b48", Json = "b48", TypeName = "bits(48)", Id = 0xff8b681912a535a1, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 0.0, RangeMax = 2.81474976710655e+14, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.RangedWidths)o).B48; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.RangedWidths)o).B48 = unchecked((ulong)r); }, MessageSlot = 90, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffful)), Ordinal = 5, NativeOffset = 32, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.RangedWidths)o; value.B48 = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); if (v > 281474976710655ul) { r.Clamped++; v = 281474976710655; } return (ulong)v; } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Tabledemo.RangedWidths)o); };
+                info.Reset = delegate (object o) { TableReset((global::Tabledemo.RangedWidths)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -1070,6 +1070,279 @@ namespace Tabledemo
             new TableFixedSlot<RangedSigned>(setBytes: (t, b, l) => { if (t.Edges != null) MemoryMarshal.Cast<byte, short>(b.Slice(0, Math.Min(b.Length, t.Edges.Length * 2))).CopyTo(t.Edges); }, reset: (t) => { if (t.Edges != null) Array.Clear(t.Edges, 0, t.Edges.Length); }),
         };
 
+        private static void RangedSignedFixedSetRaw(RangedSigned t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.I8Span = unchecked((sbyte)v); break;
+                case 1: t.I8Low = unchecked((sbyte)v); break;
+                case 2: t.I8High = unchecked((sbyte)v); break;
+                case 3: t.I8Inside = unchecked((sbyte)v); break;
+                case 4: t.I16Span = unchecked((short)v); break;
+                case 5: t.I16Low = unchecked((short)v); break;
+                case 6: t.I16High = unchecked((short)v); break;
+                case 7: t.I16Inside = unchecked((short)v); break;
+                case 8: t.I32Span = unchecked((int)v); break;
+                case 9: t.I32Low = unchecked((int)v); break;
+                case 10: t.I32High = unchecked((int)v); break;
+                case 11: t.I32Inside = unchecked((int)v); break;
+                case 12: t.I64Span = unchecked((long)v); break;
+                case 13: t.I64Low = unchecked((long)v); break;
+                case 14: t.I64High = unchecked((long)v); break;
+                case 15: t.I64Inside = unchecked((long)v); break;
+                case 16: t.EdgesCount = (int)v; break;
+                default: break;
+            }
+        }
+
+        private static void RangedSignedFixedSetDouble(RangedSigned t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RangedSignedFixedSetWide(RangedSigned t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RangedSignedFixedSetBytes(RangedSigned t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                case 17: { if (t.Edges != null) MemoryMarshal.Cast<byte, short>(b.Slice(0, Math.Min(b.Length, t.Edges.Length * 2))).CopyTo(t.Edges); } break;
+                default: break;
+            }
+        }
+
+        private static void RangedSignedFixedSetChars(RangedSigned t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RangedSignedFixedResetSlot(RangedSigned t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.I8Span = 0; } break;
+                case 1: { t.I8Low = 0; } break;
+                case 2: { t.I8High = 0; } break;
+                case 3: { t.I8Inside = 0; } break;
+                case 4: { t.I16Span = 0; } break;
+                case 5: { t.I16Low = 0; } break;
+                case 6: { t.I16High = 0; } break;
+                case 7: { t.I16Inside = 0; } break;
+                case 8: { t.I32Span = 0; } break;
+                case 9: { t.I32Low = 0; } break;
+                case 10: { t.I32High = 0; } break;
+                case 11: { t.I32Inside = 0; } break;
+                case 12: { t.I64Span = 0; } break;
+                case 13: { t.I64Low = 0; } break;
+                case 14: { t.I64High = 0; } break;
+                case 15: { t.I64Inside = 0; } break;
+                case 16: { t.EdgesCount = 0; } break;
+                case 17: { if (t.Edges != null) Array.Clear(t.Edges, 0, t.Edges.Length); } break;
+                default: break;
+            }
+        }
+
+        public static void RangedSignedFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RangedSigned dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RangedSignedFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RangedSignedFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RangedSigned dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                        {
+                            if (p.Size == 1) { RangedSignedFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                            else if (p.Size == 2) { RangedSignedFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 4) { RangedSignedFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 8) { RangedSignedFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 16)
+                            {
+                                ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                                ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                                RangedSignedFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                            }
+                            else { RangedSignedFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                            break;
+                        }
+                    case TableFixedWire.Flat:
+                        {
+                            RangedSignedFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                            break;
+                        }
+                    case TableFixedWire.FlatWiden:
+                        {
+                            int sw = p.Meta == 0 ? 1 : p.Meta;
+                            int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                            int runs = (int)p.Size / sw;
+                            int need = runs * dw;
+                            if (widenScratch == null || widenScratch.Length < need)
+                            {
+                                widenScratch = new byte[need];
+                            }
+                            Span<byte> wide = widenScratch.AsSpan(0, need);
+                            for (int e = 0; e < runs; ++e)
+                            {
+                                int at = (int)p.Src + e * sw;
+                                if (p.Sign == 2)
+                                {
+                                    double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                    BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                    continue;
+                                }
+                                ulong raw = 0;
+                                if (sw == 1) raw = src[at];
+                                else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                                else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                                else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                                if (p.Sign == 1)
+                                {
+                                    int bits = sw * 8;
+                                    ulong top = 1UL << (bits - 1);
+                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                }
+                                Span<byte> cell = wide.Slice(e * dw, dw);
+                                if (dw == 1) cell[0] = (byte)raw;
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                            }
+                            RangedSignedFixedSetBytes(dst, p.Dst, wide, need);
+                            if (report != null) { report.Widened += runs; }
+                            break;
+                        }
+                    case TableFixedWire.Count:
+                        {
+                            int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            RangedSignedFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                            break;
+                        }
+                    case TableFixedWire.Text:
+                        {
+                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                            uint cap = p.Size / unit;
+                            int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                            if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                            {
+                                return "text_ill_formed";
+                            }
+                            RangedSignedFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                            if (p.Meta == TableFixedWire.TextWide)
+                            {
+                                RangedSignedFixedSetChars(dst, p.Aux, textBytes, v);
+                            }
+                            else
+                            {
+                                RangedSignedFixedSetBytes(dst, p.Aux, textBytes, v);
+                            }
+                            break;
+                        }
+                    case TableFixedWire.Ordinal:
+                        {
+                            ulong raw = 0;
+                            if (p.Size == 1) raw = src[(int)p.Src];
+                            else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            uint v = 0;
+                            if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                            {
+                                ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                                ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                                if (raw != 0 && raw <= count)
+                                {
+                                    v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                                }
+                                if (raw > count) { forgedOrdinal++; }
+                            }
+                            RangedSignedFixedSetRaw(dst, p.Dst, v, report);
+                            break;
+                        }
+                    case TableFixedWire.Widen:
+                        {
+                            ulong raw = 0;
+                            if (p.Size == 1) raw = src[(int)p.Src];
+                            else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            if (p.Sign != 0)
+                            {
+                                int bits = (int)p.Size * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0)
+                                {
+                                    raw |= ~((top << 1) - 1UL);
+                                }
+                            }
+                            if (p.DstSize == 16)
+                            {
+                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                RangedSignedFixedSetWide(dst, p.Dst, w);
+                            }
+                            else
+                            {
+                                RangedSignedFixedSetRaw(dst, p.Dst, raw, report);
+                            }
+                            if (report != null) { report.Widened++; }
+                            break;
+                        }
+                    case TableFixedWire.WidenF:
+                        {
+                            float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                            RangedSignedFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                            if (report != null) { report.Widened++; }
+                            break;
+                        }
+                    case TableFixedWire.Const:
+                        {
+                            RangedSignedFixedSetRaw(dst, p.Dst, p.Aux, report);
+                            break;
+                        }
+                    default: break;
+                }
+            }
+            return null;
+        }
+
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
         // identity plan it is empty and the identity read writes no slot twice.
@@ -1256,7 +1529,7 @@ namespace Tabledemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != RangedSignedFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = RangedSignedFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -1309,9 +1582,11 @@ namespace Tabledemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RangedSigned(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedSignedFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedSignedFixedSlots, values[k]); }
+                RangedSignedFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RangedSignedFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RangedSignedFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RangedSignedFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -1350,7 +1625,7 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RangedSignedFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RangedSignedFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -1440,6 +1715,279 @@ namespace Tabledemo
             new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.CountsCount = (int)v, reset: (t) => { t.CountsCount = 0; }),
             new TableFixedSlot<RangedUnsigned>(setBytes: (t, b, l) => { if (t.Counts != null) MemoryMarshal.Cast<byte, ulong>(b.Slice(0, Math.Min(b.Length, t.Counts.Length * 8))).CopyTo(t.Counts); }, reset: (t) => { if (t.Counts != null) Array.Clear(t.Counts, 0, t.Counts.Length); }),
         };
+
+        private static void RangedUnsignedFixedSetRaw(RangedUnsigned t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.U8Span = unchecked((byte)v); break;
+                case 1: t.U8Low = unchecked((byte)v); break;
+                case 2: t.U8High = unchecked((byte)v); break;
+                case 3: t.U8Inside = unchecked((byte)v); break;
+                case 4: t.U16Span = unchecked((ushort)v); break;
+                case 5: t.U16Low = unchecked((ushort)v); break;
+                case 6: t.U16High = unchecked((ushort)v); break;
+                case 7: t.U16Inside = unchecked((ushort)v); break;
+                case 8: t.U32Span = unchecked((uint)v); break;
+                case 9: t.U32Low = unchecked((uint)v); break;
+                case 10: t.U32High = unchecked((uint)v); break;
+                case 11: t.U32Inside = unchecked((uint)v); break;
+                case 12: t.U64Span = unchecked((ulong)v); break;
+                case 13: t.U64Low = unchecked((ulong)v); break;
+                case 14: t.U64High = unchecked((ulong)v); break;
+                case 15: t.U64Inside = unchecked((ulong)v); break;
+                case 16: t.CountsCount = (int)v; break;
+                default: break;
+            }
+        }
+
+        private static void RangedUnsignedFixedSetDouble(RangedUnsigned t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RangedUnsignedFixedSetWide(RangedUnsigned t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RangedUnsignedFixedSetBytes(RangedUnsigned t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                case 17: { if (t.Counts != null) MemoryMarshal.Cast<byte, ulong>(b.Slice(0, Math.Min(b.Length, t.Counts.Length * 8))).CopyTo(t.Counts); } break;
+                default: break;
+            }
+        }
+
+        private static void RangedUnsignedFixedSetChars(RangedUnsigned t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RangedUnsignedFixedResetSlot(RangedUnsigned t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.U8Span = 0; } break;
+                case 1: { t.U8Low = 0; } break;
+                case 2: { t.U8High = 1; } break;
+                case 3: { t.U8Inside = 1; } break;
+                case 4: { t.U16Span = 0; } break;
+                case 5: { t.U16Low = 0; } break;
+                case 6: { t.U16High = 1; } break;
+                case 7: { t.U16Inside = 1; } break;
+                case 8: { t.U32Span = 0; } break;
+                case 9: { t.U32Low = 0; } break;
+                case 10: { t.U32High = 1; } break;
+                case 11: { t.U32Inside = 1; } break;
+                case 12: { t.U64Span = 0; } break;
+                case 13: { t.U64Low = 0; } break;
+                case 14: { t.U64High = 1ul; } break;
+                case 15: { t.U64Inside = 1ul; } break;
+                case 16: { t.CountsCount = 0; } break;
+                case 17: { if (t.Counts != null) Array.Clear(t.Counts, 0, t.Counts.Length); } break;
+                default: break;
+            }
+        }
+
+        public static void RangedUnsignedFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RangedUnsigned dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RangedUnsignedFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RangedUnsignedFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RangedUnsigned dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                        {
+                            if (p.Size == 1) { RangedUnsignedFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                            else if (p.Size == 2) { RangedUnsignedFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 4) { RangedUnsignedFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 8) { RangedUnsignedFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 16)
+                            {
+                                ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                                ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                                RangedUnsignedFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                            }
+                            else { RangedUnsignedFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                            break;
+                        }
+                    case TableFixedWire.Flat:
+                        {
+                            RangedUnsignedFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                            break;
+                        }
+                    case TableFixedWire.FlatWiden:
+                        {
+                            int sw = p.Meta == 0 ? 1 : p.Meta;
+                            int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                            int runs = (int)p.Size / sw;
+                            int need = runs * dw;
+                            if (widenScratch == null || widenScratch.Length < need)
+                            {
+                                widenScratch = new byte[need];
+                            }
+                            Span<byte> wide = widenScratch.AsSpan(0, need);
+                            for (int e = 0; e < runs; ++e)
+                            {
+                                int at = (int)p.Src + e * sw;
+                                if (p.Sign == 2)
+                                {
+                                    double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                    BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                    continue;
+                                }
+                                ulong raw = 0;
+                                if (sw == 1) raw = src[at];
+                                else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                                else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                                else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                                if (p.Sign == 1)
+                                {
+                                    int bits = sw * 8;
+                                    ulong top = 1UL << (bits - 1);
+                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                }
+                                Span<byte> cell = wide.Slice(e * dw, dw);
+                                if (dw == 1) cell[0] = (byte)raw;
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                            }
+                            RangedUnsignedFixedSetBytes(dst, p.Dst, wide, need);
+                            if (report != null) { report.Widened += runs; }
+                            break;
+                        }
+                    case TableFixedWire.Count:
+                        {
+                            int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            RangedUnsignedFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                            break;
+                        }
+                    case TableFixedWire.Text:
+                        {
+                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                            uint cap = p.Size / unit;
+                            int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                            if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                            {
+                                return "text_ill_formed";
+                            }
+                            RangedUnsignedFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                            if (p.Meta == TableFixedWire.TextWide)
+                            {
+                                RangedUnsignedFixedSetChars(dst, p.Aux, textBytes, v);
+                            }
+                            else
+                            {
+                                RangedUnsignedFixedSetBytes(dst, p.Aux, textBytes, v);
+                            }
+                            break;
+                        }
+                    case TableFixedWire.Ordinal:
+                        {
+                            ulong raw = 0;
+                            if (p.Size == 1) raw = src[(int)p.Src];
+                            else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            uint v = 0;
+                            if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                            {
+                                ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                                ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                                if (raw != 0 && raw <= count)
+                                {
+                                    v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                                }
+                                if (raw > count) { forgedOrdinal++; }
+                            }
+                            RangedUnsignedFixedSetRaw(dst, p.Dst, v, report);
+                            break;
+                        }
+                    case TableFixedWire.Widen:
+                        {
+                            ulong raw = 0;
+                            if (p.Size == 1) raw = src[(int)p.Src];
+                            else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            if (p.Sign != 0)
+                            {
+                                int bits = (int)p.Size * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0)
+                                {
+                                    raw |= ~((top << 1) - 1UL);
+                                }
+                            }
+                            if (p.DstSize == 16)
+                            {
+                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                RangedUnsignedFixedSetWide(dst, p.Dst, w);
+                            }
+                            else
+                            {
+                                RangedUnsignedFixedSetRaw(dst, p.Dst, raw, report);
+                            }
+                            if (report != null) { report.Widened++; }
+                            break;
+                        }
+                    case TableFixedWire.WidenF:
+                        {
+                            float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                            RangedUnsignedFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                            if (report != null) { report.Widened++; }
+                            break;
+                        }
+                    case TableFixedWire.Const:
+                        {
+                            RangedUnsignedFixedSetRaw(dst, p.Dst, p.Aux, report);
+                            break;
+                        }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -1627,7 +2175,7 @@ namespace Tabledemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != RangedUnsignedFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = RangedUnsignedFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -1680,9 +2228,11 @@ namespace Tabledemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RangedUnsigned(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedUnsignedFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedUnsignedFixedSlots, values[k]); }
+                RangedUnsignedFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RangedUnsignedFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RangedUnsignedFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RangedUnsignedFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -1721,7 +2271,7 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RangedUnsignedFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RangedUnsignedFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -1774,6 +2324,255 @@ namespace Tabledemo
             new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B12 = (uint)v, reset: (t) => { t.B12 = 0; }),
             new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B48 = (ulong)v, reset: (t) => { t.B48 = 0; }),
         };
+
+        private static void RangedWidthsFixedSetRaw(RangedWidths t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.B8 = (uint)v; break;
+                case 1: t.B16 = (uint)v; break;
+                case 2: t.B32 = (uint)v; break;
+                case 3: t.B64 = (ulong)v; break;
+                case 4: t.B12 = (uint)v; break;
+                case 5: t.B48 = (ulong)v; break;
+                default: break;
+            }
+        }
+
+        private static void RangedWidthsFixedSetDouble(RangedWidths t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RangedWidthsFixedSetWide(RangedWidths t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RangedWidthsFixedSetBytes(RangedWidths t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RangedWidthsFixedSetChars(RangedWidths t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void RangedWidthsFixedResetSlot(RangedWidths t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.B8 = 0; } break;
+                case 1: { t.B16 = 0; } break;
+                case 2: { t.B32 = 0; } break;
+                case 3: { t.B64 = 0; } break;
+                case 4: { t.B12 = 0; } break;
+                case 5: { t.B48 = 0; } break;
+                default: break;
+            }
+        }
+
+        public static void RangedWidthsFixedFillRun(ReadOnlySpan<TableFixedFill> fill, RangedWidths dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    RangedWidthsFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string RangedWidthsFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RangedWidths dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                        {
+                            if (p.Size == 1) { RangedWidthsFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                            else if (p.Size == 2) { RangedWidthsFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 4) { RangedWidthsFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 8) { RangedWidthsFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 16)
+                            {
+                                ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                                ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                                RangedWidthsFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                            }
+                            else { RangedWidthsFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                            break;
+                        }
+                    case TableFixedWire.Flat:
+                        {
+                            RangedWidthsFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                            break;
+                        }
+                    case TableFixedWire.FlatWiden:
+                        {
+                            int sw = p.Meta == 0 ? 1 : p.Meta;
+                            int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                            int runs = (int)p.Size / sw;
+                            int need = runs * dw;
+                            if (widenScratch == null || widenScratch.Length < need)
+                            {
+                                widenScratch = new byte[need];
+                            }
+                            Span<byte> wide = widenScratch.AsSpan(0, need);
+                            for (int e = 0; e < runs; ++e)
+                            {
+                                int at = (int)p.Src + e * sw;
+                                if (p.Sign == 2)
+                                {
+                                    double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                    BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                    continue;
+                                }
+                                ulong raw = 0;
+                                if (sw == 1) raw = src[at];
+                                else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                                else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                                else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                                if (p.Sign == 1)
+                                {
+                                    int bits = sw * 8;
+                                    ulong top = 1UL << (bits - 1);
+                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                }
+                                Span<byte> cell = wide.Slice(e * dw, dw);
+                                if (dw == 1) cell[0] = (byte)raw;
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                            }
+                            RangedWidthsFixedSetBytes(dst, p.Dst, wide, need);
+                            if (report != null) { report.Widened += runs; }
+                            break;
+                        }
+                    case TableFixedWire.Count:
+                        {
+                            int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            RangedWidthsFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                            break;
+                        }
+                    case TableFixedWire.Text:
+                        {
+                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                            uint cap = p.Size / unit;
+                            int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                            if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                            {
+                                return "text_ill_formed";
+                            }
+                            RangedWidthsFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                            if (p.Meta == TableFixedWire.TextWide)
+                            {
+                                RangedWidthsFixedSetChars(dst, p.Aux, textBytes, v);
+                            }
+                            else
+                            {
+                                RangedWidthsFixedSetBytes(dst, p.Aux, textBytes, v);
+                            }
+                            break;
+                        }
+                    case TableFixedWire.Ordinal:
+                        {
+                            ulong raw = 0;
+                            if (p.Size == 1) raw = src[(int)p.Src];
+                            else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            uint v = 0;
+                            if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                            {
+                                ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                                ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                                if (raw != 0 && raw <= count)
+                                {
+                                    v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                                }
+                                if (raw > count) { forgedOrdinal++; }
+                            }
+                            RangedWidthsFixedSetRaw(dst, p.Dst, v, report);
+                            break;
+                        }
+                    case TableFixedWire.Widen:
+                        {
+                            ulong raw = 0;
+                            if (p.Size == 1) raw = src[(int)p.Src];
+                            else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            if (p.Sign != 0)
+                            {
+                                int bits = (int)p.Size * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0)
+                                {
+                                    raw |= ~((top << 1) - 1UL);
+                                }
+                            }
+                            if (p.DstSize == 16)
+                            {
+                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                RangedWidthsFixedSetWide(dst, p.Dst, w);
+                            }
+                            else
+                            {
+                                RangedWidthsFixedSetRaw(dst, p.Dst, raw, report);
+                            }
+                            if (report != null) { report.Widened++; }
+                            break;
+                        }
+                    case TableFixedWire.WidenF:
+                        {
+                            float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                            RangedWidthsFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                            if (report != null) { report.Widened++; }
+                            break;
+                        }
+                    case TableFixedWire.Const:
+                        {
+                            RangedWidthsFixedSetRaw(dst, p.Dst, p.Aux, report);
+                            break;
+                        }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -1936,7 +2735,7 @@ namespace Tabledemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != RangedWidthsFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = RangedWidthsFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -1989,9 +2788,11 @@ namespace Tabledemo
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RangedWidths(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedWidthsFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedWidthsFixedSlots, values[k]); }
+                RangedWidthsFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, RangedWidthsFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, RangedWidthsFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = RangedWidthsFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -2030,7 +2831,7 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, RangedWidthsFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = RangedWidthsFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }

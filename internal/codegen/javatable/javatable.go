@@ -61,6 +61,7 @@ import (
 	"sort"
 	"strings"
 
+	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -517,18 +518,6 @@ func variableFormRefusal(f *ir.Field) string {
 	return ""
 }
 
-// javaReserved is Java's keyword set plus the literals, which are equally
-// unusable as identifiers.
-var javaReserved = map[string]bool{
-	"abstract": true, "assert": true, "boolean": true, "break": true, "byte": true,
-	"case": true, "catch": true, "char": true, "class": true, "const": true,
-	"continue": true, "default": true, "do": true, "double": true, "else": true,
-	"enum": true, "extends": true, "final": true, "finally": true, "float": true,
-	"for": true, "goto": true, "if": true, "implements": true, "import": true,
-	"instanceof": true, "int": true, "interface": true, "long": true, "native": true,
-	"new": true, "package": true, "private": true, "protected": true, "public": true,
-	"return": true, "short": true, "static": true, "strictfp": true, "super": true,
-	"switch": true, "synchronized": true, "this": true, "throw": true, "throws": true,
-	"transient": true, "try": true, "void": true, "volatile": true, "while": true,
-	"true": true, "false": true, "null": true, "_": true,
-}
+// javaReserved is Java's reserved words, read from the one table (check.ReservedIn,
+// SPEC §4.6) and never copied here.
+var javaReserved = schemacheck.ReservedIn("Java")

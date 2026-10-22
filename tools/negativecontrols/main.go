@@ -7,25 +7,26 @@ import (
 	"strings"
 )
 
-const usage = `usage: go run ./tools/negativecontrols <command>
+const usage = `usage: go run ./tools/negativecontrols [command]
 
   list      every negative-control target the Makefile and its includes define
   check     hold the manifest against the Makefile; exit nonzero on a difference
+            (the default when no command is named)
   matrix    one tier's groups as a GitHub Actions matrix, one line of JSON:
             matrix [pull-request|nightly], pull-request when no tier is named
   targets   the make targets of one group, space separated: targets <group>
 `
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, usage)
-		os.Exit(2)
+	command := "check"
+	if len(os.Args) >= 2 {
+		command = os.Args[1]
 	}
 	root, err := repoRoot()
 	if err != nil {
 		fail(err)
 	}
-	switch os.Args[1] {
+	switch command {
 	case "list":
 		defs, err := enumerate(root)
 		if err != nil {

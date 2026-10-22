@@ -49,7 +49,7 @@ func runVariableProbe(t *testing.T, u *ir.Unit, driver string) {
 
 func TestJavaVariableMapDamageAndRetention(t *testing.T) {
 	t.Parallel()
-	u := unitFrom(t, "package probe\ntable Root {\n entries map[string(8)]int32\n after int32\n}\n")
+	u := unitFrom(t, "package probe\ntable Root {\n entries map[string(8)]int32\n tail int32\n}\n")
 	runVariableProbe(t, u, `package probe;
 public final class Driver {
  static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
@@ -65,14 +65,14 @@ public final class Driver {
   }
   w.putLeb(body.off);w.putBytes(body.buf,0,body.off);
   if(incompatibleRepeat){w.putLeb(w.ref(RootVariable.F_entries));w.put8(14);w.putLeb(3);w.put8(6);w.putLeb(1);w.put8(5);}
-  w.putLeb(w.ref(RootVariable.F_after));w.put8(4);w.put32(17);w.put8(0);w.trailer();
+  w.putLeb(w.ref(RootVariable.F_tail));w.put8(4);w.put32(17);w.put8(0);w.trailer();
   return java.util.Arrays.copyOf(w.buf,w.off);
  }
  public static void main(String[] args){
   for(int which=0;which<2;which++){
    TableVariable.Report report=new TableVariable.Report();
    RootVariable.Value v=RootVariable.load(frame(which==0?new String[]{"a","b"}:new String[]{"b","a"},false,which==0,false),report);
-   check(v!=null&&report.malformed&&!report.refused&&v.entries.size()==1&&v.after==17,"slack or descending key must retain only ascending prefix and continue parent");
+   check(v!=null&&report.malformed&&!report.refused&&v.entries.size()==1&&v.tail==17,"slack or descending key must retain only ascending prefix and continue parent");
   }
   TableRetain retain=new TableRetain(4096,128);TableVariable.Report report=new TableVariable.Report();
   RootVariable.Value v=RootRetain.loadRetain(frame(new String[]{"a","a"},true,false,false),retain,report);
@@ -80,10 +80,10 @@ public final class Driver {
   check(java.util.Arrays.equals(RootVariable.save(v),RootRetain.saveRetain(v,retain,report)),"duplicate old unknown must not reappear");
   retain=new TableRetain(4096,128);report=new TableVariable.Report();
   v=RootRetain.loadRetain(frame(new String[]{"a"},true,false,true),retain,report);
-  check(v!=null&&!report.malformed&&report.kindMismatch==1&&report.unknown==1&&retain.used>0&&v.entries.size()==1&&v.entries.get(0).value==1&&v.after==17,"incompatible repeat preserves prior value and retained subtree");
+  check(v!=null&&!report.malformed&&report.kindMismatch==1&&report.unknown==1&&retain.used>0&&v.entries.size()==1&&v.entries.get(0).value==1&&v.tail==17,"incompatible repeat preserves prior value and retained subtree");
   byte[] saved=RootRetain.saveRetain(v,retain,report);TableVariable.Report again=new TableVariable.Report();RootVariable.Value loaded=RootVariable.load(saved,again);
   check(loaded!=null&&again.unknown==1&&loaded.entries.get(0).value==1,"skipped repeat keeps unknown on resave");
-  report=new TableVariable.Report();v=RootVariable.fromJson("{\"entries\":{\"a\":7,\"a\":8},\"after\":17}".getBytes(java.nio.charset.StandardCharsets.UTF_8),report);
+  report=new TableVariable.Report();v=RootVariable.fromJson("{\"entries\":{\"a\":7,\"a\":8},\"tail\":17}".getBytes(java.nio.charset.StandardCharsets.UTF_8),report);
   check(v!=null&&!report.malformed&&report.duplicate==1&&v.entries.size()==1&&v.entries.get(0).value==8,"JSON duplicates are last-wins");
   System.out.println("map slack, descending prefix, duplicate replacement, skipped repeat retention and JSON duplicates pass");
  }

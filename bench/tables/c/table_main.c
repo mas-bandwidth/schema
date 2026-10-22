@@ -35,6 +35,12 @@
    only: the paired generation is the one that carries FixedTable.schema, and
    the standalone table corpus has no fixed root to measure. */
 #include "FixedTableTable.h"
+/* THE PACKET CODEC, for the read arm's comparand only (BENCH-STANDARD.md
+   §1.10, `bench_mixed_read`): the same generated reader the packet leg
+   (bench/c/bench_main.c) times, compiled in this translation unit under the
+   same NDEBUG build, so serialize.h compiles its checks away exactly as the
+   packet leg's build does — checks `removed`. */
+#include "BenchWire.h"
 #define TableMixed BenchMixed
 #define table_mixed_reset bench_mixed_reset
 #define table_mixed_save bench_mixed_save
@@ -66,6 +72,7 @@ static double time_now( void )
 #define NumVariants 64    /* read-path variant buffers */
 static long g_iterations = 0; /* explicit diagnostic count; defaults stay standard */
 static int g_num_runs = MaxNumRuns; /* --round K drops this to 1 (§2.4) */
+static long g_round = 0;            /* K itself: the read arm rotates its wires' order by it */
 
 #if defined( NDEBUG )
 #define IterScale 1
@@ -91,14 +98,18 @@ static const char * g_variant_dir = "bench/corpus/variants";
 #ifndef BENCH_OPT
 #define BENCH_OPT "O3"
 #endif
-static const char * g_csv_suffix = "hdr,contract," BENCH_OPT ",unknown";
+static const char * g_csv_suffix = BENCH_OPT ",unknown";
 
+/* family, linkage and checks are per ROW: the read arm emits one packet row
+   (family gen, checks removed) beside its table rows (family table, checks
+   contract). Every other row keeps the defaults it always had. */
 #define MaxCsvRows 8
 static char g_csv_rows[MaxCsvRows][256];
+static const char * g_csv_axes[MaxCsvRows];
 static int g_num_csv_rows = 0;
 
 /* the goldens this run LOADED, in sorted basename order, for the corpus id */
-#define MaxGoldens 6
+#define MaxGoldens 12 /* the table corpus (5), the read arm's packet pair (2), the lineage pair (2) */
 typedef struct Golden
 {
     char name[64];
@@ -172,7 +183,7 @@ static void flush_csv( void )
     corpus_id( id, sizeof( id ) );
     for ( i = 0; i < g_num_csv_rows; i++ )
     {
-        printf( "%s,%s,table,%s\n", g_csv_rows[i], id, g_csv_suffix );
+        printf( "%s,%s,%s,%s\n", g_csv_rows[i], id, g_csv_axes[i], g_csv_suffix );
     }
 }
 
@@ -270,7 +281,7 @@ static RunStats run_stats( double * rates, int n )
     return s;
 }
 
-static void report( const char * bench, const char * path, long iters, double bytes_per_op, const RunStats * s )
+static void report_axes( const char * bench, const char * path, long iters, double bytes_per_op, const RunStats * s, const char * axes )
 {
     const double mbps = s->median_rate * (double) bytes_per_op / ( 1024.0 * 1024.0 );
     fprintf( stderr, "%-18s %-11s %10.3f M msg/s %10.1f MB/s   (min %.3f, max %.3f, spread %.1f%%)\n",
@@ -281,8 +292,14 @@ static void report( const char * bench, const char * path, long iters, double by
                   "c,%s,%s,%ld,%.17g,%d,%.0f,%.0f,%.0f,%.2f,%.2f",
                   bench, path, iters, bytes_per_op, g_num_runs,
                   s->median_rate, s->min_rate, s->max_rate, mbps, s->spread_pct );
+        g_csv_axes[g_num_csv_rows] = axes;
         g_num_csv_rows++;
     }
+}
+
+static void report( const char * bench, const char * path, long iters, double bytes_per_op, const RunStats * s )
+{
+    report_axes( bench, path, iters, bytes_per_op, s, "table,hdr,contract" );
 }
 
 /* Load 64 concatenated records. --indexed requires 64 little-endian uint32
@@ -494,6 +511,473 @@ static int64_t fixed_load_all( FixedTable * values, const uint8_t * bytes, int64
     return fixed_table_fixed_load( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, NULL, &report );
 }
 
+/* ------------------------------------------------------------------------
+   THE READ ARM (BENCH-STANDARD.md §1.10): each wire's READ, measured alone
+   ------------------------------------------------------------------------
+
+   `--read-arm` replaces the clocked rows of this invocation with the arm's
+   measured reads, after every correctness gate this runner already runs and
+   the arm's own, all of them before the first clock:
+
+     bench_fixed_read  family table  the fixed form's IDENTITY lane: the shipped
+                                     LOAD of the whole corpus file, one call per
+                                     64 records, the hash check and the plan run
+                                     inside the clock; an op is one record
+     bench_plan_read   family table  the PLAN lane (the plan build only, -DBENCH_PLAN):
+                                     the same LOAD of the lineage corpus, 64
+                                     records one generation back, read through
+                                     the static plan the lock's lineage entry
+                                     compiled; an op is one record
+     bench_mixed_read  family gen    the PACKET wire's read of the same 64
+                                     logical records: one read stream and one
+                                     generated read per record, exactly the read
+                                     half of the packet leg's round trip
+
+   Neither is derived. §2.9 makes the ordinary `read` a difference of two
+   timings precisely so it is never divided; the gate is a division, so every
+   side of it is put on the clock here, in ONE invocation, over the SAME
+   records. The wires rotate which runs first by --round (§2.4).
+
+   The destination is reused across iterations, as the shipped call reuses it;
+   an escape barrier after every call makes every store of the read observable,
+   so no part of any read can be dropped as dead. */
+static int g_read_arm = 0;
+static long g_packet_iterations = 0;
+static const char * g_packet_wire_dir = "testdata/wire";
+static const char * g_packet_variant_dir = "bench/corpus/variants";
+
+static void bench_fixed_read( const char * name, const uint8_t * file, size_t file_bytes, long iters )
+{
+    double rates[MaxNumRuns];
+    RunStats s;
+    int run;
+    long i;
+    for ( run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        double elapsed;
+        for ( i = 0; i < iters; i += FixedCount )
+        {
+            if ( fixed_load_all( g_fixed_out, file, (int64_t) file_bytes ) != FixedCount )
+            {
+                fail( name, "load failed in loop" );
+                return;
+            }
+            bench_escape( g_fixed_out );
+        }
+        elapsed = time_now() - start;
+        if ( run >= 0 ) { rates[run] = (double) iters / elapsed; }
+    }
+    s = run_stats( rates, g_num_runs );
+    report( name, "read", iters, (double) file_bytes / FixedCount, &s );
+}
+
+/* the packet comparand: NumVariants slots of VariantStride (§2.7), the
+   generated PACKET type named once, at its storage declaration */
+static uint8_t * g_packet_variants = NULL;
+static size_t g_packet_record = 0;
+typedef BenchMixed PacketRecord;
+static PacketRecord g_packet_in[NumVariants];
+static PacketRecord g_packet_out;
+
+static uint8_t * packet_variant( int k ) { return g_packet_variants + (size_t) k * (size_t) VariantStride; }
+
+/* the packet wire's gates: variant 0 IS the packet golden, and every variant
+   decodes, re-encodes and comes back byte-identical. */
+static int gate_mixed_read( const char * name )
+{
+    char path[512];
+    size_t packed_bytes = 0, golden_bytes = 0;
+    uint8_t * packed;
+    uint8_t * golden;
+    int k, ok = 0;
+    snprintf( path, sizeof( path ), "%s/%s.variants.bin", g_packet_variant_dir, name );
+    packed = read_file( path, &packed_bytes );
+    if ( packed == NULL || packed_bytes == 0 || packed_bytes % NumVariants != 0 || packed_bytes / NumVariants > (size_t) BufferSize - 64 )
+    {
+        fprintf( stderr, "missing or malformed packet corpus %s — pass --packet-variant-dir\n", path );
+        free( packed );
+        failed = 1;
+        return 0;
+    }
+    g_packet_record = packed_bytes / NumVariants;
+    snprintf( path, sizeof( path ), "%s.variants.bin", name );
+    remember_golden( path, packed, packed_bytes );
+    g_packet_variants = (uint8_t *) calloc( (size_t) NumVariants * VariantStride, 1 );
+    if ( g_packet_variants == NULL ) { free( packed ); failed = 1; return 0; }
+    for ( k = 0; k < NumVariants; k++ )
+        memcpy( packet_variant( k ), packed + (size_t) k * g_packet_record, g_packet_record );
+
+    /* gate 1 (§1.5): variant 0 IS the packet wire's pinned golden. */
+    snprintf( path, sizeof( path ), "%s/%s.bin", g_packet_wire_dir, name );
+    golden = read_file( path, &golden_bytes );
+    if ( golden == NULL )
+    {
+        fprintf( stderr, "missing packet wire golden %s — pass --packet-wire-dir\n", path );
+        free( packed );
+        failed = 1;
+        return 0;
+    }
+    snprintf( path, sizeof( path ), "%s.bin", name );
+    remember_golden( path, golden, golden_bytes );
+    if ( golden_bytes != g_packet_record || memcmp( golden, packed, g_packet_record ) != 0 )
+    {
+        fail( name, "packet variant 0 is not the packet wire golden" );
+        goto done;
+    }
+
+    /* gate 2: every variant decodes, re-encodes, and comes back byte-identical. */
+    for ( k = 0; k < NumVariants; k++ )
+    {
+        serialize_read_stream_t rs;
+        serialize_write_stream_t ws;
+        memset( &g_packet_in[k], 0, sizeof( g_packet_in[k] ) );
+        serialize_read_stream_init( &rs, packet_variant( k ), (int) g_packet_record );
+        if ( !read_bench_mixed( &rs, &g_packet_in[k] ) )
+        {
+            fail( name, "decode of a packet variant failed" );
+            goto done;
+        }
+        serialize_write_stream_init( &ws, g_twin, BufferSize );
+        if ( !write_bench_mixed( &ws, &g_packet_in[k] ) )
+        {
+            fail( name, "re-encode of a decoded packet variant failed" );
+            goto done;
+        }
+        serialize_write_flush( &ws );
+        if ( serialize_write_bytes_processed( &ws ) != (int) g_packet_record ||
+             memcmp( g_twin, packed + (size_t) k * g_packet_record, g_packet_record ) != 0 )
+        {
+            fail( name, "packet variant round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus" );
+            goto done;
+        }
+    }
+    ok = 1;
+done:
+    free( packed );
+    free( golden );
+    return ok;
+}
+
+static void bench_mixed_read( const char * name, long iters )
+{
+    double rates[MaxNumRuns];
+    char bench[64];
+    RunStats s;
+    int run;
+    long i;
+    memset( &g_packet_out, 0, sizeof( g_packet_out ) );
+    for ( run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        double elapsed;
+        for ( i = 0; i < iters; i++ )
+        {
+            serialize_read_stream_t rs;
+            serialize_read_stream_init( &rs, packet_variant( (int) ( i & ( NumVariants - 1 ) ) ), (int) g_packet_record );
+            if ( !read_bench_mixed( &rs, &g_packet_out ) )
+            {
+                fail( name, "read failed in loop" );
+                return;
+            }
+            bench_escape( &g_packet_out );
+        }
+        elapsed = time_now() - start;
+        if ( run >= 0 ) { rates[run] = (double) iters / elapsed; }
+    }
+    s = run_stats( rates, g_num_runs );
+    snprintf( bench, sizeof( bench ), "%s_read", name );
+    report_axes( bench, "read", iters, (double) g_packet_record, &s, "gen,hdr,removed" );
+}
+
+#if defined(BENCH_PLAN)
+/* THE PLAN LANE. This build is the same runner against the paired unit
+   generated a SECOND time, beside the lineage's lock (bench/tables/c/lineage/
+   schema.lock), so its lineage holds the older layout and the shipped LOAD
+   reads a file of that layout through that entry's static plan. The corpus is
+   the lineage pair the Rust leg committed (bench_lineage.bin: 64 OLD records,
+   bench_lineage.layout: their layout), byte for byte. */
+static const char * g_lineage_dir = "bench/tables/c/lineage";
+static uint8_t * g_lineage = NULL;
+static size_t g_lineage_bytes = 0;
+/* the plan lane's two destinations are the fixed form's own storage: the read
+   arm runs no write path, so g_fixed_values is free once its gates are done */
+#define g_plan_out g_fixed_out
+#define g_plan_poisoned g_fixed_values
+#define plan_load_all( values, report ) \
+    ( memset( ( report ), 0, sizeof( *( report ) ) ), \
+      fixed_table_fixed_load( ( values ), FixedCount, g_lineage, (int64_t) g_lineage_bytes, g_fixed_plan, FixedPlanCapacity, NULL, ( report ) ) )
+
+/* THE PLAN READ'S ANSWER, pinned before any clock. Gates P1, P3 and P4 below
+   are shape-blind: no field is named, only the lineage the build laid down and
+   the bytes the shipped calls return. P2 IS NOT SHAPE-BLIND, AND ITS LEDGER SAYS
+   SO (bench/tables/c/SHAPE-GATE.allow). What the NEW reader must answer for an
+   OLD record is the logical record with exactly the six narrowings of
+   bench/tables/c/lineage/VOLD_bench_lineage.schema applied, and saying which
+   slots they touch names those slots. The pattern is the Elixir leg's
+   plan_expected / plan_read_verdict (commit bfb8be239, bench/tables/elixir/
+   runner.exs, PR #1984) and the Rust leg's `expected` (bench/tables/rust/src/
+   lineage.rs on sprint/schema-rust):
+
+     appended field   idle_ticks takes this build's declared DEFAULT
+     widened bound    stats keeps the first PlanOldStatsBound elements; the
+                      elements past it hold the declared defaults
+     widened text     player_name keeps the bytes the OLD capacity holds, the
+                      bytes past the cut zeroed, its length set to the cut
+     enum append      an ordinal past the OLD variant count was folded back by
+                      the lineage's producer, ((v - 1) mod COUNT) + 1, and the
+                      answer carries the same fold
+     new union arm    no record selects it (the narrowing refuses one)
+     integer widen    delta's range is unmoved, so every value lands as it was
+
+   THE COUNTER. docs/FIXED-FORM-ALGORITHM.md section 5.4: `widened` moves once
+   per widen entry per record, and a widened run is never folded, so the integer
+   widen inside the bound is min(their_n, my_n) = min(64, 80) = 64 entries per
+   record, 64 x 64 = 4096 for the file. BENCH-STANDARD.md's "80" is the NEW
+   bound, not section 5.4's multiple of it. */
+#define PlanOldStatsBound 64
+#define PlanOldTextCap 8
+#define PlanOldWeaponVariants 12
+#define PlanWidenedPerRecord 64
+static FixedTable g_plan_expected[FixedCount];
+
+/* the answer for the 64 identity records the earlier gates held byte for byte
+   to the C++ reference (g_fixed_values, before gate P3 poisons it). The
+   declared defaults come from this build's own generated reset of one record,
+   never written down here. */
+static void plan_expected_build( void )
+{
+    FixedTable defaults;
+    int k, e, j;
+    fixed_table_reset( &defaults );
+    memcpy( (void *) g_plan_expected, (const void *) g_fixed_values, sizeof( g_plan_expected ) );
+    for ( k = 0; k < FixedCount; k++ )
+    {
+        BenchMixed * v = &g_plan_expected[k].value;
+        for ( e = 0; e < v->entities_count; e++ )
+        {
+            const int w = (int) v->entities[e].weapon;
+            if ( w > PlanOldWeaponVariants ) { v->entities[e].weapon = (MixedWeapon) ( ( ( w - 1 ) % PlanOldWeaponVariants ) + 1 ); }
+        }
+        if ( v->stats_count > PlanOldStatsBound ) { v->stats_count = PlanOldStatsBound; }
+        for ( j = PlanOldStatsBound; j < (int) ( sizeof( v->stats ) / sizeof( v->stats[0] ) ); j++ ) { v->stats[j] = defaults.value.stats[j]; }
+        if ( v->player_name_length > PlanOldTextCap )
+        {
+            memset( v->player_name + PlanOldTextCap, 0, sizeof( v->player_name ) - PlanOldTextCap );
+            v->player_name_length = PlanOldTextCap;
+        }
+        v->idle_ticks = defaults.value.idle_ticks;
+    }
+}
+
+/* gate P2's verdict: NULL when the plan read is exactly the plan's answer, else
+   `why`, the first thing that is not (counters first, then the first record
+   whose saved bytes differ). `got` and `want` are the plan read and the
+   answer saved whole, `plan_read` and `plan_answer` the records themselves. */
+static const char * plan_read_verdict( const TableReport * report, int64_t loaded, const FixedTable * plan_read, const FixedTable * plan_answer, const uint8_t * got, const uint8_t * want, size_t saved_bytes, char * why, size_t why_bytes )
+{
+    if ( loaded != FixedCount )
+    {
+        snprintf( why, why_bytes, "the plan read returned %d records, not %d", (int) loaded, FixedCount );
+        return why;
+    }
+    if ( report->malformed || report->refused || report->unknown || report->kind_mismatch || report->clamped || report->duplicate ||
+         report->widened != FixedCount * PlanWidenedPerRecord )
+    {
+        snprintf( why, why_bytes,
+                  "the counters are not section 5.4's for these six classes: widened %d (want %d = %d x %d), malformed %d refused %d unknown %d kind_mismatch %d clamped %d duplicate %d (want every other counter zero)",
+                  (int) report->widened, FixedCount * PlanWidenedPerRecord, FixedCount, PlanWidenedPerRecord, report->malformed, report->refused,
+                  (int) report->unknown, (int) report->kind_mismatch, (int) report->clamped, (int) report->duplicate );
+        return why;
+    }
+    if ( memcmp( got, want, saved_bytes ) == 0 ) { return NULL; }
+    /* the saved image is not one fixed width per record, so the first differing
+       record is found by saving each record alone */
+    {
+        const size_t one = (size_t) fixed_table_fixed_measure( 1 );
+        uint8_t * x = (uint8_t *) malloc( one );
+        uint8_t * y = (uint8_t *) malloc( one );
+        int k, first = -1;
+        for ( k = 0; x != NULL && y != NULL && k < FixedCount && first < 0; k++ )
+        {
+            const int64_t nx = fixed_table_fixed_save( &plan_read[k], 1, x, (int64_t) one );
+            const int64_t ny = fixed_table_fixed_save( &plan_answer[k], 1, y, (int64_t) one );
+            if ( nx != ny || nx < 0 || memcmp( x, y, (size_t) nx ) != 0 ) { first = k; }
+        }
+        free( x );
+        free( y );
+        snprintf( why, why_bytes, "record %d: the plan read does not save to the plan's answer", first );
+    }
+    return why;
+}
+
+/* the plan lane's gates (the comment above says which are shape-blind) */
+static int gate_plan_read( const char * name, const uint8_t * identity_file, size_t identity_bytes )
+{
+    char path[512];
+    size_t layout_bytes = 0, saved_bytes;
+    uint8_t * layout = NULL;
+    uint8_t * a = NULL;
+    uint8_t * b = NULL;
+    uint8_t * c = NULL;
+    TableReport report;
+    uint32_t embedded;
+    int ok = 0;
+    snprintf( path, sizeof( path ), "%s/bench_lineage.bin", g_lineage_dir );
+    g_lineage = read_file( path, &g_lineage_bytes );
+    snprintf( path, sizeof( path ), "%s/bench_lineage.layout", g_lineage_dir );
+    layout = read_file( path, &layout_bytes );
+    if ( g_lineage == NULL || layout == NULL || g_lineage_bytes < 20 )
+    {
+        fprintf( stderr, "missing lineage corpus in %s — pass --lineage-dir\n", g_lineage_dir );
+        failed = 1;
+        goto done;
+    }
+    remember_golden( "bench_lineage.bin", g_lineage, g_lineage_bytes );
+    remember_golden( "bench_lineage.layout", layout, layout_bytes );
+
+    /* gate P1: THE LINEAGE IS THE LOCK'S. This build knows exactly two layouts,
+       the older one first, and the lineage file carries that older layout's
+       hash and bytes — so the read below runs a plan, never the identity. */
+    embedded = (uint32_t) g_lineage[16] | (uint32_t) g_lineage[17] << 8 | (uint32_t) g_lineage[18] << 16 | (uint32_t) g_lineage[19] << 24;
+    if ( fixed_table_fixed_known_count != 2 ||
+         table_fixed_get64( g_lineage + 8 ) != fixed_table_fixed_known[0].hash ||
+         fixed_table_fixed_known[0].hash == fixed_table_fixed_hash ||
+         (int64_t) layout_bytes != fixed_table_fixed_known[0].layout_bytes ||
+         memcmp( layout, fixed_table_fixed_known[0].layout, layout_bytes ) != 0 ||
+         (size_t) embedded != layout_bytes || 20 + layout_bytes > g_lineage_bytes ||
+         memcmp( g_lineage + 20, layout, layout_bytes ) != 0 )
+    {
+        fail( name, "the lineage corpus is not the lock's older layout, or this build's lineage is not that lock's" );
+        goto done;
+    }
+
+    /* gate P2: NEW READS OLD, and the answer is the one the versioning law says
+       it must be (BENCH-STANDARD.md, the gate before the clock): every OLD value
+       landed exactly, the appended field holds its DECLARED default, the widened
+       bound carries the OLD elements and nothing past them, and the counters are
+       section 5.4's EXACT numbers. The answer is derived from the 64 records the
+       identity gates held to the C++ reference, never from a second read of the
+       lineage file: two identically wrong reads would agree with each other, and
+       they do not agree with this. Pattern: bfb8be239 (Elixir, PR #1984) and
+       lineage.rs `expected` (Rust); counter: docs/FIXED-FORM-ALGORITHM.md 5.4. */
+    plan_expected_build();
+    saved_bytes = (size_t) fixed_table_fixed_measure( FixedCount );
+    a = (uint8_t *) malloc( saved_bytes );
+    b = (uint8_t *) malloc( saved_bytes );
+    c = (uint8_t *) malloc( saved_bytes );
+    if ( a == NULL || b == NULL || c == NULL )
+    {
+        fail( name, "out of memory" );
+        goto done;
+    }
+    {
+        char why[512];
+        memset( &report, 0, sizeof( report ) );
+        const int64_t loaded = plan_load_all( g_plan_out, &report );
+        if ( fixed_table_fixed_save( g_plan_out, FixedCount, a, (int64_t) saved_bytes ) != (int64_t) saved_bytes ||
+             fixed_table_fixed_save( g_plan_expected, FixedCount, c, (int64_t) saved_bytes ) != (int64_t) saved_bytes )
+        {
+            fail( name, "the plan read or the plan's answer did not save" );
+            goto done;
+        }
+        fprintf( stderr, "%-18s plan read of %d records: widened %d (expected %d x %d = %d), clamped %d (lineage 0x%016llx -> 0x%016llx)\n", name, FixedCount,
+                 (int) report.widened, FixedCount, PlanWidenedPerRecord, FixedCount * PlanWidenedPerRecord, (int) report.clamped,
+                 (unsigned long long) fixed_table_fixed_known[0].hash, (unsigned long long) fixed_table_fixed_hash );
+        if ( plan_read_verdict( &report, loaded, g_plan_out, g_plan_expected, a, c, saved_bytes, why, sizeof( why ) ) != NULL )
+        {
+            char message[640];
+            snprintf( message, sizeof( message ), "the lineage corpus did not read to the plan's answer: %s", why );
+            fail( name, message );
+            goto done;
+        }
+    }
+
+    /* gate P3: the prefill owns every byte the plan does not land — a poisoned
+       destination reads to the same answer, compared as this build's own saved
+       bytes, so padding never decides it. */
+    memset( (void *) g_plan_poisoned, 0xA5, sizeof( g_plan_poisoned ) );
+    if ( plan_load_all( g_plan_poisoned, &report ) != FixedCount ||
+         fixed_table_fixed_save( g_plan_out, FixedCount, a, (int64_t) saved_bytes ) != (int64_t) saved_bytes ||
+         fixed_table_fixed_save( g_plan_poisoned, FixedCount, b, (int64_t) saved_bytes ) != (int64_t) saved_bytes ||
+         memcmp( a, b, saved_bytes ) != 0 )
+    {
+        fail( name, "a poisoned destination read to a different answer" );
+        goto done;
+    }
+
+    /* gate P4: the plan lane reads something the identity lane does not —
+       its records saved in today's layout are not the identity corpus. */
+    if ( saved_bytes == identity_bytes && memcmp( a, identity_file, saved_bytes ) == 0 )
+    {
+        fail( name, "the lineage corpus reads to the identity corpus: the plan lane would measure nothing older" );
+        goto done;
+    }
+    ok = 1;
+done:
+    free( layout );
+    free( a );
+    free( b );
+    free( c );
+    return ok;
+}
+
+static void bench_plan_read( const char * name, long iters )
+{
+    double rates[MaxNumRuns];
+    TableReport report;
+    RunStats s;
+    int run;
+    long i;
+    for ( run = -1; run < g_num_runs; run++ )
+    {
+        double start = time_now();
+        double elapsed;
+        for ( i = 0; i < iters; i += FixedCount )
+        {
+            if ( plan_load_all( g_plan_out, &report ) != FixedCount )
+            {
+                fail( name, "plan load failed in loop" );
+                return;
+            }
+            bench_escape( g_plan_out );
+        }
+        elapsed = time_now() - start;
+        if ( run >= 0 ) { rates[run] = (double) iters / elapsed; }
+    }
+    s = run_stats( rates, g_num_runs );
+    report_axes( name, "read", iters, (double) g_lineage_bytes / FixedCount, &s, "table,hdr,contract" );
+}
+#define ReadArmSteps 3
+#else
+#define ReadArmSteps 2
+#endif
+
+/* the whole arm: every gate first, then the clocked reads in an order that
+   rotates by round, so no wire is always the one that runs first and warm. */
+static void read_arm( const uint8_t * file, size_t file_bytes, long iters )
+{
+    const long packet_iters = g_packet_iterations ? g_packet_iterations : 4000000L / IterScale;
+    int step;
+    if ( !gate_mixed_read( "bench_mixed" ) ) { return; }
+#if defined(BENCH_PLAN)
+    if ( !gate_plan_read( "bench_plan_read", file, file_bytes ) ) { return; }
+#endif
+    if ( g_gate ) { return; }
+    for ( step = 0; step < ReadArmSteps && !failed; step++ )
+    {
+        switch ( (int) ( ( g_round + step ) % ReadArmSteps ) )
+        {
+        case 0: bench_fixed_read( "bench_fixed_read", file, file_bytes, iters ); break;
+        case 1: bench_mixed_read( "bench_mixed", packet_iters ); break;
+#if defined(BENCH_PLAN)
+        case 2: bench_plan_read( "bench_plan_read", iters ); break;
+#endif
+        default: break;
+        }
+    }
+}
+
 static void bench_fixed( const char * name, long base_iters )
 {
     const long iters = g_iterations ? g_iterations : base_iters / IterScale;
@@ -565,6 +1049,12 @@ static void bench_fixed( const char * name, long base_iters )
             fail( name, "reused target round-trip bytes differ" );
             goto done;
         }
+    }
+
+    if ( g_read_arm )
+    {
+        read_arm( file, file_bytes, iters );
+        goto done;
     }
 
     if ( g_gate ) { goto done; }
@@ -658,10 +1148,38 @@ int main( int argc, char ** argv )
                 return 1;
             }
             g_num_runs = 1;
+            g_round = k;
         }
+#if defined(BENCH_MATCHED)
+        else if ( strcmp( argv[i], "--read-arm" ) == 0 ) { g_read_arm = 1; }
+        else if ( strcmp( argv[i], "--packet-wire-dir" ) == 0 && i + 1 < argc ) { g_packet_wire_dir = argv[++i]; }
+        else if ( strcmp( argv[i], "--packet-variant-dir" ) == 0 && i + 1 < argc ) { g_packet_variant_dir = argv[++i]; }
+        else if ( strcmp( argv[i], "--packet-iterations" ) == 0 && i + 1 < argc )
+        {
+            char * end = NULL;
+            long n = strtol( argv[++i], &end, 10 );
+            if ( end == argv[i] || *end != '\0' || n <= 0 || n > 2147483584L || n % NumVariants != 0 )
+            {
+                fprintf( stderr, "--packet-iterations requires a positive multiple of 64 up to 2147483584\n" );
+                return 1;
+            }
+            g_packet_iterations = n;
+        }
+#endif
+#if defined(BENCH_PLAN)
+        else if ( strcmp( argv[i], "--lineage-dir" ) == 0 && i + 1 < argc ) { g_lineage_dir = argv[++i]; }
+#endif
         else
         {
-            fprintf( stderr, "usage: %s [--indexed] [--gate] [--csv] [--round K] [--iterations N] [--wire-dir <dir>] [--variant-dir <dir>]\n", argv[0] );
+            fprintf( stderr, "usage: %s [--indexed] [--gate] [--csv] [--round K] [--iterations N] [--wire-dir <dir>] [--variant-dir <dir>]"
+#if defined(BENCH_MATCHED)
+                             " [--read-arm [--packet-iterations N] [--packet-wire-dir <dir>] [--packet-variant-dir <dir>]"
+#if defined(BENCH_PLAN)
+                             " [--lineage-dir <dir>]"
+#endif
+                             "]"
+#endif
+                             "\n", argv[0] );
             return 1;
         }
     }

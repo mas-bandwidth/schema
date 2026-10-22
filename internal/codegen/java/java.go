@@ -62,6 +62,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -159,25 +160,9 @@ func is128(t ir.FieldType) bool {
 	return (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Width == 128
 }
 
-// javaReserved is every spelling a generated lowerCamel Java identifier must
-// not take: the Java keywords and literals, plus the contextual keywords a
-// simple identifier cannot safely be.
-var javaReserved = map[string]bool{
-	"abstract": true, "assert": true, "boolean": true, "break": true,
-	"byte": true, "case": true, "catch": true, "char": true, "class": true,
-	"const": true, "continue": true, "default": true, "do": true,
-	"double": true, "else": true, "enum": true, "extends": true,
-	"final": true, "finally": true, "float": true, "for": true,
-	"goto": true, "if": true, "implements": true, "import": true,
-	"instanceof": true, "int": true, "interface": true, "long": true,
-	"native": true, "new": true, "package": true, "private": true,
-	"protected": true, "public": true, "return": true, "short": true,
-	"static": true, "strictfp": true, "super": true, "switch": true,
-	"synchronized": true, "this": true, "throw": true, "throws": true,
-	"transient": true, "try": true, "void": true, "volatile": true,
-	"while": true, "true": true, "false": true, "null": true,
-	"var": true, "yield": true, "record": true,
-}
+// javaReserved is Java's reserved words, read from the one table (check.ReservedIn,
+// SPEC §4.6) and never copied here.
+var javaReserved = schemacheck.ReservedIn("Java")
 
 // javaTypeHazards is every PascalCase spelling a generated nested class must
 // not take: the java.lang / core names generated bodies use unqualified —
