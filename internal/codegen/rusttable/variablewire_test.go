@@ -78,12 +78,18 @@ func TestCardVariablePathRefusesScoped(t *testing.T) {
 		t.Errorf("the card slice was refused from the variable path: %v", err)
 	}
 
-	withMap := cardUnit(&ir.Field{Name: "by_key", MapEntry: &ir.Struct{Name: "Entry"}, Type: ir.FieldType{Kind: ir.TMap}})
-	_, err := cardVariableModules(withMap)
-	if err == nil {
-		t.Fatal("a unit with a map was not refused from the variable path")
+	// a wstring(N) field rides the variable wire (§3 kind 33); a wstring(N)
+	// ELEMENT is still outside the class this leg carries, refused by name
+	withWide := cardUnit(&ir.Field{Name: "title", Type: ir.FieldType{Kind: ir.TWString, Size: 16}})
+	if _, err := cardVariableModules(withWide); err != nil {
+		t.Errorf("a unit with a wstring(N) field was refused from the variable path: %v", err)
 	}
-	for _, want := range []string{"Card", "by_key", "map"} {
+	withWideElems := cardUnit(&ir.Field{Name: "title", Type: ir.FieldType{Kind: ir.TWString, Size: 16}, Array: ir.ArrayCounted, ArrayBound: 4})
+	_, err := cardVariableModules(withWideElems)
+	if err == nil {
+		t.Fatal("a unit with an array of wstring was not refused from the variable path")
+	}
+	for _, want := range []string{"Card", "title", "wstring"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q does not name %q", err, want)
 		}

@@ -1015,7 +1015,7 @@ BLOCK_FUZZ_SED_CS_extent := /rows > (ulong)bytes - offsetOf/d; /padding > bytes 
 BLOCK_FUZZ_SED_CPP_maximum := /past the DECLARED MAXIMUM: Begin refuses/,/count > (uint64_t) %sBlock/d
 BLOCK_FUZZ_SED_CS_maximum := /count > (ulong)%sMax/d
 BLOCK_FUZZ_SED_RUST_extent := /rows > bytes as u64 - offset_of/d; /padding > bytes - used/d
-BLOCK_FUZZ_SED_RUST_maximum := /count > Self::%s_MAX as u64/,/on a count the maximum does not bound/d
+BLOCK_FUZZ_SED_RUST_maximum := /if count > Self::%s_MAX as u64 {/,/on a count the maximum does not bound/d
 
 # how a sabotage is built: $(1) is its name, and the two sed programs above
 # named by it are what come out of each emitter. The replacement files take a

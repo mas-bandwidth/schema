@@ -23,18 +23,18 @@ func TestRustEmitsTableModules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("--lang rust: %v", err)
 	}
-	for _, unwanted := range []string{"probe_table.rs", "table_runtime.rs"} {
-		if _, ok := with[unwanted]; ok {
-			t.Errorf("--lang rust emitted dead wire surface %s", unwanted)
-		}
+	if _, ok := with["table_runtime.rs"]; ok {
+		t.Errorf("--lang rust emitted the retired wire runtime table_runtime.rs")
 	}
-	for _, want := range []string{"probe_block.rs", "probe_cook.rs", "probe_records.rs", "block_runtime.rs", "cook_runtime.rs", "build_version.rs"} {
+	// the FORM-1 surface rides beside the accelerators: a fixed table carries
+	// the variable form too (docs/SPEC-TABLES.md §2.2, §3)
+	for _, want := range []string{"probe_block.rs", "probe_cook.rs", "probe_records.rs", "block_runtime.rs", "cook_runtime.rs", "build_version.rs", "variable_runtime.rs", "probe_table.rs"} {
 		if _, ok := with[want]; !ok {
 			t.Errorf("--lang rust emitted no %s for a unit with tables; got %d files", want, len(with))
 		}
 	}
 	lib := string(with["lib.rs"])
-	for _, want := range []string{"mod probe_block;", "mod probe_cook;", "mod probe_records;", "mod block_runtime;", "mod cook_runtime;", "mod build_version;"} {
+	for _, want := range []string{"mod probe_block;", "mod probe_cook;", "mod probe_records;", "mod block_runtime;", "mod cook_runtime;", "mod build_version;", "mod variable_runtime;", "mod probe_table;"} {
 		if !strings.Contains(lib, want) {
 			t.Errorf("the generated crate root does not declare the table surface: %q missing", want)
 		}

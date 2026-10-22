@@ -99,13 +99,19 @@ fn main() {
             };
             let value = card_load_retain(&wire, &mut store, &mut report);
             loaded = value.is_some();
-            saved = card_save_retain(&value.unwrap_or_default(), &mut store, &mut report);
+            // the writer's named refusal (§2.5: a blob two slots name) answers
+            // -1; the checked save names it without the retaining save's panic
+            let value = value.unwrap_or_default();
+            saved = match card_save_checked(&value) {
+                Ok(_) => Some(card_save_retain(&value, &mut store, &mut report)),
+                Err(_) => None,
+            };
             retained = report.retained;
             retain_lost = report.retain_lost;
         } else {
             let value = card_load(&wire, &mut report);
             loaded = value.is_some();
-            saved = card_save(&value.unwrap_or_default());
+            saved = card_save_checked(&value.unwrap_or_default()).ok();
             retained = 0;
             retain_lost = 0;
         }
@@ -123,9 +129,11 @@ fn main() {
         head[23..31].copy_from_slice(&(measure as i64).to_le_bytes());
         head[31..35].copy_from_slice(&(retained as u32).to_le_bytes());
         head[35..39].copy_from_slice(&(retain_lost as u32).to_le_bytes());
-        head[39..47].copy_from_slice(&(saved.len() as i64).to_le_bytes());
+        head[39..47].copy_from_slice(&(saved.as_ref().map_or(-1, |s| s.len() as i64)).to_le_bytes());
         let _ = out.write_all(&head);
-        let _ = out.write_all(&saved);
+        if let Some(saved) = &saved {
+            let _ = out.write_all(saved);
+        }
         let _ = out.flush();
     }
 }

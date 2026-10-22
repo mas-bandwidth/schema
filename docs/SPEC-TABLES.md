@@ -1500,8 +1500,9 @@ the whole page:
 - **THE SCOPE IS A TABLE BODY AND A UNION ARM.** A table body's own field
   takes the refusal, and so does a field of a union arm that body carries,
   in every spelling the bound has above. The same array held by a `type` a
-  table closure reaches is not refused: schema#606 ruled it on the WIRE, so
-  its kind `13` body keys the array (THE HAZARD REACHES A `type`, below).
+  table closure reaches is a case of its own with two answers that exclude
+  each other, and it is ruled on schema#606 (THE HAZARD REACHES A `type`,
+  below).
 - **The DIAGNOSTIC names the field, the enum the bound folds from, and the
   fix**, which is `[E]T`, the name-keyed form. Where the bound reaches the
   enum through a constant it names the constant. In arm position `[E]T` is
@@ -1519,21 +1520,19 @@ beside the keyed one leaves the class open for anyone who spells it that way
 and never touches the field again, which no kind number can catch, because
 nothing about the FIELD moved.
 
-**THE HAZARD REACHES A `type` A TABLE HOLDS, AND SCHEMA#606 CLOSES IT ON THE
-WIRE.** A `type` a table reaches rides this wire as a kind `13` body, and a
-variant inserted in the middle lands every later element one slot off in every
-stored file, exactly as it does in the table body's own field. What a `type`
-edit moves is the connect gate and the committed baseline (SPEC.md §3.1, §18),
-and a STORED FILE carries neither: a save written before the insert holds no
-protocol id and no baseline, so nothing in it can report the shift. **THE WIRE
-DECIDES, NOT THE BODY: an enum-extent array rides KEYED, kind `16`, on the
-table wire wherever it is declared.** `[E.Max]T` inside a reached `type` rides
-the same kind `[E]T` rides there, so the closed class §4.1 counts cannot be
-reopened one body away, and the positional spelling stays legal in that `type`
-because the wire closes the class without a non-local refusal. The table body
-and the union arm still REFUSE the positional spelling by name, because there
-the keyed spelling `[E]T` is the form to write and `flags` stays the table's
-one positional vocabulary.
+**THE HAZARD REACHES A `type` A TABLE HOLDS, AND SCHEMA#606 IS THE RULING.**
+A `type` a table reaches rides this wire as a kind `13` body, and a
+positional array inside it rides under kind `14` today (§3), so a variant
+inserted in the middle lands every later element one slot off in every stored
+file, exactly as it does in the table body's own field. What a `type` edit
+moves is the connect gate and the committed baseline (SPEC.md §3.1, §18), and
+a STORED FILE carries neither: a save written before the insert holds no
+protocol id and no baseline, so nothing in it can report the shift. Two
+answers close that and they exclude each other, refusing the shape in every
+`type` a table closure reaches or keying the table wire for an enum-extent
+array wherever it is declared, so this page states the refusal for the table
+body and the union arm and states neither answer for the `type` until the
+ruling lands.
 
 **THE RULE IS ALSO WHAT MAKES `flags` THE ONLY EXCEPTION to the reachability
 rule** (SPEC.md §3.1). Under a projection scoped to what a `type` reaches, an
@@ -1541,8 +1540,8 @@ enum only tables reach leaves the protocol id, so the connect gate stops
 refusing two peers whose variant orders disagree. That is correct for a
 vocabulary read by NAME and wrong for one read by POSITION, and the refusal
 above is what leaves `flags` as the only positional vocabulary a table body
-and a union arm have, with schema#606 keying the reached `type` on the table
-wire, and therefore the only exception the projection needs.
+and a union arm have, with schema#606 closing the `type` under either of its
+answers, and therefore the only exception the projection needs.
 
 **On the TYPE wire the spelling stays legal and positional**, in a `type` no
 table reaches: that body's `[E.Max]T` is a plain array whose extent is the
@@ -1550,8 +1549,7 @@ variant count, its bytes are the packet wire's, every fact of it projects,
 and the connect gate is what covers a variant insert (SPEC.md §3.1). The
 refusal above is the table body's and the union arm's, and it is what §2.2's
 mode derivation already made a per-body question. A `type` a table closure
-reaches keeps the spelling, and its kind `13` body keys the array on the table
-wire (above).
+reaches keeps the spelling until schema#606 rules.
 
 **HELD BY TEST: one diagnostics row a SHAPE, red first.** Each row is a unit
 the checker must refuse, and each is red if the unit compiles or if the
@@ -1585,10 +1583,9 @@ sections rest on this refusal being whole, §4.1's
 count of the silent class and SPEC.md §3.1's one exception to reachability, and
 both stand on the tree as well as on the rule.
 
-**RULING STATUS: the type-held case is closed on schema#606, on the WIRE.** A
-`type` no table reaches keeps the spelling, and a `type` a table reaches keeps
-the spelling too: its kind `13` body keys an enum-extent array rather than
-refusing it, so the closed class cannot be reopened one body away.
+**RULING STATUS: the type-held case is ruled on schema#606.** Until then a
+`type` no table reaches keeps the spelling and a `type` a table reaches is
+not refused.
 
 **A KEY ENUM IS IN THE TABLE CLOSURE'S VOCABULARY**, and the closure's
 rules reach it through the keying field. An enum that a table closure
@@ -5942,9 +5939,9 @@ present slot, two bytes where both are small, and it closes that class. The corp
 generation step, and the negative control — encoding the slots
 positionally — turns the middle-insert test red. **The positional array is
 refused in a table body and a union arm, on the bound's provenance and not
-on its spelling** (§2.4). A `type` the table closure holds rides keyed there
-as every enum-extent array does, on schema#606's ruling (§2.4): its kind `13`
-body carries the array under kind `16`, not the positional kind `14`.
+on its spelling** (§2.4). Whether a `type` the table closure holds can still
+carry the class in on kind `14` under a kind `13` body, or rides keyed there
+as every enum-extent array would, is ruled on schema#606.
 
 **And the two spellings do not decode each other.** A `16` body read as a
 `14`, or the reverse, would take keys for values and values for keys — the
@@ -8894,8 +8891,8 @@ on it.**
   from an enum is REFUSED BY NAME in a table body and a union arm** (§2.4,
   §11), so the closed class cannot be reopened by spelling the bound another
   way or folding it through a constant. The same array held by a `type` a
-  table closure reaches rides keyed on the table wire (schema#606), so the
-  class is closed there too, without a refusal. That refusal
+  table closure reaches is ruled on schema#606, by that refusal or by a keyed
+  wire, and the class is closed under either answer. That refusal
   is what leaves `flags` the ONE positional vocabulary a table has, which
   is in turn what makes `flags` the one exception to the reachability rule
   the protocol id is scoped by (SPEC.md §3.1).
@@ -14324,9 +14321,8 @@ are these rulings, in the owner's words:
   where the whole spelling projects and the connect gate covers a variant
   insert, and it is REFUSED in a TABLE BODY and a UNION ARM (§2.4), where
   nothing on the wire could report the same insert. `[E]T` is the table form.
-  A `type` a table closure reaches rides keyed on the table wire: schema#606
-  ruled the wire, not the body, so `[E.Max]T` there has the keyed kind `16`
-  and needs no refusal. What the user chooses is still a choice
+  A `type` a table closure reaches is ruled on schema#606. What the user
+  chooses is still a choice
   in the place the choice is safe, and the table body has one spelling
   because a table has one positional vocabulary, `flags`, and that is what
   makes `flags` the only exception the scoped projection needs.
@@ -17736,7 +17732,9 @@ compiled as one directory.
 **These are the §4.1 table's BASELINE column, and its fixtures are the pin**
 (`TestEvolutionTableFrames`): this subsection derives its list from that table
 rather than restating it, and a verdict that moves there and not here is the
-drift the golden exists to catch. **The BLOCK FORM takes no row here at all** (§18.1). A table's layout is a
+drift the golden exists to catch.
+
+**The BLOCK FORM takes no row here at all** (§18.1). A table's layout is a
 same-build contract that a compiler holds (§19.3), so an edit that moves an
 offset, a size or a pitch is a build error on both generated sides before it
 is anything else; a baseline row would only repeat the compiler, and a
