@@ -179,7 +179,7 @@ int main( void )
     memset( back, 0, sizeof( back ) );
     for ( int k = 0; k < 8; ++k ) { %sReset( back[k] ); }
     memset( &r, 0, sizeof( r ) );
-    n = %sFixedLoad( back, 8, data, len, plan, 4096, NULL, &r );
+    n = %sFixedLoadTolerant( back, 8, data, len, plan, 4096, NULL, &r );
 %s
     return 0;
 }
@@ -222,12 +222,19 @@ int main( void )
 // cppRunVersionProbe runs its forge BEFORE the memset and Reset loop, so there
 // is no hook for 0x5A written after the reset and before the load, and a row
 // that asserts an ELEMENT DEFAULT cannot prove the prefill writes without it.
-// The per-row CHECK bodies are absent too — c's array_fixed_grow, field_append,
-// fixed_I_grow_element, int_widen and uint_widen each carry one, and two of
-// them need the poison. OLD-REFUSES-NEW is the second column and is not in this
-// card. Each of the three needs a change to cppRunVersionProbe's signature,
-// which this card is not; a named residual is honest, a silent one is the bug
-// this suite exists to close.
+// The per-row CHECK bodies are absent here too — c's array_fixed_grow,
+// field_append, fixed_I_grow_element, int_widen and uint_widen each carry one,
+// and two of them need the poison. OLD-REFUSES-NEW is the second column and is
+// not in this suite. ONE ROW IS CLOSED ELSEWHERE: fixed_I_grow_element's check
+// body (the four widened slots -1, -128, 0, 112, the brackets, the counters)
+// lives in fixedroadmap_t12_test.go's
+// TestFixedRoadmapCppT12PlansEvolution/cpp/E3/fixed-array-element/new-reads-old,
+// and its OLD-REFUSES-NEW column (TableFixedReason::layout_unknown, the file's hash, every counter
+// zero, the poisoned destination untouched) in .../old-refuses-new, which
+// compiles the OLD generation alone through cppRunCapability. The other rows'
+// bodies, the poison hook and the OLD-REFUSES-NEW column for every row still
+// need a change to cppRunVersionProbe's signature; a named residual is honest,
+// a silent one is the bug this suite exists to close.
 
 type cppVersionRow struct {
 	row string
@@ -280,8 +287,8 @@ var cppVersionRows = []cppVersionRow{
 // ---- NEW-READS-OLD ----------------------------------------------------------
 //
 // The shared body is the C leg's, translated to this leg's spellings: a clean
-// read is `r.reason != newer_form` (never 0 — see
-// fixedversioning_count_clamp_ends_test.go), and the counters r.unknown,
+// read is neither refused nor malformed (the reason is read only on a
+// refusal, docs/SPEC-TABLES.md §3.3), and the counters r.unknown,
 // r.kind_mismatch, r.clamped, r.duplicate must all stay zero. The widened
 // counter is zero for an APPEND and nonzero for a WIDEN — an append the reader
 // knows is not an event (§5.9 #10). Every row whose ROOT declares the
@@ -307,7 +314,7 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 			}
 			body := fmt.Sprintf(`
     if ( n < 1 ) { printf( "the newer reader refused the older writer's file: n=%%lld reason=%%d\n", (long long) n, (int) r.reason ); return 1; }
-    if ( r.reason != newer_form || r.malformed || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d\n", (int) r.reason, (int) r.malformed ); return 1; }
+    if ( r.malformed || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d\n", (int) r.reason, (int) r.malformed ); return 1; }
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
         { printf( "counters moved on a clean backward read: u=%%d km=%%d c=%%d d=%%d\n", r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
     %s
@@ -513,27 +520,18 @@ func cppHasField(st *ir.Struct, name string) bool {
 // — plus old_array_bounded_grow.bin with the count word forged to 7, BETWEEN
 // the writer's 4 and the reader's 8. The NEW build reads the forged OLD file
 // through its lineage, so the plan is COMPILED and the count's bound is the
-// WRITER's (4). `clamped` is `== 1` and never `>= 1` (§5.4).
+// WRITER's (4). A count past the PLAN's bound refuses `count_over_bound` by
+// name, the Go oracle's lineage-count row (internal/codegen/gotable/
+// fixedbound_test.go). Nothing is decoded and no counter moves.
 func TestFixedVersioningWriterBoundCount(t *testing.T) {
 	corpus := cppFixedCorpus(t)
 	body := `
-    if ( n != 1 ) { printf( "n is not 1: %lld\n", (long long) n ); return 1; }
-    if ( back[0].vals_count != 4 ) { printf( "vals_count is not the writer's 4: %d\n", back[0].vals_count ); return 1; }
-    if ( back[0].lead != 0xAAAAAAAAu || back[0].trail != 0xBBBBBBBBu )
-        { printf( "a bracket moved: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
-    {
-        const int32_t want[4] = { 1000, 1001, 1002, 1003 };
-        int k;
-        for ( k = 0; k < 4; ++k )
-            if ( back[0].vals[k] != want[k] ) { printf( "vals[%d] is not the old writer's %d: %d\n", k, want[k], back[0].vals[k] ); return 1; }
-        for ( k = 4; k < 8; ++k )
-            if ( back[0].vals[k] != 0 ) { printf( "vals[%d] is not the reader's declared default 0: %d\n", k, back[0].vals[k] ); return 1; }
-    }
-    if ( r.clamped != 1 ) { printf( "clamped is not exactly 1: %d\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "counters moved on a clean read: unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused ) { printf( "a clean read is not a refusal: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
-    if ( r.reason != newer_form ) { printf( "reason is not the clean value: %d\n", (int) r.reason ); return 1; }
+    if ( n != -1 ) { printf( "writer_bound_count: a forged count past the PLAN's bound did not refuse: n=%lld\n", (long long) n ); return 1; }
+    if ( !r.refused ) { printf( "writer_bound_count: refused is false\n" ); return 1; }
+    if ( r.reason != count_over_bound ) { printf( "writer_bound_count: reason=%d, not count_over_bound\n", (int) r.reason ); return 1; }
+    if ( r.malformed ) { printf( "writer_bound_count: malformed set — a refusal by name is not malformed\n" ); return 1; }
+    if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
+        { printf( "writer_bound_count: a counter moved: clamped=%d unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
 `
 	forge := `
     /* THE FORGE (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8 row 4): the OLD

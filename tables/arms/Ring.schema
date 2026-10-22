@@ -9,14 +9,14 @@ fixed table Node { v int32 }
 
 union Slot
 {
-    node  *Node
+    vertex *Node | was = "node"
     plain int32
 }
 
 table Ring
 {
     items []Slot
-    after int32
+    past int32 | was = "after"
 }
 
 // A LIST OF UNIONS WHOSE ARM IS AN ARRAY OF POINTERS, and a BOUNDED ARRAY of
@@ -35,11 +35,11 @@ union Slots
 table Rack
 {
     items []Slots
-    after int32
+    past int32 | was = "after"
 }
 
 table Tray
 {
     entries [..2]Slots
-    after   int32
+    past   int32 | was = "after"
 }

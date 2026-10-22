@@ -116,7 +116,7 @@ fixed table Root
     early_leafs [..8]Leaf
     early_slots [Grade]Slot
     early_leaf  Leaf
-    block       Wide
+    wide_block  Wide | was = "block"
     late_big    uint128
     late_neg    int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
     late_text   string(24)
@@ -201,7 +201,7 @@ static void build( Root & v, int32_t wide_fields, int32_t leaf_count )
     v.early_leaf.n = 11;
     v.early_leaf.big = serialize::uint128_t( 1 ) << 127;
 
-    for ( int32_t k = 0; k < wide_fields; k++ ) { set_wide( v.block, (int) k, k + 1 ); }
+    for ( int32_t k = 0; k < wide_fields; k++ ) { set_wide( v.wide_block, (int) k, k + 1 ); }
 
     v.late_big = serialize::uint128_t( 1 ) << 64;             // the lane seam itself
     v.late_neg = serialize::int128_t( -9 );

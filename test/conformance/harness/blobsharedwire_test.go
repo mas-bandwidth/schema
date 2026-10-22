@@ -102,6 +102,32 @@ func TestWireBlobSharedIsANamedRefusal(t *testing.T) {
 		}
 	})
 
+	t.Run("another leg may answer the named refusal", func(t *testing.T) {
+		t.Parallel()
+		out := t.TempDir()
+		if err := os.WriteFile(filepath.Join(out, "blob_shared.absent"), []byte("blob_shared"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		r := &result{total: 1}
+		scoreAnswer("cpp", "wire", out, expectation{"blob_shared", []byte("golden wire")}, "blob_shared", r)
+		if r.missing != 1 || r.named != 1 || len(r.failures) != 0 {
+			t.Fatalf("cpp wire scores = absent %d, named %d, failures %v; want one named refusal", r.missing, r.named, r.failures)
+		}
+	})
+
+	t.Run("another leg's wrong refusal name is an ordinary absence", func(t *testing.T) {
+		t.Parallel()
+		out := t.TempDir()
+		if err := os.WriteFile(filepath.Join(out, "blob_shared.absent"), []byte("table_refused"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		r := &result{total: 1}
+		scoreAnswer("cpp", "wire", out, expectation{"blob_shared", []byte("golden wire")}, "blob_shared", r)
+		if r.missing != 1 || r.named != 0 {
+			t.Fatalf("cpp wire scores = absent %d, named %d; a wrong name must not count as the refusal", r.missing, r.named)
+		}
+	})
+
 	t.Run("other legs keep the base bytes expectation", func(t *testing.T) {
 		t.Parallel()
 		out := t.TempDir()

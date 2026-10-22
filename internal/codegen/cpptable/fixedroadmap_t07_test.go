@@ -186,7 +186,7 @@ fixed table C14 {
     TableReport r;
     memset( &r, 0, sizeof( r ) );
     static TableFixedEntry plan[1024];
-    const int64_t n = C14FixedLoad( &back, 1, buf, need, plan, 1024, NULL, &r );
+    const int64_t n = C14FixedLoadTolerant( &back, 1, buf, need, plan, 1024, NULL, &r );
     if ( n != 1 ) { printf( "C14: the record did not read: n=%lld\n", (long long) n ); return 1; }
     if ( r.clamped != 1 )
         { printf( "C14: bounds pass walks live only: the slack's poisoned slots must not count and the one live 999 must: clamped=%d, want exactly 1\n", r.clamped ); return 1; }
@@ -236,7 +236,7 @@ fixed table W4 {
     TableReport r;
     memset( &r, 0, sizeof( r ) );
     static TableFixedEntry plan[256];
-    const int64_t n = W4FixedLoad( &back, 1, buf, need, plan, 256, NULL, &r );
+    const int64_t n = W4FixedLoadTolerant( &back, 1, buf, need, plan, 256, NULL, &r );
     if ( n != 1 ) { printf( "W4: a peer's garbage in the slack refused the record: n=%lld\n", (long long) n ); return 1; }
     if ( r.clamped || r.unknown || r.kind_mismatch || r.duplicate || r.malformed || r.refused )
         { printf( "W4: read slack unspecified: garbage in declared slack moved a counter: c=%d u=%d km=%d d=%d m=%d x=%d\n", r.clamped, r.unknown, r.kind_mismatch, r.duplicate, (int) r.malformed, (int) r.refused ); return 1; }

@@ -1049,6 +1049,39 @@ static SCHEMA_UNUSED int table_json_hex4( TableJsonIn * in )
     return value;
 }
 
+/* THE JSON LAYER DECIDES FIRST in a base64 body (docs/SPEC-TABLES.md §16.2):
+   c is the body byte just taken (at in->pos - 1). -1, with in->bad set, when
+   it is not JSON: a raw byte below 0x20, a backslash that begins no escape,
+   or a byte at or above 0x80 that begins no UTF-8 sequence (string_not_utf8,
+   §16.3). 0 when it begins valid JSON that is never a base64 symbol, an
+   escape or a UTF-8 sequence, consumed whole so an escaped quote cannot end
+   the body. 1 when the byte stands alone for the base64 grammar to judge. */
+static SCHEMA_UNUSED int table_json_base64_step( TableJsonIn * in, char c )
+{
+    if ( (unsigned char) c < 0x20 ) { in->bad = 1; return -1; }
+    if ( c == '\\' )
+    {
+        char escape;
+        if ( in->pos >= in->size ) { in->bad = 1; return -1; }
+        escape = in->text[in->pos++];
+        switch ( escape )
+        {
+            case '"': case '\\': case '/': case 'b': case 'f': case 'n': case 'r': case 't': return 0;
+            case 'u': if ( table_json_hex4( in ) < 0 ) { in->bad = 1; return -1; } return 0;
+            default: in->bad = 1; return -1;
+        }
+    }
+    if ( (unsigned char) c >= 0x80 )
+    {
+        int32_t width = 0;
+        int64_t left = in->size - ( in->pos - 1 );
+        if ( table_json_utf8( in->text + in->pos - 1, left > 4 ? 4 : (int32_t) left, &width ) < 0 ) { in->bad = 1; return -1; }
+        in->pos += width - 1;
+        return 0;
+    }
+    return 1;
+}
+
 static SCHEMA_UNUSED int32_t table_json_encode_utf8( uint32_t code, char * unit )
 {
     if ( code < 0x80 ) { unit[0] = (char) code; return 1; }
@@ -1157,16 +1190,17 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
             {
                 unit[unit_length++] = in->text[in->pos++];
             }
-            // A SEQUENCE THAT IS NOT A CODE POINT READS AS U+FFFD, which is
-            // §16.3's rule at the point the defect ENTERS rather than at the
-            // point it leaves: a lone surrogate escape already reads that way
-            // above, RFC 8259 requires a JSON text to be valid UTF-8, and a
-            // kind 12 payload is well-formed UTF-8 (§3), so storage the text
-            // form built has to be storage the wire can carry (§5).
+            // A SEQUENCE THAT IS NOT A CODE POINT IS REFUSED BY NAME at every
+            // string site, before any clamp (docs/SPEC-TABLES.md §16.3,
+            // string_not_utf8): RFC 8259 requires a JSON text to be valid
+            // UTF-8, and a silent U+FFFD would make two different texts one
+            // value. The scan reads on past a clamp, so a byte at or past the
+            // bound is judged too (row str-illformed-at-bound).
             int32_t checked_width = 0;
             if ( table_json_utf8( unit, unit_length, &checked_width ) < 0 )
             {
-                unit_length = table_json_encode_utf8( 0xfffd, unit );
+                in->bad = 1;
+                return 0;
             }
         }
     }
@@ -1175,10 +1209,11 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
 }
 
 
-/* Scan decoded bytes independently of the field bound: escapes first, UTF-8
-   replacement next, then the caller's capacity. Report the used UTF-8 length;
-   this parser does not treat a byte buffer's contents as a table value. */
-static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, int32_t capacity, int32_t * length )
+/* Scan decoded bytes independently of the field bound: escapes first, the
+   UTF-8 refusal next, then the caller's capacity. Report the used UTF-8
+   length; text says the string is bound for text storage, where a zero
+   refuses. */
+static SCHEMA_UNUSED int table_json_scan_string_as( TableJsonIn * in, char * out, int32_t capacity, int32_t * length, int text )
 {
     int32_t placed = 0;
     int clamped = 0;
@@ -1190,6 +1225,7 @@ static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, i
         int32_t unit_length = 0;
         if ( !table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
         if ( unit_length == 0 ) { break; }
+        if ( text && unit[0] == 0 ) { in->bad = 1; return 0; } /* text_holds_zero (§16.3) */
         if ( out == NULL ) { placed += unit_length; }
         else
         {
@@ -1207,6 +1243,21 @@ static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, i
     if ( clamped ) { in->report->clamped++; }
     if ( length != NULL ) { *length = placed; }
     return 1;
+}
+
+/* A string the read only names or skips: an object key, an enum or flags
+   name, an arm key, a skipped value. A zero in one stores nothing. */
+static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, int32_t capacity, int32_t * length )
+{
+    return table_json_scan_string_as( in, out, capacity, length, 0 );
+}
+
+/* A string the read PLACES IN TEXT STORAGE: a string(N) or *string value, a
+   text-list element, a map key. NO READ STORES A ZERO (docs/SPEC-TABLES.md
+   §16.3, text_holds_zero): a \u0000 there refuses the read. */
+static SCHEMA_UNUSED int table_json_scan_text( TableJsonIn * in, char * out, int32_t capacity, int32_t * length )
+{
+    return table_json_scan_string_as( in, out, capacity, length, 1 );
 }
 
 
@@ -1243,6 +1294,7 @@ static SCHEMA_UNUSED int table_json_scan_w_string( TableJsonIn * in, uint16_t * 
         if ( !table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
         if ( unit_length == 0 ) { break; }
         const uint32_t code = table_json_decode_utf8( unit, unit_length );
+        if ( code == 0 ) { in->bad = 1; return 0; } /* a wstring value is text storage: text_holds_zero (§16.3) */
         uint16_t units[2];
         int32_t units_length = 1;
         if ( code < 0x10000 )
@@ -1964,16 +2016,18 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
     if ( f->kind == 12 )
     {
         int32_t length = 0;
-        if ( !table_json_scan_string( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
+        if ( !table_json_scan_text( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
         storage[length] = 0;
         table_json_set_count( base, f, length );
         return 1;
     }
     if ( table_json_is_bytes( f ) )
     {
-        /* A base64 body carries no escapes, so a backslash in one is simply
-           not an alphabet character. Validate the stream and its padding before
-           touching storage, so a malformed body leaves the declared default. */
+        /* The JSON layer decides first (table_json_base64_step): a body that
+           is not a JSON string is malformed, and one that is JSON but carries
+           an escape or a non-ASCII character is simply not base64. Validate the
+           stream and its padding before touching storage, so a body that is not
+           base64 leaves the declared default. */
         int64_t mark;
         int64_t symbols = 0;
         int64_t pad = 0;
@@ -1990,9 +2044,13 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         {
             char c;
             int32_t val;
+            int step;
             if ( in->pos >= in->size ) { in->bad = 1; return 0; }
             c = in->text[in->pos++];
             if ( c == '"' ) { break; }
+            step = table_json_base64_step( in, c );
+            if ( step < 0 ) { return 0; }
+            if ( step == 0 ) { malformed = 1; continue; }
             if ( malformed ) { continue; }
             if ( c == '=' ) { pad++; continue; }
             if ( pad > 0 ) { malformed = 1; continue; }

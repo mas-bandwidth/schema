@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xeb26c970fde3fd71
 
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -455,6 +455,39 @@ pub fn write_trio_sole(stream: &mut WriteStream<'_>, value: &TrioSole) -> Result
 #[inline]
 pub fn read_trio_sole(stream: &mut ReadStream<'_>, value: &mut TrioSole) -> Result {
     read_trio(stream, &mut value.inner)?;
+    Ok(())
+}
+
+// type Vec3Sole
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Vec3Sole {
+    pub v: Vec3,
+}
+
+// The zero form (SPEC §5): specified defaults live only in new(), never here.
+impl Default for Vec3Sole {
+    fn default() -> Self {
+        Vec3Sole {
+            v: Vec3::default(),
+        }
+    }
+}
+
+// VEC3_SOLE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+// VEC3_SOLE_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+pub const VEC3_SOLE_MAX_BITS: u64 = 192;
+pub const VEC3_SOLE_MAX_BYTES: usize = 24;
+
+#[inline(always)]
+pub fn write_vec3_sole(stream: &mut WriteStream<'_>, value: &Vec3Sole) -> Result {
+    write_vec3(stream, &value.v)?;
+    Ok(())
+}
+
+#[inline]
+pub fn read_vec3_sole(stream: &mut ReadStream<'_>, value: &mut Vec3Sole) -> Result {
+    read_vec3(stream, &mut value.v)?;
     Ok(())
 }
 

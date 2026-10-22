@@ -17,7 +17,7 @@ package cpptable
 // (`FxWide.caption wstring(8)`), reached through cpptable's own Generate.
 //
 // ONE SUBTEST PER TASK THIS CARD PROVES, four of them. The cpp emitter now
-// rules a content violation a REFUSAL BY NAME (text_ill_formed), the verdict
+// rules a content violation a REFUSAL BY NAME (TableMessageReason::text_ill_formed), the verdict
 // the packet reader gives, where the reference set `malformed`: the shared
 // vocabulary member lives in cpptable.go and the clamp that raises it is this
 // leg's own. test/conformance/cpp/rows/C5.cpp states the same refusal-by-name
@@ -147,27 +147,29 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         if ( back[0].label_length != 8 || back[0].keep != 11 || back[0].narrow != 22 || back[0].renamed != 33 )
             { printf( "C3: clean-at-cap did not land: len=%d keep=%u narrow=%u renamed=%d\n", back[0].label_length, back[0].keep, (unsigned) back[0].narrow, back[0].renamed ); return 1; }
     }
-    // ONE PAST THE CAP: 9 clamps to 8, COUNT clamped once, the record reads on.
+    // ONE PAST THE CAP: 9 refuses length_over_bound by name, nothing decoded,
+    // no counter moved, no destination byte written (docs/SPEC-TABLES.md §3.4,
+    // docs/FIXED-FORM-ALGORITHM.md §4.5).
     TableFixedPut32( word, 9 );
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
         n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.refused || r.malformed || r.clamped != 1 )
-            { printf( "C3: over-cap n=%lld refused=%d malformed=%d clamped=%d\n", (long long) n, (int) r.refused, (int) r.malformed, r.clamped ); return 1; }
-        if ( back[0].label_length != 8 )
-            { printf( "C3: over-cap length is not the cap 8: %d\n", back[0].label_length ); return 1; }
-        if ( back[0].keep != 11 || back[0].narrow != 22 || back[0].renamed != 33 )
-            { printf( "C3: the clamp is one field's, neighbours moved\n" ); return 1; }
+        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound )
+            { printf( "C3: over-cap n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
+        if ( r.clamped != 0 )
+            { printf( "C3: over-cap refused but a counter moved: clamped=%d\n", r.clamped ); return 1; }
     }
-    // THE NEGATIVE END: -1 clamps to 0, COUNT clamped once.
+    // THE NEGATIVE END: -1 refuses length_over_bound by name.
     TableFixedPut32( word, 0xFFFFFFFFu );
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
         n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.refused || r.malformed || r.clamped != 1 || back[0].label_length != 0 )
-            { printf( "C3: negative-end n=%lld clamped=%d len=%d\n", (long long) n, r.clamped, back[0].label_length ); return 1; }
+        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound )
+            { printf( "C3: negative-end n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
+        if ( r.clamped != 0 )
+            { printf( "C3: negative-end refused but a counter moved: clamped=%d\n", r.clamped ); return 1; }
     }
     printf( "C3 text length clamp holds\n" );
 `
@@ -197,18 +199,19 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     if ( at < 4 ) { printf( "C5: the wide payload is not locatable: %lld\n", (long long) at ); return 1; }
     uint8_t * word = data + at - 4;
 
-    // THE CLAMP IS IN CODE UNITS, NOT BYTES: a used length of 16 bytes is 8
-    // units, and 16 > cap 8 clamps to 8 units — a reader whose cap was the byte
-    // capacity would keep 16 or land 16, both red.
+    // THE BOUND IS IN CODE UNITS, NOT BYTES: a used length of 16 bytes is 8
+    // units and in cap, but a length 16 written as the WIRE's unit count is
+    // past cap 8 and refuses length_over_bound by name — the unit the bound is
+    // counted in is the verdict (docs/SPEC-TABLES.md §3.4).
     TableFixedPut32( word, 16 );
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.refused || r.malformed || r.clamped != 1 || back[0].caption_length != 8 )
-            { printf( "C5: byte-vs-unit clamp n=%lld clamped=%d len=%d\n", (long long) n, r.clamped, back[0].caption_length ); return 1; }
-        if ( back[0].seq != 1000 )
-            { printf( "C5: the neighbour seq moved: %u\n", back[0].seq ); return 1; }
+        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound )
+            { printf( "C5: byte-vs-unit refusal n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
+        if ( r.clamped != 0 )
+            { printf( "C5: refused but a counter moved: clamped=%d\n", r.clamped ); return 1; }
     }
     // CONTENT OVER v, NEVER 2N: with the used length v=4, a lone surrogate at
     // unit 5 is PAST the walked range and the read stays clean — the check is
@@ -278,7 +281,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
         n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.malformed || r.reason != text_ill_formed )
+        if ( n != -1 || !r.refused || r.malformed || r.reason != TableMessageReason::text_ill_formed )
             { printf( "C4: ill-formed content n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
         if ( r.clamped != 0 || r.widened != 0 )
             { printf( "C4: a refusal moved a counter: clamped=%d widened=%d\n", r.clamped, r.widened ); return 1; }
@@ -323,14 +326,17 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         if ( back[0].caption_length != 8 )
             { printf( "R24: the 8 units did not land: %d\n", back[0].caption_length ); return 1; }
     }
-    // 9 CODE UNITS is ONE PAST the cap: it clamps to 8 UNITS, not to 8 BYTES.
+    // 9 CODE UNITS is ONE PAST the cap: it refuses length_over_bound by name,
+    // counted in UNITS, not in 8 BYTES (docs/SPEC-TABLES.md §3.4).
     TableFixedPut32( data + at - 4, 9 );
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.refused || r.malformed || r.clamped != 1 || back[0].caption_length != 8 )
-            { printf( "R24: 9 units clamps to 8: n=%lld clamped=%d len=%d\n", (long long) n, r.clamped, back[0].caption_length ); return 1; }
+        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound )
+            { printf( "R24: 9 units should refuse: n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
+        if ( r.clamped != 0 )
+            { printf( "R24: refused but a counter moved: clamped=%d\n", r.clamped ); return 1; }
     }
     // SLACK IS NOT JUDGED: a lone surrogate PAST the used units is no refusal.
     TableFixedPut32( data + at - 4, 4 );
@@ -342,33 +348,33 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         if ( n != 1 || r.refused || r.malformed )
             { printf( "R24: a slack unit past v was judged: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.malformed ); return 1; }
     }
-    // ILL-FORMED TEXT IN THE USED UNITS REFUSES BY NAME (text_ill_formed).
+    // ILL-FORMED TEXT IN THE USED UNITS REFUSES BY NAME (TableMessageReason::text_ill_formed).
     data[at + 10] = 'X'; data[at + 11] = 0x00;
     data[at + 4] = 0x00; data[at + 5] = 0xD8;
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.malformed || r.reason != text_ill_formed )
+        if ( n != -1 || !r.refused || r.malformed || r.reason != TableMessageReason::text_ill_formed )
             { printf( "R24: ill-formed used units n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
         if ( r.clamped != 0 || r.widened != 0 )
             { printf( "R24: a refusal moved a counter: clamped=%d widened=%d\n", r.clamped, r.widened ); return 1; }
     }
-    // THE CLAMP AND THE REFUSAL ON THE SAME RECORD: the length word forged
-    // ONE PAST THE CAP (9 units) AND the used units ill-formed. The text op
-    // clamps 9 to 8 and COUNTs clamped, and then the content rule refuses BY
-    // NAME. REFUSE is total (docs/FIXED-FORM-ALGORITHM.md §5.8: "no counter
-    // moves, nothing is decoded"), so the refusing record's counter-rollback is
-    // what leaves clamped at zero — this is the clause that rollback carries.
+    // THE LENGTH REFUSAL AND THE CONTENT REFUSAL ON THE SAME RECORD: the length
+    // word forged ONE PAST THE CAP (9 units) AND the used units ill-formed. The
+    // count/length pre-scan runs first and refuses length_over_bound by name —
+    // a count or length past the PLAN's bound is checked before any destination
+    // byte is written (docs/SPEC-TABLES.md §3.4). REFUSE is total: no counter
+    // moves and nothing is decoded.
     TableFixedPut32( data + at - 4, 9 );
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
         n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.malformed || r.reason != text_ill_formed )
-            { printf( "R24: clamp+refusal n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
+        if ( n != -1 || !r.refused || r.malformed || r.reason != length_over_bound )
+            { printf( "R24: length+content n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.malformed, (int) r.reason ); return 1; }
         if ( r.clamped != 0 || r.widened != 0 )
-            { printf( "R24: the clamp+refusal moved a counter: clamped=%d widened=%d\n", r.clamped, r.widened ); return 1; }
+            { printf( "R24: the length+content refusal moved a counter: clamped=%d widened=%d\n", r.clamped, r.widened ); return 1; }
     }
     printf( "R24 ill-formed used units refuse by name\n" );
 `

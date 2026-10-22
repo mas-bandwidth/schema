@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <string.h> // the prefill's scalar-array fills
 #include <stddef.h> // offsetof, for the reflection descriptors
+#include <string> // the hand-editable text form's document (§16.9.3)
 
 // ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
 //
@@ -72,62 +73,143 @@
 
 namespace armdemo {
 
+
+
+// WHY A FILE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5, §7, §19.2): the
+// one vocabulary a cook's Open, a block's BlockOpen and a load measure's -1
+// share, because a caller asking "why can I not have this file" is
+// asking one question whichever call refused it. The FIRST failing clause names the
+// reason, in the order §7 enumerates, so one file answers one value in every
+// language. A refusal moves no counter, and a match writes nothing: the
+// out-parameter is touched on the refusal path only.
+//
+// The MESSAGE FORM's names (TableMessageReason, §3.3) are values of this same
+// enum, appended in Go's order: one vocabulary, whichever call refused.
+enum TableRefuseReason : int32_t
+{
+    ok,                    // no clause failed: the only value beside a non-null root (§7)
+    not_a_cook,            // the magic is neither this build's constant nor its byte reversal, or the byte-order word contradicts the magic
+    foreign_order,         // the magic byte-reversed: a cook of the other byte order (§7.1)
+    wrong_build_version,   // the build_version word is not this build's (§20)
+    reserved_not_zero,     // a reserved header word is not zero (§7.1)
+    bad_alignment,         // the alignment word is not a power of two, is below eight, is above sixty-four, or is not a multiple of the root's own alignof
+    truncated,             // the part lengths against the caller's length, or a data part too short to hold the root
+    unaligned_base,        // the pointer the caller passed is not aligned for the region: the caller's defect, not the file's
+    bad_layout,            // BlockOpen (§19.2): a pitch, a count, an offset or an extent that disagrees with this build's or leaves the block
+    unknown_form,          // at a MEASURE (§3, §6.5): a form byte this build does not carry, refused before any read
+    count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
+    count_over_extent_cap, // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
+    blob_over_size_cap,    // a blob whose length is past the derived-size cap (§3.1, §11)
+    data_cycle,            // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
+    invalid_value,         // a writer handed a value outside the declaration: a count, a value or an ordinal past its bound, or ill-formed text (§3.1, §11)
+    allocation_failed,     // an allocation the codec asked for was refused (§7.6)
+    wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
+    malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
+    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
+    kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
+    base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
+    base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
+    integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
+    non_finite,            // a plain float the read landed as a NaN or an infinity (§3.3); the report's reason is non_finite: <field>
+    blob_shared,           // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
+    // THE FORM AND FIXED-FORM NAMES (§3, §3.3, §3.4, §6.5), which the C++ port
+    // once kept in a second, message-path enum. Go appended them here, in
+    // this order, and the one vocabulary is one enum in every target.
+    previous_form,           // a FORM BYTE this form is ahead of: form 1 handed to a fixed reader is the OLDER form, not a newer one (§3, §3.4)
+    newer_form,              // a FORM BYTE this reader does not carry (§3)
+    message_form_as_file,    // a form 2 wire where a FILE was expected: its table is somewhere else
+    layout_unknown,          // a fixed-form file whose layout hash this reader has no lineage for (§3.4, §21.3)
+    layout_unsupported,      // a hash in the lineage below the floor; the report carries the file's hash (bill §12.4)
+    layout_newer,            // a hash this reader has never locked, proved newer; reserved, never emitted (algorithm §5.3)
+    layout_malformed,        // bytes handed to the fixed form as a layout that are not one
+    layout_count_mismatch,   // the entry count does not fit the layout's length exactly
+    layout_kind_unknown,     // a kind OUTSIDE §3's closed set: a newer form byte, not a newer layout
+    layout_kind_invalid,     // a kind this build knows, used in a way its own definition does not allow
+    layout_size_mismatch,    // an entry's stated constant size is not the one its kind or its children fix
+    layout_tree_unclosed,    // the pre-order child walk does not consume exactly the entries
+    layout_too_deep,         // a nesting depth past what this reader walks: a bound on the WALK
+    layout_record_too_large, // a record size that overflows, or is past §3.4's 65536-byte bound
+    plan_too_large,          // a layout whose compiled plan does not fit the caller's plan storage: this codec never allocates
+    no_layout,               // a fixed-form record whose hash names no LAYOUT this reader holds
+    batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
+    text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
+    count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
+    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+};
+
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
 // is not one of §4's events: nothing is decoded, no counter moves and no
 // damage is reported, so five zero counters and a false flag are what a clean
 // read prints too and only the verdict tells them apart. The reason says which
 // refusal it was.
 //
-// This is the MESSAGE PATH's vocabulary and not the cooked form's (§7.4): a
-// caller meeting one of these has been refused a MESSAGE on a connection,
-// which is a different recovery with a different owner than a file a header
-// match turned down.
-enum TableMessageReason
+// THE MESSAGE VOCABULARY'S THREE (§3.3, §11): no_vocabulary,
+// second_announcement and vocabulary_too_large, which Go names in its report's
+// reason text rather than in the enum. They sit in a private high range so a
+// value Go appends later can never collide with them, which the enum's
+// int32_t underlying type keeps inside its own range.
+constexpr TableRefuseReason no_vocabulary        = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
+constexpr TableRefuseReason second_announcement  = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
+constexpr TableRefuseReason vocabulary_too_large = (TableRefuseReason) 0x20000002; // an announcement above the receiver's declared bound, refused before an entry is touched
+
+// THE MESSAGE PATH SPEAKS THE ONE VOCABULARY (§6.5): TableMessageReason is a
+// TableRefuseReason, converting both ways, and not a second enum. It is a
+// struct only so the message path's qualified spellings
+// (TableMessageReason::newer_form, ::no_vocabulary) keep naming the one
+// vocabulary's values; a refusal reason is read only when refused is set.
+struct TableMessageReason
 {
-    newer_form,           // a FORM BYTE this reader does not carry (§3)
-    // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
-    // registry is ordered, so a reader meeting a byte it does not carry can
-    // say WHICH DIRECTION it is: form 1 handed to a fixed reader is the VARIABLE
-    // form, which is older, and calling that newer_form would send a caller
-    // looking for a build that does not exist. The bytes are the same refusal
-    // either way — nothing decoded, no counter moved — and only the name of it
-    // differs.
-    previous_form,
-    no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
-    second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
-    vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
-    message_form_as_file, // a form 2 wire where a FILE was expected: its table is somewhere else
-    batch_too_large,      // a batch of more than 256 bodies on the write side, or of more than the caller has room for on the read side: nothing is written or decoded, and the count says what the wire carries
-    // THE FIXED FORM'S THREE (docs/SPEC-TABLES.md §3.4). Each is a refusal by
-    // name with nothing decoded and no counter moved, on the form byte's own
-    // precedent. THE LAYOUT is what form 1 called the vocabulary block.
-    no_layout,        // a fixed-form record whose hash names no LAYOUT this reader holds
-    layout_malformed, // bytes handed to the fixed form as a layout that are not one: fewer than a header's worth of them
-    plan_too_large,   // a layout whose compiled plan does not fit the plan storage the caller declared: this codec never allocates
-    // THE LAYOUT VALIDATION'S OWN NAMES (docs/SPEC-TABLES.md §3.4). A layout is
-    // the one structure a reader must parse before it knows anything at all,
-    // and it arrives from an UNTRUSTED PEER, so each rule it is held to
-    // refuses under its own name rather than under one word for all of them.
-    // Every one of them runs BEFORE a single record byte is touched.
-    layout_count_mismatch,  // the entry count does not fit the layout's length exactly: the count, and then that many seventeen-byte entries
-    layout_kind_unknown,    // a kind OUTSIDE §3's closed set: a fixed form's kind set is closed, so an unknown kind means a newer FORM BYTE, which is a different form and not a newer layout of this one
-    layout_kind_invalid,    // a kind this build KNOWS, used in a way its own definition does not allow: a root that is not a table, an optional wrapper without exactly one child, a keyed array without exactly two, an enum whose children are not variants
-    layout_size_mismatch,   // an entry's stated constant size is not the one its kind's definition fixes, or not the one its children account for
-    layout_tree_unclosed,   // the pre-order child walk does not consume exactly the entries: the tree runs out of layout, or the layout outlasts the tree
-    layout_too_deep,        // a nesting depth past what this reader walks: a bound on the WALK, so a hostile layout cannot spend a reader's stack
-    layout_record_too_large, // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
-    // THE BACKWARD-READ REFUSALS (bill §4, §6b, algorithm §5.3). A hash this
-    // reader has never locked is layout_newer; a hash in the lineage below the
-    // floor is layout_unsupported. Both carry the file's hash and nothing else
-    // (bill §12.4).
-    layout_newer,
-    layout_unsupported,
-    // A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
-    // string(N)'s used bytes that are not well-formed UTF-8 — or a wstring(N)'s
-    // used units that are not paired UTF-16 — refuses the read BY NAME, the
-    // verdict the packet reader gives, this form having no L to continue past.
-    // Nothing is decoded and no counter moves.
-    text_ill_formed
+    TableRefuseReason value;
+    constexpr TableMessageReason( TableRefuseReason v = TableRefuseReason::newer_form ) : value( v ) {}
+    constexpr operator TableRefuseReason() const { return value; }
+    static constexpr TableRefuseReason ok = TableRefuseReason::ok;
+    static constexpr TableRefuseReason not_a_cook = TableRefuseReason::not_a_cook;
+    static constexpr TableRefuseReason foreign_order = TableRefuseReason::foreign_order;
+    static constexpr TableRefuseReason wrong_build_version = TableRefuseReason::wrong_build_version;
+    static constexpr TableRefuseReason reserved_not_zero = TableRefuseReason::reserved_not_zero;
+    static constexpr TableRefuseReason bad_alignment = TableRefuseReason::bad_alignment;
+    static constexpr TableRefuseReason truncated = TableRefuseReason::truncated;
+    static constexpr TableRefuseReason unaligned_base = TableRefuseReason::unaligned_base;
+    static constexpr TableRefuseReason bad_layout = TableRefuseReason::bad_layout;
+    static constexpr TableRefuseReason unknown_form = TableRefuseReason::unknown_form;
+    static constexpr TableRefuseReason count_over_length = TableRefuseReason::count_over_length;
+    static constexpr TableRefuseReason count_over_extent_cap = TableRefuseReason::count_over_extent_cap;
+    static constexpr TableRefuseReason blob_over_size_cap = TableRefuseReason::blob_over_size_cap;
+    static constexpr TableRefuseReason data_cycle = TableRefuseReason::data_cycle;
+    static constexpr TableRefuseReason invalid_value = TableRefuseReason::invalid_value;
+    static constexpr TableRefuseReason allocation_failed = TableRefuseReason::allocation_failed;
+    static constexpr TableRefuseReason wire_damaged = TableRefuseReason::wire_damaged;
+    static constexpr TableRefuseReason malformed = TableRefuseReason::malformed;
+    static constexpr TableRefuseReason clamped = TableRefuseReason::clamped;
+    static constexpr TableRefuseReason kind_mismatch = TableRefuseReason::kind_mismatch;
+    static constexpr TableRefuseReason base64_damaged = TableRefuseReason::base64_damaged;
+    static constexpr TableRefuseReason base64_not_canonical = TableRefuseReason::base64_not_canonical;
+    static constexpr TableRefuseReason integrity_mismatch = TableRefuseReason::integrity_mismatch;
+    static constexpr TableRefuseReason non_finite = TableRefuseReason::non_finite;
+    static constexpr TableRefuseReason blob_shared = TableRefuseReason::blob_shared;
+    static constexpr TableRefuseReason previous_form = TableRefuseReason::previous_form;
+    static constexpr TableRefuseReason newer_form = TableRefuseReason::newer_form;
+    static constexpr TableRefuseReason message_form_as_file = TableRefuseReason::message_form_as_file;
+    static constexpr TableRefuseReason layout_unknown = TableRefuseReason::layout_unknown;
+    static constexpr TableRefuseReason layout_unsupported = TableRefuseReason::layout_unsupported;
+    static constexpr TableRefuseReason layout_newer = TableRefuseReason::layout_newer;
+    static constexpr TableRefuseReason layout_malformed = TableRefuseReason::layout_malformed;
+    static constexpr TableRefuseReason layout_count_mismatch = TableRefuseReason::layout_count_mismatch;
+    static constexpr TableRefuseReason layout_kind_unknown = TableRefuseReason::layout_kind_unknown;
+    static constexpr TableRefuseReason layout_kind_invalid = TableRefuseReason::layout_kind_invalid;
+    static constexpr TableRefuseReason layout_size_mismatch = TableRefuseReason::layout_size_mismatch;
+    static constexpr TableRefuseReason layout_tree_unclosed = TableRefuseReason::layout_tree_unclosed;
+    static constexpr TableRefuseReason layout_too_deep = TableRefuseReason::layout_too_deep;
+    static constexpr TableRefuseReason layout_record_too_large = TableRefuseReason::layout_record_too_large;
+    static constexpr TableRefuseReason plan_too_large = TableRefuseReason::plan_too_large;
+    static constexpr TableRefuseReason no_layout = TableRefuseReason::no_layout;
+    static constexpr TableRefuseReason batch_too_large = TableRefuseReason::batch_too_large;
+    static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
+    static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
+    static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason no_vocabulary = ::armdemo::no_vocabulary;
+    static constexpr TableRefuseReason second_announcement = ::armdemo::second_announcement;
+    static constexpr TableRefuseReason vocabulary_too_large = ::armdemo::vocabulary_too_large;
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -158,6 +240,11 @@ struct TableReport
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
+    // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
+    // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
+    // the ONE node, never a copy per slot, and the strict read refuses
+    // blob_shared. The Go oracle is internal/codegen/gotable/gotable.go.
+    int32_t blob_shared = 0;
     // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
     // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
     // zero counters and a false flag are what a clean read prints too, so the
@@ -167,6 +254,10 @@ struct TableReport
     // was not refused has no reason, and this member is the one the caller
     // must not look at then (docs/SPEC-TABLES.md §3.3).
     TableMessageReason reason = newer_form;
+    // WHOLE-FILE DAMAGE can have a named cause even when it is not a refusal:
+    // integrity_mismatch is §2.14's checked-trailer damage. Read this member
+    // when malformed is true; the reason above remains the message refusal name.
+    TableRefuseReason damage_reason = ok;
     // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
     // the reason duplicate is: a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
@@ -174,39 +265,15 @@ struct TableReport
     // says what a READER could not name and that stays true.
     int32_t retained = 0;    // unknown fields whose bytes were kept
     int32_t retain_lost = 0; // every unknown this load or save could not keep
+    // THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): the
+    // same TableRefuseReason a measure's -1 and a cook's Open answer, set by
+    // the plain names and ReadStrict on every refusal and ok otherwise.
+    // unknown, widened and retained alone leave it ok.
+    TableRefuseReason refuse_reason = ok;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
-    // the hash and nothing else. Zero on every other path.
+    // the hash and nothing else. Zero on every other path, and it stays LAST on
+    // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
-};
-
-
-// WHY A FILE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5, §7, §19.2): the
-// one vocabulary a cook's Open, a block's BlockOpen and a load measure's -1
-// share, because a caller asking "why can I not have this file" is
-// asking one question whichever call refused it. The FIRST failing clause names the
-// reason, in the order §7 enumerates, so one file answers one value in every
-// language. A refusal moves no counter, and a match writes nothing: the
-// out-parameter is touched on the refusal path only.
-//
-// It is not the MESSAGE FORM's vocabulary (TableMessageReason, §3.3): a caller
-// meeting one of these has been refused a FILE, by a header match or by a
-// measure.
-enum TableRefuseReason
-{
-    ok,                    // no clause failed: the only value beside a non-null root (§7)
-    not_a_cook,            // the magic is neither this build's constant nor its byte reversal, or the byte-order word contradicts the magic
-    foreign_order,         // the magic byte-reversed: a cook of the other byte order (§7.1)
-    wrong_build_version,   // the build_version word is not this build's (§20)
-    reserved_not_zero,     // a reserved header word is not zero (§7.1)
-    bad_alignment,         // the alignment word is not a power of two, is below eight, is above sixty-four, or is not a multiple of the root's own alignof
-    truncated,             // the part lengths against the caller's length, or a data part too short to hold the root
-    unaligned_base,        // the pointer the caller passed is not aligned for the region: the caller's defect, not the file's
-    bad_layout,            // BlockOpen (§19.2): a pitch, a count, an offset or an extent that disagrees with this build's or leaves the block
-    unknown_form,          // at a MEASURE (§3, §6.5): a form byte this build does not carry, refused before any read
-    count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
-    count_over_extent_cap, // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
-    blob_over_size_cap,    // a blob whose length is past the derived-size cap (§3.1, §11)
-    data_cycle             // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
 };
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
@@ -291,8 +358,18 @@ struct TableFieldInfo
     uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
-    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_min;       // the float range; an integer range also has the exact columns below
     double range_max;
+    // THE EXACT INTEGER RANGE (docs/SPEC-TABLES.md §8.1, §4): an integer kind's
+    // declared bounds as the exact integers the schema wrote, beside the
+    // float64 pair that stays for float and fixed-point ranges. A signed kind
+    // fills range_int_min/range_int_max, an unsigned kind (and bits(N)) fills
+    // range_uint_min/range_uint_max. Both pairs are zero on every other field,
+    // and the wide kinds (18-29) carry none: their exact bounds are in wide.
+    int64_t range_int_min;
+    int64_t range_int_max;
+    uint64_t range_uint_min;
+    uint64_t range_uint_max;
     // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
     // field's F — its storage holds units × 2^F — and wide is the declared
     // range on that RAW scale, exact, as two 128-bit two's-complement values
@@ -346,6 +423,15 @@ struct TableFieldInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // A CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1, §2.9):
+    // true on every map and []T, with array_bound 0 beside it, and false on
+    // every other field. It is the ONE TELL, apart from the §2.13.1
+    // Unbounded (unbounded text) column, so a walker reads the container
+    // from here and never infers it from array_bound — zero is a plain
+    // scalar's bound too. It sits last so every emitted row stays a
+    // positional aggregate initializer, and emitFieldInfo fills it from the
+    // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
+    bool unbounded_container;
 };
 
 struct TableTypeInfo
@@ -370,6 +456,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -802,7 +891,7 @@ inline int64_t TableKindWidth( uint8_t kind )
         case 1: case 2: case 6: case 20: case 25: return 1;
         case 3: case 7: case 21: case 26: return 2;
         case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: return 8;
+        case 5: case 9: case 11: case 23: case 28: case 36: return 8; // 36 is the timestamp, the i64 payload (§2.11)
         case 18: case 19: case 24: case 29: return 16;
     }
     return 0;
@@ -894,9 +983,18 @@ const uint8_t kTableWireForm = 1;
 // compile-time facts of this header, like the id table's own capacity, so the
 // probe allocates nothing and the header stays dependency-free: the slots are
 // a local of TableOpen and nothing outside it can see them.
-static const int32_t kTableProbeBound = 128;
-static const int32_t kTableProbeSlots = 256;
-static const int32_t kTableProbeShift = 56;   // 64 - 8, and 2^8 is kTableProbeSlots
+//
+// kTableProbeBound is THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): the
+// largest id table a reader accepts. A table that claims more entries is
+// MALFORMED for the whole wire, exactly as a count whose entries run past the
+// front of the file is, and is refused before any entry is touched. Below it
+// the whole distinctness walk is the probe, so a hostile file cannot steer a
+// reader into an O(n^2) pairwise scan: the worst case the probe can reach is
+// n(n-1)/2 slot-id comparisons at n = kTableProbeBound, a fixed 8,386,560,
+// against the bytes/8-bounded pairwise walk it replaces.
+static const int32_t kTableProbeBound = 4096;
+static const int32_t kTableProbeSlots = 8192;
+static const int32_t kTableProbeShift = 51;   // 64 - 13, and 2^13 is kTableProbeSlots
 
 // TableOpen reads the form byte and the trailer, in that order, and hands back
 // the ROOT BODY. It answers one of three verdicts, because five zero counters
@@ -925,6 +1023,11 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     uint64_t hi = uint64_t( tail[4] ) | uint64_t( tail[5] ) << 8 | uint64_t( tail[6] ) << 16 | uint64_t( tail[7] ) << 24;
     uint64_t count = lo | ( hi << 32 );
     if ( count > (uint64_t) ( bytes / 8 ) ) { return TableOpenDamaged; }
+    // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that claims
+    // more than kTableProbeBound entries is malformed for the whole wire, even
+    // where the buffer would hold them, so the distinctness walk below stays
+    // bounded no matter how large the file is.
+    if ( count > (uint64_t) kTableProbeBound ) { return TableOpenDamaged; }
     const int64_t span = (int64_t) count * 8 + 8;
     if ( span + 1 > bytes ) { return TableOpenDamaged; }
     table.entries = buffer + bytes - span;
@@ -935,42 +1038,27 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     // at (docs/SPEC-TABLES.md §3).
     //
     // The check is READ SIDE, so it is unconditional: it never compiles out
-    // under NDEBUG and it never softens (§3.4). The two arms below answer
-    // TableOpenDamaged on exactly the same tables and TableOpenOk on exactly
-    // the same tables — the entry count picks WHICH walk finds a repeat and
-    // nothing else.
+    // under NDEBUG and it never softens (§3.4). It is one PROBE over a stack
+    // array of kTableProbeSlots slots — the same Fibonacci multiply
+    // TableIds::bucket_of interns with, taken at the top thirteen bits, then
+    // linear probing — and there is no pairwise arm left to fall back to: the
+    // entry count is capped at kTableProbeBound above, so the probe always
+    // completes and the walk is bounded for every table a reader accepts.
+    // Which slots are taken rides in a separate OCCUPANCY BITMAP rather than
+    // in an empty-slot sentinel, because AN ENTRY IS fnv1a64( name ) AND
+    // NOTHING ELSE (§3): a hash of 0 is an ordinary id, 0xFFFFFFFFFFFFFFFF is
+    // the node table's, and there is no 64-bit value the wire holds back to
+    // mean "no id" — reference 0 is a POSITION and never an entry.
     //
-    // Up to kTableProbeBound entries the walk is a PROBE over a stack array of
-    // kTableProbeSlots slots: the same Fibonacci multiply TableIds::bucket_of
-    // interns with, taken at the top eight bits, then linear probing. Which
-    // slots are taken rides in a separate OCCUPANCY BITMAP rather than in an
-    // empty-slot sentinel, because AN ENTRY IS fnv1a64( name ) AND NOTHING
-    // ELSE (§3): a hash of 0 is an ordinary id, 0xFFFFFFFFFFFFFFFF is the node
-    // table's, and there is no 64-bit value the wire holds back to mean "no
-    // id" — reference 0 is a POSITION and never an entry. Above the bound the
-    // pairwise walk runs unchanged, and no table is ever charged for both.
-    //
-    // THE IDS ARE THE WRITER'S, SO THE WORST CASE IS THE ATTACKER'S, and it is
-    // worth stating plainly. The multiply is invertible, so a hostile writer
-    // can land every entry of a table in one bucket; the probe has no seed and
-    // cannot be steered away from that. The naive "bound x slots" ceiling is
-    // not the true one, because a linear-probe cluster can be no longer than
-    // the entries already standing in it, so the nth insert probes at most n
-    // slots and the whole probe costs at most n(n+1)/2 = 8,256 SLOT
-    // COMPARISONS at n = 128, against the pairwise walk's n(n-1)/2 = 8,128.
-    // The probe therefore does NOT beat the pairwise walk on comparison count
-    // in the worst case, and no choice of bound would make it: against chosen
-    // ids no fixed hash can. What it beats, at every count and in the worst
-    // case exactly as much as in the best, is how often the check touches the
-    // WIRE. TableIdTable::at() decodes eight bytes a call, and the probe makes
-    // EXACTLY n of them where the pairwise walk makes n(n-1)/2 inner decodes
-    // beside n-1 outer ones: 128 against 8,255 at n = 128. The comparisons
-    // that remain are u64 loads out of one stack array. That is the trade.
-    // The bound sits at 128 in 256 slots, not higher, for two reasons that are
-    // not the comparison count: the worst case a hostile table can force stays
-    // bounded at 8,256 rather than 32,896, and the slots are 2 KB of stack
-    // rather than 4 KB. Every table this schema writes is far under it.
-    if ( table.count > 1 && table.count <= (int64_t) kTableProbeBound )
+    // THE IDS ARE THE WRITER'S, SO THE WORST CASE IS THE ATTACKER'S. The
+    // multiply is invertible, so a hostile writer can land every entry in one
+    // bucket, and a linear-probe cluster can be no longer than the entries
+    // already standing in it: the nth insert probes at most n slots, so the
+    // whole walk costs at most n(n-1)/2 = 8,386,560 SLOT-ID COMPARISONS at
+    // n = kTableProbeBound, a fixed ceiling the count cap holds regardless of
+    // the file's size. Above the bound the table is refused before any entry
+    // is touched at all.
+    if ( table.count > 1 )
     {
         uint64_t seen[ kTableProbeSlots ];
         uint64_t used[ kTableProbeSlots / 64 ];
@@ -990,17 +1078,6 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
                 }
                 if ( seen[s] == id ) { return TableOpenDamaged; }
                 s = ( s + 1 ) & uint32_t( kTableProbeSlots - 1 );
-            }
-        }
-    }
-    else
-    {
-        for ( int64_t i = 1; i < table.count; i++ )
-        {
-            const uint64_t id = table.at( uint64_t( i ) + 1 );
-            for ( int64_t j = 0; j < i; j++ )
-            {
-                if ( table.at( uint64_t( j ) + 1 ) == id ) { return TableOpenDamaged; }
             }
         }
     }
@@ -1325,7 +1402,7 @@ inline int64_t TableMessageKindBits( uint8_t kind )
         case 2: case 6: case 20: case 25: return 8;
         case 3: case 7: case 21: case 26: return 16;
         case 4: case 8: case 22: case 27: return 32;
-        case 5: case 9: case 23: case 28: return 64;
+        case 5: case 9: case 23: case 28: case 36: return 64; // 36 is the timestamp, the i64's width (§2.11)
         default: return 128;
     }
 }
@@ -1391,7 +1468,9 @@ inline bool TableMessageFixedKind( uint8_t kind ) { return kind >= 20 && kind <=
 
 inline bool TableMessageKnownKind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+    // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
+    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -1566,6 +1645,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 {
     if ( kind == 1 ) { return 1; }
     if ( kind == 11 ) { return 64; }
+    if ( kind == 36 ) { return 64; } // the timestamp's count is sixty-four raw bits (§2.11, §3.3)
     if ( kind == 10 ) { return packing == 2 ? value_bits : 32; }
     if ( TableMessageIntegerKind( kind ) || TableMessageFixedKind( kind ) )
     {
@@ -2177,6 +2257,20 @@ inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 )
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
+// THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
+// (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
+// -1 of <T>FixedLoad carries one, and a framing-damage return keeps
+// "malformed" set BESIDE it. They are the one vocabulary's own values
+// (TableRefuseReason, §6.5), named here as well so the fixed form's callers
+// keep the spelling they already read.
+#define SCHEMA_HAS_FIXED_REASON_NAMES 1
+struct TableFixedReason
+{
+    static constexpr TableRefuseReason layout_unknown    = TableRefuseReason::layout_unknown;
+    static constexpr TableRefuseReason truncated         = TableRefuseReason::truncated;
+    static constexpr TableRefuseReason reserved_not_zero = TableRefuseReason::reserved_not_zero;
+};
+
 // ---------------------------------------------------------------------------
 // THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 // ---------------------------------------------------------------------------
@@ -2196,6 +2290,7 @@ constexpr uint8_t kTableFixedForm = 3;
 // was stamped by.
 constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
+
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries copy, count, text and
 // bool; the rest are what a plan compiled from another writer's layout adds.
@@ -2236,6 +2331,26 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #define TABLE_RESTRICT __restrict__
 #else
 #define TABLE_RESTRICT
+#endif
+
+// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS: the two
+// counters a *FixedClampBody takes are the caller's locals, never a field of
+// the value. An int32_t & may alias every int32_t field the pass stores to, so
+// unqualified, each clamp reloads the counter and the pass does not vectorize.
+// The qualifier is per compiler, each one's MEASURED best of the plain
+// reference, __restrict, a local counter stored once at the end, and both
+// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+//   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
+//   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
+//          local counter 307.7, both slower;
+//   MSVC and any other compiler: the plain reference, the portable form.
+// A build may define TABLE_CLAMP_RESTRICT itself to override the choice.
+#ifndef TABLE_CLAMP_RESTRICT
+#if defined( __clang__ )
+#define TABLE_CLAMP_RESTRICT __restrict__
+#else
+#define TABLE_CLAMP_RESTRICT
+#endif
 #endif
 
 // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
@@ -2623,6 +2738,65 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     }
     report->clamped += clamped;
     report->widened += widened;
+}
+
+// ---- THE COUNT AND TEXT PRE-SCAN -------------------------------------------
+//
+// A COUNT OR LENGTH PAST THE PLAN'S BOUND REFUSES BY NAME (docs/SPEC-TABLES.md
+// §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5): count_over_bound for a count,
+// length_over_bound for a text length, checked before any destination byte is
+// written — the count or length lying about the wire and not about the slack.
+// REFUSE is total: no counter moves, nothing is decoded, and not one destination
+// byte is written. It walks each entry under its own guards, reads only the
+// source and writes nothing. It answers true with the refusal in why; false
+// means the plan holds the record's counts and lengths.
+inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, int32_t guarded,
+                                 const uint8_t * src,
+                                 const TableFixedGuardLink * guard_pool,
+                                 TableMessageReason & why )
+{
+    for ( int32_t i = 0; i < count; ++i )
+    {
+        const TableFixedEntry & p = plan[i];
+        // A PLAN IS PARTITIONED (§4.1): every UNGUARDED entry first, then every
+        // guarded one. Below the split there is no guard to test — the guard
+        // lane is kTableFixedNoGuard and must never be read as an offset. Above
+        // it, an arm's entry runs only under its own tag and refuses only when
+        // it runs.
+        if ( i >= guarded )
+        {
+            if ( p.guard_count > 0 )
+            {
+                // THE POOLED CHAIN (§5.8 row 6): same walk the run uses.
+                bool matches = true;
+                for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+                {
+                    const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
+                        ( ( const uint8_t * ) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                    if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+                }
+                if ( !matches ) { continue; }
+            }
+            else
+            {
+                if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+                if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+            }
+        }
+        if ( p.op == kTableFixedCount )
+        {
+            int32_t v = (int32_t) TableFixedGet32( src + p.src );
+            if ( v < 0 || v > (int32_t) p.size ) { why = count_over_bound; return true; }
+        }
+        else if ( p.op == kTableFixedText )
+        {
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t cap = p.size / unit;
+            int32_t v = (int32_t) TableFixedGet32( src + p.src );
+            if ( v < 0 || (uint32_t) v > cap ) { why = length_over_bound; return true; }
+        }
+    }
+    return false;
 }
 
 // ---- THE PREFILL -----------------------------------------------------------
@@ -3645,6 +3819,43 @@ inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntr
     }
 }
 
+// THE CRC-32C OF every byte before a file's trailer (docs/SPEC-TABLES.md
+// §2.14). The Go oracle is hash/crc32.Checksum with crc32.Castagnoli; the
+// fixed test values in integrity_test.go are that function's answers.
+inline uint32_t schema_crc32c( const uint8_t * data, int64_t bytes )
+{
+    uint32_t crc = 0xFFFFFFFFu;
+    for ( int64_t i = 0; i < bytes; ++i )
+    {
+        crc ^= (uint32_t) data[i];
+        for ( int k = 0; k < 8; ++k )
+        {
+            const uint32_t mask = (uint32_t) ( -(int32_t) ( crc & 1u ) );
+            crc = ( crc >> 1 ) ^ ( 0x82F63B78u & mask );
+        }
+    }
+    return crc ^ 0xFFFFFFFFu;
+}
+
+// schema_integrity_holds is §2.14's READ check: four trailer bytes, little-endian,
+// equal to the CRC-32C of everything before them. A file too short to hold a
+// trailer does not hold one either, which is damage named integrity_mismatch
+// and never a refusal.
+inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
+{
+    if ( data == NULL || bytes < 5 ) { return false; }
+    const int64_t n = bytes - 4;
+    return TableFixedGet32( data + n ) == schema_crc32c( data, n );
+}
+
+// schema_integrity_seal is §2.14's WRITE: the trailer after the n bytes already
+// written, and the file's longer length.
+inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
+{
+    TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
+    return n + 4;
+}
+
 } // namespace armdemo
 
 #endif // ARMDEMO_SCHEMA_TABLE_PRIMITIVES
@@ -4380,6 +4591,11 @@ struct TableNumbering
     TableNodeEntry * entries = NULL;
     int64_t count = 0;
     int64_t capacity = 0;
+    // ONE BLOB RECORD NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5, §16.7):
+    // every writer refuses the graph by name, blob_shared, rather than writing
+    // a copy per slot. The Go oracle is internal/codegen/gotable/regions.go
+    // (TableNumbering.shared).
+    bool shared = false;
 };
 
 // The numbering allocates through the map's pair rather than carrying a second
@@ -4390,6 +4606,7 @@ inline void TableNumberingInit( TableNumbering & n, TableAllocator allocator )
     n.entries = NULL;
     n.count = 0;
     n.capacity = 0;
+    n.shared = false;
 }
 
 inline void TableNumberingShutdown( TableNumbering & n )
@@ -4584,7 +4801,10 @@ struct TableExtentCarve;
 struct TableNodeMap
 {
     uint8_t * base = NULL;
-    const TableNodeDirEntry * entries = NULL;
+    // MUTABLE because an ONCE read marks a blob's entry when a slot first
+    // names it (docs/SPEC-TABLES.md §2.5): a second slot names the same node
+    // and is counted, never decoded again.
+    TableNodeDirEntry * entries = NULL;
     int64_t count = 0;   // the ROOT's entry included, so it is records + 1
     bool good = false;   // the node table read whole; a numbering that failed resolves nothing
     // WHERE THE NODES LIVE, and therefore what a resolved slot holds: a region
@@ -4606,6 +4826,11 @@ struct TableNodeMap
     // int32 cap met while a body decoded. LoadBuilder answers NULL for it
     // and moves no counter; mutable for the reason the cursor is.
     mutable bool refused = false;
+    // ONCE is the file and message REGION reads' rule (§2.5, §16.7): the first
+    // slot naming a blob marks its directory entry, and every later slot naming
+    // it is one blob_shared event and resolves to the ONE decoded node. The Go
+    // oracle is internal/codegen/gotable/regions.go (TableNodeMap.Once).
+    bool once = false;
 };
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
@@ -4632,8 +4857,21 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     }
     if ( entry.type_id != target )
     {
-        report->kind_mismatch++;
-        return;
+        // A blob named from two slots (docs/SPEC-TABLES.md §2.5, §16.7): the
+        // first slot marked the entry with the complement of its type id, so a
+        // second slot naming it is blob_shared and still resolves to the one
+        // node. No other target has this reading.
+        if ( !map.once || entry.type_id != ~target ||
+             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
+        {
+            report->kind_mismatch++;
+            return;
+        }
+        report->blob_shared++;
+    }
+    else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
+    {
+        map.entries[index - 1].type_id = ~target;
     }
     slot.value = map.arena ? (int64_t) entry.offset
                           : (int64_t) ( ( map.base + entry.offset ) - (const uint8_t *) &slot );
@@ -5972,6 +6210,7 @@ struct TableMessageRetainIn
     TableBitReader * r;
     const TableVocabulary * vocabulary;
     int64_t index_bits;
+    int64_t limit = 0;               // the record's remaining resolved bytes: the bound on the walk
 };
 
 // THE ELEMENT'S OWN ENTRY, which a resolved entry carries flattened beside its
@@ -6013,6 +6252,25 @@ inline int64_t TableMessageRetainWidth( uint8_t kind )
         case 5: case 9: case 11: case 23: case 28: return 8;
         case 18: case 19: case 24: case 29: return 16;
         default: return -1;
+    }
+}
+
+// THE LEAST A RESOLVED ELEMENT CAN WEIGH, which is what bounds an announced
+// count against the caller's remaining record before one element is converted.
+// A scalar takes its storage width whatever its announced value bits, an opaque
+// takes at least its zero length, a body at least its terminator, and a union
+// or enum its id. The answer is a LOWER bound: a count that cannot fit this many
+// bytes per element cannot fit the record at all, and a zero-bit count is
+// refused here rather than walked (§6.6, THE SECURITY BOUND).
+inline int64_t TableMessageRetainElementMinimum( uint8_t kind )
+{
+    const int64_t width = TableMessageRetainWidth( kind );
+    if ( width > 0 ) { return width; }
+    switch ( kind )
+    {
+        case 12: case 31: case 32: case 33: return 1;
+        case 13: case 14: case 16: case 15: case 30: return 8;
+        default: return 1;
     }
 }
 
@@ -6217,6 +6475,16 @@ inline int64_t TableMessageRetainElements( TableMessageRetainIn & s, const Table
     const TableMessageEntry element = TableMessageRetainElement( entry );
     TableRetainInRaw( s.out, &entry.elem_kind, 1 );
     TableRetainInLeb( s.out, n ); // the count rides as the file capture spells it, and the emit reads it back
+    // A ZERO-BIT ELEMENT STILL LAYS DOWN ITS STORAGE WIDTH, so the announced
+    // count is tested against the caller's remaining record BEFORE one element
+    // is converted: a count no record can hold refuses here rather than four
+    // billion times through the loop (§6.6, THE SECURITY BOUND).
+    int64_t minimum = TableMessageRetainElementMinimum( element.kind );
+    if ( entry.kind == 16 ) { minimum += 16; } // the key id and the framed slot
+    if ( minimum > 0 && ( s.out.out_at > s.limit || n > (uint64_t) ( ( s.limit - s.out.out_at ) / minimum ) ) )
+    {
+        return -1;
+    }
     for ( uint64_t i = 0; i < n; i++ )
     {
         if ( entry.kind == 16 )
@@ -6234,7 +6502,7 @@ inline int64_t TableMessageRetainElements( TableMessageRetainIn & s, const Table
 
 inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
 {
-    if ( depth > kTableRetainWalkDepthMax ) { return -1; }
+    if ( depth > kTableRetainWalkDepthMax || s.out.out_at > s.limit ) { return -1; }
     const int64_t began = s.out.out_at;
     switch ( entry.kind )
     {
@@ -6257,6 +6525,7 @@ inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableM
 
 inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
 {
+    if ( s.out.out_at > s.limit ) { return -1; }
     const int64_t began = s.out.out_at;
     switch ( entry.kind )
     {
@@ -6334,6 +6603,10 @@ inline void TableMessageRetainCapture( TableRetain * retain, TableBitReader & r,
     probe.r = &walk;
     probe.vocabulary = &vocabulary;
     probe.index_bits = index_bits;
+    // THE RECORD'S REMAINING PAYLOAD BUDGET: what the caller's capacity leaves
+    // after this record's header and path, which bounds the walk before it
+    // converts a count the record could never hold (§6.6).
+    probe.limit = retain->capacity - retain->used - kTableRetainRecordHeader - 8 * (int64_t) path.depth;
     const int64_t payload = TableMessageRetainPayload( probe, entry, 0 );
     if ( payload < 0 || walk.offset != end )
     {
@@ -7310,7 +7583,7 @@ struct Node {
 // SlotType: union Slot's tag — None = 0, then each variant in declared order (SPEC §4.8)
 enum class SlotType : uint8_t {
     None = 0,
-    Node = 1,
+    Vertex = 1,
     Plain = 2,
     Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
@@ -7322,7 +7595,7 @@ inline const char * EnumName( SlotType value )
     switch ( value )
     {
         case SlotType::None: return "None";
-        case SlotType::Node: return "Node";
+        case SlotType::Vertex: return "Vertex";
         case SlotType::Plain: return "Plain";
         default: return "???";
     }
@@ -7335,7 +7608,7 @@ inline const char * EnumName( SlotType value )
 // `value_length` or `value_count`. Such a union has no packet wire and lives
 // here, after its arms. Construction is None: the tag alone is initialized; an
 // arm's storage is established when the arm is selected — by SlotLoadBody
-// before it decodes, or by assigning it: value.node = a *Node.
+// before it decodes, or by assigning it: value.vertex = a *Node.
 // Bytes of unselected arms are indeterminate.
 struct Slot
 {
@@ -7343,7 +7616,7 @@ struct Slot
 
     union
     {
-        TableRef node; // *Node — a node index on the wire (§3.1)
+        TableRef vertex; // *Node — a node index on the wire (§3.1)
         int32_t plain;
     };
 
@@ -7354,7 +7627,7 @@ struct Slot
 // member initializers (docs/SPEC-TABLES.md)
 struct Ring {
     TableList<Slot> items; // Slot: the element array, empty until an Add
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // SlotsType: union Slots's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -7404,7 +7677,7 @@ struct Slots
 // member initializers (docs/SPEC-TABLES.md)
 struct Rack {
     TableList<Slots> items; // Slots: the element array, empty until an Add
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // table Tray — TABLE-wire storage: relocatable, bounded, defaults in the
@@ -7412,7 +7685,7 @@ struct Rack {
 struct Tray {
     Slots entries[2]; // used count beside it; count in [0, 2]
     int32_t entries_count = 0;
-    int32_t after = 0;
+    int32_t past = 0;
 };
 
 // ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
@@ -7432,7 +7705,7 @@ inline void RingReset( Ring & value )
     value.items.elements.value = 0; // Slot: empty
     value.items.count = 0;
     value.items.padding = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline void RackReset( Rack & value )
@@ -7440,7 +7713,7 @@ inline void RackReset( Rack & value )
     value.items.elements.value = 0; // Slots: empty
     value.items.count = 0;
     value.items.padding = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline void TrayReset( Tray & value )
@@ -7451,7 +7724,7 @@ inline void TrayReset( Tray & value )
     value.entries[0].type = SlotsType::None;
     for ( int32_t i = 1; i < 2; i++ ) { value.entries[i] = value.entries[0]; }
     value.entries_count = 0;
-    value.after = 0;
+    value.past = 0;
 }
 
 inline int64_t NodeMeasureMessageBody( int64_t at, const Node & value );
@@ -7708,7 +7981,7 @@ inline TableOpenVerdict NodeLoadVerdict( Node & value, const uint8_t * buffer, i
     if ( verdict != TableOpenOk )
     {
         NodeReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -7716,6 +7989,7 @@ inline TableOpenVerdict NodeLoadVerdict( Node & value, const uint8_t * buffer, i
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
+            to->refuse_reason = unknown_form; // a form byte this FILE read does not carry (§3, §6.5)
             to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
         }
         return verdict;
@@ -7727,6 +8001,7 @@ inline TableOpenVerdict NodeLoadVerdict( Node & value, const uint8_t * buffer, i
     {
         NodeReset( value );
         to->malformed = true;
+        to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
@@ -7735,14 +8010,46 @@ inline TableOpenVerdict NodeLoadVerdict( Node & value, const uint8_t * buffer, i
     return TableOpenOk;
 }
 
-// The bool is the BODY reaching its own terminator, and it is what it has
-// always been: framing damage inside a field keeps what it decoded, flags
-// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
-// False is a wire nothing could be decoded from: a refusal, a table that
-// cannot be read whole, or a root body the walk could not finish.
-inline bool NodeLoad( Node & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+// NodeLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
+// the recovered value and its report, counting clamped, kind_mismatch and
+// malformed, and answers the plain name's BASE behaviour — true when the
+// body reached its own terminator, false for a refusal, an unreadable table
+// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+inline bool NodeLoadTolerant( Node & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return NodeLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
+}
+
+// The PLAIN NodeLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
+// refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with false as its
+// refusal value, the supplied report overwritten with this read's report
+// and its reason set, the value reset to its declared defaults. unknown and
+// widened alone never refuse.
+inline bool NodeLoad( Node & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const TableOpenVerdict verdict = NodeLoadVerdict( value, buffer, bytes, out );
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
+        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // as Go's TableReport.Err() orders them, and damage before both.
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        NodeReset( value );
+        return false;
+    }
+    out->refuse_reason = ok;
+    return true;
 }
 
 // The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
@@ -7948,12 +8255,12 @@ inline int64_t RingMeasureBody( const Ctx & ctx, const TableNumbering & numberin
                     switch ( cursor_items[elem_i_items].type )
                     {
                         case SlotType::None: break;
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 8, 0x3c2f1bbad18642adull );
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return -1; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
@@ -7976,7 +8283,7 @@ inline int64_t RingMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             bytes += TableLebBytes( ref_items ) + 1 + TableLebBytes( (uint64_t) ( body_items ) ) + ( body_items );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -7999,12 +8306,12 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     switch ( cursor_items[elem_i_items].type )
                     {
                         case SlotType::None: break;
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 8, 0x3c2f1bbad18642adull );
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return -1; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
@@ -8033,19 +8340,19 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                 {
                     switch ( cursor_items[elem_i_items].type )
                     {
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             const uint64_t arm_ref_itemsu = ids.ref_at( 8, 0x3c2f1bbad18642adull );
                             int64_t arm_payload_itemsu = 0;
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return false; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
                             }
-                            w.header( arm_ref_itemsu, 17 ); w.putleb( (uint64_t) arm_payload_itemsu ); // node
+                            w.header( arm_ref_itemsu, 17 ); w.putleb( (uint64_t) arm_payload_itemsu ); // vertex
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return false; }
                                 w.putleb( arm_index_itemsu ); // a node index, null as 0 (§3.1)
@@ -8067,10 +8374,10 @@ inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -8167,18 +8474,18 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                                         TableReader elem_arm_items( sub.buffer + sub.offset, (int64_t) elem_arm_len_items, r.report, r.ids );
                                         switch ( elem_arm_id_items ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                                         {
-                                            case 0x3c2f1bbad18642adull: // node
+                                            case 0x3c2f1bbad18642adull: // vertex
                                             {
                                                 if ( elem_arm_kind_items != 17 )
                                                 {
                                                     ( *slot ).type = SlotType::None; r.report->kind_mismatch++; break;
                                                 }
-                                                ( *slot ).type = SlotType::Node;
+                                                ( *slot ).type = SlotType::Vertex;
                                                 {
                                                     uint64_t node_index_itemsa = 0;
                                                     if ( !elem_arm_items.getleb( node_index_itemsa ) ) { ( *slot ).type = SlotType::None; r.report->malformed = true; break; }
                                                     if ( elem_arm_items.offset != elem_arm_items.size ) { ( *slot ).type = SlotType::None; r.report->malformed = true; break; }
-                                                    TableNodeResolve( nodes, ( *slot ).node, node_index_itemsa, 0x66bd1cc6d2f6b68dull, r.report ); // *Node
+                                                    TableNodeResolve( nodes, ( *slot ).vertex, node_index_itemsa, 0x66bd1cc6d2f6b68dull, r.report ); // *Node
                                                 }
                                                 break;
                                             }
@@ -8224,7 +8531,7 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -8235,7 +8542,7 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -8247,7 +8554,7 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -8290,13 +8597,13 @@ inline int64_t RingMeasureMessageBody( const Ctx & ctx, const TableNumbering & n
                 {
                     switch ( cursor_items[i].type )
                     {
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             bits += kTableMessageRefBitsHere;
                             {
-                                const Node * pointee_node = NodeAt( ctx, cursor_items[i].node ); // *Node
-                                uint64_t index_node = 0;
-                                if ( pointee_node != NULL && !TableNumberingIndex( numbering, (const void *) pointee_node, index_node ) ) { return -1; }
+                                const Node * pointee_vertex = NodeAt( ctx, cursor_items[i].vertex ); // *Node
+                                uint64_t index_vertex = 0;
+                                if ( pointee_vertex != NULL && !TableNumberingIndex( numbering, (const void *) pointee_vertex, index_vertex ) ) { return -1; }
                                 bits += index_bits;
                             }
                             break;
@@ -8313,7 +8620,7 @@ inline int64_t RingMeasureMessageBody( const Ctx & ctx, const TableNumbering & n
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -8347,14 +8654,14 @@ inline bool RingSaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
                 {
                     switch ( cursor_items[i].type )
                     {
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             w.put( 17, kTableMessageRefBitsHere );
                             {
-                                const Node * pointee_node = NodeAt( ctx, cursor_items[i].node ); // *Node
-                                uint64_t index_node = 0;
-                                if ( pointee_node != NULL && !TableNumberingIndex( numbering, (const void *) pointee_node, index_node ) ) { return false; }
-                                w.put( index_node, index_bits );
+                                const Node * pointee_vertex = NodeAt( ctx, cursor_items[i].vertex ); // *Node
+                                uint64_t index_vertex = 0;
+                                if ( pointee_vertex != NULL && !TableNumberingIndex( numbering, (const void *) pointee_vertex, index_vertex ) ) { return false; }
+                                w.put( index_vertex, index_bits );
                             }
                             break;
                         }
@@ -8370,10 +8677,10 @@ inline bool RingSaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -8462,7 +8769,7 @@ inline bool RingLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             {
                                 switch ( arm_2.id )
                                 {
-                                    case 0x3c2f1bbad18642adull: // node
+                                    case 0x3c2f1bbad18642adull: // vertex
                                     {
                                         if ( arm_2.kind != 17 || arm_2.elem_kind != 0 )
                                         {
@@ -8470,11 +8777,11 @@ inline bool RingLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                             if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
                                             break;
                                         }
-                                        ( *slot ).type = SlotType::Node;
+                                        ( *slot ).type = SlotType::Vertex;
                                         {
                                             uint64_t node_index_3 = 0;
                                             if ( !r.get( node_index_3, index_bits ) ) { report->malformed = true; return false; }
-                                            TableNodeResolve( nodes, ( *slot ).node, node_index_3, 0x66bd1cc6d2f6b68dull, report ); // *Node
+                                            TableNodeResolve( nodes, ( *slot ).vertex, node_index_3, 0x66bd1cc6d2f6b68dull, report ); // *Node
                                         }
                                         break;
                                     }
@@ -8540,7 +8847,7 @@ inline bool RingLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -8563,7 +8870,7 @@ inline bool RingLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -8586,7 +8893,7 @@ inline bool RingLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -8652,7 +8959,7 @@ inline int64_t RackMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             bytes += TableLebBytes( ref_items ) + 1 + TableLebBytes( (uint64_t) ( body_items ) ) + ( body_items );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -8758,10 +9065,10 @@ inline bool RackSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -8933,7 +9240,7 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -8944,7 +9251,7 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -8956,7 +9263,7 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -9019,7 +9326,7 @@ inline int64_t RackMeasureMessageBody( const Ctx & ctx, const TableNumbering & n
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -9079,10 +9386,10 @@ inline bool RackSaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -9269,7 +9576,7 @@ inline bool RackLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -9292,7 +9599,7 @@ inline bool RackLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -9315,7 +9622,7 @@ inline bool RackLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -9377,7 +9684,7 @@ inline int64_t TrayMeasureBody( const Ctx & ctx, const TableNumbering & numberin
         }
         bytes += TableLebBytes( ref_entries ) + 1 + TableLebBytes( (uint64_t) ( body_entries ) ) + ( body_entries ); // entries
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -9480,10 +9787,10 @@ inline bool TraySaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
 }
@@ -9655,7 +9962,7 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -9666,7 +9973,7 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -9678,7 +9985,7 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -9738,7 +10045,7 @@ inline int64_t TrayMeasureMessageBody( const Ctx & ctx, const TableNumbering & n
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 32;
@@ -9795,10 +10102,10 @@ inline bool TraySaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.after ), 32 );
+        w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -9962,7 +10269,7 @@ inline bool TrayLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -9985,7 +10292,7 @@ inline bool TrayLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -10008,7 +10315,7 @@ inline bool TrayLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -10158,32 +10465,38 @@ inline int64_t NodeFixedSave( const Node * values, int64_t count, uint8_t * buff
 
 // THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
 // from the known set COMPILE laid down (algorithm §5.3). A stranger's
-// layout is never parsed: unknown hash is layout_newer, known hash with
-// different bytes is layout_malformed, a hash below the floor is
-// layout_unsupported. Identity is a PLAN walked by the same loop.
-inline int64_t NodeFixedLoad( Node * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+// layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
+// different bytes is TableMessageReason::layout_malformed, a hash below the floor is
+// TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
+// NodeFixedLoadTolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
+// every recovered record, with the counters counted onto the report passed.
+inline int64_t NodeFixedLoadTolerant( Node * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
+    // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
+    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
+    // malformed set BESIDE the name, so a caller switching on reason sees it.
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
-        report->reason = data[0] == kTableWireForm ? previous_form
-                       : data[0] == kTableWireMessageForm ? message_form_as_file
-                       : newer_form;
+        report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
+                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
+                       : TableMessageReason::newer_form;
         return -1;
     }
-    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
-    // one is `malformed`, which is what keeps them spendable later.
+    // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
+    // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->malformed = true; return -1; }
+        if ( data[i] != 0 ) { report->malformed = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
-    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
@@ -10195,7 +10508,7 @@ inline int64_t NodeFixedLoad( Node * values, int64_t capacity, const uint8_t * d
     }
     if ( lineage_at < 0 )
     {
-        report->refused = true; report->reason = layout_newer; report->layout_hash = hash; return -1;
+        report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;
     }
     int32_t floor_at = NodeFixedFloor;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
@@ -10203,12 +10516,12 @@ inline int64_t NodeFixedLoad( Node * values, int64_t capacity, const uint8_t * d
 #endif
     if ( lineage_at < floor_at )
     {
-        report->refused = true; report->reason = layout_unsupported; report->layout_hash = hash; return -1;
+        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;
     }
     const TableFixedKnownLayout & known = NodeFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = layout_malformed; return -1;
+        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
     }
     const TableFixedEntry * entries = NodeFixedPlan;
     int32_t entry_count = NodeFixedPlanCount;
@@ -10240,8 +10553,8 @@ inline int64_t NodeFixedLoad( Node * values, int64_t capacity, const uint8_t * d
         else
         {
             TableFixedLayoutView parsed;
-            TableMessageReason why = layout_malformed;
-            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = layout_malformed; return -1; }
+            TableMessageReason why = TableMessageReason::layout_malformed;
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -10256,7 +10569,7 @@ inline int64_t NodeFixedLoad( Node * values, int64_t capacity, const uint8_t * d
             const int32_t made = TableFixedCompile( parsed, NodeFixedLayout, (int32_t) NodeFixedLayoutBytes, NodeFixedDst,
                                                    NodeFixedCover, NodeFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_record_too_large : plan_too_large; return -1; }
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }
             record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
@@ -10277,9 +10590,33 @@ inline int64_t NodeFixedLoad( Node * values, int64_t capacity, const uint8_t * d
             entry_guarded = compiled_guarded;
         }
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
+    // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
+    // the identity lane is a plan too, and a caller's short plan owes the
+    // same name there as it does for a lineage entry.
+    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     const int64_t n = rest / record_bytes;
-    if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
+    // ahead of the first prefill. A count or length past the PLAN's bound
+    // refuses BY NAME — count_over_bound / length_over_bound — checked before
+    // any destination byte is written (docs/SPEC-TABLES.md §3.4,
+    // docs/FIXED-FORM-ALGORITHM.md §4.5). REFUSE is total over the batch too:
+    // a refusal at record k leaves values[0..k-1] as untouched as values[k].
+    {
+        const uint8_t * scan = at;
+        TableMessageReason why = newer_form;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, NodeFixedGuards, why ) )
+            {
+                report->refused = true;
+                report->reason = why;
+                return -1;
+            }
+            scan += record_bytes;
+        }
+    }
     Node defaults;
     if ( fill_count > 0 )
     {
@@ -10288,12 +10625,33 @@ inline int64_t NodeFixedLoad( Node * values, int64_t capacity, const uint8_t * d
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, NodeFixedGuards );
         TableFixedClampKnownRanges( NodeFixedKnownRanges[lineage_at], NodeFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         at += record_bytes;
+    }
+    return n;
+}
+
+// The PLAIN NodeFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+// every refusal of NodeFixedLoadTolerant and for a read the strict rule refuses —
+// malformed, clamped, kind-mismatched or refused — with every value it had
+// written reset to its declared defaults. A supplied report receives THIS
+// read's report. unknown and widened alone never refuse.
+inline int64_t NodeFixedLoad( Node * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    TableReport * out = report != NULL ? report : &local;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const int64_t n = NodeFixedLoadTolerant( values, capacity, data, bytes, plan, plan_capacity, cache, out );
+    if ( n < 0 ) { return -1; }
+    if ( out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    {
+        for ( int64_t k = 0; k < n; ++k ) { NodeReset( values[k] ); }
+        return -1;
     }
     return n;
 }
@@ -10647,10 +11005,10 @@ inline bool RingNumber( const Ctx & ctx, TableNumbering & numbering, const Ring 
         {
             switch ( cursor_items[i].type ) // items: the set arm is the edge
             {
-                case SlotType::Node:
+                case SlotType::Vertex:
                 {
             {
-                const Node * pointee = NodeAt( ctx, cursor_items[i].node ); // node
+                const Node * pointee = NodeAt( ctx, cursor_items[i].vertex ); // vertex
                 if ( pointee != NULL )
                 {
                     bool taken = false;
@@ -10702,10 +11060,10 @@ inline int64_t RingPackMeasure( const Ctx & ctx, TablePackMap & seen, const Ring
         {
             switch ( cursor_items[i].type ) // items: the set arm is the edge
             {
-                case SlotType::Node:
+                case SlotType::Vertex:
                 {
             {
-                const Node * pointee = NodeAt( ctx, cursor_items[i].node ); // node
+                const Node * pointee = NodeAt( ctx, cursor_items[i].vertex ); // vertex
                 if ( pointee != NULL )
                 {
                     bool taken = false;
@@ -10768,11 +11126,11 @@ inline bool RingPackEdges( const Ctx & ctx, TablePackMap & seen, const Ring & sr
         {
             switch ( cursor_items[i].type ) // items: the set arm is the edge
             {
-                case SlotType::Node:
+                case SlotType::Vertex:
                 {
             {
-                placed_items[i].node.value = 0; // node
-                const Node * pointee = NodeAt( ctx, cursor_items[i].node );
+                placed_items[i].vertex.value = 0; // vertex
+                const Node * pointee = NodeAt( ctx, cursor_items[i].vertex );
                 if ( pointee != NULL )
                 {
                     int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
@@ -10783,14 +11141,14 @@ inline bool RingPackEdges( const Ctx & ctx, TablePackMap & seen, const Ring & sr
                     if ( !taken )
                     {
                         if ( entry->open != 0 ) { return false; } // a data cycle
-                        placed_items[i].node.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &placed_items[i].node ); // the one body it already has
+                        placed_items[i].vertex.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &placed_items[i].vertex ); // the one body it already has
                     }
                     else
                     {
                         if ( at + (int64_t) sizeof( Node ) > capacity ) { return false; }
                         used = at + TableAlignUp64( (int64_t) sizeof( Node ) );
                         Node * child = new ( base + at ) Node; // lifetime only: the Pack below memcpy's the whole node over it
-                        placed_items[i].node.value = (int64_t) ( ( base + at ) - (const uint8_t *) &placed_items[i].node );
+                        placed_items[i].vertex.value = (int64_t) ( ( base + at ) - (const uint8_t *) &placed_items[i].vertex );
                         if ( !NodePack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }
                         TablePackMapClose( seen, (const void *) pointee, slot );
                     }
@@ -11432,7 +11790,9 @@ inline int64_t RingMeasureWire( const Ctx & ctx, const Ring & root, TableAllocat
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     int64_t bytes = -1;
-    if ( RingNumberFrom( ctx, numbering, root ) )
+    // A BLOB NAMED FROM TWO SLOTS is refused by name, blob_shared, and
+    // never measured as a copy per slot (docs/SPEC-TABLES.md §2.5, §16.7).
+    if ( RingNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableIds ids;
         bytes = RingMeasureBody( ctx, numbering, ids, root );
@@ -11453,7 +11813,9 @@ inline int64_t RingSaveWire( const Ctx & ctx, const Ring & root, uint8_t * buffe
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
-    if ( !RingNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
+    // THE WRITERS REFUSE A GRAPH WHOSE TWO SLOTS NAME ONE BLOB, by name
+    // blob_shared, never with a bare -1 from a copy per slot (docs/SPEC-TABLES.md §2.5, §16.7).
+    if ( !RingNumberFrom( ctx, numbering, root ) || numbering.shared ) { TableNumberingShutdown( numbering ); return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11506,19 +11868,23 @@ inline int64_t RingSave( const RingBuilder & builder, uint8_t * buffer, int64_t 
 // fields, then the zero reference. Measure derives the numbering and save
 // derives the same one, and nothing passes between them (§3.1).
 template <typename Ctx>
-inline int64_t RingMessageBodyBits( const Ctx & ctx, const Ring & root, int64_t at, TableAllocator allocator )
+inline int64_t RingMessageBodyBits( const Ctx & ctx, const Ring & root, int64_t at, TableAllocator allocator, TableRefuseReason * reason = NULL )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     int64_t bits = -1;
-    if ( RingNumberFrom( ctx, numbering, root ) )
+    if ( RingNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
     {
-        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-        const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
-        if ( table >= 0 )
+        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
+        else
         {
-            const int64_t body = RingMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
-            bits = body < 0 ? -1 : table + body;
+            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+            const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
+            if ( table >= 0 )
+            {
+                const int64_t body = RingMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
+                bits = body < 0 ? -1 : table + body;
+            }
         }
     }
     TableNumberingShutdown( numbering );
@@ -11526,15 +11892,19 @@ inline int64_t RingMessageBodyBits( const Ctx & ctx, const Ring & root, int64_t 
 }
 
 template <typename Ctx>
-inline bool RingMessageBodySave( const Ctx & ctx, const Ring & root, TableBitWriter & w, TableAllocator allocator )
+inline bool RingMessageBodySave( const Ctx & ctx, const Ring & root, TableBitWriter & w, TableAllocator allocator, TableRefuseReason * reason = NULL )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     bool ok = false;
-    if ( RingNumberFrom( ctx, numbering, root ) )
+    if ( RingNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
     {
-        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-        ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && RingSaveMessageBody( ctx, numbering, index_bits, w, root );
+        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
+        else
+        {
+            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+            ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && RingSaveMessageBody( ctx, numbering, index_bits, w, root );
+        }
     }
     TableNumberingShutdown( numbering );
     return ok && !w.overflow;
@@ -11553,8 +11923,9 @@ inline int64_t RingMeasureMessages( const Ring * const * roots, int64_t count, T
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( roots[i] == NULL ) { return -1; }
-        const int64_t body = RingMessageBodyBits( ctx, *roots[i], bits, allocator );
-        if ( body < 0 ) { return -1; }
+        TableRefuseReason why = ok;
+        const int64_t body = RingMessageBodyBits( ctx, *roots[i], bits, allocator, &why );
+        if ( body < 0 ) { if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } return -1; } // §2.5, §16.7
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8;
@@ -11569,7 +11940,13 @@ inline int64_t RingSaveMessages( const Ring * const * roots, int64_t count, uint
     TableRegionCtx ctx;
     for ( int64_t i = 0; i < count; i++ )
     {
-        if ( roots[i] == NULL || !RingMessageBodySave( ctx, *roots[i], batch.w, allocator ) ) { return -1; }
+        if ( roots[i] == NULL ) { return -1; }
+        TableRefuseReason why = ok;
+        if ( !RingMessageBodySave( ctx, *roots[i], batch.w, allocator, &why ) )
+        {
+            if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } // §2.5, §16.7
+            return -1;
+        }
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RingMeasureMessages( roots, count, report, allocator )
@@ -11679,6 +12056,7 @@ inline bool RingLoadMessageBodyInto( TableBitReader & r, const TableVocabulary &
     nodes.entries = directory;
     nodes.count = count + 1;
     nodes.good = false;
+    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
 
     // PASS ONE: the numbering from the framing, every node placed, no body read
     const int64_t records_start = r.offset;
@@ -11798,7 +12176,8 @@ inline int64_t RingLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     // a FORM BYTE this build does not carry is refused by name (§3, §6.5);
-    // a trailer that cannot be read whole is damage and names no reason
+    // a short or mismatched form-1 trailer is damage named integrity_mismatch;
+    // empty and other-form inputs keep TableOpen's classification.
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict == TableOpenRefused ) { if ( reason_out != NULL ) { *reason_out = unknown_form; } return -1; }
     if ( verdict != TableOpenOk ) { return -1; }
@@ -11829,13 +12208,13 @@ inline int64_t RingLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
     return data + attribution;
 }
 
-// RingLoad: decode the tolerant wire into the caller's exact-sized region and
+// RingLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
 // return the root. LOAD IS A SCAN, and that is the whole of its bound: it
 // follows no reference, so there is no depth cap, no visited set and no
 // ordering rule on the indices. Partial results are kept, as everywhere on
 // this wire — the report says what happened. NULL means the CALLER's buffer
 // was wrong.
-inline const Ring * RingLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+inline const Ring * RingLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
@@ -11847,12 +12226,14 @@ inline const Ring * RingLoad( uint8_t * region, int64_t region_bytes, const uint
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return NULL;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -11886,8 +12267,9 @@ inline const Ring * RingLoad( uint8_t * region, int64_t region_bytes, const uint
 
     TableNodeMap nodes;
     nodes.base = region;
-    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
+    nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xdcea4d2bfa11ceebull;
@@ -11958,11 +12340,40 @@ inline const Ring * RingLoad( uint8_t * region, int64_t region_bytes, const uint
     return root;
 }
 
-// RingLoadBuilder: the TOOL's path — the same tolerant decode into a fresh
+// The PLAIN RingLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
+// refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with a NULL root and
+// the supplied report overwritten with this read's report and its reason
+// set. unknown and widened alone never refuse.
+inline const Ring * RingLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const Ring * root = RingLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        return NULL;
+    }
+    out->refuse_reason = ok;
+    return root;
+}
+
+// RingLoadBuilderTolerant: the TOOL's path — the same tolerant decode into a fresh
 // builder, so loaded data can be edited and locked again. The numbering is
 // the same one; what differs is where a node lives and therefore what a
 // resolved slot holds — an arena offset here, a self-relative delta there.
-inline bool RingLoadBuilder( RingBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+inline bool RingLoadBuilderTolerant( RingBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
@@ -11971,12 +12382,14 @@ inline bool RingLoadBuilder( RingBuilder & builder, const uint8_t * wire_file, i
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; }
         return false;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return false;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -12005,6 +12418,7 @@ inline bool RingLoadBuilder( RingBuilder & builder, const uint8_t * wire_file, i
     nodes.entries = directory;
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
+    nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -12055,6 +12469,73 @@ inline bool RingLoadBuilder( RingBuilder & builder, const uint8_t * wire_file, i
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
     return ok;
+}
+
+// The PLAIN RingLoadBuilder IS THE STRICT READ (docs/SPEC-TABLES.md §6.5):
+// it refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with false as its
+// refusal value and the supplied report overwritten with this read's report
+// and its reason set. unknown and widened alone never refuse.
+inline bool RingLoadBuilder( RingBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const bool decoded = RingLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        return false;
+    }
+    out->refuse_reason = ok;
+    return true;
+}
+
+// RingReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, its
+// OWN builder, the root or a refusal with ONE typed reason. The caller does
+// not measure and does not Init: the measure and the builder are this call's.
+// The packed root it returns is the caller's to release with the allocator it
+// passed (table_release( allocator, root ), the default pair when none).
+inline const Ring * RingReadStrict( const uint8_t * wire_file, int64_t wire_file_bytes, TableRefuseReason * reason = NULL, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( reason != NULL ) { *reason = ok; }
+    int64_t attribution = 0;
+    TableRefuseReason why = ok;
+    const int64_t size = RingLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
+    if ( size < 0 ) { if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; } return NULL; }
+    RingBuilder builder( allocator );
+    TableReport report;
+    const bool decoded = RingLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    {
+        if ( reason != NULL )
+        {
+            if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }
+            else if ( report.refused ) { *reason = unknown_form; }
+            else if ( report.malformed ) { *reason = wire_damaged; }
+            else if ( report.blob_shared ) { *reason = blob_shared; } // §2.5, §16.7
+            else if ( report.clamped ) { *reason = clamped; }
+            else if ( report.kind_mismatch ) { *reason = kind_mismatch; }
+            else { *reason = wire_damaged; }
+        }
+        return NULL;
+    }
+    if ( !builder.Lock() ) { if ( reason != NULL ) { *reason = allocation_failed; } return NULL; }
+    const Ring * root = builder.AsConst();
+    // the packed region is the caller's from here on, not the builder's
+    builder.region = NULL;
+    builder.region_bytes = 0;
+    if ( reason != NULL ) { *reason = ok; }
+    return root;
 }
 
 // ---- Rack: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
@@ -12335,7 +12816,9 @@ inline int64_t RackMeasureWire( const Ctx & ctx, const Rack & root, TableAllocat
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     int64_t bytes = -1;
-    if ( RackNumberFrom( ctx, numbering, root ) )
+    // A BLOB NAMED FROM TWO SLOTS is refused by name, blob_shared, and
+    // never measured as a copy per slot (docs/SPEC-TABLES.md §2.5, §16.7).
+    if ( RackNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableIds ids;
         bytes = RackMeasureBody( ctx, numbering, ids, root );
@@ -12356,7 +12839,9 @@ inline int64_t RackSaveWire( const Ctx & ctx, const Rack & root, uint8_t * buffe
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
-    if ( !RackNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
+    // THE WRITERS REFUSE A GRAPH WHOSE TWO SLOTS NAME ONE BLOB, by name
+    // blob_shared, never with a bare -1 from a copy per slot (docs/SPEC-TABLES.md §2.5, §16.7).
+    if ( !RackNumberFrom( ctx, numbering, root ) || numbering.shared ) { TableNumberingShutdown( numbering ); return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -12409,19 +12894,23 @@ inline int64_t RackSave( const RackBuilder & builder, uint8_t * buffer, int64_t 
 // fields, then the zero reference. Measure derives the numbering and save
 // derives the same one, and nothing passes between them (§3.1).
 template <typename Ctx>
-inline int64_t RackMessageBodyBits( const Ctx & ctx, const Rack & root, int64_t at, TableAllocator allocator )
+inline int64_t RackMessageBodyBits( const Ctx & ctx, const Rack & root, int64_t at, TableAllocator allocator, TableRefuseReason * reason = NULL )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     int64_t bits = -1;
-    if ( RackNumberFrom( ctx, numbering, root ) )
+    if ( RackNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
     {
-        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-        const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
-        if ( table >= 0 )
+        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
+        else
         {
-            const int64_t body = RackMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
-            bits = body < 0 ? -1 : table + body;
+            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+            const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
+            if ( table >= 0 )
+            {
+                const int64_t body = RackMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
+                bits = body < 0 ? -1 : table + body;
+            }
         }
     }
     TableNumberingShutdown( numbering );
@@ -12429,15 +12918,19 @@ inline int64_t RackMessageBodyBits( const Ctx & ctx, const Rack & root, int64_t 
 }
 
 template <typename Ctx>
-inline bool RackMessageBodySave( const Ctx & ctx, const Rack & root, TableBitWriter & w, TableAllocator allocator )
+inline bool RackMessageBodySave( const Ctx & ctx, const Rack & root, TableBitWriter & w, TableAllocator allocator, TableRefuseReason * reason = NULL )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     bool ok = false;
-    if ( RackNumberFrom( ctx, numbering, root ) )
+    if ( RackNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
     {
-        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-        ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && RackSaveMessageBody( ctx, numbering, index_bits, w, root );
+        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
+        else
+        {
+            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+            ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && RackSaveMessageBody( ctx, numbering, index_bits, w, root );
+        }
     }
     TableNumberingShutdown( numbering );
     return ok && !w.overflow;
@@ -12456,8 +12949,9 @@ inline int64_t RackMeasureMessages( const Rack * const * roots, int64_t count, T
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( roots[i] == NULL ) { return -1; }
-        const int64_t body = RackMessageBodyBits( ctx, *roots[i], bits, allocator );
-        if ( body < 0 ) { return -1; }
+        TableRefuseReason why = ok;
+        const int64_t body = RackMessageBodyBits( ctx, *roots[i], bits, allocator, &why );
+        if ( body < 0 ) { if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } return -1; } // §2.5, §16.7
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8;
@@ -12472,7 +12966,13 @@ inline int64_t RackSaveMessages( const Rack * const * roots, int64_t count, uint
     TableRegionCtx ctx;
     for ( int64_t i = 0; i < count; i++ )
     {
-        if ( roots[i] == NULL || !RackMessageBodySave( ctx, *roots[i], batch.w, allocator ) ) { return -1; }
+        if ( roots[i] == NULL ) { return -1; }
+        TableRefuseReason why = ok;
+        if ( !RackMessageBodySave( ctx, *roots[i], batch.w, allocator, &why ) )
+        {
+            if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } // §2.5, §16.7
+            return -1;
+        }
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RackMeasureMessages( roots, count, report, allocator )
@@ -12582,6 +13082,7 @@ inline bool RackLoadMessageBodyInto( TableBitReader & r, const TableVocabulary &
     nodes.entries = directory;
     nodes.count = count + 1;
     nodes.good = false;
+    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
 
     // PASS ONE: the numbering from the framing, every node placed, no body read
     const int64_t records_start = r.offset;
@@ -12701,7 +13202,8 @@ inline int64_t RackLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     // a FORM BYTE this build does not carry is refused by name (§3, §6.5);
-    // a trailer that cannot be read whole is damage and names no reason
+    // a short or mismatched form-1 trailer is damage named integrity_mismatch;
+    // empty and other-form inputs keep TableOpen's classification.
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict == TableOpenRefused ) { if ( reason_out != NULL ) { *reason_out = unknown_form; } return -1; }
     if ( verdict != TableOpenOk ) { return -1; }
@@ -12732,13 +13234,13 @@ inline int64_t RackLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
     return data + attribution;
 }
 
-// RackLoad: decode the tolerant wire into the caller's exact-sized region and
+// RackLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
 // return the root. LOAD IS A SCAN, and that is the whole of its bound: it
 // follows no reference, so there is no depth cap, no visited set and no
 // ordering rule on the indices. Partial results are kept, as everywhere on
 // this wire — the report says what happened. NULL means the CALLER's buffer
 // was wrong.
-inline const Rack * RackLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+inline const Rack * RackLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
@@ -12750,12 +13252,14 @@ inline const Rack * RackLoad( uint8_t * region, int64_t region_bytes, const uint
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return NULL;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -12789,8 +13293,9 @@ inline const Rack * RackLoad( uint8_t * region, int64_t region_bytes, const uint
 
     TableNodeMap nodes;
     nodes.base = region;
-    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
+    nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x986d012bd380b0b2ull;
@@ -12861,11 +13366,40 @@ inline const Rack * RackLoad( uint8_t * region, int64_t region_bytes, const uint
     return root;
 }
 
-// RackLoadBuilder: the TOOL's path — the same tolerant decode into a fresh
+// The PLAIN RackLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
+// refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with a NULL root and
+// the supplied report overwritten with this read's report and its reason
+// set. unknown and widened alone never refuse.
+inline const Rack * RackLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const Rack * root = RackLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        return NULL;
+    }
+    out->refuse_reason = ok;
+    return root;
+}
+
+// RackLoadBuilderTolerant: the TOOL's path — the same tolerant decode into a fresh
 // builder, so loaded data can be edited and locked again. The numbering is
 // the same one; what differs is where a node lives and therefore what a
 // resolved slot holds — an arena offset here, a self-relative delta there.
-inline bool RackLoadBuilder( RackBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+inline bool RackLoadBuilderTolerant( RackBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
@@ -12874,12 +13408,14 @@ inline bool RackLoadBuilder( RackBuilder & builder, const uint8_t * wire_file, i
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; }
         return false;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return false;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -12908,6 +13444,7 @@ inline bool RackLoadBuilder( RackBuilder & builder, const uint8_t * wire_file, i
     nodes.entries = directory;
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
+    nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -12958,6 +13495,73 @@ inline bool RackLoadBuilder( RackBuilder & builder, const uint8_t * wire_file, i
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
     return ok;
+}
+
+// The PLAIN RackLoadBuilder IS THE STRICT READ (docs/SPEC-TABLES.md §6.5):
+// it refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with false as its
+// refusal value and the supplied report overwritten with this read's report
+// and its reason set. unknown and widened alone never refuse.
+inline bool RackLoadBuilder( RackBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const bool decoded = RackLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        return false;
+    }
+    out->refuse_reason = ok;
+    return true;
+}
+
+// RackReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, its
+// OWN builder, the root or a refusal with ONE typed reason. The caller does
+// not measure and does not Init: the measure and the builder are this call's.
+// The packed root it returns is the caller's to release with the allocator it
+// passed (table_release( allocator, root ), the default pair when none).
+inline const Rack * RackReadStrict( const uint8_t * wire_file, int64_t wire_file_bytes, TableRefuseReason * reason = NULL, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( reason != NULL ) { *reason = ok; }
+    int64_t attribution = 0;
+    TableRefuseReason why = ok;
+    const int64_t size = RackLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
+    if ( size < 0 ) { if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; } return NULL; }
+    RackBuilder builder( allocator );
+    TableReport report;
+    const bool decoded = RackLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    {
+        if ( reason != NULL )
+        {
+            if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }
+            else if ( report.refused ) { *reason = unknown_form; }
+            else if ( report.malformed ) { *reason = wire_damaged; }
+            else if ( report.blob_shared ) { *reason = blob_shared; } // §2.5, §16.7
+            else if ( report.clamped ) { *reason = clamped; }
+            else if ( report.kind_mismatch ) { *reason = kind_mismatch; }
+            else { *reason = wire_damaged; }
+        }
+        return NULL;
+    }
+    if ( !builder.Lock() ) { if ( reason != NULL ) { *reason = allocation_failed; } return NULL; }
+    const Rack * root = builder.AsConst();
+    // the packed region is the caller's from here on, not the builder's
+    builder.region = NULL;
+    builder.region_bytes = 0;
+    if ( reason != NULL ) { *reason = ok; }
+    return root;
 }
 
 // ---- Tray: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
@@ -13238,7 +13842,9 @@ inline int64_t TrayMeasureWire( const Ctx & ctx, const Tray & root, TableAllocat
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     int64_t bytes = -1;
-    if ( TrayNumberFrom( ctx, numbering, root ) )
+    // A BLOB NAMED FROM TWO SLOTS is refused by name, blob_shared, and
+    // never measured as a copy per slot (docs/SPEC-TABLES.md §2.5, §16.7).
+    if ( TrayNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableIds ids;
         bytes = TrayMeasureBody( ctx, numbering, ids, root );
@@ -13259,7 +13865,9 @@ inline int64_t TraySaveWire( const Ctx & ctx, const Tray & root, uint8_t * buffe
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
-    if ( !TrayNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
+    // THE WRITERS REFUSE A GRAPH WHOSE TWO SLOTS NAME ONE BLOB, by name
+    // blob_shared, never with a bare -1 from a copy per slot (docs/SPEC-TABLES.md §2.5, §16.7).
+    if ( !TrayNumberFrom( ctx, numbering, root ) || numbering.shared ) { TableNumberingShutdown( numbering ); return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -13312,19 +13920,23 @@ inline int64_t TraySave( const TrayBuilder & builder, uint8_t * buffer, int64_t 
 // fields, then the zero reference. Measure derives the numbering and save
 // derives the same one, and nothing passes between them (§3.1).
 template <typename Ctx>
-inline int64_t TrayMessageBodyBits( const Ctx & ctx, const Tray & root, int64_t at, TableAllocator allocator )
+inline int64_t TrayMessageBodyBits( const Ctx & ctx, const Tray & root, int64_t at, TableAllocator allocator, TableRefuseReason * reason = NULL )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     int64_t bits = -1;
-    if ( TrayNumberFrom( ctx, numbering, root ) )
+    if ( TrayNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
     {
-        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-        const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
-        if ( table >= 0 )
+        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
+        else
         {
-            const int64_t body = TrayMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
-            bits = body < 0 ? -1 : table + body;
+            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+            const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
+            if ( table >= 0 )
+            {
+                const int64_t body = TrayMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
+                bits = body < 0 ? -1 : table + body;
+            }
         }
     }
     TableNumberingShutdown( numbering );
@@ -13332,15 +13944,19 @@ inline int64_t TrayMessageBodyBits( const Ctx & ctx, const Tray & root, int64_t 
 }
 
 template <typename Ctx>
-inline bool TrayMessageBodySave( const Ctx & ctx, const Tray & root, TableBitWriter & w, TableAllocator allocator )
+inline bool TrayMessageBodySave( const Ctx & ctx, const Tray & root, TableBitWriter & w, TableAllocator allocator, TableRefuseReason * reason = NULL )
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     bool ok = false;
-    if ( TrayNumberFrom( ctx, numbering, root ) )
+    if ( TrayNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
     {
-        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-        ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && TraySaveMessageBody( ctx, numbering, index_bits, w, root );
+        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
+        else
+        {
+            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
+            ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && TraySaveMessageBody( ctx, numbering, index_bits, w, root );
+        }
     }
     TableNumberingShutdown( numbering );
     return ok && !w.overflow;
@@ -13359,8 +13975,9 @@ inline int64_t TrayMeasureMessages( const Tray * const * roots, int64_t count, T
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( roots[i] == NULL ) { return -1; }
-        const int64_t body = TrayMessageBodyBits( ctx, *roots[i], bits, allocator );
-        if ( body < 0 ) { return -1; }
+        TableRefuseReason why = ok;
+        const int64_t body = TrayMessageBodyBits( ctx, *roots[i], bits, allocator, &why );
+        if ( body < 0 ) { if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } return -1; } // §2.5, §16.7
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8;
@@ -13375,7 +13992,13 @@ inline int64_t TraySaveMessages( const Tray * const * roots, int64_t count, uint
     TableRegionCtx ctx;
     for ( int64_t i = 0; i < count; i++ )
     {
-        if ( roots[i] == NULL || !TrayMessageBodySave( ctx, *roots[i], batch.w, allocator ) ) { return -1; }
+        if ( roots[i] == NULL ) { return -1; }
+        TableRefuseReason why = ok;
+        if ( !TrayMessageBodySave( ctx, *roots[i], batch.w, allocator, &why ) )
+        {
+            if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } // §2.5, §16.7
+            return -1;
+        }
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == TrayMeasureMessages( roots, count, report, allocator )
@@ -13485,6 +14108,7 @@ inline bool TrayLoadMessageBodyInto( TableBitReader & r, const TableVocabulary &
     nodes.entries = directory;
     nodes.count = count + 1;
     nodes.good = false;
+    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
 
     // PASS ONE: the numbering from the framing, every node placed, no body read
     const int64_t records_start = r.offset;
@@ -13600,7 +14224,8 @@ inline int64_t TrayLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     // a FORM BYTE this build does not carry is refused by name (§3, §6.5);
-    // a trailer that cannot be read whole is damage and names no reason
+    // a short or mismatched form-1 trailer is damage named integrity_mismatch;
+    // empty and other-form inputs keep TableOpen's classification.
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict == TableOpenRefused ) { if ( reason_out != NULL ) { *reason_out = unknown_form; } return -1; }
     if ( verdict != TableOpenOk ) { return -1; }
@@ -13631,13 +14256,13 @@ inline int64_t TrayLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
     return data + attribution;
 }
 
-// TrayLoad: decode the tolerant wire into the caller's exact-sized region and
+// TrayLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
 // return the root. LOAD IS A SCAN, and that is the whole of its bound: it
 // follows no reference, so there is no depth cap, no visited set and no
 // ordering rule on the indices. Partial results are kept, as everywhere on
 // this wire — the report says what happened. NULL means the CALLER's buffer
 // was wrong.
-inline const Tray * TrayLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+inline const Tray * TrayLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
@@ -13649,12 +14274,14 @@ inline const Tray * TrayLoad( uint8_t * region, int64_t region_bytes, const uint
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return NULL;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -13688,8 +14315,9 @@ inline const Tray * TrayLoad( uint8_t * region, int64_t region_bytes, const uint
 
     TableNodeMap nodes;
     nodes.base = region;
-    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
+    nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x85a6b5fb5284964dull;
@@ -13760,11 +14388,40 @@ inline const Tray * TrayLoad( uint8_t * region, int64_t region_bytes, const uint
     return root;
 }
 
-// TrayLoadBuilder: the TOOL's path — the same tolerant decode into a fresh
+// The PLAIN TrayLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
+// refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with a NULL root and
+// the supplied report overwritten with this read's report and its reason
+// set. unknown and widened alone never refuse.
+inline const Tray * TrayLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const Tray * root = TrayLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        return NULL;
+    }
+    out->refuse_reason = ok;
+    return root;
+}
+
+// TrayLoadBuilderTolerant: the TOOL's path — the same tolerant decode into a fresh
 // builder, so loaded data can be edited and locked again. The numbering is
 // the same one; what differs is where a node lives and therefore what a
 // resolved slot holds — an arena offset here, a self-relative delta there.
-inline bool TrayLoadBuilder( TrayBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+inline bool TrayLoadBuilderTolerant( TrayBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
@@ -13773,12 +14430,14 @@ inline bool TrayLoadBuilder( TrayBuilder & builder, const uint8_t * wire_file, i
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; }
         return false;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return false;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -13807,6 +14466,7 @@ inline bool TrayLoadBuilder( TrayBuilder & builder, const uint8_t * wire_file, i
     nodes.entries = directory;
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
+    nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -13857,6 +14517,73 @@ inline bool TrayLoadBuilder( TrayBuilder & builder, const uint8_t * wire_file, i
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
     return ok;
+}
+
+// The PLAIN TrayLoadBuilder IS THE STRICT READ (docs/SPEC-TABLES.md §6.5):
+// it refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with false as its
+// refusal value and the supplied report overwritten with this read's report
+// and its reason set. unknown and widened alone never refuse.
+inline bool TrayLoadBuilder( TrayBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const bool decoded = TrayLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        return false;
+    }
+    out->refuse_reason = ok;
+    return true;
+}
+
+// TrayReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, its
+// OWN builder, the root or a refusal with ONE typed reason. The caller does
+// not measure and does not Init: the measure and the builder are this call's.
+// The packed root it returns is the caller's to release with the allocator it
+// passed (table_release( allocator, root ), the default pair when none).
+inline const Tray * TrayReadStrict( const uint8_t * wire_file, int64_t wire_file_bytes, TableRefuseReason * reason = NULL, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( reason != NULL ) { *reason = ok; }
+    int64_t attribution = 0;
+    TableRefuseReason why = ok;
+    const int64_t size = TrayLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
+    if ( size < 0 ) { if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; } return NULL; }
+    TrayBuilder builder( allocator );
+    TableReport report;
+    const bool decoded = TrayLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    {
+        if ( reason != NULL )
+        {
+            if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }
+            else if ( report.refused ) { *reason = unknown_form; }
+            else if ( report.malformed ) { *reason = wire_damaged; }
+            else if ( report.blob_shared ) { *reason = blob_shared; } // §2.5, §16.7
+            else if ( report.clamped ) { *reason = clamped; }
+            else if ( report.kind_mismatch ) { *reason = kind_mismatch; }
+            else { *reason = wire_damaged; }
+        }
+        return NULL;
+    }
+    if ( !builder.Lock() ) { if ( reason != NULL ) { *reason = allocation_failed; } return NULL; }
+    const Tray * root = builder.AsConst();
+    // the packed region is the caller's from here on, not the builder's
+    builder.region = NULL;
+    builder.region_bytes = 0;
+    if ( reason != NULL ) { *reason = ok; }
+    return root;
 }
 
 inline int64_t NodeMeasureBodyRetain( TableRetainIds & ids, const Node & value, TableRetain * retain, const TableRetainPath & path )
@@ -14058,12 +14785,12 @@ inline int64_t RingMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
                     switch ( cursor_items[elem_i_items].type )
                     {
                         case SlotType::None: break;
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 8, 0x3c2f1bbad18642adull );
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return -1; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
@@ -14086,7 +14813,7 @@ inline int64_t RingMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             bytes += TableLebBytes( ref_items ) + 1 + TableLebBytes( (uint64_t) ( body_items ) ) + ( body_items );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -14110,12 +14837,12 @@ inline bool RingSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     switch ( cursor_items[elem_i_items].type )
                     {
                         case SlotType::None: break;
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             int64_t arm_payload_itemsu = 0;
                             const uint64_t arm_ref_itemsu = ids.ref_at( 8, 0x3c2f1bbad18642adull );
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return -1; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
@@ -14144,19 +14871,19 @@ inline bool RingSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                 {
                     switch ( cursor_items[elem_i_items].type )
                     {
-                        case SlotType::Node:
+                        case SlotType::Vertex:
                         {
                             const uint64_t arm_ref_itemsu = ids.ref_at( 8, 0x3c2f1bbad18642adull );
                             int64_t arm_payload_itemsu = 0;
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return false; }
                                 arm_payload_itemsu += TableLebBytes( arm_index_itemsu ); // a node index, null as 0 (§3.1)
                             }
-                            w.header( arm_ref_itemsu, 17 ); w.putleb( (uint64_t) arm_payload_itemsu ); // node
+                            w.header( arm_ref_itemsu, 17 ); w.putleb( (uint64_t) arm_payload_itemsu ); // vertex
                             {
-                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].node );
+                                const Node * arm_pointee_itemsu = NodeAt( ctx, cursor_items[elem_i_items].vertex );
                                 uint64_t arm_index_itemsu = 0;
                                 if ( arm_pointee_itemsu != NULL && !TableNumberingIndex( numbering, (const void *) arm_pointee_itemsu, arm_index_itemsu ) ) { return false; }
                                 w.putleb( arm_index_itemsu ); // a node index, null as 0 (§3.1)
@@ -14178,10 +14905,10 @@ inline bool RingSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -14287,18 +15014,18 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                                         TableReader elem_arm_items( sub.buffer + sub.offset, (int64_t) elem_arm_len_items, r.report, r.ids );
                                         switch ( elem_arm_id_items ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                                         {
-                                            case 0x3c2f1bbad18642adull: // node
+                                            case 0x3c2f1bbad18642adull: // vertex
                                             {
                                                 if ( elem_arm_kind_items != 17 )
                                                 {
                                                     ( *slot ).type = SlotType::None; r.report->kind_mismatch++; break;
                                                 }
-                                                ( *slot ).type = SlotType::Node;
+                                                ( *slot ).type = SlotType::Vertex;
                                                 {
                                                     uint64_t node_index_itemsa = 0;
                                                     if ( !elem_arm_items.getleb( node_index_itemsa ) ) { ( *slot ).type = SlotType::None; r.report->malformed = true; break; }
                                                     if ( elem_arm_items.offset != elem_arm_items.size ) { ( *slot ).type = SlotType::None; r.report->malformed = true; break; }
-                                                    TableNodeResolve( nodes, ( *slot ).node, node_index_itemsa, 0x66bd1cc6d2f6b68dull, r.report ); // *Node
+                                                    TableNodeResolve( nodes, ( *slot ).vertex, node_index_itemsa, 0x66bd1cc6d2f6b68dull, r.report ); // *Node
                                                 }
                                                 break;
                                             }
@@ -14344,7 +15071,7 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -14355,7 +15082,7 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -14367,7 +15094,7 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -14451,7 +15178,7 @@ inline bool RingLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                             {
                                 switch ( arm_2.id )
                                 {
-                                    case 0x3c2f1bbad18642adull: // node
+                                    case 0x3c2f1bbad18642adull: // vertex
                                     {
                                         if ( arm_2.kind != 17 || arm_2.elem_kind != 0 )
                                         {
@@ -14459,11 +15186,11 @@ inline bool RingLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                                             if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
                                             break;
                                         }
-                                        ( *slot ).type = SlotType::Node;
+                                        ( *slot ).type = SlotType::Vertex;
                                         {
                                             uint64_t node_index_3 = 0;
                                             if ( !r.get( node_index_3, index_bits ) ) { report->malformed = true; return false; }
-                                            TableNodeResolve( nodes, ( *slot ).node, node_index_3, 0x66bd1cc6d2f6b68dull, report ); // *Node
+                                            TableNodeResolve( nodes, ( *slot ).vertex, node_index_3, 0x66bd1cc6d2f6b68dull, report ); // *Node
                                         }
                                         break;
                                     }
@@ -14529,7 +15256,7 @@ inline bool RingLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -14552,7 +15279,7 @@ inline bool RingLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -14575,7 +15302,7 @@ inline bool RingLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -14645,7 +15372,7 @@ inline int64_t RackMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             bytes += TableLebBytes( ref_items ) + 1 + TableLebBytes( (uint64_t) ( body_items ) ) + ( body_items );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -14752,10 +15479,10 @@ inline bool RackSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -14936,7 +15663,7 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                 r.offset = body_end; // excess bytes and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -14947,7 +15674,7 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -14959,7 +15686,7 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -15141,7 +15868,7 @@ inline bool RackLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -15164,7 +15891,7 @@ inline bool RackLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -15187,7 +15914,7 @@ inline bool RackLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -15253,7 +15980,7 @@ inline int64_t TrayMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
         }
         bytes += TableLebBytes( ref_entries ) + 1 + TableLebBytes( (uint64_t) ( body_entries ) ) + ( body_entries ); // entries
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -15357,10 +16084,10 @@ inline bool TraySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
         }
     }
-    if ( value.after != 0 )
+    if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // after
-        w.put32( uint32_t( value.after ) );
+        w.header( ids.ref_at( 25, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
     return !w.overflow;
@@ -15541,7 +16268,7 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
                 r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 if ( kind != 4 )
                 {
@@ -15552,7 +16279,7 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
                         int32_t decoded_v = (int32_t) widened_v;
-                        value.after = decoded_v;
+                        value.past = decoded_v;
                         r.report->widened++;
                         break;
                     }
@@ -15564,7 +16291,7 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
                 int32_t decoded_v = int32_t( r.get32( ) );
-                value.after = decoded_v;
+                value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
@@ -15749,7 +16476,7 @@ inline bool TrayLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                 }
                 break;
             }
-            case 0xbf82010f6f71eae9ull: // after
+            case 0xbf82010f6f71eae9ull: // past
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -15772,7 +16499,7 @@ inline bool TrayLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                             if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                             if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                             int32_t decoded_v = (int32_t) decoded_wide;
-                            value.after = decoded_v;
+                            value.past = decoded_v;
                         }
                         report->widened++;
                         break;
@@ -15795,7 +16522,7 @@ inline bool TrayLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                     if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
                     if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    value.after = decoded_v;
+                    value.past = decoded_v;
                 }
                 break;
             }
@@ -15864,12 +16591,14 @@ inline const Ring * RingLoadRetain( uint8_t * region, int64_t region_bytes, cons
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return NULL;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -15903,8 +16632,9 @@ inline const Ring * RingLoadRetain( uint8_t * region, int64_t region_bytes, cons
 
     TableNodeMap nodes;
     nodes.base = region;
-    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
+    nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0xdcea4d2bfa11ceebull;
@@ -16041,6 +16771,7 @@ inline bool RingLoadMessageBodyIntoRetain( TableBitReader & r, const TableVocabu
     nodes.entries = directory;
     nodes.count = count + 1;
     nodes.good = false;
+    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
 
     // PASS ONE: the numbering from the framing, every node placed, no body read
     const int64_t records_start = r.offset;
@@ -16331,12 +17062,14 @@ inline const Rack * RackLoadRetain( uint8_t * region, int64_t region_bytes, cons
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return NULL;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -16370,8 +17103,9 @@ inline const Rack * RackLoadRetain( uint8_t * region, int64_t region_bytes, cons
 
     TableNodeMap nodes;
     nodes.base = region;
-    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
+    nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x986d012bd380b0b2ull;
@@ -16508,6 +17242,7 @@ inline bool RackLoadMessageBodyIntoRetain( TableBitReader & r, const TableVocabu
     nodes.entries = directory;
     nodes.count = count + 1;
     nodes.good = false;
+    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
 
     // PASS ONE: the numbering from the framing, every node placed, no body read
     const int64_t records_start = r.offset;
@@ -16798,12 +17533,14 @@ inline const Tray * TrayLoadRetain( uint8_t * region, int64_t region_bytes, cons
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; } else { out->refused = true; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
+        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
     {
         out->malformed = true; // a byte no field claims, before the table (§3)
+        out->refuse_reason = wire_damaged;
         return NULL;
     }
     const uint8_t * const wire = wire_file + 1;
@@ -16837,8 +17574,9 @@ inline const Tray * TrayLoadRetain( uint8_t * region, int64_t region_bytes, cons
 
     TableNodeMap nodes;
     nodes.base = region;
-    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
+    nodes.once = true; // the file read marks and counts a blob named twice (§2.5, §6.5)
     TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
     directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
     directory[0].type_id = 0x85a6b5fb5284964dull;
@@ -16975,6 +17713,7 @@ inline bool TrayLoadMessageBodyIntoRetain( TableBitReader & r, const TableVocabu
     nodes.entries = directory;
     nodes.count = count + 1;
     nodes.good = false;
+    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
 
     // PASS ONE: the numbering from the framing, every node placed, no body read
     const int64_t records_start = r.offset;
@@ -17408,7 +18147,7 @@ template <typename Ctx> inline bool RingCookBody( const Ctx & ctx, const TableCo
     (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // items: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -17417,7 +18156,7 @@ template <typename Ctx> inline bool RackCookBody( const Ctx & ctx, const TableCo
     (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // items: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -17449,7 +18188,7 @@ template <typename Ctx> inline bool TrayCookBody( const Ctx & ctx, const TableCo
         }
     }
     table_cook_put( at + 64, (uint64_t) (uint32_t) value.entries_count, 4, order );
-    table_cook_put( at + 68, (uint64_t) value.after, 4, order );
+    table_cook_put( at + 68, (uint64_t) value.past, 4, order );
     return true;
 }
 
@@ -17488,9 +18227,9 @@ template <typename Ctx> inline bool RingCookExtent( const Ctx & ctx, const Table
                 table_cook_put( array + i * 16, (uint64_t) cursor[i].type, 1, order ); // the tag; None is the tag alone
                 switch ( cursor[i].type )
                 {
-                    case SlotType::Node:
+                    case SlotType::Vertex:
                     {
-                        if ( !table_cook_ref( region, array + i * 16 + 8, (const void *) NodeAt( ctx, cursor[i].node ), order ) ) { return false; } // node
+                        if ( !table_cook_ref( region, array + i * 16 + 8, (const void *) NodeAt( ctx, cursor[i].vertex ), order ) ) { return false; } // vertex
                         break;
                     }
                     case SlotType::Plain:
@@ -18202,15 +18941,15 @@ static_assert( offsetof( Node, v ) == 0, "Node's field v moved: the build versio
 static_assert( sizeof( Ring ) == 24, "Ring's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Ring ) == 8, "Ring's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Ring, items ) == 0, "Ring's field items moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Ring, after ) == 16, "Ring's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Ring, past ) == 16, "Ring's field past moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( sizeof( Rack ) == 24, "Rack's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Rack ) == 8, "Rack's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Rack, items ) == 0, "Rack's field items moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Rack, after ) == 16, "Rack's field after moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Rack, past ) == 16, "Rack's field past moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( sizeof( Tray ) == 72, "Tray's sizeof moved: the build version was taken over 72, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Tray ) == 8, "Tray's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Tray, entries ) == 0, "Tray's field entries moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Tray, after ) == 68, "Tray's field after moved: the build version was taken over offset 68 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Tray, past ) == 68, "Tray's field past moved: the build version was taken over offset 68 (docs/SPEC-TABLES.md §20.3)" );
 
 static_assert( alignof( Slot ) <= kTableAlign, "Ring.items: an unbounded array's element alignment must fit the arena's" );
 static_assert( alignof( Slots ) <= kTableAlign, "Rack.items: an unbounded array's element alignment must fit the arena's" );
@@ -18233,30 +18972,30 @@ extern const TableTypeInfo RackTableInfo;
 extern const TableTypeInfo TrayTableInfo;
 
 inline const TableFieldInfo NodeTableFields[] = {
-    { "v", "v", "int32", 0xaf63eb4c86020609ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Node, v ), (uint32_t) sizeof( Node::v ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "v", "v", "int32", 0xaf63eb4c86020609ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Node, v ), (uint32_t) sizeof( Node::v ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo NodeTableInfo = { "Node", (uint32_t) sizeof( Node ), 1, NodeTableFields, +[]( void * p ) { NodeReset( *(Node *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo NodeTableInfo = { "Node", (uint32_t) sizeof( Node ), 1, NodeTableFields, +[]( void * p ) { NodeReset( *(Node *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * NodeTableType() { return &NodeTableInfo; }
 
 inline const TableFieldInfo RingTableFields[] = {
-    { "items", "items", "Slot", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ring, items ), (uint32_t) sizeof( Slot ), (uint32_t) offsetof( Ring, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "node"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x3c2f1bbad18642adull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slot[] = { { "node", "node", "Node", 0x3c2f1bbad18642adull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Slot, node ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slot, plain ), (uint32_t) sizeof( Slot::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slot, node ), NULL, &arm_fields_Slot[0], 8 }, { (uint32_t) offsetof( Slot, plain ), NULL, &arm_fields_Slot[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slot, type ), (uint32_t) sizeof( Slot::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Slot> *) slot ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ring, after ), (uint32_t) sizeof( Ring::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "items", "items", "Slot", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ring, items ), (uint32_t) sizeof( Slot ), (uint32_t) offsetof( Ring, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "vertex"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x3c2f1bbad18642adull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slot[] = { { "vertex", "vertex", "Node", 0x3c2f1bbad18642adull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Slot, vertex ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slot, plain ), (uint32_t) sizeof( Slot::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slot, vertex ), NULL, &arm_fields_Slot[0], 8 }, { (uint32_t) offsetof( Slot, plain ), NULL, &arm_fields_Slot[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slot, type ), (uint32_t) sizeof( Slot::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Slot> *) slot ); }, "", TableDocNone, 0, NULL, true },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ring, past ), (uint32_t) sizeof( Ring::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo RingTableInfo = { "Ring", (uint32_t) sizeof( Ring ), 2, RingTableFields, +[]( void * p ) { RingReset( *(Ring *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo RingTableInfo = { "Ring", (uint32_t) sizeof( Ring ), 2, RingTableFields, +[]( void * p ) { RingReset( *(Ring *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RingTableType() { return &RingTableInfo; }
 
 inline const TableFieldInfo RackTableFields[] = {
-    { "items", "items", "Slots", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Rack, items ), (uint32_t) sizeof( Slots ), (uint32_t) offsetof( Rack, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "many"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x1f6459a2cea1fc02ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slots[] = { { "many", "many", "Node", 0x1f6459a2cea1fc02ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Slots, many.value ), (uint32_t) sizeof( Slots::many.value[0] ), (uint32_t) offsetof( Slots, many.value_count ), 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, plain ), (uint32_t) sizeof( Slots::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slots, many ), NULL, &arm_fields_Slots[0], 24 }, { (uint32_t) offsetof( Slots, plain ), NULL, &arm_fields_Slots[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slots, type ), (uint32_t) sizeof( Slots::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Slots> *) slot ); }, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Rack, after ), (uint32_t) sizeof( Rack::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "items", "items", "Slots", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Rack, items ), (uint32_t) sizeof( Slots ), (uint32_t) offsetof( Rack, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "many"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x1f6459a2cea1fc02ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slots[] = { { "many", "many", "Node", 0x1f6459a2cea1fc02ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Slots, many.value ), (uint32_t) sizeof( Slots::many.value[0] ), (uint32_t) offsetof( Slots, many.value_count ), 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, plain ), (uint32_t) sizeof( Slots::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slots, many ), NULL, &arm_fields_Slots[0], 24 }, { (uint32_t) offsetof( Slots, plain ), NULL, &arm_fields_Slots[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slots, type ), (uint32_t) sizeof( Slots::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Slots> *) slot ); }, "", TableDocNone, 0, NULL, true },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Rack, past ), (uint32_t) sizeof( Rack::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo RackTableInfo = { "Rack", (uint32_t) sizeof( Rack ), 2, RackTableFields, +[]( void * p ) { RackReset( *(Rack *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo RackTableInfo = { "Rack", (uint32_t) sizeof( Rack ), 2, RackTableFields, +[]( void * p ) { RackReset( *(Rack *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RackTableType() { return &RackTableInfo; }
 
 inline const TableFieldInfo TrayTableFields[] = {
-    { "entries", "entries", "Slots", 0xc5b2a72c0845a253ull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( Tray, entries ), (uint32_t) sizeof( Tray::entries[0] ), (uint32_t) offsetof( Tray, entries_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "many"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x1f6459a2cea1fc02ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slots[] = { { "many", "many", "Node", 0x1f6459a2cea1fc02ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Slots, many.value ), (uint32_t) sizeof( Slots::many.value[0] ), (uint32_t) offsetof( Slots, many.value_count ), 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, plain ), (uint32_t) sizeof( Slots::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slots, many ), NULL, &arm_fields_Slots[0], 24 }, { (uint32_t) offsetof( Slots, plain ), NULL, &arm_fields_Slots[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slots, type ), (uint32_t) sizeof( Slots::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL },
-    { "after", "after", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Tray, after ), (uint32_t) sizeof( Tray::after ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "entries", "entries", "Slots", 0xc5b2a72c0845a253ull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( Tray, entries ), (uint32_t) sizeof( Tray::entries[0] ), (uint32_t) offsetof( Tray, entries_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "many"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x1f6459a2cea1fc02ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slots[] = { { "many", "many", "Node", 0x1f6459a2cea1fc02ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Slots, many.value ), (uint32_t) sizeof( Slots::many.value[0] ), (uint32_t) offsetof( Slots, many.value_count ), 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, plain ), (uint32_t) sizeof( Slots::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slots, many ), NULL, &arm_fields_Slots[0], 24 }, { (uint32_t) offsetof( Slots, plain ), NULL, &arm_fields_Slots[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slots, type ), (uint32_t) sizeof( Slots::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Tray, past ), (uint32_t) sizeof( Tray::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo TrayTableInfo = { "Tray", (uint32_t) sizeof( Tray ), 2, TrayTableFields, +[]( void * p ) { TrayReset( *(Tray *) p ); }, true, TableDocNone, 0, NULL };
+inline const TableTypeInfo TrayTableInfo = { "Tray", (uint32_t) sizeof( Tray ), 2, TrayTableFields, +[]( void * p ) { TrayReset( *(Tray *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TrayTableType() { return &TrayTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----
@@ -18265,6 +19004,7 @@ inline const TableTypeInfo * TrayTableType() { return &TrayTableInfo; }
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // RingTable.cpp; link it to use them.
 bool NodeFromJson( Node & value, const char * text, int64_t bytes, TableReport * report );
+bool NodeFromJsonTolerant( Node & value, const char * text, int64_t bytes, TableReport * report );
 int64_t NodeToJsonMeasure( const Node & value );
 int64_t NodeToJson( const Node & value, char * buffer, int64_t capacity );
 
@@ -18272,6 +19012,7 @@ int64_t NodeToJson( const Node & value, char * buffer, int64_t capacity );
 // builder, written from a region's const root. A node named more than once
 // carries `&node` in the text. Defined in RingTable.cpp; link it to use them.
 bool RingFromJson( RingBuilder & builder, const char * text, int64_t bytes, TableReport * report );
+bool RingFromJsonTolerant( RingBuilder & builder, const char * text, int64_t bytes, TableReport * report );
 int64_t RingToJsonMeasure( const Ring * root, TableAllocator allocator = TableDefaultAllocator() );
 int64_t RingToJson( const Ring * root, char * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() );
 
@@ -18279,6 +19020,7 @@ int64_t RingToJson( const Ring * root, char * buffer, int64_t capacity, TableAll
 // builder, written from a region's const root. A node named more than once
 // carries `&node` in the text. Defined in RingTable.cpp; link it to use them.
 bool RackFromJson( RackBuilder & builder, const char * text, int64_t bytes, TableReport * report );
+bool RackFromJsonTolerant( RackBuilder & builder, const char * text, int64_t bytes, TableReport * report );
 int64_t RackToJsonMeasure( const Rack * root, TableAllocator allocator = TableDefaultAllocator() );
 int64_t RackToJson( const Rack * root, char * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() );
 
@@ -18286,7 +19028,122 @@ int64_t RackToJson( const Rack * root, char * buffer, int64_t capacity, TableAll
 // builder, written from a region's const root. A node named more than once
 // carries `&node` in the text. Defined in RingTable.cpp; link it to use them.
 bool TrayFromJson( TrayBuilder & builder, const char * text, int64_t bytes, TableReport * report );
+bool TrayFromJsonTolerant( TrayBuilder & builder, const char * text, int64_t bytes, TableReport * report );
 int64_t TrayToJsonMeasure( const Tray * root, TableAllocator allocator = TableDefaultAllocator() );
 int64_t TrayToJson( const Tray * root, char * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() );
+
+// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----
+
+#ifndef ARMDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
+#define ARMDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
+// TableTextFormEdit replaces one existing scalar value (§16.9.3): path
+// names it as "field", "field[2]" or "field.child", and text is its
+// replacement spelling, one token of this form.
+struct TableTextFormEdit
+{
+    const char * path;
+    const char * text;
+};
+#endif // ARMDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
+
+// NodeLoadTextForm reads one Node from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool NodeLoadTextForm( const char * text, int64_t bytes, Node & value, const char ** refusal );
+
+// NodeLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
+// *document and *document_bytes are the caller's own text, so a read then
+// NodeSaveTextForm with no edit is the input byte for byte.
+bool NodeLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, Node & value, const char ** refusal );
+
+// NodeSaveTextForm writes the document a Load or Edit returned
+// (docs/SPEC-TABLES.md §16.9.3): the retained bytes, so a read then a
+// write with no edit is the input byte for byte. It answers the byte
+// count, or -1 when capacity cannot hold the document.
+int64_t NodeSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity );
+
+// NodeEditTextForm replaces existing scalar values (§16.9.3): each edit's
+// token span and nothing else, all spans taken from the original document,
+// a semantic no-op keeping the old spelling. On success *edited_bytes is
+// the edited document's length; a short buffer answers false with
+// *edited_bytes set to what it needs. A refusal names itself in *refusal
+// and leaves the old document untouched.
+bool NodeEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, Node & value, const char ** refusal );
+
+// RingLoadTextForm reads one Ring from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool RingLoadTextForm( const char * text, int64_t bytes, RingBuilder & builder, const char ** refusal );
+
+// RingLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
+// *document and *document_bytes are the caller's own text, so a read then
+// RingSaveTextForm with no edit is the input byte for byte.
+bool RingLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, RingBuilder & builder, const char ** refusal );
+
+// RingSaveTextForm writes the document a Load or Edit returned
+// (docs/SPEC-TABLES.md §16.9.3): the retained bytes, so a read then a
+// write with no edit is the input byte for byte. It answers the byte
+// count, or -1 when capacity cannot hold the document.
+int64_t RingSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity );
+
+// RingEditTextForm replaces existing scalar values (§16.9.3): each edit's
+// token span and nothing else, all spans taken from the original document,
+// a semantic no-op keeping the old spelling. On success *edited_bytes is
+// the edited document's length; a short buffer answers false with
+// *edited_bytes set to what it needs. A refusal names itself in *refusal
+// and leaves the old document untouched.
+bool RingEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, RingBuilder & builder, const char ** refusal );
+
+// RackLoadTextForm reads one Rack from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool RackLoadTextForm( const char * text, int64_t bytes, RackBuilder & builder, const char ** refusal );
+
+// RackLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
+// *document and *document_bytes are the caller's own text, so a read then
+// RackSaveTextForm with no edit is the input byte for byte.
+bool RackLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, RackBuilder & builder, const char ** refusal );
+
+// RackSaveTextForm writes the document a Load or Edit returned
+// (docs/SPEC-TABLES.md §16.9.3): the retained bytes, so a read then a
+// write with no edit is the input byte for byte. It answers the byte
+// count, or -1 when capacity cannot hold the document.
+int64_t RackSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity );
+
+// RackEditTextForm replaces existing scalar values (§16.9.3): each edit's
+// token span and nothing else, all spans taken from the original document,
+// a semantic no-op keeping the old spelling. On success *edited_bytes is
+// the edited document's length; a short buffer answers false with
+// *edited_bytes set to what it needs. A refusal names itself in *refusal
+// and leaves the old document untouched.
+bool RackEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, RackBuilder & builder, const char ** refusal );
+
+// TrayLoadTextForm reads one Tray from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool TrayLoadTextForm( const char * text, int64_t bytes, TrayBuilder & builder, const char ** refusal );
+
+// TrayLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
+// *document and *document_bytes are the caller's own text, so a read then
+// TraySaveTextForm with no edit is the input byte for byte.
+bool TrayLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, TrayBuilder & builder, const char ** refusal );
+
+// TraySaveTextForm writes the document a Load or Edit returned
+// (docs/SPEC-TABLES.md §16.9.3): the retained bytes, so a read then a
+// write with no edit is the input byte for byte. It answers the byte
+// count, or -1 when capacity cannot hold the document.
+int64_t TraySaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity );
+
+// TrayEditTextForm replaces existing scalar values (§16.9.3): each edit's
+// token span and nothing else, all spans taken from the original document,
+// a semantic no-op keeping the old spelling. On success *edited_bytes is
+// the edited document's length; a short buffer answers false with
+// *edited_bytes set to what it needs. A refusal names itself in *refusal
+// and leaves the old document untouched.
+bool TrayEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, TrayBuilder & builder, const char ** refusal );
 
 } // namespace armdemo

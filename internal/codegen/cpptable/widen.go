@@ -60,7 +60,7 @@ inline int64_t TableKindWidth( uint8_t kind )
         case 1: case 2: case 6: case 20: case 25: return 1;
         case 3: case 7: case 21: case 26: return 2;
         case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: return 8;
+        case 5: case 9: case 11: case 23: case 28: case 36: return 8; // 36 is the timestamp, the i64 payload (§2.11)
         case 18: case 19: case 24: case 29: return 16;
     }
     return 0;
@@ -444,10 +444,9 @@ const tableRefuseReasonEnum = `
 // language. A refusal moves no counter, and a match writes nothing: the
 // out-parameter is touched on the refusal path only.
 //
-// It is not the MESSAGE FORM's vocabulary (TableMessageReason, §3.3): a caller
-// meeting one of these has been refused a FILE, by a header match or by a
-// measure.
-enum TableRefuseReason
+// The MESSAGE FORM's names (TableMessageReason, §3.3) are values of this same
+// enum, appended in Go's order: one vocabulary, whichever call refused.
+enum TableRefuseReason : int32_t
 {
     ok,                    // no clause failed: the only value beside a non-null root (§7)
     not_a_cook,            // the magic is neither this build's constant nor its byte reversal, or the byte-order word contradicts the magic

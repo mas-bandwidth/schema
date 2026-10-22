@@ -9,17 +9,17 @@ package listdemo
 table Bytes
 {
     data  []uint8
-    after int32
+    past int32 | was = "after"
 }
 
 table Ints
 {
     values []int32
-    after  int32
+    past  int32 | was = "after"
 }
 
 table Floats
 {
     values []float32
-    after  int32
+    past  int32 | was = "after"
 }

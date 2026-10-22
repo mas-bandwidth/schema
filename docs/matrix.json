@@ -1,0 +1,900 @@
+{
+  "note": "One manifest in the tree for the published matrix. docs/MATRIX.md is generated from this file by tools/matrix and is held to it by tools/matrix/matrix_test.go (make test runs it): a hand edit to the page fails the gate. Edit this manifest, then run: go run ./tools/matrix -write",
+  "languages": [
+    {
+      "id": "cpp",
+      "typeWire": true,
+      "conformance": true,
+      "floor": true,
+      "used": true
+    },
+    {
+      "id": "c",
+      "typeWire": true,
+      "conformance": true,
+      "floor": false,
+      "used": false
+    },
+    {
+      "id": "cs",
+      "typeWire": true,
+      "conformance": true,
+      "floor": false,
+      "used": false
+    },
+    {
+      "id": "go",
+      "typeWire": true,
+      "conformance": true,
+      "floor": false,
+      "used": false
+    },
+    {
+      "id": "rust",
+      "typeWire": true,
+      "conformance": true,
+      "floor": false,
+      "used": false
+    },
+    {
+      "id": "java",
+      "typeWire": true,
+      "conformance": true,
+      "floor": false,
+      "used": false
+    },
+    {
+      "id": "js",
+      "typeWire": true,
+      "conformance": true,
+      "floor": false,
+      "used": false
+    },
+    {
+      "id": "dart",
+      "typeWire": true,
+      "conformance": true,
+      "floor": false,
+      "used": false
+    },
+    {
+      "id": "elixir",
+      "typeWire": true,
+      "conformance": true,
+      "floor": false,
+      "used": false
+    },
+    {
+      "id": "python",
+      "typeWire": false,
+      "conformance": false,
+      "floor": false,
+      "used": false,
+      "issue": "#381"
+    },
+    {
+      "id": "typescript",
+      "typeWire": false,
+      "conformance": false,
+      "floor": false,
+      "used": false,
+      "issue": "#381"
+    },
+    {
+      "id": "swift",
+      "typeWire": false,
+      "conformance": false,
+      "floor": false,
+      "used": false,
+      "issue": "#381"
+    },
+    {
+      "id": "kotlin",
+      "typeWire": false,
+      "conformance": false,
+      "floor": false,
+      "used": false,
+      "issue": "#381"
+    }
+  ],
+  "features": [
+    {
+      "title": "File framing and layout announcements",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Bounded batches",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Select known layouts and refuse unsupported input",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Static plans, record sizes and caller capacity",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Layout and definition hashes",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Fixed closure and record limits",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Retirement floors and supported versions",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Remove obsolete runtime and forward-read paths",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Numeric widening and backward-read landing rules",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Optional values and absent payloads",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Renaming, appending and deprecating fields",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Exact counters and report semantics",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Array counts and writer bounds",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Text lengths, code units and named refusals",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Scalar bounds and compressed floats",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Full-width enum and union ordinals",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Bool and present-byte normalization",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Live extents, read slack and prefill",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Fixed-image writes and zeroed slack",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Nested union guards and independent metadata",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Partitioned plans and identity-path equivalence",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Shared byte oracle and round-trip conformance",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Hostile-input checks and negative controls",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Boolean values",
+      "cells": {
+        "cpp": false,
+        "c": true,
+        "cs": true,
+        "go": true,
+        "rust": true,
+        "java": false,
+        "js": true,
+        "dart": true,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Signed integers: 8, 16, 32 and 64 bits",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Unsigned integers: 8, 16, 32 and 64 bits",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Signed 128-bit integers",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": true,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": true,
+        "dart": true,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Unsigned 128-bit integers",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": true,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": true,
+        "dart": true,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Ranged integer fields",
+      "cells": {
+        "cpp": false,
+        "c": true,
+        "cs": true,
+        "go": false,
+        "rust": true,
+        "java": false,
+        "js": true,
+        "dart": true,
+        "elixir": false
+      }
+    },
+    {
+      "title": "bits(N) fields",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": true,
+        "dart": true,
+        "elixir": false
+      }
+    },
+    {
+      "title": "32-bit floating-point fields",
+      "cells": {
+        "cpp": true,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": true,
+        "java": false,
+        "js": true,
+        "dart": true,
+        "elixir": false
+      }
+    },
+    {
+      "title": "64-bit floating-point fields",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": true,
+        "dart": true,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Compressed-float declarations stored as float32",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": true,
+        "dart": true,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Signed fixed-point fields",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": true,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": true,
+        "dart": true,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Unsigned fixed-point fields",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": true,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": true,
+        "dart": true,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Flags masks",
+      "cells": {
+        "cpp": true,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": true,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Enums and None",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": true,
+        "go": false,
+        "rust": false,
+        "java": true,
+        "js": true,
+        "dart": true,
+        "elixir": true
+      }
+    },
+    {
+      "title": "Bounded UTF-8 string fields",
+      "cells": {
+        "cpp": true,
+        "c": true,
+        "cs": true,
+        "go": false,
+        "rust": true,
+        "java": true,
+        "js": true,
+        "dart": true,
+        "elixir": true
+      }
+    },
+    {
+      "title": "Bounded UTF-16 string fields",
+      "cells": {
+        "cpp": true,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": true,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Bounded byte buffers",
+      "cells": {
+        "cpp": true,
+        "c": false,
+        "cs": true,
+        "go": false,
+        "rust": true,
+        "java": true,
+        "js": true,
+        "dart": true,
+        "elixir": true
+      }
+    },
+    {
+      "title": "Nested types by value",
+      "cells": {
+        "cpp": true,
+        "c": true,
+        "cs": false,
+        "go": false,
+        "rust": true,
+        "java": true,
+        "js": true,
+        "dart": true,
+        "elixir": true
+      }
+    },
+    {
+      "title": "Nested fixed tables by value",
+      "cells": {
+        "cpp": true,
+        "c": true,
+        "cs": true,
+        "go": false,
+        "rust": true,
+        "java": true,
+        "js": true,
+        "dart": true,
+        "elixir": true
+      }
+    },
+    {
+      "title": "Fixed-length arrays",
+      "cells": {
+        "cpp": true,
+        "c": true,
+        "cs": true,
+        "go": false,
+        "rust": true,
+        "java": true,
+        "js": true,
+        "dart": true,
+        "elixir": true
+      }
+    },
+    {
+      "title": "Bounded arrays with a live count",
+      "cells": {
+        "cpp": true,
+        "c": true,
+        "cs": true,
+        "go": false,
+        "rust": true,
+        "java": true,
+        "js": true,
+        "dart": true,
+        "elixir": true
+      }
+    },
+    {
+      "title": "Enum-keyed arrays",
+      "cells": {
+        "cpp": true,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": true,
+        "java": true,
+        "js": false,
+        "dart": true,
+        "elixir": true
+      }
+    },
+    {
+      "title": "Nested enum-keyed arrays",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": true,
+        "java": true,
+        "js": false,
+        "dart": true,
+        "elixir": true
+      }
+    },
+    {
+      "title": "Tagged unions with type or fixed-table payloads",
+      "cells": {
+        "cpp": true,
+        "c": true,
+        "cs": true,
+        "go": false,
+        "rust": true,
+        "java": true,
+        "js": true,
+        "dart": true,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Union arms holding scalar, text or array fields",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Payload-free union arms",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Arrays of unions",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Optional scalar and enum fields",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": true,
+        "js": true,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Optional nested values",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": true,
+        "go": false,
+        "rust": true,
+        "java": true,
+        "js": true,
+        "dart": true,
+        "elixir": true
+      }
+    },
+    {
+      "title": "Optional arrays",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Scalar and enum defaults",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "String, byte-buffer and flags defaults",
+      "cells": {
+        "cpp": false,
+        "c": false,
+        "cs": false,
+        "go": false,
+        "rust": false,
+        "java": false,
+        "js": false,
+        "dart": false,
+        "elixir": false
+      }
+    },
+    {
+      "title": "Save and load fixed-form files",
+      "cells": {
+        "cpp": true,
+        "c": true,
+        "cs": true,
+        "go": true,
+        "rust": true,
+        "java": true,
+        "js": true,
+        "dart": true,
+        "elixir": true
+      }
+    },
+    {
+      "title": "Constant body size and file-size measurement",
+      "cells": {
+        "cpp": true,
+        "c": true,
+        "cs": true,
+        "go": true,
+        "rust": true,
+        "java": true,
+        "js": true,
+        "dart": true,
+        "elixir": false
+      }
+    }
+  ]
+}

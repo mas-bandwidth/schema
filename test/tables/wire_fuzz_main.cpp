@@ -543,7 +543,7 @@ int main()
         if ( !read_exact( wire, length ) ) { fprintf( stderr, "wire-fuzz leg: the stream ended inside a mutant\n" ); return 1; }
 
         Reply reply;
-        memset( &reply, 0, sizeof( reply ) );
+        memset( (void *) &reply, 0, sizeof( reply ) );
         reply.saved = -1;
         roster[index]->run( wire, (int64_t) length, reply );
 
