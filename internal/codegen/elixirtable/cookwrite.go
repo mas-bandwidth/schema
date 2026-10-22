@@ -86,7 +86,7 @@ func writeCookLayout(b *strings.Builder, u *ir.Unit, f *ir.Field, fl *ir.FieldLa
 			fmt.Fprintf(b, "%q => %d, ", v, i+1)
 		}
 		b.WriteString("}")
-		fmt.Fprintf(b, ", enum_width: %d", int(e.StorageBits)/8)
+		fmt.Fprintf(b, ", enum_width: %d", e.StorageBits/8)
 	}
 	if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
 		fmt.Fprintf(b, ", max_count: %d", f.ArrayBound)

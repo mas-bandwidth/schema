@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -100,7 +101,7 @@ func TestDefaultsAndTableRenameElixir(t *testing.T) {
 		mods[u.name] = ir.GoExportName(unit.Package) + ".Table"
 		unitsByName[u.name] = unit
 	}
-	names := append(builds, rest...)
+	names := slices.Concat(builds, rest)
 
 	var probe strings.Builder
 	probe.WriteString(`
