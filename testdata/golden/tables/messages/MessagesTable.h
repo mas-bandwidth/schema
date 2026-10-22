@@ -12682,7 +12682,6 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                     }
                                     sub.offset += (int64_t) arm_inner_len;
                                 }
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->malformed = true; }
                             }
                             break;
                         }
@@ -12983,7 +12982,6 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                 }
                                                 elem_arm.offset += (int64_t) arm_inner_lena;
                                             }
-                                            if ( elem_arm.offset != elem_arm.size ) { value.history[(int32_t) i].type = ToolBodyType::None; r.report->malformed = true; }
                                         }
                                         break;
                                     }
