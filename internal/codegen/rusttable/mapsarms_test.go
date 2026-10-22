@@ -281,7 +281,7 @@ union Inner
 union Pick
 {
     leaf  Leaf
-    num   int32
+    number int32
     wide  uint64
     huge  uint128
     label string(8)
@@ -317,16 +317,16 @@ table Probe
     i128_v  int128 | min = -99999999999999999999, max = 99999999999999999999
     head    *Leaf
     twig    Inner
-    after   int32
+    trailer int32
 }
 `
 
 var mapsArmsProbeTexts = []struct{ name, text string }{
 	{"arms_empty", `{}`},
-	{"arms_leaf", `{"pick": {"leaf": {"id": 7, "name": "seven"}}, "after": 1}`},
+	{"arms_leaf", `{"pick": {"leaf": {"id": 7, "name": "seven"}}, "trailer": 1}`},
 	{"arms_leaf_default", `{"pick": {"leaf": {}}}`},
-	{"arms_num", `{"pick": {"num": -5}}`},
-	{"arms_num_zero", `{"pick": {"num": 0}}`},
+	{"arms_number", `{"pick": {"number": -5}}`},
+	{"arms_number_zero", `{"pick": {"number": 0}}`},
 	{"arms_wide", `{"pick": {"wide": 18446744073709551615}}`},
 	{"arms_huge", `{"pick": {"huge": 340282366920938463463374607431768211455}, "u128_v": 340282366920938463463374607431768211455, "i128_v": -99999999999999999999}`},
 	{"arms_label", `{"pick": {"label": "héllo"}}`},
@@ -343,12 +343,12 @@ var mapsArmsProbeTexts = []struct{ name, text string }{
 	{"arms_inner", `{"pick": {"inner": {"leaf": {"id": 9}}}}`},
 	{"arms_inner_none", `{"pick": {"inner": {}}}`},
 	{"arms_off", `{"pick": {"off": null}}`},
-	{"arms_array", `{"picks": [{"num": 1}, {}, {"leaf": {"id": 2}}, {"off": null}, {"ptr": {"id": 5}}], "capped": [{"label": "x"}, {}]}`},
+	{"arms_array", `{"picks": [{"number": 1}, {}, {"leaf": {"id": 2}}, {"off": null}, {"ptr": {"id": 5}}], "capped": [{"label": "x"}, {}]}`},
 	{"opt_present", `{"o_int": 0, "o_bool": false, "o_grade": "None", "o_leaf": {}, "o_list": []}`},
 	{"opt_values", `{"o_int": -9, "o_bool": true, "o_grade": "Silver", "o_leaf": {"id": 1, "name": "o"}, "o_list": [1, 2, 3]}`},
 	{"keyed_values", `{"scores": {"Bronze": 0, "Silver": 5, "Gold": -1}, "ranks": {"Gold": "Bronze", "Silver": "Silver"}, "leaves": {"Silver": {"id": 2}, "Gold": {}}}`},
 	{"maps_values", `{"names": {"zeta": 1, "alpha": 0, "é": 3, "z": 2}, "by_id": {"18446744073709551615": {"id": 1}, "0": {}, "7": {"name": "seven"}}}`},
 	{"maps_pointers", `{"by_key": {"-3": {"&node": 1, "id": 3}, "2": {"&node": 1}}, "head": {"id": 8}}`},
 	{"maps_nested", `{"nested": {"2": {"b": "Gold", "a": "None"}, "1": {}}}`},
-	{"everything", `{"pick": {"leaf": {"id": 1}}, "picks": [{"grade": "Bronze"}], "o_int": 4, "scores": {"Gold": 9}, "names": {"k": 1}, "by_key": {"1": {"id": 1}}, "after": -1}`},
+	{"everything", `{"pick": {"leaf": {"id": 1}}, "picks": [{"grade": "Bronze"}], "o_int": 4, "scores": {"Gold": 9}, "names": {"k": 1}, "by_key": {"1": {"id": 1}}, "trailer": -1}`},
 }

@@ -371,12 +371,12 @@ table Notes
     by_id   map[uint8]wstring(3)
     bodies  []Body
     caption Caption
-    after   int32
+    trailer int32
 }
 `
 
 // wideWriterSrc is the same shape as an OLDER or a WIDER writer would declare
-// it: every bound larger, and Stamp's label and Notes' after respelled to the
+// it: every bound larger, and Stamp's label and Notes' trailer respelled to the
 // other text kind, so a reader of wideMirrorSrc meets every rule of §3 and §4.
 const wideWriterSrc = `package wide
 
@@ -416,15 +416,15 @@ table Notes
     by_id   map[uint8]wstring(8)
     bodies  []Body
     caption Caption
-    after   int32
+    trailer int32
 }
 `
 
 var wideProbeTexts = []struct{ root, name, text string }{
 	{"Notes", "wide_notes_empty", `{}`},
-	{"Notes", "wide_notes_map", `{"by_id": {"9": "z", "1": "Aé中", "4": "😀"}, "after": 3}`},
+	{"Notes", "wide_notes_map", `{"by_id": {"9": "z", "1": "Aé中", "4": "😀"}, "trailer": 3}`},
 	{"Notes", "wide_notes_arms", `{"bodies": [{"wide": "AB"}, {}, {"narrow": "ok"}, {"tally": -4}, {"wide": "😀😀"}]}`},
-	{"Notes", "wide_notes_all", `{"by_id": {"2": "x"}, "bodies": [{"wide": "q"}], "caption": {"title": "Zé😀中", "line": {"text": "ab"}, "lines": [{"text": "1"}, {}, {"text": "😀"}], "body": {"wide": "w"}}, "after": -1}`},
+	{"Notes", "wide_notes_all", `{"by_id": {"2": "x"}, "bodies": [{"wide": "q"}], "caption": {"title": "Zé😀中", "line": {"text": "ab"}, "lines": [{"text": "1"}, {}, {"text": "😀"}], "body": {"wide": "w"}}, "trailer": -1}`},
 	{"Caption", "wide_caption_full", `{"title": "1234567", "line": {"text": "abcd"}, "lines": [{"text": "a"}, {"text": "bb"}, {"text": "ccc"}], "body": {"tally": 7}}`},
 	{"Stamp", "wide_stamp_pair", `{"label": "A😀B", "seq": 4294967295}`},
 	{"Stamp", "wide_stamp_escapes", "{\"label\": \"\\\"\\\\\\n\\u0001\"}"},
@@ -440,7 +440,7 @@ var wideDamage = []struct {
 	{"Stamp", "wide_clamp_pair", `{"label": "ABC😀", "seq": 1}`, "", ""},
 	{"Caption", "wide_clamp_arm", `{"body": {"wide": "ABCDEF"}}`, "", ""},
 	{"Caption", "wide_clamp_line", `{"line": {"text": "ABCD😀"}, "lines": [{"text": "ABCDEFG"}]}`, "", ""},
-	{"Notes", "wide_clamp_map", `{"by_id": {"1": "ABCD", "2": "AB"}, "after": 5}`, "", ""},
+	{"Notes", "wide_clamp_map", `{"by_id": {"1": "ABCD", "2": "AB"}, "trailer": 5}`, "", ""},
 	{"Stamp", "wide_unpaired", `{"label": "AB", "seq": 2}`, "\x41\x00\x42\x00", "\x41\x00\x00\xd8"},
 	{"Stamp", "wide_low_first", `{"label": "AB", "seq": 2}`, "\x41\x00\x42\x00", "\x00\xdc\x42\x00"},
 	{"Stamp", "wide_zero_unit", `{"label": "AB", "seq": 2}`, "\x41\x00\x42\x00", "\x41\x00\x00\x00"},

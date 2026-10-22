@@ -87,11 +87,6 @@ func runRecipes(name, text string) []runRecipe {
 				pattern = pattern[1 : len(pattern)-1]
 			}
 			pattern = strings.ReplaceAll(pattern, "$$", "$")
-			// a FUZZ run spells -run '^$' on purpose: it runs no unit test and
-			// hands the package to -fuzz, so the empty selection is the intent
-			if pattern == "^$" && strings.Contains(inv, " -fuzz ") {
-				continue
-			}
 
 			var pkg string
 			if pm := goPackageArg.FindStringSubmatch(inv); pm != nil {
