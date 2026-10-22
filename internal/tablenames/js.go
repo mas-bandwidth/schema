@@ -1,8 +1,9 @@
 package tablenames
 
-// Js is the JavaScript table backend (internal/codegen/jstable). It is the
-// READING TIER: no struct layout, so it reads both accelerators and
-// produces neither.
+// Js is the JavaScript table backend (internal/codegen/jstable). It reads
+// and writes the block form (§19, §19.1) and the cook form (§7, §7.6), and
+// carries the fixed-form and variable-form wire codecs. Field offsets are
+// the compiler's, applied through a DataView.
 const Js Backend = 1 << 7
 
 func init() {
@@ -10,11 +11,48 @@ func init() {
 		Name{Name: "TableBlockMagic", What: "the block prologue's magic, and the byte-order check with it", RustConst: true},
 		Name{Name: "TableBlockLayout", What: "the layout contract's check, run once. C# spells it a nested class of Schema; Java puts it at package scope and JavaScript at module scope, so the claim is the UNION"},
 		Name{Name: "TableBlockByteOrder", What: "this build's byte order, as the prologue carries it", RustConst: true},
+		Name{Name: "TableBlockReadF32", What: "the unit's one float32 read: the bits cross in as an integer, a NaN keeps its payload by bit surgery (docs/PORTING.md M21)"},
 		Name{Name: "TableCookMagic", What: "the cooked header's magic, and the byte-order check with it", RustConst: true},
 		Name{Name: "TableCookByteOrder", What: "this build's byte order, as a cooked header records it", RustConst: true},
 		Name{Name: "TableCookMaxAlign", What: "the greatest region alignment a cooked header may name", RustConst: true},
 		Name{Name: "TableCookHeaderBytes", What: "§7.1's 64-byte header. C# spells it a Schema member, which claims nothing; Rust puts it at module level, Go at package scope and JavaScript at module scope, so the claim is the UNION and the name is claimed", RustConst: true},
 		Name{Name: "TableCookLayout", What: "the cook closure's layout contract, run once (§20.3)"},
+		Name{Name: "TableCookWrite", What: "the cook writer: measure, then write, one closure for the unit's cookable roots (§7.6)"},
+
+		// The message form's module-scope bindings (docs/SPEC-TABLES.md §3.3).
+		// They are spelled at column zero of the home module, so a schema
+		// declaration of the same name is a second binding.
+		Name{Name: "TableAnnounceRead", What: "read one announcement into a direction's vocabulary (§3.3)"},
+		Name{Name: "TableFixedTextOk", What: "whether the used text is well-formed: UTF-8, or paired UTF-16 with no zero unit"},
+		Name{Name: "TableMessageAnnouncement", What: "the unit's announcement bytes, a compile-time constant (§3.3)"},
+		Name{Name: "TableMessageBatchReader", What: "a reader over one message-form batch"},
+		Name{Name: "TableMessageDoubleWords", What: "the uint64 view of TableMessageFloat64's buffer"},
+		Name{Name: "TableMessageEntryEqual", What: "whether two announced entries are the same bytes"},
+		Name{Name: "TableMessageEntryRead", What: "read one announced entry: id, kind and shape"},
+		Name{Name: "TableMessageFloat", What: "the float32 buffer the bit converters share"},
+		Name{Name: "TableMessageFloat32Bits", What: "a float32's bits as an unsigned integer"},
+		Name{Name: "TableMessageFloat32FromBits", What: "the float32 a bit pattern names"},
+		Name{Name: "TableMessageFloat64", What: "the float64 buffer the bit converters share"},
+		Name{Name: "TableMessageFloat64Bits", What: "a float64's bits as an unsigned integer"},
+		Name{Name: "TableMessageFloat64FromBits", What: "the float64 a bit pattern names"},
+		Name{Name: "TableMessageKindBits", What: "a message kind's width in bits"},
+		Name{Name: "TableMessageKindBytes", What: "a message kind's width in bytes"},
+		Name{Name: "TableMessageNodeId", What: "the reserved id of the node table (§3.1)"},
+		Name{Name: "TableMessageOpen", What: "open a message buffer into a reader and a verdict"},
+		Name{Name: "TableMessageOpenDamaged", What: "the open verdict for a buffer the framing cannot read"},
+		Name{Name: "TableMessageOpenFramed", What: "open a message buffer and refuse one whose framing ends early"},
+		Name{Name: "TableMessageOpenOk", What: "the open verdict for a buffer the reader accepted"},
+		Name{Name: "TableMessageOpenRefused", What: "the open verdict for a buffer that is not this form"},
+		Name{Name: "TableMessageRead64", What: "the little-endian uint64 at an offset"},
+		Name{Name: "TableMessageRefuse", What: "keep the first message-refusal reason and stop"},
+		Name{Name: "TableMessageResetReport", What: "clear a message report before a read"},
+		Name{Name: "TableMessageShapeEqual", What: "whether two announced shapes are the same bytes"},
+		Name{Name: "TableMessageShapeRead", What: "read one announced shape's width facts"},
+		Name{Name: "TableMessageVersionId", What: "the reserved id of the build version in an announcement"},
+		Name{Name: "TableMessageVocabularyId", What: "the reserved id of the vocabulary length in an announcement"},
+		Name{Name: "TableMessageWords", What: "the uint32 view of TableMessageFloat's buffer"},
+		Name{Name: "tableMessageCountBits", What: "how many bits a vocabulary's entry count takes"},
+		Name{Name: "tableMessageEntry", What: "the vocabulary entry a reference names"},
 		// ---- THE FIXED FORM (docs/SPEC-TABLES.md §3.4), which JavaScript carries
 		// whole. Every one of these is a MODULE-SCOPE BINDING of the unit's
 		// <Package>Table.js, so every one of them can collide with a declaration
@@ -66,10 +104,10 @@ func init() {
 		Name{Name: "TableFixedGetU32", What: "the little-endian u32 read the framing itself needs"},
 		Name{Name: "TableFixedTagAt", What: "the little-endian tag load at ArgW bytes, never a prefix — a two-byte 0x0101 is not arm 1"},
 
-		// THE PLAN: nine int32 lanes of one flat Int32Array, and the lane
+		// THE PLAN: eleven int32 lanes of one flat Int32Array, and the lane
 		// indices ONE BINDING PER LINE. A lane folded into a comma list beside
 		// another is a lane nobody claimed.
-		Name{Name: "TableFixedLanes", What: "a plan entry is nine int32 lanes, which is what keeps the read loop monomorphic"},
+		Name{Name: "TableFixedLanes", What: "a plan entry is eleven int32 lanes, which is what keeps the read loop monomorphic"},
 		Name{Name: "TableFixedLaneOp", What: "the plan lane holding the op"},
 		Name{Name: "TableFixedLaneSrc", What: "the plan lane holding the source offset"},
 		Name{Name: "TableFixedLaneDst", What: "the plan lane holding the destination offset"},
@@ -79,8 +117,10 @@ func init() {
 		Name{Name: "TableFixedLaneArg", What: "the plan lane holding the guard's VALUE: the tag an arm's entry answers to"},
 		Name{Name: "TableFixedLaneMeta", What: "the plan lane holding what an op needs beside its size — a widen's width and sign, a text entry's flavour"},
 		Name{Name: "TableFixedLaneArgW", What: "the plan lane holding the guard's WIDTH IN BYTES: a union tag is one, two, four or eight"},
-		Name{Name: "TableFixedLaneGuards", What: "the plan lane holding where an arm's GUARD CHAIN starts in the pool: the outer tags a nested arm's entry also runs under"},
-		Name{Name: "TableFixedLaneGuardCount", What: "the plan lane holding how many links that guard chain carries"},
+		// THE GUARD CHAIN (docs/FIXED-FORM-ALGORITHM.md §4.1): offset+count
+		// into the plan's pool of (guard, arg, argw) links, outermost first.
+		Name{Name: "TableFixedLaneGuards", What: "the plan lane holding where an entry's guard chain starts in the plan's pool"},
+		Name{Name: "TableFixedLaneGuardCount", What: "the plan lane holding how many links an entry's guard chain has: every enclosing union's tag"},
 		Name{Name: "TableFixedNoGuard", What: "the guard a plan entry belonging to no union arm carries"},
 
 		// THE OPS ARE THE WHOLE SET, one binding each, and the flavours a text
@@ -139,7 +179,6 @@ func init() {
 		Name{Name: "TableFixedDstAux", What: "my side's lane holding a second offset — a text payload, an optional's present byte"},
 		Name{Name: "TableFixedDstCounted", What: "my side's lane saying whether an array carries a count ahead of its elements"},
 		Name{Name: "TableFixedDstArg", What: "my side's lane holding a text field's flavour"},
-		Name{Name: "TableFixedTextOk", What: "whether a landed text payload is well-formed in its flavour: utf-8, or wide code units"},
 
 		// ---- THE MESSAGE FORM AND ITS ANNOUNCEMENT (docs/SPEC-TABLES.md §3.3),
 		// emitted into the same <Package>Table.js. The same rule as the fixed
@@ -151,44 +190,14 @@ func init() {
 		Name{Name: "TableMessageBatchMax", What: "the announced message bit codec: the batch bound"},
 		Name{Name: "TableMessageRefBitsHere", What: "the announced message bit codec: this build's reference width"},
 		Name{Name: "TableMessageEntriesHere", What: "the announced message bit codec: this build's vocabulary size"},
-		Name{Name: "TableMessageAnnouncement", What: "this build's announcement bytes, the form-1 file §3.3 sends once"},
-		Name{Name: "TableMessageOpenOk", What: "the announcement reader's open verdict: ok"},
-		Name{Name: "TableMessageOpenRefused", What: "the announcement reader's open verdict: refused by name"},
-		Name{Name: "TableMessageOpenDamaged", What: "the announcement reader's open verdict: damaged"},
 		Name{Name: "TableVocabulary", What: "the vocabulary an announcement resolves into (§3.3)"},
-		Name{Name: "TableMessageVersionId", What: "the reserved id the announcement's build version rides under"},
-		Name{Name: "TableMessageVocabularyId", What: "the reserved id the announcement's vocabulary field rides under (§3.3)"},
-		Name{Name: "TableMessageNodeId", What: "the reserved id of a node in the announcement's form-1 body"},
-		Name{Name: "TableMessageRead64", What: "the little-endian u64 read the id trailer takes"},
 		Name{Name: "TableMessageReader", What: "the announcement's bounded form-1 reader: the body, the id trailer and the framing pre-walk"},
-		Name{Name: "TableMessageKindBytes", What: "a scalar kind's fixed payload width in bytes"},
-		Name{Name: "TableMessageOpen", What: "open an announcement as a form-1 file"},
-		Name{Name: "TableMessageOpenFramed", What: "open, then refuse a body ending after its terminator"},
 		Name{Name: "TableMessageBits", What: "the bit length of a count"},
 		Name{Name: "TableMessageKnownKind", What: "whether a kind is in the closed set"},
-		Name{Name: "TableMessageKindBits", What: "a scalar kind's fixed payload width in bits"},
-		Name{Name: "TableMessageFloat", What: "the f32 conversion scratch"},
-		Name{Name: "TableMessageWords", What: "the f32 scratch's u32 view"},
-		Name{Name: "TableMessageFloat32FromBits", What: "an f32 from its bits"},
-		Name{Name: "TableMessageFloat32Bits", What: "an f32's bits"},
-		Name{Name: "TableMessageFloat64", What: "the f64 conversion scratch"},
-		Name{Name: "TableMessageDoubleWords", What: "the f64 scratch's u64 view"},
-		Name{Name: "TableMessageFloat64Bits", What: "an f64's bits"},
-		Name{Name: "TableMessageFloat64FromBits", What: "an f64 from its bits"},
 		Name{Name: "TableMessageShape", What: "an announced payload shape"},
-		Name{Name: "TableMessageShapeRead", What: "read one announced shape's width facts"},
-		Name{Name: "TableMessageEntryRead", What: "read one announced entry: an id, a kind and a shape"},
-		Name{Name: "TableMessageShapeEqual", What: "whether two announced shapes agree"},
-		Name{Name: "TableMessageEntryEqual", What: "whether two announced entries agree, so a repeat is caught (§3.3)"},
-		Name{Name: "TableMessageRefuse", What: "refuse an announcement by name in the caller's report"},
-		Name{Name: "TableAnnounceRead", What: "§3.3's announcement reader: resolves once, reads tolerantly, a refusal is terminal"},
-		Name{Name: "TableMessageBatchReader", What: "the message batch reader"},
-		Name{Name: "TableMessageResetReport", What: "the message read report's reset, which the caller owns"},
 		Name{Name: "TableBitReader", What: "the message body's bit reader"},
 		Name{Name: "TableBitWriter", What: "the message body's bit writer"},
-		Name{Name: "tableMessageCountBits", What: "the message bit codec: a count's bit width under its shape"},
 		Name{Name: "tableMessageCount", What: "the message bit codec: read a count under its shape"},
-		Name{Name: "tableMessageEntry", What: "the message bit codec: one vocabulary entry by reference"},
 		Name{Name: "tableMessageSkip", What: "the message bit codec: step over one unknown field's payload"},
 		Name{Name: "tableMessageSkipBody", What: "the message bit codec: step over one unknown body"},
 		Name{Name: "tableMessageReadScalar", What: "the message bit codec: read one scalar under its shape"},
@@ -233,5 +242,14 @@ func init() {
 		Name{Name: "TableFixedTextOk", What: "whether a text payload's bytes are well-formed for its flavour (fixed form)"},
 
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
+
+		// THE VIEW (docs/SPEC-TABLES.md §8.3, §8.5): the module-scope bindings of
+		// the unit's <Home>View.js. Every descriptor and vocabulary row is a
+		// local of TableUnitView's closure. The fourth, UnitView, is the unit
+		// registry's own symbol, which internal/check already reserves for every
+		// target (§8.3), so it is not claimed a second time here.
+		Name{Name: "TableDocNone", What: "the one shared empty doc every unannotated descriptor row names"},
+		Name{Name: "TableTagsNone", What: "the one shared empty tag list every untagged descriptor row names"},
+		Name{Name: "TableUnitView", What: "the unit registry and every descriptor of the view, built once (§8.3)"},
 	)
 }
