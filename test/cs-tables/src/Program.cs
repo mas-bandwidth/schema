@@ -1771,9 +1771,43 @@ static partial class Program
         }
     }
 
-    static int Main()
+    static int Main(string[] args)
     {
         goldenDir = FindGoldenDir();
+
+        // `alloc` runs the per-path allocation gate alone (its own sensitivity
+        // check included), so make/cs.mk's tables-cs-alloc target is a focused
+        // gate and not a second name for the whole leg.
+        if (args.Length > 0 && args[0] == "alloc")
+        {
+            // The runtime's major is read before anything is measured: a
+            // floor measured on a runtime other than the pin certifies
+            // nothing (docs/PORTING.md I14).
+            bool certified = AllocRuntimeGate(out bool refused);
+            if (refused)
+            {
+                return 1;
+            }
+            TestAllocationGate();
+            TestAllocationGateCanGoRed();
+            if (failed)
+            {
+                Console.WriteLine(certified ? "cs alloc gate: FAILED" : "cs alloc gate: FAILED (NOT CERTIFIED: runtime is off the pin)");
+                return 1;
+            }
+            if (!certified)
+            {
+                Console.WriteLine("cs alloc gate NOT CERTIFIED: observed read, null-report, measure, save and round trip allocate zero on a runtime that is not the pin");
+                return 0;
+            }
+            Console.WriteLine("cs alloc gate passed: read, null-report, measure, save and round trip allocate zero");
+            return 0;
+        }
+
+        if (args.Length > 0 && (args[0] == "soak" || args[0] == "soak-negative-control"))
+        {
+            return RunSoak(args);
+        }
 
         TestWireContracts();
         TestVocabularyDistinctness();
@@ -1787,6 +1821,8 @@ static partial class Program
         TestAllocators();
         TestBuilders();
         TestBlobJsonAllocation();
+        TestAllocationGate();
+        TestAllocationGateCanGoRed();
         TestNativeMessages();
         TestRetention();
         TestRetentionContracts();

@@ -249,10 +249,10 @@ quests or achievements growing weekly, cannot arise in one. The other
 positional vocabulary a table could have had is gone rather than excepted:
 a positional array whose bound folds from an enum is REFUSED BY NAME in a
 table body and a union arm, and the same array held by a `type` a table
-closure reaches is ruled on schema#606, by that refusal or by a keyed wire
-(SPEC-TABLES.md §2.4, §11), so
-`[E]T` is the table form and an enum a table reaches moves no slot when it
-changes. Flags is therefore the whole of the exception, and there is no
+closure reaches rides KEYED on the table wire (schema#606), so its kind `13`
+body moves no slot when the enum changes (SPEC-TABLES.md §2.4, §11): `[E]T` is
+the table form and a `type`-held enum-extent array keys like it. Flags is
+therefore the whole of the exception, and there is no
 second.
 
 **What reachability does not change is what the projection MEANS.** The
@@ -511,7 +511,7 @@ from this projection rather than carried in it.
   word, a reserved word included, because a variant name is only ever read
   inside its own declaration's body or after `E.` and so never meets a type
   position. The words a variant still may not be are those already refused:
-  `None` and `Max` on an enum, `Count` on flags, and a target's own reserved
+  `None` and `Max` on an enum, `Count` on flags, and any supported language's reserved
   words (SPEC §4.6). Attribute keys
   (`min`, `max`, `resolution`, ...) are contextual — they live only right of
   `|` and are not reserved.
@@ -675,8 +675,9 @@ Bound       = IntExpr | ".." IntExpr | IntExpr ".." IntExpr .       // [N] exact
 AttrSection = "|" Attr { "," Attr } .                            // runs to END OF LINE: the newline
                                                                  // or a // comment terminates it —
                                                                  // nothing follows a qualification
-Attr        = ident "=" ( ConstExpr | ident | string )           // valued:    min = 0, max = 100,
-                                                                 //            cpp_include = "a.h"
+Attr        = ident "=" ( ConstExpr | QualIdent | string )       // valued:    min = 0, max = 100,
+                                                                 //            cpp_include = "a.h",
+                                                                 //            cpp_native = math::Vec2
             | ident .                                            // valueless: a TAG (§4.2) — legal
                                                                  // in every qualification section,
                                                                  // in an open namespace
@@ -684,6 +685,9 @@ Attr        = ident "=" ( ConstExpr | ident | string )           // valued:    m
                                                                  // each valued key declares whether
                                                                  // it takes an expression, a word,
                                                                  // or a quoted string)
+QualIdent   = ident { "::" ident } .                             // a `::`-qualified C++ type name:
+                                                                 // the global spelling the emitter
+                                                                 // writes verbatim (cpp_native, §4.2)
 
 If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
 
@@ -939,7 +943,9 @@ sequence    uint16
   our own shit! It's a DSL anyway").
 - **The VALUED vocabulary is typed and closed per compiler version — an
   unknown valued key is a compile error**, never a silently ignored string.
-  The vocabulary: integers take `min`/`max` (both together or neither);
+  The vocabulary: integers take `min`/`max` (both together or neither,
+  except `uint8`/`uint16`/`uint32`/`uint64` may omit `min` when `max`
+  is declared: the omitted `min` is 0 — §4.6);
   `float32` takes `min`/`max`/`resolution` (all three together — §4.3: this
   IS the compressed float); `fixed`/`ufixed`/`int128` take `min`/`max`
   (required — §4.3); enum and flags declarations take `max`; type
@@ -1111,10 +1117,14 @@ property (§4.11) survive untouched.
 
 The rules:
 
-- **`cpp_native` takes an identifier** — the global (`::`-qualified) C++ type
-  name. **`cpp_include` takes a quoted header path** — the header declaring
-  it. They go together: one without the other is an error. String literals
-  (`"..."`, no escapes) exist in the grammar for attribute values only.
+- **`cpp_native` takes a C++ type name** — a bare identifier names a global
+  type, and a `::`-qualified name (`math::Vec2`) names one inside a
+  namespace. The emitter writes it `::`-qualified verbatim (`::GameVec2` for
+  the bare spelling, `::math::Vec2` for the qualified one), so a namespaced
+  engine type needs no global alias. **`cpp_include` takes a quoted header
+  path** — the header declaring it. They go together: one without the other
+  is an error. String literals (`"..."`, no escapes) exist in the grammar for
+  attribute values only.
 - **Inside the basis type's own generated header the mapping is off** —
   references there keep the basis name. The native header includes that
   header to derive from the basis; a mapped reference would be circular.
@@ -1226,7 +1236,7 @@ classic twin, which is the wire oracle for the stated model.
 |---|---|---|
 | `f bits(N)` | N raw bits, N in [1,64] | `serialize_bits` ([1,64]; >32 = low 32 bits first, then the high remainder) |
 | `f intN` / `f uintN` (bare, N ∈ 8/16/32/64) | N raw bits (two's complement for signed) | `serialize_uint8/16/32/64`; signed raw is the same bits, cast |
-| `f intN | min = A, max = B` / `f uintN | min = A, max = B` | minimal bits for the range, value − A; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
+| `f intN | min = A, max = B` / `f uintN | min = A, max = B` | minimal bits for the range, value − A; unsigned N ∈ 8/16/32/64 may spell only `max = B`, meaning A = 0 with the same projection and protocol id; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
 | `f uint128` (bare only) | 128 raw bits — the low 64-bit half first, then the high half; representation-independent (native `__int128` and the emulated two-lane pair produce identical bytes) | `serialize_uint128` |
 | `f int128 | min = A, max = B` (range required) | value − A in `bits_required128(A, B)` bits, 32-bit groups from the bottom; read rejects an offset above B − A — reject, never clamp; **where the range fits 64 bits or fewer the bytes are identical to `serialize_int64` over the same bounds.** Bare `int128` and ranged `uint128` are compile errors — serialize's own surface, mirrored exactly (uint→raw, int→ranged) | `serialize_int128` |
 | `f fixed(I, F) | min = A, max = B` (range required; **signed**) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom — **except A == B, which costs ZERO bits (not F): the reader materializes raw = A << F from the range alone (§4.6)**; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
@@ -1368,7 +1378,9 @@ All compile errors with positions:
   byte. A one-sided range is still refused by name on a float, a fixed-point,
   `int128` or `uint128` field, a timestamp or a named type, beside
   `resolution`, and on a field of a `type` body or a packet — the sentence
-  below is scoped to those. A one-sided range whose given side excludes zero
+  below is scoped to those, save that `max` alone on `uint8`..`uint64` is the
+  zero-minimum spelling everywhere (the attribute discipline below), so it never
+  reaches this rule. A one-sided range whose given side excludes zero
   needs a default in range exactly as a two-sided one does.
 - **A range that excludes zero requires a declared default in range:**
   `x uint8 | min = 1, max = 255` is a compile error, because zero
@@ -1418,9 +1430,15 @@ All compile errors with positions:
   The READ is untouched: a decoded count outside [A, B] fails the read in
   every build, in all nine.
 - **Attribute discipline:** an unknown attribute key, a key repeated, an
-  attribute on a type that does not take it, `min` without `max` (or vice
-  versa), and `resolution` without both bounds are compile errors, each
-  naming the field and the legal vocabulary for its type.
+  attribute on a type that does not take it, `min` without `max`, and
+  `resolution` without both bounds are compile errors, each naming the field
+  and the legal vocabulary for its type. A signed integer requires both
+  `min` and `max` when ranged. On `uint8`/`uint16`/`uint32`/`uint64`,
+  `max` alone declares a range whose omitted `min` is 0: it has exactly the
+  same projection and protocol id as `min = 0, max = B`. `min` alone on an
+  unsigned integer remains a compile error; the storage maximum is not a
+  declared bound. This omission rule does not extend to `uint128` (raw only)
+  or `ufixed` (both bounds required).
 - **Non-finite compressed-float parameters are rejected:** each of
   `min`/`max`/`resolution` (§4.3's triple)
   must be finite at float64 AND at float32, where every runtime evaluates the
@@ -1476,26 +1494,37 @@ All compile errors with positions:
 - **Duplicate field names anywhere in one type — including across branch
   sides.** One name, one field, declared once. (schema owns the type, and
   unique names keep the flattened generated output unambiguous.)
+- **Retired field, table and enum-value names:** a field, table or enum value
+  name (or wire id under `was`) that the unit's committed `tables.baseline` or
+  `schema.lock` records as retired cannot be reused in the same scope with a
+  new type or meaning; the checker refuses it by name (`VERSIONING.md`).
+  Re-adding a retired name with the same meaning is allowed only where
+  `VERSIONING.md` says so (when `--update --reason` acknowledges the
+  resurrection in `tables.baseline`, or when a `| deprecated` field in
+  `schema.lock` remains at its locked slot with its locked type and meaning).
 - Back-reference violations (§4.5); `if` conditions that are not `bool`
   fields.
 - Cycles in type composition, undefined types, duplicate declarations,
   `package` mismatch.
-- **Target-name safety:** a declaration or field name is checked against the
-  reserved words of the targets being generated (SPEC §4.6): `schema generate --lang L` checks L's words only, and `schema check` — and every command
-  that names no target — checks every target's words. A target the checker
-  has no reserved-word list of its own for has no words to narrow to, so
-  `generate` on it checks every target's words rather than none: a collision
-  the checker knows how to refuse is never let through because the target
-  being generated does not carry a list. A name that is a
-  reserved word in a checked target (`type`, `match`, `impl`, `func`,
-  `class`, ...), or that collides with another name after Go export-casing
-  (`atRest` → `AtRest`), is rejected, with one diagnostic per name listing
-  every checked target it collides with; every collision in the unit is
-  reported in the same run. Outside the Go escape below there is no escaping
+- **Target-name safety:** a schema name is legal in EVERY supported language,
+  whatever target is generated (Glenn, 2026-10-21: "generated output never
+  puts out keywords in Y"). Every command — `check`, `generate --lang L` for
+  any L, and the rest — checks a declaration or field name against the
+  reserved words of all fourteen languages: C, C++, C#, Go, Rust, Java,
+  JavaScript, Dart, Elixir, Lua, Luau, Squirrel, Goose and Lobster. The words
+  live in ONE table in the checker (a language's keywords and literals, plus
+  the predeclared names its generated code would shadow: Go's universe block,
+  Dart's dart:core types and Object members, Elixir's arity-0 Kernel
+  imports); an emitter that tests the spelling it maps a name to reads its
+  language's words from that table, never from a copy, and a port cannot
+  register without its row. A name that is a reserved word in any language
+  (`type`, `match`, `impl`, `func`, `class`, `end`, `after`, ...), or that
+  collides with another name after Go export-casing (`atRest` → `AtRest`), is
+  rejected, with one diagnostic per name listing every language it collides
+  with; every collision in the unit is reported in the same run. Outside the Go escape below there is no escaping
   machinery; rename at the source.
 - **The Go escape.** Go is the one target that carries a reserved word
-  instead of refusing it. Under `--lang go` (and in `schema check`, whose Go
-  half is the same rule), a name that is one of Go's words
+  instead of refusing it. In every command, a name that is one of Go's words
   in the checker's list (a Go keyword, or a predeclared identifier the Go
   output would collide with, such as `byte` or `true`) is not refused in
   these positions:
@@ -1524,15 +1553,13 @@ All compile errors with positions:
   the escape, in a run that generates Go. Every other declaration kind
   (`type`, `enum`, `flags`, `union`, `const`) and the package name keep
   refusing Go's words by name until the Go emitter carries the escape for
-  them, and every other target keeps refusing its own words by name.
+  them. The escape exempts Go alone: a word Go reserves that another
+  language also reserves (`new`, `var`, `true`, ...) is still refused by name
+  for that language, so only a word Go alone reserves reaches the Go output.
   **The output never calls a predeclared function a carried name could
-  shadow**: a word another target reserves and Go does not (`new`, `class`,
-  `auto`, ...) is carried bare under `--lang go`, and a table so named is a
-  package-scope type that shadows a builtin of the same spelling, so the
-  emitted code allocates by composite literal (`&T{}`) and sizes by
-  `unsafe.Sizeof(*(*T)(nil))` rather than through `new`
-  (`TestGenerateGoCompilesNonGoReservedWords`, cmd/schema: every such word, in
-  every declaration form, builds).
+  shadow**: an escaped table is a package-scope type, so the emitted code
+  allocates by composite literal (`&T{}`) and sizes by
+  `unsafe.Sizeof(*(*T)(nil))` rather than through `new`.
   **Go's predeclared identifiers are Go words.** The Go list carries the whole
   universe block: the builtin functions (`append cap clear close complex copy
   delete imag len make max min new panic print println real recover`), the
@@ -1542,17 +1569,18 @@ All compile errors with positions:
   equal to one takes exactly what every other Go word takes: a table is
   escaped (`table len` is `type len_ struct`), a field, union arm or variant is
   carried under its exported spelling, and every other declaration kind and
-  the package name are refused by name under `--lang go` and in `schema check`
+  the package name are refused by name in every command
   (the names the schema grammar already reserves, `bool`, `int32`, `string`
-  and the rest, never reach this rule). Proved, class by class, by
-  `TestGenerateGoCompilesNonGoReservedWords` (each word as a table and a field
-  builds) and `TestGenerateGoRefusesGoReservedWords` (each word as a `type` is
-  refused).
+  and the rest, never reach this rule). Proved by `TestGenerateGoCompilesGoOnlyWords`
+  (each word Go alone reserves, as a table and a field, builds),
+  `TestGenerateGoRefusesGoReservedWords` (each Go word as a `type` is
+  refused) and, for every language, `TestEveryReservedWordAsEveryNameKindIsRefused`
+  (internal/check: every word of the table in every name position).
 - **Package-name safety:** the package ident maps to every target's
   namespace/module/package concept verbatim (§6.1), which exposes it to three
   collision classes no declaration or field name can hit, each refused with a
-  diagnostic naming the mechanism and the fix (rename the package). (1) A
-  target reserved word: `package for` would generate `namespace for` and
+  diagnostic naming the mechanism and the fix (rename the package), whatever
+  target is generated. (1) A reserved word of any supported language: `package for` would generate `namespace for` and
   `package for`. (2) A C standard library identifier visible at C++ namespace
   scope — functions, types, and object-like macros of the C11 headers, which
   implementations also declare in the global namespace: `package exit` would
@@ -1763,7 +1791,7 @@ union Value
   works in integer expressions (§4.2); no generated set is a declarable
   field type. Variant names pass
   the same target-name safety and post-export uniqueness rules as field
-  names (§4.6): a variant named a target's reserved word is refused, and
+  names (§4.6): a variant named any language's reserved word is refused, and
   two variants whose exported spellings collide (`box_a`/`boxA`) are
   refused.
 - **The tag enum carries a DEBUG-NAME function in every target**, on the
@@ -1833,6 +1861,23 @@ union Value
   output or the selected arm). Consumers read the selected arm only. Nothing branches on
   a union's tag in v1 — `if` takes bools only (§4.4) — and a `switch` over
   `<Union>Type` is ruled-not-now, banked with §4.4's switch design.
+- **The arm setter (C++; C mirrors it, #449).** Selection is ONE call, so the
+  tag and the arm cannot disagree. The generated C++ union struct carries a
+  member function `Select<Variant>()` for every arm, `<Variant>` the arm's
+  exported spelling (its tag member's). For an arm with a payload it sets the
+  tag, constructs the arm in place with its declared defaults (the
+  construction above) and returns a reference to the fresh arm, for the
+  caller to populate: `shape.SelectSphere().radius = 2.0f;`. For a
+  payload-free arm it returns `void` and sets the tag alone. The two-step
+  form it replaces (construct the member in place, then assign the tag)
+  stays legal, but a forgotten tag in it leaves None, and the payload is
+  lost on the next write with no assert. The setter is additive: the wire,
+  `Write<Union>`, `Read<Union>` and the Max constants do not move with it,
+  and a read constructs its arm itself, not through the setter. A data
+  header declaring a union with a payload arm includes `<new>` for the
+  setter's placement construction. A setter whose name is the union's own
+  name or an arm type's name cannot compile, and C++ generation refuses it
+  by name.
 - **A union field.** A union name is a field type inside `type` bodies,
   arrays included (`shapes [..4]ColliderShape`).
 - **The id moves.** A union is wire structure: its arm order and count, every
@@ -2547,10 +2592,14 @@ or a file per declaration where the language demands one.
 
 - **C++: the header splits into a data/wire pair.** `<Base>.h` is the DATA
   header (constants, enums, flags, structs and MaxBits/MaxBytes bounds)
-  and includes `serialize.h` only when a storage type demands it
-  (int128/fixed); `<Base>Wire.h` is the WIRE header (`Write*`/`Read*` and
+  and includes `serialize.h` only when a storage type demands it — 128-bit
+  storage, `serialize::int128_t`/`serialize::uint128_t` (an `int128`, a
+  `uint128`, or a `fixed` whose I+F is 128; a narrower `fixed` is a plain
+  `intN_t`); `<Base>Wire.h` is the WIRE header (`Write*`/`Read*` and
   the union tag pairs)
-  and includes `<Base>.h` plus `serialize.h`, with cross-file wire deps
+  and includes `<Base>.h`, plus `serialize.h` when the file emits a wire
+  function (a file of only constants, enums and flags has a wire header with
+  no serialize dependency), with cross-file wire deps
   riding the deps' wire headers. The split exists so a consumer can base its
   math types on generated structs without inheriting the serialize runtime at
   all (a codebase may vendor an older serialize generation whose macro names
@@ -2779,6 +2828,16 @@ single source of truth now, so the trick retires from generated code. The
 runtimes' own unified paths are untouched — they serve people hand-writing
 serialization beside the generated code.
 
+Two refinements sit inside this contract in the C++ reference, both
+byte-identical to the plain form and both measured. A fixed `[N]uint8` array
+at a statically byte-aligned position rides ONE `write_bytes`/`read_bytes`
+rather than a per-byte loop (the bulk path's internal align is zero bits
+there; ~2x on byte-array-heavy types). And every generated `Write*`/`Read*`
+is spelled `SCHEMA_WRITE_INLINE`/`SCHEMA_READ_INLINE`, an unconditional
+always-inline demand (plain `inline` where a compiler has no spelling for
+it), because a fallible read chain otherwise decays below the inliner's
+cold-callsite threshold.
+
 What this buys: generated source stays small and reviewable, count ranges
 need no cap, and the backends stay simple enough to verify against each
 other. What it forgoes: the last-mile instruction-level guarantees of the TMP
@@ -2957,8 +3016,12 @@ does not satisfy that control. These controls also run through `make test`.
 
 **Floating-point discipline.** Strict IEEE-754 arithmetic is the normative
 wire for compressed floats: a fused multiply-add diverges by one quantization
-step at boundary values, so all C and C++ conformance builds compile with
-`-ffp-contract=off`, and the golden-wire corpus pins compressed-float values
+step at boundary values, so every leg computes a compressed float's
+quantization without fused multiply-add — the C and C++ conformance builds
+compile with `-ffp-contract=off`, Go rounds each product explicitly (an
+explicit rounding conversion of each product), and java, cs and elixir rely
+on the language's strict semantics (Glenn, 2026-10-12, all features across
+all languages) — and the golden-wire corpus pins compressed-float values
 chosen to DISCRIMINATE — values where a fused or double-precision build
 produces a different step index — with the discrimination property itself
 asserted in the C and C++ legs, so a vector cannot quietly stop

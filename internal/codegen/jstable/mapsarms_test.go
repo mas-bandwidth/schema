@@ -218,7 +218,7 @@ union Inner
 union Pick
 {
     leaf  Leaf
-    num   int32
+    number int32
     wide  uint64
     label string(8)
     grade Grade
@@ -251,17 +251,17 @@ table Probe
     nested  map[uint8]map[string(4)]Grade
     head    *Leaf
     twig    Inner
-    after   int32
+    past    int32
 }
 `
 
 // mapsArmsProbeTexts are the probe's instances, as the oracle reads them.
 var mapsArmsProbeTexts = []struct{ name, text string }{
 	{"arms_empty", `{}`},
-	{"arms_leaf", `{"pick": {"leaf": {"id": 7, "name": "seven"}}, "after": 1}`},
+	{"arms_leaf", `{"pick": {"leaf": {"id": 7, "name": "seven"}}, "past": 1}`},
 	{"arms_leaf_default", `{"pick": {"leaf": {}}}`},
-	{"arms_num", `{"pick": {"num": -5}}`},
-	{"arms_num_zero", `{"pick": {"num": 0}}`},
+	{"arms_num", `{"pick": {"number": -5}}`},
+	{"arms_num_zero", `{"pick": {"number": 0}}`},
 	{"arms_wide", `{"pick": {"wide": 18446744073709551615}}`},
 	{"arms_label", `{"pick": {"label": "héllo"}}`},
 	{"arms_grade", `{"pick": {"grade": "Gold"}}`},
@@ -277,14 +277,14 @@ var mapsArmsProbeTexts = []struct{ name, text string }{
 	{"arms_inner", `{"pick": {"inner": {"leaf": {"id": 9}}}}`},
 	{"arms_inner_none", `{"pick": {"inner": {}}}`},
 	{"arms_off", `{"pick": {"off": null}}`},
-	{"arms_array", `{"picks": [{"num": 1}, {}, {"leaf": {"id": 2}}, {"off": null}, {"ptr": {"id": 5}}], "capped": [{"label": "x"}, {}]}`},
+	{"arms_array", `{"picks": [{"number": 1}, {}, {"leaf": {"id": 2}}, {"off": null}, {"ptr": {"id": 5}}], "capped": [{"label": "x"}, {}]}`},
 	{"opt_present", `{"o_int": 0, "o_bool": false, "o_grade": "None", "o_leaf": {}, "o_list": []}`},
 	{"opt_values", `{"o_int": -9, "o_bool": true, "o_grade": "Silver", "o_leaf": {"id": 1, "name": "o"}, "o_list": [1, 2, 3]}`},
 	{"keyed_values", `{"scores": {"Bronze": 0, "Silver": 5, "Gold": -1}, "ranks": {"Gold": "Bronze", "Silver": "Silver"}, "leaves": {"Silver": {"id": 2}, "Gold": {}}}`},
 	{"maps_values", `{"names": {"zeta": 1, "alpha": 0, "é": 3, "z": 2}, "by_id": {"18446744073709551615": {"id": 1}, "0": {}, "7": {"name": "seven"}}}`},
 	{"maps_pointers", `{"by_key": {"-3": {"&node": 1, "id": 3}, "2": {"&node": 1}}, "head": {"id": 8}}`},
 	{"maps_nested", `{"nested": {"2": {"b": "Gold", "a": "None"}, "1": {}}}`},
-	{"everything", `{"pick": {"leaf": {"id": 1}}, "picks": [{"grade": "Bronze"}], "o_int": 4, "scores": {"Gold": 9}, "names": {"k": 1}, "by_key": {"1": {"id": 1}}, "after": -1}`},
+	{"everything", `{"pick": {"leaf": {"id": 1}}, "picks": [{"grade": "Bronze"}], "o_int": 4, "scores": {"Gold": 9}, "names": {"k": 1}, "by_key": {"1": {"id": 1}}, "past": -1}`},
 }
 
 // mapsArmsDriver loads, saves, measures, writes and reads each case.

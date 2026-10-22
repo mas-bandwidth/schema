@@ -354,14 +354,14 @@ table Probe
     o_fx    ?fixed(32, 32)                | min = -1000, max = 1000
     inner   Inner
     inners  [..2]Inner
-    after   int32
+    past    int32
 }
 `
 
 // wideProbeTexts are the probe's instances, as the oracle reads them.
 var wideProbeTexts = []struct{ name, text string }{
 	{"wide_probe_empty", `{}`},
-	{"wide_probe_title", `{"title": "мир", "after": 1}`},
+	{"wide_probe_title", `{"title": "мир", "past": 1}`},
 	{"wide_probe_title_pair_at_bound", `{"title": "ab💩cd"}`},
 	{"wide_probe_title_escapes", `{"title": "\"\\\n\u0001é"}`},
 	{"wide_probe_arm_fx", `{"pick": {"fx": -1.5}}`},

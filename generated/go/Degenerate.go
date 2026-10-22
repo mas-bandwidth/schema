@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xeb26c970fde3fd71
 
 package example
 
@@ -309,6 +309,30 @@ func ReadTrioSole(stream *serialize.ReadStream, value *TrioSole) error {
 		value.Inner.B = uint32(v1)
 		v2 := (c0 >> 40) & 0xffffff
 		value.Inner.C = uint32(v2)
+	}
+	return stream.Err()
+}
+
+// type Vec3Sole
+type Vec3Sole struct {
+	V Vec3
+}
+
+// Vec3SoleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// Vec3SoleMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const Vec3SoleMaxBits = 192
+const Vec3SoleMaxBytes = 24
+
+func WriteVec3Sole(stream *serialize.WriteStream, value *Vec3Sole) error {
+	if err := WriteVec3(stream, &value.V); err != nil {
+		return err
+	}
+	return stream.Err()
+}
+
+func ReadVec3Sole(stream *serialize.ReadStream, value *Vec3Sole) error {
+	if err := ReadVec3(stream, &value.V); err != nil {
+		return err
 	}
 	return stream.Err()
 }

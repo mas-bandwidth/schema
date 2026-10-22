@@ -69,7 +69,7 @@ namespace Wide
 
     public sealed class StampBlockStorage : TableBlockStorage
     {
-        public StampBlockStorage(TableBlockAllocator allocator = null) : base(StampBlock.BlockMaxBytes, allocator) {}
+        public StampBlockStorage(TableBlockAllocator allocator = null) : base(StampBlock.BlockMaxBytes, allocator) { }
     }
 
     // Stamp's block: a pointer and a length, and then rows in place. Opening one
@@ -120,7 +120,7 @@ namespace Wide
         public long Bytes { get { return bytes; } }
 
         // the table's own declared fields, read where they lie
-        public ref readonly StampBlockProjection Projection { get { return ref *(StampBlockProjection*) basePointer; } }
+        public ref readonly StampBlockProjection Projection { get { return ref *(StampBlockProjection*)basePointer; } }
 
         // Open checks once and points, and this is the WHOLE check (docs/SPEC-TABLES.md
         // §19.2): the magic read bytewise, the BYTE ORDER the prologue carries
@@ -144,7 +144,7 @@ namespace Wide
             TableBlockLayout.Verify();
             if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }
             if (bytes < 48) { reason = TableRefuseReason.truncated; return false; }
-            byte* at = (byte*) pointer;
+            byte* at = (byte*)pointer;
             if (Schema.TableBlockRead64(at) != Schema.TableBlockMagic) { reason = Schema.TableBlockRead64(at) == System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableBlockMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }
             if (Schema.TableBlockRead64(at + 16) != Schema.TableBlockByteOrder) { reason = TableRefuseReason.not_a_cook; return false; }
             if (Schema.TableBlockRead64(at + 8) != Schema.BuildVersion) { reason = TableRefuseReason.wrong_build_version; return false; }
@@ -166,7 +166,11 @@ namespace Wide
         // record through the graph.
         private static readonly TableBlockInfo blockProjection = new TableBlockInfo
         {
-            Name = "Stamp", BuildVersion = Schema.BuildVersion, Size = 48, Align = 8, NumFields = 2,
+            Name = "Stamp",
+            BuildVersion = Schema.BuildVersion,
+            Size = 48,
+            Align = 8,
+            NumFields = 2,
             Fields = new TableBlockFieldInfo[]
             {
                 new TableBlockFieldInfo { Name = "label", Offset = 24, Size = 16, Kind = 33, OutOfLine = false, OffsetOfOffset = -1, CountOffset = 36, StrideOffset = -1, Stride = 0, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemSize = 2, PresentOffset = -1, ElementRef = null },

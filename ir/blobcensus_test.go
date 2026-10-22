@@ -29,7 +29,7 @@ union Reach
 table Gate
 {
     reach Reach
-    after int32
+    past int32
 }
 
 table Holder
@@ -147,7 +147,7 @@ union Reach
 table Gate
 {
     reach Reach
-    after int32
+    past int32
 }
 `
 

@@ -332,7 +332,7 @@ func TestUnitViewDescriptorsJavaScript(t *testing.T) {
 			for _, want := range []struct{ union, arm, vocabulary, table string }{
 				{"Outer", "inner", "Inner", ""},
 				{"Reach", "only", "", "Only"},
-				{"Slot", "node", "", "Node"},
+				{"Slot", "vertex", "", "Node"},
 				{"Slots", "many", "", "Node"},
 			} {
 				var found *viewDumpField

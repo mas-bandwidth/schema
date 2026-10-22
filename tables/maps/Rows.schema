@@ -8,13 +8,13 @@ package mapdemo
 table Row
 {
     entries map[string(8)]Item
-    after   int32
+    past   int32 | was = "after"
 }
 
 table WideRow
 {
     entries map[uint32]Item
-    after   int32
+    past   int32 | was = "after"
 }
 
 // The reader's OWN edges, past what the two roots above reach (§2.8, §16.2): a
@@ -27,5 +27,5 @@ table EdgeRow
 {
     names map[string(300)]Item
     ids   map[uint64]Item
-    after int32
+    past int32 | was = "after"
 }

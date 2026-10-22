@@ -52,7 +52,7 @@ static void concatenate( const char * doc )
     const int64_t n = (int64_t) strlen( doc );
     if ( used + n < (int64_t) sizeof( concatenated ) )
     {
-        memcpy( concatenated + used, doc, (size_t) n );
+        memcpy( (void *) ( concatenated + used ), doc, (size_t) n );
         used += n;
     }
 }

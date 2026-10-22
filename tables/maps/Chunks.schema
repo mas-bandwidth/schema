@@ -10,5 +10,5 @@ package mapdemo
 table Chunks
 {
     blobs map[int32]*bytes // *bytes: an opaque buffer, under a signed key
-    after int32
+    past int32 | was = "after"
 }

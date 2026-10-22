@@ -1,6 +1,7 @@
-// The CLI's §4.6 target-name safety, per generated target: generate --lang go
-// on a unit holding only `self` (a Rust reserved word) succeeds, and schema
-// check — which names no target — refuses it.
+// The CLI's §4.6 target-name safety: every command checks every supported
+// language's reserved words, whatever target is generated (Glenn,
+// 2026-10-21), so generate --lang go refuses `self` (a Rust, Elixir and Goose
+// word) exactly as schema check does.
 package main
 
 import (
@@ -18,7 +19,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-func TestGenerateChecksOnlyItsTargetsWords(t *testing.T) {
+func TestGenerateChecksEveryLanguagesWords(t *testing.T) {
 	t.Parallel()
 	bin := buildCLI(t)
 	work := t.TempDir()
@@ -31,12 +32,14 @@ func TestGenerateChecksOnlyItsTargetsWords(t *testing.T) {
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// generate --lang go succeeds: `self` is reserved in Rust, not Go.
-	run(t, bin, "generate", "--lang", "go", "--out", filepath.Join(work, "out"), dir)
-	// schema check names no target, so it checks every target's words and
-	// refuses the unit.
-	out, err := exec.Command(bin, "check", dir).CombinedOutput()
-	if err == nil {
+	// generate --lang go refuses it: `self` is reserved in Rust, Elixir and
+	// Goose, and a schema name must be legal in every language.
+	out, status := runFail(t, bin, "generate", "--lang", "go", "--out", filepath.Join(work, "out"), dir)
+	if status != 1 || !strings.Contains(out, `"self" is a reserved word in Elixir, Goose, and Rust`) {
+		t.Fatalf("generate --lang go on a unit holding `self`: exit %d, want 1 naming every language\n%s", status, out)
+	}
+	// schema check refuses it the same way.
+	if out, err := exec.Command(bin, "check", dir).CombinedOutput(); err == nil {
 		t.Fatalf("schema check on a unit holding only `self` must exit 1\n%s", out)
 	}
 }
@@ -124,32 +127,24 @@ func TestGenerateGoRefusesGoReservedWords(t *testing.T) {
 	}
 }
 
-// Every targetReserved word the Go checker does not refuse must yield
-// compilable Go: `generate --lang go` on a unit holding it as a declaration
-// name, a field, an enum, an enum variant, and the package name exits 0, and
-// the emitted package builds. This pins the Go reserved-word list complete: if
-// a name the Go emitter cannot carry were missing from it, generate would exit
-// 0 (it is not refused) and the emitted package would fail to compile. The
-// serialize.go runtime is a stub here, in the job (its real sibling is not
-// staged); the emitted code uses only the stream types and
-// SerializeBits64/Err, which the stub provides.
-func TestGenerateGoCompilesNonGoReservedWords(t *testing.T) {
+// Every word Go alone reserves is carried where the Go escape carries it — a
+// table name (escaped to name_) and a field — and the emitted package builds
+// without shadowing the builtin (SPEC §4.6). The words come from the checker's
+// own table (check.ReservedWords), so a Go word missing from it, or one the
+// emitter cannot carry, fails here. A word any other language reserves never
+// reaches the Go output: it is refused whatever target is generated. The
+// serialize.go runtime is a stub here (its real sibling is not staged); the
+// emitted code uses only the stream types and SerializeBits64/Err, which the
+// stub provides.
+func TestGenerateGoCompilesGoOnlyWords(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "one go build per non-Go reserved word")
+	slowtest.Gate(t, "one go build per Go-only reserved word")
 	bin := buildCLI(t)
 	work := t.TempDir()
 
-	// The non-Go words under test come from the checker's own table
-	// (check.ReservedWords) — not from copies here — so this pins
-	// internal/check's targetReserved against the Go emitter's real behavior: a
-	// non-Go word that is not refused must emit Go that compiles. Schema-keyword
-	// words never reach Go emission (the grammar refuses them), so they are
-	// left out.
-	reserved := check.ReservedWords()
 	var words []string
-	for w, langs := range reserved {
-		goReserves := slices.Contains(langs, "Go")
-		if !goReserves && !schemaKeywords[w] {
+	for w, langs := range check.ReservedWords() {
+		if slices.Equal(langs, []string{"Go"}) && !schemaKeywords[w] {
 			words = append(words, w)
 		}
 	}
@@ -187,23 +182,6 @@ func (s *ReadStream) Err() error { return s.err }
 		t.Fatal(err)
 	}
 
-	// Each form puts the word where a generated Go identifier lands: a type
-	// declaration and field, a table declaration with a variant, an enum, and
-	// the package name.
-	forms := []struct {
-		name string
-		mk   func(w string) string
-	}{
-		{"type", func(w string) string {
-			return fmt.Sprintf("package t\ntype %s {\n  a int32\n}\ntype F {\n  %s int32\n}\n", w, w)
-		}},
-		{"table", func(w string) string {
-			return fmt.Sprintf("package t\ntable %s {\n  a int32\n}\nenum E { %s }\n", w, w)
-		}},
-		{"enum", func(w string) string { return fmt.Sprintf("package t\nenum %s { a }\n", w) }},
-		{"package", func(w string) string { return fmt.Sprintf("package %s\ntype T { a int32 }\n", w) }},
-	}
-
 	// Bound concurrency so the many go builds do not spawn an unbounded
 	// process tree (the sandbox's 256-process runaway).
 	const maxParallel = 3
@@ -212,112 +190,51 @@ func (s *ReadStream) Err() error { return s.err }
 	var bad []string
 	var wg sync.WaitGroup
 	for _, w := range words {
-		for _, f := range forms {
-			w, f := w, f
-			wg.Go(func() {
-				sem <- struct{}{}
-				defer func() { <-sem }()
-				fail := func(format string, args ...any) {
-					mu.Lock()
-					bad = append(bad, fmt.Sprintf("word %q form %s: "+format, append([]any{w, f.name}, args...)...))
-					mu.Unlock()
-				}
-				out := filepath.Join(work, "out", w, f.name)
-				dir := filepath.Join(work, "units", w, f.name)
-				if err := os.MkdirAll(dir, 0o755); err != nil {
-					fail("%v", err)
-					return
-				}
-				path := filepath.Join(dir, "W.schema")
-				if err := os.WriteFile(path, []byte(f.mk(w)), 0o644); err != nil {
-					fail("%v", err)
-					return
-				}
-				if outBytes, err := exec.Command(bin, "generate", "--lang", "go", "--out", out, dir).CombinedOutput(); err != nil {
-					// Any generate failure is a defect: a non-Go word must not be
-					// refused for --lang go. (Schema-keyword words were filtered
-					// out above, so no grammar refusal should appear.)
-					fail("generate failed for non-Go word %q: %s", w, outBytes)
-					return
-				}
-				mod := fmt.Sprintf("module t\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %s\n\tgithub.com/mas-bandwidth/serialize.go => %s\n)\n", checkout, runtime)
-				if err := os.WriteFile(filepath.Join(out, "go.mod"), []byte(mod), 0o644); err != nil {
-					fail("%v", err)
-					return
-				}
-				gb := exec.Command("go", "build", "./...")
-				gb.Dir = out
-				if _, err := gb.Output(); err != nil {
-					fail("go build: %v", err)
-				}
-			})
-		}
-	}
-	wg.Wait()
-
-	// THE UNIVERSE BLOCK, one class at a time: a Go predeclared identifier
-	// is a Go word, so it is carried where Go carries its words — a table
-	// name (escaped to name_) and a field — and the emitted package builds
-	// without shadowing the builtin. (A variant is never emitted bare either,
-	// but `max` and `min` collide with an enum's own generated extents, a
-	// refusal of every target, so variants are not part of this probe.)
-	for _, class := range []struct {
-		name  string
-		words []string
-	}{{"builtin functions", goUniverseFuncs}, {"predeclared types", goUniverseTypes}, {"predeclared constants", goUniverseConsts}} {
-		for _, w := range class.words {
-			if schemaKeywords[w] {
-				continue // the grammar refuses it before any target sees it
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			fail := func(format string, args ...any) {
+				mu.Lock()
+				bad = append(bad, fmt.Sprintf("word %q: "+format, append([]any{w}, args...)...))
+				mu.Unlock()
 			}
-			w, class := w, class
-			wg.Go(func() {
-				sem <- struct{}{}
-				defer func() { <-sem }()
-				fail := func(format string, args ...any) {
-					mu.Lock()
-					bad = append(bad, fmt.Sprintf("%s word %q: "+format, append([]any{class.name, w}, args...)...))
-					mu.Unlock()
-				}
-				out := filepath.Join(work, "universe-out", w)
-				dir := filepath.Join(work, "universe", w)
-				if err := os.MkdirAll(dir, 0o755); err != nil {
-					fail("%v", err)
-					return
-				}
-				src := fmt.Sprintf("package t\ntable %s {\n  %s int32\n}\n", w, w)
-				if err := os.WriteFile(filepath.Join(dir, "W.schema"), []byte(src), 0o644); err != nil {
-					fail("%v", err)
-					return
-				}
-				if outBytes, err := exec.Command(bin, "generate", "--lang", "go", "--out", out, dir).CombinedOutput(); err != nil {
-					fail("generate: %s", outBytes)
-					return
-				}
-				mod := fmt.Sprintf("module t\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %s\n\tgithub.com/mas-bandwidth/serialize.go => %s\n)\n", checkout, runtime)
-				if err := os.WriteFile(filepath.Join(out, "go.mod"), []byte(mod), 0o644); err != nil {
-					fail("%v", err)
-					return
-				}
-				gb := exec.Command("go", "build", "./...")
-				gb.Dir = out
-				if o, err := gb.CombinedOutput(); err != nil {
-					fail("go build: %v\n%s", err, o)
-				}
-			})
-		}
+			out := filepath.Join(work, "out", w)
+			dir := filepath.Join(work, "units", w)
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				fail("%v", err)
+				return
+			}
+			src := fmt.Sprintf("package t\ntable %s {\n  %s int32\n}\n", w, w)
+			if err := os.WriteFile(filepath.Join(dir, "W.schema"), []byte(src), 0o644); err != nil {
+				fail("%v", err)
+				return
+			}
+			if outBytes, err := exec.Command(bin, "generate", "--lang", "go", "--out", out, dir).CombinedOutput(); err != nil {
+				fail("generate: %s", outBytes)
+				return
+			}
+			mod := fmt.Sprintf("module t\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %s\n\tgithub.com/mas-bandwidth/serialize.go => %s\n)\n", checkout, runtime)
+			if err := os.WriteFile(filepath.Join(out, "go.mod"), []byte(mod), 0o644); err != nil {
+				fail("%v", err)
+				return
+			}
+			gb := exec.Command("go", "build", "./...")
+			gb.Dir = out
+			if o, err := gb.CombinedOutput(); err != nil {
+				fail("go build: %v\n%s", err, o)
+			}
+		})
 	}
 	wg.Wait()
-	if len(bad) > 0 {
-		for _, b := range bad {
-			t.Error(b)
-		}
+	for _, b := range bad {
+		t.Error(b)
 	}
 }
 
 // select, ulong and ushort are not C++ keywords, but the generated C++
 // declares `namespace <name>` beside sys/select.h or sys/types.h, whose own
-// declarations of the same name collide with it — so generate --lang cpp
-// refuses them as package names (SPEC §4.6), while a non-C++ target does not.
+// declarations of the same name collide with it — so they are refused as
+// package names whatever target is generated (SPEC §4.6).
 func TestGenerateCppRefusesHeaderCollidingPackageNames(t *testing.T) {
 	t.Parallel()
 	bin := buildCLI(t)
@@ -332,18 +249,19 @@ func TestGenerateCppRefusesHeaderCollidingPackageNames(t *testing.T) {
 		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		out, status := runFail(t, bin, "generate", "--lang", "cpp", "--out", filepath.Join(work, "out"), dir)
-		if status != 1 {
-			t.Errorf("generate --lang cpp on package %q exited %d, want 1\n%s", w, status, out)
+		for _, lang := range []string{"cpp", "go"} {
+			out, status := runFail(t, bin, "generate", "--lang", lang, "--out", filepath.Join(work, "out-"+lang), dir)
+			if status != 1 {
+				t.Errorf("generate --lang %s on package %q exited %d, want 1\n%s", lang, w, status, out)
+			}
 		}
 	}
 }
 
-// A target with no reserved-word list of its own has no words to narrow to, so
-// generate on it checks every target's words rather than none: `class` is in
-// the C++ and C# lists, and `generate --lang java` on a field named class still
-// exits 1 rather than emitting Java that spells a method `class`.
-func TestGenerateWithNoReservedListChecksEveryTarget(t *testing.T) {
+// Every target refuses every language's words: `class` is reserved in C#,
+// C++, Dart, Java, JavaScript, Lobster and Squirrel, and generate refuses a
+// field so named whichever target it emits, Go and Rust included.
+func TestGenerateEveryTargetRefusesEveryLanguagesWords(t *testing.T) {
 	t.Parallel()
 	bin := buildCLI(t)
 	work := t.TempDir()
@@ -356,13 +274,13 @@ func TestGenerateWithNoReservedListChecksEveryTarget(t *testing.T) {
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, lang := range []string{"java", "c", "js", "elixir"} {
+	for _, lang := range []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "rust"} {
 		out, status := runFail(t, bin, "generate", "--lang", lang, "--out", filepath.Join(work, "out-"+lang), dir)
 		if status != 1 {
 			t.Errorf("generate --lang %s exited %d, want 1\n%s", lang, status, out)
 		}
-		if !strings.Contains(out, `"class" is a reserved word`) {
-			t.Errorf("generate --lang %s should refuse class as a reserved word, got %q", lang, out)
+		if !strings.Contains(out, `"class" is a reserved word in C#, C++, Dart, Java, JavaScript, Lobster, and Squirrel`) {
+			t.Errorf("generate --lang %s should refuse class naming every language, got %q", lang, out)
 		}
 	}
 }

@@ -2239,8 +2239,8 @@ function fo1Values(home) {
   v[0].OptPresent = true;
   v[0].Opt.V = 11;
   v[0].Opt.TagLength = setText(v[0].Opt.Tag, "op");
-  v[0].NumPresent = true;
-  v[0].Num = 12;
+  v[0].NumberPresent = true;
+  v[0].Number = 12;
   v[0].MarkPresent = true;
   v[0].Mark = 2; // Gold — the ordinal is the variant's POSITION IN THE BLOCK, from 1
   v[0].Wrap.N = 13;
@@ -2268,8 +2268,8 @@ function fo1Values(home) {
   v[2].NameLength = setText(v[2].Name, "mix");
   v[2].Plain = 301;
   v[2].OptPresent = false;
-  v[2].NumPresent = true;
-  v[2].Num = -302;
+  v[2].NumberPresent = true;
+  v[2].Number = -302;
   v[2].MarkPresent = true;
   v[2].Mark = 1; // Bronze
   v[2].Wrap.N = 303;
@@ -2284,7 +2284,7 @@ function fo1Values(home) {
   v[3].OptPresent = true;
   v[3].Opt.V = 402;
   v[3].Opt.TagLength = setText(v[3].Opt.Tag, "r");
-  v[3].NumPresent = false;
+  v[3].NumberPresent = false;
   v[3].MarkPresent = false;
   v[3].Wrap.N = 403;
   v[3].Wrap.LeafPresent = false;
@@ -2339,7 +2339,7 @@ function optionalBytes(check, o, dir) {
     check(back[0].OptPresent && back[0].Opt.V === 11 && back[0].Opt.TagLength === 2 &&
       back[0].Opt.Tag[0] === 0x6f && back[0].Opt.Tag[1] === 0x70,
       "optionals: a PRESENT nested type lands its whole payload");
-    check(back[0].NumPresent && back[0].Num === 12, "optionals: a PRESENT scalar lands");
+    check(back[0].NumberPresent && back[0].Number === 12, "optionals: a PRESENT scalar lands");
     check(back[0].MarkPresent && back[0].Mark === 2, "optionals: a PRESENT enum lands its ordinal");
     check(back[0].Wrap.N === 13 && back[0].Wrap.LeafPresent && back[0].Wrap.Leaf.V === 14,
       "optionals: a present flag INSIDE A NESTED TABLE lands at the nested body's own offset");
@@ -2350,20 +2350,20 @@ function optionalBytes(check, o, dir) {
     // flag: `Leaf.v = 7` and `Wrap.leaf`'s the same
     check(!back[1].OptPresent && back[1].Opt.V === 7 && back[1].Opt.TagLength === 0,
       "optionals: an ABSENT nested type reads absent, at its declared defaults");
-    check(!back[1].NumPresent && back[1].Num === 0, "optionals: an ABSENT scalar reads absent");
+    check(!back[1].NumberPresent && back[1].Number === 0, "optionals: an ABSENT scalar reads absent");
     check(!back[1].MarkPresent && back[1].Mark === 0, "optionals: an ABSENT enum reads absent, at None");
     check(back[1].Wrap.N === 202 && !back[1].Wrap.LeafPresent && back[1].Wrap.Leaf.V === 7,
       "optionals: an ABSENT flag inside a nested table reads absent");
     check(back[1].Effect.Type === 2 && back[1].Effect.Ward.Charge === 0.5 && back[1].Tail === 203,
       "optionals: the fields behind four absent optionals still land");
 
-    check(!back[2].OptPresent && back[2].NumPresent && back[2].Num === -302 &&
+    check(!back[2].OptPresent && back[2].NumberPresent && back[2].Number === -302 &&
       back[2].MarkPresent && back[2].Mark === 1 &&
       back[2].Wrap.LeafPresent && back[2].Wrap.Leaf.V === -304 && back[2].Wrap.Leaf.TagLength === 4,
       "optionals: root ABSENT and nested PRESENT, in the same record");
     check(back[2].Effect.Type === 0 && back[2].Tail === 305,
       "optionals: a union at None beside the mixed optionals");
-    check(back[3].OptPresent && back[3].Opt.V === 402 && !back[3].NumPresent && !back[3].MarkPresent &&
+    check(back[3].OptPresent && back[3].Opt.V === 402 && !back[3].NumberPresent && !back[3].MarkPresent &&
       !back[3].Wrap.LeafPresent && back[3].Wrap.N === 403 && back[3].Tail === 404,
       "optionals: root PRESENT and nested ABSENT, the other way round");
   }
@@ -2436,13 +2436,13 @@ function optionalVersioning(check, o, dir) {
     check(back[0].Added === 77, "compiled plan: the inserted field takes its declared default");
     check(back[0].OptPresent && back[0].Opt.V === 11 && back[0].Opt.TagLength === 2,
       "compiled plan: a PRESENT optional's flag AND payload land");
-    check(back[0].NumPresent && back[0].Num === 12 && back[0].MarkPresent && back[0].Mark === 2,
+    check(back[0].NumberPresent && back[0].Number === 12 && back[0].MarkPresent && back[0].Mark === 2,
       "compiled plan: an optional scalar and an optional enum land");
     check(back[0].Wrap.N === 13 && back[0].Wrap.LeafPresent && back[0].Wrap.Leaf.V === 14,
       "compiled plan: a present flag inside a nested table lands past the inserted field");
     check(back[0].Effect.Type === 1 && back[0].Effect.Boost.Power === 15 && back[0].Tail === 16,
       "compiled plan: the fields behind the optionals land");
-    check(!back[1].OptPresent && back[1].Opt.V === 7 && !back[1].NumPresent && !back[1].MarkPresent &&
+    check(!back[1].OptPresent && back[1].Opt.V === 7 && !back[1].NumberPresent && !back[1].MarkPresent &&
       !back[1].Wrap.LeafPresent && back[1].Wrap.Leaf.V === 7,
       "compiled plan: an ABSENT optional lands absent, at its declared default");
     check(back[1].Tail === 203 && back[1].Effect.Type === 2 && back[1].Effect.Ward.Charge === 0.5,
@@ -2464,8 +2464,8 @@ function optionalVersioning(check, o, dir) {
     two[0].Added = 910;
     two[0].OptPresent = true;
     two[0].Opt.V = 911;
-    two[0].NumPresent = true;
-    two[0].Num = 912;
+    two[0].NumberPresent = true;
+    two[0].Number = 912;
     two[0].Wrap.N = 913;
     two[0].Wrap.LeafPresent = true;
     two[0].Wrap.Leaf.V = 914;
@@ -2478,7 +2478,7 @@ function optionalVersioning(check, o, dir) {
     check(fo1.OptRootFixedLoad(back, 1, w, w.length, fo1.OptRootFixedNewPlan(), r) === 1,
       "newer writer: one record");
     check(back[0].Plain === 909, "newer writer: the renamed field reads the other way too");
-    check(back[0].OptPresent && back[0].Opt.V === 911 && back[0].NumPresent && back[0].Num === 912,
+    check(back[0].OptPresent && back[0].Opt.V === 911 && back[0].NumberPresent && back[0].Number === 912,
       "newer writer: the optionals land past the unknown field");
     check(back[0].Wrap.N === 913 && back[0].Wrap.LeafPresent && back[0].Wrap.Leaf.V === 914 &&
       back[0].Tail === 915,
@@ -2638,7 +2638,7 @@ function optionalControls(check, o, dir) {
       `NEGATIVE CONTROL: a present byte of 7 reads as PRESENT and projects the payload (got ${v.OptPresent}, ${v.Opt.V})`);
     check(v.Wrap.LeafPresent && v.Wrap.Leaf.V === 42,
       "NEGATIVE CONTROL: 0xff inside a nested table reads as present too");
-    check(v.NumPresent && v.MarkPresent,
+    check(v.NumberPresent && v.MarkPresent,
       "NEGATIVE CONTROL: every present byte is a flag, at every kind an optional wraps");
     check(r.clamped === 0 && !r.malformed && r.refused === 0,
       "NEGATIVE CONTROL: a non-canonical present byte is not damage and moves no counter");
@@ -2654,14 +2654,14 @@ function optionalControls(check, o, dir) {
     bad[b + OPT_V] = 0xff; bad[b + OPT_V + 1] = 0xff; bad[b + OPT_V + 2] = 0xff;
     bad[b + OPT_V + 3] = 0x7f;                        // 2147483647 behind a zero flag
     bad[b + WRAP_LEAF_V] = 0x99;
-    bad[b + NUM_PRESENT + 1] = 0x7b;                  // num's payload, flag still zero
+    bad[b + NUM_PRESENT + 1] = 0x7b;                  // number's payload, flag still zero
     bad[b + MARK_PRESENT + 1] = 0x09;                 // an ordinal naming no variant
     const { n, v, r } = load(bad);
     check(n === 1 && !v.OptPresent && v.Opt.V === 7,
       `NEGATIVE CONTROL: an ABSENT payload is ignored on read; the field is its declared default (got ${v.Opt.V})`);
     check(!v.Wrap.LeafPresent && v.Wrap.Leaf.V === 7,
       "NEGATIVE CONTROL: an absent payload inside a nested table is ignored too");
-    check(!v.NumPresent && v.Num === 0 && !v.MarkPresent && v.Mark === 0,
+    check(!v.NumberPresent && v.Number === 0 && !v.MarkPresent && v.Mark === 0,
       "NEGATIVE CONTROL: an absent scalar and an absent enum ignore their payloads");
     check(!r.malformed && r.refused === 0 && r.kindMismatch === 0,
       "NEGATIVE CONTROL: ignoring an absent payload is not an event; nothing is counted");

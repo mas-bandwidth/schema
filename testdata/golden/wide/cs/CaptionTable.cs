@@ -413,17 +413,17 @@ namespace Wide
                 info.StorageSize = 108; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 3;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "title", Json = "title", TypeName = "wstring", Id = 0xda31296c0c1b6029, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 7, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate(object o) { return ((global::Wide.Caption)o).Title; }, GetCount = delegate(object o) { return ((global::Wide.Caption)o).TitleLength; }, SetCount = delegate(object o, int n) { ((global::Wide.Caption)o).TitleLength = n; }, MessageSlot = 1, Ordinal = 0, NativeOffset = 0, NativeElementSize = 16, NativeCountOffset = 16, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.Caption)o; Array.Clear(value.Title, 0, value.Title.Length); value.TitleLength = 0; } },
-                    new TableFieldInfo { Name = "line", Json = "line", TypeName = "Line", Id = 0xbf4ba5ad694f5907, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return LineTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Wide.Caption)o).Line; }, MessageSlot = 2, Ordinal = 1, NativeOffset = 20, NativeElementSize = 16, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.Caption)o; TableReset(value.Line); } },
-                    new TableFieldInfo { Name = "lines", Json = "lines", TypeName = "Line", Id = 0x5ce3f9a9f1d5001c, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 3, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return LineTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Wide.Caption)o).Lines[i]; }, GetCount = delegate(object o) { return ((global::Wide.Caption)o).LinesCount; }, SetCount = delegate(object o, int n) { ((global::Wide.Caption)o).LinesCount = n; }, MessageSlot = 3, Ordinal = 2, NativeOffset = 36, NativeElementSize = 16, NativeCountOffset = 84, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.Caption)o; for (int i = 0; i < value.Lines.Length; i++) { TableReset(value.Lines[i]); } value.LinesCount = 0; } },
-                    new TableFieldInfo { Name = "body", Json = "body", TypeName = "Body", Id = 0xcd4de79bc6c93295, Kind = 15, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { switch (v) { case 0: return "None"; case 1: return "wide"; case 2: return "narrow"; case 3: return "tally"; default: return "???"; } }, VariantId = delegate(ulong v) { switch (v) { case 0: return (ulong)0; case 1: return (ulong)0xa633f1f655715cca; case 2: return (ulong)0x96569b06f223c29a; case 3: return (ulong)0xb1e5e28e4479a274; default: return (ulong)0; } }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = new TableUnionInfo { GetTag = delegate(object o) { return (ulong)((global::Wide.Body)o).Type; }, Create = delegate { return new global::Wide.Body(); }, NativeTagSize = 1, NativeArmOffset = 4, SetTag = delegate(object o, ulong t) { ((global::Wide.Body)o).Type = unchecked((global::Wide.BodyType)t); }, Arms = new TableUnionArmInfo[] { new TableUnionArmInfo(), new TableUnionArmInfo { MessageSlot = 8, Field = new TableFieldInfo { Name = "wide", Json = "wide", TypeName = "wstring", Id = 0xa633f1f655715cca, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate(object o) { return ((global::Wide.Body)o).Wide; }, GetCount = delegate(object o) { return ((global::Wide.Body)o).WideLength; }, SetCount = delegate(object o, int n) { ((global::Wide.Body)o).WideLength = n; }, MessageSlot = 8, Ordinal = 0, NativeOffset = 0, NativeElementSize = 10, NativeCountOffset = 12, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.Body)o; Array.Clear(value.Wide, 0, value.Wide.Length); value.WideLength = 0; } } }, new TableUnionArmInfo { MessageSlot = 9, Field = new TableFieldInfo { Name = "narrow", Json = "narrow", TypeName = "string", Id = 0x96569b06f223c29a, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate(object o) { return ((global::Wide.Body)o).Narrow; }, GetCount = delegate(object o) { return ((global::Wide.Body)o).NarrowLength; }, SetCount = delegate(object o, int n) { ((global::Wide.Body)o).NarrowLength = n; }, MessageSlot = 9, Ordinal = 0, NativeOffset = 0, NativeElementSize = 5, NativeCountOffset = 8, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.Body)o; Array.Clear(value.Narrow, 0, value.Narrow.Length); value.NarrowLength = 0; } } }, new TableUnionArmInfo { MessageSlot = 10, Field = new TableFieldInfo { Name = "tally", Json = "tally", TypeName = "int32", Id = 0xb1e5e28e4479a274, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Wide.Body)o).Tally; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Wide.Body)o).Tally = unchecked((int)(long)r); }, MessageSlot = 10, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.Body)o; value.Tally = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); return (ulong)(long)v; } } } } }, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Wide.Caption)o).Body; }, MessageSlot = 4, Ordinal = 3, NativeOffset = 88, NativeElementSize = 20, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.Caption)o; TableReset(value.Body); } },
+                    new TableFieldInfo { Name = "title", Json = "title", TypeName = "wstring", Id = 0xda31296c0c1b6029, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 7, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate (object o) { return ((global::Wide.Caption)o).Title; }, GetCount = delegate (object o) { return ((global::Wide.Caption)o).TitleLength; }, SetCount = delegate (object o, int n) { ((global::Wide.Caption)o).TitleLength = n; }, MessageSlot = 1, Ordinal = 0, NativeOffset = 0, NativeElementSize = 16, NativeCountOffset = 16, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.Caption)o; Array.Clear(value.Title, 0, value.Title.Length); value.TitleLength = 0; } },
+                    new TableFieldInfo { Name = "line", Json = "line", TypeName = "Line", Id = 0xbf4ba5ad694f5907, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return LineTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Wide.Caption)o).Line; }, MessageSlot = 2, Ordinal = 1, NativeOffset = 20, NativeElementSize = 16, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.Caption)o; TableReset(value.Line); } },
+                    new TableFieldInfo { Name = "lines", Json = "lines", TypeName = "Line", Id = 0x5ce3f9a9f1d5001c, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 3, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return LineTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Wide.Caption)o).Lines[i]; }, GetCount = delegate (object o) { return ((global::Wide.Caption)o).LinesCount; }, SetCount = delegate (object o, int n) { ((global::Wide.Caption)o).LinesCount = n; }, MessageSlot = 3, Ordinal = 2, NativeOffset = 36, NativeElementSize = 16, NativeCountOffset = 84, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.Caption)o; for (int i = 0; i < value.Lines.Length; i++) { TableReset(value.Lines[i]); } value.LinesCount = 0; } },
+                    new TableFieldInfo { Name = "body", Json = "body", TypeName = "Body", Id = 0xcd4de79bc6c93295, Kind = 15, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate (ulong v) { switch (v) { case 0: return "None"; case 1: return "wide"; case 2: return "narrow"; case 3: return "tally"; default: return "???"; } }, VariantId = delegate (ulong v) { switch (v) { case 0: return (ulong)0; case 1: return (ulong)0xa633f1f655715cca; case 2: return (ulong)0x96569b06f223c29a; case 3: return (ulong)0xb1e5e28e4479a274; default: return (ulong)0; } }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = new TableUnionInfo { GetTag = delegate (object o) { return (ulong)((global::Wide.Body)o).Type; }, Create = delegate { return new global::Wide.Body(); }, NativeTagSize = 1, NativeArmOffset = 4, SetTag = delegate (object o, ulong t) { ((global::Wide.Body)o).Type = unchecked((global::Wide.BodyType)t); }, Arms = new TableUnionArmInfo[] { new TableUnionArmInfo(), new TableUnionArmInfo { MessageSlot = 8, Field = new TableFieldInfo { Name = "wide", Json = "wide", TypeName = "wstring", Id = 0xa633f1f655715cca, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate (object o) { return ((global::Wide.Body)o).Wide; }, GetCount = delegate (object o) { return ((global::Wide.Body)o).WideLength; }, SetCount = delegate (object o, int n) { ((global::Wide.Body)o).WideLength = n; }, MessageSlot = 8, Ordinal = 0, NativeOffset = 0, NativeElementSize = 10, NativeCountOffset = 12, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.Body)o; Array.Clear(value.Wide, 0, value.Wide.Length); value.WideLength = 0; } } }, new TableUnionArmInfo { MessageSlot = 9, Field = new TableFieldInfo { Name = "narrow", Json = "narrow", TypeName = "string", Id = 0x96569b06f223c29a, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate (object o) { return ((global::Wide.Body)o).Narrow; }, GetCount = delegate (object o) { return ((global::Wide.Body)o).NarrowLength; }, SetCount = delegate (object o, int n) { ((global::Wide.Body)o).NarrowLength = n; }, MessageSlot = 9, Ordinal = 0, NativeOffset = 0, NativeElementSize = 5, NativeCountOffset = 8, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.Body)o; Array.Clear(value.Narrow, 0, value.Narrow.Length); value.NarrowLength = 0; } } }, new TableUnionArmInfo { MessageSlot = 10, Field = new TableFieldInfo { Name = "tally", Json = "tally", TypeName = "int32", Id = 0xb1e5e28e4479a274, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Wide.Body)o).Tally; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Wide.Body)o).Tally = unchecked((int)(long)r); }, MessageSlot = 10, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.Body)o; value.Tally = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); return (ulong)(long)v; } } } } }, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Wide.Caption)o).Body; }, MessageSlot = 4, Ordinal = 3, NativeOffset = 88, NativeElementSize = 20, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.Caption)o; TableReset(value.Body); } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Wide.Caption)o); };
+                info.Reset = delegate (object o) { TableReset((global::Wide.Caption)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -451,15 +451,15 @@ namespace Wide
                 info.StorageSize = 20; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "label", Json = "label", TypeName = "wstring", Id = 0x39f7fcec8fcb623d, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate(object o) { return ((global::Wide.Stamp)o).Label; }, GetCount = delegate(object o) { return ((global::Wide.Stamp)o).LabelLength; }, SetCount = delegate(object o, int n) { ((global::Wide.Stamp)o).LabelLength = n; }, MessageSlot = 6, Ordinal = 0, NativeOffset = 0, NativeElementSize = 10, NativeCountOffset = 12, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.Stamp)o; Array.Clear(value.Label, 0, value.Label.Length); value.LabelLength = 0; } },
-                    new TableFieldInfo { Name = "seq", Json = "seq", TypeName = "uint32", Id = 0x823b8a195ce2133c, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Wide.Stamp)o).Seq; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Wide.Stamp)o).Seq = unchecked((uint)r); }, MessageSlot = 7, Ordinal = 1, NativeOffset = 16, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.Stamp)o; value.Seq = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
+                    new TableFieldInfo { Name = "label", Json = "label", TypeName = "wstring", Id = 0x39f7fcec8fcb623d, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate (object o) { return ((global::Wide.Stamp)o).Label; }, GetCount = delegate (object o) { return ((global::Wide.Stamp)o).LabelLength; }, SetCount = delegate (object o, int n) { ((global::Wide.Stamp)o).LabelLength = n; }, MessageSlot = 6, Ordinal = 0, NativeOffset = 0, NativeElementSize = 10, NativeCountOffset = 12, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.Stamp)o; Array.Clear(value.Label, 0, value.Label.Length); value.LabelLength = 0; } },
+                    new TableFieldInfo { Name = "seq", Json = "seq", TypeName = "uint32", Id = 0x823b8a195ce2133c, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Wide.Stamp)o).Seq; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Wide.Stamp)o).Seq = unchecked((uint)r); }, MessageSlot = 7, Ordinal = 1, NativeOffset = 16, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.Stamp)o; value.Seq = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Wide.Stamp)o); };
+                info.Reset = delegate (object o) { TableReset((global::Wide.Stamp)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -487,14 +487,14 @@ namespace Wide
                 info.StorageSize = 16; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
                 info.RootElemSlots = 0;
-                info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
+                info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "text", Json = "text", TypeName = "wstring", Id = 0xfa04f4ef1995407e, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate(object o) { return ((global::Wide.Line)o).Text; }, GetCount = delegate(object o) { return ((global::Wide.Line)o).TextLength; }, SetCount = delegate(object o, int n) { ((global::Wide.Line)o).TextLength = n; }, MessageSlot = 5, Ordinal = 0, NativeOffset = 0, NativeElementSize = 10, NativeCountOffset = 12, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Wide.Line)o; Array.Clear(value.Text, 0, value.Text.Length); value.TextLength = 0; } },
+                    new TableFieldInfo { Name = "text", Json = "text", TypeName = "wstring", Id = 0xfa04f4ef1995407e, Kind = 33, IsArray = false, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChars = delegate (object o) { return ((global::Wide.Line)o).Text; }, GetCount = delegate (object o) { return ((global::Wide.Line)o).TextLength; }, SetCount = delegate (object o, int n) { ((global::Wide.Line)o).TextLength = n; }, MessageSlot = 5, Ordinal = 0, NativeOffset = 0, NativeElementSize = 10, NativeCountOffset = 12, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Wide.Line)o; Array.Clear(value.Text, 0, value.Text.Length); value.TextLength = 0; } },
                 };
-                info.Reset = delegate(object o) { TableReset((global::Wide.Line)o); };
+                info.Reset = delegate (object o) { TableReset((global::Wide.Line)o); };
                 info.Doc = TableDocNone;
                 info.NumTags = 0;
                 info.Tags = null;
@@ -661,13 +661,13 @@ namespace Wide
                 switch (value.Body.Type)
                 {
                     case BodyType.Wide:
-                    {
-                        break;
-                    }
+                        {
+                            break;
+                        }
                     case BodyType.Narrow:
-                    {
-                        break;
-                    }
+                        {
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -720,7 +720,7 @@ namespace Wide
             new TableFixedDst(0, 0, 1, 0, 2), // text
             new TableFixedDst(5, 2, 4, 1, 0), // lines
             new TableFixedDst(0, 0, 0, 0, 0), // element
-            new TableFixedDst(0, 0, 0, 0, 0), // text
+            new TableFixedDst(0, 0, 1, 0, 2), // text
             new TableFixedDst(12, 0, 11, 0, 0), // body
             new TableFixedDst(0, 0, 1, 0, 2), // wide
             new TableFixedDst(2, 0, 3, 0, 1), // narrow
@@ -746,6 +746,277 @@ namespace Wide
             new TableFixedSlot<Caption>(setBytes: (t, b, l) => { if (t.Body.Narrow != null) b.Slice(0, Math.Min(b.Length, t.Body.Narrow.Length)).CopyTo(t.Body.Narrow); }, reset: (t) => { if (t.Body.Narrow != null) { Array.Clear(t.Body.Narrow, 0, t.Body.Narrow.Length); } }),
             new TableFixedSlot<Caption>(setRaw: (t, v) => t.Body.Tally = unchecked((int)v), reset: (t) => { t.Body.Tally = 0; }),
         };
+
+        private static void CaptionFixedSetRaw(Caption t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.TitleLength = (int)v; break;
+                case 2: t.Line.TextLength = (int)v; break;
+                case 4: t.LinesCount = (int)v; break;
+                case 5: t.Lines[0].TextLength = (int)v; break;
+                case 7: t.Lines[1].TextLength = (int)v; break;
+                case 9: t.Lines[2].TextLength = (int)v; break;
+                case 11: { t.Body.Type = (BodyType)v; } break;
+                case 12: t.Body.WideLength = (int)v; break;
+                case 14: t.Body.NarrowLength = (int)v; break;
+                case 16: t.Body.Tally = unchecked((int)v); break;
+                default: break;
+            }
+        }
+
+        private static void CaptionFixedSetDouble(Caption t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void CaptionFixedSetWide(Caption t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void CaptionFixedSetBytes(Caption t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                case 15: { if (t.Body.Narrow != null) b.Slice(0, Math.Min(b.Length, t.Body.Narrow.Length)).CopyTo(t.Body.Narrow); } break;
+                default: break;
+            }
+        }
+
+        private static void CaptionFixedSetChars(Caption t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                case 1: { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Title != null) c.Slice(0, Math.Min(c.Length, t.Title.Length)).CopyTo(t.Title); } break;
+                case 3: { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Line.Text != null) c.Slice(0, Math.Min(c.Length, t.Line.Text.Length)).CopyTo(t.Line.Text); } break;
+                case 6: { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Lines[0].Text != null) c.Slice(0, Math.Min(c.Length, t.Lines[0].Text.Length)).CopyTo(t.Lines[0].Text); } break;
+                case 8: { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Lines[1].Text != null) c.Slice(0, Math.Min(c.Length, t.Lines[1].Text.Length)).CopyTo(t.Lines[1].Text); } break;
+                case 10: { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Lines[2].Text != null) c.Slice(0, Math.Min(c.Length, t.Lines[2].Text.Length)).CopyTo(t.Lines[2].Text); } break;
+                case 13: { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Body.Wide != null) c.Slice(0, Math.Min(c.Length, t.Body.Wide.Length)).CopyTo(t.Body.Wide); } break;
+                default: break;
+            }
+        }
+
+        private static void CaptionFixedResetSlot(Caption t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.TitleLength = 0; } break;
+                case 1: { if (t.Title != null) { Array.Clear(t.Title, 0, t.Title.Length); } } break;
+                case 2: { t.Line.TextLength = 0; } break;
+                case 3: { if (t.Line.Text != null) { Array.Clear(t.Line.Text, 0, t.Line.Text.Length); } } break;
+                case 4: { t.LinesCount = 0; } break;
+                case 5: { t.Lines[0].TextLength = 0; } break;
+                case 6: { if (t.Lines[0].Text != null) { Array.Clear(t.Lines[0].Text, 0, t.Lines[0].Text.Length); } } break;
+                case 7: { t.Lines[1].TextLength = 0; } break;
+                case 8: { if (t.Lines[1].Text != null) { Array.Clear(t.Lines[1].Text, 0, t.Lines[1].Text.Length); } } break;
+                case 9: { t.Lines[2].TextLength = 0; } break;
+                case 10: { if (t.Lines[2].Text != null) { Array.Clear(t.Lines[2].Text, 0, t.Lines[2].Text.Length); } } break;
+                case 11: { t.Body.Type = BodyType.None; } break;
+                case 12: { t.Body.WideLength = 0; } break;
+                case 13: { if (t.Body.Wide != null) { Array.Clear(t.Body.Wide, 0, t.Body.Wide.Length); } } break;
+                case 14: { t.Body.NarrowLength = 0; } break;
+                case 15: { if (t.Body.Narrow != null) { Array.Clear(t.Body.Narrow, 0, t.Body.Narrow.Length); } } break;
+                case 16: { t.Body.Tally = 0; } break;
+                default: break;
+            }
+        }
+
+        public static void CaptionFixedFillRun(ReadOnlySpan<TableFixedFill> fill, Caption dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    CaptionFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string CaptionFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            Caption dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                        {
+                            if (p.Size == 1) { CaptionFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                            else if (p.Size == 2) { CaptionFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 4) { CaptionFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 8) { CaptionFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 16)
+                            {
+                                ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                                ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                                CaptionFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                            }
+                            else { CaptionFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                            break;
+                        }
+                    case TableFixedWire.Flat:
+                        {
+                            CaptionFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                            break;
+                        }
+                    case TableFixedWire.FlatWiden:
+                        {
+                            int sw = p.Meta == 0 ? 1 : p.Meta;
+                            int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                            int runs = (int)p.Size / sw;
+                            int need = runs * dw;
+                            if (widenScratch == null || widenScratch.Length < need)
+                            {
+                                widenScratch = new byte[need];
+                            }
+                            Span<byte> wide = widenScratch.AsSpan(0, need);
+                            for (int e = 0; e < runs; ++e)
+                            {
+                                int at = (int)p.Src + e * sw;
+                                if (p.Sign == 2)
+                                {
+                                    double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                    BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                    continue;
+                                }
+                                ulong raw = 0;
+                                if (sw == 1) raw = src[at];
+                                else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                                else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                                else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                                if (p.Sign == 1)
+                                {
+                                    int bits = sw * 8;
+                                    ulong top = 1UL << (bits - 1);
+                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                }
+                                Span<byte> cell = wide.Slice(e * dw, dw);
+                                if (dw == 1) cell[0] = (byte)raw;
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                            }
+                            CaptionFixedSetBytes(dst, p.Dst, wide, need);
+                            if (report != null) { report.Widened += runs; }
+                            break;
+                        }
+                    case TableFixedWire.Count:
+                        {
+                            int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            CaptionFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                            break;
+                        }
+                    case TableFixedWire.Text:
+                        {
+                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                            uint cap = p.Size / unit;
+                            int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                            if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                            {
+                                return "text_ill_formed";
+                            }
+                            CaptionFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                            if (p.Meta == TableFixedWire.TextWide)
+                            {
+                                CaptionFixedSetChars(dst, p.Aux, textBytes, v);
+                            }
+                            else
+                            {
+                                CaptionFixedSetBytes(dst, p.Aux, textBytes, v);
+                            }
+                            break;
+                        }
+                    case TableFixedWire.Ordinal:
+                        {
+                            ulong raw = 0;
+                            if (p.Size == 1) raw = src[(int)p.Src];
+                            else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            uint v = 0;
+                            if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                            {
+                                ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                                ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                                if (raw != 0 && raw <= count)
+                                {
+                                    v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                                }
+                                if (raw > count) { forgedOrdinal++; }
+                            }
+                            CaptionFixedSetRaw(dst, p.Dst, v, report);
+                            break;
+                        }
+                    case TableFixedWire.Widen:
+                        {
+                            ulong raw = 0;
+                            if (p.Size == 1) raw = src[(int)p.Src];
+                            else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            if (p.Sign != 0)
+                            {
+                                int bits = (int)p.Size * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0)
+                                {
+                                    raw |= ~((top << 1) - 1UL);
+                                }
+                            }
+                            if (p.DstSize == 16)
+                            {
+                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                CaptionFixedSetWide(dst, p.Dst, w);
+                            }
+                            else
+                            {
+                                CaptionFixedSetRaw(dst, p.Dst, raw, report);
+                            }
+                            if (report != null) { report.Widened++; }
+                            break;
+                        }
+                    case TableFixedWire.WidenF:
+                        {
+                            float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                            CaptionFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                            if (report != null) { report.Widened++; }
+                            break;
+                        }
+                    case TableFixedWire.Const:
+                        {
+                            CaptionFixedSetRaw(dst, p.Dst, p.Aux, report);
+                            break;
+                        }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -916,7 +1187,7 @@ namespace Wide
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != CaptionFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = CaptionFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -969,9 +1240,11 @@ namespace Wide
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new Caption(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), CaptionFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), CaptionFixedSlots, values[k]); }
+                CaptionFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, CaptionFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, CaptionFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = CaptionFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -1010,7 +1283,7 @@ namespace Wide
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, CaptionFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = CaptionFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
@@ -1052,6 +1325,249 @@ namespace Wide
             new TableFixedSlot<Stamp>(setChars: (t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Label != null) c.Slice(0, Math.Min(c.Length, t.Label.Length)).CopyTo(t.Label); }, reset: (t) => { if (t.Label != null) { Array.Clear(t.Label, 0, t.Label.Length); } }),
             new TableFixedSlot<Stamp>(setRaw: (t, v) => t.Seq = unchecked((uint)v), reset: (t) => { t.Seq = 0; }),
         };
+
+        private static void StampFixedSetRaw(Stamp t, uint slot, ulong v, TableReport rep)
+        {
+            switch (slot)
+            {
+                case 0: t.LabelLength = (int)v; break;
+                case 2: t.Seq = unchecked((uint)v); break;
+                default: break;
+            }
+        }
+
+        private static void StampFixedSetDouble(Stamp t, uint slot, double d)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void StampFixedSetWide(Stamp t, uint slot, UInt128 w)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void StampFixedSetBytes(Stamp t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                default: break;
+            }
+        }
+
+        private static void StampFixedSetChars(Stamp t, uint slot, ReadOnlySpan<byte> b, int l)
+        {
+            switch (slot)
+            {
+                case 1: { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Label != null) c.Slice(0, Math.Min(c.Length, t.Label.Length)).CopyTo(t.Label); } break;
+                default: break;
+            }
+        }
+
+        private static void StampFixedResetSlot(Stamp t, uint slot)
+        {
+            switch (slot)
+            {
+                case 0: { t.LabelLength = 0; } break;
+                case 1: { if (t.Label != null) { Array.Clear(t.Label, 0, t.Label.Length); } } break;
+                case 2: { t.Seq = 0; } break;
+                default: break;
+            }
+        }
+
+        public static void StampFixedFillRun(ReadOnlySpan<TableFixedFill> fill, Stamp dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    StampFixedResetSlot(dst, off + s);
+                }
+            }
+        }
+
+        public static string StampFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            Stamp dst,
+            TableReport report,
+            ReadOnlySpan<byte> planBytes,
+            ref byte[] widenScratch,
+            ref int forgedOrdinal)
+        {
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if (p.Guard != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
+                if (p.Guard2 != TableFixedWire.NoGuard && TableFixedWire.TagAt(src, p.Guard2, p.ArgW2) != p.Arg2) { continue; }
+                if (p.GuardCount > 2 && !TableFixedWire.ChainHolds(src, p, planBytes)) { continue; }
+                switch (p.Op)
+                {
+                    case TableFixedWire.Copy:
+                        {
+                            if (p.Size == 1) { StampFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }
+                            else if (p.Size == 2) { StampFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 4) { StampFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 8) { StampFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }
+                            else if (p.Size == 16)
+                            {
+                                ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                                ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                                StampFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
+                            }
+                            else { StampFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                            break;
+                        }
+                    case TableFixedWire.Flat:
+                        {
+                            StampFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                            break;
+                        }
+                    case TableFixedWire.FlatWiden:
+                        {
+                            int sw = p.Meta == 0 ? 1 : p.Meta;
+                            int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                            int runs = (int)p.Size / sw;
+                            int need = runs * dw;
+                            if (widenScratch == null || widenScratch.Length < need)
+                            {
+                                widenScratch = new byte[need];
+                            }
+                            Span<byte> wide = widenScratch.AsSpan(0, need);
+                            for (int e = 0; e < runs; ++e)
+                            {
+                                int at = (int)p.Src + e * sw;
+                                if (p.Sign == 2)
+                                {
+                                    double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                    BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                    continue;
+                                }
+                                ulong raw = 0;
+                                if (sw == 1) raw = src[at];
+                                else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                                else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                                else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                                if (p.Sign == 1)
+                                {
+                                    int bits = sw * 8;
+                                    ulong top = 1UL << (bits - 1);
+                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                }
+                                Span<byte> cell = wide.Slice(e * dw, dw);
+                                if (dw == 1) cell[0] = (byte)raw;
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                            }
+                            StampFixedSetBytes(dst, p.Dst, wide, need);
+                            if (report != null) { report.Widened += runs; }
+                            break;
+                        }
+                    case TableFixedWire.Count:
+                        {
+                            int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            StampFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                            break;
+                        }
+                    case TableFixedWire.Text:
+                        {
+                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
+                            uint cap = p.Size / unit;
+                            int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                            if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
+                            {
+                                return "text_ill_formed";
+                            }
+                            StampFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
+                            if (p.Meta == TableFixedWire.TextWide)
+                            {
+                                StampFixedSetChars(dst, p.Aux, textBytes, v);
+                            }
+                            else
+                            {
+                                StampFixedSetBytes(dst, p.Aux, textBytes, v);
+                            }
+                            break;
+                        }
+                    case TableFixedWire.Ordinal:
+                        {
+                            ulong raw = 0;
+                            if (p.Size == 1) raw = src[(int)p.Src];
+                            else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            uint v = 0;
+                            if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                            {
+                                ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                                ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                                if (raw != 0 && raw <= count)
+                                {
+                                    v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                                }
+                                if (raw > count) { forgedOrdinal++; }
+                            }
+                            StampFixedSetRaw(dst, p.Dst, v, report);
+                            break;
+                        }
+                    case TableFixedWire.Widen:
+                        {
+                            ulong raw = 0;
+                            if (p.Size == 1) raw = src[(int)p.Src];
+                            else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                            else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            if (p.Sign != 0)
+                            {
+                                int bits = (int)p.Size * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0)
+                                {
+                                    raw |= ~((top << 1) - 1UL);
+                                }
+                            }
+                            if (p.DstSize == 16)
+                            {
+                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                StampFixedSetWide(dst, p.Dst, w);
+                            }
+                            else
+                            {
+                                StampFixedSetRaw(dst, p.Dst, raw, report);
+                            }
+                            if (report != null) { report.Widened++; }
+                            break;
+                        }
+                    case TableFixedWire.WidenF:
+                        {
+                            float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                            StampFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                            if (report != null) { report.Widened++; }
+                            break;
+                        }
+                    case TableFixedWire.Const:
+                        {
+                            StampFixedSetRaw(dst, p.Dst, p.Aux, report);
+                            break;
+                        }
+                    default: break;
+                }
+            }
+            return null;
+        }
 
         // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
         // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
@@ -1206,7 +1722,7 @@ namespace Wide
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (hash != StampFixedHash)
+            if (pick != 0)
             {
                 TableFixedLineagePlan lane = StampFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -1259,9 +1775,11 @@ namespace Wide
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new Stamp(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), StampFixedSlots, values[k]);
+                if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), StampFixedSlots, values[k]); }
+                StampFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
-                string run_why = TableFixedWire.Run(entries, StampFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
+                // Specialized per-table twin of TableFixedWire.Run(entries, StampFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
+                string run_why = StampFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
@@ -1300,7 +1818,7 @@ namespace Wide
         {
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
-            string run_why = TableFixedWire.Run(plan, StampFixedSlots, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
+            string run_why = StampFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
             if (report != null) { report.Clamped += forgedOrdinal; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }

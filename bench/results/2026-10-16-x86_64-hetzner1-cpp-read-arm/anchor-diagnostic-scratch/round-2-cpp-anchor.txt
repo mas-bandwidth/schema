@@ -1,0 +1,16 @@
+hand layout == emitter, 64 records, 1244 bytes each
+plan entries (identity, root): 29
+record bytes: 1244  (8 hash + 1236 body); packet 438
+
+READ   A plan-driven (identity)       87.1 ns/record
+READ   A3 shipped loop, runtime plan     87.5 ns/record
+READ   A2 the harness's interpreter     43.0 ns/record
+READ   B straight-line                 46.5 ns/record
+       ratio A/B                      1.873x
+READ   ref: form 1 (today)           1088.8 ns/record
+
+WRITE  C template + stores            50.8 ns/record
+WRITE  D form 1 (today)              1139.9 ns/record
+       ratio D/C                     22.441x
+
+(sink 10494147766372322592)

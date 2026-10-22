@@ -232,18 +232,18 @@ table Probe
     leaves [2]Leaf
     shape  Shape
     shapes []Shape
-    after  int32
+    past   int32
 }
 `
 
 // nestedArraysProbeTexts are the probe's instances, as the oracle reads them.
 var nestedArraysProbeTexts = []struct{ name, text string }{
 	{"nest_empty", `{}`},
-	{"nest_grid", `{"grid": {"cells": [1, -2, 3], "grade": "Gold"}, "after": 1}`},
+	{"nest_grid", `{"grid": {"cells": [1, -2, 3], "grade": "Gold"}, "past": 1}`},
 	{"nest_grid_default", `{"grid": {"cells": [0, 0, 0]}}`},
 	{"nest_trio", `{"trio": [0, 5, 0]}`},
 	{"nest_leaves", `{"leaves": [{"id": 1}, {}]}`},
-	{"opt_trio_absent", `{"after": 2}`},
+	{"opt_trio_absent", `{"past": 2}`},
 	{"opt_trio_zero", `{"o_trio": [0, 0, 0]}`},
 	{"opt_trio_values", `{"o_trio": [1, -2, 3]}`},
 	{"shape_grid", `{"shape": {"grid": {"cells": [0, 0, 7], "grade": "Silver"}}}`},
@@ -254,5 +254,5 @@ var nestedArraysProbeTexts = []struct{ name, text string }{
 	{"shape_perms_empty", `{"shape": {"perms": []}}`},
 	{"shape_off", `{"shape": {"off": null}}`},
 	{"shapes", `{"shapes": [{"trio": [0, 0, 9]}, {}, {"perms": ["Write"]}, {"grid": {"grade": "Bronze"}}, {"off": null}]}`},
-	{"everything", `{"grid": {"cells": [4, 5, 6]}, "trio": [7, 8, 9], "o_trio": [0, 1, 0], "leaves": [{}, {"id": -1}], "shape": {"perms": ["Write", "Exec"]}, "shapes": [{"grid": {"cells": [1, 1, 1]}}], "after": -1}`},
+	{"everything", `{"grid": {"cells": [4, 5, 6]}, "trio": [7, 8, 9], "o_trio": [0, 1, 0], "leaves": [{}, {"id": -1}], "shape": {"perms": ["Write", "Exec"]}, "shapes": [{"grid": {"cells": [1, 1, 1]}}], "past": -1}`},
 }
