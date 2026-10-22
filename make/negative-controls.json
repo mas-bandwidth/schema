@@ -420,7 +420,7 @@
       "when": "pull-request",
       "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
       "targets": [
-        "cards-cs-conformance-negative-control",
+        "cards-cs-conformance-negative-control", "cards-cs-conformance-upgrade-negative-control", "cards-cs-conformance-hash-negative-control",
         "conformance-negative-control-cs",
         "tables-cs-retain-negative-control",
         "tables-cs-pack-negative-control",
@@ -514,7 +514,7 @@
       "when": "pull-request",
       "why": "the Dart port's controls and its four packet families: eight controls, the fixed form's among them. Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of §5.7. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
       "targets": [
-        "cards-dart-conformance-negative-control",
+        "cards-dart-conformance-negative-control", "cards-dart-conformance-upgrade-negative-control", "cards-dart-conformance-hash-negative-control",
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
         "packet-utf8-dart-negative-control",
