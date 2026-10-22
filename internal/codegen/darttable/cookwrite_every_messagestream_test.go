@@ -51,7 +51,7 @@ union Origin {
 }
 table Selection {
   start Cursor
-  end Cursor
+  finish Cursor
 }
 table InsertText {
   pos Cursor
