@@ -3,8 +3,16 @@
 
     A functional soak, never a unit test: it loops the variable form's load,
     loadMeasure and save over the committed wires the tables-java-variable-class
-    target round-trips (the blob, list and pointer corpora), for SOAK_SECONDS of
-    real time, and reads the thread's allocated-bytes counter every sample.
+    target round-trips (the blob, list and pointer corpora), for
+    TABLES_JAVA_SOAK_ITERATIONS passes, and reads the thread's allocated-bytes
+    counter every sample.
+
+    ITS LENGTH IS AN ITERATION COUNT, NOT A CLOCK: the gate watches allocated
+    bytes per pass, so the number of passes is what matters, and a count runs
+    the same loop on every machine. It reads no clock (`make shape-gate`
+    refuses a timing primitive outside the sanctioned bench). The default is
+    the release act, about an hour on the studio; `make test` runs the short
+    form.
 
     THE GATE IS ON THE ALLOCATION COUNT PER ITERATION. A Java load builds a
     Value tree, so the floor is not zero — the gate is on STABILITY, not on
@@ -28,6 +36,9 @@ import java.nio.file.Paths;
 
 public final class Soak {
     private Soak() {}
+
+    // the release act: about an hour of passes on the studio (~41,000 per second)
+    private static final long DEFAULT_ITERATIONS = 1L << 27;
 
     private static void fail(String what) {
         System.out.flush();
@@ -171,7 +182,17 @@ public final class Soak {
             fail("the JVM exposes no per-thread allocation counter, so the soak has nothing to measure");
         }
 
-        double seconds = args.length > 0 ? Double.parseDouble(args[0]) : 20.0;
+        long target = DEFAULT_ITERATIONS;
+        if (args.length > 0) {
+            try {
+                target = Long.parseLong(args[0]);
+            } catch (NumberFormatException e) {
+                fail("the soak length is an iteration count, got \"" + args[0] + "\"");
+            }
+        }
+        if (target <= 0) {
+            fail("the soak length must be a positive iteration count, got " + target);
+        }
         Codec[] codecs = new Codec[] { new CatalogCodec(), new SaveCodec(), new SceneCodec() };
         byte[][] wires = new byte[codecs.length][];
         for (int i = 0; i < codecs.length; i++) {
@@ -192,8 +213,6 @@ public final class Soak {
         }
 
         long heapStart = usedHeap();
-        long start = System.nanoTime();
-        long deadline = start + (long) (seconds * 1e9);
         long batch = 100;
         long iterations = 0;
         long samples = 0;
@@ -209,7 +228,7 @@ public final class Soak {
         // count is the unplanted floor, so the planted pair — which the control
         // turns on for the measured loop alone — is visible as a jump in the
         // per-iteration count, while the matched pair keeps the heap flat.
-        while (System.nanoTime() < deadline) {
+        while (iterations < target) {
             boolean plantHere = warmed && plant;
             long before = bean.getCurrentThreadAllocatedBytes();
             long iters = runBatch(codecs, wires, batch, plantHere);
@@ -248,9 +267,8 @@ public final class Soak {
         }
 
         long heapEnd = usedHeap();
-        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         System.out.println("soak: " + iterations + " iterations over " + codecs.length
-                + " cases in " + elapsedMs + " ms");
+                + " cases (target " + target + ")");
         if (!warmed) {
             System.out.println("soak: run was too short to leave warmup (settled "
                     + settled + " bytes per iteration at sample " + samples + ")");

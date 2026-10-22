@@ -1148,25 +1148,28 @@ tables-java-allocator-runtime-negative-control: build/java-tables/.stamp
 # THE JAVA TABLES SOAK (docs/PORTING.md I9, #517). A functional soak, never a
 # unit test: it loops the variable form's load, loadMeasure and save over the
 # committed wires the tables-java-variable-class target round-trips (the blob,
-# list and pointer units on this classpath) for SOAK_SECONDS of real time, and
+# list and pointer units on this classpath) for TABLES_JAVA_SOAK_ITERATIONS
+# passes (a count, not a clock: the default is the release act, about an hour
+# on the studio; `make test` runs the short form), and
 # gates on the per-iteration ALLOCATION COUNT being flat after warmup — a Java
 # load builds a Value tree, so the floor is not zero and the gate is on
 # STABILITY, not on zero — with resident-heap drift reported beside it as the
 # weaker instrument that sees retention. It refuses to certify off the pinned
 # JDK exactly as modeAllocator does, and honours SCHEMA_JAVA_ALLOC_ANY_JDK=1
 # as observation only (reports, does not certify).
+TABLES_JAVA_SOAK_ITERATIONS ?= 134217728
 .PHONY: tables-java-soak tables-java-soak-negative-control
 tables-java-soak: build/java-tables/.stamp
 	@if [ "$${SCHEMA_JAVA_ALLOC_ANY_JDK:-}" = 1 ]; then echo "Java soak observation mode: NOT CERTIFIED"; fi
 	$(JAVA) -cp build/java-tables Soak --selftest
-	$(JAVA) -cp build/java-tables Soak $(SOAK_SECONDS) testdata/wire/tables/blob_small.bin testdata/wire/tables/list_scalars.bin testdata/wire/tables/graph_tree.bin
+	$(JAVA) -cp build/java-tables Soak $(TABLES_JAVA_SOAK_ITERATIONS) testdata/wire/tables/blob_small.bin testdata/wire/tables/list_scalars.bin testdata/wire/tables/graph_tree.bin
 
 # ITS NEGATIVE CONTROL: a matched allocation pair planted per iteration by an
 # environment variable read in Soak.java (never a change to generated code) for
 # the measured loop alone, so the settled clean floor stays put and the count
 # must go red while the drift line stays green.
 tables-java-soak-negative-control: build/java-tables/.stamp
-	@if SCHEMA_JAVA_SOAK_PLANT=1 $(JAVA) -cp build/java-tables Soak 12 testdata/wire/tables/blob_small.bin testdata/wire/tables/list_scalars.bin testdata/wire/tables/graph_tree.bin > build/java-soak-negative.log 2>&1; then \
+	@if SCHEMA_JAVA_SOAK_PLANT=1 $(JAVA) -cp build/java-tables Soak 65536 testdata/wire/tables/blob_small.bin testdata/wire/tables/list_scalars.bin testdata/wire/tables/graph_tree.bin > build/java-soak-negative.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a planted per-iteration allocation left the soak count green'; \
 		cat build/java-soak-negative.log; exit 1; \
 	fi
@@ -1202,12 +1205,13 @@ tables-java-alloc-negative-control: build/java-tables/.stamp
 
 test-java: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-alloc-negative-control tables-java-soak-short tables-java-soak-negative-control
 
-# the twenty-second form `make test` reaches; the hour is `make tables-java-soak`
+# the short form `make test` reaches (524288 passes, ~13 s on the studio); the
+# hour is `make tables-java-soak`
 # The stamp is the parent's prerequisite, so under -j the sub-make finds it
 # built and never races a sibling recipe that is writing build/java-tables.
 .PHONY: tables-java-soak-short
 tables-java-soak-short: build/java-tables/.stamp
-	$(MAKE) tables-java-soak SOAK_SECONDS=20
+	$(MAKE) tables-java-soak TABLES_JAVA_SOAK_ITERATIONS=524288
 
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Java side.
 # The cook example is pulled from docs/USAGE.md into a class that reads the

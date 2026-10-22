@@ -1,8 +1,8 @@
 package javatable
 
 // message_save_fits_its_measure — a Java message must SAVE into a buffer of
-// exactly its MEASURED size, and refuse a buffer one byte smaller (docs/SPEC-
-// TABLES.md §3.3). The Go port is the reference for the bytes: every body is
+// exactly its MEASURED size, and refuse a buffer one byte smaller
+// (docs/SPEC-TABLES.md §3.3). The Go port is the reference for the bytes: every body is
 // encoded by internal/tablewire, the generated Java loads those bytes, measures
 // them and re-saves them, so the save is checked byte for byte against Go.
 //
