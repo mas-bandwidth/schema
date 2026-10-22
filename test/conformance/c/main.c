@@ -237,9 +237,10 @@ static int surface_wire( const char * out )
         memset( &report, 0, sizeof( report ) );
         if ( !codec->load( value, wire, (int64_t) bytes, &report ) ) { free( wire ); return 1; }
         free( wire );
-        /* A BLOB NAMED FROM TWO SLOTS IS REFUSED BY EVERY WRITER (docs/SPEC-
-           TABLES.md §2.5): the tolerant load counted it, Measure answers -1,
-           and the case is a named absence, as the Go leg writes it. */
+        /* A BLOB NAMED FROM TWO SLOTS IS REFUSED BY EVERY WRITER
+           (docs/SPEC-TABLES.md §2.5): the tolerant load counted it, Measure
+           answers -1, and the case is a named absence, as the Go leg writes
+           it. */
         if ( report.blob_shared > 0 && codec->measure( value ) < 0 )
         {
             if ( !spill_absent_reason( out, f->field[1], "blob_shared" ) ) { return 1; }
