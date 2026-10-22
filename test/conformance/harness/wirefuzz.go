@@ -210,8 +210,8 @@ type legReply struct {
 	measure  int64
 	saved    []byte
 	saveFail bool
-	// blobShared marks a save refused BY NAME as blob_shared (docs/SPEC-
-	// TABLES.md §2.5): a leg answers the saved length -2 for it. Every writer
+	// blobShared marks a save refused BY NAME as blob_shared
+	// (docs/SPEC-TABLES.md §2.5): a leg answers the saved length -2 for it. Every writer
 	// of the standard refuses a blob two slots name; the C++ reference still
 	// writes one, so a differential against it reads this refusal as the
 	// standard's answer and not as a divergence.
