@@ -2,7 +2,7 @@
 # THE NINE-LANGUAGE TABLE, from one command. Run from the repository root.
 #
 #   bench/paired/nine.sh [--lane N] [--rounds 1|2|3] [--out DIR] [--note TEXT]
-#   bench/paired/nine.sh --read-arm --receipt TEXT [--leg cpp|c] [--pin CORE] [--out DIR]
+#   bench/paired/nine.sh --read-arm --receipt TEXT [--leg cpp|c|cs] [--pin CORE] [--out DIR]
 #
 # It builds the driver and every leg, then runs `-mode table`, which asks the
 # TREE which table runners it carries (bench/tables/<lang>/), measures exactly
@@ -30,18 +30,17 @@
 # fixed form's identity read, plan read and the same leg's packet read, each
 # MEASURED alone, the two GATE verdicts against that packet read, and the C++
 # anchor line against the hand-written straight-line reader. It builds and
-# gates the C++ leg — the one leg whose runner carries the arm today; the
-# board names every other leg and the plan lane's missing corpus — and runs
-# `-mode plan-read` inside the confirmation pass's quiet window, bracketed by
-# the C++ packet control leg. --receipt is the operator's READY/START record
-# for that window and is required. An INVALID window prints its numbers with
-# no verdict and the script exits non-zero.
+# gates the requested leg (cpp, c or cs) and runs `-mode plan-read` inside the
+# confirmation pass's quiet window, bracketed by that leg's packet control leg.
+# --receipt is the operator's READY/START record for that window and is
+# required. An INVALID window prints its numbers with no verdict and the script
+# exits non-zero.
 #
-# --leg c is the C leg's board: the C runner's --read-arm, bracketed by the C
-# packet control leg, and with the lineage corpus on the tree
-# (bench/tables/c/lineage/) its PLAN lane too, all three reads out of the one
-# plan build. --pin CORE runs the measuring pass under `taskset -c CORE` and
-# records the core on the board.
+# --leg c is the C leg's board, and --leg cs is the C# leg's board: that leg's
+# runner's --read-arm, bracketed by that leg's packet control leg, and with the
+# lineage corpus on the tree (bench/tables/<leg>/lineage/) its PLAN lane too,
+# all three reads out of the one plan build. --pin CORE runs the measuring pass
+# under `taskset -c CORE` and records the core on the board.
 #
 # THE RESULT IS NOT CERTIFIED. It is the fast diagnostic's numbers in the
 # published table's shape: reduced iteration counts, no bracketing drift
@@ -69,7 +68,7 @@ while [ $# -gt 0 ]; do
     --leg)    LEG="$2"; shift 2 ;;
     --pin)    PIN_CORE="$2"; shift 2 ;;
     -h|--help)
-        sed -n '2,49p' "$0" | cut -c 3-
+        sed -n '2,47p' "$0" | cut -c 3-
         exit 0 ;;
     *)
         echo "nine.sh: unknown argument $1" >&2
@@ -95,8 +94,8 @@ if [ -n "$READ_ARM" ]; then
         exit 2
     fi
     case "$LEG" in
-    cpp|c) ;;
-    *) echo "nine.sh: --leg takes cpp or c (the legs whose runner has a read arm)" >&2; exit 2 ;;
+    cpp|c|cs) ;;
+    *) echo "nine.sh: --leg takes cpp, c or cs (the legs whose runner has a read arm)" >&2; exit 2 ;;
     esac
     : "${OUT:=build/paired-read/$(date -u +%Y%m%dT%H%M%SZ)}"
     go build -o bin/schema-paired ./bench/paired

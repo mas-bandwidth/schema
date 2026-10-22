@@ -745,6 +745,15 @@ func generateAndBuild(langs []string) error {
 					return e
 				}
 			}
+			// AND THE PLAN LANE'S ASSEMBLY (BENCH-STANDARD.md §1.10), when the
+			// lineage corpus is on the tree: the same runner source, against
+			// the unit generated beside the lineage's lock (table.go,
+			// buildCSPlan). -mode plan-read -langs cs runs this one.
+			if csPlanRefusal(fileExists) == "" {
+				if e := buildCSPlan(schema, serCs); e != nil {
+					return e
+				}
+			}
 		case "elixir":
 			// NOTHING IS LINKED AND NOTHING IS CACHED: the leg is a script that
 			// compiles the generated modules into the VM it measures in. What
@@ -946,6 +955,23 @@ func generateAndBuild(langs []string) error {
 		}
 	}
 	info.Tools["c_table_flags"] = strings.Join(cFlags, " ") + " -DBENCH_MATCHED -ffp-contract=off"
+	if contains(langs, "cs") {
+		info.Tools["cs_table_flags"] = "dotnet build -c Release -property:UseSharedCompilation=false; DefineConstants=BENCH_MATCHED AllowUnsafeBlocks=true"
+		if b, e := capture(command{args: []string{"dotnet", "--version"}}); e == nil {
+			info.Tools["cs"] = "dotnet " + strings.TrimSpace(string(b))
+		}
+		if csPlanRefusal(fileExists) == "" {
+			info.Tools["cs_plan_flags"] = "dotnet build -c Release -property:UseSharedCompilation=false; DefineConstants=BENCH_MATCHED;BENCH_PLAN AllowUnsafeBlocks=true"
+			p := binary("plan", "cs")
+			for _, f := range append(csPlanModules(), p, strings.TrimSuffix(p, ".dll")+".deps.json", strings.TrimSuffix(p, ".dll")+".runtimeconfig.json") {
+				h, e := hashFile(f)
+				if e != nil {
+					return e
+				}
+				info.Binaries[f] = h
+			}
+		}
+	}
 	if contains(langs, "rust") {
 		// The Rust leg's "flags" are cargo settings; the level is also stamped
 		// into the binary, so a row's `opt` column and this line agree or the
@@ -976,6 +1002,9 @@ func generateAndBuild(langs []string) error {
 		// the C plan lane's lineage, lock included: a re-pin after the build
 		// refuses the sitting like any other corpus change
 		corpora = append(corpora, cLineageCorpus...)
+	}
+	if contains(langs, "cs") && csPlanRefusal(fileExists) == "" {
+		corpora = append(corpora, csLineageCorpus...)
 	}
 	for _, p := range corpora {
 		h, e := hashFile(p)

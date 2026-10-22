@@ -725,6 +725,96 @@ func buildCPlan(schema, cc string, cFlags []string, serC string) error {
 	return run(a...)
 }
 
+// THE C# LEG'S PLAN LANE reads the same lineage pair under bench/tables/cs/lineage/
+// and compiles a second assembly with BENCH_PLAN defined against the unit
+// generated beside bench/tables/cs/lineage/schema.lock.
+const csLineageDir = "bench/tables/cs/lineage"
+
+var csLineageCorpus = []string{csLineageDir + "/schema.lock", csLineageDir + "/bench_lineage.bin", csLineageDir + "/bench_lineage.layout"}
+
+func csPlanRefusal(present func(string) bool) string {
+	var missing []string
+	for _, p := range csLineageCorpus {
+		if !present(p) {
+			missing = append(missing, p)
+		}
+	}
+	if len(missing) > 0 {
+		return "no lineage corpus on this tree: " + strings.Join(missing, ", ") + " absent (BENCH-STANDARD §1.10 work list items 1–7)"
+	}
+	return ""
+}
+
+const csPlanBuild = "build/paired/plan-cs-unit"
+
+func csPlanModules() []string {
+	found, _ := filepath.Glob(filepath.Join(csPlanBuild, "new", "*.cs"))
+	sort.Strings(found)
+	return found
+}
+
+const csPlanProject = `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);BENCH_MATCHED;BENCH_PLAN</DefineConstants>
+    <SerializeCsRoot Condition="'$(SerializeCsRoot)' == ''">../../../../serialize.cs</SerializeCsRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../bench/tables/cs/src/Program.cs" />
+    <Compile Include="new/*.cs" Exclude="new/*Block.cs;new/*Cook.cs" />
+    <Compile Include="$(SerializeCsRoot)/src/Serialize.cs" />
+    <Compile Include="$(SerializeCsRoot)/src/Int128Pair.cs" />
+  </ItemGroup>
+</Project>
+`
+
+func buildCSPlan(schema, serCs string) error {
+	if err := os.RemoveAll(csPlanBuild); err != nil {
+		return err
+	}
+	unit := filepath.Join(csPlanBuild, "unit")
+	if err := os.MkdirAll(unit, 0755); err != nil {
+		return err
+	}
+	var unitSchemas []string
+	for _, from := range append(append([]string(nil), pairedSchemas...), csLineageDir+"/schema.lock") {
+		b, err := os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+		to := filepath.Join(unit, filepath.Base(from))
+		if err := os.WriteFile(to, b, 0644); err != nil {
+			return err
+		}
+		if strings.HasSuffix(to, ".schema") {
+			unitSchemas = append(unitSchemas, to)
+		}
+	}
+	newDir := filepath.Join(csPlanBuild, "new")
+	if err := run(append([]string{schema, "generate", "--lang", "cs", "--out", newDir}, unitSchemas...)...); err != nil {
+		return fmt.Errorf("generating the paired unit beside %s/schema.lock: %w", csLineageDir, err)
+	}
+	proj := filepath.Join(csPlanBuild, "paired.csproj")
+	if err := os.WriteFile(proj, []byte(csPlanProject), 0644); err != nil {
+		return err
+	}
+	_ = os.Remove(binary("plan", "cs"))
+	return run("dotnet", "build", proj, "-c", "Release", "-v", "q", "--nologo", "-property:UseSharedCompilation=false", "-property:SerializeCsRoot="+serCs, "--output", filepath.Dir(binary("plan", "cs")))
+}
+
+func lineageDirFor(leg string) string {
+	if leg == "cs" {
+		return csLineageDir
+	}
+	return cLineageDir
+}
+
 // planGateClaim is the sentence the board prints for what the leg's plan gate
 // checked before the clock. It names only checks the leg's runner makes, and it
 // is the same name and signature as the Elixir leg's (commit 286194156, PR
@@ -753,11 +843,16 @@ func fileExists(p string) bool {
 // readArmCorpusPaths is the read arm's corpus; the plan build also loads the
 // lineage pair, so its ONE id covers all three lanes' files.
 func readArmCorpusPaths(plan bool) map[string]string {
+	return readArmCorpusPathsFor("c", plan)
+}
+
+func readArmCorpusPathsFor(leg string, plan bool) map[string]string {
 	paths := corpusPaths("table")
 	maps.Copy(paths, corpusPaths("packet"))
 	if plan {
+		dir := lineageDirFor(leg)
 		for _, name := range []string{"bench_lineage.bin", "bench_lineage.layout"} {
-			paths[name] = cLineageDir + "/" + name
+			paths[name] = dir + "/" + name
 		}
 	}
 	return paths
@@ -1062,6 +1157,8 @@ func legTitle(leg string) string {
 		return "C++"
 	case "c":
 		return "C"
+	case "cs":
+		return "C#"
 	}
 	return leg
 }
@@ -1141,7 +1238,7 @@ func (b readArmBoard) markdown() string {
 	w.WriteString("\nleg      identity read    plan read    packet read    GATE identity  GATE plan    plan/identity\n")
 	w.WriteString("         ns/record        ns/record    ns/record      vs packet      vs packet    x (reported)\n")
 	ratio := "—"
-	if planMeasured && len(b.Identity.Samples) > 0 {
+	if planMeasured && b.windowOK() && len(b.Identity.Samples) > 0 {
 		ratio = fmt.Sprintf("%.2f", b.Plan.BestNs/b.Identity.BestNs)
 	}
 	fmt.Fprintf(&w, "%-8s %12s %12s %14s    %-14s %-12s %s\n", leg, nsCell(b.Identity), nsCell(b.Plan), nsCell(b.Packet), b.GateIdentity, b.GatePlan, ratio)
@@ -1224,13 +1321,13 @@ func porcelain() (string, error) {
 }
 
 // readArmLegs are the legs whose runner carries `--read-arm` on this tree.
-var readArmLegs = []string{"cpp", "c"}
+var readArmLegs = []string{"cpp", "c", "cs"}
 
-// planReadPassOn is the whole of `-mode plan-read` — gate, window, control,
-// rounds, control, verdicts, board — with the sitting's pinned core recorded.
+// planReadPassOn is the whole of `-mode plan-read` (gate, window, control,
+// rounds, control, verdicts, board), with the sitting's pinned core recorded.
 func planReadPassOn(langs []string, out string, rounds int, info buildInfo, receipt, lane string) (resultErr error) {
 	if len(langs) != 1 || !contains(readArmLegs, langs[0]) {
-		return errors.New("plan-read measures ONE leg per sitting, and only a leg whose runner has a read arm (-langs cpp or -langs c)")
+		return errors.New("plan-read measures ONE leg per sitting, and only a leg whose runner has a read arm (-langs cpp, -langs c or -langs cs)")
 	}
 	leg := langs[0]
 	if rounds < 7 {
@@ -1255,11 +1352,12 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 			return fmt.Errorf("cached build lacks %s/%s; build it first (-mode build -langs %s)", leg, wire, leg)
 		}
 	}
-	// THE PLAN LANE runs where the leg's plan build ran: the C leg, with the
-	// lineage corpus on the tree. That one binary then times all three reads.
+	// THE PLAN LANE runs where the leg's plan build ran: the C and C# legs,
+	// with the lineage corpus on the tree. That one binary then times all three reads.
 	planRefusal := planLaneRefusal(fileExists)
 	readWire, plan := "table", false
-	if leg == "c" {
+	switch leg {
+	case "c":
 		planRefusal = cPlanRefusal(fileExists)
 		if planRefusal == "" && info.Binaries[binary("plan", "c")] == "" {
 			planRefusal = "the cached build has no C plan binary (" + binary("plan", "c") + "); rebuild with -mode build -langs c"
@@ -1267,8 +1365,16 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 		if planRefusal == "" {
 			readWire, plan = "plan", true
 		}
+	case "cs":
+		planRefusal = csPlanRefusal(fileExists)
+		if planRefusal == "" && info.Binaries[binary("plan", "cs")] == "" {
+			planRefusal = "the cached build has no C# plan assembly (" + binary("plan", "cs") + "); rebuild with -mode build -langs cs"
+		}
+		if planRefusal == "" {
+			readWire, plan = "plan", true
+		}
 	}
-	id, err := corpusIDOf(readArmCorpusPaths(plan))
+	id, err := corpusIDOf(readArmCorpusPathsFor(leg, plan))
 	if err != nil {
 		return err
 	}
@@ -1276,7 +1382,7 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 		a := append([]string{"--read-arm"}, flags...)
 		a = append(a, "--packet-wire-dir", "testdata/wire", "--packet-variant-dir", "bench/corpus/variants")
 		if plan {
-			a = append(a, "--lineage-dir", cLineageDir)
+			a = append(a, "--lineage-dir", lineageDirFor(leg))
 		}
 		return a
 	}
@@ -1315,15 +1421,24 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 	if e = os.WriteFile(filepath.Join(tmp, "build.json"), append(b, '\n'), 0644); e != nil {
 		return e
 	}
-	serialize, flags := info.Runtimes["serialize"], info.Tools[leg+"_table_flags"]
-	if leg == "c" {
+	serialize, flags, compiler := info.Runtimes["serialize"], info.Tools[leg+"_table_flags"], firstLine(info.Tools[leg])
+	switch leg {
+	case "c":
 		serialize = info.Runtimes["serialize.c"]
 		if plan {
 			flags = info.Tools["c_plan_flags"]
 		}
+	case "cs":
+		serialize = info.Runtimes["serialize.cs"]
+		if plan && info.Tools["cs_plan_flags"] != "" {
+			flags = info.Tools["cs_plan_flags"]
+		}
+		if compiler == "" {
+			compiler = firstLine(info.Tools["dotnet"])
+		}
 	}
 	board := readArmBoard{
-		Host: info.Host, OS: info.OS, Arch: info.Arch, CPU: info.CPU, Compiler: firstLine(info.Tools[leg]), Flags: flags,
+		Host: info.Host, OS: info.OS, Arch: info.Arch, CPU: info.CPU, Compiler: compiler, Flags: flags,
 		Revision: info.Revision, Serialize: serialize, Dirty: dirty, Rounds: rounds, Iterations: readArmIterations, AnchorReps: anchorReps,
 		CorpusID: id, PlanRefusal: planRefusal, Window: "INVALID", Receipt: strings.TrimSpace(receipt), Absent: otherLegsBut(leg),
 		GatePlan: "— (absent)", Leg: leg, Lane: lane,

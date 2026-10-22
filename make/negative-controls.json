@@ -438,18 +438,60 @@
     {
       "name": "cs",
       "when": "pull-request",
-      "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
+      "why": "the C# port's conformance leg and its runtime counters: the conformance driver's planted defect, the allocation gate's off-pin runtime refusal, the soak allocation-count control (a short-lived managed allocation per sample, invisible to drift), and the retain control. Split three ways from one cs group when the merged stream's fourteen controls ran the job past its 5-minute timeout on the runner (the job was cancelled during the last control, about 4m40s after the controls began).",
       "targets": [
-        "cards-cs-conformance-negative-control", "cards-cs-conformance-upgrade-negative-control", "cards-cs-conformance-hash-negative-control",
         "conformance-negative-control-cs",
-        "tables-cs-retain-negative-control",
+        "tables-cs-alloc-runtime-negative-control",
+        "tables-cs-soak-negative-control",
+        "tables-cs-retain-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-tables",
+      "when": "pull-request",
+      "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout.",
+      "targets": [
         "tables-cs-pack-negative-control",
         "tables-cs-message-blob-endian-negative-control",
         "tables-cs-fixedform-arm-negative-control",
+        "tables-cs-json-differential-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-packet",
+      "when": "pull-request",
+      "why": "the C# packet families (arm defaults, defaults, UTF-8, wide), the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Split from the cs group for its 5-minute timeout.",
+      "targets": [
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",
-        "packet-wide-cs-negative-control"
+        "packet-wide-cs-negative-control",
+        "packet-clean-cs-negative-control",
+        "tables-cs-clean-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-cards",
+      "when": "pull-request",
+      "why": "the C# card driver's controls, split from the cs group when the merged stream took that job past its 5-minute timeout: one rendered byte changed (render alone must go red), the upgrade and task-hash switches (each must turn the shared-corpus run red), and the retained-unknown-field control on the Card codec. 2 s each on the author's machine, plus the SDK build.",
+      "targets": [
+        "cards-cs-conformance-negative-control",
+        "cards-cs-conformance-upgrade-negative-control",
+        "cards-cs-conformance-hash-negative-control",
+        "cards-cs-retain-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-accessor",
+      "when": "pull-request",
+      "why": "the accessor/descriptor agreement controls, scalar and pointer slot: each sabotages one emitter line (codecs.go:826 and :814) through a go build -overlay and requires the agreement gate to go red on its own message. Measured 3.2 s and 3.6 s on the runner.",
+      "targets": [
+        "tables-cs-accessor-negative-control",
+        "tables-cs-slot-negative-control"
       ],
       "dotnet": "pin"
     },
@@ -642,6 +684,10 @@
     }
   ],
   "excluded": [
+    {
+      "target": "tables-cs-clean-negative-control-run",
+      "reason": "the body of tables-cs-clean-negative-control, which calls it only when the pinned dotnet resolves; the cs-packet group already runs the wrapper, so running the body again proves the same planted misindent twice."
+    },
     {
       "target": "packet-arm-defaults-negative-controls",
       "reason": "an alias that re-invokes make once per language for the nine packet-arm-defaults-<lang>-negative-control targets, every one of which this leg already runs in its own toolchain group. Running the alias too would need all seven SDKs on one runner to prove a second time what seven parallel jobs prove once."

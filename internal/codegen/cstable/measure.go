@@ -20,8 +20,8 @@ const tableLoadMeasureSource = `
             Reader a = r;
             if (framed && !r.Slice(out a)) { return true; }
             if (!a.Has(2)) { return true; }
-            byte sourceKind=a.Byte();
-            if (sourceKind!=f.Kind && !Widen(sourceKind,f.Kind) || !a.Var(out ulong n)) { return true; }
+            byte sourceKind = a.Byte();
+            if (sourceKind != f.Kind && !Widen(sourceKind, f.Kind) || !a.Var(out ulong n)) { return true; }
             if (f.Dynamic)
             {
                 if (n > int.MaxValue) { reason = "count_over_extent_cap"; return false; }
@@ -73,11 +73,11 @@ const tableLoadMeasureSource = `
     }
     // Locate the winning node table and validate its framing with no objects or
     // node list. The returned reader starts at the first record, after count.
-    static bool NodeFrames(Reader root,out Reader records,out int count)
+    static bool NodeFrames(Reader root, out Reader records, out int count)
     {
         records = default; count = 0; Reader scan = root, payload = default;
         bool present = false;
-        while (scan.Ref(out ulong reference,out ulong id) && reference != 0 && scan.Has(1))
+        while (scan.Ref(out ulong reference, out ulong id) && reference != 0 && scan.Has(1))
         {
             byte kind = scan.Byte();
             if (id == ulong.MaxValue)
@@ -92,7 +92,7 @@ const tableLoadMeasureSource = `
         records = payload;
         while (payload.Offset < payload.Buffer.Length)
         {
-            if (!payload.Ref(out ulong reference,out _) || reference == 0 || !payload.Slice(out _)) { return false; }
+            if (!payload.Ref(out ulong reference, out _) || reference == 0 || !payload.Slice(out _)) { return false; }
             count++;
         }
         return declared == (ulong)count;
@@ -114,18 +114,18 @@ const tableLoadMeasureSource = `
         long extent = 0;
         if (!ExtentBody(root, type, ref extent, ref reason)) { return -1; }
         long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
-        if (!NodeFrames(root,out Reader payload,out int nodes)) { return size + 16; }
+        if (!NodeFrames(root, out Reader payload, out int nodes)) { return size + 16; }
         Reader scan = payload;
-        for (int i=0;i<nodes;i++)
+        for (int i = 0; i < nodes; i++)
         {
-            scan.Ref(out _,out ulong id); scan.Slice(out Reader body);
+            scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
             if ((type.BytesEdge && id == BytesTypeId) || (type.StringEdge && id == StringTypeId))
             { size += Align(8L + body.Buffer.Length + (id == StringTypeId ? 1 : 0), type.RegionAlign); continue; }
             TableTypeInfo candidate = type.PointerType(id);
             if (candidate == null) { continue; }
             extent = 0;
-            if (!ExtentBody(body,candidate,ref extent,ref reason)) { return -1; }
-            size += Align(Align(candidate.StorageSize,type.RegionAlign)+extent,type.RegionAlign);
+            if (!ExtentBody(body, candidate, ref extent, ref reason)) { return -1; }
+            size += Align(Align(candidate.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
         }
         return size + (nodes + 1L) * 16;
     }

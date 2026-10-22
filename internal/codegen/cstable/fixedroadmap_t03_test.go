@@ -284,7 +284,7 @@ func t03R10(t *testing.T) {
 	if strings.Contains(body, "HashOf(") {
 		t.Error("R10: the load path recomputes the header's hash; it is taken as given")
 	}
-	if n := strings.Count(src, "HashOf("); n != 1 {
-		t.Errorf("R10: HashOf( occurs %d times in the emitted unit, want its one definition and no call", n)
+	if n := strings.Count(src, "HashOf("); n != 0 {
+		t.Errorf("R10: HashOf( occurs %d times in the emitted unit, want none: the runtime defines no layout hasher (R7 retired TableFixedWire.HashOf)", n)
 	}
 }

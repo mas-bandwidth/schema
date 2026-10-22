@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -307,6 +308,99 @@ func TestTheCBoardJudgesEachLaneAgainstItsOwnPacketRead(t *testing.T) {
 	b.GateIdentity, b.GatePlan = faster(b.Identity, b.Packet, b.windowOK()), faster(b.Plan, b.Packet, b.windowOK())
 	if invalid := b.markdown(); strings.Contains(invalid, " PASS ") || strings.Contains(invalid, " FAIL ") {
 		t.Errorf("an INVALID window printed a verdict:\n%s", invalid)
+	}
+}
+
+// THE C# LEG'S ARM: selects cs in readArmLegs and plan-read, parses its
+// identity, plan and packet rows (linkage asm, opt default), and renders its
+// board with both GATE verdicts and INVALID window refusal.
+func TestReadArmCSharp(t *testing.T) {
+	t.Parallel()
+	if !slices.Contains(readArmLegs, "cs") {
+		t.Errorf("readArmLegs %v does not include cs", readArmLegs)
+	}
+	if err := planReadPassOn([]string{"cs"}, "", 7, buildInfo{}, "READY", ""); err == nil || !strings.Contains(err.Error(), "plan-read requires -out") {
+		t.Errorf("planReadPassOn did not select cs leg cleanly: %v", err)
+	}
+	if got := legTitle("cs"); got != "C#" {
+		t.Errorf("legTitle(\"cs\") = %q, want \"C#\"", got)
+	}
+	none := csPlanRefusal(func(string) bool { return false })
+	for _, p := range csLineageCorpus {
+		if !strings.Contains(none, p) {
+			t.Errorf("refusal does not name %s: %s", p, none)
+		}
+	}
+	if got := csPlanRefusal(func(string) bool { return true }); got != "" {
+		t.Errorf("with the lineage present the C# plan lane is buildable: %q", got)
+	}
+	planPaths := readArmCorpusPathsFor("cs", true)
+	for _, name := range []string{"bench_lineage.bin", "bench_lineage.layout", "bench_fixed.bin", "bench_mixed.bin"} {
+		if planPaths[name] == "" {
+			t.Errorf("the C# plan build's corpus id does not cover %s", name)
+		}
+	}
+	const id = "0930f96c8320a75d"
+	const n = int64(4000000)
+	csRow := func(bench, family, checks string, bytes, ns float64) string {
+		rate := 1e9 / ns
+		return fmt.Sprintf("cs,%s,read,%d,%g,1,%.0f,%.0f,%.0f,1.00,0.00,%s,%s,asm,%s,default,unknown", bench, n, bytes, rate, rate, rate, id, family, checks)
+	}
+	fixed := csRow("bench_fixed_read", "table", "contract", 1264.3, 210)
+	plan := csRow("bench_plan_read", "table", "contract", 995.4, 230)
+	packet := csRow("bench_mixed_read", "gen", "removed", 400, 260)
+	rows, err := parseReadArmLeg(readArmCSV(packet, plan, fixed), "cs", id, n, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(rows.Fixed.Ns-210) > 0.01 || math.Abs(rows.Plan.Ns-230) > 0.01 || math.Abs(rows.Packet.Ns-260) > 0.01 || rows.Plan.Bytes != 995.4 {
+		t.Fatalf("parsed %+v", rows)
+	}
+	if _, err := parseReadArmLeg(readArmCSV(fixed, packet), "cs", id, n, true); err == nil {
+		t.Error("a C# plan build with no plan row was read as two lanes")
+	}
+	if _, err := parseReadArmLeg(readArmCSV(fixed, plan, packet), "cs", id, n, false); err == nil {
+		t.Error("a C# plan row from a build that measures no plan lane was accepted")
+	}
+	if _, err := parseReadArmLeg(readArmCSV(fixed, packet), "cpp", id, n, false); err == nil {
+		t.Error("C# rows were accepted as the C++ leg's")
+	}
+	if _, err := parseReadArmLeg(readArmCSV(readArmRowLine("bench_fixed_read", "table", "contract", id, n, 1264.3, 210), packet), "cs", id, n, false); err == nil {
+		t.Error("a C++ row was accepted as the C# leg's")
+	}
+
+	b := readArmBoard{
+		Host: "bench", OS: "linux", Arch: "amd64", CPU: "cpu", Revision: "abc", Serialize: "def", Rounds: 7, Iterations: 4000000,
+		CorpusID: id, Window: "OK", FixedBytes: 1264.3, PacketBytes: 400, PlanBytes: 995.4, Leg: "cs", Lane: "5",
+		Identity: statsOf([]float64{210, 211}), Plan: statsOf([]float64{230, 231}), Packet: statsOf([]float64{260, 261}),
+		Anchor: anchorOf(nil, "none for this leg", true), Absent: otherLegsBut("cs"),
+	}
+	b.GateIdentity = faster(b.Identity, b.Packet, b.windowOK())
+	b.GatePlan = faster(b.Plan, b.Packet, b.windowOK())
+	text := b.markdown()
+	for _, want := range []string{
+		"# The read arm: C#\n",
+		"/ lane 5 /",
+		"# corpus_id(identity) 0930f96c8320a75d / corpus_id(plan) 0930f96c8320a75d",
+		"plan (lineage file) 995.4 B/record",
+		"# anchor: none for C#",
+		"cs              210.0        230.0          260.0    PASS           PASS         1.10",
+		"cs `bench_fixed_read` (identity lane, family table)",
+		"cs `bench_plan_read` (plan lane, family table)",
+		"cs `bench_mixed_read` (packet read, family gen)",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("board lacks %q:\n%s", want, text)
+		}
+	}
+	b.Window, b.WindowReason, b.ControlDelta = "INVALID", "C# packet control write moved 6.2% (> 5%); repeat the sitting", 6.2
+	b.GateIdentity, b.GatePlan = faster(b.Identity, b.Packet, b.windowOK()), faster(b.Plan, b.Packet, b.windowOK())
+	invalid := b.markdown()
+	if strings.Contains(invalid, " PASS ") || strings.Contains(invalid, " FAIL ") || !strings.Contains(invalid, "The window is INVALID") {
+		t.Errorf("an INVALID window printed a verdict:\n%s", invalid)
+	}
+	if strings.Contains(invalid, "1.10") || !strings.Contains(invalid, "(window INVALID) —\n") {
+		t.Errorf("an INVALID window printed a plan/identity ratio:\n%s", invalid)
 	}
 }
 

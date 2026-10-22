@@ -1002,9 +1002,9 @@ build/cook-fuzz/.stamp: $(wildcard test/cookgen/*.go) $(SCHEMAS_TABLES_POINTERS)
 # variables rather than in the $(call) below because a sed address RANGE
 # carries a comma, and make would read it as another argument.
 BLOCK_FUZZ_SED_CPP_extent := /rows > (uint64_t) bytes - offset_of/d; /padding > bytes - used/d
-BLOCK_FUZZ_SED_CS_extent := /rows > (ulong) bytes - offsetOf/d; /padding > bytes - used/d
+BLOCK_FUZZ_SED_CS_extent := /rows > (ulong)bytes - offsetOf/d; /padding > bytes - used/d
 BLOCK_FUZZ_SED_CPP_maximum := /past the DECLARED MAXIMUM: Begin refuses/,/count > (uint64_t) %sBlock/d
-BLOCK_FUZZ_SED_CS_maximum := /count > (ulong) %sMax/d
+BLOCK_FUZZ_SED_CS_maximum := /count > (ulong)%sMax/d
 BLOCK_FUZZ_SED_RUST_extent := /rows > bytes as u64 - offset_of/d; /padding > bytes - used/d
 BLOCK_FUZZ_SED_RUST_maximum := /count > Self::%s_MAX as u64/,/on a count the maximum does not bound/d
 
@@ -1549,7 +1549,7 @@ tables-cook-cli: bin/schema
 # The pins under testdata/golden/tables/ remain ordinary goldens, held by the
 # compiler package's TestGoldenTableSource; a move under an unchanged emitter is
 # stop-the-line, exactly as it is for every other golden.
-
+#
 # The block form's EMISSION is removed at the one line each backend computes
 # it: the emitter is handed a nil block surface, so it writes no Block file and
 # no block surface at all. The LAYOUT MODEL is untouched, so the build version
@@ -1557,6 +1557,12 @@ tables-cook-cli: bin/schema
 # in both arms — the comparison measures the block form's emission, not the id.
 BLOCKLESS_ROOT   := build/zero-cost-noblock
 BLOCKLESS_SCHEMA := $(BLOCKLESS_ROOT)/schema
+# The ordinary arm is generated fresh beside it, by the same macros, so both
+# arms hold exactly one unit set. The shared build/tables-generated* roots are
+# not that arm: other targets add units to them (cards-cs-generate writes
+# cards/, the C conformance build writes a1/ and a2/), and a unit the macros
+# never generate would read as one the block-less emitter "did not write".
+BLOCKFUL_ROOT    := build/zero-cost-block
 BLOCKLESS_SABOTAGE := blocks := (*ir.BlockUnit)(nil) // SABOTAGED: the block form removed (schema$(skip_hash)331)
 
 $(BLOCKLESS_SCHEMA): $(GO_SOURCES) Makefile
@@ -1597,59 +1603,8 @@ if [ "$$d" = "0" ]; then echo "block zero-cost gate: $(1) $$n Table sources byte
 [ "$$d" = "0" ]
 endef
 
-ifeq ($(shell grep -q 'define tables_generate_cs' make/cs.mk && echo yes),yes)
-TABLES_GENERATED_CS_STAMP := build/tables-generated-cs/.stamp
-else
-define tables_generate_cs
-	$(1) generate --lang cs --out $(2)/examples tables/examples
-	$(1) generate --lang cs --out $(2)/pointers tables/pointers
-	$(1) generate --lang cs --out $(2)/block tables/block
-	$(1) generate --lang cs --out $(2)/blockhome tables/blockhome
-	$(1) generate --lang cs --out $(2)/v1 test/tables/V1.schema
-	$(1) generate --lang cs --out $(2)/v2 test/tables/V2.schema
-	$(1) generate --lang cs --out $(2)/p1 test/tables/P1.schema
-	$(1) generate --lang cs --out $(2)/p3 test/tables/P3.schema
-	$(1) generate --lang cs --out $(2)/fx1 test/tables/FX1.schema
-	$(1) generate --lang cs --out $(2)/fx2 test/tables/FX2.schema
-	$(1) generate --lang cs --out $(2)/k1 test/tables/K1.schema
-	$(1) generate --lang cs --out $(2)/k2 test/tables/K2.schema
-	$(1) generate --lang cs --out $(2)/csids test/tables/CsIds.schema
-	$(1) generate --lang cs --out $(2)/csview test/tables/CsView.schema
-	$(1) generate --lang cs --out $(2)/m1 test/tables/M1.schema
-	$(1) generate --lang cs --out $(2)/m2 test/tables/M2.schema
-	$(1) generate --lang cs --out $(2)/a2 test/tables/A2.schema
-	$(1) generate --lang cs --out $(2)/scalars tables/scalars
-	$(1) generate --lang cs --out $(2)/scalars2 test/tables/Scalars2.schema
-	$(1) generate --lang cs --out $(2)/caption examples-wide/Caption.schema
-	$(1) generate --lang cs --out $(2)/blobs tables/blobs
-	$(1) generate --lang cs --out $(2)/p2 test/tables/P2.schema
-	$(1) generate --lang cs --out $(2)/w1 test/tables/W1.schema
-	$(1) generate --lang cs --out $(2)/w2 test/tables/W2.schema
-	$(1) generate --lang cs --out $(2)/lists tables/lists
-	$(1) generate --lang cs --out $(2)/maps tables/maps
-	$(1) generate --lang cs --out $(2)/stream tables/stream
-	$(1) generate --lang cs --out $(2)/g1 test/tables/G1.schema
-	$(1) generate --lang cs --out $(2)/backend tables/backend
-	$(1) generate --lang cs --out $(2)/vocab tables/vocab
-	$(1) generate --lang cs --out $(2)/vocab9 tables/vocab9
-	$(1) generate --lang cs --out $(2)/rt1 test/tables/RT1.schema
-	$(1) generate --lang cs --out $(2)/rt2 test/tables/RT2.schema
-	$(1) generate --lang cs --out $(2)/rt3 test/tables/RT3.schema
-	$(1) generate --lang cs --out $(2)/csretain1 test/tables/CsRetain1.schema
-	$(1) generate --lang cs --out $(2)/csretain2 test/tables/CsRetain2.schema
-	$(1) generate --lang cs --out $(2)/cscollections1 test/tables/CsCollections1.schema
-	$(1) generate --lang cs --out $(2)/cscollections2 test/tables/CsCollections2.schema
-	$(1) generate --lang cs --out $(2)/ut test/tables/UT.schema
-endef
-TABLES_GENERATED_CS_STAMP := build/tables-generated-cs/.zero-cost-stamp
-build/tables-generated-cs/.zero-cost-stamp: bin/schema
-	@rm -rf build/tables-generated-cs && mkdir -p build/tables-generated-cs
-	$(call tables_generate_cs,./bin/schema,build/tables-generated-cs)
-	@touch $@
-endif
-
 .PHONY: tables-block-zero-cost
-tables-block-zero-cost: build/tables-generated/.stamp $(TABLES_GENERATED_CS_STAMP) build/tables-generated-c/.stamp $(BLOCKLESS_SCHEMA)
+tables-block-zero-cost: bin/schema build/tables-generated/.stamp build/tables-generated-cs/.stamp build/tables-generated-c/.stamp $(BLOCKLESS_SCHEMA)
 	@for f in build/tables-generated/*/*Table.h build/tables-generated/*/*Table.cpp \
 	          build/tables-generated-cs/*/*Table.cs; do \
 		if sed -E 's://.*$$::' $$f | grep -nE "TableBlock|[A-Za-z0-9_]Block"; then \
@@ -1674,8 +1629,12 @@ tables-block-zero-cost: build/tables-generated/.stamp $(TABLES_GENERATED_CS_STAM
 		fi; \
 	done
 	@echo "block zero-cost gate: the C# Table sources declare no accelerator build-version constant"
-	@rm -rf $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c
-	@mkdir -p $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c
+	@rm -rf $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c $(BLOCKFUL_ROOT)
+	@mkdir -p $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c $(BLOCKFUL_ROOT)/cpp $(BLOCKFUL_ROOT)/cs $(BLOCKFUL_ROOT)/c
+	$(call tables_generate,./bin/schema,$(BLOCKFUL_ROOT)/cpp)
+	$(call tables_generate_cs,./bin/schema,$(BLOCKFUL_ROOT)/cs)
+	$(call tables_generate_c,./bin/schema,$(BLOCKFUL_ROOT)/c)
+	$(call tables_generate_c_collections,./bin/schema,$(BLOCKFUL_ROOT)/c)
 	$(call tables_generate,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cpp)
 	$(call tables_generate_cs,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cs)
 	$(call tables_generate_c,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
@@ -1684,9 +1643,9 @@ tables-block-zero-cost: build/tables-generated/.stamp $(TABLES_GENERATED_CS_STAM
 		echo "ZERO-COST GATE FAILED: the block-less emitter still wrote a Block file — the sabotage did not take, and the comparison below would be a restatement"; \
 		find $(BLOCKLESS_ROOT) -name '*Block.*'; exit 1; \
 	fi
-	@$(call tables_byte_identical,cpp,build/tables-generated,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*Table.cpp',100)
-	@$(call tables_byte_identical,cs,build/tables-generated-cs,$(BLOCKLESS_ROOT)/cs,-name '*Table.cs',40)
-	@$(call tables_byte_identical,c,build/tables-generated-c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
+	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*Table.cpp',100)
+	@$(call tables_byte_identical,cs,$(BLOCKFUL_ROOT)/cs,$(BLOCKLESS_ROOT)/cs,-name '*Table.cs',40)
+	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
 
 # THE NEGATIVE CONTROL. The block-less comparison above is a gate with no blade
 # until it is shown able to refuse a Table source that moved: the nearest
