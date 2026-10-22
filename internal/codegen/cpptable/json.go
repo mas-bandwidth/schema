@@ -106,7 +106,7 @@ inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32
 // exists in a unit that declares neither construct. Same shape as the
 // pointer's three: declared here, defined after the walk by whichever half
 // the unit carries. Both are OUT-OF-LINE ARRAYS to the descriptors (§8.1):
-// array_bound = 0 is the tell, and the type name says which of the two.
+// unbounded_container is the ONE TELL, and the type name says which of the two.
 
 // a map field: an out-of-line array whose type name spells the map
 inline bool TableJsonIsMap( const TableFieldInfo * f );
@@ -184,7 +184,7 @@ const tableJsonMapAdapters = `// ---- json map walk: begin ----
 
 inline bool TableJsonIsMap( const TableFieldInfo * f )
 {
-    return f->is_array && f->array_bound == 0 && strncmp( f->type_name, "map[", 4 ) == 0;
+    return f->unbounded_container && strncmp( f->type_name, "map[", 4 ) == 0;
 }
 
 // the entry's two rows: fields[0] IS the key and fields[1] IS the value, which
@@ -463,7 +463,7 @@ const tableJsonListAdapters = `// ---- json list walk: begin ----
 // an unbounded array is the out-of-line array that is not a map (§8.1)
 inline bool TableJsonIsList( const TableFieldInfo * f )
 {
-    return f->is_array && f->array_bound == 0 && !TableJsonIsMap( f );
+    return f->unbounded_container && !TableJsonIsMap( f );
 }
 
 // ToJson WRITES THE ELEMENTS IN INDEX ORDER, which is the only order there is,
@@ -608,6 +608,7 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 		g.pf("// builder, written from a region's const root. A node named more than once\n")
 		g.pf("// carries `&node` in the text. Defined in %sTable.cpp; link it to use them.\n", g.file.Base)
 		g.pf("bool %sFromJson( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report );\n", st.Name, st.Name)
+		g.pf("bool %sFromJsonTolerant( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report );\n", st.Name, st.Name)
 		g.pf("int64_t %sToJsonMeasure( const %s * root, TableAllocator allocator = TableDefaultAllocator() );\n", st.Name, st.Name)
 		g.pf("int64_t %sToJson( const %s * root, char * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() );\n\n", st.Name, st.Name)
 		return
@@ -616,6 +617,7 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 	g.pf("// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in\n")
 	g.pf("// %sTable.cpp; link it to use them.\n", g.file.Base)
 	g.pf("bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report );\n", st.Name, st.Name)
+	g.pf("bool %sFromJsonTolerant( %s & value, const char * text, int64_t bytes, TableReport * report );\n", st.Name, st.Name)
 	g.pf("int64_t %sToJsonMeasure( const %s & value );\n", st.Name, st.Name)
 	g.pf("int64_t %sToJson( const %s & value, char * buffer, int64_t capacity );\n\n", st.Name, st.Name)
 }
@@ -631,18 +633,69 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 		return
 	}
 	if g.isVar(st.Name) {
-		g.pf("bool %sFromJson( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+		// The TOLERANT read keeps BASE's signature and answers (docs/SPEC-TABLES.md
+		// §16.2): it reads what it can, counts clamps, kind mismatches and
+		// duplicates onto the report, and answers true unless the text is
+		// malformed.
+		g.pf("bool %sFromJsonTolerant( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
 		g.pf("    %s * root = builder.GetRoot();\n", st.Name)
 		g.pf("    if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed\n")
 		g.pf("    return TableJsonReadGraph( builder.main, root, %sTableType(), text, bytes, report );\n}\n\n", st.Name)
+		// The plain read is STRICT (docs/SPEC-TABLES.md §6.5, §16.2): it answers
+		// false for a text whose report holds a clamp, a kind mismatch, a
+		// malformed value, resets the root to defaults, and overwrites the
+		// supplied report with this read's report. A builder already locked
+		// answers false before it reads, leaving the report empty. On a refusal
+		// the report's typed reason is filled in the order Go's TableReport.Err
+		// runs its clauses (internal/codegen/gotable/refusal.go): malformed,
+		// then clamped, then kind_mismatch; a clean read answers ok.
+		g.pf("bool %sFromJson( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+		g.pf("    %s * root = builder.GetRoot();\n", st.Name)
+		g.pf("    if ( root == NULL ) { if ( report != NULL ) { *report = TableReport(); } return false; } // locked: the report stays empty\n")
+		g.pf("    TableReport read;\n")
+		g.pf("    bool ok = TableJsonReadGraph( builder.main, root, %sTableType(), text, bytes, &read );\n", st.Name)
+		g.pf("    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )\n")
+		g.pf("    {\n")
+		g.pf("        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }\n")
+		g.pf("        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }\n")
+		g.pf("        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }\n")
+		g.pf("        %sTableType()->reset( root );\n", st.Name)
+		g.pf("        if ( report != NULL ) { *report = read; }\n")
+		g.pf("        return false;\n")
+		g.pf("    }\n")
+		g.pf("    read.refuse_reason = TableRefuseReason::ok;\n")
+		g.pf("    if ( report != NULL ) { *report = read; }\n")
+		g.pf("    return true;\n}\n\n")
 		g.pf("int64_t %sToJsonMeasure( const %s * root, TableAllocator allocator )\n{\n", st.Name, st.Name)
 		g.pf("    return TableJsonWriteGraph( root, %sTableType(), NULL, 0, allocator );\n}\n\n", st.Name)
 		g.pf("int64_t %sToJson( const %s * root, char * buffer, int64_t capacity, TableAllocator allocator )\n{\n", st.Name, st.Name)
 		g.pf("    return TableJsonWriteGraph( root, %sTableType(), buffer, capacity, allocator );\n}\n\n", st.Name)
 		return
 	}
-	g.pf("bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+	g.pf("bool %sFromJsonTolerant( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
 	g.pf("    return TableJsonRead( &value, %sTableType(), text, bytes, report );\n}\n\n", st.Name)
+	// The plain read is STRICT (docs/SPEC-TABLES.md §6.5, §16.2): it answers false
+	// for a text whose report holds a clamp, a kind mismatch or malformed text,
+	// resets the value to its declared defaults
+	// and overwrites the supplied report with this read's report. On a refusal
+	// the report's typed reason is filled in the order Go's TableReport.Err
+	// runs its clauses (internal/codegen/gotable/refusal.go): malformed, then
+	// clamped, then kind_mismatch; a clean read answers ok.
+	g.pf("bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+	g.pf("    TableReport read;\n")
+	g.pf("    bool ok = TableJsonRead( &value, %sTableType(), text, bytes, &read );\n", st.Name)
+	g.pf("    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )\n")
+	g.pf("    {\n")
+	g.pf("        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }\n")
+	g.pf("        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }\n")
+	g.pf("        else { read.refuse_reason = TableRefuseReason::kind_mismatch; }\n")
+	g.pf("        %sTableType()->reset( &value );\n", st.Name)
+	g.pf("        if ( report != NULL ) { *report = read; }\n")
+	g.pf("        return false;\n")
+	g.pf("    }\n")
+	g.pf("    read.refuse_reason = TableRefuseReason::ok;\n")
+	g.pf("    if ( report != NULL ) { *report = read; }\n")
+	g.pf("    return true;\n}\n\n")
 	g.pf("int64_t %sToJsonMeasure( const %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    return TableJsonWrite( &value, %sTableType(), NULL, 0 );\n}\n\n", st.Name)
 	g.pf("int64_t %sToJson( const %s & value, char * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
@@ -963,10 +1016,14 @@ inline char TableJsonShape( const TableFieldInfo * f )
     if ( TableJsonIsKeyed( f ) ) return 'o';   // an object keyed by variant NAME
     if ( f->is_array ) return 'a';
     if ( f->arms != NULL ) return 'o';         // union: an object with ONE key
+    // an ARRAY ROOT held by value is its one field's array (§16.10), so a
+    // field naming it reads and writes an array rather than an object.
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) return 'a';
     if ( f->kind == 13 ) return 'o';           // nested table or type
     if ( f->kind == 17 ) return f->table != NULL ? 'o' : 's'; // a pointer: the pointee's object in place, or null (§16.7); a byte buffer's string (§2.5)
     if ( TableJsonIsEnum( f ) ) return 's';
     if ( TableJsonIsFlags( f ) ) return 'a';
+    if ( f->kind == 36 ) return 's';          // timestamp: an RFC 3339 string (§2.11, §16.2)
     if ( f->kind == 1 ) return 'b';
     return 'n';
 }
@@ -975,9 +1032,12 @@ inline char TableJsonShape( const TableFieldInfo * f )
 inline char TableJsonElementShape( const TableFieldInfo * f )
 {
     if ( f->arms != NULL ) return 'o';        // an element of an array of unions: one key, the arm (§2.6)
+    // an element that is an ARRAY ROOT is its field's array (§16.10)
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) return 'a';
     if ( f->kind == 13 ) return 'o';
     if ( TableJsonIsEnum( f ) ) return 's';
     if ( TableJsonIsFlags( f ) ) return 'a';
+    if ( f->kind == 36 ) return 's';          // timestamp: an RFC 3339 string (§2.11, §16.2)
     if ( f->kind == 1 ) return 'b';
     return 'n';
 }
@@ -1370,6 +1430,70 @@ inline bool TableJsonWriteFloat( TableJsonOut & out, double value, bool single )
     return true;
 }
 
+// ---- the timestamp's text (docs/SPEC-TABLES.md §2.11, §16.2) ----
+//
+// A timestamp is an int64 count of nanoseconds since the Unix epoch and its
+// JSON text is exactly RFC 3339 §5.6's date-time, in UTC with a Z offset.
+// The writer emits the canonical form Go's time.RFC3339Nano emits — a
+// nine-digit fraction with trailing zeros removed, and none when the count is
+// whole — so the text a read accepted writes back as the same instant. The
+// rule this port carries is internal/rfc3339's; the source of truth for the
+// accepted and refused spellings is internal/rfc3339/rfc3339_test.go and
+// internal/codegen/gotable/timestampstrict_test.go.
+
+// civil_from_days: the inverse of the civil-days algorithm the reader uses,
+// Hinnant's exact form, good for the four-digit years RFC 3339 allows.
+inline void TableJsonCivilFromDays( int64_t z, int * year, int * month, int * day )
+{
+    z += 719468;
+    const int64_t era = ( z >= 0 ? z : z - 146096 ) / 146097;
+    const int64_t doe = z - era * 146097;
+    const int64_t yoe = ( doe - doe / 1460 + doe / 36524 - doe / 146096 ) / 365;
+    const int64_t y = yoe + era * 400;
+    const int64_t doy = doe - ( 365 * yoe + yoe / 4 - yoe / 100 );
+    const int64_t mp = ( 5 * doy + 2 ) / 153;
+    const int64_t d = doy - ( 153 * mp + 2 ) / 5 + 1;
+    const int64_t m = mp < 10 ? mp + 3 : mp - 9;
+    *year = (int) ( y + ( m <= 2 ? 1 : 0 ) );
+    *month = (int) m;
+    *day = (int) d;
+}
+
+inline bool TableJsonWriteTimestamp( TableJsonOut & out, const void * storage )
+{
+    int64_t nanos = 0;
+    memcpy( &nanos, storage, sizeof( nanos ) );
+    // floor division, so a negative count before the epoch keeps its fraction
+    int64_t seconds = nanos / 1000000000;
+    int64_t fraction = nanos % 1000000000;
+    if ( fraction < 0 ) { fraction += 1000000000; seconds -= 1; }
+    int64_t days = seconds / 86400;
+    int64_t second_of_day = seconds % 86400;
+    if ( second_of_day < 0 ) { second_of_day += 86400; days -= 1; }
+    int year = 0, month = 0, day = 0;
+    TableJsonCivilFromDays( days, &year, &month, &day );
+    const int hour = (int) ( second_of_day / 3600 );
+    const int minute = (int) ( ( second_of_day / 60 ) % 60 );
+    const int second = (int) ( second_of_day % 60 );
+    char text[48];
+    const int length = snprintf( text, sizeof( text ), "%04d-%02d-%02dT%02d:%02d:%02d", year, month, day, hour, minute, second );
+    if ( length <= 0 || length >= (int) sizeof( text ) ) { return false; }
+    out.put( '"' );
+    out.raw( text, length );
+    if ( fraction != 0 )
+    {
+        char digits[32];
+        snprintf( digits, sizeof( digits ), "%09lld", (long long) fraction );
+        int placed = 9;
+        while ( placed > 1 && digits[ placed - 1 ] == '0' ) { placed--; }
+        out.put( '.' );
+        out.raw( digits, placed );
+    }
+    out.put( 'Z' );
+    out.put( '"' );
+    return true;
+}
+
 inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const TableTypeInfo * info, int32_t depth );
 // a UNION ARM that names no declaration writes through the field walk one key
 // down (docs/SPEC-TABLES.md §2.6, §16.2), which is defined below
@@ -1473,6 +1597,8 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
     }
     switch ( f->kind )
     {
+        case 36: // a timestamp: RFC 3339 §5.6's date-time, in UTC (§2.11, §16.2)
+            return TableJsonWriteTimestamp( out, storage );
         case 1:
             out.text( TableJsonGetRaw( storage, f->elem_size ) != 0 ? "true" : "false" );
             return true;
@@ -1636,6 +1762,9 @@ inline bool TableJsonWriteFields( TableJsonOut & out, const void * base, const T
 inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const TableTypeInfo * info, int32_t depth )
 {
     if ( depth > kTableJsonMaxDepth ) { return false; }
+    // json = "array" (§16.10): the text is the one field's array, not an
+    // object keyed by that field.
+    if ( info->json_array && info->num_fields == 1 ) { return TableJsonWriteField( out, base, &info->fields[0], depth ); }
     bool any = false;
     if ( !TableJsonWriteFields( out, base, info, depth, any ) ) { return false; }
     if ( !any )
@@ -1892,6 +2021,115 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
     else if ( clamped ) { in.report->clamped++; }
     if ( length != NULL ) { *length = placed; }
     return true;
+}
+
+// One CHARACTER of a base64 body, after the JSON layer has had its say
+// (docs/SPEC-TABLES.md §16.2): a bytes field is a JSON string whose DECODED
+// value is base64, so an escape is undone first and the character it names
+// is what the alphabet sees. The JSON layer decides FIRST, so a raw byte
+// below 0x20, a backslash that begins no escape and a byte at or above 0x80
+// that does not begin a well-formed UTF-8 sequence (string_not_utf8, §16.3)
+// make the read malformed: false, with in.bad set. A well-formed character
+// past ASCII is valid JSON and no base64 symbol, so it comes back as 0x7f,
+// which is neither in the alphabet nor '=' (a char-typed marker that every
+// compiler holds without a truncating cast). *done is true at the closing quote,
+// which is consumed.
+inline bool TableJsonBase64Char( TableJsonIn & in, char * c, bool * done )
+{
+    *done = false;
+    *c = 0;
+    if ( in.pos >= in.size ) { in.bad = true; return false; }
+    const unsigned char lead = (unsigned char) in.text[in.pos];
+    if ( lead >= 0x80 )
+    {
+        const int64_t remaining = in.size - in.pos;
+        int32_t width = 0;
+        if ( TableJsonUtf8( in.text + in.pos, (int32_t) ( remaining < 4 ? remaining : 4 ), &width ) < 0 )
+        {
+            in.bad = true;
+            return false;
+        }
+        in.pos += width;
+        *c = '\x7f';
+        return true;
+    }
+    char unit[4];
+    int32_t unit_length = 0;
+    if ( !TableJsonScanUnit( in, unit, &unit_length ) ) { return false; }
+    if ( unit_length == 0 ) { *done = true; return true; }
+    *c = unit_length == 1 ? unit[0] : '\x7f';
+    return true;
+}
+
+// A base64 body's FIRST pass, the cursor just past its opening quote: the
+// JSON layer over every character, then the walk's grammar (§16.2):
+// standard-alphabet symbols, then zero, one or two '=', and nothing after; a
+// padded body's length is a multiple of four, and a lone final symbol is not
+// base64. false means the text is not JSON (in.bad says so); *base64 false
+// means a valid string that is not base64, the field's kind_mismatch. The
+// cursor ends past the closing quote either way, so the caller reads on.
+inline bool TableJsonScanBase64( TableJsonIn & in, int64_t * symbols_out, bool * base64 )
+{
+    int64_t symbols = 0;
+    int64_t pad = 0;
+    bool shape = true;
+    for ( ;; )
+    {
+        char c = 0;
+        bool done = false;
+        if ( !TableJsonBase64Char( in, &c, &done ) ) { return false; }
+        if ( done ) { break; }
+        if ( !shape ) { continue; }
+        if ( c == '=' ) { pad++; continue; }
+        if ( pad > 0 ) { shape = false; continue; }
+        if ( TableJsonBase64Value( (uint8_t) c ) < 0 ) { shape = false; continue; }
+        symbols++;
+    }
+    if ( shape )
+    {
+        if ( pad > 0 )
+        {
+            if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { shape = false; }
+        }
+        else if ( symbols % 4 == 1 )
+        {
+            shape = false;
+        }
+    }
+    *symbols_out = symbols;
+    *base64 = shape;
+    return true;
+}
+
+// The SECOND pass over a body the first pass called base64, from mark (just
+// past its opening quote): six bits a symbol into out, at most capacity
+// bytes placed, the count answered, and *clamped set when more were
+// spelled. The cursor is restored to where the first pass left it.
+inline int64_t TableJsonDecodeBase64( TableJsonIn & in, int64_t mark, uint8_t * out, int64_t capacity, bool * clamped )
+{
+    const int64_t end = in.pos;
+    in.pos = mark;
+    int64_t placed = 0;
+    uint32_t accumulator = 0;
+    int32_t held = 0;
+    *clamped = false;
+    for ( ;; )
+    {
+        char c = 0;
+        bool done = false;
+        if ( !TableJsonBase64Char( in, &c, &done ) || done || c == '=' ) { break; }
+        const int32_t symbol = TableJsonBase64Value( (uint8_t) c );
+        accumulator = ( accumulator << 6 ) | (uint32_t) symbol;
+        held += 6;
+        if ( held >= 8 )
+        {
+            held -= 8;
+            if ( placed < capacity ) { out[placed++] = (uint8_t) ( ( accumulator >> held ) & 0xff ); }
+            else { *clamped = true; }
+        }
+    }
+    in.pos = end;
+    return placed;
 }
 
 // One UTF-8 sequence back to its CODE POINT, over bytes TableJsonScanUnit
@@ -2475,6 +2713,172 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
 // down (docs/SPEC-TABLES.md §2.6, §16.2), which is defined below
 inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldInfo * f, int32_t depth );
 
+// ---- the timestamp's text (docs/SPEC-TABLES.md §2.11, §16.2) ----
+//
+// ONE strict RFC 3339 §5.6 date-time parser, the rule internal/rfc3339
+// implements in Go and internal/rfc3339/rfc3339_test.go pins. It is streamed
+// over the JSON string's decoded bytes, so a fraction of any length is
+// truncated to nanoseconds without a buffer. Month is 01-12, the day is valid
+// for that month and year, the hour is 00-23, the minute 00-59 and the second
+// 00-59 (second 60 is a leap second this kind refuses). The offset is Z, z or
+// sign HH:MM with both fields in range. Nothing may precede or follow the
+// production. An instant outside int64's nanosecond range is refused too,
+// which is Time.UnixNano's domain (1678 through 2262).
+inline int TableJsonTimestampDigit( char c )
+{
+    return ( c >= '0' && c <= '9' ) ? (int) ( c - '0' ) : -1;
+}
+
+inline bool TableJsonTimestampLeap( int year )
+{
+    return year % 4 == 0 && ( year % 100 != 0 || year % 400 == 0 );
+}
+
+inline int TableJsonTimestampMonthDays( int year, int month )
+{
+    switch ( month )
+    {
+        case 1: case 3: case 5: case 7: case 8: case 10: case 12: return 31;
+        case 4: case 6: case 9: case 11: return 30;
+        case 2: return TableJsonTimestampLeap( year ) ? 29 : 28;
+    }
+    return 0;
+}
+
+// the civil-days algorithm, exact for the four-digit years RFC 3339 allows
+inline int64_t TableJsonTimestampDays( int year, int month, int day )
+{
+    int64_t y = (int64_t) year;
+    const int64_t m = (int64_t) month;
+    if ( m <= 2 ) { y--; }
+    int64_t era = y / 400;
+    if ( y < 0 && y % 400 != 0 ) { era--; }
+    const int64_t year_of_era = y - era * 400;
+    int64_t month_of_year = m + 9;
+    if ( m > 2 ) { month_of_year = m - 3; }
+    const int64_t day_of_year = ( 153 * month_of_year + 2 ) / 5 + (int64_t) day - 1;
+    const int64_t day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    return era * 146097 + day_of_era - 719468;
+}
+
+inline bool TableJsonTimestampParse( TableJsonIn & in, int64_t * out )
+{
+    if ( TableJsonPeek( in ) != '"' ) { in.bad = true; return false; }
+    in.pos++;
+    int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+    int index = 0;              // 0..18 over "YYYY-MM-DDTHH:MM:SS"
+    int64_t fraction = 0;
+    int digits = 0;
+    int offset_sign = 0, offset_hour = 0, offset_minute = 0;
+    int phase = 0;              // 0 fixed, 1 after seconds, 2 fraction, 4 offset, 10 done
+    for ( ;; )
+    {
+        char unit[4];
+        int32_t unit_length = 0;
+        if ( !TableJsonScanUnit( in, unit, &unit_length ) ) { return false; }
+        if ( unit_length == 0 ) { break; }
+        if ( unit_length != 1 ) { return false; } // not ASCII, so not RFC 3339
+        const char c = unit[0];
+        if ( phase == 0 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( index == 4 || index == 7 ) { if ( c != '-' ) { return false; } }
+            else if ( index == 10 ) { if ( c != 'T' && c != 't' ) { return false; } }
+            else if ( index == 13 || index == 16 ) { if ( c != ':' ) { return false; } }
+            else
+            {
+                if ( digit < 0 ) { return false; }
+                if ( index < 4 ) { year = year * 10 + digit; }
+                else if ( index < 7 ) { month = month * 10 + digit; }
+                else if ( index < 10 ) { day = day * 10 + digit; }
+                else if ( index < 13 ) { hour = hour * 10 + digit; }
+                else if ( index < 16 ) { minute = minute * 10 + digit; }
+                else { second = second * 10 + digit; }
+            }
+            index++;
+            if ( index == 19 ) { phase = 1; }
+            continue;
+        }
+        if ( phase == 1 )
+        {
+            if ( c == '.' ) { phase = 2; continue; }
+            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
+            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            return false;
+        }
+        if ( phase == 2 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit >= 0 )
+            {
+                if ( digits < 9 ) { fraction = fraction * 10 + digit; }
+                digits++;
+                continue;
+            }
+            if ( digits == 0 ) { return false; }
+            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
+            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            return false;
+        }
+        if ( phase == 4 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_hour = digit * 10;
+            phase = 5;
+            continue;
+        }
+        if ( phase == 5 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_hour += digit;
+            phase = 6;
+            continue;
+        }
+        if ( phase == 6 ) { if ( c != ':' ) { return false; } phase = 7; continue; }
+        if ( phase == 7 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_minute = digit * 10;
+            phase = 8;
+            continue;
+        }
+        if ( phase == 8 )
+        {
+            const int digit = TableJsonTimestampDigit( c );
+            if ( digit < 0 ) { return false; }
+            offset_minute += digit;
+            phase = 10;
+            continue;
+        }
+        return false; // anything after the production
+    }
+    if ( phase != 10 ) { return false; }
+    if ( month < 1 || month > 12 ) { return false; }
+    if ( day < 1 || day > TableJsonTimestampMonthDays( year, month ) ) { return false; }
+    if ( hour > 23 || minute > 59 || second > 59 ) { return false; }
+    if ( phase != 10 ) { return false; }
+    if ( offset_sign != 0 && ( offset_hour > 23 || offset_minute > 59 ) ) { return false; }
+    for ( ; digits < 9; digits++ ) { fraction *= 10; }
+    const int64_t offset = offset_sign == 0 ? 0 : (int64_t) offset_sign * ( (int64_t) offset_hour * 3600 + (int64_t) offset_minute * 60 );
+    const int64_t seconds = TableJsonTimestampDays( year, month, day ) * 86400 +
+        (int64_t) hour * 3600 + (int64_t) minute * 60 + (int64_t) second - offset;
+    const int64_t min_second = -9223372037LL;
+    const int64_t max_second = 9223372036LL;
+    const int64_t min_nanos = 145224192LL;
+    const int64_t max_nanos = 854775807LL;
+    if ( seconds < min_second || seconds > max_second ) { return false; }
+    if ( seconds == min_second && fraction < min_nanos ) { return false; }
+    if ( seconds == max_second && fraction > max_nanos ) { return false; }
+    // unsigned arithmetic: the validated interval is representable, and the
+    // intermediate product is not allowed to overflow a signed int64
+    const uint64_t total = (uint64_t) seconds * 1000000000ULL + (uint64_t) fraction;
+    *out = (int64_t) total;
+    return true;
+}
+
 // place one scalar at one storage address
 inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFieldInfo * f, int32_t depth )
 {
@@ -2659,6 +3063,17 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         TableJsonSetRaw( storage, f->elem_size, 0 );
         return true;
     }
+    if ( f->kind == 36 )
+    {
+        // a timestamp is not number storage (docs/SPEC-TABLES.md §2.11, §16.2):
+        // its text is exactly RFC 3339 §5.6's date-time, and anything else is
+        // refused by name (timestamp_not_rfc3339) — the whole text is refused,
+        // so the read is malformed and no value lands.
+        int64_t nanos = 0;
+        if ( !TableJsonTimestampParse( in, &nanos ) ) { in.bad = true; return false; }
+        TableJsonSetRaw( storage, f->elem_size, (uint64_t) nanos );
+        return true;
+    }
     char token[kTableJsonMaxNumber];
     int32_t length = 0;
     bool integral = false;
@@ -2723,14 +3138,44 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     if ( number.saturated ) { in.report->clamped++; } // past what sixty-four bits hold
     // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
-    // The comparison is on the value's OWN scale, correctly signed past
-    // INT64_MAX, where the storage's bit pattern is not a number to compare.
+    // AN INTEGER RANGE CLAMPS AGAINST ITS EXACT COLUMNS (docs/SPEC-TABLES.md
+    // §8.1), never through a double: the same rule and the same expected
+    // values internal/codegen/gotable/exactrange_test.go
+    // TestGoExactIntegerRangeBounds pins for Go, where a bound past 2^53 is
+    // the exact integer the schema declared. The comparison is on the value's
+    // OWN scale, correctly signed past INT64_MAX, where the storage's bit
+    // pattern is not a number to compare.
     TableJsonInteger bounded = number;
     if ( f->has_range )
     {
-        const double scale = number.negative ? -(double) number.magnitude : (double) number.magnitude;
-        if ( scale < f->range_min ) { bounded = TableJsonIntegerOf( f->range_min ); in.report->clamped++; }
-        else if ( scale > f->range_max ) { bounded = TableJsonIntegerOf( f->range_max ); in.report->clamped++; }
+        bool below = false;
+        bool above = false;
+        if ( is_signed )
+        {
+            const uint64_t lo_magnitude = f->range_int_min < 0
+                ? (uint64_t) ( -( f->range_int_min + 1 ) ) + 1 : (uint64_t) f->range_int_min;
+            const uint64_t hi_magnitude = f->range_int_max < 0
+                ? (uint64_t) ( -( f->range_int_max + 1 ) ) + 1 : (uint64_t) f->range_int_max;
+            if ( number.negative )
+            {
+                below = f->range_int_min >= 0 || number.magnitude > lo_magnitude;
+                above = f->range_int_max < 0 && number.magnitude < hi_magnitude;
+            }
+            else
+            {
+                below = f->range_int_min > 0 && number.magnitude < (uint64_t) f->range_int_min;
+                above = f->range_int_max < 0 || number.magnitude > hi_magnitude;
+            }
+            if ( below ) { bounded.magnitude = lo_magnitude; bounded.negative = f->range_int_min < 0; in.report->clamped++; }
+            else if ( above ) { bounded.magnitude = hi_magnitude; bounded.negative = f->range_int_max < 0; in.report->clamped++; }
+        }
+        else
+        {
+            below = number.negative || ( !number.negative && number.magnitude < f->range_uint_min );
+            above = !number.negative && !below && number.magnitude > f->range_uint_max;
+            if ( below ) { bounded.magnitude = f->range_uint_min; bounded.negative = false; in.report->clamped++; }
+            else if ( above ) { bounded.magnitude = f->range_uint_max; bounded.negative = false; in.report->clamped++; }
+        }
     }
     bool moved = false;
     const int64_t value = TableJsonIntegerInDomain( bounded, is_signed, (int32_t) f->elem_size, moved );
@@ -2770,39 +3215,15 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     }
     if ( TableJsonIsBytes( f ) )
     {
-        // A base64 body carries no escapes, so a backslash in one is simply
-        // not an alphabet character. Validate the stream and its padding before
-        // touching storage, so a malformed body leaves the declared default.
+        // Validate the whole body, JSON layer first, before touching storage,
+        // so a body that is not base64 leaves the declared default.
         if ( TableJsonPeek( in ) != '"' ) { in.bad = true; return false; }
         in.pos++;
         const int64_t mark = in.pos;
         int64_t symbols = 0;
-        int64_t pad = 0;
-        bool malformed = false;
-        for ( ;; )
-        {
-            if ( in.pos >= in.size ) { in.bad = true; return false; }
-            char c = in.text[in.pos++];
-            if ( c == '"' ) { break; }
-            if ( malformed ) { continue; }
-            if ( c == '=' ) { pad++; continue; }
-            if ( pad > 0 ) { malformed = true; continue; }
-            const int32_t at = TableJsonBase64Value( (uint8_t) c );
-            if ( at < 0 ) { malformed = true; continue; }
-            symbols++;
-        }
-        if ( !malformed )
-        {
-            if ( pad > 0 )
-            {
-                if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { malformed = true; }
-            }
-            else if ( symbols % 4 == 1 )
-            {
-                malformed = true;
-            }
-        }
-        if ( malformed )
+        bool base64 = false;
+        if ( !TableJsonScanBase64( in, &symbols, &base64 ) ) { return false; }
+        if ( !base64 )
         {
             // a body that is not base64 is the wrong shape for the kind: the
             // field keeps its default and the event is counted
@@ -2810,33 +3231,10 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             return true;
         }
         memset( storage, 0, (size_t) f->array_bound );
-        TableJsonSetCount( base, f, 0 );
-        int32_t placed = 0;
-        uint32_t accumulator = 0;
-        int32_t held = 0;
         bool clamped = false;
-        for ( int64_t at = mark; ; at++ )
-        {
-            char c = in.text[at];
-            if ( c == '"' || c == '=' ) { break; }
-            const int32_t symbol = TableJsonBase64Value( (uint8_t) c );
-            accumulator = ( accumulator << 6 ) | (uint32_t) symbol;
-            held += 6;
-            if ( held >= 8 )
-            {
-                held -= 8;
-                if ( placed < f->array_bound )
-                {
-                    storage[placed++] = (uint8_t) ( ( accumulator >> held ) & 0xff );
-                }
-                else
-                {
-                    clamped = true;
-                }
-            }
-        }
+        const int64_t placed = TableJsonDecodeBase64( in, mark, storage, (int64_t) f->array_bound, &clamped );
         if ( clamped ) { in.report->clamped++; }
-        TableJsonSetCount( base, f, placed );
+        TableJsonSetCount( base, f, (int32_t) placed );
         return true;
     }
     if ( TableJsonIsKeyed( f ) )
@@ -2996,6 +3394,14 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
 inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth )
 {
     if ( depth > kTableJsonMaxDepth ) { in.bad = true; return false; }
+    // json = "array" (§16.10): the text MUST be the one field's array; an
+    // object in its place is a malformed text, the Go oracle's
+    // json_root_not_array refusal (gotable/stringarrays_test.go).
+    if ( info->json_array && info->num_fields == 1 )
+    {
+        if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
+        return TableJsonReadField( in, base, &info->fields[0], depth );
+    }
     if ( TableJsonPeek( in ) != '{' ) { in.bad = true; return false; }
     in.pos++;
     return TableJsonReadTableKeys( in, base, info, depth, NULL );
@@ -3093,8 +3499,13 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             {
                 if ( !TableJsonLiteral( in, "null" ) ) { return false; }
                 // absent, and back at its defaults: a repeated key whose last
-                // occurrence is null must not leave an earlier value standing
-                if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
+                // occurrence is null must not leave an earlier value standing.
+                // A MAP'S DEFAULT IS ITS EMPTY SIXTEEN-BYTE SLOT, never the
+                // ENTRY table its descriptor's table names (docs/SPEC-TABLES.md
+                // §2.8, §16.2): the entry reset would read the slot as an entry.
+                // The oracle is internal/codegen/gotable/mappresence_test.go.
+                if ( TableJsonIsMap( f ) ) { memset( (uint8_t *) base + f->offset, 0, 16 ); }
+                else if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
                 else { memset( (uint8_t *) base + f->offset, 0, (size_t) f->elem_size ); }
                 TableJsonSetRaw( (uint8_t *) base + f->present_offset, 1, 0 );
             }
@@ -3356,34 +3767,12 @@ inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldIn
         return TableJsonScanString( in, data, length, &placed );
     }
     // base64: the alphabet characters decide the length, six bits apiece
-    const int64_t mark = in.pos + 1;
-    int64_t symbols = 0;
-    int64_t pad = 0;
-    bool malformed = false;
     in.pos++;
-    for ( ;; )
-    {
-        if ( in.pos >= in.size ) { in.bad = true; return false; }
-        char c = in.text[in.pos++];
-        if ( c == '"' ) { break; }
-        if ( malformed ) { continue; }
-        if ( c == '=' ) { pad++; continue; }
-        if ( pad > 0 ) { malformed = true; continue; }
-        if ( TableJsonBase64Value( (uint8_t) c ) < 0 ) { malformed = true; continue; }
-        symbols++;
-    }
-    if ( !malformed )
-    {
-        if ( pad > 0 )
-        {
-            if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { malformed = true; }
-        }
-        else if ( symbols % 4 == 1 )
-        {
-            malformed = true;
-        }
-    }
-    if ( malformed )
+    const int64_t mark = in.pos;
+    int64_t symbols = 0;
+    bool base64 = false;
+    if ( !TableJsonScanBase64( in, &symbols, &base64 ) ) { return false; }
+    if ( !base64 )
     {
         in.report->kind_mismatch++;
         return true;
@@ -3391,22 +3780,8 @@ inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldIn
     const int64_t length = ( symbols * 6 ) / 8;
     uint8_t * data = TableBytesEmplace( *graph->worker, *ref, length );
     if ( data == NULL ) { in.report->malformed = true; in.bad = true; return false; } // the arena refused
-    int64_t placed = 0;
-    uint32_t accumulator = 0;
-    int32_t held = 0;
-    for ( int64_t at = mark; ; at++ )
-    {
-        char c = in.text[at];
-        if ( c == '"' || c == '=' ) { break; }
-        const int32_t symbol = TableJsonBase64Value( (uint8_t) c );
-        accumulator = ( accumulator << 6 ) | (uint32_t) symbol;
-        held += 6;
-        if ( held >= 8 )
-        {
-            held -= 8;
-            if ( placed < length ) { data[placed++] = (uint8_t) ( ( accumulator >> held ) & 0xff ); }
-        }
-    }
+    bool clamped = false;
+    TableJsonDecodeBase64( in, mark, data, length, &clamped );
     return true;
 }
 

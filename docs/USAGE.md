@@ -143,12 +143,12 @@ and that this run did not write. With `--surface` nothing is removed; only
 ## Declarations
 
 A declaration's name and its fields' names are checked against the reserved
-words of the targets being generated (SPEC §4.6): `schema generate --lang L`
-checks L's words only, and `schema check` — and every command that names no
-target — checks every target's, one diagnostic per name listing every checked
-target it collides with. A target with no reserved-word list of its own checks
-every target's words rather than none. Go is the exception (SPEC §4.6, the Go
-escape): `generate --lang go` accepts a Go word as a field name, a variant or
+words of EVERY supported language (SPEC §4.6) — C, C++, C#, Go, Rust, Java,
+JavaScript, Dart, Elixir, Lua, Luau, Squirrel, Goose and Lobster — whatever
+target is generated, one diagnostic per name listing every language it
+collides with: a schema compiled only for C++ today must still compile for
+Elixir tomorrow. Go is the exception (SPEC §4.6, the Go
+escape): Go accepts a word only Go reserves as a field name, a variant or
 a union arm (Go emits them exported, `select` → `Select`) and as a table name,
 which it emits with one trailing underscore (`table func` → `type func_ struct`, `func_Load`, `func_Save`); the wire, the ids and the JSON keys keep
 the schema name. A declaration named `func_` beside that table is refused as a
@@ -353,6 +353,11 @@ struct ColliderShape
     };
 
     ColliderShape() : type( ColliderShapeType::None ) {}
+
+    BoxCollider & SelectBox();         // sets the tag and constructs the arm (below)
+    SphereCollider & SelectSphere();
+    CapsuleCollider & SelectCapsule();
+    HullCollider & SelectHull();
 };
 ```
 
@@ -366,16 +371,44 @@ tag beside one pre-allocated arm per variant with a payload; Elixir uses
 immutable structs with a tag and arm fields; Rust gets a real
 `enum ColliderShape { None, Box(BoxCollider), ... }`.
 
+**In C++, select an arm with its setter.** Every arm gets a generated member
+function `Select<Variant>()` on the union struct. For an arm with a payload it
+sets the tag, constructs the arm in place with its declared defaults, and
+returns a reference to the fresh arm; for a payload-free arm it returns `void`
+and sets the tag alone:
+
+```cpp
+Collider collider;
+SphereCollider & sphere = collider.shape.SelectSphere(); // tag and arm together
+sphere.radius = 2.0f;
+```
+
+The setter replaces the two-assignment form,
+`::new ( (void*) &shape.sphere ) SphereCollider{}; shape.type = ColliderShapeType::Sphere;`,
+which is still legal: forget its second line and the tag stays `None`, so the
+next write drops the payload with no assert. The generated header includes
+`<new>` for the setter.
+
 Selecting an arm with a payload initializes it with its declared defaults, just
-like a fresh value of that type. Initialize the payload before populating it
-and setting the tag; assigning the tag alone does not initialize storage.
-Use the generated constructor where available, or `Init<Type>` / `init<Type>`
-in C#, JavaScript, Java and Dart to initialize an existing payload in place.
-For C++, construct the member in place, for example
-`::new ( (void*) &shape.sphere ) SphereCollider{}`. Decoding performs the same
-initialization on every selection, even when the tag repeats, before reading
-the payload. Mutable managed targets keep their existing arm objects and
-leave unselected arms unchanged.
+like a fresh value of that type, and the C++ setter does exactly that. In the
+other targets, initialize the payload before populating it and setting the
+tag; assigning the tag alone does not initialize storage. Use the generated
+constructor where available, or `Init<Type>` / `init<Type>` in C#, JavaScript,
+Java and Dart to initialize an existing payload in place. Decoding performs
+the same initialization on every selection, even when the tag repeats, before
+reading the payload. Mutable managed targets keep their existing arm objects
+and leave unselected arms unchanged.
+
+In C, select an arm through its generated selector, `<union>_select_<arm>`: it
+sets the tag and initializes the arm together, by the rule a read uses, and
+returns the fresh arm to populate. A payload-free arm's selector sets the tag
+alone. Assigning `type` and the arm separately still works, but a forgotten
+tag leaves `None`, and the payload is then absent from the wire with no assert:
+
+```c
+SphereCollider * sphere = collider_shape_select_sphere( &collider.shape );
+/* populate *sphere; collider.shape.type is already COLLIDER_SHAPE_TYPE_SPHERE */
+```
 
 An arm is a field line: its type is any type a field's is, and an arm may
 name no type at all, which is an arm that selects and carries nothing. A
@@ -385,7 +418,8 @@ that name nothing. A union with an arm whose payload is anything else — a
 closure (SPEC-TABLES.md §2.6). Unions ride `type` bodies, arrays included.
 
 All nine targets carry payload-free arms in a `type` body. Select one by
-setting its tag alone: it has no payload to initialize. C and C++ emit no
+setting its tag alone: it has no payload to initialize. In C++ its setter,
+`Select<Variant>()` returning `void`, is that assignment. C and C++ emit no
 member for a payload-free arm, and omit the storage union entirely when no
 arm has a payload. Payload-free arms in a table closure are carried by C++, C, C#
 and Go; the other five targets refuse that table-side use (SPEC-TABLES.md §11).
@@ -553,6 +587,13 @@ so that is what it writes.
 serialize_assert( value.health >= 0 && value.health <= MaxHealth );
 write_bits( stream, uint32_t( value.health ), 10 );
 ```
+
+On `uint8`, `uint16`, `uint32` and `uint64`, an omitted `min` is 0 when
+`max` is declared: `health uint32 | max = MaxHealth` has the same range,
+projection and protocol id as `health uint32 | min = 0, max = MaxHealth`.
+`min` alone is still refused on an unsigned integer; its storage maximum is
+not a declared bound. Signed integers require both bounds when ranged.
+`uint128` remains raw only, and `fixed`/`ufixed` require both bounds.
 
 A read outside the range **fails** — see
 [Reading untrusted data](#reading-untrusted-data).
@@ -3349,7 +3390,15 @@ configs/tables.baseline: ShipConfig.damage: specified default 21.0 -> 25.0 — t
 edit changes what data already written MEANS, and no reader can report it; if you
 mean it, record it: schema tables-baseline --update --reason "..." (SPEC-TABLES.md §18)
 schema: 1 error(s)
+schema <version>
 ```
+
+A refusal batch is dated once. When any diagnostic cites a spec section, a
+single `schema <version>` line follows the error count — the build that
+produced the refusals, so a message pasted from a stale binary dates itself
+instead of contradicting the page as it reads today. A batch whose diagnostics
+cite nothing prints no version line, and an individual diagnostic never
+carries one.
 
 Sometimes you mean it. The override is one command and it is never silent:
 
@@ -4218,6 +4267,16 @@ name.
 The compiler is a Go library as well as a binary. `cmd/schema` is a client of
 that library and holds nothing else — the flags, the printing, the exit codes —
 so anything the CLI does, your program can do.
+
+Pin a release tag, or between releases a promotion tag: every commit promoted
+to `main` is tagged `main-<shorthash>` (docs/VERSIONING.md), so
+
+```
+go get github.com/mas-bandwidth/schema/v2@v2.5.0             # a release
+go get github.com/mas-bandwidth/schema/v2@main-0123456789ab  # a promotion
+```
+
+names one commit either way; never pin a bare branch.
 
 ```go
 import (

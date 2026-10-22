@@ -15,7 +15,7 @@ func TestRetainedMapReplacementAfterDamage(t *testing.T) {
  names map[string(8)]string(16)
  wide map[uint16]wstring(6)
  blobs map[int32]bytes(10)
- after int32
+ past int32 | was = "after"
  }`)
 	wire, err := os.ReadFile("../../testdata/wire/tables/fuzz-vectors/map_retained_replaced.bin")
 	if err != nil {

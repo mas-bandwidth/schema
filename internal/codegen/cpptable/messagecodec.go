@@ -33,6 +33,17 @@ import (
 // because the vocabulary is compiler-settled.
 const msgRefBits = "kTableMessageRefBitsHere"
 
+// msgValueBits is one value's width on this form. A TIMESTAMP (kind 36) is the
+// i64's sixty-four raw bits with no shape bytes, which is what
+// docs/SPEC-TABLES.md §2.11 and §3.3's entry shape table state and what Go's
+// messageShapeLiteral pins for the same entry; every other kind defers to ir.
+func msgValueBits(kind uint8, shape ir.TableMessageShape) int64 {
+	if kind == ir.TableKindTimestamp {
+		return 64
+	}
+	return ir.TableMessageValueBits(kind, shape)
+}
+
 // msgSlot is one entry's slot as a literal.
 func (g *tableGen) msgSlot(entry ir.TableVocabularyEntry) uint64 { return g.slots[entry.Key()] }
 
@@ -476,7 +487,7 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 		g.emitMessageUnion(f, elem, ind+"        ", pass)
 		g.pf("%s    }\n%s}\n", ind, ind)
 	default:
-		width := ir.TableMessageValueBits(shape.Elem, inner)
+		width := msgValueBits(shape.Elem, inner)
 		if pass == messagePassMeasure {
 			g.pf("%sbits += (int64_t) ( %s ) * %d;\n", ind, count, width)
 			return
@@ -507,7 +518,7 @@ func (g *tableGen) emitMessageEnumRef(f *ir.Field, expr, ind string, pass messag
 // as `value - base`, a quantized float as its step index, a bare integer at
 // its storage width, a `flags` mask at its declared W bits.
 func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMessageShape, expr, ind string, pass messagePass) {
-	width := ir.TableMessageValueBits(kind, shape)
+	width := msgValueBits(kind, shape)
 	if pass == messagePassMeasure {
 		g.pf("%sbits += %d;\n", ind, width)
 		return

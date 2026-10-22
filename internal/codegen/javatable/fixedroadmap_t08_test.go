@@ -370,7 +370,7 @@ func t08UnionFieldArms(t *testing.T) {
 
 union Cell
 {
-    num int32
+    number int32
     ratio float32
 }
 
@@ -387,7 +387,7 @@ fixed table T
 union Cell
 {
     label string(8)
-    num int32
+    number int32
 }
 
 fixed table T
@@ -401,7 +401,7 @@ fixed table T
 union Cell
 {
     vals [4]int32
-    num int32
+    number int32
 }
 
 fixed table T
@@ -418,7 +418,7 @@ func t08PayloadFree(t *testing.T) {
 
 union Cell
 {
-    num int32
+    number int32
     empty
 }
 
@@ -440,7 +440,7 @@ func t08UnionArrays(t *testing.T) {
 
 union Cell
 {
-    num int32
+    number int32
     ratio float32
 }
 
@@ -450,9 +450,9 @@ fixed table T
 }
 `, `        vals[0].g[0].type = probe.CellFixed.ratio;
         vals[0].g[0].ratio = 3.25f;
-        vals[0].g[1].type = probe.CellFixed.num;
-        vals[0].g[1].num = 4242;`,
-		[]string{"g[0].type", "g[0].ratio", "g[1].type", "g[1].num"})
+        vals[0].g[1].type = probe.CellFixed.number;
+        vals[0].g[1].number = 4242;`,
+		[]string{"g[0].type", "g[0].ratio", "g[1].type", "g[1].number"})
 }
 
 func TestFixedRoadmapJavaT08FloatsUnions(t *testing.T) {

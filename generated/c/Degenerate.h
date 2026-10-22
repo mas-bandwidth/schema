@@ -2,12 +2,13 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x8656ae68c06b97a7 */
+   package example — protocol id 0xeb26c970fde3fd71 */
 
 #ifndef SCHEMA_EXAMPLE_DEGENERATE_H
 #define SCHEMA_EXAMPLE_DEGENERATE_H
 
 #include <stdint.h>
+#include "Types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -107,6 +108,15 @@ typedef struct TrioSole {
 
 #define TRIO_SOLE_MAX_BITS 64   /* longest wire path; align pads at worst case (SPEC §6.1) */
 #define TRIO_SOLE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+
+
+/* type Vec3Sole */
+typedef struct Vec3Sole {
+    Vec3 v;
+} Vec3Sole;
+
+#define VEC3_SOLE_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define VEC3_SOLE_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
 
 
 /* type TrioFirst */

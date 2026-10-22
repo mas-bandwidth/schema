@@ -62,8 +62,10 @@ func TestIssue611(t *testing.T) {
 	var s Ship
 	ShipReset(&s)
 	var r TableReport
+	// the plain FromJson is the strict read and refuses a clamp
+	// (docs/SPEC-TABLES.md §16.11); the landed value is the tolerant read's
 	if !ShipFromJsonTolerant(&s, text, &r) {
-		t.Fatalf("FromJson failed: %+v", r)
+		t.Fatalf("FromJsonTolerant failed: %+v", r)
 	}
 	if s.Experience != 4294967295 {
 		t.Fatalf("experience=%d, want 4294967295 (the ceiling, not the floor)", s.Experience)

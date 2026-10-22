@@ -1302,6 +1302,7 @@ struct TableMessageRetainIn
     TableBitReader * r;
     const TableVocabulary * vocabulary;
     int64_t index_bits;
+    int64_t limit = 0;               // the record's remaining resolved bytes: the bound on the walk
 };
 
 // THE ELEMENT'S OWN ENTRY, which a resolved entry carries flattened beside its
@@ -1343,6 +1344,25 @@ inline int64_t TableMessageRetainWidth( uint8_t kind )
         case 5: case 9: case 11: case 23: case 28: return 8;
         case 18: case 19: case 24: case 29: return 16;
         default: return -1;
+    }
+}
+
+// THE LEAST A RESOLVED ELEMENT CAN WEIGH, which is what bounds an announced
+// count against the caller's remaining record before one element is converted.
+// A scalar takes its storage width whatever its announced value bits, an opaque
+// takes at least its zero length, a body at least its terminator, and a union
+// or enum its id. The answer is a LOWER bound: a count that cannot fit this many
+// bytes per element cannot fit the record at all, and a zero-bit count is
+// refused here rather than walked (§6.6, THE SECURITY BOUND).
+inline int64_t TableMessageRetainElementMinimum( uint8_t kind )
+{
+    const int64_t width = TableMessageRetainWidth( kind );
+    if ( width > 0 ) { return width; }
+    switch ( kind )
+    {
+        case 12: case 31: case 32: case 33: return 1;
+        case 13: case 14: case 16: case 15: case 30: return 8;
+        default: return 1;
     }
 }
 
@@ -1547,6 +1567,16 @@ inline int64_t TableMessageRetainElements( TableMessageRetainIn & s, const Table
     const TableMessageEntry element = TableMessageRetainElement( entry );
     TableRetainInRaw( s.out, &entry.elem_kind, 1 );
     TableRetainInLeb( s.out, n ); // the count rides as the file capture spells it, and the emit reads it back
+    // A ZERO-BIT ELEMENT STILL LAYS DOWN ITS STORAGE WIDTH, so the announced
+    // count is tested against the caller's remaining record BEFORE one element
+    // is converted: a count no record can hold refuses here rather than four
+    // billion times through the loop (§6.6, THE SECURITY BOUND).
+    int64_t minimum = TableMessageRetainElementMinimum( element.kind );
+    if ( entry.kind == 16 ) { minimum += 16; } // the key id and the framed slot
+    if ( minimum > 0 && ( s.out.out_at > s.limit || n > (uint64_t) ( ( s.limit - s.out.out_at ) / minimum ) ) )
+    {
+        return -1;
+    }
     for ( uint64_t i = 0; i < n; i++ )
     {
         if ( entry.kind == 16 )
@@ -1564,7 +1594,7 @@ inline int64_t TableMessageRetainElements( TableMessageRetainIn & s, const Table
 
 inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
 {
-    if ( depth > kTableRetainWalkDepthMax ) { return -1; }
+    if ( depth > kTableRetainWalkDepthMax || s.out.out_at > s.limit ) { return -1; }
     const int64_t began = s.out.out_at;
     switch ( entry.kind )
     {
@@ -1587,6 +1617,7 @@ inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableM
 
 inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
 {
+    if ( s.out.out_at > s.limit ) { return -1; }
     const int64_t began = s.out.out_at;
     switch ( entry.kind )
     {
@@ -1664,6 +1695,10 @@ inline void TableMessageRetainCapture( TableRetain * retain, TableBitReader & r,
     probe.r = &walk;
     probe.vocabulary = &vocabulary;
     probe.index_bits = index_bits;
+    // THE RECORD'S REMAINING PAYLOAD BUDGET: what the caller's capacity leaves
+    // after this record's header and path, which bounds the walk before it
+    // converts a count the record could never hold (§6.6).
+    probe.limit = retain->capacity - retain->used - kTableRetainRecordHeader - 8 * (int64_t) path.depth;
     const int64_t payload = TableMessageRetainPayload( probe, entry, 0 );
     if ( payload < 0 || walk.offset != end )
     {
@@ -1852,7 +1887,14 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("        bytes = %sMeasureBodyRetain( ctx, numbering, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) );\n", n)
 	g.pf("        if ( bytes >= 0 )\n        {\n")
 	g.pf("            const int64_t table = TableNodeTableMeasureRetain( ctx, ids, numbering, retain, retain_measure );\n")
-	g.pf("            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableRetainIdsBytes( ids );\n")
+	// THE INTEGRITY TRAILER is counted only by a root that declares it
+	// (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING), as the Go oracle's
+	// internal/codegen/gotable/integrity.go emitIntegrityRetain adds four.
+	retainTrailer := ""
+	if st.Integrity != "" {
+		retainTrailer = " + 4"
+	}
+	g.pf("            bytes = table < 0 || ids.overflow ? -1 : 1 + bytes + table + TableRetainIdsBytes( ids )%s;\n", retainTrailer)
 	g.pf("        }\n    }\n")
 	g.pf("    TableNumberingShutdown( numbering );\n")
 	g.pf("    return bytes;\n}\n\n")
@@ -1863,7 +1905,15 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	dispatch("    ")
 	saveDispatch("    ")
 	g.pf("    if ( !%sNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }\n", n)
-	g.pf("    TableWriter w( buffer, capacity );\n")
+	// THE SEALED WRITE (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the
+	// writer's capacity leaves the four trailer bytes untouched, and the seal
+	// covers every byte before it, as the Go oracle's emitIntegrityRetain and
+	// tableIntegritySeal do (internal/codegen/gotable/integrity.go).
+	if st.Integrity != "" {
+		g.pf("    TableWriter w( buffer, capacity - 4 );\n")
+	} else {
+		g.pf("    TableWriter w( buffer, capacity );\n")
+	}
 	g.pf("    TableRetainIds ids( retain );\n")
 	g.pf("    if ( retain != NULL ) { retain->id_used = 0; }\n")
 	g.pf("    TableRetainClearPlaced( retain );\n")
@@ -1881,7 +1931,11 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("    // THE SAVE'S OWN SHARE OF retain_lost, read after the save (§6.6): every\n")
 	g.pf("    // record the walk did not place, counted once.\n")
 	g.pf("    TableRetainCountLost( retain, report );\n")
-	g.pf("    return w.offset;\n}\n\n")
+	if st.Integrity != "" {
+		g.pf("    return schema_integrity_seal( buffer, w.offset );\n}\n\n")
+	} else {
+		g.pf("    return w.offset;\n}\n\n")
+	}
 
 	g.pf("inline int64_t %sMeasureRetain( const %s * root, TableRetain * retain, TableAllocator allocator = TableDefaultAllocator() )\n{\n", n, n)
 	g.pf("    if ( root == NULL ) { return -1; }\n")

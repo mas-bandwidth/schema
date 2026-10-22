@@ -249,14 +249,14 @@ inline std::string man_text( unsigned long long v ) { return man_udec( v ); }
 
 inline std::string man_text( float v )
 {
-    uint32_t bits; std::memcpy( &bits, &v, 4 );
+    uint32_t bits; std::memcpy( (void *) &bits, &v, 4 );
     char b[64]; std::snprintf( b, sizeof( b ), "%.9g|0x%08X", (double) v, bits );
     return b;
 }
 
 inline std::string man_text( double v )
 {
-    uint64_t bits; std::memcpy( &bits, &v, 8 );
+    uint64_t bits; std::memcpy( (void *) &bits, &v, 8 );
     char b[80]; std::snprintf( b, sizeof( b ), "%.17g|0x%016llX", v, (unsigned long long) bits );
     return b;
 }
@@ -330,7 +330,7 @@ static void man_add( const std::string & path, const std::string & text )
 template <size_t N>
 static void man_wcopy( char16_t * dst, const char16_t ( & src )[N], const std::string & path )
 {
-    std::memcpy( dst, src, N * sizeof( char16_t ) );
+    std::memcpy( (void *) dst, src, N * sizeof( char16_t ) );
     man_add( path, man_wtext( src, N ) );
 }
 #define MWCPY( LV, SRC )      man_wcopy( LV, SRC, man_path( #LV, {} ) )
@@ -465,8 +465,8 @@ static bool emit( const char * dir, const char * name, const std::vector<T> & va
 // A FLOAT RIDES AS ITS BIT PATTERN (docs/SPEC-TABLES.md §3, §4, schema#480), so
 // a SIGNALLING NaN has to be put in place through its bits: a literal would be
 // quieted by the compiler before the writer ever saw it.
-static float float_from_bits( uint32_t bits ) { float f; std::memcpy( &f, &bits, 4 ); return f; }
-static double double_from_bits( uint64_t bits ) { double d; std::memcpy( &d, &bits, 8 ); return d; }
+static float float_from_bits( uint32_t bits ) { float f; std::memcpy( (void *) &f, &bits, 4 ); return f; }
+static double double_from_bits( uint64_t bits ) { double d; std::memcpy( (void *) &d, &bits, 8 ); return d; }
 
 // ---- FX1 / FX2: the versioning pair ---------------------------------------
 //
@@ -891,7 +891,7 @@ static bool versioning_numbers_files( const char * dir )
     // A SIGNALLING NaN WITH A PAYLOAD: the bits are the value (the FU ruling)
     {
         const uint32_t kSignalling = 0x7F8ABCDEu;
-        float f; std::memcpy( &f, &kSignalling, 4 );
+        float f; std::memcpy( (void *) &f, &kSignalling, 4 );
         VROW( vold_float_widen, FloatWiden, "old_float_widen.bin",
               MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, f ); MS( v[0].trail, 0xBBBBBBBBu ); );
     }
@@ -948,7 +948,7 @@ static bool versioning_numbers_files( const char * dir )
             return false;
         }
         const float forged = 1.5f;
-        uint32_t fb; std::memcpy( &fb, &forged, 4 );
+        uint32_t fb; std::memcpy( (void *) &fb, &forged, 4 );
         for ( int i = 0; i < 4; ++i ) { out[ (size_t) aim_at + (size_t) i ] = (uint8_t)( fb >> ( 8 * i ) ); }
         char forge[96];
         std::snprintf( forge, sizeof( forge ), "r0.aim@%lld=%s", (long long) aim_at, man_text( forged ).c_str() );
@@ -975,7 +975,7 @@ static bool versioning_numbers_files( const char * dir )
             return false;
         }
         const float forged = 5.0f;
-        uint32_t fb; std::memcpy( &fb, &forged, 4 );
+        uint32_t fb; std::memcpy( (void *) &fb, &forged, 4 );
         for ( int i = 0; i < 4; ++i ) { out[ (size_t) aim_at + (size_t) i ] = (uint8_t)( fb >> ( 8 * i ) ); }
         char forge[96];
         std::snprintf( forge, sizeof( forge ), "r0.aim@%lld=%s", (long long) aim_at, man_text( forged ).c_str() );

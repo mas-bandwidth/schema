@@ -20,18 +20,18 @@ const tableMapWireSource = `
         object entry = f.Table.Create(); TableFieldInfo k = f.Table.Fields[0];
         key = KeyOf(entry, k); mismatch = false; widened = false;
         TableReport ignored = new TableReport();
-        for (;;)
+        for (; ; )
         {
             if (!body.Ref(out ulong reference, out ulong id)) { return false; }
             if (reference == 0) { return body.Offset == body.Buffer.Length; }
             if (!body.Has(1)) { return false; }
             byte kind = body.Byte();
             if (id != k.Id) { if (!body.Skip(kind)) { return false; } continue; }
-            if (kind != k.Kind && Widen(kind,k.Kind)) { widened=true; }
+            if (kind != k.Kind && Widen(kind, k.Kind)) { widened = true; }
             else
             {
-                mismatch=kind!=k.Kind;
-                if(mismatch) { if(!body.Skip(kind)) { return false; } continue; }
+                mismatch = kind != k.Kind;
+                if (mismatch) { if (!body.Skip(kind)) { return false; } continue; }
             }
             if (kind == 12)
             {
@@ -86,7 +86,8 @@ const tableMapJsonSource = `
         o.Put((byte)'{'); TableFieldInfo key = f.Table.Fields[0], value = f.Table.Fields[1];
         for (int i = 0; i < count; i++)
         {
-            if (i != 0) { o.Put((byte)','); } o.Line(depth + 1);
+            if (i != 0) { o.Put((byte)','); }
+            o.Line(depth + 1);
             object entry = f.GetChild(owner, i);
             if (key.Kind == 12) { WriteString(ref o, key.GetBuffer(entry).AsSpan(0, key.GetCount(entry))); }
             else
@@ -105,7 +106,7 @@ const tableMapJsonSource = `
         input.Pos++; f.ResetField(owner);
         TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
         int count = 0;
-        for (;;)
+        for (; ; )
         {
             byte c = Peek(text, ref input);
             if (c == '}') { input.Pos++; return true; }

@@ -670,6 +670,10 @@ public sealed class TableReport
     // zero, and <Name>FromJson is what raises it.
     public int Duplicate;
     public int Widened;
+    // blob_shared counts each extra slot that names a blob record another slot
+    // already names (docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
+    // node, and every writer refuses the value by that name.
+    public int BlobShared;
     public int Retained, RetainLost;
     public bool Refused;
     public string Reason;
@@ -866,7 +870,7 @@ public sealed class TableTypeInfo
     public bool Variable;
     internal int RootElemSlots;
     public Func<TableTypeInfo[]> PointerTypes;
-    public Func<ulong,TableTypeInfo> PointerType;
+    public Func<ulong, TableTypeInfo> PointerType;
     public bool BytesEdge, StringEdge;
     public string Name;         // schema type name
     public ulong Id;            // full wire identity of the table name

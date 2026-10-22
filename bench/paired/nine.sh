@@ -3,6 +3,7 @@
 #
 #   bench/paired/nine.sh [--lane N] [--rounds 1|2|3] [--out DIR] [--note TEXT]
 #   bench/paired/nine.sh --plan-read LANGS [--lane N | --pin N] [--rounds 1..7] [--out DIR] [--note TEXT]
+#   bench/paired/nine.sh --read-arm --receipt TEXT [--leg cpp|c|cs] [--pin N] [--out DIR]
 #
 # It builds the driver and every leg, then runs `-mode table`, which asks the
 # TREE which table runners it carries (bench/tables/<lang>/), measures exactly
@@ -40,6 +41,22 @@
 # default to the standard's seven. Legs without a plan-read arm are refused by
 # the driver, which names the ones that have one.
 #
+# --read-arm is the READ ARM's board (BENCH-STANDARD.md §1.10): per leg the
+# fixed form's identity read, plan read and the same leg's packet read, each
+# MEASURED alone, the two GATE verdicts against that packet read, and the C++
+# anchor line against the hand-written straight-line reader. It builds and
+# gates the requested leg (cpp, c or cs) and runs `-mode plan-read` inside the
+# confirmation pass's quiet window, bracketed by that leg's packet control leg.
+# --receipt is the operator's READY/START record for that window and is
+# required. An INVALID window prints its numbers with no verdict and the script
+# exits non-zero.
+#
+# --leg c is the C leg's board, and --leg cs is the C# leg's board: that leg's
+# runner's --read-arm, bracketed by that leg's packet control leg, and with the
+# lineage corpus on the tree (bench/tables/<leg>/lineage/) its PLAN lane too,
+# all three reads out of the one plan build. --pin N runs the measuring pass
+# under `taskset -c N` and records the core on the board.
+#
 # THE RESULT IS NOT CERTIFIED. It is the fast diagnostic's numbers in the
 # published table's shape: reduced iteration counts, no bracketing drift
 # controls, no quiet-window seal. The certified sitting stays `-mode run` on
@@ -52,6 +69,9 @@ ROUNDS=
 PLANREAD=
 OUT=
 NOTE=
+READ_ARM=
+RECEIPT=
+LEG=cpp
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -61,8 +81,11 @@ while [ $# -gt 0 ]; do
     --out)    OUT="$2"; shift 2 ;;
     --note)   NOTE="$2"; shift 2 ;;
     --plan-read) PLANREAD="$2"; shift 2 ;;
+    --read-arm) READ_ARM=1; shift ;;
+    --receipt) RECEIPT="$2"; shift 2 ;;
+    --leg)    LEG="$2"; shift 2 ;;
     -h|--help)
-        sed -n '2,46p' "$0" | cut -c 3-
+        sed -n '2,63p' "$0" | cut -c 3-
         exit 0 ;;
     *)
         echo "nine.sh: unknown argument $1" >&2
@@ -76,6 +99,35 @@ done
 # checkpoint and refuses a tree that does not match one, and the commonest way
 # to dirty the tree is to redirect this script's own log into it — so send
 # stdout and stderr somewhere outside the working tree.
+# THE READ ARM accepts one kind of change: files under generated/ that a
+# previous build regenerated from the committed emitter. The driver names each
+# one on the board; anything else refuses here as it does for the table.
+if [ -n "$READ_ARM" ]; then
+    [ -n "$RECEIPT" ] || { echo "nine.sh: --read-arm needs --receipt (the operator's READY/START record)" >&2; exit 2; }
+    [ -z "$LANE" ] || { echo "nine.sh: --read-arm does not take --lane (use --pin)" >&2; exit 2; }
+    [ -z "$PLANREAD" ] || { echo "nine.sh: --read-arm and --plan-read are two sittings; pass one" >&2; exit 2; }
+    if [ -n "$(git status --porcelain 2>/dev/null | grep -v '^ M generated/')" ]; then
+        echo "nine.sh: the tree is dirty outside generated/, and the read arm measures a named checkpoint:" >&2
+        git status --porcelain >&2
+        exit 2
+    fi
+    case "$LEG" in
+    cpp|c|cs) ;;
+    *) echo "nine.sh: --leg takes cpp, c or cs (the legs whose runner has a read arm)" >&2; exit 2 ;;
+    esac
+    : "${OUT:=build/paired-read/$(date -u +%Y%m%dT%H%M%SZ)}"
+    go build -o bin/schema-paired ./bench/paired
+    bin/schema-paired -mode build -langs "$LEG"
+    bin/schema-paired -mode gate -reuse-build -langs "$LEG"
+    if [ -n "$PINCORE" ]; then
+        case "$PINCORE" in
+        *[!0-9]*) echo "nine.sh: --pin takes a core number" >&2; exit 2 ;;
+        esac
+        exec taskset -c "$PINCORE" bin/schema-paired -mode plan-read -langs "$LEG" -quiet-window "$RECEIPT" -lane "$PINCORE" -out "$OUT"
+    fi
+    exec bin/schema-paired -mode plan-read -langs "$LEG" -quiet-window "$RECEIPT" -out "$OUT"
+fi
+
 if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
     echo "nine.sh: the tree is not clean, and table mode measures a named checkpoint." >&2
     echo "         Commit or stash first, and keep logs outside the working tree:" >&2

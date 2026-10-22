@@ -1,0 +1,51 @@
+name: schema-shared-hostile-corpus
+
+# THE SHARED HOSTILE-INPUT CORPUS GATE. One committed corpus of adversarial
+# inputs for schema with the engine's verdicts (internal/tablewire,
+# internal/tabletext), shared by every port. The corpus is raw files plus a
+# directory internal/ci/hostilecorpus/corpus (raw inputs plus manifest.tsv);
+# the drift gate rebuilds every verdict from the engine and fails when the
+# committed manifest differs.
+#
+# THE SPLIT IS BY WHEN, NOT BY WHETHER. The fast part runs on every push and
+# pull request: the drift gate, the reason-coverage check, and the recursive
+# source inventory (so a new uncited vector fails on the push). The planted
+# bad-pattern controls run on schedule and workflow_dispatch, because they
+# certify the gates have blades rather than the corpus's content.
+on:
+  push:
+    branches: [ main, 'sprint/**' ]
+  pull_request:
+    branches: [ main, 'sprint/**' ]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+env:
+  GOFLAGS: -mod=readonly
+  NOVA_TEST_NO_HOST: '1'
+  SCHEMA_SLOW: '1'
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: the drift gate
+        run: make schema-shared-hostile-corpus
+
+  negative-control:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: the planted-bad-pattern control
+        run: make schema-shared-hostile-corpus-negative-control

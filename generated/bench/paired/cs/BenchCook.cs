@@ -166,90 +166,90 @@ namespace Bench
             checked_ = true;
             {
                 BenchMixedRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("BenchMixedRow", Unsafe.SizeOf<BenchMixedRow>(), 1376);
-                Offset("BenchMixedRow.Sequence", (byte*) &probe.Sequence - at, 0);
-                Offset("BenchMixedRow.AckSequence", (byte*) &probe.AckSequence - at, 4);
-                Offset("BenchMixedRow.AckBits", (byte*) &probe.AckBits - at, 8);
-                Offset("BenchMixedRow.SessionId", (byte*) &probe.SessionId - at, 16);
-                Offset("BenchMixedRow.ClientId", (byte*) &probe.ClientId - at, 24);
-                Offset("BenchMixedRow.Nonce", (byte*) &probe.Nonce - at, 32);
-                Offset("BenchMixedRow.WorldTime", (byte*) &probe.WorldTime - at, 40);
-                Offset("BenchMixedRow.FrameTick", (byte*) &probe.FrameTick - at, 48);
-                Offset("BenchMixedRow.ServerTime", (byte*) &probe.ServerTime - at, 56);
-                Offset("BenchMixedRow.Entities", (byte*) &probe.Entities0 - at, 64);
-                Offset("BenchMixedRow.Stats", (byte*) &probe.Stats0 - at, 580);
-                Offset("BenchMixedRow.GameEvent", (byte*) &probe.GameEvent - at, 1224);
-                Offset("BenchMixedRow.Loadout", (byte*) probe.Loadout - at, 1244);
-                Offset("BenchMixedRow.PlayerName", (byte*) probe.PlayerName - at, 1248);
-                Offset("BenchMixedRow.Payload", (byte*) probe.Payload - at, 1268);
-                Offset("BenchMixedRow.AimX", (byte*) &probe.AimX - at, 1288);
-                Offset("BenchMixedRow.AimY", (byte*) &probe.AimY - at, 1292);
-                Offset("BenchMixedRow.AimZ", (byte*) &probe.AimZ - at, 1296);
-                Offset("BenchMixedRow.Recoil", (byte*) &probe.Recoil - at, 1300);
-                Offset("BenchMixedRow.Drift", (byte*) &probe.Drift - at, 1304);
-                Offset("BenchMixedRow.WideKey", (byte*) &probe.WideKey - at, 1312);
-                Offset("BenchMixedRow.Flux", (byte*) &probe.Flux - at, 1328);
-                Offset("BenchMixedRow.Ping", (byte*) &probe.Ping - at, 1344);
-                Offset("BenchMixedRow.CrcHint", (byte*) &probe.CrcHint - at, 1348);
-                Offset("BenchMixedRow.HasExtra", (byte*) &probe.HasExtra - at, 1352);
-                Offset("BenchMixedRow.Extra", (byte*) &probe.Extra - at, 1356);
-                Offset("BenchMixedRow.IdleTicks", (byte*) &probe.IdleTicks - at, 1360);
+                Offset("BenchMixedRow.Sequence", (byte*)&probe.Sequence - at, 0);
+                Offset("BenchMixedRow.AckSequence", (byte*)&probe.AckSequence - at, 4);
+                Offset("BenchMixedRow.AckBits", (byte*)&probe.AckBits - at, 8);
+                Offset("BenchMixedRow.SessionId", (byte*)&probe.SessionId - at, 16);
+                Offset("BenchMixedRow.ClientId", (byte*)&probe.ClientId - at, 24);
+                Offset("BenchMixedRow.Nonce", (byte*)&probe.Nonce - at, 32);
+                Offset("BenchMixedRow.WorldTime", (byte*)&probe.WorldTime - at, 40);
+                Offset("BenchMixedRow.FrameTick", (byte*)&probe.FrameTick - at, 48);
+                Offset("BenchMixedRow.ServerTime", (byte*)&probe.ServerTime - at, 56);
+                Offset("BenchMixedRow.Entities", (byte*)&probe.Entities0 - at, 64);
+                Offset("BenchMixedRow.Stats", (byte*)&probe.Stats0 - at, 580);
+                Offset("BenchMixedRow.GameEvent", (byte*)&probe.GameEvent - at, 1224);
+                Offset("BenchMixedRow.Loadout", (byte*)probe.Loadout - at, 1244);
+                Offset("BenchMixedRow.PlayerName", (byte*)probe.PlayerName - at, 1248);
+                Offset("BenchMixedRow.Payload", (byte*)probe.Payload - at, 1268);
+                Offset("BenchMixedRow.AimX", (byte*)&probe.AimX - at, 1288);
+                Offset("BenchMixedRow.AimY", (byte*)&probe.AimY - at, 1292);
+                Offset("BenchMixedRow.AimZ", (byte*)&probe.AimZ - at, 1296);
+                Offset("BenchMixedRow.Recoil", (byte*)&probe.Recoil - at, 1300);
+                Offset("BenchMixedRow.Drift", (byte*)&probe.Drift - at, 1304);
+                Offset("BenchMixedRow.WideKey", (byte*)&probe.WideKey - at, 1312);
+                Offset("BenchMixedRow.Flux", (byte*)&probe.Flux - at, 1328);
+                Offset("BenchMixedRow.Ping", (byte*)&probe.Ping - at, 1344);
+                Offset("BenchMixedRow.CrcHint", (byte*)&probe.CrcHint - at, 1348);
+                Offset("BenchMixedRow.HasExtra", (byte*)&probe.HasExtra - at, 1352);
+                Offset("BenchMixedRow.Extra", (byte*)&probe.Extra - at, 1356);
+                Offset("BenchMixedRow.IdleTicks", (byte*)&probe.IdleTicks - at, 1360);
             }
             {
                 FixedTableRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("FixedTableRow", Unsafe.SizeOf<FixedTableRow>(), 1376);
-                Offset("FixedTableRow.Value", (byte*) &probe.Value - at, 0);
+                Offset("FixedTableRow.Value", (byte*)&probe.Value - at, 0);
             }
             {
                 MixedChatEventRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("MixedChatEventRow", Unsafe.SizeOf<MixedChatEventRow>(), 8);
-                Offset("MixedChatEventRow.Channel", (byte*) &probe.Channel - at, 0);
-                Offset("MixedChatEventRow.Speaker", (byte*) &probe.Speaker - at, 4);
+                Offset("MixedChatEventRow.Channel", (byte*)&probe.Channel - at, 0);
+                Offset("MixedChatEventRow.Speaker", (byte*)&probe.Speaker - at, 4);
             }
             {
                 MixedEntityRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("MixedEntityRow", Unsafe.SizeOf<MixedEntityRow>(), 64);
-                Offset("MixedEntityRow.EntityId", (byte*) &probe.EntityId - at, 0);
-                Offset("MixedEntityRow.PosX", (byte*) &probe.PosX - at, 4);
-                Offset("MixedEntityRow.PosY", (byte*) &probe.PosY - at, 8);
-                Offset("MixedEntityRow.PosZ", (byte*) &probe.PosZ - at, 12);
-                Offset("MixedEntityRow.Yaw", (byte*) &probe.Yaw - at, 16);
-                Offset("MixedEntityRow.Pitch", (byte*) &probe.Pitch - at, 20);
-                Offset("MixedEntityRow.VelX", (byte*) &probe.VelX - at, 24);
-                Offset("MixedEntityRow.VelY", (byte*) &probe.VelY - at, 28);
-                Offset("MixedEntityRow.VelZ", (byte*) &probe.VelZ - at, 32);
-                Offset("MixedEntityRow.Health", (byte*) &probe.Health - at, 36);
-                Offset("MixedEntityRow.Weapon", (byte*) &probe.Weapon - at, 40);
-                Offset("MixedEntityRow.Damage", (byte*) &probe.Damage - at, 48);
-                Offset("MixedEntityRow.Moving", (byte*) &probe.Moving - at, 56);
-                Offset("MixedEntityRow.Firing", (byte*) &probe.Firing - at, 57);
+                Offset("MixedEntityRow.EntityId", (byte*)&probe.EntityId - at, 0);
+                Offset("MixedEntityRow.PosX", (byte*)&probe.PosX - at, 4);
+                Offset("MixedEntityRow.PosY", (byte*)&probe.PosY - at, 8);
+                Offset("MixedEntityRow.PosZ", (byte*)&probe.PosZ - at, 12);
+                Offset("MixedEntityRow.Yaw", (byte*)&probe.Yaw - at, 16);
+                Offset("MixedEntityRow.Pitch", (byte*)&probe.Pitch - at, 20);
+                Offset("MixedEntityRow.VelX", (byte*)&probe.VelX - at, 24);
+                Offset("MixedEntityRow.VelY", (byte*)&probe.VelY - at, 28);
+                Offset("MixedEntityRow.VelZ", (byte*)&probe.VelZ - at, 32);
+                Offset("MixedEntityRow.Health", (byte*)&probe.Health - at, 36);
+                Offset("MixedEntityRow.Weapon", (byte*)&probe.Weapon - at, 40);
+                Offset("MixedEntityRow.Damage", (byte*)&probe.Damage - at, 48);
+                Offset("MixedEntityRow.Moving", (byte*)&probe.Moving - at, 56);
+                Offset("MixedEntityRow.Firing", (byte*)&probe.Firing - at, 57);
             }
             {
                 MixedHitEventRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("MixedHitEventRow", Unsafe.SizeOf<MixedHitEventRow>(), 16);
-                Offset("MixedHitEventRow.TargetId", (byte*) &probe.TargetId - at, 0);
-                Offset("MixedHitEventRow.Damage", (byte*) &probe.Damage - at, 4);
-                Offset("MixedHitEventRow.HitKind", (byte*) &probe.HitKind - at, 8);
-                Offset("MixedHitEventRow.Crit", (byte*) &probe.Crit - at, 12);
+                Offset("MixedHitEventRow.TargetId", (byte*)&probe.TargetId - at, 0);
+                Offset("MixedHitEventRow.Damage", (byte*)&probe.Damage - at, 4);
+                Offset("MixedHitEventRow.HitKind", (byte*)&probe.HitKind - at, 8);
+                Offset("MixedHitEventRow.Crit", (byte*)&probe.Crit - at, 12);
             }
             {
                 MixedPickupEventRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("MixedPickupEventRow", Unsafe.SizeOf<MixedPickupEventRow>(), 8);
-                Offset("MixedPickupEventRow.ItemId", (byte*) &probe.ItemId - at, 0);
-                Offset("MixedPickupEventRow.Amount", (byte*) &probe.Amount - at, 4);
+                Offset("MixedPickupEventRow.ItemId", (byte*)&probe.ItemId - at, 0);
+                Offset("MixedPickupEventRow.Amount", (byte*)&probe.Amount - at, 4);
             }
             {
                 MixedStatRow probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("MixedStatRow", Unsafe.SizeOf<MixedStatRow>(), 8);
-                Offset("MixedStatRow.StatId", (byte*) &probe.StatId - at, 0);
-                Offset("MixedStatRow.Delta", (byte*) &probe.Delta - at, 4);
+                Offset("MixedStatRow.StatId", (byte*)&probe.StatId - at, 0);
+                Offset("MixedStatRow.Delta", (byte*)&probe.Delta - at, 4);
             }
             Size("MixedEventRow", Unsafe.SizeOf<MixedEventRow>(), 20);
             { MixedEventRow probe = default; byte* at = (byte*)&probe; Offset("MixedEventRow.Type", (byte*)&probe.Type - at, 0); Offset("MixedEventRow.Hit", (byte*)&probe.Hit - at, 4); Offset("MixedEventRow.Chat", (byte*)&probe.Chat - at, 4); Offset("MixedEventRow.Pickup", (byte*)&probe.Pickup - at, 4); }

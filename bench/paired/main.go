@@ -104,11 +104,6 @@ func allLanguages() []string {
 // wiresFor names the wires a language actually has a runner for. Every loop
 // that walks a language's legs walks this and not the literal pair, so a
 // table-only language is never asked for a packet row it cannot produce.
-// pairedSchemas are the paired unit's two schema files, generated as ONE unit
-// for every leg (and a second time, beside the lineage's lock, for the Rust
-// plan lane: table.go, buildRustPlan).
-var pairedSchemas = []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}
-
 func wiresFor(lang string) []string {
 	if contains(tableOnlyLanguages, lang) {
 		return []string{"table"}
@@ -343,6 +338,12 @@ func abs(p string) string {
 	}
 	return s
 }
+
+// pairedSchemas are the paired unit's two schema files, generated as ONE unit
+// for every leg (and a second time, beside the lineage's lock, for the plan
+// lanes: table.go, buildCPlan, buildCSPlan and buildRustPlan).
+var pairedSchemas = []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}
+
 func binary(wire, lang string) string {
 	// AN INTERPRETED LEG HAS NO BUILD PRODUCT, so the thing this driver pins,
 	// hashes and runs is the runner source itself. Its generated modules are
@@ -521,6 +522,15 @@ func gitValue(dir string, args ...string) string {
 	return strings.TrimSpace(string(b))
 }
 func corpusID(wire string) (string, error) {
+	return corpusIDOf(corpusPaths(wire))
+}
+
+// corpusPaths maps the basename a runner hashes to the file it loads, for one
+// wire. The read arm (-mode plan-read) loads BOTH wires' files in one
+// invocation and hashes their union (readArmCorpusPaths), so its id differs from
+// either wire's by §1.6's own definition and its rows are never divisible
+// against a row of an ordinary pass.
+func corpusPaths(wire string) map[string]string {
 	paths := map[string]string{}
 	if wire == "packet" {
 		paths["bench_mixed.bin"] = "testdata/wire/bench_mixed.bin"
@@ -535,10 +545,27 @@ func corpusID(wire string) (string, error) {
 			paths[name] = "bench/paired/corpus/" + name
 		}
 	}
-	// One hash, defined once (fnvCorpusID), so the plan-read arm's id and
-	// this one cannot drift apart in how they are computed.
+	return paths
+}
+
+// corpusIDOf is §1.6's id over named files. One hash, defined once
+// (fnvCorpusID), so the read arm's id, the plan-read board's and an ordinary
+// pass's cannot drift apart in how they are computed.
+func corpusIDOf(paths map[string]string) (string, error) {
 	return fnvCorpusID(paths, os.ReadFile)
 }
+
+// cppBuildFlags is the ONE C++ flag line: the table leg, the packet leg and
+// the read arm's straight-line anchor all compile with it, so the anchor's
+// ratio is never a flag difference.
+func cppBuildFlags(cxx, opt string) []string {
+	flags := []string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-ffp-contract=off", "-fno-rtti", "-" + opt, "-DNDEBUG", "-DBENCH_OPT=\"" + opt + "\""}
+	if version, e := capture(command{args: []string{cxx, "--version"}}); e == nil && (strings.Contains(strings.ToLower(string(version)), "gcc") || strings.Contains(strings.ToLower(string(version)), "g++")) {
+		flags = append(flags, "-Wno-class-memaccess", "-Wno-type-limits")
+	}
+	return flags
+}
+
 func generateAndBuild(langs []string) error {
 	if e := os.MkdirAll("build/paired", 0755); e != nil {
 		return e
@@ -598,14 +625,12 @@ func generateAndBuild(langs []string) error {
 		return errors.New("BENCH_OPT_LEVEL must be O2 or O3")
 	}
 	stamp := "-DBENCH_OPT=\"" + opt + "\""
-	cppFlags := []string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-ffp-contract=off", "-fno-rtti", "-" + opt, "-DNDEBUG", stamp}
-	if version, e := capture(command{args: []string{cxx, "--version"}}); e == nil && (strings.Contains(strings.ToLower(string(version)), "gcc") || strings.Contains(strings.ToLower(string(version)), "g++")) {
-		cppFlags = append(cppFlags, "-Wno-class-memaccess", "-Wno-type-limits")
-	}
+	cppFlags := cppBuildFlags(cxx, opt)
 	cFlags := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-" + opt, "-DNDEBUG", stamp}
 	if version, e := capture(command{args: []string{cc, "--version"}}); e == nil && strings.Contains(strings.ToLower(string(version)), "gcc") {
 		cFlags = append(cFlags, "-Wno-stringop-truncation")
 	}
+	anchor := anchorBuild{Refusal: "not built: the C++ leg is not in this build"}
 	// The independent C++ bridge is the equivalence oracle even for a subset pass.
 	if !contains(langs, "cpp") {
 		if e := run(schema, "generate", "--lang", "cpp", "--out", "generated/bench/paired/cpp", "bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"); e != nil {
@@ -633,6 +658,7 @@ func generateAndBuild(langs []string) error {
 			if e := run(a...); e != nil {
 				return e
 			}
+			anchor = buildAnchor(cxx, cppFlags, ser)
 		case "c":
 			a := append([]string{cc}, cFlags...)
 			// serialize.c is a translation unit, not a header: the table leg links it
@@ -647,6 +673,15 @@ func generateAndBuild(langs []string) error {
 			a = append(a, "-Igenerated/bench/c", "-I"+serC, "bench/c/bench_main.c", filepath.Join(serC, "serialize.c"), "-o", binary("packet", lang), "-lm")
 			if e := run(a...); e != nil {
 				return e
+			}
+			// AND THE PLAN LANE'S BINARY (BENCH-STANDARD.md §1.10), when the
+			// lineage corpus is on the tree: the same runner source, against
+			// the unit generated beside the lineage's lock (table.go,
+			// buildCPlan). -mode plan-read -langs c runs this one.
+			if cPlanRefusal(fileExists) == "" {
+				if e := buildCPlan(schema, cc, cFlags, serC); e != nil {
+					return e
+				}
 			}
 		case "go":
 			if e := os.WriteFile("generated/bench/paired/go/go.mod", []byte("module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../../serialize.go\n"), 0644); e != nil {
@@ -689,6 +724,15 @@ func generateAndBuild(langs []string) error {
 					project = "bench/paired/cs"
 				}
 				if e := run("dotnet", "build", project, "-c", "Release", "-v", "q", "--nologo", "-property:UseSharedCompilation=false", "-property:SerializeCsRoot="+serCs, "--output", filepath.Dir(binary(wire, lang))); e != nil {
+					return e
+				}
+			}
+			// AND THE PLAN LANE'S ASSEMBLY (BENCH-STANDARD.md §1.10), when the
+			// lineage corpus is on the tree: the same runner source, against
+			// the unit generated beside the lineage's lock (table.go,
+			// buildCSPlan). -mode plan-read -langs cs runs this one.
+			if csPlanRefusal(fileExists) == "" {
+				if e := buildCSPlan(schema, serCs); e != nil {
 					return e
 				}
 			}
@@ -890,10 +934,48 @@ func generateAndBuild(langs []string) error {
 	for _, key := range measuredEnvironment {
 		info.Environment[key] = os.Getenv(key)
 	}
+	// THE ANCHOR is recorded whether or not it built: a refusal is a fact about
+	// this tree that -mode plan-read prints, never a reason to fail the legs.
+	info.Tools["cpp_anchor"] = anchor.Refusal
+	if anchor.Refusal == "" {
+		info.Tools["cpp_anchor"] = "built: " + strings.Join(anchor.Command, " ")
+		hash, err := hashFile(anchorBinary)
+		if err != nil {
+			return err
+		}
+		info.Binaries[anchorBinary] = hash
+	}
 	info.Tools["cpp_packet_flags"] = strings.Join(cppFlags, " ") + " -DSERIALIZE_RELEASE"
 	info.Tools["cpp_table_flags"] = strings.Join(cppFlags, " ") + " -DBENCH_MATCHED"
 	info.Tools["c_packet_flags"] = strings.Join(cFlags, " ")
+	if contains(langs, "c") && cPlanRefusal(fileExists) == "" {
+		info.Tools["c_plan_flags"] = strings.Join(cFlags, " ") + " " + strings.Join(cPlanDefines, " ")
+		for _, p := range append(cPlanModules(), binary("plan", "c")) {
+			h, e := hashFile(p)
+			if e != nil {
+				return e
+			}
+			info.Binaries[p] = h
+		}
+	}
 	info.Tools["c_table_flags"] = strings.Join(cFlags, " ") + " -DBENCH_MATCHED -ffp-contract=off"
+	if contains(langs, "cs") {
+		info.Tools["cs_table_flags"] = "dotnet build -c Release -property:UseSharedCompilation=false; DefineConstants=BENCH_MATCHED AllowUnsafeBlocks=true"
+		if b, e := capture(command{args: []string{"dotnet", "--version"}}); e == nil {
+			info.Tools["cs"] = "dotnet " + strings.TrimSpace(string(b))
+		}
+		if csPlanRefusal(fileExists) == "" {
+			info.Tools["cs_plan_flags"] = "dotnet build -c Release -property:UseSharedCompilation=false; DefineConstants=BENCH_MATCHED;BENCH_PLAN AllowUnsafeBlocks=true"
+			p := binary("plan", "cs")
+			for _, f := range append(csPlanModules(), p, strings.TrimSuffix(p, ".dll")+".deps.json", strings.TrimSuffix(p, ".dll")+".runtimeconfig.json") {
+				h, e := hashFile(f)
+				if e != nil {
+					return e
+				}
+				info.Binaries[f] = h
+			}
+		}
+	}
 	if contains(langs, "rust") {
 		// The Rust leg's "flags" are cargo settings; the level is also stamped
 		// into the binary, so a row's `opt` column and this line agree or the
@@ -925,6 +1007,14 @@ func generateAndBuild(langs []string) error {
 		for _, name := range lineageCorpusFiles {
 			corpora = append(corpora, rustLineageDir+"/"+name)
 		}
+	}
+	if contains(langs, "c") && cPlanRefusal(fileExists) == "" {
+		// the C plan lane's lineage, lock included: a re-pin after the build
+		// refuses the sitting like any other corpus change
+		corpora = append(corpora, cLineageCorpus...)
+	}
+	if contains(langs, "cs") && csPlanRefusal(fileExists) == "" {
+		corpora = append(corpora, csLineageCorpus...)
 	}
 	for _, p := range corpora {
 		h, e := hashFile(p)
@@ -1418,7 +1508,7 @@ func renderReport(dir string, writeOutputs bool) error {
 	return nil
 }
 func main() {
-	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, plan-read board, run confirmation, or render")
+	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, plan-read (the read arm for C++, C or C#; the plan-read board for Rust), run confirmation, or render")
 	out := flag.String("out", "", "new results directory (or existing directory for render)")
 	langsFlag := flag.String("langs", "cpp,c,go,cs", "comma-separated required build/gate languages")
 	rounds := flag.Int("rounds", 7, "interleaved measured rounds")
@@ -1498,8 +1588,12 @@ func main() {
 			fail(e)
 		}
 	}
-	// PLAN-READ never builds, like fast and table: it measures the build the
-	// manifest names, and -rounds (1..7) is its round count (§2.1's seven).
+	if *mode == "plan-read" && !planReadBoardSitting(langs) && strings.TrimSpace(*receipt) == "" {
+		fail(errors.New("plan-read requires -quiet-window with the operator’s READY/START receipt or reference"))
+	}
+	// plan-read measures a build, like fast and table: it never builds, so the
+	// compile can never land inside its quiet window. On the plan-read board
+	// (the Rust leg) -rounds (1..7) is its round count (§2.1's seven).
 	if !*reuse && *mode != "fast" && *mode != "table" && *mode != "plan-read" {
 		if e := generateAndBuild(langs); e != nil {
 			fail(e)
@@ -1522,7 +1616,13 @@ func main() {
 		return
 	}
 	if *mode == "plan-read" {
-		if e := planReadPass(langs, *out, info, fast, *rounds, *lane); e != nil {
+		if planReadBoardSitting(langs) {
+			if e := planReadPass(langs, *out, info, fast, *rounds, *lane); e != nil {
+				fail(e)
+			}
+			return
+		}
+		if e := planReadPassOn(langs, *out, *rounds, info, *receipt, *lane); e != nil {
 			fail(e)
 		}
 		return

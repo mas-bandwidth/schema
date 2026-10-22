@@ -17,5 +17,5 @@ union Reach
 table Gate
 {
     reach Reach
-    after int32
+    past int32 | was = "after"
 }

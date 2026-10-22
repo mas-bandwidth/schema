@@ -43,7 +43,7 @@ func listUnit(t *testing.T) (*ir.Unit, *tabletext.Model) {
 // holder whose node carries its own list, and a field after them all.
 func buildListSave(m *tabletext.Model) *tabletext.Instance {
 	save := m.New(m.Lookup("Save"))
-	setInt(save, "after", 41)
+	setInt(save, "past", 41)
 
 	row := func(label int64, samples ...int64) *tabletext.Instance {
 		r := m.New(m.Lookup("Row"))
