@@ -561,7 +561,7 @@
     {
       "name": "elixir",
       "when": "pull-request",
-      "why": "the Elixir port's small controls: the card driver's three (one rendered byte, one dropped retained field, extra needs in the task hash, each required to red exactly its own surface), its three packet families, the accessor offset, the allocation audit's refusal on a pin nothing runs, the I13 text differential, the keyed accessor's two ends and the runtime pin. Measured 62 s on the studio, 76 s on the runner for the first seven. The Elixir controls are four groups because one group of all twenty-two ran past the job's five-minute ceiling on the runner (2026-10-22, run 39800381797: cancelled at 5:00 after the block-lead control, the alloc audit alone taking 143 s there); each group here measured on the studio, serially, times about 2.2 for the runner.",
+      "why": "the Elixir port's small controls: the card driver's three (one rendered byte, one dropped retained field, extra needs in the task hash, each required to red exactly its own surface), its three packet families, the accessor offset, the allocation audit's refusal on a pin nothing runs, the I13 text differential, the keyed accessor's two ends, the runtime pin and the slot control. 2:02 of controls on the runner, plus 54 s for the slot control. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
       "targets": [
         "cards-elixir-conformance-negative-control",
         "cards-elixir-conformance-upgrade-negative-control",
@@ -574,7 +574,8 @@
         "tables-elixir-json-differential-negative-control",
         "tables-elixir-keyed-max-negative-control",
         "tables-elixir-keyed-none-negative-control",
-        "tables-elixir-runtime-pin-negative-control"
+        "tables-elixir-runtime-pin-negative-control",
+        "tables-elixir-slot-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
@@ -582,21 +583,38 @@
     {
       "name": "elixir-alloc",
       "when": "pull-request",
-      "why": "the Elixir allocation audit's sabotaged emitter (issue #420: every load allocating sixteen refc binaries and a thousand-cell list must red the heap-word and binary-call columns of every pinned case) and the slot control beside it. Measured 66 s and 14 s on the studio; the audit took 143 s on the runner. The Elixir controls are four groups because one group of all twenty-two ran past the job's five-minute ceiling on the runner (2026-10-22, run 39800381797: cancelled at 5:00 after the block-lead control, the alloc audit alone taking 143 s there); each group here measured on the studio, serially, times about 2.2 for the runner.",
+      "why": "the Elixir allocation audit's sabotaged emitter (issue #420: every load allocating sixteen refc binaries and a thousand-cell list must red the heap-word and binary-call columns of every pinned case). 173 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
       "targets": [
-        "tables-elixir-alloc-negative-control",
-        "tables-elixir-slot-negative-control"
+        "tables-elixir-alloc-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
     },
     {
-      "name": "elixir-wire",
+      "name": "elixir-offsets",
       "when": "pull-request",
-      "why": "the Elixir wire controls: the composed-offset read, the block base alignment and the wire fuzzer's planted defect. Measured 32 s, 26 s and 27 s on the studio. The Elixir controls are four groups because one group of all twenty-two ran past the job's five-minute ceiling on the runner (2026-10-22, run 39800381797: cancelled at 5:00 after the block-lead control, the alloc audit alone taking 143 s there); each group here measured on the studio, serially, times about 2.2 for the runner.",
+      "why": "the Elixir composed-offset control: the block's offset_of read back as a whole word must red the forged-offset check. 95 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
       "targets": [
-        "tables-elixir-offsets-negative-control",
-        "tables-elixir-block-lead-negative-control",
+        "tables-elixir-offsets-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-block",
+      "when": "pull-request",
+      "why": "the Elixir block base-alignment control: dropping the check must red the gate. 134 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
+        "tables-elixir-block-lead-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-fuzz",
+      "when": "pull-request",
+      "why": "the Elixir wire fuzzer's planted defect, which must red the fuzz gate. 27 s on the studio; it had not finished 55 s after the block control on the runner when the wire group was cancelled. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
         "tables-elixir-fuzz-negative-control"
       ],
       "otp": "29.0.5",
@@ -605,10 +623,19 @@
     {
       "name": "elixir-form",
       "when": "pull-request",
-      "why": "the Elixir emitter's form controls: the cook's delta read, the raw-output format gate, the fixed form, versioning, and the hostile corpus run. Measured 30 s, 19 s, 13 s, 13 s and 7 s on the studio. The Elixir controls are four groups because one group of all twenty-two ran past the job's five-minute ceiling on the runner (2026-10-22, run 39800381797: cancelled at 5:00 after the block-lead control, the alloc audit alone taking 143 s there); each group here measured on the studio, serially, times about 2.2 for the runner.",
+      "why": "the Elixir cook's delta-read control and the raw-output format gate's control. 86 s and 59 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
       "targets": [
         "tables-elixir-cook-negative-control",
-        "tables-elixir-emit-format-negative-control",
+        "tables-elixir-emit-format-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-versioning",
+      "when": "pull-request",
+      "why": "the Elixir fixed form's, versioning's and hostile-corpus controls. 26 s, then 75 s for the other two, on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
         "tables-elixir-fixed-form-negative-control",
         "tables-elixir-versioning-negative-control",
         "schema-elixir-runs-hostile-corpus-negative-control"
