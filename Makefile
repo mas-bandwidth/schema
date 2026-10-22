@@ -110,10 +110,19 @@ SCHEMAS_TABLES_BACKEND := $(wildcard tables/backend/*.schema)
 SCHEMAS_TABLES_VOCAB := $(wildcard tables/vocab/*.schema)
 SCHEMAS_TABLES_VOCAB9 := $(wildcard tables/vocab9/*.schema)
 
-# The soak length every leg's soak takes, in seconds. The hour is the release
-# act — `make tables-<lang>-soak SOAK_SECONDS=3600` — and `make test` runs the
-# short forms with an explicit value.
+# The soak length the clocked legs' soaks take, in seconds (the C++ and C#
+# soaks are counted instead, below). The hour is the release act — `make
+# tables-<lang>-soak SOAK_SECONDS=3600` — and `make test` runs the short forms
+# with an explicit value.
 SOAK_SECONDS ?= 3600
+
+# The C++ and C# soaks are COUNTED, not clocked: each takes a number of passes,
+# because a pass is what the allocation count is read across, and because
+# `make shape-gate` refuses a timing primitive outside the sanctioned bench.
+# The defaults are the release act, about an hour each on the studio; `make
+# test` runs the short forms with an explicit value.
+TABLES_CPP_SOAK_ITERATIONS ?= 1000000
+TABLES_CS_SOAK_ITERATIONS ?= 250000000
 
 all: bin/schema
 
@@ -3614,9 +3623,9 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-cpp-runtime-home
 	$(MAKE) tables-cpp-runtime-home-negative-control
 	$(MAKE) tables-cpp-alloc
-	# the C++ soak (make/cpp.mk): 20 seconds of the count-gated loop, and the
+	# the C++ soak (make/cpp.mk): 4096 passes of the count-gated loop, and the
 	# control that plants a matched new/delete pair and must turn the count red
-	$(MAKE) tables-cpp-soak SOAK_SECONDS=20
+	$(MAKE) tables-cpp-soak TABLES_CPP_SOAK_ITERATIONS=4096
 	$(MAKE) tables-cpp-soak-negative-control
 	$(MAKE) tables-block-inline-array-negative-control
 	$(MAKE) tables-pack

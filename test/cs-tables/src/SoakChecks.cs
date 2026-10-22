@@ -3,8 +3,8 @@
 //
 // The per-path allocation gate (AllocGateChecks.cs) runs a ten-thousand
 // iteration replay over each wire path and requires zero allocated bytes once
-// warm. A soak that runs for SOAK_SECONDS of real time (20 s in `make test`,
-// 3600 s at release) loops all five wire paths — Load with a caller-supplied
+// warm. A soak of TABLES_CS_SOAK_ITERATIONS passes (the short form in `make
+// test`, about an hour's worth at release) loops all five wire paths — Load with a caller-supplied
 // TableReport, Load with no report, Measure, Save, and the Load/Measure/Save
 // round trip — over the same `tabledemo.RootConfig` golden, reads
 // GC.GetAllocatedBytesForCurrentThread at every sample, and FAILS if the
@@ -16,8 +16,12 @@
 // matched allocate-and-drop that the GC reclaims) leaves managed-heap drift
 // flat while turning the per-thread allocated-bytes count red — which is why
 // the count is the gate and what `tables-cs-soak-negative-control` proves.
+//
+// ITS LENGTH IS AN ITERATION COUNT, NOT A CLOCK: the soak watches allocated
+// bytes per pass, so the number of passes is what matters, and a count runs
+// the same loop on every machine. It reads no clock (`make shape-gate`
+// refuses a timing primitive outside the sanctioned bench).
 using System;
-using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -84,7 +88,9 @@ static partial class Program
         return true;
     }
 
-    static double ParseSoakSeconds(string[] args)
+    const long DefaultSoakIterations = 1 << 20;
+
+    static long ParseSoakIterations(string[] args)
     {
         for (int i = 1; i < args.Length; i++)
         {
@@ -92,17 +98,17 @@ static partial class Program
             {
                 continue;
             }
-            if (double.TryParse(args[i], NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed) && parsed >= 0.0)
+            if (long.TryParse(args[i], NumberStyles.None, CultureInfo.InvariantCulture, out long parsed) && parsed >= 0)
             {
                 return parsed;
             }
         }
-        string env = (Environment.GetEnvironmentVariable("SOAK_SECONDS") ?? "").Trim();
-        if (double.TryParse(env, NumberStyles.Float, CultureInfo.InvariantCulture, out double fromEnv) && fromEnv >= 0.0)
+        string env = (Environment.GetEnvironmentVariable("TABLES_CS_SOAK_ITERATIONS") ?? "").Trim();
+        if (long.TryParse(env, NumberStyles.None, CultureInfo.InvariantCulture, out long fromEnv) && fromEnv >= 0)
         {
             return fromEnv;
         }
-        return 20.0;
+        return DefaultSoakIterations;
     }
 
     static bool ParseSoakPlant(string[] args)
@@ -129,11 +135,11 @@ static partial class Program
             return 1;
         }
 
-        double seconds = ParseSoakSeconds(args);
+        long target = ParseSoakIterations(args);
         bool plant = ParseSoakPlant(args);
 
         // SETUP: allocate the golden wire, target value, report, and save
-        // buffer once before warmup and before the clock.
+        // buffer once before warmup and before the counted loop.
         byte[] golden = ReadGolden("root_full");
         Demo.RootConfig value = new Demo.RootConfig();
         Demo.TableReport report = new Demo.TableReport();
@@ -177,8 +183,6 @@ static partial class Program
 
         long settledAllocated = GC.GetAllocatedBytesForCurrentThread();
         long prevSampleAllocated = settledAllocated;
-        long startTicks = Stopwatch.GetTimestamp();
-        long deadlineTicks = startTicks + (long)(seconds * Stopwatch.Frequency);
         long iterations = 0;
         long samples = 0;
         long movedSamples = 0;
@@ -206,7 +210,7 @@ static partial class Program
                     }
                 }
                 prevSampleAllocated = nowAllocated;
-                if (Stopwatch.GetTimestamp() >= deadlineTicks)
+                if (iterations >= target)
                 {
                     break;
                 }
@@ -221,7 +225,6 @@ static partial class Program
             firstMoveSample = samples;
             firstMoveDelta = allocatedDelta;
         }
-        double elapsedSeconds = (double)(Stopwatch.GetTimestamp() - startTicks) / Stopwatch.Frequency;
 
         GC.Collect();
         GC.WaitForPendingFinalizers();
@@ -240,10 +243,9 @@ static partial class Program
 
         Console.WriteLine(string.Format(
             CultureInfo.InvariantCulture,
-            "cs tables soak: {0} iterations ({1} samples) over tabledemo.RootConfig in {2:F1} s",
+            "cs tables soak: {0} iterations ({1} samples) over tabledemo.RootConfig",
             iterations,
-            samples,
-            elapsedSeconds));
+            samples));
         Console.WriteLine(string.Format(
             CultureInfo.InvariantCulture,
             "cs tables soak: allocated bytes after warmup {0}, at the end {1} (delta {2:+#;-#;0} bytes across {3} samples, moved in {4} sample(s))",
