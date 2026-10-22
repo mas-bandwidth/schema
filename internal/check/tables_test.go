@@ -1390,6 +1390,12 @@ func TestTheIdRefusalsUnderAPlantedCollision(t *testing.T) {
 			want:  "takes one of the three ids the language holds back",
 		},
 		{
+			name:  "a table's `was` alias that takes the reserved node-table id",
+			plant: map[string]uint64{"old_tab": reserved},
+			src:   "package t\ntable Tab | was = \"old_tab\"\n{\n    x int32\n}\n",
+			want:  "takes one of the three ids the language holds back",
+		},
+		{
 			name:  "a field name that takes the reserved build-version id",
 			plant: map[string]uint64{"head": reservedBuildVersion},
 			src:   "package t\ntable Tab { head int32 }\n",
@@ -1697,8 +1703,8 @@ func TestEnumBoundProvenanceCorpus(t *testing.T) {
 		// untouched, a bound that folds from no enum stands wherever it is
 		// spelled, and the `type`-held case schema#606 rules on keeps the
 		// spelling: it compiles, and its table body keys the array
-		// (TestTypeHeldEnumExtentArrayRidesKeyed). An enum has no Count (SPEC
-		// §4.2), so the packet control spells the fold through Max alone.
+		// (TestTypeHeldEnumExtentArrayRidesKeyed). An enum has no Count
+		// (SPEC §4.2), so the packet control spells the fold through Max alone.
 		{file: "ControlPacket.schema"},
 		{file: "ControlPlain.schema"},
 		{file: "ControlTypeHeld.schema"},

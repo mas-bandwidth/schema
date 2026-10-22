@@ -778,8 +778,94 @@ func buildElixirPlan(schema string) error {
 	return compileElixirUnit("plan")
 }
 
+// THE C# LEG'S PLAN LANE reads the same lineage pair under bench/tables/cs/lineage/
+// and compiles a second assembly with BENCH_PLAN defined against the unit
+// generated beside bench/tables/cs/lineage/schema.lock.
+const csLineageDir = "bench/tables/cs/lineage"
+
+var csLineageCorpus = []string{csLineageDir + "/schema.lock", csLineageDir + "/bench_lineage.bin", csLineageDir + "/bench_lineage.layout"}
+
+func csPlanRefusal(present func(string) bool) string {
+	var missing []string
+	for _, p := range csLineageCorpus {
+		if !present(p) {
+			missing = append(missing, p)
+		}
+	}
+	if len(missing) > 0 {
+		return "no lineage corpus on this tree: " + strings.Join(missing, ", ") + " absent (BENCH-STANDARD §1.10 work list items 1–7)"
+	}
+	return ""
+}
+
+const csPlanBuild = "build/paired/plan-cs-unit"
+
+func csPlanModules() []string {
+	found, _ := filepath.Glob(filepath.Join(csPlanBuild, "new", "*.cs"))
+	sort.Strings(found)
+	return found
+}
+
+const csPlanProject = `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);BENCH_MATCHED;BENCH_PLAN</DefineConstants>
+    <SerializeCsRoot Condition="'$(SerializeCsRoot)' == ''">../../../../serialize.cs</SerializeCsRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../bench/tables/cs/src/Program.cs" />
+    <Compile Include="new/*.cs" Exclude="new/*Block.cs;new/*Cook.cs" />
+    <Compile Include="$(SerializeCsRoot)/src/Serialize.cs" />
+    <Compile Include="$(SerializeCsRoot)/src/Int128Pair.cs" />
+  </ItemGroup>
+</Project>
+`
+
+func buildCSPlan(schema, serCs string) error {
+	if err := os.RemoveAll(csPlanBuild); err != nil {
+		return err
+	}
+	unit := filepath.Join(csPlanBuild, "unit")
+	if err := os.MkdirAll(unit, 0755); err != nil {
+		return err
+	}
+	var unitSchemas []string
+	for _, from := range append(append([]string(nil), pairedSchemas...), csLineageDir+"/schema.lock") {
+		b, err := os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+		to := filepath.Join(unit, filepath.Base(from))
+		if err := os.WriteFile(to, b, 0644); err != nil {
+			return err
+		}
+		if strings.HasSuffix(to, ".schema") {
+			unitSchemas = append(unitSchemas, to)
+		}
+	}
+	newDir := filepath.Join(csPlanBuild, "new")
+	if err := run(append([]string{schema, "generate", "--lang", "cs", "--out", newDir}, unitSchemas...)...); err != nil {
+		return fmt.Errorf("generating the paired unit beside %s/schema.lock: %w", csLineageDir, err)
+	}
+	proj := filepath.Join(csPlanBuild, "paired.csproj")
+	if err := os.WriteFile(proj, []byte(csPlanProject), 0644); err != nil {
+		return err
+	}
+	_ = os.Remove(binary("plan", "cs"))
+	return run("dotnet", "build", proj, "-c", "Release", "-v", "q", "--nologo", "-property:UseSharedCompilation=false", "-property:SerializeCsRoot="+serCs, "--output", filepath.Dir(binary("plan", "cs")))
+}
+
 func lineageDirFor(leg string) string {
-	if leg == "elixir" {
+	switch leg {
+	case "cs":
+		return csLineageDir
+	case "elixir":
 		return elixirLineageDir
 	}
 	return cLineageDir
@@ -826,7 +912,7 @@ func buildAnchor(cxx string, flags []string, ser string) anchorBuild {
 	if err == nil {
 		return anchorBuild{Command: args}
 	}
-	_, _ = os.Stderr.Write(output)
+	_, _ = os.Stderr.Write(output) // the compiler's own words; the refusal below names the first error
 	return anchorBuild{Command: args, Refusal: "does not compile: " + firstCompilerError(string(output), err)}
 }
 
@@ -1084,9 +1170,9 @@ type readArmBoard struct {
 	Anchor       anchorResult `json:"anchor"`
 	Absent       []skipped    `json:"other_legs"`
 	// THE LEG this board measures: "" and "cpp" are the C++ board, "c" the
-	// C one, "elixir" the Elixir one. Plan is measured only on a leg whose
-	// plan build ran (PlanRefusal empty); its corpus id is the identity row's,
-	// one invocation's union.
+	// C one, "cs" the C# one, "elixir" the Elixir one. Plan is measured only
+	// on a leg whose plan build ran (PlanRefusal empty); its corpus id is the
+	// identity row's, one invocation's union.
 	Leg       string   `json:"leg,omitempty"`
 	Lane      string   `json:"lane,omitempty"`
 	Plan      rowStats `json:"plan_read"`
@@ -1110,6 +1196,8 @@ func legTitle(leg string) string {
 		return "C"
 	case "elixir":
 		return "Elixir"
+	case "cs":
+		return "C#"
 	}
 	return leg
 }
@@ -1166,6 +1254,10 @@ func (b readArmBoard) markdown() string {
 	}
 	fmt.Fprintf(&w, "# host %s / arch %s/%s / %s / rev %s (%s) / serialize %s / lane %s / rounds %d\n", b.Host, b.OS, b.Arch, b.CPU, b.Revision, dirty, b.Serialize, lane, b.Rounds)
 	planMeasured := b.PlanRefusal == "" && len(b.Plan.Samples) > 0
+	if b.PlanRefusal == "" && !planMeasured {
+		// the plan build ran but the sitting stopped before a plan row
+		b.PlanRefusal = "not measured: the sitting stopped before its first plan row"
+	}
 	if planMeasured {
 		fmt.Fprintf(&w, "# corpus_id(identity) %s / corpus_id(plan) %s (one invocation, one corpus: identity, lineage and packet files)\n", b.CorpusID, b.CorpusID)
 	} else {
@@ -1281,7 +1373,7 @@ func porcelain() (string, error) {
 }
 
 // readArmLegs are the legs whose runner carries `--read-arm` on this tree.
-var readArmLegs = []string{"cpp", "c", "elixir"}
+var readArmLegs = []string{"cpp", "c", "cs", "elixir"}
 
 // checksLine is the board's §1.9 checks axis. It names the measured leg's
 // packet axis as expectedChecks has it: the Elixir board's packet row is
@@ -1295,12 +1387,23 @@ func checksLine(leg string) string {
 }
 
 // planGateClaim is the sentence the board prints for what the leg's plan gate
-// checked before the clock. It names only checks the leg's runner makes: the
-// Elixir runner (bench/tables/elixir/runner.exs gates P2 to P4) pins the plan's
-// answer and repeats an ordinary load; it supplies no poisoned destination, so
-// its sentence claims none.
+// checked before the clock. It names only checks the leg's runner makes.
+//
+// The C runner (bench/tables/c/table_main.c, gates P2 to P4) derives the plan's
+// answer from the 64 identity records it already held byte for byte to the C++
+// reference (plan_expected_build, after bfb8be239's plan_expected), requires the
+// plan read to save to those bytes with the counters exactly docs/
+// FIXED-FORM-ALGORITHM.md section 5.4's (widened = 64 records x min(their_n,
+// my_n) = 64 x 64 = 4096, every other counter zero), reads again into a
+// poisoned destination (gate P3), and refuses an answer equal to the identity
+// corpus's (gate P4). The Elixir runner (bench/tables/elixir/runner.exs gates
+// P2 to P4) pins the same answer and counters and repeats an ordinary load; it
+// supplies no poisoned destination, so its sentence claims none.
 func planGateClaim(leg string) string {
-	if leg == "elixir" {
+	switch leg {
+	case "c":
+		return "its gate before the clock requires all 64 records to equal the plan's answer derived from the byte-gated identity corpus (every OLD field value, and the appended field at its declared default), the counters exactly widened 4096 (64 per record, min(their_n, my_n) of the stats bound) with every other counter zero, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
+	case "elixir":
 		return "its gate before the clock requires all 64 records to equal the plan's answer derived from the byte-gated identity corpus (every OLD field value, and the appended field at its declared default), the counters exactly widened 4096 (64 per record, min(their_n, my_n) of the stats bound) with every other counter zero, a second ordinary load saving to the same bytes, and an answer that is not the identity corpus's"
 	}
 	return "its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
@@ -1320,7 +1423,7 @@ func readArmIterationsFor(leg string) int64 {
 // rounds, control, verdicts, board, with the sitting's pinned core recorded.
 func planReadPassOn(langs []string, out string, rounds int, info buildInfo, receipt, lane string) (resultErr error) {
 	if len(langs) != 1 || !contains(readArmLegs, langs[0]) {
-		return errors.New("plan-read measures ONE leg per sitting, and only a leg whose runner has a read arm (-langs cpp, -langs c, or -langs elixir)")
+		return errors.New("plan-read measures ONE leg per sitting, and only a leg whose runner has a read arm (-langs cpp, -langs c, -langs cs or -langs elixir)")
 	}
 	leg := langs[0]
 	if rounds < 7 {
@@ -1345,8 +1448,9 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 			return fmt.Errorf("cached build lacks %s/%s; build it first (-mode build -langs %s)", leg, wire, leg)
 		}
 	}
-	// THE PLAN LANE runs where the leg's plan build ran: the C or Elixir leg,
-	// with the lineage corpus on the tree. That one build then times all three reads.
+	// THE PLAN LANE runs where the leg's plan build ran: the C, C# or Elixir
+	// leg, with the lineage corpus on the tree. That one build then times all
+	// three reads.
 	planRefusal := planLaneRefusal(fileExists)
 	readWire, plan := "table", false
 	switch leg {
@@ -1362,6 +1466,14 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 		planRefusal = elixirPlanRefusal(fileExists)
 		if planRefusal == "" && info.Binaries[binary("plan", "elixir")] == "" {
 			planRefusal = "the cached build has no Elixir plan modules; rebuild with -mode build -langs elixir"
+		}
+		if planRefusal == "" {
+			readWire, plan = "plan", true
+		}
+	case "cs":
+		planRefusal = csPlanRefusal(fileExists)
+		if planRefusal == "" && info.Binaries[binary("plan", "cs")] == "" {
+			planRefusal = "the cached build has no C# plan assembly (" + binary("plan", "cs") + "); rebuild with -mode build -langs cs"
 		}
 		if planRefusal == "" {
 			readWire, plan = "plan", true
@@ -1415,12 +1527,20 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 	if e = os.WriteFile(filepath.Join(tmp, "build.json"), append(b, '\n'), 0644); e != nil {
 		return e
 	}
-	serialize, flags := info.Runtimes["serialize"], info.Tools[leg+"_table_flags"]
+	serialize, flags, compiler := info.Runtimes["serialize"], info.Tools[leg+"_table_flags"], firstLine(info.Tools[leg])
 	switch leg {
 	case "c":
 		serialize = info.Runtimes["serialize.c"]
 		if plan {
 			flags = info.Tools["c_plan_flags"]
+		}
+	case "cs":
+		serialize = info.Runtimes["serialize.cs"]
+		if plan && info.Tools["cs_plan_flags"] != "" {
+			flags = info.Tools["cs_plan_flags"]
+		}
+		if compiler == "" {
+			compiler = firstLine(info.Tools["dotnet"])
 		}
 	case "elixir":
 		serialize = "none"
@@ -1429,7 +1549,7 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 		}
 	}
 	board := readArmBoard{
-		Host: info.Host, OS: info.OS, Arch: info.Arch, CPU: info.CPU, Compiler: firstLine(info.Tools[leg]), Flags: flags,
+		Host: info.Host, OS: info.OS, Arch: info.Arch, CPU: info.CPU, Compiler: compiler, Flags: flags,
 		Revision: info.Revision, Serialize: serialize, Dirty: dirty, Rounds: rounds, Iterations: iters, AnchorReps: anchorReps,
 		CorpusID: id, PlanRefusal: planRefusal, Window: "INVALID", Receipt: strings.TrimSpace(receipt), Absent: otherLegsBut(leg),
 		GatePlan: "— (absent)", Leg: leg, Lane: lane,

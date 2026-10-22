@@ -24,13 +24,13 @@ const (
 	// +4: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
 	// -13: the emitted loops range over their counts and the clamps call min/max (modernize-clean generated Go)
-	// +2: the open's bounded-work contract refuses an id table past 4096 entries (schema-shared #466, landed with schema-elixir)
+	// +2: the open's bounded-work cap and the unsigned-overflow ceiling clamp (schema-shared landing, SPEC-TABLES §3, schema#611)
 	goOneTableLineBudget = 9490
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
 	// -31: the emitted loops range over their counts and the clamps call min/max (modernize-clean generated Go)
-	// +2: the open's bounded-work contract refuses an id table past 4096 entries (schema-shared #466, landed with schema-elixir)
+	// +2: the open's bounded-work cap and the unsigned-overflow ceiling clamp (schema-shared landing, SPEC-TABLES §3, schema#611)
 	goExamplesLineBudget = 65237
 )
 

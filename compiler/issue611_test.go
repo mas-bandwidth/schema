@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -22,7 +21,7 @@ import (
 // clamp and the domain bound is the other: two clamps, and 4294967295 on the
 // field. The Go and C# walkers carried the narrow and landed 0.
 func TestIssue611JsonUnsignedOverflowLandsCeiling(t *testing.T) {
-	slowtest.Gate(t, "the Go toolchain and dotnet")
+	slowtest.Gate(t, "the Go and .NET toolchains (it builds and runs the generated unit)")
 	src := `package p
 fixed table Ship
 {
@@ -33,7 +32,8 @@ fixed table Ship
 	c := New()
 
 	t.Run("go", func(t *testing.T) {
-		files, err := c.Generate(u, "go", Options{})
+		// standalone keeps the probe module self-contained (docs/SPEC-TABLES.md §8.4)
+		files, err := c.Generate(u, "go", Options{"runtime": "standalone"})
 		if err != nil {
 			t.Fatalf("generate go: %v", err)
 		}
@@ -43,15 +43,7 @@ fixed table Ship
 				t.Fatal(err)
 			}
 		}
-		// the default unit imports the shared runtime (docs/SPEC-TABLES.md
-		// §8.4), which is where the JSON walker under test lives, so the
-		// module resolves tables/goruntime from this checkout
-		root, err := filepath.Abs("..")
-		if err != nil {
-			t.Fatal(err)
-		}
-		mod := "module testpkg\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => " + strconv.Quote(root) + "\n"
-		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module testpkg\n\ngo 1.24.0\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
 		testSrc := `package p
@@ -63,8 +55,8 @@ func TestIssue611(t *testing.T) {
 	var s Ship
 	ShipReset(&s)
 	var r TableReport
-	// FromJson is STRICT (SPEC-TABLES §6.5) and resets the value on a clamp,
-	// so the value a clamp LANDS is the tolerant read's
+	// the plain FromJson is the strict read and refuses a clamp
+	// (docs/SPEC-TABLES.md §16.11); the landed value is the tolerant read's
 	if !ShipFromJsonTolerant(&s, text, &r) {
 		t.Fatal("FromJsonTolerant failed")
 	}

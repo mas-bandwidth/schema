@@ -194,6 +194,7 @@ struct Report
     int unknown, kind_mismatch, widened, clamped, duplicate;
     bool malformed;
     bool refused;
+    int blob_shared; // the extra slots that named a blob another slot named (§2.5)
 };
 
 struct Codec
@@ -226,6 +227,7 @@ static void copy_report( const T & from, Report * to )
     to->duplicate = from.duplicate;
     to->malformed = from.malformed;
     to->refused = from.refused;
+    to->blob_shared = from.blob_shared;
 }
 
 template <typename T>
@@ -240,12 +242,15 @@ struct Erase
     static void reset( void * p ) { new ( p ) T(); }
 };
 
+// The surfaces ask what the TOLERANT read reports, so the codecs call the
+// named tolerant reads; the plain names are strict (docs/SPEC-TABLES.md
+// §16.11), as the Go driver's rows call ...Tolerant too.
 #define CODEC( unit_key, ns, type )                                                            \
     {                                                                                          \
         unit_key, #type,                                                                       \
         []( void * v, const uint8_t * b, int64_t n, Report * r ) {                             \
             ns::TableReport inner;                                                             \
-            bool ok = ns::type##Load( *(ns::type *) v, b, n, &inner );                         \
+            bool ok = ns::type##LoadTolerant( *(ns::type *) v, b, n, &inner );                 \
             copy_report( inner, r );                                                           \
             return ok;                                                                         \
         },                                                                                     \
@@ -255,7 +260,7 @@ struct Erase
         },                                                                                     \
         []( void * v, const char * t, int64_t n, Report * r ) {                                \
             ns::TableReport inner;                                                             \
-            bool ok = ns::type##FromJson( *(ns::type *) v, t, n, &inner );                     \
+            bool ok = ns::type##FromJsonTolerant( *(ns::type *) v, t, n, &inner );             \
             copy_report( inner, r );                                                           \
             return ok;                                                                         \
         },                                                                                     \
@@ -347,7 +352,7 @@ struct VarCodec
             int64_t need = ns::type##LoadMeasure( b, n );                                       \
             region.assign( (size_t) need, 0 );                                                  \
             ns::TableReport inner;                                                              \
-            const ns::type * root = ns::type##Load( region.data(), need, b, n, &inner );        \
+            const ns::type * root = ns::type##LoadTolerant( region.data(), need, b, n, &inner ); \
             copy_report( inner, r );                                                            \
             return (const void *) root;                                                         \
         },                                                                                     \
@@ -364,7 +369,7 @@ struct VarCodec
         []( const char * t, int64_t n, Report * r, std::vector<uint8_t> & bytes ) {             \
             ns::type##Builder builder;                                                          \
             ns::TableReport inner;                                                              \
-            bool ok = ns::type##FromJson( builder, t, n, &inner );                              \
+            bool ok = ns::type##FromJsonTolerant( builder, t, n, &inner );                      \
             copy_report( inner, r );                                                            \
             if ( !ok ) return false;                                                            \
             int64_t size = ns::type##Measure( builder );                                        \
@@ -986,6 +991,17 @@ static int surface_wire( const std::string & out )
             const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
             if ( root == NULL ) return 1;
             int64_t size = variable->measure( root );
+            if ( size < 0 && report.blob_shared > 0 )
+            {
+                // A blob two slots name has one owner too many, and every
+                // writer refuses it by name (docs/SPEC-TABLES.md §2.5): the
+                // row's answer is that refusal, as the Go driver's is.
+                std::string path = out + "/" + f[1] + ".absent";
+                FILE * file = fopen( path.c_str(), "wb" );
+                if ( file == NULL || fputs( "blob_shared", file ) < 0 ) { if ( file ) fclose( file ); return 1; }
+                fclose( file );
+                continue;
+            }
             if ( size < 0 ) return 1;
             scratch.assign( (size_t) size, 0 );
             if ( variable->save( root, scratch.data(), size ) != size ) return 1;
@@ -1429,6 +1445,37 @@ static const char * reason_name( blockdemo::TableRefuseReason reason )
         case blockdemo::count_over_extent_cap: return "count_over_extent_cap";
         case blockdemo::blob_over_size_cap: return "blob_over_size_cap";
         case blockdemo::data_cycle: return "data_cycle";
+        case blockdemo::invalid_value: return "invalid_value";
+        case blockdemo::allocation_failed: return "allocation_failed";
+        case blockdemo::wire_damaged: return "wire_damaged";
+        case blockdemo::malformed: return "malformed";
+        case blockdemo::clamped: return "clamped";
+        case blockdemo::kind_mismatch: return "kind_mismatch";
+        case blockdemo::base64_damaged: return "base64_damaged";
+        case blockdemo::base64_not_canonical: return "base64_not_canonical";
+        case blockdemo::integrity_mismatch: return "integrity_mismatch";
+        case blockdemo::non_finite: return "non_finite";
+        case blockdemo::blob_shared: return "blob_shared";
+        case blockdemo::previous_form: return "previous_form";
+        case blockdemo::newer_form: return "newer_form";
+        case blockdemo::message_form_as_file: return "message_form_as_file";
+        case blockdemo::layout_unknown: return "layout_unknown";
+        case blockdemo::layout_unsupported: return "layout_unsupported";
+        case blockdemo::layout_newer: return "layout_newer";
+        case blockdemo::layout_malformed: return "layout_malformed";
+        case blockdemo::layout_count_mismatch: return "layout_count_mismatch";
+        case blockdemo::layout_kind_unknown: return "layout_kind_unknown";
+        case blockdemo::layout_kind_invalid: return "layout_kind_invalid";
+        case blockdemo::layout_size_mismatch: return "layout_size_mismatch";
+        case blockdemo::layout_tree_unclosed: return "layout_tree_unclosed";
+        case blockdemo::layout_too_deep: return "layout_too_deep";
+        case blockdemo::layout_record_too_large: return "layout_record_too_large";
+        case blockdemo::plan_too_large: return "plan_too_large";
+        case blockdemo::no_layout: return "no_layout";
+        case blockdemo::batch_too_large: return "batch_too_large";
+        case blockdemo::text_ill_formed: return "text_ill_formed";
+        case blockdemo::count_over_bound: return "count_over_bound";
+        case blockdemo::length_over_bound: return "length_over_bound";
     }
     return "?";
 }

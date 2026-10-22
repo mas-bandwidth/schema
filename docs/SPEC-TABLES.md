@@ -816,12 +816,9 @@ compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
 `if` branches, and declared types as field groups. (The last two are the
 variable class's: a guarded field and a plain nested table are refused in a
 `fixed table` — §2.2.) A table's declared name and its fields' names pass the
-same target-name safety as packet declarations (SPEC.md §4.6), narrowed to the
-targets being generated: `schema generate --lang L` checks L's reserved words
-only, and `schema check` — and every command that names no target — checks
-every target's. A target with no reserved-word list of its own has no words
-to narrow to, so `generate` on it checks every target's words rather than
-none. Go escapes instead of refusing (SPEC.md §4.6, the Go escape): a table
+same target-name safety as packet declarations (SPEC.md §4.6): every
+command checks the reserved words of EVERY supported language, whatever
+target it generates. Go escapes instead of refusing (SPEC.md §4.6, the Go escape): a table
 named with one of Go's words is emitted as `type <name>_ struct` with every
 derived Go name on the escaped spelling, a field or variant so named needs no
 escape (Go emits it exported or prefixed), and the table's node type id, its
@@ -1978,8 +1975,9 @@ a pointer anywhere in the closure means no fixed pitch anywhere in it.
 **It needs no marker because it costs a declaration nothing.** The form is
 emitted ON THE SIDE, in files of its own, and a consumer that does not include
 them pays for none of it — the same shape §16's text form already takes, one
-step further (§19). What a fixed table's declaration owes the form is two
-names it may not spell, `magic` and `build_version` (§11), and nothing else.
+step further (§19). What a fixed table's declaration owes the form is three
+names it may not spell, `magic`, `build_version` and `byte_order`, the
+projection's generated prologue (§19.1, §11), and nothing else.
 
 The form itself — which arrays move out of line, what the projection is, what
 the pitch is, what it costs and what it refuses — is §19.
@@ -11095,14 +11093,14 @@ the wire, and keeps the flexibility that comes with it.
 
   | | C++ | C# | Go | JavaScript | Dart |
   |---|---|---|---|---|---|
-  | open | `bool XOpen( const XCook *& cook, const void * base, int64_t bytes )` | `bool XCook.Open(out XCook cook, IntPtr p, long n)` | `bool XOpen(cook *XCook, base unsafe.Pointer, length int64) bool` | `XCook.Open(bytes: Uint8Array)` — the handle, or `null` for bytes that are not this build's; a caller's error (no `Uint8Array`, a view at an unaligned `byteOffset`) throws with the fix named | `XCook? XCook.open(Uint8List? bytes, int at, int length)` — null is the refusal |
+  | open | `const X * XOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )` — the root, or NULL with the refusal named | `bool XCook.Open(out XCook cook, IntPtr p, long n)` | `bool XOpen(cook *XCook, base unsafe.Pointer, length int64) bool` | `XCook.Open(bytes: Uint8Array)` — the handle, or `null` for bytes that are not this build's; a caller's error (no `Uint8Array`, a view at an unaligned `byteOffset`) throws with the fix named | `XCook? XCook.open(Uint8List? bytes, int at, int length)` — null is the refusal |
   | open, typed reason | — | — | `func (cook *XCook) Open(base, length) error` returning `TableRefuseReason`, beside the bool `XOpen` that forwards to it | — | — |
   | the handle | the root pointer itself | `readonly struct XCook` | `type XCook struct { Region unsafe.Pointer; RegionLength int64 }` | `{ Bytes, View, Region, Length }` — the region's offset inside the caller's view, and its length | `final class XCook` over `bytes`, its `region` offset and `length` |
   | the root | the return | `cook.Root` / `cook.RootPointer` | `cook.Root() *XRow` | `cook.Region`, the byte offset the root's accessors take | `cook.root(into)` — the cursor `cook.cursor()` made, lent and moved onto the root; no allocating twin |
   | deref | `const T * t = XAt( slot )` | `XRow* r = Schema.XAt(slot)` | `r := XAt(slot)` with `slot *int64`; the signature is `XAt(slot *int64, arena ...*TableArena)`, the variadic arena naming the unlocked builder's storage | `XCook.At(cook, slot)` — the target's offset, or `null` for a null reference; a delta that leaves the region throws a `RangeError` naming the cook as corrupt | `row.<field>(into)` moves a lent `TRow` cursor; an escaping delta answers `TableCookRef.outside` |
   | the record | the generated struct | `XRow` (§11's claimed suffix) | `XRow`, the same claim | `XRow`, a frozen object of accessors over `(view, at)`: no struct to declare, so the offsets ARE the record | `XRow`, the same claim — a cursor of `(view, at)`, since Dart has no struct |
-  | the descriptors | `XCook::Type()` | `XCook.Type` | `cook.Type() *TableCookInfo` | `XCook.Type` | `XCook.type`, a `const TableCookInfo` |
-  | §7.1's facts | `XCook::RegionAlignment` etc. | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them; `RegionAlignment()` is the UNIT's ceiling, the max over every cook closure, and not the opened file's per-region header word | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
+  | the descriptors | `XTableType()` | `XCook.Type` | `cook.Type() *TableCookInfo` | `XCook.Type` | `XCook.type`, a `const TableCookInfo` |
+  | §7.1's facts | `sizeof( X )` and `alignof( X )`, which `XOpen` holds the header to; the region alignment is the header's own word | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them; `RegionAlignment()` is the UNIT's ceiling, the max over every cook closure, and not the opened file's per-region header word | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
 
   **THE GENERATED STRUCT IS THE COOKED RECORD**, and the backend asserts it
   rather than assuming it: every record a unit's files declare carries
@@ -12353,7 +12351,7 @@ written rule before this section, so the rule is here, one shape for both:
   `is_array` says, exactly as it says it for a `[..N]T`, and the `type_name`
   says which of the two constructs it is, `map[...]` or the element's own,
   the way `bytes` separates a byte buffer from an array of `u8` (below).
-- **`element_size` is the pitch**: `sizeof( Entry )` for a map, `sizeof( T )`
+- **`elem_size` is the pitch**: `sizeof( Entry )` for a map, `sizeof( T )`
   for a list. It is the stride a walker steps, as on every array line.
 - **`counted` is set and `count_offset` names the `int32` count**, which sits
   beside the reference in the sixteen-byte slot (§7.2), so a walker reads the
@@ -12395,15 +12393,15 @@ cannot spell for itself it still cannot spell: placing an entry by key in a
 the walk has no name for, so a resolver stays where a resolver is needed, and
 it is one column, `place( worker, slot, key, key_length, key_value )`, which a
 map reads as an insert by key and a list reads as an append. The SHAPE is read
-from `kind`, `is_array`, `counted` and `element_size` like every other
-array's, the container from `UnboundedContainer`, the count from
-`count_offset`, and the array from the reference at `offset`, so beside that
-one column nothing about the two constructs is inferred from a column of
-their own. A unit that has neither construct carries no `place`
+from `kind`, `is_array`, `counted`, `elem_size` and `array_bound = 0` like
+every other array's, the count from `count_offset`, and the array from the
+reference at `offset`, so nothing about the two constructs is inferred from a
+column of their own. A unit that has neither construct carries no `place`
 column, which is §2.2's gate doing its job.
 
 **Go spells the same two constructs without a `place` column.** Its `List`
-and `Map` bools say which of the two a field is, `ElemAlign` carries the
+and `Map` bools say which of the two a field is, `UnboundedContainer` is
+the one tell that its container declares no bound, `ElemAlign` carries the
 element's alignment, and the JSON graph walk's own `mapPlace` and `listAdd`
 callbacks do the placement, so `place` is the reference's spelling of the
 resolver rather than a column of the vocabulary.
@@ -15955,7 +15953,9 @@ conforming parser can read. Held first in Go, in both of its text readers:
 the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
 pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
 `scanStored` and `scanWString`), which refuses with the same `Malformed` and
-the same `Reason`; every other backend keeps its behaviour until its port.
+the same `Reason`. The C walk carries it too (`table_json_scan_unit`; C's report
+has no `Reason` text, so it answers `Malformed`); every other backend keeps its
+behaviour until its port.
 **The refusal comes BEFORE any clamp**: an ill-formed byte at or past a
 field's bound spells no code point, so there is nothing to clamp, and the read
 refuses by name rather than cutting the byte away and counting `clamped`
@@ -16041,7 +16041,9 @@ the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
 pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
 `scanStored` and `scanWString`), which refuses with the same `Malformed` and
 the same `Reason`, so a pack never encodes a wire its own decode calls
-`malformed`; every other backend keeps its behaviour until its port.
+`malformed`. The C walk carries it too (`table_json_scan_text`, and the wide
+scan), answering `Malformed`; every other backend keeps its behaviour until its
+port.
 
 ### 16.4 The key: `json`
 
@@ -17734,8 +17736,7 @@ compiled as one directory.
 **These are the §4.1 table's BASELINE column, and its fixtures are the pin**
 (`TestEvolutionTableFrames`): this subsection derives its list from that table
 rather than restating it, and a verdict that moves there and not here is the
-drift the golden exists to catch. **The BLOCK FORM takes no row here at all**
-(§18.1). A table's layout is a
+drift the golden exists to catch. **The BLOCK FORM takes no row here at all** (§18.1). A table's layout is a
 same-build contract that a compiler holds (§19.3), so an edit that moves an
 offset, a size or a pitch is a build error on both generated sides before it
 is anything else; a baseline row would only repeat the compiler, and a
@@ -17978,14 +17979,16 @@ to compile; the block form's cost is in the header too — a projection struct
 and a wall of asserts per table — so its declarations move out with it.
 
 **The zero-cost gate, and it is a gate rather than a hope** (§2.2): **the
-Table headers are BYTE-IDENTICAL with or without the Block files existing**,
+Table headers are BYTE-IDENTICAL with or without the block form**,
 and the Block files cost nothing unless they are included. It is held in two
 halves, because they answer different questions: the build fails if one symbol
 of the block machinery — a storage type, a `Begin`, an `Open`, a row accessor,
 a layout constant — appears in a Table source, AND every Table source is
-byte-compared against a pin the PRE-BLOCK compiler wrote, so the identity is
-measured against a build that could not emit a Block file at all rather than
-against the emitter's own output. The descriptor
+byte-compared against the SAME build with the block form removed from its
+emitters, so the identity is measured against a build that emitted no Block
+file at all rather than against frozen text. Both arms move together, so the
+comparison survives any legitimate Table-emitter change and goes red when the
+block form leaks into a Table source. The descriptor
 COLUMNS (§8) the block form reads are not machinery and ride in every unit as
 every other column does, because they describe the language.
 
@@ -18404,7 +18407,9 @@ schema name, as everywhere else in that backend.
   §7's own order so that one enum and one order serve both accelerators: the
   magic read bytewise, the byte order it establishes, the build version
   against this build's own, then each array's PITCH against this build's own,
-  its COUNT against the declared maximum, its `offset_of` and its extent
+  its COUNT against the declared maximum, its `offset_of` (at or past the end
+  of the projection, and a multiple of the array's start alignment,
+  `max( 64, alignof( element ) )`, §19.1) and its extent
   inside the block, THEN the used extent against the `bytes` the caller
   passed, and LAST the base's alignment, which is the only clause that reads
   nothing out of the block. **The used extent sits after the arrays because it
@@ -18446,11 +18451,12 @@ schema name, as everywhere else in that backend.
   block, void * base, int64_t bytes, TableRefuseReason * reason = NULL )`,
   written on the refusal path only, and every prologue word is read bytewise
   so that the base's alignment can be the last clause. **The bytes test is the
-  WHOLE PROJECTION in Go and the PROLOGUE in C++**: Go answers `truncated`
-  when the bytes are fewer than the whole projection, before it reads the
-  magic, and C++ answers `truncated` when the bytes are fewer than its
-  prologue. A null base answers `unaligned_base` on the readings §7 gives
-  those two.
+  WHOLE PROJECTION in Go and in C++**: Go answers `truncated` when the bytes
+  are fewer than the whole projection, before it reads the magic, and C++
+  answers `truncated` when the bytes are fewer than its projection (the
+  projection, not the 24-byte prologue, because the per-array triples the
+  next clauses read sit in it). A null base answers `unaligned_base` on the
+  readings §7 gives those two.
 
   **THE READ SIDE TAKES A CONST OVERLOAD, and the surface SPLITS the way C#'s
   already does.** A block is memory another build wrote, so a consumer opens

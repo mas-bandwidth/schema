@@ -44,16 +44,23 @@ void replay<T>(
 void contracts() {
   final wire = ByteData(1024);
   final v = d.WideSeven();
-  for (final n in [-1, 8, 1]) {
+  // The writer's bounds and null-unit contract is debug-only (an assert), so
+  // it is checked where asserts run and is compiled out of the AOT driver.
+  var asserts = false;
+  assert(asserts = true);
+  for (final n in asserts ? [-1, 8, 1] : const <int>[]) {
     v.textLength = n;
     var refused = false;
     try {
       d.writeWideSeven(v, wire);
-    } on ArgumentError {
+    } on AssertionError {
+      // the wstring write contract is debug-only (an assert, run here under
+      // --enable-asserts), as every Dart write-side check is
       refused = true;
     }
     check(refused, 'writer bounds/null');
   }
+  v.textLength = 1;
   v.text[0] = 0xd800;
   d.writeWideSeven(v, wire);
   check(!d.readWideSeven(v, wire, 35), 'unpaired high');

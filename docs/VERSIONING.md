@@ -86,7 +86,8 @@ what proves them across releases, #463, named in its section below.
     `unknown` class alone, so a load that reported `kind_mismatch`, `clamped`
     or `malformed` still loses what those counters name. It is opt-in, it
     allocates nothing, and every gap counts `retain_lost`. Specified in
-    SPEC-TABLES.md §6.6. The C++ reference carries it; the eight ports do not.
+    SPEC-TABLES.md §6.6. The C++ reference, C# and Go carry it; C, Rust, Java,
+    JavaScript, Dart and Elixir do not yet.
 11. **This page moves with the facts.** #446's golden now reads the evolution
     table below — `TestEvolutionTableFrames` in `internal/baseline` runs one
     fixture per row through all three frames and pins the verdicts — and the
@@ -319,7 +320,7 @@ committed rule and say what the repository does today.
 | `\| required` removed from a table field | nothing — the writer starts eliding at the default again | passes | **nothing**, and the protocol id does not move either |
 | a table renamed bare | nothing when it is held by value (a declaration name is not on the wire); every pointer to it reads null and counts `unknown` when it is a pointer target | warns | moves |
 | a table renamed under `was` | nothing: the node type id is the old name's hash (SPEC-TABLES.md §5) | passes, and the file records the declared name beside the wire name | **nothing**, and the protocol id does not move either |
-| a retired name re-added with a new meaning | **silent** | **refuses**: the retired-names ledger records the name and id and names the entry, until `--update --reason` acknowledges the resurrection (#441) | moves |
+| a retired name re-added with a new meaning | **silent** | **refuses**: the retired-names ledger and `schema.lock` record retired field, table and enum-value names and refuse reusing one in the same scope with a new type or meaning; re-adding it with the same meaning is allowed only when `--update --reason` acknowledges the resurrection in `tables.baseline` (#441) | moves |
 | a language added to the build | nothing | nothing | nothing |
 
 Enum, flags and union declarations are shared by both wires, which is why some
@@ -457,8 +458,14 @@ to new. `--update` without a reason is refused. The history survives every
 later `--update` verbatim. A plain removal writes "no compatibility-affecting
 edits" in the history, because the wire absorbs it, and leaves a `## retired`
 ledger entry beside it: the retired section records the name, id, vocabulary
-and date, `--update` appends to it and never drops it, and a re-added name or
-id is refused until `--update --reason` acknowledges the resurrection (#441).
+and date, `--update` appends to it and never drops it, and a re-added field,
+table or enum-value name or id is refused by name until `--update --reason`
+acknowledges the resurrection with the same meaning (#441). In `schema.lock`,
+deprecation and table retirement are one-way: keeping a `| deprecated` field in
+place at its locked slot with its locked type and meaning is allowed, and
+re-adding a retired field, table or enum-value name in the same scope with a
+new type or meaning (or un-retiring a retired `fixed table`) is refused by
+name.
 
 **Merging two branches of one schema.** Merge the `.schema` text; keep either
 parent's baseline; run the check, whose refusals name every semantic
@@ -897,12 +904,42 @@ each to a released tag, never to `main`, and newer runtimes keep working with
 older generated code. Dart, Java and Elixir generate self-contained output
 and need only their pinned SDKs.
 
-**Release process.** Releases are tagged `vMAJOR.MINOR.PATCH` on `main`. CI
-must be green on the tagged commit, including the full certification run
-across every language. The build stamps `git describe` into the binary, so
-`schema version` on a release build reports the exact tag and on a
-development build the tag plus commits-since plus hash; quote that line in
-bug reports, because a refusal message cites the spec that binary was built
+**Tags: a promotion tag on every main merge, a version tag only on a
+release.** Two kinds of tag name a commit of this repository, and nobody makes
+either by hand.
+
+- **Promotion tags, `main-<shorthash>`.** Every promotion to `main` (the
+  merge commit that lands the development line on `main`) is tagged
+  `main-` followed by the first 12 hex digits of that commit's own hash, so
+  `main-0123456789ab` names exactly commit `0123456789ab...`.
+  `.github/workflows/promotion-tag.yml` makes it on every push to `main` by
+  running `make promotion-tag PUSH=1`. A commit that already carries a
+  `main-` tag is skipped, never retagged. That workflow is a seconds-long job
+  that runs no build and no test, so it is not the heavy suite the owner's
+  NO PUSH TRIGGER rule in `certify.yml` keeps off push; certification of
+  `main` stays nightly and dispatched.
+- **Release tags, `vMAJOR.MINOR.PATCH`.** A release is made only by
+  `.github/workflows/release.yml`, dispatched by hand with the version, which
+  runs `make release VERSION=vX.Y.Z PUSH=1`. It refuses, by name, a version
+  that does not parse as `vMAJOR.MINOR.PATCH` (no prefix-less, pre-release or
+  build forms, no leading zeros), a version that is not greater than the
+  newest `v` tag already in the repository, and a commit that is not on
+  `main`. It tags that one commit with that one annotated tag and pushes
+  nothing else. CI must be green on the commit, including the full
+  certification run across every language, before the release is dispatched.
+
+The rules for which number a release takes are the ones above; the tooling
+checks the form and the order, and the person dispatching it chooses the
+number. Between releases an adopter pins a promotion tag
+([USAGE.md](USAGE.md#embedding-the-compiler)); a Go module pin on
+`main-<shorthash>` resolves to that commit's pseudo-version, which is the same
+commit the tag names.
+
+The build stamps `git describe --tags --match 'v[0-9]*'` into the binary, so
+`schema version` on a release build reports the exact release tag and on any
+other build the newest release tag plus commits-since plus hash (promotion
+tags are not version numbers and are not matched); quote that line in bug
+reports, because a refusal message cites the spec that binary was built
 against and a stale binary will contradict the current page.
 
 ## Patterns
@@ -1120,7 +1157,6 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #463: the previous-release differential gate — the corpus generated by the
   previous release and the new one, byte-compared under an equal id.
 - #432: the cook triple, and the byte-order sentences in five places.
-- #441: the retired-names ledger.
 - #446: the evolution table's fixtures.
 - #525: retain-unknown in the eight ports. The C++ reference, the two report
   counters, `internal/tablewire`'s own retention, the wire fuzzer's retention

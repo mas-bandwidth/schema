@@ -3,15 +3,15 @@ package armdemo
 
 table Chain
     field links id=0x5cc201a9f1b8274e kind=14 elem=15 union=Carry array=unbounded
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Gate
     field reach id=0x891da1f305deb858 kind=15 union=Reach
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Hand
     field entries id=0xc5b2a72c0845a253 kind=14 elem=15 union=Carry array=bounded bound=2
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Holder
     field carry id=0xafcd9a3b099f8ef0 kind=15 union=Carry
@@ -32,15 +32,15 @@ table Only
 
 table Rack
     field items id=0x3e7884bf4f412c6f kind=14 elem=15 union=Slots array=unbounded
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Ring
     field items id=0x3e7884bf4f412c6f kind=14 elem=15 union=Slot array=unbounded
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Tray
     field entries id=0xc5b2a72c0845a253 kind=14 elem=15 union=Slots array=bounded bound=2
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Twig
     field inner id=0x2d4c068f5f889287 kind=15 union=Inner
@@ -63,7 +63,7 @@ union Reach
     arm plain id=0xfd4d194e1652b207 kind=4
 
 union Slot
-    arm node id=0x3c2f1bbad18642ad kind=17 type=Node
+    arm vertex id=0x3c2f1bbad18642ad kind=17 type=Node was=node
     arm plain id=0xfd4d194e1652b207 kind=4
 
 union Slots
@@ -79,3 +79,11 @@ union Slots
 
 ### 2026-09-05 (UTC) — the array-of-pointers arm shapes Rack and Tray join the union-arm corpus (schema#578)
 - no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-10-21 (UTC) — schema#reserved-words: fields renamed off every supported language's reserved words (SPEC §4.6, Glenn 2026-10-21) under was =, so the wire ids hold; the JSON keys follow the new names
+- Chain.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Gate.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Hand.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Rack.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Ring.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Tray.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]

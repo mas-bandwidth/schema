@@ -1,0 +1,47 @@
+name: Promotion tag
+
+# EVERY PROMOTION TO MAIN IS TAGGED main-<shorthash> (Glenn, 2026-10-15): the
+# merge commit that lands the development line on main gets a tag named by its
+# own hash, 12 hex, so an adopter pins a tag rather than a pseudo-version
+# between releases. A commit that already carries a main- tag is skipped, not
+# retagged. Nobody tags by hand; this file and `make promotion-tag` are the
+# only way a promotion tag is made. The policy is docs/VERSIONING.md ("The
+# compiler's own version"); the names and refusals are tools/releasetag.
+#
+# THIS IS A PUSH TRIGGER, AND IT DOES NOT BREAK certify.yml's NO PUSH TRIGGER
+# RULE. That rule keeps the thirty-minute certification suite off push because
+# a burst of merges queued a full matrix per intermediate commit. This job
+# builds nothing and tests nothing: it resolves one commit, asks git which
+# tags point at it, and makes and pushes at most one tag, in seconds, on one
+# hosted runner. Certification of main stays nightly and dispatched.
+
+on:
+  push:
+    branches: [main]
+
+# One tag per commit, never cancelled: a later push must not cancel the tag of
+# an earlier promotion, and each run tags only its own commit.
+concurrency:
+  group: promotion-tag-${{ github.sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the tags already on the commit decide skip-or-tag, so fetch them
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: tag the promotion main-<shorthash>
+        env:
+          GOFLAGS: -mod=readonly
+        run: make promotion-tag RELEASE_COMMIT="$GITHUB_SHA" PUSH=1

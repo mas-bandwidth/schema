@@ -49,7 +49,7 @@ void check( bool ok, const char * what )
 uint8_t byte_of( const void * p )
 {
     uint8_t v = 0;
-    std::memcpy( &v, p, 1 );
+    std::memcpy( (void *) &v, p, 1 );
     return v;
 }
 
@@ -94,7 +94,7 @@ void bool_byte_two_case()
     back.trail = 0x5A5A5A5Au;
     hb::TableReport r;
     std::vector<hb::TableFixedEntry> plan( 256 );
-    const int64_t n = hb::HostileFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
+    const int64_t n = hb::HostileFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(),
                                             plan.data(), 256, NULL, &r );
     check( n == 1 && !r.refused && !r.malformed,
            "bool_byte_two: a bool byte of 2 is a CONTENT fact, so the record still reads" );
@@ -119,7 +119,7 @@ void present_byte_two_case()
     back.trail = 0x5A5A5A5Au;
     hb::TableReport r;
     std::vector<hb::TableFixedEntry> plan( 256 );
-    const int64_t n = hb::HostileFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
+    const int64_t n = hb::HostileFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(),
                                             plan.data(), 256, NULL, &r );
     check( n == 1 && !r.refused && !r.malformed,
            "present_byte_two: a present byte of 2 is a CONTENT fact, so the record still reads" );
@@ -196,7 +196,7 @@ void compiled_plan_normalises_case()
     back.trail = 0x5A5A5A5Au;  // and the one after it
     vnew_hostile_bool::TableReport r;
     std::vector<vnew_hostile_bool::TableFixedEntry> plan( 256 );
-    const int64_t n = vnew_hostile_bool::HbbFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
+    const int64_t n = vnew_hostile_bool::HbbFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(),
                                                        plan.data(), 256, NULL, &r );
     check( n == 1 && !r.refused && !r.malformed,
            "compiled_norm: an OLD record read through a plan compiled from its layout still reads" );
@@ -232,7 +232,7 @@ void bool_run_sentinels_case()
     back.trail = 0x5A5A5A5Au;
     vnew_hostile_bool::TableReport r;
     std::vector<vnew_hostile_bool::TableFixedEntry> plan( 256 );
-    const int64_t n = vnew_hostile_bool::HbbFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
+    const int64_t n = vnew_hostile_bool::HbbFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(),
                                                        plan.data(), 256, NULL, &r );
     check( n == 1 && !r.refused && !r.malformed, "bool_run: the record reads" );
     bool run_ok = true;

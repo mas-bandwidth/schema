@@ -112,7 +112,7 @@ int main( void )
     const int64_t n = RootFixedLoad( &back, 1, file, len, plan, 4096, NULL, &r );
     if ( n != -1 ) { printf( "count-op: loaded %%lld, want a refusal\n", (long long) n ); return 1; }
     if ( !r.refused ) { printf( "count-op: the read failed without a named refusal\n" ); return 1; }
-    if ( r.reason != layout_record_too_large ) { printf( "count-op: reason %%d, want layout_record_too_large\n", (int) r.reason ); return 1; }
+    if ( r.reason != TableMessageReason::layout_record_too_large ) { printf( "count-op: reason %%d, want TableMessageReason::layout_record_too_large\n", (int) r.reason ); return 1; }
     printf( "count-op refused by name\n" );
     return 0;
 }

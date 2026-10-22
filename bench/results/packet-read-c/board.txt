@@ -1,0 +1,85 @@
+# bench/results/packet-read-c/board.txt — the C line of the read-arm board, two sittings
+# printed by bench/paired (-mode plan-read -langs c -lane 5) at b339d654571dd5cf92ad13479a7252da8ae134bf on amd-3 (hostname b3)
+# raw rounds (ns/record, round 0..6):
+#   sitting-1 identity_read 252.9 250.4 253.0 265.7 250.2 251.0 255.5
+#   sitting-1 plan_read     730.3 705.9 712.4 713.8 710.4 707.5 724.0
+#   sitting-1 packet_read   164.3 164.2 164.5 164.4 164.4 164.5 164.6
+#   sitting-2 identity_read 254.6 251.9 250.8 264.8 250.5 250.8 253.2
+#   sitting-2 plan_read     703.3 707.0 706.2 711.9 731.3 713.0 715.1
+#   sitting-2 packet_read   164.8 164.7 164.5 164.5 164.5 164.3 164.2
+
+======================================================================== sitting-1
+# The read arm: C
+
+```
+# fixed form: the identity lane, the plan lane, and the same leg's packet wire
+# host b3 / arch linux/amd64 / AMD Ryzen 7 255 w/ Radeon 780M Graphics / rev b339d654571dd5cf92ad13479a7252da8ae134bf (dirty, build-regenerated only: generated/bench/c/Bench.h, generated/bench/paired/c/Bench.h, generated/bench/paired/c/BenchTable.h, generated/bench/paired/cpp/BenchTable.h) / serialize ae609eba24ed6fd6f2defee8aee2d735ceb88a66 / lane 5 / rounds 7
+# corpus_id(identity) 0930f96c8320a75d / corpus_id(plan) 0930f96c8320a75d (one invocation, one corpus: identity, lineage and packet files)
+# window: OK / control_delta_pct 0.03 (bound 5) / load1 2.95–7.55
+# iterations: 4,000,000 records per sample per wire, 1 discarded warmup + 1 measured run per round (§2.1, §2.4)
+# bytes_per_op: fixed 1264.3 B/record, plan (lineage file) 995.4 B/record, packet 438 B/record (§5.3 rule 2 — the division is this driver's alone)
+# checks: table=contract, packet C/C++/C#=removed, packet Go=always (§1.9)
+# anchor: none for C (SPEC-TABLES §3.4's straight-line reference, test/bench/fixedform_measure.cpp, is the C++ leg's alone)
+
+leg      identity read    plan read    packet read    GATE identity  GATE plan    plan/identity
+         ns/record        ns/record    ns/record      vs packet      vs packet    x (reported)
+c               250.2        705.9          164.2    FAIL           FAIL         2.82
+cpp                 —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+go                  —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+rust                —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+cs                  —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+js                  —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+java                —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+dart                —            —              —    —              —            —     no leg in this driver yet (bench/tables/dart is not built, generated or measured here)
+elixir              —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+```
+
+Lower is better. The ns columns are each row's BEST round (§2.2); the GATE compares best against best, per lane, never an average; plan/identity is REPORTED, never a verdict.
+
+| row | best ns/record | median | worst | spread (rates) | mark |
+|---|---:|---:|---:|---:|---|
+| c `bench_fixed_read` (identity lane, family table) | 250.2 | 252.9 | 265.7 | 5.9% |  |
+| c `bench_plan_read` (plan lane, family table) | 705.9 | 712.4 | 730.3 | 3.4% |  |
+| c `bench_mixed_read` (packet read, family gen) | 164.2 | 164.4 | 164.6 | 0.2% |  |
+
+Every row comes out of ONE `--read-arm` invocation per round, the wires rotating which runs first; none is derived from a round trip (§2.9). The identity lane's op is one record of the shipped `LOAD` of the whole 64-record file (hash check and plan run inside the clock); the packet read's op is one read stream plus the generated read of one 438-byte record. The plan lane's op is one record of the same `LOAD` over the lineage file (64 records one generation back, read through the static plan the lock's lineage entry compiled into the unit generated beside it; its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's).
+
+Compiler: cc (Ubuntu 15.2.0-16ubuntu1) 15.2.0. Flags: `-std=c99 -Wall -Wextra -Werror -O3 -DNDEBUG -DBENCH_OPT="O3" -ffp-contract=off -DBENCH_MATCHED -DBENCH_PLAN`. Window receipt: READY 2026-10-16T03:40:49Z b3 load1 7.55, no competing build or bench process by name (attempt 4), worker rowan c-fixed-read w3 unattended, no human operator; START sitting-1 taskset -c 5, governor powersave
+
+======================================================================== sitting-2
+# The read arm: C
+
+```
+# fixed form: the identity lane, the plan lane, and the same leg's packet wire
+# host b3 / arch linux/amd64 / AMD Ryzen 7 255 w/ Radeon 780M Graphics / rev b339d654571dd5cf92ad13479a7252da8ae134bf (dirty, build-regenerated only: generated/bench/c/Bench.h, generated/bench/paired/c/Bench.h, generated/bench/paired/c/BenchTable.h, generated/bench/paired/cpp/BenchTable.h) / serialize ae609eba24ed6fd6f2defee8aee2d735ceb88a66 / lane 5 / rounds 7
+# corpus_id(identity) 0930f96c8320a75d / corpus_id(plan) 0930f96c8320a75d (one invocation, one corpus: identity, lineage and packet files)
+# window: OK / control_delta_pct 0.28 (bound 5) / load1 1.56–2.95
+# iterations: 4,000,000 records per sample per wire, 1 discarded warmup + 1 measured run per round (§2.1, §2.4)
+# bytes_per_op: fixed 1264.3 B/record, plan (lineage file) 995.4 B/record, packet 438 B/record (§5.3 rule 2 — the division is this driver's alone)
+# checks: table=contract, packet C/C++/C#=removed, packet Go=always (§1.9)
+# anchor: none for C (SPEC-TABLES §3.4's straight-line reference, test/bench/fixedform_measure.cpp, is the C++ leg's alone)
+
+leg      identity read    plan read    packet read    GATE identity  GATE plan    plan/identity
+         ns/record        ns/record    ns/record      vs packet      vs packet    x (reported)
+c               250.5        703.3          164.2    FAIL           FAIL         2.81
+cpp                 —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+go                  —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+rust                —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+cs                  —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+js                  —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+java                —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+dart                —            —              —    —              —            —     no leg in this driver yet (bench/tables/dart is not built, generated or measured here)
+elixir              —            —              —    —              —            —     runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)
+```
+
+Lower is better. The ns columns are each row's BEST round (§2.2); the GATE compares best against best, per lane, never an average; plan/identity is REPORTED, never a verdict.
+
+| row | best ns/record | median | worst | spread (rates) | mark |
+|---|---:|---:|---:|---:|---|
+| c `bench_fixed_read` (identity lane, family table) | 250.5 | 251.9 | 264.8 | 5.4% |  |
+| c `bench_plan_read` (plan lane, family table) | 703.3 | 711.9 | 731.3 | 3.9% |  |
+| c `bench_mixed_read` (packet read, family gen) | 164.2 | 164.5 | 164.8 | 0.4% |  |
+
+Every row comes out of ONE `--read-arm` invocation per round, the wires rotating which runs first; none is derived from a round trip (§2.9). The identity lane's op is one record of the shipped `LOAD` of the whole 64-record file (hash check and plan run inside the clock); the packet read's op is one read stream plus the generated read of one 438-byte record. The plan lane's op is one record of the same `LOAD` over the lineage file (64 records one generation back, read through the static plan the lock's lineage entry compiled into the unit generated beside it; its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's).
+
+Compiler: cc (Ubuntu 15.2.0-16ubuntu1) 15.2.0. Flags: `-std=c99 -Wall -Wextra -Werror -O3 -DNDEBUG -DBENCH_OPT="O3" -ffp-contract=off -DBENCH_MATCHED -DBENCH_PLAN`. Window receipt: READY 2026-10-16T03:42:03Z b3 load1 2.95, no competing build or bench process by name (attempt 5), worker rowan c-fixed-read w3 unattended, no human operator; START sitting-2 taskset -c 5, governor powersave

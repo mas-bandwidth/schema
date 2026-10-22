@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <string.h> // the prefill's scalar-array fills
 #include <stddef.h> // offsetof, for the reflection descriptors
+#include <string> // the hand-editable text form's document (§16.9.3)
 
 // ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
 //
@@ -72,62 +73,143 @@
 
 namespace tabledemo {
 
+
+
+// WHY A FILE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5, §7, §19.2): the
+// one vocabulary a cook's Open, a block's BlockOpen and a load measure's -1
+// share, because a caller asking "why can I not have this file" is
+// asking one question whichever call refused it. The FIRST failing clause names the
+// reason, in the order §7 enumerates, so one file answers one value in every
+// language. A refusal moves no counter, and a match writes nothing: the
+// out-parameter is touched on the refusal path only.
+//
+// The MESSAGE FORM's names (TableMessageReason, §3.3) are values of this same
+// enum, appended in Go's order: one vocabulary, whichever call refused.
+enum TableRefuseReason : int32_t
+{
+    ok,                    // no clause failed: the only value beside a non-null root (§7)
+    not_a_cook,            // the magic is neither this build's constant nor its byte reversal, or the byte-order word contradicts the magic
+    foreign_order,         // the magic byte-reversed: a cook of the other byte order (§7.1)
+    wrong_build_version,   // the build_version word is not this build's (§20)
+    reserved_not_zero,     // a reserved header word is not zero (§7.1)
+    bad_alignment,         // the alignment word is not a power of two, is below eight, is above sixty-four, or is not a multiple of the root's own alignof
+    truncated,             // the part lengths against the caller's length, or a data part too short to hold the root
+    unaligned_base,        // the pointer the caller passed is not aligned for the region: the caller's defect, not the file's
+    bad_layout,            // BlockOpen (§19.2): a pitch, a count, an offset or an extent that disagrees with this build's or leaves the block
+    unknown_form,          // at a MEASURE (§3, §6.5): a form byte this build does not carry, refused before any read
+    count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
+    count_over_extent_cap, // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
+    blob_over_size_cap,    // a blob whose length is past the derived-size cap (§3.1, §11)
+    data_cycle,            // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
+    invalid_value,         // a writer handed a value outside the declaration: a count, a value or an ordinal past its bound, or ill-formed text (§3.1, §11)
+    allocation_failed,     // an allocation the codec asked for was refused (§7.6)
+    wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
+    malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
+    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
+    kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
+    base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
+    base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
+    integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
+    non_finite,            // a plain float the read landed as a NaN or an infinity (§3.3); the report's reason is non_finite: <field>
+    blob_shared,           // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
+    // THE FORM AND FIXED-FORM NAMES (§3, §3.3, §3.4, §6.5), which the C++ port
+    // once kept in a second, message-path enum. Go appended them here, in
+    // this order, and the one vocabulary is one enum in every target.
+    previous_form,           // a FORM BYTE this form is ahead of: form 1 handed to a fixed reader is the OLDER form, not a newer one (§3, §3.4)
+    newer_form,              // a FORM BYTE this reader does not carry (§3)
+    message_form_as_file,    // a form 2 wire where a FILE was expected: its table is somewhere else
+    layout_unknown,          // a fixed-form file whose layout hash this reader has no lineage for (§3.4, §21.3)
+    layout_unsupported,      // a hash in the lineage below the floor; the report carries the file's hash (bill §12.4)
+    layout_newer,            // a hash this reader has never locked, proved newer; reserved, never emitted (algorithm §5.3)
+    layout_malformed,        // bytes handed to the fixed form as a layout that are not one
+    layout_count_mismatch,   // the entry count does not fit the layout's length exactly
+    layout_kind_unknown,     // a kind OUTSIDE §3's closed set: a newer form byte, not a newer layout
+    layout_kind_invalid,     // a kind this build knows, used in a way its own definition does not allow
+    layout_size_mismatch,    // an entry's stated constant size is not the one its kind or its children fix
+    layout_tree_unclosed,    // the pre-order child walk does not consume exactly the entries
+    layout_too_deep,         // a nesting depth past what this reader walks: a bound on the WALK
+    layout_record_too_large, // a record size that overflows, or is past §3.4's 65536-byte bound
+    plan_too_large,          // a layout whose compiled plan does not fit the caller's plan storage: this codec never allocates
+    no_layout,               // a fixed-form record whose hash names no LAYOUT this reader holds
+    batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
+    text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
+    count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
+    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+};
+
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
 // is not one of §4's events: nothing is decoded, no counter moves and no
 // damage is reported, so five zero counters and a false flag are what a clean
 // read prints too and only the verdict tells them apart. The reason says which
 // refusal it was.
 //
-// This is the MESSAGE PATH's vocabulary and not the cooked form's (§7.4): a
-// caller meeting one of these has been refused a MESSAGE on a connection,
-// which is a different recovery with a different owner than a file a header
-// match turned down.
-enum TableMessageReason
+// THE MESSAGE VOCABULARY'S THREE (§3.3, §11): no_vocabulary,
+// second_announcement and vocabulary_too_large, which Go names in its report's
+// reason text rather than in the enum. They sit in a private high range so a
+// value Go appends later can never collide with them, which the enum's
+// int32_t underlying type keeps inside its own range.
+constexpr TableRefuseReason no_vocabulary        = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
+constexpr TableRefuseReason second_announcement  = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
+constexpr TableRefuseReason vocabulary_too_large = (TableRefuseReason) 0x20000002; // an announcement above the receiver's declared bound, refused before an entry is touched
+
+// THE MESSAGE PATH SPEAKS THE ONE VOCABULARY (§6.5): TableMessageReason is a
+// TableRefuseReason, converting both ways, and not a second enum. It is a
+// struct only so the message path's qualified spellings
+// (TableMessageReason::newer_form, ::no_vocabulary) keep naming the one
+// vocabulary's values; a refusal reason is read only when refused is set.
+struct TableMessageReason
 {
-    newer_form,           // a FORM BYTE this reader does not carry (§3)
-    // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
-    // registry is ordered, so a reader meeting a byte it does not carry can
-    // say WHICH DIRECTION it is: form 1 handed to a fixed reader is the VARIABLE
-    // form, which is older, and calling that newer_form would send a caller
-    // looking for a build that does not exist. The bytes are the same refusal
-    // either way — nothing decoded, no counter moved — and only the name of it
-    // differs.
-    previous_form,
-    no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
-    second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
-    vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
-    message_form_as_file, // a form 2 wire where a FILE was expected: its table is somewhere else
-    batch_too_large,      // a batch of more than 256 bodies on the write side, or of more than the caller has room for on the read side: nothing is written or decoded, and the count says what the wire carries
-    // THE FIXED FORM'S THREE (docs/SPEC-TABLES.md §3.4). Each is a refusal by
-    // name with nothing decoded and no counter moved, on the form byte's own
-    // precedent. THE LAYOUT is what form 1 called the vocabulary block.
-    no_layout,        // a fixed-form record whose hash names no LAYOUT this reader holds
-    layout_malformed, // bytes handed to the fixed form as a layout that are not one: fewer than a header's worth of them
-    plan_too_large,   // a layout whose compiled plan does not fit the plan storage the caller declared: this codec never allocates
-    // THE LAYOUT VALIDATION'S OWN NAMES (docs/SPEC-TABLES.md §3.4). A layout is
-    // the one structure a reader must parse before it knows anything at all,
-    // and it arrives from an UNTRUSTED PEER, so each rule it is held to
-    // refuses under its own name rather than under one word for all of them.
-    // Every one of them runs BEFORE a single record byte is touched.
-    layout_count_mismatch,  // the entry count does not fit the layout's length exactly: the count, and then that many seventeen-byte entries
-    layout_kind_unknown,    // a kind OUTSIDE §3's closed set: a fixed form's kind set is closed, so an unknown kind means a newer FORM BYTE, which is a different form and not a newer layout of this one
-    layout_kind_invalid,    // a kind this build KNOWS, used in a way its own definition does not allow: a root that is not a table, an optional wrapper without exactly one child, a keyed array without exactly two, an enum whose children are not variants
-    layout_size_mismatch,   // an entry's stated constant size is not the one its kind's definition fixes, or not the one its children account for
-    layout_tree_unclosed,   // the pre-order child walk does not consume exactly the entries: the tree runs out of layout, or the layout outlasts the tree
-    layout_too_deep,        // a nesting depth past what this reader walks: a bound on the WALK, so a hostile layout cannot spend a reader's stack
-    layout_record_too_large, // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
-    // THE BACKWARD-READ REFUSALS (bill §4, §6b, algorithm §5.3). A hash this
-    // reader has never locked is layout_newer; a hash in the lineage below the
-    // floor is layout_unsupported. Both carry the file's hash and nothing else
-    // (bill §12.4).
-    layout_newer,
-    layout_unsupported,
-    // A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
-    // string(N)'s used bytes that are not well-formed UTF-8 — or a wstring(N)'s
-    // used units that are not paired UTF-16 — refuses the read BY NAME, the
-    // verdict the packet reader gives, this form having no L to continue past.
-    // Nothing is decoded and no counter moves.
-    text_ill_formed
+    TableRefuseReason value;
+    constexpr TableMessageReason( TableRefuseReason v = TableRefuseReason::newer_form ) : value( v ) {}
+    constexpr operator TableRefuseReason() const { return value; }
+    static constexpr TableRefuseReason ok = TableRefuseReason::ok;
+    static constexpr TableRefuseReason not_a_cook = TableRefuseReason::not_a_cook;
+    static constexpr TableRefuseReason foreign_order = TableRefuseReason::foreign_order;
+    static constexpr TableRefuseReason wrong_build_version = TableRefuseReason::wrong_build_version;
+    static constexpr TableRefuseReason reserved_not_zero = TableRefuseReason::reserved_not_zero;
+    static constexpr TableRefuseReason bad_alignment = TableRefuseReason::bad_alignment;
+    static constexpr TableRefuseReason truncated = TableRefuseReason::truncated;
+    static constexpr TableRefuseReason unaligned_base = TableRefuseReason::unaligned_base;
+    static constexpr TableRefuseReason bad_layout = TableRefuseReason::bad_layout;
+    static constexpr TableRefuseReason unknown_form = TableRefuseReason::unknown_form;
+    static constexpr TableRefuseReason count_over_length = TableRefuseReason::count_over_length;
+    static constexpr TableRefuseReason count_over_extent_cap = TableRefuseReason::count_over_extent_cap;
+    static constexpr TableRefuseReason blob_over_size_cap = TableRefuseReason::blob_over_size_cap;
+    static constexpr TableRefuseReason data_cycle = TableRefuseReason::data_cycle;
+    static constexpr TableRefuseReason invalid_value = TableRefuseReason::invalid_value;
+    static constexpr TableRefuseReason allocation_failed = TableRefuseReason::allocation_failed;
+    static constexpr TableRefuseReason wire_damaged = TableRefuseReason::wire_damaged;
+    static constexpr TableRefuseReason malformed = TableRefuseReason::malformed;
+    static constexpr TableRefuseReason clamped = TableRefuseReason::clamped;
+    static constexpr TableRefuseReason kind_mismatch = TableRefuseReason::kind_mismatch;
+    static constexpr TableRefuseReason base64_damaged = TableRefuseReason::base64_damaged;
+    static constexpr TableRefuseReason base64_not_canonical = TableRefuseReason::base64_not_canonical;
+    static constexpr TableRefuseReason integrity_mismatch = TableRefuseReason::integrity_mismatch;
+    static constexpr TableRefuseReason non_finite = TableRefuseReason::non_finite;
+    static constexpr TableRefuseReason blob_shared = TableRefuseReason::blob_shared;
+    static constexpr TableRefuseReason previous_form = TableRefuseReason::previous_form;
+    static constexpr TableRefuseReason newer_form = TableRefuseReason::newer_form;
+    static constexpr TableRefuseReason message_form_as_file = TableRefuseReason::message_form_as_file;
+    static constexpr TableRefuseReason layout_unknown = TableRefuseReason::layout_unknown;
+    static constexpr TableRefuseReason layout_unsupported = TableRefuseReason::layout_unsupported;
+    static constexpr TableRefuseReason layout_newer = TableRefuseReason::layout_newer;
+    static constexpr TableRefuseReason layout_malformed = TableRefuseReason::layout_malformed;
+    static constexpr TableRefuseReason layout_count_mismatch = TableRefuseReason::layout_count_mismatch;
+    static constexpr TableRefuseReason layout_kind_unknown = TableRefuseReason::layout_kind_unknown;
+    static constexpr TableRefuseReason layout_kind_invalid = TableRefuseReason::layout_kind_invalid;
+    static constexpr TableRefuseReason layout_size_mismatch = TableRefuseReason::layout_size_mismatch;
+    static constexpr TableRefuseReason layout_tree_unclosed = TableRefuseReason::layout_tree_unclosed;
+    static constexpr TableRefuseReason layout_too_deep = TableRefuseReason::layout_too_deep;
+    static constexpr TableRefuseReason layout_record_too_large = TableRefuseReason::layout_record_too_large;
+    static constexpr TableRefuseReason plan_too_large = TableRefuseReason::plan_too_large;
+    static constexpr TableRefuseReason no_layout = TableRefuseReason::no_layout;
+    static constexpr TableRefuseReason batch_too_large = TableRefuseReason::batch_too_large;
+    static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
+    static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
+    static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason no_vocabulary = ::tabledemo::no_vocabulary;
+    static constexpr TableRefuseReason second_announcement = ::tabledemo::second_announcement;
+    static constexpr TableRefuseReason vocabulary_too_large = ::tabledemo::vocabulary_too_large;
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -158,6 +240,11 @@ struct TableReport
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
+    // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
+    // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
+    // the ONE node, never a copy per slot, and the strict read refuses
+    // blob_shared. The Go oracle is internal/codegen/gotable/gotable.go.
+    int32_t blob_shared = 0;
     // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
     // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
     // zero counters and a false flag are what a clean read prints too, so the
@@ -167,6 +254,10 @@ struct TableReport
     // was not refused has no reason, and this member is the one the caller
     // must not look at then (docs/SPEC-TABLES.md §3.3).
     TableMessageReason reason = newer_form;
+    // WHOLE-FILE DAMAGE can have a named cause even when it is not a refusal:
+    // integrity_mismatch is §2.14's checked-trailer damage. Read this member
+    // when malformed is true; the reason above remains the message refusal name.
+    TableRefuseReason damage_reason = ok;
     // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
     // the reason duplicate is: a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
@@ -174,39 +265,15 @@ struct TableReport
     // says what a READER could not name and that stays true.
     int32_t retained = 0;    // unknown fields whose bytes were kept
     int32_t retain_lost = 0; // every unknown this load or save could not keep
+    // THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): the
+    // same TableRefuseReason a measure's -1 and a cook's Open answer, set by
+    // the plain names and ReadStrict on every refusal and ok otherwise.
+    // unknown, widened and retained alone leave it ok.
+    TableRefuseReason refuse_reason = ok;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
-    // the hash and nothing else. Zero on every other path.
+    // the hash and nothing else. Zero on every other path, and it stays LAST on
+    // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
-};
-
-
-// WHY A FILE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5, §7, §19.2): the
-// one vocabulary a cook's Open, a block's BlockOpen and a load measure's -1
-// share, because a caller asking "why can I not have this file" is
-// asking one question whichever call refused it. The FIRST failing clause names the
-// reason, in the order §7 enumerates, so one file answers one value in every
-// language. A refusal moves no counter, and a match writes nothing: the
-// out-parameter is touched on the refusal path only.
-//
-// It is not the MESSAGE FORM's vocabulary (TableMessageReason, §3.3): a caller
-// meeting one of these has been refused a FILE, by a header match or by a
-// measure.
-enum TableRefuseReason
-{
-    ok,                    // no clause failed: the only value beside a non-null root (§7)
-    not_a_cook,            // the magic is neither this build's constant nor its byte reversal, or the byte-order word contradicts the magic
-    foreign_order,         // the magic byte-reversed: a cook of the other byte order (§7.1)
-    wrong_build_version,   // the build_version word is not this build's (§20)
-    reserved_not_zero,     // a reserved header word is not zero (§7.1)
-    bad_alignment,         // the alignment word is not a power of two, is below eight, is above sixty-four, or is not a multiple of the root's own alignof
-    truncated,             // the part lengths against the caller's length, or a data part too short to hold the root
-    unaligned_base,        // the pointer the caller passed is not aligned for the region: the caller's defect, not the file's
-    bad_layout,            // BlockOpen (§19.2): a pitch, a count, an offset or an extent that disagrees with this build's or leaves the block
-    unknown_form,          // at a MEASURE (§3, §6.5): a form byte this build does not carry, refused before any read
-    count_over_length,     // an array or map count whose elements cannot fit the field's own L (§2.8, §2.9)
-    count_over_extent_cap, // a count above the int32 extent cap (§2.2), which no region can hold whatever its size
-    blob_over_size_cap,    // a blob whose length is past the derived-size cap (§3.1, §11)
-    data_cycle             // a data cycle reached from a builder: the AUTHORING side's -1 (§3.1, §7.6)
 };
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
@@ -291,8 +358,18 @@ struct TableFieldInfo
     uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
-    double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
+    double range_min;       // the float range; an integer range also has the exact columns below
     double range_max;
+    // THE EXACT INTEGER RANGE (docs/SPEC-TABLES.md §8.1, §4): an integer kind's
+    // declared bounds as the exact integers the schema wrote, beside the
+    // float64 pair that stays for float and fixed-point ranges. A signed kind
+    // fills range_int_min/range_int_max, an unsigned kind (and bits(N)) fills
+    // range_uint_min/range_uint_max. Both pairs are zero on every other field,
+    // and the wide kinds (18-29) carry none: their exact bounds are in wide.
+    int64_t range_int_min;
+    int64_t range_int_max;
+    uint64_t range_uint_min;
+    uint64_t range_uint_max;
     // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
     // field's F — its storage holds units × 2^F — and wide is the declared
     // range on that RAW scale, exact, as two 128-bit two's-complement values
@@ -339,6 +416,15 @@ struct TableFieldInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // A CONTAINER WITH NO DECLARED BOUND (docs/SPEC-TABLES.md §8.1, §2.9):
+    // true on every map and []T, with array_bound 0 beside it, and false on
+    // every other field. It is the ONE TELL, apart from the §2.13.1
+    // Unbounded (unbounded text) column, so a walker reads the container
+    // from here and never infers it from array_bound — zero is a plain
+    // scalar's bound too. It sits last so every emitted row stays a
+    // positional aggregate initializer, and emitFieldInfo fills it from the
+    // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
+    bool unbounded_container;
 };
 
 struct TableTypeInfo
@@ -363,6 +449,9 @@ struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    // json = "array" (docs/SPEC-TABLES.md §16.10): the table's text is its one
+    // field's array, not an object keyed by that field.
+    bool json_array;
 };
 
 struct TableWriter
@@ -727,7 +816,11 @@ struct TableReader
             case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
             case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
-            case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
+            // 36 is the TIMESTAMP: its payload is the i64's eight bytes even
+            // though its kind is its own (docs/SPEC-TABLES.md §2.11, §3), so
+            // an unnamed or kind-mismatched timestamp skips cleanly, exactly
+            // as internal/tablewire/timestamp_skip_test.go pins for Go.
+            case 5: case 9: case 11: case 23: case 28: case 36: return has( 8 ) ? ( offset += 8, true ) : false;
             case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
             case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
@@ -1312,7 +1405,7 @@ inline int64_t TableMessageKindBits( uint8_t kind )
         case 2: case 6: case 20: case 25: return 8;
         case 3: case 7: case 21: case 26: return 16;
         case 4: case 8: case 22: case 27: return 32;
-        case 5: case 9: case 23: case 28: return 64;
+        case 5: case 9: case 23: case 28: case 36: return 64; // 36 is the timestamp, the i64's width (§2.11)
         default: return 128;
     }
 }
@@ -1378,7 +1471,9 @@ inline bool TableMessageFixedKind( uint8_t kind ) { return kind >= 20 && kind <=
 
 inline bool TableMessageKnownKind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+    // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
+    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -1553,6 +1648,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 {
     if ( kind == 1 ) { return 1; }
     if ( kind == 11 ) { return 64; }
+    if ( kind == 36 ) { return 64; } // the timestamp's count is sixty-four raw bits (§2.11, §3.3)
     if ( kind == 10 ) { return packing == 2 ? value_bits : 32; }
     if ( TableMessageIntegerKind( kind ) || TableMessageFixedKind( kind ) )
     {
@@ -2294,7 +2390,13 @@ struct TableKeyed
     // the extent is the enum's, derived here and named nowhere else
     static constexpr int32_t kSlots = (int32_t) E::Max;
 
-    T slots[kSlots] = {};
+    // THE SLOT ARRAY STATES NO INITIALIZER OF ITS OWN (schema#335). A
+    // self-initialising element already carries the declared defaults, and cl
+    // expands a whole-array value-init of a large aggregate element by element
+    // in its front end, at O(bytes) (#320); a SCALAR element has no initializer
+    // of its own, so the HOLDER's member states the " = {}" that zeroes it, and
+    // <Name>Reset fills every slot from one element either way (SPEC-TABLES §8.1).
+    T slots[kSlots];
 
     T & operator[]( E key )
     {
@@ -2379,6 +2481,20 @@ inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 )
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
+// THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
+// (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
+// -1 of <T>FixedLoad carries one, and a framing-damage return keeps
+// "malformed" set BESIDE it. They are the one vocabulary's own values
+// (TableRefuseReason, §6.5), named here as well so the fixed form's callers
+// keep the spelling they already read.
+#define SCHEMA_HAS_FIXED_REASON_NAMES 1
+struct TableFixedReason
+{
+    static constexpr TableRefuseReason layout_unknown    = TableRefuseReason::layout_unknown;
+    static constexpr TableRefuseReason truncated         = TableRefuseReason::truncated;
+    static constexpr TableRefuseReason reserved_not_zero = TableRefuseReason::reserved_not_zero;
+};
+
 // ---------------------------------------------------------------------------
 // THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 // ---------------------------------------------------------------------------
@@ -2398,6 +2514,7 @@ constexpr uint8_t kTableFixedForm = 3;
 // was stamped by.
 constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
+
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries copy, count, text and
 // bool; the rest are what a plan compiled from another writer's layout adds.
@@ -2438,6 +2555,26 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #define TABLE_RESTRICT __restrict__
 #else
 #define TABLE_RESTRICT
+#endif
+
+// THE CLAMP PASS'S COUNTERS NEVER ALIAS THE RECORD IT CLAMPS: the two
+// counters a *FixedClampBody takes are the caller's locals, never a field of
+// the value. An int32_t & may alias every int32_t field the pass stores to, so
+// unqualified, each clamp reloads the counter and the pass does not vectorize.
+// The qualifier is per compiler, each one's MEASURED best of the plain
+// reference, __restrict, a local counter stored once at the end, and both
+// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+//   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
+//   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
+//          local counter 307.7, both slower;
+//   MSVC and any other compiler: the plain reference, the portable form.
+// A build may define TABLE_CLAMP_RESTRICT itself to override the choice.
+#ifndef TABLE_CLAMP_RESTRICT
+#if defined( __clang__ )
+#define TABLE_CLAMP_RESTRICT __restrict__
+#else
+#define TABLE_CLAMP_RESTRICT
+#endif
 #endif
 
 // THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
@@ -2825,6 +2962,65 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     }
     report->clamped += clamped;
     report->widened += widened;
+}
+
+// ---- THE COUNT AND TEXT PRE-SCAN -------------------------------------------
+//
+// A COUNT OR LENGTH PAST THE PLAN'S BOUND REFUSES BY NAME (docs/SPEC-TABLES.md
+// §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5): count_over_bound for a count,
+// length_over_bound for a text length, checked before any destination byte is
+// written — the count or length lying about the wire and not about the slack.
+// REFUSE is total: no counter moves, nothing is decoded, and not one destination
+// byte is written. It walks each entry under its own guards, reads only the
+// source and writes nothing. It answers true with the refusal in why; false
+// means the plan holds the record's counts and lengths.
+inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, int32_t guarded,
+                                 const uint8_t * src,
+                                 const TableFixedGuardLink * guard_pool,
+                                 TableMessageReason & why )
+{
+    for ( int32_t i = 0; i < count; ++i )
+    {
+        const TableFixedEntry & p = plan[i];
+        // A PLAN IS PARTITIONED (§4.1): every UNGUARDED entry first, then every
+        // guarded one. Below the split there is no guard to test — the guard
+        // lane is kTableFixedNoGuard and must never be read as an offset. Above
+        // it, an arm's entry runs only under its own tag and refuses only when
+        // it runs.
+        if ( i >= guarded )
+        {
+            if ( p.guard_count > 0 )
+            {
+                // THE POOLED CHAIN (§5.8 row 6): same walk the run uses.
+                bool matches = true;
+                for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+                {
+                    const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
+                        ( ( const uint8_t * ) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                    if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+                }
+                if ( !matches ) { continue; }
+            }
+            else
+            {
+                if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+                if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+            }
+        }
+        if ( p.op == kTableFixedCount )
+        {
+            int32_t v = (int32_t) TableFixedGet32( src + p.src );
+            if ( v < 0 || v > (int32_t) p.size ) { why = count_over_bound; return true; }
+        }
+        else if ( p.op == kTableFixedText )
+        {
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t cap = p.size / unit;
+            int32_t v = (int32_t) TableFixedGet32( src + p.src );
+            if ( v < 0 || (uint32_t) v > cap ) { why = length_over_bound; return true; }
+        }
+    }
+    return false;
 }
 
 // ---- THE PREFILL -----------------------------------------------------------
@@ -3847,6 +4043,43 @@ inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntr
     }
 }
 
+// THE CRC-32C OF every byte before a file's trailer (docs/SPEC-TABLES.md
+// §2.14). The Go oracle is hash/crc32.Checksum with crc32.Castagnoli; the
+// fixed test values in integrity_test.go are that function's answers.
+inline uint32_t schema_crc32c( const uint8_t * data, int64_t bytes )
+{
+    uint32_t crc = 0xFFFFFFFFu;
+    for ( int64_t i = 0; i < bytes; ++i )
+    {
+        crc ^= (uint32_t) data[i];
+        for ( int k = 0; k < 8; ++k )
+        {
+            const uint32_t mask = (uint32_t) ( -(int32_t) ( crc & 1u ) );
+            crc = ( crc >> 1 ) ^ ( 0x82F63B78u & mask );
+        }
+    }
+    return crc ^ 0xFFFFFFFFu;
+}
+
+// schema_integrity_holds is §2.14's READ check: four trailer bytes, little-endian,
+// equal to the CRC-32C of everything before them. A file too short to hold a
+// trailer does not hold one either, which is damage named integrity_mismatch
+// and never a refusal.
+inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
+{
+    if ( data == NULL || bytes < 5 ) { return false; }
+    const int64_t n = bytes - 4;
+    return TableFixedGet32( data + n ) == schema_crc32c( data, n );
+}
+
+// schema_integrity_seal is §2.14's WRITE: the trailer after the n bytes already
+// written, and the file's longer length.
+inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
+{
+    TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
+    return n + 4;
+}
+
 } // namespace tabledemo
 
 #endif // TABLEDEMO_SCHEMA_TABLE_PRIMITIVES
@@ -4554,6 +4787,11 @@ struct TableNumbering
     TableNodeEntry * entries = NULL;
     int64_t count = 0;
     int64_t capacity = 0;
+    // ONE BLOB RECORD NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5, §16.7):
+    // every writer refuses the graph by name, blob_shared, rather than writing
+    // a copy per slot. The Go oracle is internal/codegen/gotable/regions.go
+    // (TableNumbering.shared).
+    bool shared = false;
 };
 
 // The numbering allocates through the map's pair rather than carrying a second
@@ -4564,6 +4802,7 @@ inline void TableNumberingInit( TableNumbering & n, TableAllocator allocator )
     n.entries = NULL;
     n.count = 0;
     n.capacity = 0;
+    n.shared = false;
 }
 
 inline void TableNumberingShutdown( TableNumbering & n )
@@ -4722,13 +4961,21 @@ struct TableNodeDirEntry
 struct TableNodeMap
 {
     uint8_t * base = NULL;
-    const TableNodeDirEntry * entries = NULL;
+    // MUTABLE because an ONCE read marks a blob's entry when a slot first
+    // names it (docs/SPEC-TABLES.md §2.5): a second slot names the same node
+    // and is counted, never decoded again.
+    TableNodeDirEntry * entries = NULL;
     int64_t count = 0;   // the ROOT's entry included, so it is records + 1
     bool good = false;   // the node table read whole; a numbering that failed resolves nothing
     // WHERE THE NODES LIVE, and therefore what a resolved slot holds: a region
     // takes the SELF-RELATIVE delta so a deref is one add, and the tool's
     // builder path takes the node's ARENA OFFSET (§6.3).
     bool arena = false;
+    // ONCE is the file and message REGION reads' rule (§2.5, §16.7): the first
+    // slot naming a blob marks its directory entry, and every later slot naming
+    // it is one blob_shared event and resolves to the ONE decoded node. The Go
+    // oracle is internal/codegen/gotable/regions.go (TableNodeMap.Once).
+    bool once = false;
 };
 
 // TableNodeResolve places one node index in a pointer slot, and every failure
@@ -4755,8 +5002,21 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     }
     if ( entry.type_id != target )
     {
-        report->kind_mismatch++;
-        return;
+        // A blob named from two slots (docs/SPEC-TABLES.md §2.5, §16.7): the
+        // first slot marked the entry with the complement of its type id, so a
+        // second slot naming it is blob_shared and still resolves to the one
+        // node. No other target has this reading.
+        if ( !map.once || entry.type_id != ~target ||
+             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
+        {
+            report->kind_mismatch++;
+            return;
+        }
+        report->blob_shared++;
+    }
+    else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
+    {
+        map.entries[index - 1].type_id = ~target;
     }
     slot.value = map.arena ? (int64_t) entry.offset
                           : (int64_t) ( ( map.base + entry.offset ) - (const uint8_t *) &slot );
@@ -6126,6 +6386,7 @@ struct TableMessageRetainIn
     TableBitReader * r;
     const TableVocabulary * vocabulary;
     int64_t index_bits;
+    int64_t limit = 0;               // the record's remaining resolved bytes: the bound on the walk
 };
 
 // THE ELEMENT'S OWN ENTRY, which a resolved entry carries flattened beside its
@@ -6167,6 +6428,25 @@ inline int64_t TableMessageRetainWidth( uint8_t kind )
         case 5: case 9: case 11: case 23: case 28: return 8;
         case 18: case 19: case 24: case 29: return 16;
         default: return -1;
+    }
+}
+
+// THE LEAST A RESOLVED ELEMENT CAN WEIGH, which is what bounds an announced
+// count against the caller's remaining record before one element is converted.
+// A scalar takes its storage width whatever its announced value bits, an opaque
+// takes at least its zero length, a body at least its terminator, and a union
+// or enum its id. The answer is a LOWER bound: a count that cannot fit this many
+// bytes per element cannot fit the record at all, and a zero-bit count is
+// refused here rather than walked (§6.6, THE SECURITY BOUND).
+inline int64_t TableMessageRetainElementMinimum( uint8_t kind )
+{
+    const int64_t width = TableMessageRetainWidth( kind );
+    if ( width > 0 ) { return width; }
+    switch ( kind )
+    {
+        case 12: case 31: case 32: case 33: return 1;
+        case 13: case 14: case 16: case 15: case 30: return 8;
+        default: return 1;
     }
 }
 
@@ -6371,6 +6651,16 @@ inline int64_t TableMessageRetainElements( TableMessageRetainIn & s, const Table
     const TableMessageEntry element = TableMessageRetainElement( entry );
     TableRetainInRaw( s.out, &entry.elem_kind, 1 );
     TableRetainInLeb( s.out, n ); // the count rides as the file capture spells it, and the emit reads it back
+    // A ZERO-BIT ELEMENT STILL LAYS DOWN ITS STORAGE WIDTH, so the announced
+    // count is tested against the caller's remaining record BEFORE one element
+    // is converted: a count no record can hold refuses here rather than four
+    // billion times through the loop (§6.6, THE SECURITY BOUND).
+    int64_t minimum = TableMessageRetainElementMinimum( element.kind );
+    if ( entry.kind == 16 ) { minimum += 16; } // the key id and the framed slot
+    if ( minimum > 0 && ( s.out.out_at > s.limit || n > (uint64_t) ( ( s.limit - s.out.out_at ) / minimum ) ) )
+    {
+        return -1;
+    }
     for ( uint64_t i = 0; i < n; i++ )
     {
         if ( entry.kind == 16 )
@@ -6388,7 +6678,7 @@ inline int64_t TableMessageRetainElements( TableMessageRetainIn & s, const Table
 
 inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
 {
-    if ( depth > kTableRetainWalkDepthMax ) { return -1; }
+    if ( depth > kTableRetainWalkDepthMax || s.out.out_at > s.limit ) { return -1; }
     const int64_t began = s.out.out_at;
     switch ( entry.kind )
     {
@@ -6411,6 +6701,7 @@ inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableM
 
 inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
 {
+    if ( s.out.out_at > s.limit ) { return -1; }
     const int64_t began = s.out.out_at;
     switch ( entry.kind )
     {
@@ -6488,6 +6779,10 @@ inline void TableMessageRetainCapture( TableRetain * retain, TableBitReader & r,
     probe.r = &walk;
     probe.vocabulary = &vocabulary;
     probe.index_bits = index_bits;
+    // THE RECORD'S REMAINING PAYLOAD BUDGET: what the caller's capacity leaves
+    // after this record's header and path, which bounds the walk before it
+    // converts a count the record could never hold (§6.6).
+    probe.limit = retain->capacity - retain->used - kTableRetainRecordHeader - 8 * (int64_t) path.depth;
     const int64_t payload = TableMessageRetainPayload( probe, entry, 0 );
     if ( payload < 0 || walk.offset != end )
     {
@@ -6892,7 +7187,7 @@ struct PackConfig {
     uint32_t version = 1;
     GlobalSettings global;
     TableKeyed<ShipEntry, ShipType> ships; // [ShipType]: one slot per named variant, keyed by the value
-    TableKeyed<int32_t, Difficulty> thresholds; // [Difficulty]: one slot per named variant, keyed by the value
+    TableKeyed<int32_t, Difficulty> thresholds = {}; // [Difficulty]: one slot per named variant, keyed by the value
     ShipEntry reserves[3]; // used count beside it; count in [0, 3]
     int32_t reserves_count = 0;
 };
@@ -7314,7 +7609,7 @@ inline TableOpenVerdict GunnerSettingsLoadVerdict( GunnerSettings & value, const
     if ( verdict != TableOpenOk )
     {
         GunnerSettingsReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -7322,6 +7617,7 @@ inline TableOpenVerdict GunnerSettingsLoadVerdict( GunnerSettings & value, const
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
+            to->refuse_reason = unknown_form; // a form byte this FILE read does not carry (§3, §6.5)
             to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
         }
         return verdict;
@@ -7333,6 +7629,7 @@ inline TableOpenVerdict GunnerSettingsLoadVerdict( GunnerSettings & value, const
     {
         GunnerSettingsReset( value );
         to->malformed = true;
+        to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
@@ -7341,14 +7638,46 @@ inline TableOpenVerdict GunnerSettingsLoadVerdict( GunnerSettings & value, const
     return TableOpenOk;
 }
 
-// The bool is the BODY reaching its own terminator, and it is what it has
-// always been: framing damage inside a field keeps what it decoded, flags
-// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
-// False is a wire nothing could be decoded from: a refusal, a table that
-// cannot be read whole, or a root body the walk could not finish.
-inline bool GunnerSettingsLoad( GunnerSettings & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+// GunnerSettingsLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
+// the recovered value and its report, counting clamped, kind_mismatch and
+// malformed, and answers the plain name's BASE behaviour — true when the
+// body reached its own terminator, false for a refusal, an unreadable table
+// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+inline bool GunnerSettingsLoadTolerant( GunnerSettings & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return GunnerSettingsLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
+}
+
+// The PLAIN GunnerSettingsLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
+// refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with false as its
+// refusal value, the supplied report overwritten with this read's report
+// and its reason set, the value reset to its declared defaults. unknown and
+// widened alone never refuse.
+inline bool GunnerSettingsLoad( GunnerSettings & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const TableOpenVerdict verdict = GunnerSettingsLoadVerdict( value, buffer, bytes, out );
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
+        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // as Go's TableReport.Err() orders them, and damage before both.
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        GunnerSettingsReset( value );
+        return false;
+    }
+    out->refuse_reason = ok;
+    return true;
 }
 
 // The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
@@ -7876,7 +8205,7 @@ inline TableOpenVerdict ShipEntryLoadVerdict( ShipEntry & value, const uint8_t *
     if ( verdict != TableOpenOk )
     {
         ShipEntryReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -7884,6 +8213,7 @@ inline TableOpenVerdict ShipEntryLoadVerdict( ShipEntry & value, const uint8_t *
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
+            to->refuse_reason = unknown_form; // a form byte this FILE read does not carry (§3, §6.5)
             to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
         }
         return verdict;
@@ -7895,6 +8225,7 @@ inline TableOpenVerdict ShipEntryLoadVerdict( ShipEntry & value, const uint8_t *
     {
         ShipEntryReset( value );
         to->malformed = true;
+        to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
@@ -7903,14 +8234,46 @@ inline TableOpenVerdict ShipEntryLoadVerdict( ShipEntry & value, const uint8_t *
     return TableOpenOk;
 }
 
-// The bool is the BODY reaching its own terminator, and it is what it has
-// always been: framing damage inside a field keeps what it decoded, flags
-// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
-// False is a wire nothing could be decoded from: a refusal, a table that
-// cannot be read whole, or a root body the walk could not finish.
-inline bool ShipEntryLoad( ShipEntry & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+// ShipEntryLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
+// the recovered value and its report, counting clamped, kind_mismatch and
+// malformed, and answers the plain name's BASE behaviour — true when the
+// body reached its own terminator, false for a refusal, an unreadable table
+// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+inline bool ShipEntryLoadTolerant( ShipEntry & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return ShipEntryLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
+}
+
+// The PLAIN ShipEntryLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
+// refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with false as its
+// refusal value, the supplied report overwritten with this read's report
+// and its reason set, the value reset to its declared defaults. unknown and
+// widened alone never refuse.
+inline bool ShipEntryLoad( ShipEntry & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const TableOpenVerdict verdict = ShipEntryLoadVerdict( value, buffer, bytes, out );
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
+        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // as Go's TableReport.Err() orders them, and damage before both.
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        ShipEntryReset( value );
+        return false;
+    }
+    out->refuse_reason = ok;
+    return true;
 }
 
 // The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
@@ -8565,7 +8928,7 @@ inline TableOpenVerdict GlobalSettingsLoadVerdict( GlobalSettings & value, const
     if ( verdict != TableOpenOk )
     {
         GlobalSettingsReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -8573,6 +8936,7 @@ inline TableOpenVerdict GlobalSettingsLoadVerdict( GlobalSettings & value, const
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
+            to->refuse_reason = unknown_form; // a form byte this FILE read does not carry (§3, §6.5)
             to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
         }
         return verdict;
@@ -8584,6 +8948,7 @@ inline TableOpenVerdict GlobalSettingsLoadVerdict( GlobalSettings & value, const
     {
         GlobalSettingsReset( value );
         to->malformed = true;
+        to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
@@ -8592,14 +8957,46 @@ inline TableOpenVerdict GlobalSettingsLoadVerdict( GlobalSettings & value, const
     return TableOpenOk;
 }
 
-// The bool is the BODY reaching its own terminator, and it is what it has
-// always been: framing damage inside a field keeps what it decoded, flags
-// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
-// False is a wire nothing could be decoded from: a refusal, a table that
-// cannot be read whole, or a root body the walk could not finish.
-inline bool GlobalSettingsLoad( GlobalSettings & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+// GlobalSettingsLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
+// the recovered value and its report, counting clamped, kind_mismatch and
+// malformed, and answers the plain name's BASE behaviour — true when the
+// body reached its own terminator, false for a refusal, an unreadable table
+// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+inline bool GlobalSettingsLoadTolerant( GlobalSettings & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return GlobalSettingsLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
+}
+
+// The PLAIN GlobalSettingsLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
+// refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with false as its
+// refusal value, the supplied report overwritten with this read's report
+// and its reason set, the value reset to its declared defaults. unknown and
+// widened alone never refuse.
+inline bool GlobalSettingsLoad( GlobalSettings & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const TableOpenVerdict verdict = GlobalSettingsLoadVerdict( value, buffer, bytes, out );
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
+        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // as Go's TableReport.Err() orders them, and damage before both.
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        GlobalSettingsReset( value );
+        return false;
+    }
+    out->refuse_reason = ok;
+    return true;
 }
 
 // The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
@@ -9449,7 +9846,7 @@ inline TableOpenVerdict PackConfigLoadVerdict( PackConfig & value, const uint8_t
     if ( verdict != TableOpenOk )
     {
         PackConfigReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -9457,6 +9854,7 @@ inline TableOpenVerdict PackConfigLoadVerdict( PackConfig & value, const uint8_t
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
             to->refused = true;
+            to->refuse_reason = unknown_form; // a form byte this FILE read does not carry (§3, §6.5)
             to->reason = bytes > 0 && buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
         }
         return verdict;
@@ -9468,6 +9866,7 @@ inline TableOpenVerdict PackConfigLoadVerdict( PackConfig & value, const uint8_t
     {
         PackConfigReset( value );
         to->malformed = true;
+        to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
@@ -9476,14 +9875,46 @@ inline TableOpenVerdict PackConfigLoadVerdict( PackConfig & value, const uint8_t
     return TableOpenOk;
 }
 
-// The bool is the BODY reaching its own terminator, and it is what it has
-// always been: framing damage inside a field keeps what it decoded, flags
-// the report and reads on, so this answers true (docs/SPEC-TABLES.md §4).
-// False is a wire nothing could be decoded from: a refusal, a table that
-// cannot be read whole, or a root body the walk could not finish.
-inline bool PackConfigLoad( PackConfig & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+// PackConfigLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
+// the recovered value and its report, counting clamped, kind_mismatch and
+// malformed, and answers the plain name's BASE behaviour — true when the
+// body reached its own terminator, false for a refusal, an unreadable table
+// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+inline bool PackConfigLoadTolerant( PackConfig & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return PackConfigLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
+}
+
+// The PLAIN PackConfigLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
+// refuses whatever the strict read refuses — malformed, clamped,
+// kind-mismatched, an unknown form or wire damage — with false as its
+// refusal value, the supplied report overwritten with this read's report
+// and its reason set, the value reset to its declared defaults. unknown and
+// widened alone never refuse.
+inline bool PackConfigLoad( PackConfig & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const TableOpenVerdict verdict = PackConfigLoadVerdict( value, buffer, bytes, out );
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    {
+        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
+        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // as Go's TableReport.Err() orders them, and damage before both.
+        if ( out->refuse_reason == ok )
+        {
+            if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
+            else if ( out->clamped ) { out->refuse_reason = clamped; }
+            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else { out->refuse_reason = wire_damaged; }
+        }
+        PackConfigReset( value );
+        return false;
+    }
+    out->refuse_reason = ok;
+    return true;
 }
 
 // The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
@@ -10046,8 +10477,18 @@ inline void PackConfigFixedWriteBody( uint8_t * b, const PackConfig & value )
     }
 }
 
+// GunnerSettings's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool GunnerSettingsFixedInRange( const GunnerSettings & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length );
+    return bad == 0;
+}
+
 // GunnerSettings's read-side bounds.
-inline void GunnerSettingsFixedClampBody( GunnerSettings & value, int32_t & clamped, int32_t & damaged )
+inline void GunnerSettingsFixedClampBody( GunnerSettings & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length ) )
@@ -10056,8 +10497,26 @@ inline void GunnerSettingsFixedClampBody( GunnerSettings & value, int32_t & clam
     }
 }
 
+// ShipEntry's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool ShipEntryFixedInRange( const ShipEntry & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length );
+    for ( int64_t i = 0; i < (int64_t) value.hardpoints_count; ++i )
+    {
+        bad |= (int) ( value.hardpoints[i] < 0 ) | (int) ( value.hardpoints[i] > 8 );
+    }
+    if ( value.gunner_present )
+    {
+        bad |= (int) !GunnerSettingsFixedInRange( value.gunner );
+    }
+    return bad == 0;
+}
+
 // ShipEntry's read-side bounds.
-inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & clamped, int32_t & damaged )
+inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length ) )
@@ -10075,8 +10534,20 @@ inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & clamped, int32
     }
 }
 
+// GlobalSettings's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool GlobalSettingsFixedInRange( const GlobalSettings & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.tick_rate < 1 ) | (int) ( value.tick_rate > 240 );
+    bad |= (int) ( (uint64_t) value.difficulty > 3u );
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length );
+    return bad == 0;
+}
+
 // GlobalSettings's read-side bounds.
-inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & clamped, int32_t & damaged )
+inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.tick_rate < 1 ) | (int) ( value.tick_rate > 240 );
@@ -10088,8 +10559,30 @@ inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & clam
     }
 }
 
+// PackConfig's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool PackConfigFixedInRange( const PackConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !GlobalSettingsFixedInRange( value.global );
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) !ShipEntryFixedInRange( value.ships.slots[i] );
+    }
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        bad |= (int) ( value.thresholds.slots[i] < 0 ) | (int) ( value.thresholds.slots[i] > 1000 );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.reserves_count; ++i )
+    {
+        bad |= (int) !ShipEntryFixedInRange( value.reserves[i] );
+    }
+    return bad == 0;
+}
+
 // PackConfig's read-side bounds.
-inline void PackConfigFixedClampBody( PackConfig & value, int32_t & clamped, int32_t & damaged )
+inline void PackConfigFixedClampBody( PackConfig & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
     (void) value; (void) clamped; (void) damaged;
     GlobalSettingsFixedClampBody( value.global, clamped, damaged );
@@ -10118,11 +10611,11 @@ inline bool GunnerSettingsFixedClamp( GunnerSettings & value, TableReport * repo
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    GunnerSettingsFixedClampBody( value, clamped, damaged );
+    if ( !GunnerSettingsFixedInRange( value ) ) { GunnerSettingsFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
-    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }
+    if ( damaged != 0 ) { report->refused = true; report->reason = TableMessageReason::text_ill_formed; return false; }
     report->clamped += clamped;
     return true;
 }
@@ -10251,32 +10744,38 @@ inline int64_t GunnerSettingsFixedSave( const GunnerSettings * values, int64_t c
 
 // THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
 // from the known set COMPILE laid down (algorithm §5.3). A stranger's
-// layout is never parsed: unknown hash is layout_newer, known hash with
-// different bytes is layout_malformed, a hash below the floor is
-// layout_unsupported. Identity is a PLAN walked by the same loop.
-inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+// layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
+// different bytes is TableMessageReason::layout_malformed, a hash below the floor is
+// TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
+// GunnerSettingsFixedLoadTolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
+// every recovered record, with the counters counted onto the report passed.
+inline int64_t GunnerSettingsFixedLoadTolerant( GunnerSettings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
+    // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
+    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
+    // malformed set BESIDE the name, so a caller switching on reason sees it.
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
-        report->reason = data[0] == kTableWireForm ? previous_form
-                       : data[0] == kTableWireMessageForm ? message_form_as_file
-                       : newer_form;
+        report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
+                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
+                       : TableMessageReason::newer_form;
         return -1;
     }
-    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
-    // one is `malformed`, which is what keeps them spendable later.
+    // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
+    // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->malformed = true; return -1; }
+        if ( data[i] != 0 ) { report->malformed = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
-    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
@@ -10288,7 +10787,7 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
     }
     if ( lineage_at < 0 )
     {
-        report->refused = true; report->reason = layout_newer; report->layout_hash = hash; return -1;
+        report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;
     }
     int32_t floor_at = GunnerSettingsFixedFloor;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
@@ -10296,12 +10795,12 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
 #endif
     if ( lineage_at < floor_at )
     {
-        report->refused = true; report->reason = layout_unsupported; report->layout_hash = hash; return -1;
+        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;
     }
     const TableFixedKnownLayout & known = GunnerSettingsFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = layout_malformed; return -1;
+        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
     }
     const TableFixedEntry * entries = GunnerSettingsFixedPlan;
     int32_t entry_count = GunnerSettingsFixedPlanCount;
@@ -10333,8 +10832,8 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
         else
         {
             TableFixedLayoutView parsed;
-            TableMessageReason why = layout_malformed;
-            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = layout_malformed; return -1; }
+            TableMessageReason why = TableMessageReason::layout_malformed;
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -10349,7 +10848,7 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
             const int32_t made = TableFixedCompile( parsed, GunnerSettingsFixedLayout, (int32_t) GunnerSettingsFixedLayoutBytes, GunnerSettingsFixedDst,
                                                    GunnerSettingsFixedCover, GunnerSettingsFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_record_too_large : plan_too_large; return -1; }
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }
             record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
@@ -10370,9 +10869,33 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
             entry_guarded = compiled_guarded;
         }
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
+    // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
+    // the identity lane is a plan too, and a caller's short plan owes the
+    // same name there as it does for a lineage entry.
+    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     const int64_t n = rest / record_bytes;
-    if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
+    // ahead of the first prefill. A count or length past the PLAN's bound
+    // refuses BY NAME — count_over_bound / length_over_bound — checked before
+    // any destination byte is written (docs/SPEC-TABLES.md §3.4,
+    // docs/FIXED-FORM-ALGORITHM.md §4.5). REFUSE is total over the batch too:
+    // a refusal at record k leaves values[0..k-1] as untouched as values[k].
+    {
+        const uint8_t * scan = at;
+        TableMessageReason why = newer_form;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, GunnerSettingsFixedGuards, why ) )
+            {
+                report->refused = true;
+                report->reason = why;
+                return -1;
+            }
+            scan += record_bytes;
+        }
+    }
     GunnerSettings defaults;
     if ( fill_count > 0 )
     {
@@ -10381,7 +10904,7 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): the counters this record's plan and ranges have moved are put
@@ -10402,6 +10925,27 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
     return n;
 }
 
+// The PLAIN GunnerSettingsFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+// every refusal of GunnerSettingsFixedLoadTolerant and for a read the strict rule refuses —
+// malformed, clamped, kind-mismatched or refused — with every value it had
+// written reset to its declared defaults. A supplied report receives THIS
+// read's report. unknown and widened alone never refuse.
+inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    TableReport * out = report != NULL ? report : &local;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const int64_t n = GunnerSettingsFixedLoadTolerant( values, capacity, data, bytes, plan, plan_capacity, cache, out );
+    if ( n < 0 ) { return -1; }
+    if ( out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    {
+        for ( int64_t k = 0; k < n; ++k ) { GunnerSettingsReset( values[k] ); }
+        return -1;
+    }
+    return n;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -10412,11 +10956,11 @@ inline bool ShipEntryFixedClamp( ShipEntry & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    ShipEntryFixedClampBody( value, clamped, damaged );
+    if ( !ShipEntryFixedInRange( value ) ) { ShipEntryFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
-    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }
+    if ( damaged != 0 ) { report->refused = true; report->reason = TableMessageReason::text_ill_formed; return false; }
     report->clamped += clamped;
     return true;
 }
@@ -10572,32 +11116,38 @@ inline int64_t ShipEntryFixedSave( const ShipEntry * values, int64_t count, uint
 
 // THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
 // from the known set COMPILE laid down (algorithm §5.3). A stranger's
-// layout is never parsed: unknown hash is layout_newer, known hash with
-// different bytes is layout_malformed, a hash below the floor is
-// layout_unsupported. Identity is a PLAN walked by the same loop.
-inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+// layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
+// different bytes is TableMessageReason::layout_malformed, a hash below the floor is
+// TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
+// ShipEntryFixedLoadTolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
+// every recovered record, with the counters counted onto the report passed.
+inline int64_t ShipEntryFixedLoadTolerant( ShipEntry * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
+    // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
+    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
+    // malformed set BESIDE the name, so a caller switching on reason sees it.
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
-        report->reason = data[0] == kTableWireForm ? previous_form
-                       : data[0] == kTableWireMessageForm ? message_form_as_file
-                       : newer_form;
+        report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
+                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
+                       : TableMessageReason::newer_form;
         return -1;
     }
-    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
-    // one is `malformed`, which is what keeps them spendable later.
+    // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
+    // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->malformed = true; return -1; }
+        if ( data[i] != 0 ) { report->malformed = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
-    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
@@ -10609,7 +11159,7 @@ inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const u
     }
     if ( lineage_at < 0 )
     {
-        report->refused = true; report->reason = layout_newer; report->layout_hash = hash; return -1;
+        report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;
     }
     int32_t floor_at = ShipEntryFixedFloor;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
@@ -10617,12 +11167,12 @@ inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const u
 #endif
     if ( lineage_at < floor_at )
     {
-        report->refused = true; report->reason = layout_unsupported; report->layout_hash = hash; return -1;
+        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;
     }
     const TableFixedKnownLayout & known = ShipEntryFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = layout_malformed; return -1;
+        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
     }
     const TableFixedEntry * entries = ShipEntryFixedPlan;
     int32_t entry_count = ShipEntryFixedPlanCount;
@@ -10654,8 +11204,8 @@ inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const u
         else
         {
             TableFixedLayoutView parsed;
-            TableMessageReason why = layout_malformed;
-            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = layout_malformed; return -1; }
+            TableMessageReason why = TableMessageReason::layout_malformed;
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -10670,7 +11220,7 @@ inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const u
             const int32_t made = TableFixedCompile( parsed, ShipEntryFixedLayout, (int32_t) ShipEntryFixedLayoutBytes, ShipEntryFixedDst,
                                                    ShipEntryFixedCover, ShipEntryFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_record_too_large : plan_too_large; return -1; }
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }
             record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
@@ -10691,9 +11241,33 @@ inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const u
             entry_guarded = compiled_guarded;
         }
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
+    // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
+    // the identity lane is a plan too, and a caller's short plan owes the
+    // same name there as it does for a lineage entry.
+    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     const int64_t n = rest / record_bytes;
-    if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
+    // ahead of the first prefill. A count or length past the PLAN's bound
+    // refuses BY NAME — count_over_bound / length_over_bound — checked before
+    // any destination byte is written (docs/SPEC-TABLES.md §3.4,
+    // docs/FIXED-FORM-ALGORITHM.md §4.5). REFUSE is total over the batch too:
+    // a refusal at record k leaves values[0..k-1] as untouched as values[k].
+    {
+        const uint8_t * scan = at;
+        TableMessageReason why = newer_form;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, ShipEntryFixedGuards, why ) )
+            {
+                report->refused = true;
+                report->reason = why;
+                return -1;
+            }
+            scan += record_bytes;
+        }
+    }
     ShipEntry defaults;
     if ( fill_count > 0 )
     {
@@ -10702,7 +11276,7 @@ inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const u
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): the counters this record's plan and ranges have moved are put
@@ -10723,6 +11297,27 @@ inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const u
     return n;
 }
 
+// The PLAIN ShipEntryFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+// every refusal of ShipEntryFixedLoadTolerant and for a read the strict rule refuses —
+// malformed, clamped, kind-mismatched or refused — with every value it had
+// written reset to its declared defaults. A supplied report receives THIS
+// read's report. unknown and widened alone never refuse.
+inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    TableReport * out = report != NULL ? report : &local;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const int64_t n = ShipEntryFixedLoadTolerant( values, capacity, data, bytes, plan, plan_capacity, cache, out );
+    if ( n < 0 ) { return -1; }
+    if ( out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    {
+        for ( int64_t k = 0; k < n; ++k ) { ShipEntryReset( values[k] ); }
+        return -1;
+    }
+    return n;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -10733,11 +11328,11 @@ inline bool GlobalSettingsFixedClamp( GlobalSettings & value, TableReport * repo
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    GlobalSettingsFixedClampBody( value, clamped, damaged );
+    if ( !GlobalSettingsFixedInRange( value ) ) { GlobalSettingsFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
-    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }
+    if ( damaged != 0 ) { report->refused = true; report->reason = TableMessageReason::text_ill_formed; return false; }
     report->clamped += clamped;
     return true;
 }
@@ -10881,32 +11476,38 @@ inline int64_t GlobalSettingsFixedSave( const GlobalSettings * values, int64_t c
 
 // THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
 // from the known set COMPILE laid down (algorithm §5.3). A stranger's
-// layout is never parsed: unknown hash is layout_newer, known hash with
-// different bytes is layout_malformed, a hash below the floor is
-// layout_unsupported. Identity is a PLAN walked by the same loop.
-inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+// layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
+// different bytes is TableMessageReason::layout_malformed, a hash below the floor is
+// TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
+// GlobalSettingsFixedLoadTolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
+// every recovered record, with the counters counted onto the report passed.
+inline int64_t GlobalSettingsFixedLoadTolerant( GlobalSettings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
+    // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
+    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
+    // malformed set BESIDE the name, so a caller switching on reason sees it.
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
-        report->reason = data[0] == kTableWireForm ? previous_form
-                       : data[0] == kTableWireMessageForm ? message_form_as_file
-                       : newer_form;
+        report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
+                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
+                       : TableMessageReason::newer_form;
         return -1;
     }
-    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
-    // one is `malformed`, which is what keeps them spendable later.
+    // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
+    // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->malformed = true; return -1; }
+        if ( data[i] != 0 ) { report->malformed = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
-    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
@@ -10918,7 +11519,7 @@ inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacit
     }
     if ( lineage_at < 0 )
     {
-        report->refused = true; report->reason = layout_newer; report->layout_hash = hash; return -1;
+        report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;
     }
     int32_t floor_at = GlobalSettingsFixedFloor;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
@@ -10926,12 +11527,12 @@ inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacit
 #endif
     if ( lineage_at < floor_at )
     {
-        report->refused = true; report->reason = layout_unsupported; report->layout_hash = hash; return -1;
+        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;
     }
     const TableFixedKnownLayout & known = GlobalSettingsFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = layout_malformed; return -1;
+        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
     }
     const TableFixedEntry * entries = GlobalSettingsFixedPlan;
     int32_t entry_count = GlobalSettingsFixedPlanCount;
@@ -10963,8 +11564,8 @@ inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacit
         else
         {
             TableFixedLayoutView parsed;
-            TableMessageReason why = layout_malformed;
-            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = layout_malformed; return -1; }
+            TableMessageReason why = TableMessageReason::layout_malformed;
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -10979,7 +11580,7 @@ inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacit
             const int32_t made = TableFixedCompile( parsed, GlobalSettingsFixedLayout, (int32_t) GlobalSettingsFixedLayoutBytes, GlobalSettingsFixedDst,
                                                    GlobalSettingsFixedCover, GlobalSettingsFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_record_too_large : plan_too_large; return -1; }
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }
             record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
@@ -11000,9 +11601,33 @@ inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacit
             entry_guarded = compiled_guarded;
         }
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
+    // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
+    // the identity lane is a plan too, and a caller's short plan owes the
+    // same name there as it does for a lineage entry.
+    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     const int64_t n = rest / record_bytes;
-    if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
+    // ahead of the first prefill. A count or length past the PLAN's bound
+    // refuses BY NAME — count_over_bound / length_over_bound — checked before
+    // any destination byte is written (docs/SPEC-TABLES.md §3.4,
+    // docs/FIXED-FORM-ALGORITHM.md §4.5). REFUSE is total over the batch too:
+    // a refusal at record k leaves values[0..k-1] as untouched as values[k].
+    {
+        const uint8_t * scan = at;
+        TableMessageReason why = newer_form;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, GlobalSettingsFixedGuards, why ) )
+            {
+                report->refused = true;
+                report->reason = why;
+                return -1;
+            }
+            scan += record_bytes;
+        }
+    }
     GlobalSettings defaults;
     if ( fill_count > 0 )
     {
@@ -11011,7 +11636,7 @@ inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacit
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): the counters this record's plan and ranges have moved are put
@@ -11032,6 +11657,27 @@ inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacit
     return n;
 }
 
+// The PLAIN GlobalSettingsFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+// every refusal of GlobalSettingsFixedLoadTolerant and for a read the strict rule refuses —
+// malformed, clamped, kind-mismatched or refused — with every value it had
+// written reset to its declared defaults. A supplied report receives THIS
+// read's report. unknown and widened alone never refuse.
+inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    TableReport * out = report != NULL ? report : &local;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const int64_t n = GlobalSettingsFixedLoadTolerant( values, capacity, data, bytes, plan, plan_capacity, cache, out );
+    if ( n < 0 ) { return -1; }
+    if ( out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    {
+        for ( int64_t k = 0; k < n; ++k ) { GlobalSettingsReset( values[k] ); }
+        return -1;
+    }
+    return n;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -11042,11 +11688,11 @@ inline bool PackConfigFixedClamp( PackConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
     int32_t damaged = 0;
-    PackConfigFixedClampBody( value, clamped, damaged );
+    if ( !PackConfigFixedInRange( value ) ) { PackConfigFixedClampBody( value, clamped, damaged ); }
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
-    if ( damaged != 0 ) { report->refused = true; report->reason = text_ill_formed; return false; }
+    if ( damaged != 0 ) { report->refused = true; report->reason = TableMessageReason::text_ill_formed; return false; }
     report->clamped += clamped;
     return true;
 }
@@ -11372,32 +12018,38 @@ inline int64_t PackConfigFixedSave( const PackConfig * values, int64_t count, ui
 
 // THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
 // from the known set COMPILE laid down (algorithm §5.3). A stranger's
-// layout is never parsed: unknown hash is layout_newer, known hash with
-// different bytes is layout_malformed, a hash below the floor is
-// layout_unsupported. Identity is a PLAN walked by the same loop.
-inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+// layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
+// different bytes is TableMessageReason::layout_malformed, a hash below the floor is
+// TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
+// PackConfigFixedLoadTolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
+// every recovered record, with the counters counted onto the report passed.
+inline int64_t PackConfigFixedLoadTolerant( PackConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }
+    // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
+    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
+    // malformed set BESIDE the name, so a caller switching on reason sees it.
+    if ( data == NULL || bytes < 1 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
-        report->reason = data[0] == kTableWireForm ? previous_form
-                       : data[0] == kTableWireMessageForm ? message_form_as_file
-                       : newer_form;
+        report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
+                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
+                       : TableMessageReason::newer_form;
         return -1;
     }
-    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
-    // one is `malformed`, which is what keeps them spendable later.
+    // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
+    // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->malformed = true; return -1; }
+        if ( data[i] != 0 ) { report->malformed = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
-    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
@@ -11409,7 +12061,7 @@ inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const
     }
     if ( lineage_at < 0 )
     {
-        report->refused = true; report->reason = layout_newer; report->layout_hash = hash; return -1;
+        report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;
     }
     int32_t floor_at = PackConfigFixedFloor;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
@@ -11417,12 +12069,12 @@ inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const
 #endif
     if ( lineage_at < floor_at )
     {
-        report->refused = true; report->reason = layout_unsupported; report->layout_hash = hash; return -1;
+        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;
     }
     const TableFixedKnownLayout & known = PackConfigFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = layout_malformed; return -1;
+        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
     }
     const TableFixedEntry * entries = PackConfigFixedPlan;
     int32_t entry_count = PackConfigFixedPlanCount;
@@ -11454,8 +12106,8 @@ inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const
         else
         {
             TableFixedLayoutView parsed;
-            TableMessageReason why = layout_malformed;
-            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = layout_malformed; return -1; }
+            TableMessageReason why = TableMessageReason::layout_malformed;
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -11470,7 +12122,7 @@ inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const
             const int32_t made = TableFixedCompile( parsed, PackConfigFixedLayout, (int32_t) PackConfigFixedLayoutBytes, PackConfigFixedDst,
                                                    PackConfigFixedCover, PackConfigFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_record_too_large : plan_too_large; return -1; }
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }
             record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
@@ -11491,9 +12143,33 @@ inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const
             entry_guarded = compiled_guarded;
         }
     }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
+    // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
+    // the identity lane is a plan too, and a caller's short plan owes the
+    // same name there as it does for a lineage entry.
+    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; report->reason = TableFixedReason::truncated; return -1; }
     const int64_t n = rest / record_bytes;
-    if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
+    // ahead of the first prefill. A count or length past the PLAN's bound
+    // refuses BY NAME — count_over_bound / length_over_bound — checked before
+    // any destination byte is written (docs/SPEC-TABLES.md §3.4,
+    // docs/FIXED-FORM-ALGORITHM.md §4.5). REFUSE is total over the batch too:
+    // a refusal at record k leaves values[0..k-1] as untouched as values[k].
+    {
+        const uint8_t * scan = at;
+        TableMessageReason why = newer_form;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, PackConfigFixedGuards, why ) )
+            {
+                report->refused = true;
+                report->reason = why;
+                return -1;
+            }
+            scan += record_bytes;
+        }
+    }
     PackConfig defaults;
     if ( fill_count > 0 )
     {
@@ -11502,7 +12178,7 @@ inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): the counters this record's plan and ranges have moved are put
@@ -11519,6 +12195,27 @@ inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const
             return -1;
         }
         at += record_bytes;
+    }
+    return n;
+}
+
+// The PLAIN PackConfigFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+// every refusal of PackConfigFixedLoadTolerant and for a read the strict rule refuses —
+// malformed, clamped, kind-mismatched or refused — with every value it had
+// written reset to its declared defaults. A supplied report receives THIS
+// read's report. unknown and widened alone never refuse.
+inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    TableReport * out = report != NULL ? report : &local;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
+    const int64_t n = PackConfigFixedLoadTolerant( values, capacity, data, bytes, plan, plan_capacity, cache, out );
+    if ( n < 0 ) { return -1; }
+    if ( out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    {
+        for ( int64_t k = 0; k < n; ++k ) { PackConfigReset( values[k] ); }
+        return -1;
     }
     return n;
 }
@@ -14037,40 +14734,40 @@ extern const TableTypeInfo GlobalSettingsTableInfo;
 extern const TableTypeInfo PackConfigTableInfo;
 
 inline const TableFieldInfo GunnerSettingsTableFields[] = {
-    { "reaction", "reaction", "float32", 0xb75aa3662201646aull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( GunnerSettings, reaction ), (uint32_t) sizeof( GunnerSettings::reaction ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "tracking", "tracking", "bool", 0xa6bf719a4602b0bcull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( GunnerSettings, tracking ), (uint32_t) sizeof( GunnerSettings::tracking ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "callsign", "callsign", "string", 0x5bc44627b9848818ull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( GunnerSettings, callsign ), (uint32_t) sizeof( GunnerSettings::callsign ), (uint32_t) offsetof( GunnerSettings, callsign_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "reaction", "reaction", "float32", 0xb75aa3662201646aull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( GunnerSettings, reaction ), (uint32_t) sizeof( GunnerSettings::reaction ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "tracking", "tracking", "bool", 0xa6bf719a4602b0bcull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( GunnerSettings, tracking ), (uint32_t) sizeof( GunnerSettings::tracking ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "callsign", "callsign", "string", 0x5bc44627b9848818ull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( GunnerSettings, callsign ), (uint32_t) sizeof( GunnerSettings::callsign ), (uint32_t) offsetof( GunnerSettings, callsign_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo GunnerSettingsTableInfo = { "GunnerSettings", (uint32_t) sizeof( GunnerSettings ), 3, GunnerSettingsTableFields, +[]( void * p ) { GunnerSettingsReset( *(GunnerSettings *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo GunnerSettingsTableInfo = { "GunnerSettings", (uint32_t) sizeof( GunnerSettings ), 3, GunnerSettingsTableFields, +[]( void * p ) { GunnerSettingsReset( *(GunnerSettings *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * GunnerSettingsTableType() { return &GunnerSettingsTableInfo; }
 
 inline const TableFieldInfo ShipEntryTableFields[] = {
-    { "display_name", "name", "string", 0x2d21d7cd66bd5a5dull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( ShipEntry, display_name ), (uint32_t) sizeof( ShipEntry::display_name ), (uint32_t) offsetof( ShipEntry, display_name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "health", "health", "float32", 0x7f69d4b5288ba9cfull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ShipEntry, health ), (uint32_t) sizeof( ShipEntry::health ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "mass", "mass", "float32", 0x1f3757a2ce7b0ab1ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ShipEntry, mass ), (uint32_t) sizeof( ShipEntry::mass ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "hardpoints", "hardpoints", "int32", 0x95d0cce09ca82b73ull, 4, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( ShipEntry, hardpoints ), (uint32_t) sizeof( ShipEntry::hardpoints[0] ), (uint32_t) offsetof( ShipEntry, hardpoints_count ), 0xffffffffu, NULL, true, 0.0, 8.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "gunner", "gunner", "GunnerSettings", 0x40dbb648c0cd44aaull, 13, false, false, NULL, NULL, false, true, 0, (uint32_t) offsetof( ShipEntry, gunner ), (uint32_t) sizeof( ShipEntry::gunner ), 0xffffffffu, (uint32_t) offsetof( ShipEntry, gunner_present ), &GunnerSettingsTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "display_name", "name", "string", 0x2d21d7cd66bd5a5dull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( ShipEntry, display_name ), (uint32_t) sizeof( ShipEntry::display_name ), (uint32_t) offsetof( ShipEntry, display_name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "health", "health", "float32", 0x7f69d4b5288ba9cfull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ShipEntry, health ), (uint32_t) sizeof( ShipEntry::health ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "mass", "mass", "float32", 0x1f3757a2ce7b0ab1ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ShipEntry, mass ), (uint32_t) sizeof( ShipEntry::mass ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "hardpoints", "hardpoints", "int32", 0x95d0cce09ca82b73ull, 4, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( ShipEntry, hardpoints ), (uint32_t) sizeof( ShipEntry::hardpoints[0] ), (uint32_t) offsetof( ShipEntry, hardpoints_count ), 0xffffffffu, NULL, true, 0.0, 8.0, 0ll, 8ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "gunner", "gunner", "GunnerSettings", 0x40dbb648c0cd44aaull, 13, false, false, NULL, NULL, false, true, 0, (uint32_t) offsetof( ShipEntry, gunner ), (uint32_t) sizeof( ShipEntry::gunner ), 0xffffffffu, (uint32_t) offsetof( ShipEntry, gunner_present ), &GunnerSettingsTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo ShipEntryTableInfo = { "ShipEntry", (uint32_t) sizeof( ShipEntry ), 5, ShipEntryTableFields, +[]( void * p ) { ShipEntryReset( *(ShipEntry *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo ShipEntryTableInfo = { "ShipEntry", (uint32_t) sizeof( ShipEntry ), 5, ShipEntryTableFields, +[]( void * p ) { ShipEntryReset( *(ShipEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ShipEntryTableType() { return &ShipEntryTableInfo; }
 
 inline const TableFieldInfo GlobalSettingsTableFields[] = {
-    { "tick_rate", "tick_rate", "uint32", 0xa65f859b617deaf3ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( GlobalSettings, tick_rate ), (uint32_t) sizeof( GlobalSettings::tick_rate ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 240.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "difficulty", "difficulty", "Difficulty", 0x467f35a74c6e4a70ull, 30, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( GlobalSettings, difficulty ), (uint32_t) sizeof( GlobalSettings::difficulty ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Difficulty( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Difficulty( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "build_note", "build_note", "string", 0x14ec921cc2549d60ull, 12, false, false, NULL, NULL, true, false, 48, (uint32_t) offsetof( GlobalSettings, build_note ), (uint32_t) sizeof( GlobalSettings::build_note ), (uint32_t) offsetof( GlobalSettings, build_note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "spawn_delays", "spawn_delays", "float32", 0x09ae5613b0051271ull, 10, true, false, NULL, NULL, false, false, 3, (uint32_t) offsetof( GlobalSettings, spawn_delays ), (uint32_t) sizeof( GlobalSettings::spawn_delays[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "tick_rate", "tick_rate", "uint32", 0xa65f859b617deaf3ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( GlobalSettings, tick_rate ), (uint32_t) sizeof( GlobalSettings::tick_rate ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 240.0, 0, 0, 1ull, 240ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "difficulty", "difficulty", "Difficulty", 0x467f35a74c6e4a70ull, 30, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( GlobalSettings, difficulty ), (uint32_t) sizeof( GlobalSettings::difficulty ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Difficulty( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Difficulty( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "build_note", "build_note", "string", 0x14ec921cc2549d60ull, 12, false, false, NULL, NULL, true, false, 48, (uint32_t) offsetof( GlobalSettings, build_note ), (uint32_t) sizeof( GlobalSettings::build_note ), (uint32_t) offsetof( GlobalSettings, build_note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "spawn_delays", "spawn_delays", "float32", 0x09ae5613b0051271ull, 10, true, false, NULL, NULL, false, false, 3, (uint32_t) offsetof( GlobalSettings, spawn_delays ), (uint32_t) sizeof( GlobalSettings::spawn_delays[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo GlobalSettingsTableInfo = { "GlobalSettings", (uint32_t) sizeof( GlobalSettings ), 4, GlobalSettingsTableFields, +[]( void * p ) { GlobalSettingsReset( *(GlobalSettings *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo GlobalSettingsTableInfo = { "GlobalSettings", (uint32_t) sizeof( GlobalSettings ), 4, GlobalSettingsTableFields, +[]( void * p ) { GlobalSettingsReset( *(GlobalSettings *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * GlobalSettingsTableType() { return &GlobalSettingsTableInfo; }
 
 inline const TableFieldInfo PackConfigTableFields[] = {
-    { "version", "version", "uint32", 0xbb62c62c9808ea37ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( PackConfig, version ), (uint32_t) sizeof( PackConfig::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "global", "global", "GlobalSettings", 0x7fb43557b54149ceull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( PackConfig, global ), (uint32_t) sizeof( PackConfig::global ), 0xffffffffu, 0xffffffffu, &GlobalSettingsTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-    { "ships", "ships", "ShipEntry", 0x294a5c4913e1ad44ull, 13, true, false, NULL, NULL, false, false, (int32_t) ShipType::Max, (uint32_t) offsetof( PackConfig, ships ), (uint32_t) sizeof( PackConfig::ships.slots[0] ), 0xffffffffu, 0xffffffffu, &ShipEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, "ShipType", +[]( uint64_t v ) { return EnumName( ShipType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ShipType( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL },
-    { "thresholds", "thresholds", "int32", 0x9cda940a344e1571ull, 4, true, false, NULL, NULL, false, false, (int32_t) Difficulty::Max, (uint32_t) offsetof( PackConfig, thresholds ), (uint32_t) sizeof( PackConfig::thresholds.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, NULL, -1, NULL, NULL, "Difficulty", +[]( uint64_t v ) { return EnumName( Difficulty( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Difficulty( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL },
-    { "reserves", "reserves", "ShipEntry", 0x77707fccd201c228ull, 13, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( PackConfig, reserves ), (uint32_t) sizeof( PackConfig::reserves[0] ), (uint32_t) offsetof( PackConfig, reserves_count ), 0xffffffffu, &ShipEntryTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+    { "version", "version", "uint32", 0xbb62c62c9808ea37ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( PackConfig, version ), (uint32_t) sizeof( PackConfig::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "global", "global", "GlobalSettings", 0x7fb43557b54149ceull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( PackConfig, global ), (uint32_t) sizeof( PackConfig::global ), 0xffffffffu, 0xffffffffu, &GlobalSettingsTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "ships", "ships", "ShipEntry", 0x294a5c4913e1ad44ull, 13, true, false, NULL, NULL, false, false, (int32_t) ShipType::Max, (uint32_t) offsetof( PackConfig, ships ), (uint32_t) sizeof( PackConfig::ships.slots[0] ), 0xffffffffu, 0xffffffffu, &ShipEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "ShipType", +[]( uint64_t v ) { return EnumName( ShipType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ShipType( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false },
+    { "thresholds", "thresholds", "int32", 0x9cda940a344e1571ull, 4, true, false, NULL, NULL, false, false, (int32_t) Difficulty::Max, (uint32_t) offsetof( PackConfig, thresholds ), (uint32_t) sizeof( PackConfig::thresholds.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, "Difficulty", +[]( uint64_t v ) { return EnumName( Difficulty( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Difficulty( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false },
+    { "reserves", "reserves", "ShipEntry", 0x77707fccd201c228ull, 13, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( PackConfig, reserves ), (uint32_t) sizeof( PackConfig::reserves[0] ), (uint32_t) offsetof( PackConfig, reserves_count ), 0xffffffffu, &ShipEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo PackConfigTableInfo = { "PackConfig", (uint32_t) sizeof( PackConfig ), 5, PackConfigTableFields, +[]( void * p ) { PackConfigReset( *(PackConfig *) p ); }, false, TableDocNone, 0, NULL };
+inline const TableTypeInfo PackConfigTableInfo = { "PackConfig", (uint32_t) sizeof( PackConfig ), 5, PackConfigTableFields, +[]( void * p ) { PackConfigReset( *(PackConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PackConfigTableType() { return &PackConfigTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----
@@ -14079,6 +14776,7 @@ inline const TableTypeInfo * PackConfigTableType() { return &PackConfigTableInfo
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // PackTable.cpp; link it to use them.
 bool GunnerSettingsFromJson( GunnerSettings & value, const char * text, int64_t bytes, TableReport * report );
+bool GunnerSettingsFromJsonTolerant( GunnerSettings & value, const char * text, int64_t bytes, TableReport * report );
 int64_t GunnerSettingsToJsonMeasure( const GunnerSettings & value );
 int64_t GunnerSettingsToJson( const GunnerSettings & value, char * buffer, int64_t capacity );
 
@@ -14086,6 +14784,7 @@ int64_t GunnerSettingsToJson( const GunnerSettings & value, char * buffer, int64
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // PackTable.cpp; link it to use them.
 bool ShipEntryFromJson( ShipEntry & value, const char * text, int64_t bytes, TableReport * report );
+bool ShipEntryFromJsonTolerant( ShipEntry & value, const char * text, int64_t bytes, TableReport * report );
 int64_t ShipEntryToJsonMeasure( const ShipEntry & value );
 int64_t ShipEntryToJson( const ShipEntry & value, char * buffer, int64_t capacity );
 
@@ -14093,6 +14792,7 @@ int64_t ShipEntryToJson( const ShipEntry & value, char * buffer, int64_t capacit
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // PackTable.cpp; link it to use them.
 bool GlobalSettingsFromJson( GlobalSettings & value, const char * text, int64_t bytes, TableReport * report );
+bool GlobalSettingsFromJsonTolerant( GlobalSettings & value, const char * text, int64_t bytes, TableReport * report );
 int64_t GlobalSettingsToJsonMeasure( const GlobalSettings & value );
 int64_t GlobalSettingsToJson( const GlobalSettings & value, char * buffer, int64_t capacity );
 
@@ -14100,7 +14800,122 @@ int64_t GlobalSettingsToJson( const GlobalSettings & value, char * buffer, int64
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // PackTable.cpp; link it to use them.
 bool PackConfigFromJson( PackConfig & value, const char * text, int64_t bytes, TableReport * report );
+bool PackConfigFromJsonTolerant( PackConfig & value, const char * text, int64_t bytes, TableReport * report );
 int64_t PackConfigToJsonMeasure( const PackConfig & value );
 int64_t PackConfigToJson( const PackConfig & value, char * buffer, int64_t capacity );
+
+// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----
+
+#ifndef TABLEDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
+#define TABLEDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
+// TableTextFormEdit replaces one existing scalar value (§16.9.3): path
+// names it as "field", "field[2]" or "field.child", and text is its
+// replacement spelling, one token of this form.
+struct TableTextFormEdit
+{
+    const char * path;
+    const char * text;
+};
+#endif // TABLEDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
+
+// GunnerSettingsLoadTextForm reads one GunnerSettings from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool GunnerSettingsLoadTextForm( const char * text, int64_t bytes, GunnerSettings & value, const char ** refusal );
+
+// GunnerSettingsLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
+// *document and *document_bytes are the caller's own text, so a read then
+// GunnerSettingsSaveTextForm with no edit is the input byte for byte.
+bool GunnerSettingsLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, GunnerSettings & value, const char ** refusal );
+
+// GunnerSettingsSaveTextForm writes the document a Load or Edit returned
+// (docs/SPEC-TABLES.md §16.9.3): the retained bytes, so a read then a
+// write with no edit is the input byte for byte. It answers the byte
+// count, or -1 when capacity cannot hold the document.
+int64_t GunnerSettingsSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity );
+
+// GunnerSettingsEditTextForm replaces existing scalar values (§16.9.3): each edit's
+// token span and nothing else, all spans taken from the original document,
+// a semantic no-op keeping the old spelling. On success *edited_bytes is
+// the edited document's length; a short buffer answers false with
+// *edited_bytes set to what it needs. A refusal names itself in *refusal
+// and leaves the old document untouched.
+bool GunnerSettingsEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, GunnerSettings & value, const char ** refusal );
+
+// ShipEntryLoadTextForm reads one ShipEntry from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool ShipEntryLoadTextForm( const char * text, int64_t bytes, ShipEntry & value, const char ** refusal );
+
+// ShipEntryLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
+// *document and *document_bytes are the caller's own text, so a read then
+// ShipEntrySaveTextForm with no edit is the input byte for byte.
+bool ShipEntryLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, ShipEntry & value, const char ** refusal );
+
+// ShipEntrySaveTextForm writes the document a Load or Edit returned
+// (docs/SPEC-TABLES.md §16.9.3): the retained bytes, so a read then a
+// write with no edit is the input byte for byte. It answers the byte
+// count, or -1 when capacity cannot hold the document.
+int64_t ShipEntrySaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity );
+
+// ShipEntryEditTextForm replaces existing scalar values (§16.9.3): each edit's
+// token span and nothing else, all spans taken from the original document,
+// a semantic no-op keeping the old spelling. On success *edited_bytes is
+// the edited document's length; a short buffer answers false with
+// *edited_bytes set to what it needs. A refusal names itself in *refusal
+// and leaves the old document untouched.
+bool ShipEntryEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, ShipEntry & value, const char ** refusal );
+
+// GlobalSettingsLoadTextForm reads one GlobalSettings from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool GlobalSettingsLoadTextForm( const char * text, int64_t bytes, GlobalSettings & value, const char ** refusal );
+
+// GlobalSettingsLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
+// *document and *document_bytes are the caller's own text, so a read then
+// GlobalSettingsSaveTextForm with no edit is the input byte for byte.
+bool GlobalSettingsLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, GlobalSettings & value, const char ** refusal );
+
+// GlobalSettingsSaveTextForm writes the document a Load or Edit returned
+// (docs/SPEC-TABLES.md §16.9.3): the retained bytes, so a read then a
+// write with no edit is the input byte for byte. It answers the byte
+// count, or -1 when capacity cannot hold the document.
+int64_t GlobalSettingsSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity );
+
+// GlobalSettingsEditTextForm replaces existing scalar values (§16.9.3): each edit's
+// token span and nothing else, all spans taken from the original document,
+// a semantic no-op keeping the old spelling. On success *edited_bytes is
+// the edited document's length; a short buffer answers false with
+// *edited_bytes set to what it needs. A refusal names itself in *refusal
+// and leaves the old document untouched.
+bool GlobalSettingsEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, GlobalSettings & value, const char ** refusal );
+
+// PackConfigLoadTextForm reads one PackConfig from the hand-editable text form
+// (docs/SPEC-TABLES.md §16.9): the strict s-expression document, resolved
+// against the field kinds and landed through the JSON walk. A refusal
+// names itself in *refusal (§16.9.4).
+bool PackConfigLoadTextForm( const char * text, int64_t bytes, PackConfig & value, const char ** refusal );
+
+// PackConfigLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
+// *document and *document_bytes are the caller's own text, so a read then
+// PackConfigSaveTextForm with no edit is the input byte for byte.
+bool PackConfigLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, PackConfig & value, const char ** refusal );
+
+// PackConfigSaveTextForm writes the document a Load or Edit returned
+// (docs/SPEC-TABLES.md §16.9.3): the retained bytes, so a read then a
+// write with no edit is the input byte for byte. It answers the byte
+// count, or -1 when capacity cannot hold the document.
+int64_t PackConfigSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity );
+
+// PackConfigEditTextForm replaces existing scalar values (§16.9.3): each edit's
+// token span and nothing else, all spans taken from the original document,
+// a semantic no-op keeping the old spelling. On success *edited_bytes is
+// the edited document's length; a short buffer answers false with
+// *edited_bytes set to what it needs. A refusal names itself in *refusal
+// and leaves the old document untouched.
+bool PackConfigEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, PackConfig & value, const char ** refusal );
 
 } // namespace tabledemo

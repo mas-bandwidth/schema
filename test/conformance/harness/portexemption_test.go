@@ -39,6 +39,7 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 
 	want := map[string]string{
 		"go":  "refused",
+		"c":   "refused",
 		"cpp": oldCounters,
 	}
 	for lang, verdict := range want {
@@ -63,8 +64,8 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 			}
 		}
 	}
-	if exemptNamed["go"] {
-		t.Fatalf("%s: Go carries the rule and must not be exempted", caseName)
+	if exemptNamed["go"] || exemptNamed["c"] {
+		t.Fatalf("%s: Go and C carry the rule and must not be exempted", caseName)
 	}
 	if !exemptNamed["cpp"] {
 		t.Fatalf("%s: C++ is exempted but the harness names no exemption on its line; it must never skip the row in silence", caseName)

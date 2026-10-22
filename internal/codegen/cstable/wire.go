@@ -357,11 +357,11 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 	ownerType := "global::" + capitalize(g.unit.Package) + "." + g.owner.Name
 	guards := tableGuardExprs(g.owner)
 	if guard := guards[f.Name]; guard != "" {
-		fmt.Fprintf(&b, ", WireGuard = delegate(object o) { var value = (%s)o; return %s; }", ownerType, guard)
+		fmt.Fprintf(&b, ", WireGuard = delegate (object o) { var value = (%s)o; return %s; }", ownerType, guard)
 	}
 	reset := &tableGen{owner: g.owner, unit: g.unit}
 	reset.emitTableResetField(f)
-	fmt.Fprintf(&b, ", ResetField = delegate(object o) { var value = (%s)o; %s }", ownerType, strings.Join(strings.Fields(reset.schema.String()), " "))
+	fmt.Fprintf(&b, ", ResetField = delegate (object o) { var value = (%s)o; %s }", ownerType, strings.Join(strings.Fields(reset.schema.String()), " "))
 	if len(f.DefBytes) > 0 {
 		fmt.Fprintf(&b, ", DefaultBytes = new byte[] { %s }", byteLiterals(f.DefBytes))
 	}
@@ -405,7 +405,7 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 		fmt.Fprintf(&c, "if (v < %s) { r.Clamped++; v = %s; } else if (v > %s) { r.Clamped++; v = %s; } ", lit(f.FMin), lit(f.FMin), lit(f.FMax), lit(f.FMax))
 	}
 	fmt.Fprintf(&c, "return %s;", csRawGet("v", f.Type))
-	fmt.Fprintf(&b, ", ClampRaw = delegate(ulong raw, TableReport r) { %s }", c.String())
+	fmt.Fprintf(&b, ", ClampRaw = delegate (ulong raw, TableReport r) { %s }", c.String())
 	return b.String()
 }
 
@@ -413,6 +413,13 @@ const tableWireSource = `// ---- form-1 table wire: begin ----
 public static partial class TableWire
 {
     public enum Verdict { Ok, Refused, Damaged, BodyStopped }
+
+    // A null report is DISCARDED, not created: one cached instance carries the
+    // ledger for a caller who supplies no report, so a null-report read
+    // allocates nothing (docs/SPEC-TABLES.md §6.5). The head of every read
+    // resets it exactly as it resets a caller-supplied report, so no earlier
+    // read's verdict leaks into the next.
+    public static readonly TableReport Ignored = new TableReport();
 
     // One schema-bounded vocabulary lives on the caller's stack for a save.
     // Collect follows the emitted fields in order. Measuring and writing then
@@ -565,7 +572,9 @@ public static partial class TableWire
                 case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)v); break;
                 case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), (uint)v); break;
                 case 8: System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(Buffer.Slice(Offset), v); break;
-                default: for (int i = 0; i < n; i++) { Byte((byte)v); v >>= 8; } return;
+                default:
+                    for (int i = 0; i < n; i++) { Byte((byte)v); v >>= 8; }
+                    return;
             }
             Offset += n;
         }
@@ -673,7 +682,13 @@ public static partial class TableWire
             {
                 case 17: return Var(out _);
                 case 30: return Var(out _);
-                case 12: case 13: case 14: case 16: case 31: case 32: case 33:
+                case 12:
+                case 13:
+                case 14:
+                case 16:
+                case 31:
+                case 32:
+                case 33:
                     return Slice(out _);
                 case 15:
                     if (!Var(out ulong arm)) { return false; }
@@ -698,7 +713,7 @@ public static partial class TableWire
             case 1: case 2: case 6: case 20: case 25: return 1;
             case 3: case 7: case 21: case 26: return 2;
             case 4: case 8: case 10: case 22: case 27: return 4;
-            case 5: case 9: case 11: case 23: case 28: return 8;
+            case 5: case 9: case 11: case 23: case 28: case 36: return 8;
             case 18: case 19: case 24: case 29: return 16;
             default: return 0;
         }
@@ -730,7 +745,8 @@ public static partial class TableWire
     {
         if (f.WireGuard != null && !f.WireGuard(value)) { return false; }
         if (f.Optional) { return f.GetPresent(value); }
-        if (f.Counted) {
+        if (f.Counted)
+        {
             int n = f.GetCount(value);
             if (f.DefaultBytes != null) { return n != f.DefaultBytes.Length || !f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
             return n != 0;
@@ -892,7 +908,8 @@ public static partial class TableWire
             w.Var(v == 0 ? 0 : ids.Reference(f.VariantId(v)));
         }
         else if (f.Kind == 17) { w.Var(ids.Graph.Index(f.GetChild(value, i))); }
-        else if (f.GetWide != null) {
+        else if (f.GetWide != null)
+        {
             UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
             w.Fixed((ulong)raw, Math.Min(width, 8)); if (width == 16) { w.Fixed((ulong)(raw >> 64), 8); }
         }
@@ -1280,7 +1297,7 @@ public static partial class TableWire
             keep = f.ArrayBound; report.Clamped++;
             while (keep > 0 && (text[keep] & 0xc0) == 0x80) { keep--; }
         }
-        if(value!=null) { text.Slice(0,keep).CopyTo(f.GetBuffer(value)); f.SetCount(value,keep); }
+        if (value != null) { text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep); }
         return true;
     }
     static bool ReadChars(ReadOnlySpan<byte> text, object value, TableFieldInfo f, TableReport report)
@@ -1413,7 +1430,7 @@ public static partial class TableWire
             if (index.Length == 0) { return null; }
             int mask = type.IdMask;
             int slot = unchecked((int)(id ^ (id >> 32))) & mask;
-            for (;;)
+            for (; ; )
             {
                 TableFieldInfo f = index[slot];
                 if (f == null) { return null; }
@@ -1430,7 +1447,7 @@ public static partial class TableWire
         // Load resets the root before even the framing checks. Every nested
         // occurrence still replaces its target, including repeated fields.
         if (nested) { type.Reset(value); }
-        for (;;)
+        for (; ; )
         {
             if (!r.Ref(out ulong reference, out ulong id)) { return Damage(report); }
             if (reference == 0) { return true; }
@@ -1447,7 +1464,7 @@ public static partial class TableWire
                 continue;
             }
             int beforeWidened = report.Widened;
-            if (Widen(kind,Kind(field)) && !r.Has(Width(kind))) { return Damage(report); }
+            if (Widen(kind, Kind(field)) && !r.Has(Width(kind))) { return Damage(report); }
             if (!Compatible(kind, Kind(field), report))
             {
                 if (!r.Skip(kind)) { return Damage(report); }
@@ -1495,7 +1512,7 @@ public static partial class TableWire
     static Verdict Finish(TableReport report, Verdict verdict) { report.Verdict = verdict; return verdict; }
     public static Verdict Load(object value, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableReport report)
     {
-        if (report == null) { report = new TableReport(); }
+        if (report == null) { report = Ignored; }
         type.Reset(value);
         report.Refused = false; report.Reason = null;
         if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }

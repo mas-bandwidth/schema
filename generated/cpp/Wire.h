@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xeb26c970fde3fd71
 
 #pragma once
 
 #include <cstdint>
+#include <new>
 
 #include "Constants.h"
 
@@ -215,9 +216,9 @@ inline const char * EnumName( ProbeShapeType value )
 
 // union ProbeShape — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm is freshly constructed with its defaults
-// when selected, by ReadProbeShape before decoding (SPEC §4.8), or by application code.
-// Application code must include <new> before constructing an arm in place:
-// ::new ( (void*) &value.ring ) ProbeRing{}; value.type = ProbeShapeType::Ring;
+// when selected, by ReadProbeShape before decoding (SPEC §4.8), or by its setter.
+// Select an arm through its setter, which sets the tag and constructs the arm
+// together (SPEC §4.8, the arm setter): ProbeRing & arm = value.SelectRing();
 // Bytes of unselected arms are indeterminate.
 struct ProbeShape
 {
@@ -230,6 +231,20 @@ struct ProbeShape
     };
 
     ProbeShape() : type( ProbeShapeType::None ) {} // the tag only — arms are freshly constructed at selection
+
+    ProbeRing & SelectRing() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &ring ) ProbeRing{};
+        type = ProbeShapeType::Ring;
+        return ring;
+    }
+
+    ProbeSlab & SelectSlab() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &slab ) ProbeSlab{};
+        type = ProbeShapeType::Slab;
+        return slab;
+    }
 };
 
 inline constexpr int64_t ProbeShapeMaxBits = 18; // tag + the largest arm; None costs the tag only (SPEC §4.8)

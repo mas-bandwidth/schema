@@ -38,7 +38,7 @@ fixed table T
     d     bytes(4)
     name  string(8)
     e     Effect
-    num   ?int32
+    number   ?int32
     tail  int32 = 7
 }
 `
@@ -137,7 +137,7 @@ func t07C14(t *testing.T) {
 	dec := t02Norm(jsFn(src, "TFixedDecode"))
 	t02Has(t, dec, "for (let i = 0; i < value.ItemsCount; i++) {",
 		"C14 the counted array's bounds pass walks its live count")
-	t02Has(t, dec, "if (value.NumPresent) {",
+	t02Has(t, dec, "if (value.NumberPresent) {",
 		"C14 an optional's payload is walked only when its present byte says so")
 	// The live count, not the declared bound, is the loop bound.
 	if strings.Contains(dec, "for (let i = 0; i < 2; i++) {") {

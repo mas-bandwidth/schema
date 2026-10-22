@@ -10,5 +10,5 @@ package mapdemo
 table Slots
 {
     seats map[int32][Slot]int32 // [E]T: one slot per named variant, under a signed key
-    after int32
+    past int32 | was = "after"
 }

@@ -86,7 +86,7 @@ static void test_identity()
     static tblf1::Floats value;
     new ( &value ) tblf1::Floats();
     tblf1::TableReport report;
-    if ( !tblf1::FloatsLoad( value, pinned_bytes, pinned, &report ) || report.malformed )
+    if ( !tblf1::FloatsLoadTolerant( value, pinned_bytes, pinned, &report ) || report.malformed )
     {
         printf( "FAIL floats_nan does not load under its own declaration\n" );
         failures++;
@@ -99,7 +99,7 @@ static void test_identity()
     CHECK( bits_of_double( value.wide ) == kDoubleWide );
     CHECK( bits_of_float( value.samples[0] ) == kFloatSample0 );
     CHECK( bits_of_float( value.samples[2] ) == kFloatSample2 );
-    CHECK( value.after == 7 );
+    CHECK( value.past == 7 );
     // THE QUIET BIT IS BIT 22, and it is CLEAR on the two signalling ones: a
     // conversion anywhere on the path would have set it, which is the whole
     // failure this pin exists to catch
@@ -115,7 +115,7 @@ static void test_widened()
     static tblf2::Floats wider;
     new ( &wider ) tblf2::Floats();
     tblf2::TableReport report;
-    if ( !tblf2::FloatsLoad( wider, pinned_bytes, pinned, &report ) || report.malformed )
+    if ( !tblf2::FloatsLoadTolerant( wider, pinned_bytes, pinned, &report ) || report.malformed )
     {
         printf( "FAIL floats_nan does not load under the widened declaration\n" );
         failures++;

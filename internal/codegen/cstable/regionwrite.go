@@ -3,12 +3,12 @@ package cstable
 const tableRegionWriteSource = `
     static bool RegionDefaultElement(NativeValue value, TableFieldInfo f, int i)
     {
-        if (f.Kind == 17) { return value.Pointer(f,i)==long.MinValue; }
-        if (f.Kind == 13) { return RegionEmpty(value.Child(f,i), f.Table); }
-        if (f.Kind == 15) { return value.Child(f,i).Tag(f) == 0; }
-        if (f.GetWide != null) { return value.Wide(f,i) == f.DefaultWide; }
+        if (f.Kind == 17) { return value.Pointer(f, i) == long.MinValue; }
+        if (f.Kind == 13) { return RegionEmpty(value.Child(f, i), f.Table); }
+        if (f.Kind == 15) { return value.Child(f, i).Tag(f) == 0; }
+        if (f.GetWide != null) { return value.Wide(f, i) == f.DefaultWide; }
         if (f.GetBuffer != null) { return value.Buffer(f)[i] == 0; }
-        return DefaultRaw(value.Raw(f,i), f);
+        return DefaultRaw(value.Raw(f, i), f);
     }
     static bool RegionEmpty(NativeValue value, TableTypeInfo type)
     {
@@ -19,7 +19,8 @@ const tableRegionWriteSource = `
     {
         if (!value.Guard(f)) { return false; }
         if (f.Optional) { return value.Present(f); }
-        if (f.Counted) {
+        if (f.Counted)
+        {
             int n = value.Count(f);
             if (f.DefaultBytes != null) { return n != f.DefaultBytes.Length || !value.Buffer(f).Slice(0, n).SequenceEqual(f.DefaultBytes); }
             return n != 0;
@@ -32,10 +33,10 @@ const tableRegionWriteSource = `
     static int RegionCount(NativeValue value, TableFieldInfo f) { return f.Counted ? value.Count(f) : f.ArrayBound; }
     static bool RegionCollectElement(NativeValue value, TableFieldInfo f, int i, ref RegionIds ids)
     {
-        if (f.Kind == 13) { return RegionCollect(value.Child(f,i), f.Table, ref ids); }
+        if (f.Kind == 13) { return RegionCollect(value.Child(f, i), f.Table, ref ids); }
         if (f.Kind == 15)
         {
-            NativeValue union = value.Child(f,i);
+            NativeValue union = value.Child(f, i);
             ulong tag = union.Tag(f);
             if (tag == 0) { return true; }
             if (tag > (ulong)f.EnumMax || !Named(f.EnumName(tag))) { return false; }
@@ -43,7 +44,7 @@ const tableRegionWriteSource = `
         }
         if (f.Kind == 30)
         {
-            ulong v = value.Raw(f,i);
+            ulong v = value.Raw(f, i);
             if (v == 0) { return true; }
             return v <= (ulong)f.EnumMax && Named(f.EnumName(v)) && ids.Add(f.VariantId(v));
         }
@@ -87,12 +88,12 @@ const tableRegionWriteSource = `
     {
         if (f.Kind == 13)
         {
-            long n = RegionBodySize(value.Child(f,i), f.Table, ref ids);
+            long n = RegionBodySize(value.Child(f, i), f.Table, ref ids);
             return n + (framed ? VarSize((ulong)n) : 0);
         }
         if (f.Kind == 15)
         {
-            NativeValue union = value.Child(f,i);
+            NativeValue union = value.Child(f, i);
             ulong tag = union.Tag(f);
             if (tag == 0) { return 1; }
             TableUnionArmInfo arm = f.Arms.Arms[(int)tag];
@@ -101,10 +102,10 @@ const tableRegionWriteSource = `
         }
         if (f.Kind == 30)
         {
-            ulong v = value.Raw(f,i);
+            ulong v = value.Raw(f, i);
             return VarSize(v == 0 ? 0 : ids.Reference(f.VariantId(v)));
         }
-        if (f.Kind == 17) { return VarSize(ids.Graph.Index(value.Pointer(f,i))); }
+        if (f.Kind == 17) { return VarSize(ids.Graph.Index(value.Pointer(f, i))); }
         return Width(f.Kind);
     }
     static long RegionArraySize(NativeValue value, TableFieldInfo f, ref RegionIds ids)
@@ -140,13 +141,13 @@ const tableRegionWriteSource = `
     {
         if (f.Kind == 13)
         {
-            NativeValue child = value.Child(f,i);
+            NativeValue child = value.Child(f, i);
             if (framed) { w.Var((ulong)RegionBodySize(child, f.Table, ref ids)); }
             RegionWriteBody(ref w, child, f.Table, ref ids);
         }
         else if (f.Kind == 15)
         {
-            NativeValue union = value.Child(f,i); ulong tag = union.Tag(f);
+            NativeValue union = value.Child(f, i); ulong tag = union.Tag(f);
             if (tag == 0) { w.Var(0); return; }
             TableUnionArmInfo arm = f.Arms.Arms[(int)tag];
             w.Var(ids.Reference(f.VariantId(tag))); w.Byte(arm.Field == null ? (byte)32 : Kind(arm.Field));
@@ -155,15 +156,16 @@ const tableRegionWriteSource = `
         }
         else if (f.Kind == 30)
         {
-            ulong v = value.Raw(f,i);
+            ulong v = value.Raw(f, i);
             w.Var(v == 0 ? 0 : ids.Reference(f.VariantId(v)));
         }
-        else if (f.Kind == 17) { w.Var(ids.Graph.Index(value.Pointer(f,i))); }
-        else if (f.GetWide != null) {
-            UInt128 raw = value.Wide(f,i); int width = Width(f.Kind);
+        else if (f.Kind == 17) { w.Var(ids.Graph.Index(value.Pointer(f, i))); }
+        else if (f.GetWide != null)
+        {
+            UInt128 raw = value.Wide(f, i); int width = Width(f.Kind);
             w.Fixed((ulong)raw, Math.Min(width, 8)); if (width == 16) { w.Fixed((ulong)(raw >> 64), 8); }
         }
-        else { w.Fixed(f.GetBuffer != null ? value.Buffer(f)[i] : value.Raw(f,i), Width(f.Kind)); }
+        else { w.Fixed(f.GetBuffer != null ? value.Buffer(f)[i] : value.Raw(f, i), Width(f.Kind)); }
     }
     static void RegionWritePayload(ref Writer w, NativeValue value, TableFieldInfo f, ref RegionIds ids)
     {
@@ -205,25 +207,25 @@ const tableRegionWriteSource = `
         if (root) { RegionWriteNodes(ref w, ref ids); }
         w.Var(0);
     }
-    public static unsafe long SaveRegion(IntPtr pointer, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, bool measure,TableAllocator allocator=default,bool mutable=false)
+    public static unsafe long SaveRegion(IntPtr pointer, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, bool measure, TableAllocator allocator = default, bool mutable = false)
     {
-        if(pointer==IntPtr.Zero) { return -1; }
-        NativeValue value=new NativeValue((byte*)pointer,0) { Mutable=mutable };
-        RegionIds ids = new RegionIds(vocabulary) { RootType=type };
-        if (type.Variable) { ids.Graph = RegionNumber(value, type,allocator); if (!ids.Graph.Valid) { return -1; } }
+        if (pointer == IntPtr.Zero) { return -1; }
+        NativeValue value = new NativeValue((byte*)pointer, 0) { Mutable = mutable };
+        RegionIds ids = new RegionIds(vocabulary) { RootType = type };
+        if (type.Variable) { ids.Graph = RegionNumber(value, type, allocator); if (!ids.Graph.Valid) { return -1; } }
         try
         {
-        if (!RegionCollect(value, type, ref ids) || !RegionCollectNodes(ref ids)) { return -1; }
-        long n = 1 + RegionBodySize(value, type, ref ids) + 8L * ids.Count + 8;
-        long nodes = RegionNodesSize(ref ids);
-        if (nodes != 0) { n += VarSize(ids.Reference(ulong.MaxValue)) + 1 + VarSize((ulong)nodes) + nodes; }
-        if (measure) { return n; }
-        if (n > buffer.Length) { return -1; }
-        Writer w = new Writer(buffer);
-        w.Byte(1); RegionWriteBody(ref w, value, type, ref ids, true);
-        for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
-        w.Fixed((ulong)ids.Count, 8);
-        return w.Offset;
+            if (!RegionCollect(value, type, ref ids) || !RegionCollectNodes(ref ids)) { return -1; }
+            long n = 1 + RegionBodySize(value, type, ref ids) + 8L * ids.Count + 8;
+            long nodes = RegionNodesSize(ref ids);
+            if (nodes != 0) { n += VarSize(ids.Reference(ulong.MaxValue)) + 1 + VarSize((ulong)nodes) + nodes; }
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            Writer w = new Writer(buffer);
+            w.Byte(1); RegionWriteBody(ref w, value, type, ref ids, true);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
         }
         finally { ids.Graph.Dispose(); }
     }

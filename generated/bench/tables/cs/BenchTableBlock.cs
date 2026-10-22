@@ -63,7 +63,7 @@ namespace Benchtable
 
         public ref readonly T this[int index]
         {
-            get { return ref *(T*) (rows + (long) index * stride); }
+            get { return ref *(T*)(rows + (long)index * stride); }
         }
 
         public Enumerator GetEnumerator() { return new Enumerator(rows, count, stride); }
@@ -89,7 +89,7 @@ namespace Benchtable
                 return true;
             }
 
-            public ref readonly T Current { get { return ref *(T*) at; } }
+            public ref readonly T Current { get { return ref *(T*)at; } }
         }
     }
 
@@ -242,35 +242,35 @@ namespace Benchtable
             checked_ = true;
             {
                 TableEntityBlockProjection probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("TableEntityBlockProjection", Unsafe.SizeOf<TableEntityBlockProjection>(), 88);
-                Offset("TableEntityBlockProjection.Magic", (byte*) &probe.Magic - at, 0);
-                Offset("TableEntityBlockProjection.BuildVersion", (byte*) &probe.BuildVersion - at, 8);
-                Offset("TableEntityBlockProjection.ByteOrder", (byte*) &probe.ByteOrder - at, 16);
-                Offset("TableEntityBlockProjection.EntityId", (byte*) &probe.EntityId - at, 24);
-                Offset("TableEntityBlockProjection.PosX", (byte*) &probe.PosX - at, 28);
-                Offset("TableEntityBlockProjection.PosY", (byte*) &probe.PosY - at, 32);
-                Offset("TableEntityBlockProjection.PosZ", (byte*) &probe.PosZ - at, 36);
-                Offset("TableEntityBlockProjection.Yaw", (byte*) &probe.Yaw - at, 40);
-                Offset("TableEntityBlockProjection.Pitch", (byte*) &probe.Pitch - at, 44);
-                Offset("TableEntityBlockProjection.VelX", (byte*) &probe.VelX - at, 48);
-                Offset("TableEntityBlockProjection.VelY", (byte*) &probe.VelY - at, 52);
-                Offset("TableEntityBlockProjection.VelZ", (byte*) &probe.VelZ - at, 56);
-                Offset("TableEntityBlockProjection.Health", (byte*) &probe.Health - at, 60);
-                Offset("TableEntityBlockProjection.Weapon", (byte*) &probe.Weapon - at, 64);
-                Offset("TableEntityBlockProjection.Damage", (byte*) &probe.Damage - at, 72);
-                Offset("TableEntityBlockProjection.Moving", (byte*) &probe.Moving - at, 80);
-                Offset("TableEntityBlockProjection.Firing", (byte*) &probe.Firing - at, 81);
+                Offset("TableEntityBlockProjection.Magic", (byte*)&probe.Magic - at, 0);
+                Offset("TableEntityBlockProjection.BuildVersion", (byte*)&probe.BuildVersion - at, 8);
+                Offset("TableEntityBlockProjection.ByteOrder", (byte*)&probe.ByteOrder - at, 16);
+                Offset("TableEntityBlockProjection.EntityId", (byte*)&probe.EntityId - at, 24);
+                Offset("TableEntityBlockProjection.PosX", (byte*)&probe.PosX - at, 28);
+                Offset("TableEntityBlockProjection.PosY", (byte*)&probe.PosY - at, 32);
+                Offset("TableEntityBlockProjection.PosZ", (byte*)&probe.PosZ - at, 36);
+                Offset("TableEntityBlockProjection.Yaw", (byte*)&probe.Yaw - at, 40);
+                Offset("TableEntityBlockProjection.Pitch", (byte*)&probe.Pitch - at, 44);
+                Offset("TableEntityBlockProjection.VelX", (byte*)&probe.VelX - at, 48);
+                Offset("TableEntityBlockProjection.VelY", (byte*)&probe.VelY - at, 52);
+                Offset("TableEntityBlockProjection.VelZ", (byte*)&probe.VelZ - at, 56);
+                Offset("TableEntityBlockProjection.Health", (byte*)&probe.Health - at, 60);
+                Offset("TableEntityBlockProjection.Weapon", (byte*)&probe.Weapon - at, 64);
+                Offset("TableEntityBlockProjection.Damage", (byte*)&probe.Damage - at, 72);
+                Offset("TableEntityBlockProjection.Moving", (byte*)&probe.Moving - at, 80);
+                Offset("TableEntityBlockProjection.Firing", (byte*)&probe.Firing - at, 81);
             }
             {
                 TableStatBlockProjection probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("TableStatBlockProjection", Unsafe.SizeOf<TableStatBlockProjection>(), 32);
-                Offset("TableStatBlockProjection.Magic", (byte*) &probe.Magic - at, 0);
-                Offset("TableStatBlockProjection.BuildVersion", (byte*) &probe.BuildVersion - at, 8);
-                Offset("TableStatBlockProjection.ByteOrder", (byte*) &probe.ByteOrder - at, 16);
-                Offset("TableStatBlockProjection.StatId", (byte*) &probe.StatId - at, 24);
-                Offset("TableStatBlockProjection.Delta", (byte*) &probe.Delta - at, 28);
+                Offset("TableStatBlockProjection.Magic", (byte*)&probe.Magic - at, 0);
+                Offset("TableStatBlockProjection.BuildVersion", (byte*)&probe.BuildVersion - at, 8);
+                Offset("TableStatBlockProjection.ByteOrder", (byte*)&probe.ByteOrder - at, 16);
+                Offset("TableStatBlockProjection.StatId", (byte*)&probe.StatId - at, 24);
+                Offset("TableStatBlockProjection.Delta", (byte*)&probe.Delta - at, 28);
             }
         }
 
@@ -370,7 +370,7 @@ namespace Benchtable
 
     public sealed class TableEntityBlockStorage : TableBlockStorage
     {
-        public TableEntityBlockStorage(TableBlockAllocator allocator = null) : base(TableEntityBlock.BlockMaxBytes, allocator) {}
+        public TableEntityBlockStorage(TableBlockAllocator allocator = null) : base(TableEntityBlock.BlockMaxBytes, allocator) { }
     }
 
     // TableEntity's block: a pointer and a length, and then rows in place. Opening one
@@ -421,7 +421,7 @@ namespace Benchtable
         public long Bytes { get { return bytes; } }
 
         // the table's own declared fields, read where they lie
-        public ref readonly TableEntityBlockProjection Projection { get { return ref *(TableEntityBlockProjection*) basePointer; } }
+        public ref readonly TableEntityBlockProjection Projection { get { return ref *(TableEntityBlockProjection*)basePointer; } }
 
         // Open checks once and points, and this is the WHOLE check (docs/SPEC-TABLES.md
         // §19.2): the magic read bytewise, the BYTE ORDER the prologue carries
@@ -445,7 +445,7 @@ namespace Benchtable
             TableBlockLayout.Verify();
             if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }
             if (bytes < 88) { reason = TableRefuseReason.truncated; return false; }
-            byte* at = (byte*) pointer;
+            byte* at = (byte*)pointer;
             if (Schema.TableBlockRead64(at) != Schema.TableBlockMagic) { reason = Schema.TableBlockRead64(at) == System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableBlockMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }
             if (Schema.TableBlockRead64(at + 16) != Schema.TableBlockByteOrder) { reason = TableRefuseReason.not_a_cook; return false; }
             if (Schema.TableBlockRead64(at + 8) != Schema.BuildVersion) { reason = TableRefuseReason.wrong_build_version; return false; }
@@ -467,7 +467,11 @@ namespace Benchtable
         // record through the graph.
         private static readonly TableBlockInfo blockProjection = new TableBlockInfo
         {
-            Name = "TableEntity", BuildVersion = Schema.BuildVersion, Size = 88, Align = 8, NumFields = 14,
+            Name = "TableEntity",
+            BuildVersion = Schema.BuildVersion,
+            Size = 88,
+            Align = 8,
+            NumFields = 14,
             Fields = new TableBlockFieldInfo[]
             {
                 new TableBlockFieldInfo { Name = "entity_id", Offset = 24, Size = 4, Kind = 7, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
@@ -496,7 +500,7 @@ namespace Benchtable
 
     public sealed class TableStatBlockStorage : TableBlockStorage
     {
-        public TableStatBlockStorage(TableBlockAllocator allocator = null) : base(TableStatBlock.BlockMaxBytes, allocator) {}
+        public TableStatBlockStorage(TableBlockAllocator allocator = null) : base(TableStatBlock.BlockMaxBytes, allocator) { }
     }
 
     // TableStat's block: a pointer and a length, and then rows in place. Opening one
@@ -547,7 +551,7 @@ namespace Benchtable
         public long Bytes { get { return bytes; } }
 
         // the table's own declared fields, read where they lie
-        public ref readonly TableStatBlockProjection Projection { get { return ref *(TableStatBlockProjection*) basePointer; } }
+        public ref readonly TableStatBlockProjection Projection { get { return ref *(TableStatBlockProjection*)basePointer; } }
 
         // Open checks once and points, and this is the WHOLE check (docs/SPEC-TABLES.md
         // §19.2): the magic read bytewise, the BYTE ORDER the prologue carries
@@ -571,7 +575,7 @@ namespace Benchtable
             TableBlockLayout.Verify();
             if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }
             if (bytes < 32) { reason = TableRefuseReason.truncated; return false; }
-            byte* at = (byte*) pointer;
+            byte* at = (byte*)pointer;
             if (Schema.TableBlockRead64(at) != Schema.TableBlockMagic) { reason = Schema.TableBlockRead64(at) == System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableBlockMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }
             if (Schema.TableBlockRead64(at + 16) != Schema.TableBlockByteOrder) { reason = TableRefuseReason.not_a_cook; return false; }
             if (Schema.TableBlockRead64(at + 8) != Schema.BuildVersion) { reason = TableRefuseReason.wrong_build_version; return false; }
@@ -593,7 +597,11 @@ namespace Benchtable
         // record through the graph.
         private static readonly TableBlockInfo blockProjection = new TableBlockInfo
         {
-            Name = "TableStat", BuildVersion = Schema.BuildVersion, Size = 32, Align = 8, NumFields = 2,
+            Name = "TableStat",
+            BuildVersion = Schema.BuildVersion,
+            Size = 32,
+            Align = 8,
+            NumFields = 2,
             Fields = new TableBlockFieldInfo[]
             {
                 new TableBlockFieldInfo { Name = "stat_id", Offset = 24, Size = 4, Kind = 6, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
