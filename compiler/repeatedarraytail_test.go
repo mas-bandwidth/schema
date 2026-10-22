@@ -46,7 +46,7 @@ static const uint8_t wire[]={%s};
 			t.Fatal(err)
 		}
 		referenceCompileRun(t, files, common+`using namespace armdemo;
-int main(){TableReport report;int64_t n=HandLoadMeasure(wire,sizeof(wire));CHECK(n>0);uint8_t * region=(uint8_t*)malloc(n);const Hand * r=HandLoad(region,n,wire,sizeof(wire),&report);CHECK(r);CHECK(report.malformed);CHECK(r->entries_count==0);CHECK(r->entries[1].type==CarryType::None);HandBuilder b;CHECK(HandLoadBuilder(b,wire,sizeof(wire),&report));CHECK(b.GetRoot()->entries[1].type==CarryType::None);CHECK(HandCookMeasure(b)>0);free(region);return 0;}`)
+int main(){TableReport report;int64_t n=HandLoadMeasure(wire,sizeof(wire));CHECK(n>0);uint8_t * region=(uint8_t*)malloc(n);const Hand * r=HandLoadTolerant(region,n,wire,sizeof(wire),&report);CHECK(r);CHECK(report.malformed);CHECK(r->entries_count==0);CHECK(r->entries[1].type==CarryType::None);HandBuilder b;CHECK(HandLoadBuilderTolerant(b,wire,sizeof(wire),&report));CHECK(b.GetRoot()->entries[1].type==CarryType::None);CHECK(HandCookMeasure(b)>0);free(region);return 0;}`)
 	})
 	t.Run("c", func(t *testing.T) {
 		runCTableWireProbe(t, u, common+`

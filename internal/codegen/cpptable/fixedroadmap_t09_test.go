@@ -88,7 +88,7 @@ fixed table SignedInts
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     SignedInts got[4];
-    int64_t n = SignedIntsFixedLoad( got, 4, buffer, written, plan, 4096, NULL, &r );
+    int64_t n = SignedIntsFixedLoadTolerant( got, 4, buffer, written, plan, 4096, NULL, &r );
     if ( n != 4 ) { printf( "signed: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }
     if ( r.malformed || r.refused || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.widened != 0 )
         { printf( "signed: a clean round-trip is not a refusal and moves no counter: malformed=%d refused=%d u=%d km=%d c=%d w=%d\n", (int) r.malformed, (int) r.refused, r.unknown, r.kind_mismatch, r.clamped, r.widened ); return 1; }
@@ -127,7 +127,7 @@ fixed table UnsignedInts
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     UnsignedInts got[3];
-    int64_t n = UnsignedIntsFixedLoad( got, 3, buffer, written, plan, 4096, NULL, &r );
+    int64_t n = UnsignedIntsFixedLoadTolerant( got, 3, buffer, written, plan, 4096, NULL, &r );
     if ( n != 3 ) { printf( "unsigned: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }
     if ( r.malformed || r.refused || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.widened != 0 )
         { printf( "unsigned: a clean round-trip is not a refusal and moves no counter: malformed=%d refused=%d u=%d km=%d c=%d w=%d\n", (int) r.malformed, (int) r.refused, r.unknown, r.kind_mismatch, r.clamped, r.widened ); return 1; }
@@ -161,7 +161,7 @@ fixed table Signed128
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     Signed128 got[5];
-    int64_t n = Signed128FixedLoad( got, 5, buffer, written, plan, 4096, NULL, &r );
+    int64_t n = Signed128FixedLoadTolerant( got, 5, buffer, written, plan, 4096, NULL, &r );
     if ( n != 5 ) { printf( "signed128: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }
     if ( r.malformed || r.refused || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 )
         { printf( "signed128: a read is not a refusal and moves no counter but the bound: malformed=%d refused=%d u=%d km=%d w=%d\n", (int) r.malformed, (int) r.refused, r.unknown, r.kind_mismatch, r.widened ); return 1; }
@@ -198,7 +198,7 @@ fixed table Unsigned128
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     Unsigned128 got[4];
-    int64_t n = Unsigned128FixedLoad( got, 4, buffer, written, plan, 4096, NULL, &r );
+    int64_t n = Unsigned128FixedLoadTolerant( got, 4, buffer, written, plan, 4096, NULL, &r );
     if ( n != 4 ) { printf( "unsigned128: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }
     if ( r.malformed || r.refused || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.widened != 0 )
         { printf( "unsigned128: a clean round-trip is not a refusal and moves no counter: malformed=%d refused=%d u=%d km=%d c=%d w=%d\n", (int) r.malformed, (int) r.refused, r.unknown, r.kind_mismatch, r.clamped, r.widened ); return 1; }
@@ -228,7 +228,7 @@ fixed table RangedInts
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     RangedInts got[5];
-    int64_t n = RangedIntsFixedLoad( got, 5, buffer, written, plan, 4096, NULL, &r );
+    int64_t n = RangedIntsFixedLoadTolerant( got, 5, buffer, written, plan, 4096, NULL, &r );
     if ( n != 5 ) { printf( "ranged: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }
     if ( r.malformed || r.refused || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 )
         { printf( "ranged: a read is not a refusal and moves no counter but the bound: malformed=%d refused=%d u=%d km=%d w=%d\n", (int) r.malformed, (int) r.refused, r.unknown, r.kind_mismatch, r.widened ); return 1; }
@@ -261,7 +261,7 @@ fixed table BitsVals
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     BitsVals got[4];
-    int64_t n = BitsValsFixedLoad( got, 4, buffer, written, plan, 4096, NULL, &r );
+    int64_t n = BitsValsFixedLoadTolerant( got, 4, buffer, written, plan, 4096, NULL, &r );
     if ( n != 4 ) { printf( "bits: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }
     if ( r.malformed || r.refused || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 )
         { printf( "bits: a read is not a refusal and moves no counter but the width bound: malformed=%d refused=%d u=%d km=%d w=%d\n", (int) r.malformed, (int) r.refused, r.unknown, r.kind_mismatch, r.widened ); return 1; }
@@ -295,7 +295,7 @@ fixed table Float64s
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     Float64s got[4];
-    int64_t n = Float64sFixedLoad( got, 4, buffer, written, plan, 4096, NULL, &r );
+    int64_t n = Float64sFixedLoadTolerant( got, 4, buffer, written, plan, 4096, NULL, &r );
     if ( n != 4 ) { printf( "float64: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }
     if ( r.malformed || r.refused || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.widened != 0 )
         { printf( "float64: a clean round-trip is not a refusal and moves no counter: malformed=%d refused=%d u=%d km=%d c=%d w=%d\n", (int) r.malformed, (int) r.refused, r.unknown, r.kind_mismatch, r.clamped, r.widened ); return 1; }
@@ -324,7 +324,7 @@ fixed table CompFloats
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     CompFloats got[5];
-    int64_t n = CompFloatsFixedLoad( got, 5, buffer, written, plan, 4096, NULL, &r );
+    int64_t n = CompFloatsFixedLoadTolerant( got, 5, buffer, written, plan, 4096, NULL, &r );
     if ( n != 5 ) { printf( "compressed: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }
     if ( r.malformed || r.refused || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 )
         { printf( "compressed: a read is not a refusal and moves no counter but the range bound: malformed=%d refused=%d u=%d km=%d w=%d\n", (int) r.malformed, (int) r.refused, r.unknown, r.kind_mismatch, r.widened ); return 1; }
@@ -362,7 +362,7 @@ fixed table SignedFixed
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     SignedFixed got[5];
-    int64_t n = SignedFixedFixedLoad( got, 5, buffer, written, plan, 4096, NULL, &r );
+    int64_t n = SignedFixedFixedLoadTolerant( got, 5, buffer, written, plan, 4096, NULL, &r );
     if ( n != 5 ) { printf( "signed-fixed: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }
     if ( r.malformed || r.refused || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 )
         { printf( "signed-fixed: a read is not a refusal and moves no counter but the bound: malformed=%d refused=%d u=%d km=%d w=%d\n", (int) r.malformed, (int) r.refused, r.unknown, r.kind_mismatch, r.widened ); return 1; }
@@ -399,7 +399,7 @@ fixed table UnsignedFixed
     static TableFixedEntry plan[4096];
     TableReport r; memset( &r, 0, sizeof( r ) );
     UnsignedFixed got[4];
-    int64_t n = UnsignedFixedFixedLoad( got, 4, buffer, written, plan, 4096, NULL, &r );
+    int64_t n = UnsignedFixedFixedLoadTolerant( got, 4, buffer, written, plan, 4096, NULL, &r );
     if ( n != 4 ) { printf( "unsigned-fixed: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }
     if ( r.malformed || r.refused || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 )
         { printf( "unsigned-fixed: a read is not a refusal and moves no counter but the bound: malformed=%d refused=%d u=%d km=%d w=%d\n", (int) r.malformed, (int) r.refused, r.unknown, r.kind_mismatch, r.widened ); return 1; }

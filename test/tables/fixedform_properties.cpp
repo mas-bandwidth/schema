@@ -135,7 +135,7 @@ struct Issues
 static uint8_t byte_of( const void * p )
 {
     uint8_t u = 0;
-    std::memcpy( &u, p, 1 );
+    std::memcpy( (void *) &u, p, 1 );
     return u;
 }
 
@@ -196,7 +196,7 @@ struct TAG##Codec \
     static int64_t measure( int64_t n ) { return NS::TYPE##FixedMeasure( n ); } \
     static int64_t save( const T * v, int64_t n, uint8_t * b, int64_t c ) { return NS::TYPE##FixedSave( v, n, b, c ); } \
     static int64_t load( T * v, int64_t cap, const uint8_t * d, int64_t b, Entry * p, int32_t pc, Report * r ) \
-    { return NS::TYPE##FixedLoad( v, cap, d, b, p, pc, NULL, r ); } \
+    { return NS::TYPE##FixedLoadTolerant( v, cap, d, b, p, pc, NULL, r ); } \
     static void reset( T & v ) { NS::TYPE##Reset( v ); } \
     static void clamp( T & v, Report * r ) { NS::TYPE##FixedClamp( v, r ); } \
     static constexpr const Entry * plan = NS::TYPE##FixedPlan; \
@@ -212,7 +212,7 @@ struct TAG##Codec \
     static constexpr uint64_t hash = NS::TYPE##FixedHash; \
     static constexpr uint8_t kCopy = NS::kTableFixedCopy; \
     static constexpr Reason no_layout = NS::no_layout; \
-    static constexpr Reason layout_newer = NS::layout_newer; \
+    static constexpr Reason layout_unknown = NS::layout_unknown; \
     static bool parse( const uint8_t * b, int64_t n, View & v, Reason & w ) { return NS::TableFixedParseLayout( b, n, v, w ); } \
     static int32_t compile( const View & th, Entry * p, int32_t cap, int32_t * g, \
                             uint32_t * fill_at, int32_t * fill_count, Report * r ) \
@@ -241,7 +241,7 @@ struct TAG##Codec \
     static int64_t measure( int64_t n ) { return NS::TYPE##FixedMeasure( n ); } \
     static int64_t save( const T * v, int64_t n, uint8_t * b, int64_t c ) { return NS::TYPE##FixedSave( v, n, b, c ); } \
     static int64_t load( T * v, int64_t cap, const uint8_t * d, int64_t b, Entry * p, int32_t pc, Report * r ) \
-    { return NS::TYPE##FixedLoad( v, cap, d, b, p, pc, NULL, r ); } \
+    { return NS::TYPE##FixedLoadTolerant( v, cap, d, b, p, pc, NULL, r ); } \
     static void reset( T & v ) { NS::TYPE##Reset( v ); } \
     static void clamp( T &, Report * ) {} \
     static constexpr const Entry * plan = NS::TYPE##FixedPlan; \
@@ -257,7 +257,7 @@ struct TAG##Codec \
     static constexpr uint64_t hash = NS::TYPE##FixedHash; \
     static constexpr uint8_t kCopy = NS::kTableFixedCopy; \
     static constexpr Reason no_layout = NS::no_layout; \
-    static constexpr Reason layout_newer = NS::layout_newer; \
+    static constexpr Reason layout_unknown = NS::layout_unknown; \
     static bool parse( const uint8_t * b, int64_t n, View & v, Reason & w ) { return NS::TableFixedParseLayout( b, n, v, w ); } \
     static int32_t compile( const View & th, Entry * p, int32_t cap, int32_t * g, \
                             uint32_t * fill_at, int32_t * fill_count, Report * r ) \
@@ -1222,7 +1222,7 @@ struct F1 : F1Codec
 // lands on a neighbour.
 
 // P1's reverse direction under the new contract: the older reader given the
-// newer file refuses layout_newer. The old contract compiled a stranger's
+// newer file refuses layout_unknown (SPEC-TABLES §21.3). The old contract compiled a stranger's
 // layout both ways; that test is retired, not bent. Forward (newer reads
 // older) is a lineage compile and returns one record.
 template<typename Older, typename Newer>
@@ -1266,9 +1266,9 @@ static void run_pair_p1()
         std::memset( (void *) &back, 0, sizeof( back ) );
         const int64_t n = Older::load( &back, 1, nfile.data(), nneed, plan.data(), kPlanCap, &r );
         std::snprintf( what, sizeof( what ),
-                       "P1 %s given newer %s: layout_newer (old contract's reverse read is retired)",
+                       "P1 %s given newer %s: layout_unknown (old contract's reverse read is retired)",
                        Older::name, Newer::name );
-        check( n == -1 && r.refused && r.reason == Older::layout_newer, what );
+        check( n == -1 && r.refused && r.reason == Older::layout_unknown, what );
     }
 }
 
@@ -1286,7 +1286,7 @@ static void probe_clamp_op()
     std::memset( (void *) &back, 0, sizeof( back ) );
     scalardemo2::TableReport r;
     std::vector<scalardemo2::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
+    const int64_t n = scalardemo2::SimStateFixedLoadTolerant( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
     check( n == 1, "probe clamp-op: Scalars2 reads Scalars" );
     const bool clamped = back.position == 1000LL * 65536 && r.clamped >= 1;
     check( clamped, "probe clamp-op: a value past the reader's max lands at max and counts" );
@@ -1308,7 +1308,7 @@ static void probe_text_content()
     std::memset( (void *) &back, 0, sizeof( back ) );
     tblfx1::TableReport r;
     std::vector<tblfx1::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
+    const int64_t n = tblfx1::FxRootFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(),
                                                plan.data(), kPlanCap, NULL, &r );
     // ILL-FORMED CONTENT IN THE USED BYTES REFUSES BY NAME (docs/FIXED-FORM-
     // ALGORITHM.md §4.5, fix 11): the verdict the packet reader gives, where the
@@ -1340,7 +1340,7 @@ static void probe_absent_optional()
     std::memset( (void *) &back, 0, sizeof( back ) );
     tblp3::TableReport r;
     std::vector<tblp3::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = tblp3::ChainFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
+    const int64_t n = tblp3::ChainFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(),
                                              plan.data(), kPlanCap, NULL, &r );
     check( n == 1 && !back.link_present, "probe absent-optional: the flag" );
     const bool ignored = back.link.value == 0 && back.link.tag_length == 0;
@@ -1432,7 +1432,7 @@ static void probe_kind_mismatch()
     std::memset( (void *) &back, 0, sizeof( back ) );
     scalardemo2::TableReport r;
     std::vector<scalardemo2::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
+    const int64_t n = scalardemo2::SimStateFixedLoadTolerant( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
     check( n == 1, "probe kind-mismatch: Scalars2 reads Scalars" );
     const bool skipped = back.angle == 0 && r.kind_mismatch >= 1;
     check_red( skipped, "kind-mismatch/compiled/a-moved-kind-is-decoded-anyway",

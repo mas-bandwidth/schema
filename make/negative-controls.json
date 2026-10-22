@@ -20,6 +20,8 @@
         "tables-c-runtime-home-negative-control",
         "tables-c-slot-negative-control",
         "tables-clamp-limits-negative-control",
+        "tables-cpp-names-negative-control",
+        "tables-cpp-runtime-home-negative-control",
         "tables-doctags-negative-controls",
         "tables-fixed-twin-negative-control",
         "tables-fixedform-run-copy-negative-control",
@@ -40,6 +42,8 @@
         "tables-was-negative-control",
         "tables-wasrows-negative-control",
         "tables-zero-cost-negative-control",
+        "tables-accessor-negative-control",
+        "tables-slot-negative-control",
         "toolchain-negative-control"
       ]
     },
@@ -246,7 +250,7 @@
     {
       "name": "base-cook",
       "when": "pull-request",
-      "why": "the cook's controls, the blob span and read hooks, and the C leg's fuzz, soak and keyed refusal: one cooked corpus, built once, that every one of them reads. Measured 34 s over 11 controls.",
+      "why": "the cook's controls, the blob span and read hooks, the C leg's fuzz, soak and keyed refusal, and the C++ soak's control beside its C twin: one cooked corpus, built once, that every one of them reads, and the same generated tables tree the C++ soak compiles. Measured 34 s over 11 controls, plus 22 s for tables-cpp-soak-negative-control on the Linux bench (hetzner2, 17 s of it the compile; it goes red on its first sample).",
       "targets": [
         "tables-blob-read-hooks-negative-control",
         "tables-blob-span-negative-control",
@@ -255,6 +259,7 @@
         "tables-c-keyed-none-refusal-negative-control",
         "tables-c-keyed-max-refusal-negative-control",
         "tables-c-soak-negative-control",
+        "tables-cpp-soak-negative-control",
         "tables-cook-fuzz-negative-control",
         "tables-cook-open-lengths-negative-control",
         "tables-cook-open-root-negative-control",
@@ -287,6 +292,7 @@
       "when": "pull-request",
       "why": "the pack golden's framing control: elide a present `?T` in the Go encoder and the byte comparison against the C++ Save has to go red. Measured 7 s off one warm build.",
       "targets": [
+        "tables-json-differential-negative-control",
         "tables-pack-negative-control"
       ]
     },

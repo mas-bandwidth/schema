@@ -46,7 +46,7 @@ int main(void) {
         const char * text = "{\"tag\":\"not_valid_base64!!!\",\"past\":42}";
         Ship s;
         TableReport r;
-        bool ok = ShipFromJson( s, text, (int64_t) strlen(text), &r );
+        bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
         if ( !ok ) { fprintf(stderr, "case 1: FromJson failed\n"); return 1; }
         if ( r.kind_mismatch != 1 ) { fprintf(stderr, "case 1: kind_mismatch=%d, want 1\n", r.kind_mismatch); return 2; }
         if ( r.malformed ) { fprintf(stderr, "case 1: malformed is true\n"); return 3; }
@@ -60,7 +60,7 @@ int main(void) {
         const char * text = "{\"tag\":\"YQ=B\",\"past\":42}";
         Ship s;
         TableReport r;
-        bool ok = ShipFromJson( s, text, (int64_t) strlen(text), &r );
+        bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
         if ( !ok ) { fprintf(stderr, "case 2: FromJson failed\n"); return 7; }
         if ( r.kind_mismatch != 1 ) { fprintf(stderr, "case 2: kind_mismatch=%d, want 1 (mid-string padding accepted!)\n", r.kind_mismatch); return 8; }
         if ( s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 2: tag default not preserved\n"); return 9; }
@@ -71,7 +71,7 @@ int main(void) {
         const char * text = "{\"tag\":\"Q\",\"past\":42}";
         Ship s;
         TableReport r;
-        bool ok = ShipFromJson( s, text, (int64_t) strlen(text), &r );
+        bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
         if ( !ok ) { fprintf(stderr, "case 3: FromJson failed\n"); return 10; }
         if ( r.kind_mismatch != 1 ) { fprintf(stderr, "case 3: kind_mismatch=%d, want 1 (lone symbol accepted!)\n", r.kind_mismatch); return 11; }
         if ( s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 3: tag default not preserved\n"); return 12; }
@@ -82,7 +82,7 @@ int main(void) {
         const char * text = "{\"tag\":\"YWI\",\"past\":42}";
         Ship s;
         TableReport r;
-        bool ok = ShipFromJson( s, text, (int64_t) strlen(text), &r );
+        bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
         if ( !ok || r.kind_mismatch != 0 || r.malformed ) { fprintf(stderr, "case 4 failed\n"); return 13; }
         if ( s.past != 42 || s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 4 data mismatch\n"); return 14; }
     }
@@ -92,7 +92,7 @@ int main(void) {
         const char * text = "{\"tag\":\"YWI=\",\"past\":42}";
         Ship s;
         TableReport r;
-        bool ok = ShipFromJson( s, text, (int64_t) strlen(text), &r );
+        bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
         if ( !ok || r.kind_mismatch != 0 || r.malformed ) { fprintf(stderr, "case 5 failed\n"); return 15; }
         if ( s.past != 42 || s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 5 data mismatch\n"); return 16; }
     }

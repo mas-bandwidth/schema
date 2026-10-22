@@ -86,7 +86,7 @@ static void test_identity()
     static tblf1::Floats value;
     new ( &value ) tblf1::Floats();
     tblf1::TableReport report;
-    if ( !tblf1::FloatsLoad( value, pinned_bytes, pinned, &report ) || report.malformed )
+    if ( !tblf1::FloatsLoadTolerant( value, pinned_bytes, pinned, &report ) || report.malformed )
     {
         printf( "FAIL floats_nan does not load under its own declaration\n" );
         failures++;
@@ -115,7 +115,7 @@ static void test_widened()
     static tblf2::Floats wider;
     new ( &wider ) tblf2::Floats();
     tblf2::TableReport report;
-    if ( !tblf2::FloatsLoad( wider, pinned_bytes, pinned, &report ) || report.malformed )
+    if ( !tblf2::FloatsLoadTolerant( wider, pinned_bytes, pinned, &report ) || report.malformed )
     {
         printf( "FAIL floats_nan does not load under the widened declaration\n" );
         failures++;

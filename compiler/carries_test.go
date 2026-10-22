@@ -1,18 +1,21 @@
 package compiler
 
 import (
+	"os"
 	"slices"
 	"strings"
 	"testing"
 )
 
 // nonGoCarriers lists the constructs the non-Go targets carry: C, C# and C++
-// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3), and
-// every other target carries none at this stage.
+// carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3);
+// C++ also carries the timestamp kind (§2.11), the JSON array root (§16.10),
+// the one-sided integer range (§4.3) and ?map[K]V (§2.8); every other target
+// carries none at this stage.
 var nonGoCarriers = map[string][]string{
 	"c":   {carryOptionalVariableClosure},
 	"cs":  {carryOptionalVariableClosure},
-	"cpp": {carryOptionalVariableClosure},
+	"cpp": {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
 }
 
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
@@ -41,6 +44,26 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 			if carries(target, construct) != want {
 				t.Errorf("target %q carries %q = %v, want %v", target, construct, carries(target, construct), want)
 			}
+		}
+	}
+	// Registration comes only through registerCarries in carries_<target>.go,
+	// so the checks above cover every construct; no other file writes the
+	// registry directly.
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") || name == "carries.go" {
+			continue
+		}
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "targetCarries[") {
+			t.Errorf("%s writes targetCarries directly; registration belongs in carries_<target>.go through registerCarries", name)
 		}
 	}
 	known := make(map[string]bool, len(carryConstructs))
