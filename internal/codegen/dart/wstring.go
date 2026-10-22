@@ -10,12 +10,12 @@ import (
 func (g *gen) emitWriteWString(f *ir.Field, name, ind string) {
 	g.chunkFlush(ind)
 	g.pf("%s{\n%s  final wideLength = %sLength;\n", ind, ind, name)
-	g.pf("%s  if (wideLength < 0 || wideLength > %d) {\n%s    throw ArgumentError('wstring length');\n%s  }\n", ind, f.Type.Size, ind, ind)
+	g.pf("%s  assert(wideLength >= 0 && wideLength <= %d);\n", ind, f.Type.Size)
 	g.emitWriteOffset("wideLength", big.NewInt(0), big.NewInt(f.Type.Size), ind+"  ")
 	g.chunkFlush(ind + "  ")
 	g.emitByteReadLoop(ind+"  ", "wideIndex", "wideLength")
 	g.pf("%s    v = %s[wideIndex];\n", ind, name)
-	g.pf("%s    if (v == 0) {\n%s      throw ArgumentError('wstring null unit');\n%s    }\n", ind, ind, ind)
+	g.pf("%s    assert(v != 0);\n", ind)
 	g.mergeW(32, ind+"    ")
 	g.pf("%s  }\n%s}\n", ind, ind)
 }
