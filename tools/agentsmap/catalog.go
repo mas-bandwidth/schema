@@ -109,6 +109,8 @@ var catalog = []Entry{
 	e("internal/codegen/elixirtable", "Elixir table emitter", "go test ./internal/codegen/elixirtable", "go test ./internal/codegen/elixirtable"),
 	e("internal/codegen/golang", "Go packet emitter", "go test ./internal/codegen/golang", "go test ./internal/codegen/golang"),
 	e("internal/codegen/gotable", "Go table emitter", "go test ./internal/codegen/gotable", "go test ./internal/codegen/gotable"),
+	e("internal/codegen/goose", "Goose type emitter (docs/PORT-GOOSE.md)", "go test ./internal/codegen/goose", "go test ./internal/codegen/goose/..."),
+	e("internal/codegen/goosetable", "Goose table emitter (docs/PORT-GOOSE.md)", "go test ./internal/codegen/goosetable", "go test ./internal/codegen/goosetable"),
 	e("internal/codegen/java", "Java packet emitter", "go test ./internal/codegen/java", "go test ./internal/codegen/java"),
 	e("internal/codegen/javatable", "Java table emitter", "go test ./internal/codegen/javatable", "go test ./internal/codegen/javatable"),
 	e("internal/codegen/js", "JS packet emitter", "go test ./internal/codegen/js", "go test ./internal/codegen/js"),
