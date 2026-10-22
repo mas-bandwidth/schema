@@ -727,7 +727,11 @@ struct TableReader
             case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
             case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
-            case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
+            // 36 is the TIMESTAMP: its payload is the i64's eight bytes even
+            // though its kind is its own (docs/SPEC-TABLES.md §2.11, §3), so
+            // an unnamed or kind-mismatched timestamp skips cleanly, exactly
+            // as internal/tablewire/timestamp_skip_test.go pins for Go.
+            case 5: case 9: case 11: case 23: case 28: case 36: return has( 8 ) ? ( offset += 8, true ) : false;
             case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
             case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
@@ -7085,7 +7089,7 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.active = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.active = bool_byte != 0; }
                 break;
             }
             case 0x2281498aa0200e40ull: // speed
@@ -7113,7 +7117,7 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.has_target = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.has_target = bool_byte != 0; }
                 break;
             }
             case 0xb7bc9ac015a25050ull: // target_id
@@ -8504,7 +8508,7 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.active = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.active = bool_byte != 0; }
                 break;
             }
             case 0x2281498aa0200e40ull: // speed
@@ -8532,7 +8536,7 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.has_target = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.has_target = bool_byte != 0; }
                 break;
             }
             case 0xb7bc9ac015a25050ull: // target_id

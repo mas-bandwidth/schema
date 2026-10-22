@@ -2192,7 +2192,10 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 	g.pf("%sif ( !%s.has( %d ) ) { %s }\n", ind, rdr, width, onTrunc)
 	switch kind {
 	case tkBool:
-		g.pf("%s%s = %s.get8() != 0;\n", ind, lvalue, rdr)
+		// A BOOL BYTE THAT IS NEITHER 0 NOR 1 reads true and is MALFORMED on
+		// the tolerant read (docs/SPEC-TABLES.md §6.5), as the Go oracle
+		// (internal/tablewire scalarAt) counts it.
+		g.pf("%s{ const uint8_t bool_byte = %s.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } %s = bool_byte != 0; }\n", ind, rdr, lvalue)
 	case tkF32:
 		if f.HasFloatRange {
 			g.pf("%sfloat decoded_f = table_bits_to_float( %s.get32() );\n", ind, rdr)
