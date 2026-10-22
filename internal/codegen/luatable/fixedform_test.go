@@ -18,13 +18,32 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 )
 
+// luaFixedCorpus is the C++ reference's byte oracle, build/fixedform-corpus,
+// exactly as the other legs resolve it (jstable's jsFixedCorpus, cpptable's
+// cppFixedCorpus). A bare `go test` on a tree that never built the oracle has
+// nothing to read and SKIPS, saying so; under SCHEMA_REQUIRE_CORPUS (make
+// test-lua builds the corpus first and sets it) a missing file is a FAILURE,
+// because a suite that skips itself there would report green over §5 having
+// never run.
+func luaFixedCorpus(t *testing.T, repo string) string {
+	t.Helper()
+	dir := filepath.Join(repo, "build", "fixedform-corpus")
+	if _, err := os.Stat(filepath.Join(dir, "old_field_append.bin")); err != nil {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", dir, err)
+		}
+		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+	}
+	return dir
+}
+
 // TestLuaFixedFormAgreesWithTheByteOracle drives the oracle corpus: for a fixed
 // root it writes the value to the oracle bytes and reads them back, and checks
 // that a newer reader reads the older record (docs/FIXED-FORM-ALGORITHM.md §5).
 func TestLuaFixedFormAgreesWithTheByteOracle(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
-	corpus := filepath.Join(repo, "build", "fixedform-corpus")
+	corpus := luaFixedCorpus(t, repo)
 
 	// the field_append pair: an older and a newer generation of one table
 	oldBin := filepath.Join(corpus, "old_field_append.bin")
@@ -149,7 +168,7 @@ func writeFile(t *testing.T, path string, content string) {
 func TestLuaFixedFormNegativeControl(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
-	corpus := filepath.Join(repo, "build", "fixedform-corpus")
+	corpus := luaFixedCorpus(t, repo)
 	bin := filepath.Join(corpus, "old_field_append.bin")
 	bytes := readFile(t, bin)
 	unit := luarun.LoadUnit(t, filepath.Join(repo, "test", "tables", "VOLD_field_append.schema"))

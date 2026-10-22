@@ -55,9 +55,15 @@ tables-lua-wire-fuzz-differential:
 		./internal/codegen/luatable -run '^TestLuaWireFuzz' -count=1 -timeout 600s
 
 .PHONY: test-lua update-goldens-lua
-# The fixed-form tests read the shared byte-oracle corpus, so it is built first.
+# The fixed-form tests read the shared byte-oracle corpus, so it is built first,
+# and SCHEMA_REQUIRE_CORPUS=1 makes its absence a FAILURE rather than a skip.
+# The variable also arms internal/slowtest's gate (schema#988's slow-gate scan),
+# so the gated luatable tests this leg's toolchain can run (the loadfix and
+# variant probes) run here instead of skipping green. The wire-fuzz pair is
+# -skip'd only because tables-lua-wire-fuzz-differential, a prerequisite above,
+# has just run it through test/slowgate/proof.
 test-lua: toolchain-lua tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp
-	go test ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s
+	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s -skip '^TestLuaWireFuzz'
 update-goldens-lua: ;
 
 # build/schema-lua is the compiler WITH the lua target (its build tag), and

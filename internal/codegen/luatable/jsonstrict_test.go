@@ -21,6 +21,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -128,26 +129,6 @@ func strictGoProbe(pkg string, rows []strictJSONRow, texts map[string][]byte, fi
 	return b.String()
 }
 
-// strictSerializeGo finds the serialize.go runtime the generated Go tables
-// import, in this machine's module cache: the same runtime the repository's
-// generated Go already builds against.
-func strictSerializeGo(t *testing.T) string {
-	t.Helper()
-	out, err := exec.Command("go", "env", "GOMODCACHE").Output()
-	if err != nil {
-		t.Fatalf("go env GOMODCACHE: %v", err)
-	}
-	cache := strings.TrimSpace(string(out))
-	candidates, _ := filepath.Glob(filepath.Join(cache, "github.com", "mas-bandwidth", "serialize.go@*"))
-	for _, dir := range candidates {
-		if info, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil && !info.IsDir() {
-			return dir
-		}
-	}
-	t.Fatalf("no serialize.go runtime in the module cache %s: run make deps", cache)
-	return ""
-}
-
 // TestLuaFromJsonIsStrict pins docs/SPEC-TABLES.md §6.5 and §16.2 over every
 // JSON-bearing row of the tables manifest: the plain FromJson's verdict is the
 // generated Go's (Go err.Error() against Lua report.reason), and
@@ -156,6 +137,10 @@ func strictSerializeGo(t *testing.T) string {
 func TestLuaFromJsonIsStrict(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
+	// the generated Go oracle links the PINNED serialize.go (the sibling
+	// checkout CI clones at SERIALIZE_GO_TAG, or make deps' fetched copy),
+	// never whatever version the module cache happens to hold
+	serializeGo := slowtest.SerializeGo(t, repo)
 	manifestPath := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifestPath)
 	unitFiles := map[string][]string{}
@@ -232,7 +217,7 @@ func TestLuaFromJsonIsStrict(t *testing.T) {
 			st := u.Tables[row.root]
 			fixed[row.root] = st != nil && st.FixedDeclared
 		}
-		goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", strictSerializeGo(t)))
+		goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", serializeGo))
 		goFiles["strict_oracle_test.go"] = []byte(strictGoProbe(u.Package, rows, texts, fixed))
 		goDir := t.TempDir()
 		for name, data := range goFiles {

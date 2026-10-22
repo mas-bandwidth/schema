@@ -86,16 +86,9 @@ func TestLuaNightlyFuzzLane(t *testing.T) {
 	}
 	// The harness is generated, not committed to the port's test tree, and it
 	// carries one entry point per reader kind under the typed-refusal oracle.
-	m := regexp.MustCompile(`(?m)^LUA_FUZZ_HARNESS_B64 := ([A-Za-z0-9+/=]+)$`).FindStringSubmatch(mk)
-	if m == nil {
-		t.Fatal("make/schema-lua-nightly-fuzz.mk does not embed the harness")
-	}
-	harness, err := base64.StdEncoding.DecodeString(m[1])
-	if err != nil {
-		t.Fatalf("decode the embedded harness: %v", err)
-	}
+	harness := luaFuzzHarness(t, mk)
 	for _, want := range []string{"ReadStrict", "LoadText", "FromJson", "TYPED"} {
-		if !strings.Contains(string(harness), want) {
+		if !strings.Contains(harness, want) {
 			t.Errorf("the embedded harness does not carry %q", want)
 		}
 	}
@@ -148,5 +141,86 @@ func TestLuaNightlyFuzzLane(t *testing.T) {
 	fast := wf[strings.Index(wf, "  fast:"):strings.Index(wf, "  nightly:")]
 	if strings.Contains(fast, "make schema-lua-nightly-fuzz ") {
 		t.Error("the fast lane runs the heavy nightly target; replay only")
+	}
+}
+
+// luaFuzzHarness is the harness the make include embeds as base64 and decodes
+// into build/lua-fuzz/fuzz.lua.
+func luaFuzzHarness(t *testing.T, mk string) string {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^LUA_FUZZ_HARNESS_B64 := ([A-Za-z0-9+/=]+)$`).FindStringSubmatch(mk)
+	if m == nil {
+		t.Fatal("make/schema-lua-nightly-fuzz.mk does not embed the harness")
+	}
+	harness, err := base64.StdEncoding.DecodeString(m[1])
+	if err != nil {
+		t.Fatalf("decode the embedded harness: %v", err)
+	}
+	return string(harness)
+}
+
+// TestLuaNightlyFuzzOracleCarriesEveryRuntimeRefusal holds the harness's
+// oracle to the runtime it fuzzes. The oracle accepts a Lua error only when
+// its message is a name in the harness's TYPED table; a refusal the runtime
+// raises BY NAME that the table does not carry is reported as a raw crash, and
+// every input that reaches it becomes a false finding. That happened: the
+// strict read gained wire_damaged (and missing_required, blob_shared,
+// non_finite, count_refusal) after the harness was written, the planted
+// control's fuzz run filled with clean refusals, and the saved case failed
+// replay on the clean tree. The names are read from the runtime sources the
+// fuzzer's readers reach: refusal.lua's refuse() calls and counters,
+// load.lua's strict reasons, and fixed.lua's form-3 errors.
+func TestLuaNightlyFuzzOracleCarriesEveryRuntimeRefusal(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	harness := luaFuzzHarness(t, readCI(t, root, "make/schema-lua-nightly-fuzz.mk"))
+
+	start := strings.Index(harness, "local TYPED = {")
+	if start < 0 {
+		t.Fatal("the embedded harness has no TYPED table")
+	}
+	end := strings.Index(harness[start:], "\n}")
+	if end < 0 {
+		t.Fatal("the embedded harness's TYPED table is not closed")
+	}
+	typed := map[string]bool{}
+	for _, m := range regexp.MustCompile(`([a-z_]+) = true`).FindAllStringSubmatch(harness[start:start+end], -1) {
+		typed[m[1]] = true
+	}
+
+	runtime := "internal/codegen/luatable/runtime/"
+	sources := []struct {
+		file    string
+		pattern string
+	}{
+		{"refusal.lua", `refuse\("([a-z_]+)"`},
+		{"refusal.lua", `name = "([a-z_]+)"`},
+		{"load.lua", `then return "([a-z_]+)" end`},
+		{"fixed.lua", `error\("([a-z_]+)"`},
+		{"text.lua", `error\("([a-z_]+)"`},
+	}
+	named := 0
+	for _, src := range sources {
+		text := readCI(t, root, runtime+src.file)
+		for _, m := range regexp.MustCompile(src.pattern).FindAllStringSubmatch(text, -1) {
+			named++
+			if !typed[m[1]] {
+				t.Errorf("%s%s refuses by the name %q, which the fuzz harness's TYPED table does not carry: every input reaching it is a false finding", runtime, src.file, m[1])
+			}
+		}
+	}
+	if named == 0 {
+		t.Fatal("no refusal name read from the runtime; the patterns no longer match it")
+	}
+
+	// THE PLANT LANDS. The negative control seds one exact guard line out of
+	// the generated load.lua; when the runtime's line changes the control dies
+	// at make time with "the plant did not land", so the line is held here.
+	plant := regexp.MustCompile(`sed -i 's/(if #bytes < 9 then [^/]*)/`).FindStringSubmatch(readCI(t, root, "make/schema-lua-nightly-fuzz.mk"))
+	if plant == nil {
+		t.Fatal("the negative control's plant is not the `if #bytes < 9` guard")
+	}
+	if !strings.Contains(readCI(t, root, runtime+"load.lua"), plant[1]) {
+		t.Errorf("the negative control plants against %q, which load.lua no longer carries", plant[1])
 	}
 }
