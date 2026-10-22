@@ -698,8 +698,8 @@ const fuzzUnits = {
   tblp2: "p2/Tblp2Variable.js",
 };
 
-// retainUnits binds the units the manifest's retain rows name (docs/SPEC-
-// TABLES.md §6.6): the RT reader and the two newer builds it is retained
+// retainUnits binds the units the manifest's retain rows name
+// (docs/SPEC-TABLES.md §6.6): the RT reader and the two newer builds it is retained
 // across. The table retains the root's LoadRetain, MeasureRetain and
 // SaveRetain, which are absent on a unit this leg names no module for.
 const retainUnits = {

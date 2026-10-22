@@ -1,0 +1,59 @@
+# 2026-10-16 hetzner2 plan-read sittings, Rust leg, ALL THREE LANES (BENCH-STANDARD.md §1.10). Every measured round of both sittings, as table-rust-plan printed it.
+# measured revision a6befea79ea94394b83b08e0c8c39d561b3d7a2a = card commit 5ede1343e + generated/bench/paired regenerated (see the .md); corpus_id 50d0ee5a2c62bc00; pinned taskset -c 3
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+# sitting 1 round 0 (round-0-rust-plan-read-attempt-1.csv)
+rust,bench_fixed_read,read,1704768,1264.296875,1,6270474,6270474,6270474,7560.48,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_plan_read,read,1704768,995.4375,1,1296770,1296770,1296770,1231.05,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_mixed_read,read,2000000,438,1,4989491,4989491,4989491,2084.16,0.00,50d0ee5a2c62bc00,gen,crate,removed,O3,unknown
+# sitting 1 round 1 (round-1-rust-plan-read-attempt-1.csv)
+rust,bench_fixed_read,read,1704768,1264.296875,1,6659209,6659209,6659209,8029.19,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_plan_read,read,1704768,995.4375,1,1351719,1351719,1351719,1283.22,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_mixed_read,read,2000000,438,1,4995718,4995718,4995718,2086.76,0.00,50d0ee5a2c62bc00,gen,crate,removed,O3,unknown
+# sitting 1 round 2 (round-2-rust-plan-read-attempt-1.csv)
+rust,bench_fixed_read,read,1704768,1264.296875,1,6666259,6666259,6666259,8037.69,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_plan_read,read,1704768,995.4375,1,1309661,1309661,1309661,1243.29,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_mixed_read,read,2000000,438,1,4846499,4846499,4846499,2024.43,0.00,50d0ee5a2c62bc00,gen,crate,removed,O3,unknown
+# sitting 1 round 3 (round-3-rust-plan-read-attempt-1.csv)
+rust,bench_fixed_read,read,1704768,1264.296875,1,6288157,6288157,6288157,7581.80,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_plan_read,read,1704768,995.4375,1,1304173,1304173,1304173,1238.08,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_mixed_read,read,2000000,438,1,4998795,4998795,4998795,2088.04,0.00,50d0ee5a2c62bc00,gen,crate,removed,O3,unknown
+# sitting 1 round 4 (round-4-rust-plan-read-attempt-1.csv)
+rust,bench_fixed_read,read,1704768,1264.296875,1,6204172,6204172,6204172,7480.54,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_plan_read,read,1704768,995.4375,1,1284051,1284051,1284051,1218.98,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_mixed_read,read,2000000,438,1,4993700,4993700,4993700,2085.92,0.00,50d0ee5a2c62bc00,gen,crate,removed,O3,unknown
+# sitting 1 round 5 (round-5-rust-plan-read-attempt-1.csv)
+rust,bench_fixed_read,read,1704768,1264.296875,1,6599732,6599732,6599732,7957.48,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_plan_read,read,1704768,995.4375,1,1303353,1303353,1303353,1237.30,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_mixed_read,read,2000000,438,1,4822162,4822162,4822162,2014.26,0.00,50d0ee5a2c62bc00,gen,crate,removed,O3,unknown
+# sitting 1 round 6 (round-6-rust-plan-read-attempt-1.csv)
+rust,bench_fixed_read,read,1704768,1264.296875,1,6142079,6142079,6142079,7405.67,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_plan_read,read,1704768,995.4375,1,1304285,1304285,1304285,1238.19,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_mixed_read,read,2000000,438,1,5004436,5004436,5004436,2090.40,0.00,50d0ee5a2c62bc00,gen,crate,removed,O3,unknown
+# sitting 2 round 0 (round-0-rust-plan-read-attempt-1.csv)
+rust,bench_fixed_read,read,1690176,1264.296875,1,6145330,6145330,6145330,7409.59,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_plan_read,read,1690176,995.4375,1,1303818,1303818,1303818,1237.74,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_mixed_read,read,2000000,438,1,5017304,5017304,5017304,2095.77,0.00,50d0ee5a2c62bc00,gen,crate,removed,O3,unknown
+# sitting 2 round 1 (round-1-rust-plan-read-attempt-1.csv)
+rust,bench_fixed_read,read,1690176,1264.296875,1,6447199,6447199,6447199,7773.56,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_plan_read,read,1690176,995.4375,1,1331884,1331884,1331884,1264.39,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_mixed_read,read,2000000,438,1,5013407,5013407,5013407,2094.15,0.00,50d0ee5a2c62bc00,gen,crate,removed,O3,unknown
+# sitting 2 round 2 (round-2-rust-plan-read-attempt-1.csv)
+rust,bench_fixed_read,read,1690176,1264.296875,1,6506555,6506555,6506555,7845.13,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_plan_read,read,1690176,995.4375,1,1293410,1293410,1293410,1227.86,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_mixed_read,read,2000000,438,1,4853754,4853754,4853754,2027.46,0.00,50d0ee5a2c62bc00,gen,crate,removed,O3,unknown
+# sitting 2 round 3 (round-3-rust-plan-read-attempt-1.csv)
+rust,bench_fixed_read,read,1690176,1264.296875,1,6120735,6120735,6120735,7379.94,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_plan_read,read,1690176,995.4375,1,1298184,1298184,1298184,1232.40,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_mixed_read,read,2000000,438,1,4996241,4996241,4996241,2086.98,0.00,50d0ee5a2c62bc00,gen,crate,removed,O3,unknown
+# sitting 2 round 4 (round-4-rust-plan-read-attempt-1.csv)
+rust,bench_fixed_read,read,1690176,1264.296875,1,6449011,6449011,6449011,7775.75,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_plan_read,read,1690176,995.4375,1,1349093,1349093,1349093,1280.73,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_mixed_read,read,2000000,438,1,4998004,4998004,4998004,2087.71,0.00,50d0ee5a2c62bc00,gen,crate,removed,O3,unknown
+# sitting 2 round 5 (round-5-rust-plan-read-attempt-1.csv)
+rust,bench_fixed_read,read,1690176,1264.296875,1,6624960,6624960,6624960,7987.90,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_plan_read,read,1690176,995.4375,1,1304055,1304055,1304055,1237.97,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_mixed_read,read,2000000,438,1,4829887,4829887,4829887,2017.49,0.00,50d0ee5a2c62bc00,gen,crate,removed,O3,unknown
+# sitting 2 round 6 (round-6-rust-plan-read-attempt-1.csv)
+rust,bench_fixed_read,read,1690176,1264.296875,1,6168399,6168399,6168399,7437.41,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_plan_read,read,1690176,995.4375,1,1311580,1311580,1311580,1245.11,0.00,50d0ee5a2c62bc00,table,crate,contract,O3,unknown
+rust,bench_mixed_read,read,2000000,438,1,4990717,4990717,4990717,2084.67,0.00,50d0ee5a2c62bc00,gen,crate,removed,O3,unknown

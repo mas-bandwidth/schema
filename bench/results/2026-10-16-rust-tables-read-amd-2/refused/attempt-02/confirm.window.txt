@@ -1,0 +1,13 @@
+# sitting: confirm   2026-10-16T03:05:15Z .. 2026-10-16T03:07:17Z (UTC)
+# host: b2 / x86_64 / Linux 7.0.0-38-generic / AMD Ryzen 7 255 w/ Radeon 780M Graphics
+# pinning: taskset -c 7 (SMT siblings 7,15; no isolcpus on this host: the core is declared and its sibling measured, not kernel-isolated)
+# rounds: 11   interleaved: yes (order rotates one place per round)   iterations: 4000000
+# legs: table-rust table-cpp-clang table-cpp-gcc
+# control: build/paired/sit/packet-cpp-control (c++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0, -O3 -DSERIALIZE_RELEASE; family gen bench_mixed rows), round 0, pinned, start and end
+# load_start: 1.03 1.10 1.06 1/478 1775656
+# load_end:   1.26 1.18 1.09 1/479 1779545
+# load_max:   1.56   (1-min average at every boundary; this sitting's own pinned leg is ~1.0 of it)
+# core_busy_pct: sibling cpu 15 0.3   all other cpus 1.6
+# foreign_procs: 1   (build/bench processes above 5% CPU, summed over every boundary's 1 s sample; any refuses; other processes above 5% are listed in confirm.load.txt)
+# control_delta_pct: 1.32   (max over rows: write 0.06% round_trip 1.32% )
+# window: INVALID

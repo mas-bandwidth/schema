@@ -44,6 +44,8 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `rust-fixedform/` | Rust fixed-form tests | `make test-rust` | `make test-rust` |
 | `rust-fuzz/` | Rust fuzz driver | `make test-rust` | `make test-rust` |
 | `rust-ludicrous/` | Rust int128 tests | `make test-rust` | `make test-rust` |
+| `rust-soak/` | Rust tables soak, allocator call count | `make tables-rust-soak` | `make tables-rust-soak` |
+| `rust-view/` | Rust unit-view listing driver | `make tables-rust-view` | `make tables-rust-view` |
 | `slowgate/` | SCHEMA_SLOW proof wrapper | `make slow-gate-scan` | `make slow-gate-scan` |
 | `table-base64/` | table base64 gates | `make test` | `make test` |
 | `tables/` | C++ table tests | `make test` | `./build/schema_test_tables` |
