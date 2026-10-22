@@ -33,6 +33,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -143,14 +144,7 @@ func ReleaseTag(version, commit string, tags, mainAncestry []string) (string, er
 	if !commitHash.MatchString(commit) {
 		return "", fmt.Errorf("%w: %q", ErrNotACommit, commit)
 	}
-	onMain := false
-	for _, c := range mainAncestry {
-		if c == commit {
-			onMain = true
-			break
-		}
-	}
-	if !onMain {
+	if !slices.Contains(mainAncestry, commit) {
 		return "", fmt.Errorf("%w: %s", ErrNotOnMain, commit)
 	}
 	return v.String(), nil

@@ -19,9 +19,7 @@ import (
 func TestFixedTableFieldNamedAfterTheBlockPrologueIsRefused(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{"magic", "build_version", "byte_order"} {
-		name := name
 		for _, kind := range []string{"fixed table", "table"} {
-			kind := kind
 			t.Run(kind+" "+name, func(t *testing.T) {
 				t.Parallel()
 				src := "package t\n" + kind + " Header\n{\n    id uint32\n    " + name + " uint32\n}\n"
