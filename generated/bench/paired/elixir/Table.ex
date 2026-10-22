@@ -1500,7 +1500,6 @@ defmodule Bench.Table do
 
   defp collect_union_nodes(union, {arm, payload}, acc) do
     case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
-      %{t: :void} -> acc
       a -> collect_nodes(%{fields: [a]}, %{a.name => payload}, acc)
     end
   end
@@ -1843,51 +1842,12 @@ defmodule Bench.Table do
   # a table body with its terminator, a scalar's bytes, a string's or wide
   # string's bytes, a node index, an enum reference, an array body, or an
   # inner union's arm header. A payload-free arm is empty.
-  defp arm_content(%{t: :void}, _v, _idx_map, ids, order), do: {<<>>, ids, order}
-
   defp arm_content(%{t: :table} = a, v, idx_map, ids, order) do
     {_idx, ids, order, body} =
       save_fields(Map.fetch!(@tables, a.elem), v || %{}, idx_map, ids, order, [])
 
     {[body, <<0>>], ids, order}
   end
-
-  defp arm_content(%{t: :int} = a, v, _idx_map, ids, order),
-    do: {int_bytes(v, a.width, a.signed), ids, order}
-
-  defp arm_content(%{t: :float} = a, v, _idx_map, ids, order),
-    do: {float_bytes(v, a.width), ids, order}
-
-  defp arm_content(%{t: :bool}, v, _idx_map, ids, order),
-    do: {if(v, do: <<1>>, else: <<0>>), ids, order}
-
-  defp arm_content(%{t: :string}, v, _idx_map, ids, order), do: {v, ids, order}
-  defp arm_content(%{t: :wstring}, v, _idx_map, ids, order), do: {utf16(v), ids, order}
-
-  defp arm_content(%{t: :bytes}, v, _idx_map, ids, order),
-    do: {[<<6>>, leb_encode(byte_size(v)), v], ids, order}
-
-  defp arm_content(%{t: :enum}, nil, _idx_map, ids, order), do: {leb_encode(0), ids, order}
-
-  defp arm_content(%{t: :enum} = a, v, _idx_map, ids, order) do
-    {vref, ids, order} = intern(ids, order, Map.fetch!(a.by_name, v))
-    {leb_encode(vref), ids, order}
-  end
-
-  defp arm_content(%{t: t}, nil, _idx_map, ids, order) when t in [:pointer, :blob],
-    do: {leb_encode(0), ids, order}
-
-  defp arm_content(%{t: t} = a, v, idx_map, ids, order) when t in [:pointer, :blob],
-    do: {leb_encode(Map.fetch!(idx_map, {a.type_id, v})), ids, order}
-
-  defp arm_content(%{t: :list} = a, v, idx_map, ids, order) do
-    elements = pad_fixed(a, v || [])
-    {body, _idx_map, ids, order} = save_list_elements(a, elements, idx_map, ids, order, [])
-    {[<<a.elem_kind>>, leb_encode(length(elements)), body], ids, order}
-  end
-
-  defp arm_content(%{t: :union} = a, v, idx_map, ids, order),
-    do: arm_header(a.elem, v, idx_map, ids, order)
 
   defp save_list_elements(_f, [], idx_map, ids, order, acc), do: {acc, idx_map, ids, order}
 
@@ -2627,9 +2587,6 @@ defmodule Bench.Table do
     end
   end
 
-  defp read_arm_payload(%{t: :void}, name, _inner, _framed, _nodes, _ids, report),
-    do: {:cont, {name, nil}, report}
-
   defp read_arm_payload(a, name, inner, framed, nodes, ids, report) do
     # the length-framed kinds read their own L, so they take the framed bytes;
     # every other arm reads its payload exactly as a field does
@@ -3231,7 +3188,6 @@ defmodule Bench.Table do
 
   defp tally_field(%{t: :union, elem: union}, {arm, payload}, acc) do
     case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
-      %{t: :void} -> acc
       a -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)
     end
   end
@@ -3606,7 +3562,6 @@ defmodule Bench.Table do
 
     inner =
       case a do
-        %{t: :void} -> "null"
         _ -> json_field(a, if(payload == nil, do: a.default, else: payload), depth + 1)
       end
 
@@ -4106,13 +4061,8 @@ defmodule Bench.Table do
         json_skip_value(input)
         {nil, %{report | unknown: report.unknown + 1}}
 
-      {:ok, %{t: :void}} ->
-        if input == nil,
-          do: {{name, nil}, report},
-          else: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
-
       {:ok, a} ->
-        if input == nil and a.t != :pointer and a.t != :blob do
+        if input == nil do
           {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
         else
           before = report.kind_mismatch

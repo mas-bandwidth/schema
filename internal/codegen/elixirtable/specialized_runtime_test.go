@@ -13,7 +13,10 @@ import (
 // @uncarried is empty is emitted without the uncarried refusals (each guard
 // would read `table in []`), and a unit with no extent anywhere is emitted
 // without the nested-record extent walks (each would branch on a literal
-// false has_extent). A unit that needs them keeps them.
+// false has_extent). A unit with no union carries no union runtime and no
+// @unions (every Map.fetch! on an empty one always raises), and a unit with
+// unions carries only the arm clauses its arms' kinds reach. A unit that needs
+// a clause keeps it.
 func TestVariableRuntimeCarriesOnlyClausesTheUnitCanReach(t *testing.T) {
 	t.Parallel()
 	plain, err := Generate(unitFrom(t, `package probe
@@ -36,6 +39,11 @@ table Outer
 	for _, gone := range append([]string{"when table in @uncarried", "table in @uncarried or"}, extentWalkClauses...) {
 		if strings.Contains(src, gone) {
 			t.Errorf("a unit with no uncarried root and no extent still emits %q", gone)
+		}
+	}
+	for _, gone := range append([]string{"@unions", "defp arm_header(", "defp json_read_arm(", "elem_kind: 15}"}, unionClauses...) {
+		if strings.Contains(src, gone) {
+			t.Errorf("a unit with no union still emits %q", gone)
 		}
 	}
 	if !strings.Contains(src, "      if not is_map(value) do\n") {
@@ -67,6 +75,39 @@ table Outer
 	for _, kept := range append([]string{"def load_measure(table, _data) when table in @uncarried", "if table in @uncarried or not is_map(value) do"}, extentWalkClauses...) {
 		if !strings.Contains(src, kept) {
 			t.Errorf("a unit with an uncarried root and an extent lost %q", kept)
+		}
+	}
+
+	arms, err := Generate(unitFrom(t, `package probe
+
+table Boost
+{
+    a int32
+}
+
+union Effect
+{
+    boost Boost
+    ping
+}
+
+table Root
+{
+    effect Effect
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src = string(arms[VariableTableModule+".ex"])
+	for _, kept := range []string{"  defp arm_content(%{t: :table} = a,", "  defp arm_content(%{t: :void},", "      %{t: :void} -> acc\n", "        if input == nil do\n"} {
+		if !strings.Contains(src, kept) {
+			t.Errorf("a unit with table and void arms lost %q", kept)
+		}
+	}
+	for _, gone := range []string{"  defp arm_content(%{t: :int}", "  defp arm_content(%{t: :enum}", "when t in [:pointer, :blob]", "a.t != :pointer"} {
+		if strings.Contains(src, gone) {
+			t.Errorf("a unit whose arms are a table and a void still emits %q", gone)
 		}
 	}
 }

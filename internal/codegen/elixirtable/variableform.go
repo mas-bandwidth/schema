@@ -28,6 +28,7 @@ package elixirtable
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -105,9 +106,11 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	}
 	tables.WriteString("}")
 	b.WriteString(exAttribute("tables", tables.String()))
-	b.WriteString("  # Union arms are field lines (docs/SPEC-TABLES.md §2.6, §3).\n")
 	var unions strings.Builder
 	unions.WriteString("%{\n")
+	// every `t:` an arm descriptor spells, nested ones included: the arm
+	// kinds the runtime's arm clauses can be handed (withArmKinds)
+	armKinds := map[string]bool{}
 	unionNames := make([]string, 0, len(u.Unions)+len(u.TableUnions))
 	for name := range u.Unions {
 		unionNames = append(unionNames, name)
@@ -125,7 +128,11 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 		}
 		fmt.Fprintf(&unions, "    %q => %%{by_name: %%{\n", name)
 		for i, arm := range un.Variants {
-			fmt.Fprintf(&unions, "      %q => %s", arm.Name, armDescriptor(u, arm, i))
+			d := armDescriptor(u, arm, i)
+			for _, m := range armKindPattern.FindAllStringSubmatch(d, -1) {
+				armKinds[m[1]] = true
+			}
+			fmt.Fprintf(&unions, "      %q => %s", arm.Name, d)
 		}
 		unions.WriteString("    }, by_id: %{\n")
 		for _, arm := range un.Variants {
@@ -134,7 +141,12 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 		unions.WriteString("    }},\n")
 	}
 	unions.WriteString("}")
-	b.WriteString(exAttribute("unions", unions.String()))
+	// a unit with no union carries no union runtime (withoutUnions), so the
+	// attribute would be set and never read
+	if len(unionNames) > 0 {
+		b.WriteString("  # Union arms are field lines (docs/SPEC-TABLES.md §2.6, §3).\n")
+		b.WriteString(exAttribute("unions", unions.String()))
+	}
 	b.WriteString("  # the node table's type vocabulary (docs/SPEC-TABLES.md §3.1): the id a\n")
 	b.WriteString("  # record's type reference resolves to — a blob kind or a table name — so a\n")
 	b.WriteString("  # pointer names the node it points at.\n")
@@ -164,6 +176,11 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	}
 	if !anyExtent {
 		cook = withoutExtentWalks(cook)
+	}
+	if len(unionNames) > 0 {
+		runtime = withArmKinds(runtime, armKinds)
+	} else {
+		runtime = withoutUnions(runtime)
 	}
 	b.WriteString(runtime)
 	// the formatter keeps a blank line between the runtime's last `end` and
@@ -239,6 +256,205 @@ func reachesUncarried(st *ir.Struct, poison map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+var armKindPattern = regexp.MustCompile(`\bt: :([a-z_]+)`)
+
+// armClauses are the runtime's clauses that handle ONE arm kind, keyed by the
+// kinds that reach them. A union arm's descriptor comes out of the literal
+// @unions, so Elixir's type checker knows every kind an arm can have and
+// reports a clause for any other kind as one that is never used. A unit is
+// emitted with only the clauses its own arms can reach.
+var armClauses = []struct {
+	kinds []string
+	text  string
+}{
+	{[]string{"void"}, "  defp arm_content(%{t: :void}, _v, _idx_map, ids, order), do: {<<>>, ids, order}\n"},
+	{[]string{"table"}, "  defp arm_content(%{t: :table} = a, v, idx_map, ids, order) do\n"},
+	{[]string{"int"}, "  defp arm_content(%{t: :int} = a, v, _idx_map, ids, order),\n"},
+	{[]string{"float"}, "  defp arm_content(%{t: :float} = a, v, _idx_map, ids, order),\n"},
+	{[]string{"bool"}, "  defp arm_content(%{t: :bool}, v, _idx_map, ids, order),\n"},
+	{[]string{"string"}, "  defp arm_content(%{t: :string}, v, _idx_map, ids, order), do: {v, ids, order}\n"},
+	{[]string{"wstring"}, "  defp arm_content(%{t: :wstring}, v, _idx_map, ids, order), do: {utf16(v), ids, order}\n"},
+	{[]string{"bytes"}, "  defp arm_content(%{t: :bytes}, v, _idx_map, ids, order),\n"},
+	{[]string{"enum"}, "  defp arm_content(%{t: :enum}, nil, _idx_map, ids, order), do: {leb_encode(0), ids, order}\n"},
+	{[]string{"enum"}, "  defp arm_content(%{t: :enum} = a, v, _idx_map, ids, order) do\n"},
+	{[]string{"pointer", "blob"}, "  defp arm_content(%{t: t}, nil, _idx_map, ids, order) when t in [:pointer, :blob],\n"},
+	{[]string{"pointer", "blob"}, "  defp arm_content(%{t: t} = a, v, idx_map, ids, order) when t in [:pointer, :blob],\n"},
+	{[]string{"list"}, "  defp arm_content(%{t: :list} = a, v, idx_map, ids, order) do\n"},
+	{[]string{"union"}, "  defp arm_content(%{t: :union} = a, v, idx_map, ids, order),\n"},
+	{[]string{"void"}, "  defp read_arm_payload(%{t: :void}, name, _inner, _framed, _nodes, _ids, report),\n"},
+}
+
+// armVoidLines are the void arm's branches inside case expressions, each
+// whole and found exactly as many times as listed.
+var armVoidLines = []struct {
+	text  string
+	count int
+}{
+	{"      %{t: :void} -> acc\n", 2},
+	{"        %{t: :void} -> \"null\"\n", 1},
+	{"      {:ok, %{t: :void}} ->\n        if input == nil,\n          do: {{name, nil}, report},\n          else: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}\n\n", 1},
+}
+
+const armNodeCheck = "        if input == nil and a.t != :pointer and a.t != :blob do\n"
+
+// withArmKinds is the runtime for a unit whose union arms take only the kinds
+// in `kinds`: every armClauses clause no such kind reaches goes (from its head
+// through its last line and the blank line after it), the void branches go
+// when no arm is void, and the JSON reader's null check names only the node
+// kinds an arm can be. Every edit must apply, so a template change that moves
+// one fails the emitter's tests.
+func withArmKinds(runtime string, kinds map[string]bool) string {
+	reached := func(ks []string) bool {
+		for _, k := range ks {
+			if kinds[k] {
+				return true
+			}
+		}
+		return false
+	}
+	for _, c := range armClauses {
+		if reached(c.kinds) {
+			continue
+		}
+		if strings.Count(runtime, c.text) != 1 {
+			panic("elixirtable: arm clause not found exactly once: " + c.text)
+		}
+		i := strings.Index(runtime, c.text)
+		end := i + len(c.text)
+		switch {
+		case strings.HasSuffix(c.text, " do\n"):
+			end = i + strings.Index(runtime[i:], "\n  end\n") + len("\n  end\n")
+		case strings.HasSuffix(c.text, ",\n"):
+			end += strings.Index(runtime[end:], "\n") + 1
+		}
+		if strings.HasPrefix(runtime[end:], "\n") {
+			end++
+		}
+		runtime = runtime[:i] + runtime[end:]
+	}
+	if !kinds["void"] {
+		for _, l := range armVoidLines {
+			if strings.Count(runtime, l.text) != l.count {
+				panic("elixirtable: void arm branch not found as expected: " + l.text)
+			}
+			runtime = strings.ReplaceAll(runtime, l.text, "")
+		}
+	}
+	if strings.Count(runtime, armNodeCheck) != 1 {
+		panic("elixirtable: arm node check not found exactly once")
+	}
+	check := "        if input == nil"
+	for _, k := range []string{"pointer", "blob"} {
+		if kinds[k] {
+			check += " and a.t != :" + k
+		}
+	}
+	return strings.Replace(runtime, armNodeCheck, check+" do\n", 1)
+}
+
+// unionFamilies are the runtime functions that exist only to read, write,
+// walk or spell a union, and unionClauses the clauses of shared functions
+// that hand one a union field or a union-array element. In a unit with no
+// union the literal @unions is empty, so every Map.fetch! on it is one
+// Elixir's type checker proves always raises; such a unit is emitted without
+// them.
+var unionFamilies = []string{"collect_union_nodes", "arm_header", "arm_content", "read_arm",
+	"read_arm_payload", "json_arm", "json_read_arm"}
+
+var unionClauses = []string{
+	"  defp collect_list_nodes(%{elem_kind: 15}",
+	"  defp emit_field(%{t: :union}",
+	"  defp emit_element(%{elem_kind: 15}",
+	"  defp read_payload(%{t: :union}",
+	"  defp read_list_elements(%{elem_kind: 15}",
+	"  defp tally_field(%{t: :union",
+	"  defp tally_field(%{t: :list, elem_kind: 15}",
+	"  defp json_field(%{t: :union}",
+	"  defp json_list_elem(%{elem_kind: 15}",
+	"  defp json_read_field(%{t: :union}",
+	"  defp json_read_list_elem(%{elem_kind: 15}",
+}
+
+const unionNodeBranch = "        :union ->\n          collect_union_nodes(f.elem, Map.get(value, f.name), acc)\n\n"
+
+// withoutUnions is the runtime for a unit with no union: unionFamilies and
+// unionClauses go, each with the comment directly above it, and so does the
+// node walk's union branch. Every name and clause must be found, so a
+// template change that renames one fails the emitter's tests.
+func withoutUnions(runtime string) string {
+	if strings.Count(runtime, unionNodeBranch) != 1 {
+		panic("elixirtable: the node walk's union branch not found exactly once")
+	}
+	runtime = strings.Replace(runtime, unionNodeBranch, "", 1)
+	found := map[string]bool{}
+	runtime = dropTopLevel(runtime, func(head string) bool {
+		for _, name := range unionFamilies {
+			if strings.HasPrefix(head, "  defp "+name+"(") {
+				found[name] = true
+				return true
+			}
+		}
+		for _, c := range unionClauses {
+			if strings.HasPrefix(head, c) {
+				found[c] = true
+				return true
+			}
+		}
+		return false
+	})
+	for _, k := range append(append([]string{}, unionFamilies...), unionClauses...) {
+		if !found[k] {
+			panic("elixirtable: union runtime piece not found: " + k)
+		}
+	}
+	return runtime
+}
+
+// dropTopLevel removes every module-level item of an emitted Elixir source
+// whose head line `drop` names. An item starts at a line indented exactly two
+// spaces (anything but `end`) and runs to the next such line, so it carries its
+// own body and the blank line after it; a run of `#` lines directly above a
+// head belongs to that head's item and goes with it.
+func dropTopLevel(src string, drop func(head string) bool) string {
+	lines := strings.SplitAfter(src, "\n")
+	starts := func(l string) bool {
+		return strings.HasPrefix(l, "  ") && len(l) > 2 && l[2] != ' ' && l[2] != '\n' &&
+			!strings.HasPrefix(l, "  end\n") && !strings.HasPrefix(l, "  end)")
+	}
+	var b strings.Builder
+	for i := 0; i < len(lines); {
+		if !starts(lines[i]) {
+			b.WriteString(lines[i])
+			i++
+			continue
+		}
+		j := i
+		for j < len(lines) && strings.HasPrefix(lines[j], "  #") {
+			j++
+		}
+		if j == len(lines) || !starts(lines[j]) {
+			// a comment with no head under it stays as written
+			for ; i < j; i++ {
+				b.WriteString(lines[i])
+			}
+			continue
+		}
+		head := lines[j]
+		k := j + 1
+		for k < len(lines) && !starts(lines[k]) {
+			k++
+		}
+		if !drop(head) {
+			for ; i < k; i++ {
+				b.WriteString(lines[i])
+			}
+			continue
+		}
+		i = k
+	}
+	return b.String()
 }
 
 // uncarriedClauses are the runtime's refusals of an uncarried root, each the
@@ -740,6 +956,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     do: {if(v, do: <<1>>, else: <<0>>), ids, order}
 
   defp arm_content(%{t: :string}, v, _idx_map, ids, order), do: {v, ids, order}
+
   defp arm_content(%{t: :wstring}, v, _idx_map, ids, order), do: {utf16(v), ids, order}
 
   defp arm_content(%{t: :bytes}, v, _idx_map, ids, order),
