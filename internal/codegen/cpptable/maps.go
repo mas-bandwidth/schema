@@ -1051,7 +1051,14 @@ func (g *tableGen) emitMapMeasureField(f *ir.Field) {
 	g.pf("        // %s: a kind %d array of kind %d elements, ASCENDING (§2.8)\n", f.Name, tkArray, tkTable)
 	g.pf("        TableMapCursor<%s> order_%s = TableMapOrder( ctx, value.%s );\n", entry.Name, f.Name, f.Name)
 	g.pf("        if ( !order_%s.ok ) { return -1; } // the sort could not run\n", f.Name)
-	g.pf("        if ( order_%s.count > 0 )\n        {\n", f.Name)
+	if f.Type.Optional {
+		// A PRESENT EMPTY MAP RIDES (docs/SPEC-TABLES.md §2.8): the field header
+		// and the two-byte array body 0d 00 under L = 2. Only ABSENT elides; the
+		// oracle is internal/codegen/gotable/mappresence_test.go TestGoMapPresence.
+		g.pf("        if ( true ) // PRESENT: an empty map still rides\n        {\n")
+	} else {
+		g.pf("        if ( order_%s.count > 0 )\n        {\n", f.Name)
+	}
 	g.pf("            const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 	g.pf("            int64_t body_%s = 1 + TableLebBytes( (uint64_t) order_%s.count ); // the element kind byte and the count\n", f.Name, f.Name)
 	g.pf("            for ( int32_t i = 0; i < order_%s.count; i++ )\n            {\n", f.Name)
@@ -1075,7 +1082,14 @@ func (g *tableGen) emitMapWriteField(f *ir.Field) {
 	g.pf("    {\n")
 	g.pf("        TableMapCursor<%s> order_%s = TableMapOrder( ctx, value.%s ); // %s\n", entry.Name, f.Name, f.Name, f.Name)
 	g.pf("        if ( !order_%s.ok ) { return false; }\n", f.Name)
-	g.pf("        if ( order_%s.count > 0 ) // an EMPTY map elides, the by-value rule (§3)\n        {\n", f.Name)
+	if f.Type.Optional {
+		// A PRESENT EMPTY MAP RIDES (docs/SPEC-TABLES.md §2.8): the field header
+		// and the two-byte array body 0d 00 under L = 2. Only ABSENT elides; the
+		// oracle is internal/codegen/gotable/mappresence_test.go TestGoMapPresence.
+		g.pf("        if ( true ) // PRESENT: an empty map still rides\n        {\n")
+	} else {
+		g.pf("        if ( order_%s.count > 0 ) // an EMPTY map elides, the by-value rule (§3)\n        {\n", f.Name)
+	}
 	g.pf("            const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 	g.pf("            int64_t body_%s = 1 + TableLebBytes( (uint64_t) order_%s.count );\n", f.Name, f.Name)
 	g.pf("            for ( int32_t i = 0; i < order_%s.count; i++ )\n            {\n", f.Name)

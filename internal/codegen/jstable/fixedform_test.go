@@ -521,7 +521,7 @@ func TestFixedOptionalRowsMatchReference(t *testing.T) {
 		// name(4+12) + plain(4) = 20
 		{"opt ?", 20, "opt"},
 		// + present(1) + Leaf(4 + 4+8) = 37
-		{"num ?", 37, "num"},
+		{"number ?", 37, "number"},
 		// + present(1) + int32(4) = 42
 		{"mark ?", 42, "mark"},
 		// THE NESTED BODY'S OWN OFFSETS, not the root's: `wrap` starts at 44
@@ -729,7 +729,7 @@ type Item
 table Bag
 {
     entries map[uint32]Item
-    after   int32
+    past   int32
 }
 `)
 	if roots := jsFixedUnitRoots(refused); len(roots) != 0 {

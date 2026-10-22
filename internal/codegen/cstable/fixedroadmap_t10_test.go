@@ -43,7 +43,7 @@ enum Grade { Bronze, Gold }
 
 fixed table T
 {
-    num ?int32
+    number ?int32
     mark ?Grade
     tail int32 = 7
 }
@@ -362,7 +362,7 @@ func t10Tail(text string, runErr error) string {
 // then the payload, and the payload rides only when the byte is set.
 const t10OptionalScalarsBody = `
             var v = new @NS@.T();
-            v.Num = 42; v.NumPresent = true;
+            v.Number = 42; v.NumberPresent = true;
             v.Mark = @NS@.Grade.Gold; v.MarkPresent = true;
             v.Tail = 99;
 
@@ -381,7 +381,7 @@ const t10OptionalScalarsBody = `
             var plan = new @NS@.TableFixedEntry[8192];
             long m = @NS@.Schema.TFixedLoad(r, buf, plan, rep);
             if (n != buf.Length || m != 1) { bad += ProbeLog.Fail(@NAME@, "save/load did not roundtrip: n=" + n + " m=" + m); }
-            if (!r.NumPresent || r.Num != 42) { bad += ProbeLog.Fail(@NAME@, "the scalar did not land: " + r.NumPresent + "/" + r.Num); }
+            if (!r.NumberPresent || r.Number != 42) { bad += ProbeLog.Fail(@NAME@, "the scalar did not land: " + r.NumberPresent + "/" + r.Number); }
             if (!r.MarkPresent || r.Mark != @NS@.Grade.Gold) { bad += ProbeLog.Fail(@NAME@, "the enum did not land: " + r.MarkPresent + "/" + r.Mark); }
             if (r.Tail != 99) { bad += ProbeLog.Fail(@NAME@, "the tail did not land: " + r.Tail); }
 
@@ -394,7 +394,7 @@ const t10OptionalScalarsBody = `
             @NS@.Schema.TFixedSave(a, abuf);
             var ar = new @NS@.T();
             long am = @NS@.Schema.TFixedLoad(ar, abuf, new @NS@.TableFixedEntry[8192], new @NS@.TableReport());
-            if (am != 1 || ar.NumPresent || ar.MarkPresent) { bad += ProbeLog.Fail(@NAME@, "an absent optional read back present"); }
+            if (am != 1 || ar.NumberPresent || ar.MarkPresent) { bad += ProbeLog.Fail(@NAME@, "an absent optional read back present"); }
             if (ar.Tail != 99) { bad += ProbeLog.Fail(@NAME@, "the absent roundtrip moved the tail: " + ar.Tail); }
 `
 
@@ -534,21 +534,21 @@ func t10OptionalScalarsRow(t *testing.T) {
 	_, src := t02Table(t, t10OptionalScalars)
 	n := t02Norm(src)
 	for _, want := range []string{
-		"public int Num;",
-		"public bool NumPresent; // ?int32: absent until set",
+		"public int Number;",
+		"public bool NumberPresent; // ?int32: absent until set",
 		"public Grade Mark = Grade.None;",
 		"public bool MarkPresent; // ?Grade: absent until set",
 	} {
 		t02Has(t, src, want, "optional-scalars: the storage carries the value and its present byte")
 	}
-	t02Has(t, n, "b[0] = (byte)(value.NumPresent ? 1 : 0);", "optional-scalars: the scalar's present byte is written")
-	t02Has(t, n, "if (value.NumPresent) { BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1), (int)value.Num); }",
+	t02Has(t, n, "b[0] = (byte)(value.NumberPresent ? 1 : 0);", "optional-scalars: the scalar's present byte is written")
+	t02Has(t, n, "if (value.NumberPresent) { BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1), (int)value.Number); }",
 		"optional-scalars: the scalar's payload rides only when present")
 	t02Has(t, n, "b[5] = (byte)(value.MarkPresent ? 1 : 0);", "optional-scalars: the enum's present byte is written")
 	t02Has(t, n, "if (value.MarkPresent) { b.Slice(6)[0] = (byte)value.Mark; }",
 		"optional-scalars: the enum's payload rides only when present")
 	reset := t10ResetBody(t, src)
-	for _, want := range []string{"value.NumPresent = false;", "value.MarkPresent = false;"} {
+	for _, want := range []string{"value.NumberPresent = false;", "value.MarkPresent = false;"} {
 		if !contains(reset, want) {
 			t.Errorf("optional-scalars: TableReset does not clear the present byte: %q absent", want)
 		}
@@ -558,9 +558,9 @@ func t10OptionalScalarsRow(t *testing.T) {
 	// selected it — so the construct is READ with the same gate it is written
 	// with.
 	slots := t10ReadSlots(t, src)
-	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.NumPresent = v != 0, reset: (t) => { t.NumPresent = false; }),",
+	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.NumberPresent = v != 0, reset: (t) => { t.NumberPresent = false; }),",
 		"optional-scalars: the scalar's present byte is read into the present bool")
-	t02Has(t, slots, "t.Num = unchecked((int)v)",
+	t02Has(t, slots, "t.Number = unchecked((int)v)",
 		"optional-scalars: the scalar's payload is read into the value")
 	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.MarkPresent = v != 0, reset: (t) => { t.MarkPresent = false; }),",
 		"optional-scalars: the enum's present byte is read into the present bool")

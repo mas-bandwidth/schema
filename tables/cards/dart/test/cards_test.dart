@@ -19,6 +19,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../lib/cards.dart';
+import '../lib/sha256.dart';
 
 var failed = false;
 
@@ -260,11 +261,301 @@ void cardEnumNoneRoundTrips() {
   check(rec2.card.tier == 0, 'FromJSON reads tier None as zero');
 }
 
+// sha256MatchesFips180Vectors pins lib/sha256.dart to the three FIPS 180-4
+// vectors (empty input, "abc", the 448-bit message).
+void sha256MatchesFips180Vectors() {
+  String hex(List<int> b) =>
+      b.map((v) => v.toRadixString(16).padLeft(2, '0')).join();
+  check(
+    hex(sha256Bytes(utf8.encode(''))) ==
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    'sha256 empty',
+  );
+  check(
+    hex(sha256Bytes(utf8.encode('abc'))) ==
+        'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+    'sha256 abc',
+  );
+  check(
+    hex(
+          sha256Bytes(
+            utf8.encode(
+              'abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq',
+            ),
+          ),
+        ) ==
+        '248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1',
+    'sha256 448-bit',
+  );
+}
+
+// upgradeMatchesGo: every upgrade case yields the expected wire and report
+// byte for byte, or the expected refusal class; upgrade is idempotent;
+// retention storage one id short refuses retain-lost, input unchanged
+// (tla/CardVersioning.tla: NoFieldLost, RefusalKeepsOriginal).
+void upgradeMatchesGo() {
+  for (final name in [
+    'initial-populated',
+    'consumers-populated',
+    'empty-consumers',
+    'future-note',
+  ]) {
+    final wire = readBytes('tables/cards/conformance/cases/$name.wire');
+    final before = Uint8List.fromList(wire);
+    final r = upgrade(wire);
+    sameBytes(
+      r.wire,
+      readBytes('tables/cards/conformance/expected/$name.wire'),
+      'upgrade $name wire',
+    );
+    sameBytes(
+      utf8.encode(reportText(r.report)),
+      readBytes('tables/cards/conformance/expected/$name.report'),
+      'upgrade $name report',
+    );
+    sameBytes(wire, before, 'upgrade $name input unchanged');
+    final again = upgrade(r.wire);
+    sameBytes(again.wire, r.wire, 'upgrade $name idempotent');
+  }
+  try {
+    upgrade(readBytes('tables/cards/conformance/cases/truncated.wire'));
+    check(false, 'upgrade truncated refused');
+  } on CardException catch (_) {
+    check(true, 'upgrade truncated refused');
+  }
+  final future = readBytes('tables/cards/conformance/cases/future-note.wire');
+  final before = Uint8List.fromList(future);
+  try {
+    upgradeWithStorage(future, maxRetainBytes, 0);
+    check(false, 'upgrade one id short refused');
+  } on CardException catch (e) {
+    check(
+      e.message.contains('retained'),
+      'upgrade one id short names retain loss (${e.message})',
+    );
+  }
+  sameBytes(future, before, 'upgrade refused input unchanged');
+  final strictOk = readStrict(
+    readBytes('tables/cards/conformance/cases/card-populated.wire'),
+  );
+  check(strictOk.card.id.isNotEmpty, 'readStrict accepts a clean card');
+  try {
+    readStrict(future);
+    check(false, 'readStrict refuses unknown');
+  } on CardException catch (_) {
+    check(true, 'readStrict refuses unknown');
+  }
+}
+
+String reportText(TableWireReport r) =>
+    'Retained=${r.retained}\nRetainLost=${r.retainLost}\nWidened=${r.widened}\nUnknown=${r.unknown}\nKindMismatch=${r.kindMismatch}\nClamped=${r.clamped}\nDuplicate=0\nMalformed=${r.malformed}\n';
+
+// taskHashFramesLogicalFields pins the frame with an independent byte vector,
+// shows framing collisions differ, matches every expected .hex, and shows
+// the lossy refusal (tla/CardHops.tla: TaskHashStable).
+void taskHashFramesLogicalFields() {
+  // independent frame: body "a", paths ["bc"], empty new/shared, test "", done absent
+  final framed = <int>[];
+  void u64(int v) {
+    for (var i = 0; i < 8; i++) {
+      framed.add((v >> (8 * i)) & 0xff);
+    }
+  }
+
+  void text(String t) {
+    final b = utf8.encode(t);
+    u64(b.length);
+    framed.addAll(b);
+  }
+
+  text('a');
+  u64(1);
+  text('bc');
+  u64(0);
+  u64(0);
+  text('');
+  u64(0);
+  final rec = fromJson('{"id":"x","body":"a","paths":[{"s":"bc"}]}');
+  sameBytes(taskHash(rec), sha256Bytes(framed), 'task hash frame vector');
+  final rec2 = fromJson('{"id":"x","body":"ab","paths":[{"s":"c"}]}');
+  check(
+    taskHashHex(rec) != taskHashHex(rec2),
+    'framing collision hashes differ',
+  );
+  for (final name in [
+    'card-populated',
+    'initial-populated',
+    'empty-consumers',
+  ]) {
+    final r = load(readBytes('tables/cards/conformance/cases/$name.wire'));
+    check(
+      taskHashHex(r) ==
+          readText('tables/cards/conformance/expected/$name.hex').trim(),
+      'taskhash $name matches expected hex',
+    );
+  }
+  final lossy = load(
+    readBytes('tables/cards/conformance/cases/future-note.wire'),
+  );
+  try {
+    taskHash(lossy);
+    check(false, 'task hash refuses lossy');
+  } on CardException catch (_) {
+    check(true, 'task hash refuses lossy');
+  }
+}
+
+// hashNegativeControlFramesNeeds pins the CARDS_DART_SABOTAGE_HASH switch's
+// alternate hash: it rides needs in the frame, so it is a valid 64-digit hex
+// that differs from taskHash (which excludes needs) for a card with needs, and
+// also for an empty-needs card (the empty list's count rides in the frame), so
+// the negative control goes red on taskhash alone, not on a hex artifact
+// (docs/SPEC-TABLES.md §5; tla/CardHops.tla: TaskHashStable).
+void hashNegativeControlFramesNeeds() {
+  final rec = load(
+    readBytes('tables/cards/conformance/cases/card-populated.wire'),
+  );
+  final sab = taskHashHexWithNeeds(rec);
+  check(sab.length == 64 && isHex(sab), 'sabotage hash is 64 hex digits');
+  check(sab != taskHashHex(rec), 'sabotage hash differs from the task hash');
+  final empty = load(
+    readBytes('tables/cards/conformance/cases/empty-consumers.wire'),
+  );
+  check(
+    taskHashHexWithNeeds(empty) != taskHashHex(empty),
+    'sabotage hash differs for an empty-needs card',
+  );
+}
+
+// fieldEditLeavesTheTaskHashAlone: needs/tier/priority/column/holder edits
+// change the wire and not the hash; a paths edit changes both; the body is
+// byte-equal throughout; refusals leave Wire byte-equal (CardHops
+// EditDropsUnknown is the reversed witness for the unknown refusal).
+void fieldEditLeavesTheTaskHashAlone() {
+  final wire = readBytes('tables/cards/conformance/cases/card-populated.wire');
+  final body0 = load(wire).card.body;
+  var rec = load(wire);
+  final h0 = taskHashHex(rec);
+  setNeeds(rec, ['a', 'b']);
+  check(
+    taskHashHex(rec) == h0 && rec.card.body == body0,
+    'needs edit keeps hash and body',
+  );
+  sameBytes(
+    rec.wire(),
+    readBytes('tables/cards/conformance/expected/needs.wire'),
+    'needs edit wire',
+  );
+  rec = load(wire);
+  setTier(rec, Tier.heavy);
+  check(taskHashHex(rec) == h0, 'tier edit keeps hash');
+  sameBytes(
+    rec.wire(),
+    readBytes('tables/cards/conformance/expected/tier.wire'),
+    'tier edit wire',
+  );
+  rec = load(wire);
+  setPriority(rec, Priority.blocker);
+  check(taskHashHex(rec) == h0, 'priority edit keeps hash');
+  sameBytes(
+    rec.wire(),
+    readBytes('tables/cards/conformance/expected/priority.wire'),
+    'priority edit wire',
+  );
+  rec = load(wire);
+  setColumn(rec, Column.landed);
+  check(taskHashHex(rec) == h0, 'column edit keeps hash');
+  sameBytes(
+    rec.wire(),
+    readBytes('tables/cards/conformance/expected/column.wire'),
+    'column edit wire',
+  );
+  rec = load(wire);
+  setHolder(rec, 'h');
+  check(taskHashHex(rec) == h0, 'holder edit keeps hash');
+  sameBytes(
+    rec.wire(),
+    readBytes('tables/cards/conformance/expected/holder.wire'),
+    'holder edit wire',
+  );
+  rec = load(wire);
+  setPaths(rec, ['x', 'y']);
+  check(taskHashHex(rec) != h0, 'paths edit changes hash');
+  sameBytes(
+    rec.wire(),
+    readBytes('tables/cards/conformance/expected/paths.wire'),
+    'paths edit wire',
+  );
+  final unknown = load(
+    readBytes('tables/cards/conformance/cases/future-note.wire'),
+  );
+  final beforeWire = unknown.wire();
+  try {
+    setNeeds(unknown, ['a']);
+    check(false, 'edit refuses unknown');
+  } on CardException catch (_) {
+    check(true, 'edit refuses unknown');
+  }
+  sameBytes(unknown.wire(), beforeWire, 'refused edit leaves wire byte-equal');
+}
+
+// viewWalksEveryField compares viewText() with an explicit vocabulary written
+// here (not derived from the descriptors) and with the expected view.txt; it
+// also walks a loaded and an edited record's values through the descriptors
+// (docs/SPEC-TABLES.md §8.1).
+void viewWalksEveryField() {
+  check(
+    viewText() == readText('tables/cards/conformance/expected/view.txt'),
+    'viewText matches expected view.txt',
+  );
+  final desc = cardDescriptors();
+  var fields = 0;
+  for (final t in desc.values) {
+    fields += t.fields.length;
+  }
+  check(fields == 38, 'descriptor field count is 38 (got $fields)');
+  check(
+    desc['Card']!.fields.firstWhere((f) => f.name == 'body').shape == 'blob',
+    'body is a blob in the view',
+  );
+  check(
+    desc['Card']!.fields.firstWhere((f) => f.name == 'paths').shape == 'list',
+    'paths is a list in the view',
+  );
+  final rec = load(
+    readBytes('tables/cards/conformance/cases/card-populated.wire'),
+  );
+  check(
+    rec.card.holder.isNotEmpty &&
+        rec.card.paths.isNotEmpty &&
+        rec.card.body != null,
+    'view walk reads scalar, list and body values',
+  );
+  setPaths(rec, ['one', 'two', 'three']);
+  check(rec.card.paths.length == 3, 'view walk reads the edited record');
+}
+
 void main() {
   cardRoundTripsThePopulatedFixture();
   cardBoundsRefuseBeforePublishing();
   parseRenderMatchesGo();
   cardEnumNoneRoundTrips();
+  sha256MatchesFips180Vectors();
+  upgradeMatchesGo();
+  taskHashFramesLogicalFields();
+  hashNegativeControlFramesNeeds();
+  fieldEditLeavesTheTaskHashAlone();
+  viewWalksEveryField();
+  sha256MatchesFips180Vectors();
+  sha256MatchesFips180Vectors();
+  upgradeMatchesGo();
+  taskHashFramesLogicalFields();
+  fieldEditLeavesTheTaskHashAlone();
+  viewWalksEveryField();
+  taskHashFramesLogicalFields();
+  fieldEditLeavesTheTaskHashAlone();
+  viewWalksEveryField();
+  viewWalksEveryField();
   if (failed) {
     print('cards_test: FAILED');
     exit(1);

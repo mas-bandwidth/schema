@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <new>
 
 namespace benchtable {
 
@@ -233,9 +234,9 @@ inline const char * EnumName( TableEventType value )
 
 // union TableEvent — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm is freshly constructed with its defaults
-// when selected, by ReadTableEvent before decoding (SPEC §4.8), or by application code.
-// Application code must include <new> before constructing an arm in place:
-// ::new ( (void*) &value.hit ) TableHitEvent{}; value.type = TableEventType::Hit;
+// when selected, by ReadTableEvent before decoding (SPEC §4.8), or by its setter.
+// Select an arm through its setter, which sets the tag and constructs the arm
+// together (SPEC §4.8, the arm setter): TableHitEvent & arm = value.SelectHit();
 // Bytes of unselected arms are indeterminate.
 struct TableEvent
 {
@@ -249,6 +250,27 @@ struct TableEvent
     };
 
     TableEvent() : type( TableEventType::None ) {} // the tag only — arms are freshly constructed at selection
+
+    TableHitEvent & SelectHit() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &hit ) TableHitEvent{};
+        type = TableEventType::Hit;
+        return hit;
+    }
+
+    TableChatEvent & SelectChat() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &chat ) TableChatEvent{};
+        type = TableEventType::Chat;
+        return chat;
+    }
+
+    TablePickupEvent & SelectPickup() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &pickup ) TablePickupEvent{};
+        type = TableEventType::Pickup;
+        return pickup;
+    }
 };
 
 inline constexpr int64_t TableEventMaxBits = 30; // tag + the largest arm; None costs the tag only (SPEC §4.8)

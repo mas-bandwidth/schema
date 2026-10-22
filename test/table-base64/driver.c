@@ -30,7 +30,9 @@ int main(void)
         memset(&report, 0, sizeof(report));
 #endif
 #ifdef __cplusplus
-        BlobFromJson(value, text, (int64_t) n, &report);
+        // The bound probes read tolerantly, and the tolerant read is the
+        // named one: the plain BlobFromJson is strict (SPEC-TABLES §16.11).
+        BlobFromJsonTolerant(value, text, (int64_t) n, &report);
 #else
         blob_from_json(&value, text, (int64_t) n, &report);
 #endif

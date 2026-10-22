@@ -18,5 +18,5 @@ fixed table Floats
     quiet      float64 // 0x7FF8000000000000: the canonical double NaN
     wide       float64 // 0x7FF00DEFACED0001: signalling at sixty-four bits
     samples    [3]float32
-    after      int32
+    past      int32 | was = "after"
 }

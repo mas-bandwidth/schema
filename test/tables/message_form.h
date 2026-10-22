@@ -770,7 +770,7 @@ static void test_message_form_refusals()
         backenddemo::TableReport report;
         const int64_t bytes = backenddemo::LoginRequestSaveMessages( &value, 1, message, sizeof( message ), &report );
         backenddemo::LoginRequest out;
-        CHECK( !backenddemo::LoginRequestLoad( out, message, bytes, &report ) );
+        CHECK( !backenddemo::LoginRequestLoadTolerant( out, message, bytes, &report ) );
         CHECK( report.refused && report.reason == backenddemo::message_form_as_file );
         CHECK( !report.malformed );
         CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
@@ -1071,7 +1071,7 @@ static void test_message_form_mask_width()
     pin_table_golden( "loadout_appended_bit", file, file_bytes );
     tabledemo::LoadoutConfig from_file;
     tabledemo::LoadoutConfigReset( from_file );
-    CHECK( tabledemo::LoadoutConfigLoad( from_file, file, file_bytes, &report ) && !report.malformed );
+    CHECK( tabledemo::LoadoutConfigLoadTolerant( from_file, file, file_bytes, &report ) && !report.malformed );
     CHECK( from_file.perks == ( ( 1u << 3 ) | 1u ) ); // the file kept the appended bit
     static uint8_t message[4096];
     const int64_t message_bytes = tabledemo::LoadoutConfigSaveMessages( &from_file, 1, message, sizeof( message ), &report );
@@ -1285,7 +1285,7 @@ static void test_message_form_reserved_ids()
             file[at++] = 1; for ( int b = 1; b < 8; b++ ) { file[at++] = 0; } // one entry
             backenddemo::LoginRequest out;
             backenddemo::TableReport report;
-            backenddemo::LoginRequestLoad( out, file, at, &report );
+            backenddemo::LoginRequestLoadTolerant( out, file, at, &report );
             if ( i == 0 )
             {
                 // THE ROOT BODY IS THE NODE TABLE'S OWN TRANSPORT (§3.1): a fixed
@@ -1323,7 +1323,7 @@ static void test_message_form_reserved_ids()
             file[at++] = 2; for ( int b = 1; b < 8; b++ ) { file[at++] = 0; }
             backenddemo::MatchResult out;
             backenddemo::TableReport report;
-            backenddemo::MatchResultLoad( out, file, at, &report );
+            backenddemo::MatchResultLoadTolerant( out, file, at, &report );
             CHECK( report.malformed );
             CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && report.duplicate == 0 );
             CHECK( !report.refused );

@@ -34,7 +34,7 @@
             "line": 3,
             "column": 0
           },
-          "end": {
+          "stop": {
             "line": 4,
             "column": 6
           }
@@ -44,7 +44,7 @@
             "line": 0,
             "column": 0
           },
-          "end": {
+          "stop": {
             "line": 0,
             "column": 0
           }

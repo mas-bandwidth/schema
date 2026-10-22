@@ -29,5 +29,5 @@ table Save
     marks  []int32 // a list of scalars, carved after it in declaration order
     linked []*Row // POINTER elements: each names a node of its own
     pinned *Row // a pointed-at holder whose node extent is its list's
-    after  int32
+    past  int32 | was = "after"
 }

@@ -73,7 +73,7 @@ func TestFixedRoadmapCppT11UnionsOptionals(t *testing.T) {
 			schema: `package t11ufa
 union Pick
 {
-    num int32
+    number int32
     label string(8)
     blob bytes(4)
     cells [..3]int32
@@ -88,8 +88,8 @@ fixed table Root
 			root:  "Root",
 			count: 4,
 			setup: `    value[0].tail = 1;
-    value[0].pick.type = PickType::Num;
-    value[0].pick.num = -2147483647 - 1;   // the int32 low end
+    value[0].pick.type = PickType::Number;
+    value[0].pick.number = -2147483647 - 1;   // the int32 low end
     value[1].tail = 2;
     value[1].pick.type = PickType::Label;
     strcpy( value[1].pick.label.value, "hello" );
@@ -105,8 +105,8 @@ fixed table Root
     value[3].pick.cells.value[0] = -2147483647 - 1;
     value[3].pick.cells.value[1] = 0;
     value[3].pick.cells.value[2] = 2147483647;`,
-			check: `    if ( back[0].tail != 1 || back[0].pick.type != PickType::Num || back[0].pick.num != -2147483647 - 1 )
-        { printf( "num: t=%d n=%d\n", (int) back[0].pick.type, back[0].pick.num ); return 1; }
+			check: `    if ( back[0].tail != 1 || back[0].pick.type != PickType::Number || back[0].pick.number != -2147483647 - 1 )
+        { printf( "number: t=%d n=%d\n", (int) back[0].pick.type, back[0].pick.number ); return 1; }
     if ( back[1].tail != 2 || back[1].pick.type != PickType::Label ||
          back[1].pick.label.value_length != 5 || strcmp( back[1].pick.label.value, "hello" ) != 0 )
         { printf( "label: t=%d\n", (int) back[1].pick.type ); return 1; }
@@ -131,7 +131,7 @@ fixed table Root
 			schema: `package t11pfa
 union Pick
 {
-    num int32
+    number int32
     ping
 }
 fixed table Root
@@ -146,12 +146,12 @@ fixed table Root
 			setup: `    value[0].tail = 5;
     value[0].pick.type = PickType::Ping;   // a payload-free arm: the tag is the whole of it
     value[1].tail = 6;
-    value[1].pick.type = PickType::Num;
-    value[1].pick.num = 2147483647;        // the int32 high end`,
+    value[1].pick.type = PickType::Number;
+    value[1].pick.number = 2147483647;        // the int32 high end`,
 			check: `    if ( back[0].tail != 5 || back[0].pick.type != PickType::Ping )
         { printf( "ping: t=%d\n", (int) back[0].pick.type ); return 1; }
-    if ( back[1].tail != 6 || back[1].pick.type != PickType::Num || back[1].pick.num != 2147483647 )
-        { printf( "num: t=%d n=%d\n", (int) back[1].pick.type, back[1].pick.num ); return 1; }`,
+    if ( back[1].tail != 6 || back[1].pick.type != PickType::Number || back[1].pick.number != 2147483647 )
+        { printf( "number: t=%d n=%d\n", (int) back[1].pick.type, back[1].pick.number ); return 1; }`,
 		},
 
 		// union-arrays/cpp/valid-data — "Arrays of unions" (docs/roadmap.sexp:6849),
@@ -218,7 +218,7 @@ fixed table Root
 enum Grade { Bronze, Silver, Gold }
 fixed table Root
 {
-    num ?int32
+    number ?int32
     mark ?Grade
     tail int32
 }
@@ -227,14 +227,14 @@ fixed table Root
 			root:  "Root",
 			count: 2,
 			setup: `    value[0].tail = 1;
-    value[0].num = -2147483647 - 1; value[0].num_present = true;
+    value[0].number = -2147483647 - 1; value[0].number_present = true;
     value[0].mark = Grade::Gold;     value[0].mark_present = true;
-    value[1].tail = 2;   // value[1].num_present and value[1].mark_present stay false: the absent side.`,
+    value[1].tail = 2;   // value[1].number_present and value[1].mark_present stay false: the absent side.`,
 			check: `    if ( back[0].tail != 1 ) { printf( "tail0: %d\n", back[0].tail ); return 1; }
-    if ( !back[0].num_present || back[0].num != -2147483647 - 1 ) { printf( "num: present=%d v=%d\n", (int) back[0].num_present, back[0].num ); return 1; }
+    if ( !back[0].number_present || back[0].number != -2147483647 - 1 ) { printf( "number: present=%d v=%d\n", (int) back[0].number_present, back[0].number ); return 1; }
     if ( !back[0].mark_present || back[0].mark != Grade::Gold ) { printf( "mark: present=%d v=%d\n", (int) back[0].mark_present, (int) back[0].mark ); return 1; }
     if ( back[1].tail != 2 ) { printf( "tail1: %d\n", back[1].tail ); return 1; }
-    if ( back[1].num_present || back[1].num != 0 ) { printf( "absent num: present=%d v=%d\n", (int) back[1].num_present, back[1].num ); return 1; }
+    if ( back[1].number_present || back[1].number != 0 ) { printf( "absent number: present=%d v=%d\n", (int) back[1].number_present, back[1].number ); return 1; }
     if ( back[1].mark_present || back[1].mark != Grade::None ) { printf( "absent mark: present=%d v=%d\n", (int) back[1].mark_present, (int) back[1].mark ); return 1; }`,
 		},
 
