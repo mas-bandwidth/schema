@@ -88,20 +88,32 @@ func TestOptionalArraysCarriers(t *testing.T) {
 	u := unitFromSource(t, optionalArraySrc)
 	c := New()
 	for _, target := range c.Targets() {
-		if target == "cpp" || target == "c" || target == "cs" || target == "go" || target == "java" {
+		if target == "cpp" || target == "c" || target == "cs" || target == "go" || target == "js" || target == "rust" || target == "java" {
 			files, err := c.Generate(u, target, Options{})
 			if err != nil {
 				t.Fatalf("--lang %s refused the supported shape: %v", target, err)
 			}
-			wantFile := "ProbeTable." + target
-			switch target {
-			case "cpp":
-				wantFile = "ProbeTable.h"
-			case "java":
-				wantFile = "LogVariable.java"
+			if target == "java" {
+				if _, ok := files["LogVariable.java"]; !ok {
+					t.Fatalf("--lang java emitted no table source (LogVariable.java)")
+				}
+				continue
 			}
-			if _, ok := files[wantFile]; !ok {
-				t.Fatalf("--lang %s emitted no table source (%s)", target, wantFile)
+			if target == "rust" {
+				if _, ok := files["probe_records.rs"]; !ok {
+					t.Fatalf("--lang rust emitted no table source")
+				}
+				continue
+			}
+			suffix := "h"
+			if target != "cpp" {
+				suffix = target
+			}
+			_, table := files["ProbeTable."+suffix]
+			// the JS variable class lives in <Package>Variable.js (§8.4)
+			_, variable := files["ProbeVariable.js"]
+			if !table && (target != "js" || !variable) {
+				t.Fatalf("--lang %s emitted no table source", target)
 			}
 			continue
 		}

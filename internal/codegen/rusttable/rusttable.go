@@ -95,9 +95,16 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		out[FixedRuntimeModule+".rs"] = fixedRuntimeModule(u)
 		// THE MESSAGE FORM (§3.3) is a fixed table's, so its announcement rides
 		// with the fixed form: a unit with a fixed root carries the constant.
-		out[MessageRuntimeModule+".rs"] = messageRuntimeModule(u)
+		// THE ONE REPORT (§4, §3.3): the variable runtime, when this unit carries
+		// it, owns TableReport, and the message runtime then emits none.
+		_, variable := out[VariableRuntimeModule+".rs"]
+		out[MessageRuntimeModule+".rs"] = messageRuntimeModule(u, !variable)
 	}
 	out[BuildVersionModule+".rs"] = buildVersionModule(u)
+	// THE VIEW (docs/SPEC-TABLES.md §8): every table's and every type's
+	// descriptors, the vocabulary and the unit registry, constant data beside
+	// the wire and read by none of it (view.go).
+	out[UnitViewModule+".rs"] = unitViewModule(u)
 
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, closure: closure, lineage: lineage}
@@ -112,6 +119,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 
 		if body := g.fixedModule(); body != nil {
 			out[strings.ToLower(f.Base)+"_fixed.rs"] = body
+		}
+		// THE MESSAGE FORM's bodies (§3.3) ride beside the fixed form they
+		// reset from: a fixed root's batch and the walkers of what it reaches.
+		if fixed {
+			if body := g.messageModule(); body != nil {
+				out[strings.ToLower(f.Base)+"_message.rs"] = body
+			}
 		}
 	}
 
@@ -166,8 +180,31 @@ type gen struct {
 	// vc is the unit's carried variable class (variablerefusal.go), shared by
 	// every file of one emission so the set is decided once.
 	vc *variableClass
+	// armIndex is the Rust expression for the element index of the union
+	// value being emitted, "" for a union FIELD (index 0). A body arm's
+	// retain path is step(ordinal, armIndex): each element of an array of
+	// unions is its own body occurrence (docs/SPEC-TABLES.md §6.6), as the
+	// oracle keys records by the body instance and never by the field.
+	armIndex string
 
 	body strings.Builder
+}
+
+// withArmIndex emits with armIndex set to idx, restoring it after.
+func (g *gen) withArmIndex(idx string, emit func()) {
+	prev := g.armIndex
+	g.armIndex = idx
+	emit()
+	g.armIndex = prev
+}
+
+// armPath is the retain path of a union's body arm (docs/SPEC-TABLES.md §6.6).
+func (g *gen) armPath(ordinal int) string {
+	idx := g.armIndex
+	if idx == "" {
+		idx = "0"
+	}
+	return fmt.Sprintf("path.step(%d, %s)", ordinal, idx)
 }
 
 func (g *gen) pf(format string, args ...any) {

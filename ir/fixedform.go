@@ -2006,3 +2006,160 @@ func tableFixedClampNeededField(f *Field, seen map[string]bool) bool {
 	}
 	return f.Type.Kind == TBits && int64(f.Type.Width) < 8*TableFixedStorageBytes(f.Type)
 }
+
+// ---------------------------------------------------------------------------
+// THE JAVASCRIPT FIXED-FORM CLOSURE
+//
+// Shared between internal/codegen/jstable and internal/codegen/js so a union's
+// storage class in <Base>.js knows which runtime home (<Home>Table.js for a
+// union in the fixed closure, <Home>Variable.js otherwise) defines the table
+// arm classes it constructs (docs/SPEC-TABLES.md §2.6, §3.4).
+// ---------------------------------------------------------------------------
+
+// TableJSRuntimeHome is the basename of the module that carries a unit's
+// shared JavaScript table runtime (<Home>Table.js, <Home>Block.js,
+// <Home>Cook.js, <Home>Variable.js).
+func TableJSRuntimeHome(u *Unit) string {
+	home := capitalizePkg(u.Package)
+	for _, f := range u.Files {
+		if strings.EqualFold(f.Base, home) {
+			return f.Base
+		}
+	}
+	return home
+}
+
+func capitalizePkg(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// TableFixedJSRefusal answers why a table cannot carry the fixed form in
+// JavaScript, or "" when it can (docs/SPEC-TABLES.md §3.4).
+func TableFixedJSRefusal(st *Struct) string {
+	if !TableFixedWithinDepth(st) {
+		return fmt.Sprintf("its layout nests %d deep, past the form's %d-entry depth bound, so no conforming reader takes the walk (`layout_malformed`) — it keeps form 1 (docs/FIXED-FORM-ALGORITHM.md §5.2, docs/SPEC-TABLES.md §3.4)",
+			TableFixedTypeDepth(st), TableFixedMaxDepth)
+	}
+	if !TableFixedSupported(st, 0) {
+		return "its closure carries a construct the fixed class refuses — a pointer, a map, an unbounded array or a guarded branch (docs/SPEC-TABLES.md §3.4)"
+	}
+	if TableFixedTypeBytes(st) > TableFixedRecordMaxBytes {
+		return "its record body is past §3.4's 65536-byte ceiling, so no conforming reader would decode a record that size — it keeps form 1 (docs/SPEC-TABLES.md §3.4)"
+	}
+	return ""
+}
+
+// TableFixedJSRoots is every table of tables the fixed form is emitted for in
+// JavaScript.
+func TableFixedJSRoots(u *Unit, tables []*Struct) []*Struct {
+	var out []*Struct
+	for _, st := range tables {
+		if !st.IsTable || st.IsMapEntry() || TableFixedJSRefusal(st) != "" {
+			continue
+		}
+		_ = u
+		out = append(out, st)
+	}
+	return out
+}
+
+// TableFixedJSUnitRoots is every fixed-form root of a unit in JavaScript, in
+// file order.
+func TableFixedJSUnitRoots(u *Unit) []*Struct {
+	var out []*Struct
+	for _, f := range u.Files {
+		out = append(out, TableFixedJSRoots(u, f.Tables)...)
+	}
+	return out
+}
+
+// TableFixedJSCollectTypes orders a root's fixed-form closure so that a nested
+// type's helpers are emitted before the type that uses them.
+func TableFixedJSCollectTypes(st *Struct, seen map[string]bool, order *[]*Struct) {
+	if seen[st.Name] {
+		return
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if f.Type.Kind != TNamed {
+			continue
+		}
+		switch r := f.Type.Ref.(type) {
+		case *Struct:
+			TableFixedJSCollectTypes(r, seen, order)
+		case *Union:
+			tableFixedJSCollectUnion(r, map[string]bool{}, seen, order)
+		}
+	}
+	*order = append(*order, st)
+}
+
+func tableFixedJSCollectUnion(u *Union, seenUnion, seen map[string]bool, order *[]*Struct) {
+	if seenUnion[u.Name] {
+		return
+	}
+	seenUnion[u.Name] = true
+	for _, v := range u.Variants {
+		if v.F == nil || v.F.Type.Kind != TNamed {
+			continue
+		}
+		switch r := v.F.Type.Ref.(type) {
+		case *Struct:
+			TableFixedJSCollectTypes(r, seen, order)
+		case *Union:
+			tableFixedJSCollectUnion(r, seenUnion, seen, order)
+		}
+	}
+}
+
+// TableFixedJSUnions returns the set of union names reached by the unit's
+// JavaScript fixed-form closure. A union in this set imports the table arm
+// classes it constructs from <Home>Table.js; any other union with table arms
+// imports them from <Home>Variable.js.
+func TableFixedJSUnions(u *Unit) map[string]bool {
+	unions := map[string]bool{}
+	seenStruct := map[string]bool{}
+	var visitUnion func(un *Union)
+	var visitStruct func(st *Struct)
+	visitUnion = func(un *Union) {
+		if unions[un.Name] {
+			return
+		}
+		unions[un.Name] = true
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != TNamed {
+				continue
+			}
+			switch r := v.F.Type.Ref.(type) {
+			case *Struct:
+				visitStruct(r)
+			case *Union:
+				visitUnion(r)
+			}
+		}
+	}
+	visitStruct = func(st *Struct) {
+		if seenStruct[st.Name] {
+			return
+		}
+		seenStruct[st.Name] = true
+		for _, f := range st.Fields {
+			if f.Type.Kind != TNamed {
+				continue
+			}
+			switch r := f.Type.Ref.(type) {
+			case *Struct:
+				visitStruct(r)
+			case *Union:
+				visitUnion(r)
+			}
+		}
+	}
+	for _, st := range TableFixedJSUnitRoots(u) {
+		visitStruct(st)
+	}
+	return unions
+}
