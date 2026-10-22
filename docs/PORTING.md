@@ -1228,13 +1228,16 @@ allocates and frees the same bytes every iteration: it reads +0 forever. The
 soak gates on the allocation COUNT re-measured every sample (or the rate
 before and after in the same process, or the live-heap and binary-memory
 FLOORS, which a carrier cannot move), with drift kept beside it as the weaker
-instrument that sees retention. Two seconds ride `make test`; the hour is the
-release act.
+instrument that sees retention. **The soak's length is a PASS COUNT, never a
+clock** (`TABLES_<LANG>_SOAK_ITERATIONS`): the count is what the gate reads
+across, a count runs the same loop on every machine, and `make shape-gate`
+refuses a timing primitive outside the sanctioned bench. A short count rides
+`make test`; the default count, about an hour, is the release act.
 
-**Reference.** `test/c-tables/soak_main.c:262-334` (allocator calls counted
+**Reference.** `test/c-tables/soak_main.c:263-309` (allocator calls counted
 over the measured loop); `test/tables/soak_main.cpp` (the counting global
 `operator new`, and the C allocator's entry points on glibc, read at every
-sample); `test/go-tables/soak_test.go:216-264` (`Mallocs`
+sample); `test/go-tables/soak_test.go:187-260` (`Mallocs`
 with site classification); `test/cs-tables/src/SoakChecks.cs` (`GC.GetAllocatedBytesForCurrentThread`
 re-sampled over the measured loop); `test/js-tables/main.mjs` carried the rate before
 and after until #760 removed its soak with the previous-form wire;

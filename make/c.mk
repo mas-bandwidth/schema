@@ -309,7 +309,7 @@ build/schema_test_c_soak: build/tables-generated-c/.stamp test/c-tables/soak_mai
 # The file-wire corpus and allocation counters run together.
 .PHONY: tables-c-soak
 tables-c-soak: build/schema_test_c_soak
-	./build/schema_test_c_soak $(SOAK_SECONDS)
+	./build/schema_test_c_soak $(TABLES_C_SOAK_ITERATIONS)
 
 .PHONY: tables-c-fuzz
 tables-c-fuzz: build/schema_test_c_fuzz
@@ -317,13 +317,12 @@ tables-c-fuzz: build/schema_test_c_fuzz
 
 # THE C PORT'S RELEASE GATE (docs/PORTING.md J3). certify.yml DERIVES this
 # target by name, so the expensive half lands by adding it here and nothing
-# else: the hour soak `make test` runs at twenty seconds, the forged-block
-# fuzzer at five times the PR scale under a second seed, and each one's
-# planted control. The soak is the long form the issue names —
-# `tables-c-soak SOAK_SECONDS=3600`.
+# else: the hour-long soak (the TABLES_C_SOAK_ITERATIONS default) that `make
+# test` runs at 512 passes, the forged-block fuzzer at five times the PR scale
+# under a second seed, and each one's planted control.
 .PHONY: tables-c-release
 tables-c-release:
-	$(MAKE) tables-c-soak SOAK_SECONDS=3600
+	$(MAKE) tables-c-soak
 	$(MAKE) tables-c-soak-negative-control
 	$(MAKE) tables-c-fuzz N=500000
 	$(MAKE) tables-c-fuzz SEED=2 N=500000
@@ -341,7 +340,7 @@ tables-c: tables-c-wire-fuzz build/conformance-c build/conformance-c-asan tables
 	$(MAKE) tables-c-keyed-none-refusal-negative-control
 	$(MAKE) tables-c-keyed-max-refusal-ndebug
 	$(MAKE) tables-c-keyed-max-refusal-negative-control
-	$(MAKE) tables-c-soak SOAK_SECONDS=20
+	$(MAKE) tables-c-soak TABLES_C_SOAK_ITERATIONS=4096
 	$(MAKE) tables-c-soak-negative-control
 	# THE ORDINAL SLOT CACHE (docs/SPEC-TABLES.md §3): a save that answers a
 	# repeat header out of slot[ordinal] is held to main's own bytes by
@@ -477,8 +476,8 @@ conformance-negative-control-c-foreign: build/conformance-harness build/tables-g
 # byte by byte and the reader reassembles them the same way — so a BIG-ENDIAN
 # build has to reproduce the same goldens a little-endian host wrote. The soak
 # binary's golden gate is exactly that assertion, so the leg is the same binary
-# cross-compiled and run for zero seconds: it loads the whole corpus, re-saves
-# every exact case and byte-compares, then stops.
+# cross-compiled and run for zero passes (it runs the floor of two): it loads
+# the whole corpus, re-saves every exact case and byte-compares, then stops.
 #
 # BE_CC names what CI installed, the way BE_CXX does for the C++ legs; the pair
 # is not a system binary and not assumed.
@@ -817,7 +816,7 @@ tables-c-soak-negative-control: build/tables-generated-c/.stamp
 		build/tables-generated-c/v1/V1Table.c build/tables-generated-c/v2/V2Table.c \
 		build/tables-generated-c/p1/P1Table.c build/tables-generated-c/p3/P3Table.c \
 		-o build/c-soak-sabotage/soak -lm
-	@if ./build/c-soak-sabotage/soak 2 > build/c-soak-sabotage/log 2>&1; then \
+	@if ./build/c-soak-sabotage/soak 512 > build/c-soak-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a malloc/free pair per iteration left the soak green"; \
 		cat build/c-soak-sabotage/log; exit 1; \
 	fi
@@ -1021,10 +1020,10 @@ test-c tables-c: tables-c-accessor-descriptor-agreement tables-c-accessor-negati
 # on every push and had three minutes of headroom before a fifth leg existed.
 # Every gate below FIRES here — the fuzzer's enumerated passes cover the
 # boundaries whatever N is, and the soak's allocator-call gate reads the same
-# at two seconds as at twenty — and what the long forms buy is more random
-# mutants and more wall clock. `make tables-c` runs the leg whole at the full
-# N, and the HOUR-long soak is a release act: `make tables-c-soak
-# SOAK_SECONDS=3600`.
+# at 512 passes as at 4096 — and what the long forms buy is more random
+# mutants and more passes. `make tables-c` runs the leg whole at the full N,
+# and the hour-long soak (the TABLES_C_SOAK_ITERATIONS default) is a release
+# act: `make tables-c-release`.
 
 # THE FIXED FORM'S VERSIONING CONFORMANCE ON THE C LEG (docs/SPEC-TABLES.md
 # §3.4). The invariant §3.4 states before anything else is that a fixed record
@@ -1126,7 +1125,7 @@ test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_benc
 	$(MAKE) tables-c-keyed-none-refusal-negative-control
 	$(MAKE) tables-c-keyed-max-refusal-ndebug
 	$(MAKE) tables-c-keyed-max-refusal-negative-control
-	$(MAKE) tables-c-soak SOAK_SECONDS=2
+	$(MAKE) tables-c-soak TABLES_C_SOAK_ITERATIONS=512
 	$(MAKE) tables-c-soak-negative-control
 	$(MAKE) tables-c-ref-ordinal-negative-control
 	$(MAKE) tables-c-fixedform

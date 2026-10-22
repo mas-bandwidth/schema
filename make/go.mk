@@ -517,7 +517,7 @@ tables-go-standalone: build/tables-generated-go/.stamp
 
 .PHONY: tables-go-soak
 tables-go-soak: build/tables-generated-go/.stamp
-	cd test/go-tables && go test -run Soak -timeout 0 -soak $(SOAK) -v .
+	cd test/go-tables && go test -run Soak -timeout 0 -soak-iterations $(TABLES_GO_SOAK_ITERATIONS) -v .
 
 # FUZZ-TABLES-GO: the permanent native fuzz target over the table compiler
 # front end and the Go table emitter (internal/fuzz/tablefrontend_test.go).
@@ -671,8 +671,8 @@ conformance-negative-control-go-walk: build/conformance-harness build/conformanc
 
 # THE GO LEG of `make test`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its
-# negative control, the forgery fuzzer plain and under -race, and two seconds
-# of the soak; the hour is `make tables-go-soak` — the standalone gate, the
+# negative control, the forgery fuzzer plain and under -race, and the soak's
+# short default count; the hour is `make tables-go-soak` — the standalone gate, the
 # bench units' compile gates, and the packet tests.
 .PHONY: test-go
 test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
@@ -891,20 +891,23 @@ tables-go-retain-wire-fuzz: build/conformance-harness build/conformance-go
 test-go: tables-go-measure-negative-controls tables-go-retain-wire-fuzz
 
 # Release certification reuses the PR checks at a second seed, a longer soak,
-# and a larger allocation sample. Local invocations may shorten GO_SOAK.
+# and a larger allocation sample. Local invocations may shorten
+# TABLES_GO_RELEASE_SOAK_ITERATIONS.
 #
-# The default stays 30m so the soak fits the certify.yml release-gates job's
-# 60-minute timeout with its stated 15-minute pre-soak allowance (30m + 15m
-# < 60m). A longer soak would be killed at the cap, which is never raised to
-# fit a growing suite (certify.yml note, 2026-09-18) — the full hour lives on
-# in `make tables-go-soak`, for local and nightly runs.
-GO_SOAK ?= 30m
+# The default is HALF of TABLES_GO_SOAK_ITERATIONS (the hour's count), about
+# 30 minutes, so the soak fits the certify.yml release-gates job's 60-minute
+# timeout with its stated 15-minute pre-soak allowance (30m + 15m < 60m).
+# internal/ci/gosoak_test.go holds that ratio. A longer soak would be killed
+# at the cap, which is never raised to fit a growing suite (certify.yml note,
+# 2026-09-18) — the full hour lives on in `make tables-go-soak`, for local and
+# nightly runs.
+TABLES_GO_RELEASE_SOAK_ITERATIONS ?= 300000
 GO_RELEASE_SEED ?= 68719476731
 .PHONY: tables-go-release tables-go-clean tables-go-bench-gate
 tables-go-release: build/conformance-harness build/conformance-go tables-go-bench-gate tables-go-clean
 	$(MAKE) tables-go-wire-fuzz tables-go-retain-wire-fuzz tables-go-builders N=100000 SEED=$(GO_RELEASE_SEED)
 	$(MAKE) tables-go-wire-fuzz-negative-control
-	cd test/go-tables && GOTOOLCHAIN=go1.26.0 go test -run '^TestSoak$$' -count=1 -timeout 2h -soak $(GO_SOAK)
+	cd test/go-tables && GOTOOLCHAIN=go1.26.0 go test -run '^TestSoak$$' -count=1 -timeout 2h -soak-iterations $(TABLES_GO_RELEASE_SOAK_ITERATIONS)
 	SCHEMA_GO_ALLOC_RUNS=200 GOTOOLCHAIN=go1.26.0 sh test/slowgate/proof tables-go-release-allocator \
 		'TestAllocatorOwnershipAndStandaloneWriters' \
 		./internal/codegen/gotable -run '^TestAllocatorOwnershipAndStandaloneWriters$$' -count=1
