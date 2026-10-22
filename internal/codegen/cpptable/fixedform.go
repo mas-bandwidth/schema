@@ -641,7 +641,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with\n")
 	g.pf("// different bytes is TableMessageReason::layout_malformed, a hash below the floor is\n")
 	g.pf("// TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.\n")
-	g.pf("inline int64_t %sFixedLoad( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n", st.Name, st.Name)
+	g.pf("// %sFixedLoadTolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps\n", st.Name)
+	g.pf("// every recovered record, with the counters counted onto the report passed.\n")
+	g.pf("inline int64_t %sFixedLoadTolerant( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n", st.Name, st.Name)
 	g.pf("                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n    if ( report == NULL ) { report = &local; }\n")
 	// STEP 1 AND STEP 2 (§5.3): THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH.
@@ -797,6 +799,34 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        {\n            report->clamped = rec_clamped;\n            report->widened = rec_widened;\n            return -1;\n        }\n")
 	}
 	g.pf("        at += record_bytes;\n    }\n    return n;\n}\n\n")
+	g.emitFixedLoadStrict(st)
+}
+
+// emitFixedLoadStrict emits the PLAIN <T>FixedLoad, which is the STRICT read
+// (docs/SPEC-TABLES.md §6.5, "the tolerant read ... exists only under an
+// explicit name"), exactly as the Go oracle's %sFixedLoad wraps
+// %sFixedLoadTolerant (internal/codegen/gotable/fixedform.go): -1 for every
+// refusal of the tolerant read and for a read the strict rule refuses
+// (malformed, clamped, kind-mismatched, refused), with every value it had
+// written reset. A supplied report receives THIS read's report. unknown and
+// widened alone never refuse.
+func (g *tableGen) emitFixedLoadStrict(st *ir.Struct) {
+	g.pf("// The PLAIN %sFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for\n", st.Name)
+	g.pf("// every refusal of %sFixedLoadTolerant and for a read the strict rule refuses —\n", st.Name)
+	g.pf("// malformed, clamped, kind-mismatched or refused — with every value it had\n")
+	g.pf("// written reset to its declared defaults. A supplied report receives THIS\n")
+	g.pf("// read's report. unknown and widened alone never refuse.\n")
+	g.pf("inline int64_t %sFixedLoad( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n", st.Name, st.Name)
+	g.pf("                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
+	g.pf("    TableReport local;\n")
+	g.pf("    TableReport * out = report != NULL ? report : &local;\n")
+	g.pf("    *out = TableReport(); // this read's report, not the caller's last one (§6.5)\n")
+	g.pf("    const int64_t n = %sFixedLoadTolerant( values, capacity, data, bytes, plan, plan_capacity, cache, out );\n", st.Name)
+	g.pf("    if ( n < 0 ) { return -1; }\n")
+	g.pf("    if ( out->malformed || out->clamped || out->kind_mismatch || out->refused )\n    {\n")
+	g.pf("        for ( int64_t k = 0; k < n; ++k ) { %sReset( values[k] ); }\n", st.Name)
+	g.pf("        return -1;\n    }\n")
+	g.pf("    return n;\n}\n\n")
 }
 
 func (g *tableGen) emitFixedLineage(st *ir.Struct, known []fixedKnown, floor int32) {

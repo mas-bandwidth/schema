@@ -212,7 +212,7 @@ struct TAG##Codec \
     static constexpr uint64_t hash = NS::TYPE##FixedHash; \
     static constexpr uint8_t kCopy = NS::kTableFixedCopy; \
     static constexpr Reason no_layout = NS::no_layout; \
-    static constexpr Reason layout_newer = NS::layout_newer; \
+    static constexpr Reason layout_unknown = NS::layout_unknown; \
     static bool parse( const uint8_t * b, int64_t n, View & v, Reason & w ) { return NS::TableFixedParseLayout( b, n, v, w ); } \
     static int32_t compile( const View & th, Entry * p, int32_t cap, int32_t * g, \
                             uint32_t * fill_at, int32_t * fill_count, Report * r ) \
@@ -257,7 +257,7 @@ struct TAG##Codec \
     static constexpr uint64_t hash = NS::TYPE##FixedHash; \
     static constexpr uint8_t kCopy = NS::kTableFixedCopy; \
     static constexpr Reason no_layout = NS::no_layout; \
-    static constexpr Reason layout_newer = NS::layout_newer; \
+    static constexpr Reason layout_unknown = NS::layout_unknown; \
     static bool parse( const uint8_t * b, int64_t n, View & v, Reason & w ) { return NS::TableFixedParseLayout( b, n, v, w ); } \
     static int32_t compile( const View & th, Entry * p, int32_t cap, int32_t * g, \
                             uint32_t * fill_at, int32_t * fill_count, Report * r ) \
@@ -1222,7 +1222,7 @@ struct F1 : F1Codec
 // lands on a neighbour.
 
 // P1's reverse direction under the new contract: the older reader given the
-// newer file refuses layout_newer. The old contract compiled a stranger's
+// newer file refuses layout_unknown (SPEC-TABLES §21.3). The old contract compiled a stranger's
 // layout both ways; that test is retired, not bent. Forward (newer reads
 // older) is a lineage compile and returns one record.
 template<typename Older, typename Newer>
@@ -1266,9 +1266,9 @@ static void run_pair_p1()
         std::memset( (void *) &back, 0, sizeof( back ) );
         const int64_t n = Older::load( &back, 1, nfile.data(), nneed, plan.data(), kPlanCap, &r );
         std::snprintf( what, sizeof( what ),
-                       "P1 %s given newer %s: layout_newer (old contract's reverse read is retired)",
+                       "P1 %s given newer %s: layout_unknown (old contract's reverse read is retired)",
                        Older::name, Newer::name );
-        check( n == -1 && r.refused && r.reason == Older::layout_newer, what );
+        check( n == -1 && r.refused && r.reason == Older::layout_unknown, what );
     }
 }
 

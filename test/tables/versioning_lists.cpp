@@ -163,7 +163,7 @@ static int known_red_report()
 // has nowhere to land on this leg yet; the per-row definition is named in the
 // case's own message instead, which is what a leg with text will assert.
 
-#define VL_OWN_REASON( NS, r ) ( ( r ).reason == NS::layout_newer )
+#define VL_OWN_REASON( NS, r ) ( ( r ).reason == NS::layout_unknown )
 
 // the three assertions every OLD-REFUSES-NEW column shares. `definition` is the
 // row's own definition, named so the line says what the refusal owes.
@@ -179,10 +179,10 @@ static void refuses_newer( const char * key, const char * definition, int64_t n,
     check_red( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 &&
                !r.malformed, key, what );
     std::snprintf( what, sizeof( what ),
-                   "%s: the reason is `layout_newer`'s own — not a form byte, not a broken layout", key );
+                   "%s: the reason is `layout_unknown`'s own — not a form byte, not a broken layout", key );
     check_red( r.refused && own_reason, key, what );
     std::snprintf( what, sizeof( what ),
-                   "%s: layout_newer carries the file's hash and nothing else (bill §12.4)", key );
+                   "%s: layout_unknown carries the file's hash and nothing else (bill §12.4)", key );
     check_red( r.layout_hash == want_hash, key, what );
 }
 

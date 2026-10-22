@@ -126,11 +126,10 @@ std::vector<uint8_t> one( const T & v, Measure measure, Save save, const char * 
 // THE REASON NAMES THE BILL ADDS AND THE EMITTER DOES NOT CARRY (#895, bill §4,
 // §6b). One -D each the day they land, and every red below becomes the real
 // comparison it already reads as.
-#ifdef SCHEMA_HAS_LAYOUT_NEWER
-#define IS_LAYOUT_NEWER( ns, r ) ( (r) == ns::layout_newer )
-#else
-#define IS_LAYOUT_NEWER( ns, r ) ( (void) (r), false )
-#endif
+// A hash outside this reader's lineage is layout_unknown (docs/SPEC-TABLES.md
+// §21.3, algorithm §5.3 step 5): nothing on the wire PROVES a hash newer, so
+// layout_newer is reserved and never emitted, as in the Go oracle.
+#define IS_LAYOUT_UNKNOWN( ns, r ) ( (r) == ns::layout_unknown )
 #ifdef SCHEMA_HAS_LAYOUT_UNSUPPORTED
 #define IS_LAYOUT_UNSUPPORTED( ns, r ) ( (r) == ns::layout_unsupported )
 #else
@@ -138,7 +137,7 @@ std::vector<uint8_t> one( const T & v, Measure measure, Save save, const char * 
 #endif
 
 // OLD-REFUSES-NEW, one shape for every row: the OLD build's reader, the NEW
-// build's bytes. `layout_newer` before any record, no counter, nothing decoded.
+// build's bytes. `layout_unknown` before any record, no counter, nothing decoded.
 //
 // WHAT THIS SHAPE DOES NOT YET CHECK, and what it will. The refusal above says
 // only "newer"; it does not say WHICH layout the file carries. Bill §12.4 puts
@@ -156,11 +155,11 @@ std::vector<uint8_t> one( const T & v, Measure measure, Save save, const char * 
         const int64_t n = OLDNS::TBL##FixedLoadTolerant( &back, 1, (newbytes).data(), (int64_t) (newbytes).size(),\
                                                  plan.data(), 4096, NULL, &r );                          \
         const uint64_t file_hash = OLDNS::TableFixedGet64( (newbytes).data() + OLDNS::kTableFixedHashAt ); \
-        check( n < 0 && r.refused && IS_LAYOUT_NEWER( OLDNS, r.reason ) &&                               \
+        check( n < 0 && r.refused && IS_LAYOUT_UNKNOWN( OLDNS, r.reason ) &&                               \
              r.layout_hash == file_hash &&                                                               \
              r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed &&\
              std::memcmp( &back, &fresh, sizeof( back ) ) == 0,                                          \
-             ROW "/OLD-REFUSES-NEW: layout_newer before any record, no counter, nothing decoded" );      \
+             ROW "/OLD-REFUSES-NEW: layout_unknown before any record, no counter, nothing decoded" );      \
     } while ( 0 )
 
 // The row must CHANGE THE LAYOUT HASH, or "older or equal" has nothing to
@@ -217,8 +216,10 @@ void array_bounded_grow_case()
 }
 
 // A forged count of 7 in the OLD file (writer declared [..4]), read by the
-// NEW reader ([..8]). The plan carries the WRITER's bound (bill §12.5): clamp
-// to 4, COUNT clamped, never land a count the old writer could not have written.
+// NEW reader ([..8]). The plan carries the WRITER's bound (bill §12.5), and a
+// count past it is the NAMED REFUSAL count_over_bound before any destination
+// byte (docs/SPEC-TABLES.md §3.4; the Go oracle's fixedguard_test.go): never
+// land a count the old writer could not have written.
 void array_bounded_grow_hostile_case()
 {
     vold_array_bounded_grow::ArrayBoundedGrow old;
@@ -234,17 +235,19 @@ void array_bounded_grow_hostile_case()
     vold_array_bounded_grow::TableFixedPut32( ob.data() + rec + 8 + 4, 7u );
     {
         vnew_array_bounded_grow::ArrayBoundedGrow back;
-        vnew_array_bounded_grow::ArrayBoundedGrowReset( back );
+        std::memset( (void *) &back, 0, sizeof( back ) ); vnew_array_bounded_grow::ArrayBoundedGrowReset( back );
         vnew_array_bounded_grow::TableReport r;
         std::vector<vnew_array_bounded_grow::TableFixedEntry> plan( 4096 );
+        vnew_array_bounded_grow::ArrayBoundedGrow fresh;
+        std::memset( (void *) &fresh, 0, sizeof( fresh ) ); vnew_array_bounded_grow::ArrayBoundedGrowReset( fresh );
         check( vnew_array_bounded_grow::ArrayBoundedGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
-                                                                   plan.data(), 4096, NULL, &r ) == 1,
-               "array_bounded_grow_hostile: the forged file reads" );
-        check( back.vals_count == 4,
-               "array_bounded_grow_hostile: a count of 7 clamps to the WRITER's [..4], not the reader's [..8]" );
-        check( r.clamped >= 1, "array_bounded_grow_hostile: COUNT clamped" );
-        check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
-               "array_bounded_grow_hostile: lead and trail stand" );
+                                                                   plan.data(), 4096, NULL, &r ) == -1,
+               "array_bounded_grow_hostile: the forged file is REFUSED, even by the tolerant read" );
+        check( r.refused && r.reason == vnew_array_bounded_grow::count_over_bound,
+               "array_bounded_grow_hostile: a count of 7 past the WRITER's [..4] (not the reader's [..8]) is count_over_bound" );
+        check( r.clamped == 0 && !r.malformed, "array_bounded_grow_hostile: no clamp is counted" );
+        check( std::memcmp( (const void *) &back, (const void *) &fresh, sizeof( back ) ) == 0,
+               "array_bounded_grow_hostile: no destination byte is written" );
     }
 }
 
@@ -1083,7 +1086,7 @@ void hash_cases()
                "hash_identity: the identity read moves no counter" );
     }
 
-    // hash_unknown — A HASH IN NO LINEAGE REFUSES layout_newer. The bytes below
+    // hash_unknown — A HASH IN NO LINEAGE REFUSES layout_unknown (SPEC-TABLES §21.3). The bytes below
     // are a well-formed form-3 file of a DIFFERENT table, so the hash is one
     // this reader's lineage has never held and the layout is not its own.
     {
@@ -1098,9 +1101,9 @@ void hash_cases()
         std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
         const int64_t n = vnew_floor::FlooredFixedLoadTolerant( &back, 1, sb.data(), (int64_t) sb.size(),
                                                         plan.data(), 4096, NULL, &r );
-        check( n < 0 && r.refused && IS_LAYOUT_NEWER( vnew_floor, r.reason ) &&
+        check( n < 0 && r.refused && IS_LAYOUT_UNKNOWN( vnew_floor, r.reason ) &&
              std::memcmp( &back, &fresh, sizeof( back ) ) == 0,
-             "hash_unknown: a hash in NO lineage refuses layout_newer, nothing decoded" );
+             "hash_unknown: a hash in NO lineage refuses layout_unknown, nothing decoded" );
     }
 
     // hash_known_bytes_differ — A KNOWN HASH WHOSE LAYOUT BYTES DIFFER FROM THE

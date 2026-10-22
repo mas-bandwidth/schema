@@ -336,9 +336,11 @@ fixed table T
 	}
 }
 
-// t03LoadBody is one emitted load function's body, or the whole header.
+// t03LoadBody is the emitted TOLERANT load's body, the one that walks the
+// plan (the plain FixedLoad is the strict wrapper around it, SPEC-TABLES
+// §6.5), or the whole header.
 func t03LoadBody(hdr string) string {
-	i := strings.Index(hdr, "FixedLoad(")
+	i := strings.Index(hdr, "FixedLoadTolerant(")
 	if i < 0 {
 		return hdr
 	}

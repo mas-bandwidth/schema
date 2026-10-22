@@ -132,7 +132,7 @@ static void fx_case()
     }
 
     // 3. FX1 READS FX2 — OLD-REFUSES-NEW. The file's hash is not in FX1's known
-    // set, so LOAD refuses layout_newer before any record (bill §4, §12.4).
+    // set, so LOAD refuses layout_unknown before any record (bill §4, §12.4).
     {
         tblfx2::FxRoot two;
         tblfx2::FxRootReset( two );
@@ -152,10 +152,10 @@ static void fx_case()
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
         const int64_t n = tblfx1::FxRootFixedLoadTolerant( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, NULL, &r );
-        check( n < 0 && r.refused && r.reason == tblfx1::layout_newer,
-               "newer writer: layout_newer before any record" );
+        check( n < 0 && r.refused && r.reason == tblfx1::layout_unknown,
+               "newer writer: layout_unknown before any record" );
         check( r.layout_hash == tblfx2::FxRootFixedHash,
-               "newer writer: layout_newer carries the file's hash and nothing else" );
+               "newer writer: layout_unknown carries the file's hash and nothing else" );
         check( r.unknown == 0 && r.kind_mismatch == 0 && !r.malformed,
                "newer writer: REFUSE is total" );
     }
@@ -263,7 +263,7 @@ static void negative_control()
     tblfx1::TableReport r2;
     std::vector<tblfx1::TableFixedEntry> plan( 1024 );
     const int64_t n = tblfx1::FxRootFixedLoadTolerant( &right, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, NULL, &r2 );
-    check( n < 0 && r2.refused && r2.reason == tblfx1::layout_newer,
+    check( n < 0 && r2.refused && r2.reason == tblfx1::layout_unknown,
            "NEGATIVE CONTROL: the loader refuses a newer hash, it does not compile a stranger's layout" );
 
     // A LAYOUT THAT IS NOT A LAYOUT IS REFUSED BY NAME, whole, and never damage.
@@ -278,7 +278,7 @@ static void negative_control()
         tblfx1::FxRoot v;
         tblfx1::TableReport r3;
         const int64_t bad = tblfx1::FxRootFixedLoadTolerant( &v, 1, broken.data(), (int64_t) broken.size(), plan.data(), 1024, NULL, &r3 );
-        check( bad < 0 && r3.refused && r3.reason == tblfx1::layout_newer, "REFUSED BY NAME: a newer hash is layout_newer, not a walk name" );
+        check( bad < 0 && r3.refused && r3.reason == tblfx1::layout_unknown, "REFUSED BY NAME: a newer hash is layout_unknown, not a walk name" );
         check( r3.unknown == 0 && r3.kind_mismatch == 0 && !r3.malformed, "REFUSED BY NAME: a refusal moves no counter" );
     }
 
@@ -319,8 +319,8 @@ static void negative_control()
         tblfx1::FxRoot v;
         tblfx1::TableReport r6;
         const int64_t bad = tblfx1::FxRootFixedLoadTolerant( &v, 1, lying.data(), (int64_t) lying.size(), plan.data(), 1024, NULL, &r6 );
-        check( bad < 0 && r6.refused && r6.reason == tblfx1::layout_newer,
-               "REFUSED BY NAME: a header hash this reader has never locked is layout_newer" );
+        check( bad < 0 && r6.refused && r6.reason == tblfx1::layout_unknown,
+               "REFUSED BY NAME: a header hash this reader has never locked is layout_unknown" );
         check( !r6.malformed, "REFUSED BY NAME: never damage" );
     }
 
@@ -331,7 +331,7 @@ static void negative_control()
         tblfx1::TableReport r5;
         tblfx1::TableFixedEntry tiny[1];
         const int64_t bad = tblfx1::FxRootFixedLoadTolerant( &v, 1, w2.data(), (int64_t) w2.size(), tiny, 1, NULL, &r5 );
-        check( bad < 0 && r5.refused && r5.reason == tblfx1::layout_newer, "REFUSED BY NAME: a newer hash is refused before a plan is compiled" );
+        check( bad < 0 && r5.refused && r5.reason == tblfx1::layout_unknown, "REFUSED BY NAME: a newer hash is refused before a plan is compiled" );
     }
 }
 
@@ -990,8 +990,8 @@ static void union_text_case()
         tblut1::TableReport r;
         std::vector<tblut1::TableFixedEntry> plan( 1024 );
         check( tblut1::UtRootFixedLoadTolerant( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, NULL, &r ) < 0 &&
-               r.refused && r.reason == tblut1::layout_newer,
-               "two lanes, back: OLD-REFUSES-NEW — layout_newer, the hash and nothing else" );
+               r.refused && r.reason == tblut1::layout_unknown,
+               "two lanes, back: OLD-REFUSES-NEW — layout_unknown, the hash and nothing else" );
         check( r.layout_hash == tblut2::UtRootFixedHash, "two lanes, back: the file's hash" );
     }
 }
@@ -1676,8 +1676,8 @@ static void cache_case()
     tblfx2::TableFixedPut64( wB.data() + tblfx2::kTableFixedHeaderBytes + 4 + layout_bytes, hashB );
     tblfx2::TableReport r3;
     const int64_t nB = tblfx2::FxRootFixedLoadTolerant( &back, 1, wB.data(), (int64_t) wB.size(), plan.data(), 1024, &cache, &r3 );
-    check( nB < 0 && r3.refused && r3.reason == tblfx2::layout_newer,
-           "cache: a hash in no lineage is layout_newer, not a second compile" );
+    check( nB < 0 && r3.refused && r3.reason == tblfx2::layout_unknown,
+           "cache: a hash in no lineage is layout_unknown, not a second compile" );
     check( cache.compiles == 1, "cache: a stranger's hash does not compile" );
 
     tblfx2::FxRoot two;
@@ -1701,7 +1701,7 @@ static void cache_case()
 //
 // THE LAYOUT HERE IS INTERNALLY VALID: hand-built out of this build's own
 // field ids, passing all seven rules. After COMPILE-from-lock (#916), LOAD
-// never parses a stranger — unknown hash is `layout_newer` — so the bound
+// never parses a stranger — unknown hash is `layout_unknown` — so the bound
 // is asserted on `TableFixedCompile` directly, which is the path a known
 // older writer still takes. A Load of the same bytes still refuses, and
 // sets nothing.
@@ -1763,7 +1763,7 @@ static void record_bound_case()
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
         const int64_t n = tblfx1::FxRootFixedLoadTolerant( &v, 1, f.data(), (int64_t) f.size(), plan.data(), 1024, NULL, &r );
-        check( n < 0 && r.refused, "W10: LOAD of the same bytes is REFUSED (hash selects; a stranger is layout_newer)" );
+        check( n < 0 && r.refused, "W10: LOAD of the same bytes is REFUSED (hash selects; a stranger is layout_unknown)" );
         check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed,
                "W10: the refusal sets nothing and counts nothing" );
         check( v.keep == 7u && v.blob_length == 0, "W10: NOT PARTLY COMPILED — no entry of the plan ran" );
@@ -1817,10 +1817,11 @@ static void record_bound_case()
 
 // ---------------------------------------------------------------------------
 
-// C1/C2: THE COUNT CLAMP (docs/FIXED-FORM-ALGORITHM.md §4.5). A counted array's
-// count is four bytes a STRANGER wrote: `v := SLE(4, record+src)`; below zero it
-// is zero and past the READER's own bound, IN ELEMENTS, it is the bound, and
-// either way `COUNT clamped` once for the field.
+// C1/C2: THE COUNT BOUND (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md
+// §4.5). A counted array's count is four bytes a STRANGER wrote: below zero or
+// past the PLAN's own bound, IN ELEMENTS, it is a NAMED REFUSAL,
+// `count_over_bound`, checked before any destination byte is written — the
+// count lying about the wire, never clamped (the Go oracle's fixedbound_test.go).
 //
 // THE FORGERY IS IN THE BYTES and not through the writer: §3.1's write-side
 // bound checks are DEBUG ONLY by rule and clamp nothing, so a count of -1 is a
@@ -1875,11 +1876,15 @@ static void count_clamp_case()
         tblfx1::FxRoot back;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-        check( tblfx1::FxRootFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == 1,
-               "C1: a forged count of -1 still READS — a clamp is not a refusal" );
-        check( back.marks_count == 0, "C1: a count below zero clamps to ZERO" );
-        check( r.clamped == 1, "C1: and counts exactly one clamp" );
-        check( !r.malformed && !r.refused, "C1: a clamp is neither malformed nor a refusal" );
+        std::memset( (void *) &back, 0, sizeof( back ) );  tblfx1::FxRootReset( back );
+        tblfx1::FxRoot fresh;
+        std::memset( (void *) &fresh, 0, sizeof( fresh ) ); tblfx1::FxRootReset( fresh );
+        check( tblfx1::FxRootFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == -1,
+               "C1: a forged count of -1 is REFUSED, even by the tolerant read" );
+        check( r.refused && r.reason == tblfx1::count_over_bound, "C1: and the refusal is named count_over_bound" );
+        check( r.clamped == 0 && !r.malformed, "C1: no clamp is counted, and it is not malformed" );
+        check( std::memcmp( (const void *) &back, (const void *) &fresh, sizeof( back ) ) == 0,
+               "C1: no destination byte is written" );
     }
 
     // C2: A COUNT PAST THE READER'S OWN BOUND, IN ELEMENTS.
@@ -1888,11 +1893,15 @@ static void count_clamp_case()
         tblfx1::FxRoot back;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-        check( tblfx1::FxRootFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == 1,
-               "C2: a forged count of Max+1 still READS" );
-        check( back.marks_count == bound, "C2: a count past Max clamps to MAX, in elements" );
-        check( r.clamped == 1, "C2: and counts exactly one clamp" );
-        check( back.marks[0] == 7 && back.marks[1] == 8, "C2: the live elements are still the record's" );
+        std::memset( (void *) &back, 0, sizeof( back ) );  tblfx1::FxRootReset( back );
+        tblfx1::FxRoot fresh;
+        std::memset( (void *) &fresh, 0, sizeof( fresh ) ); tblfx1::FxRootReset( fresh );
+        check( tblfx1::FxRootFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == -1,
+               "C2: a forged count of Max+1 is REFUSED, even by the tolerant read" );
+        check( r.refused && r.reason == tblfx1::count_over_bound, "C2: and the refusal is named count_over_bound" );
+        check( r.clamped == 0 && !r.malformed, "C2: no clamp is counted, and it is not malformed" );
+        check( std::memcmp( (const void *) &back, (const void *) &fresh, sizeof( back ) ) == 0,
+               "C2: no destination byte is written" );
     }
 
     // AND THE CONTROL: the bound itself is not a clamp. A count EQUAL to Max is
@@ -2449,7 +2458,7 @@ static void manifest_case( const char * ) {}
 // and fu2.bin from the reference's writer; this case reads those files, on the
 // IDENTITY path and through FU2's COMPILED plan (NEW-READS-OLD, the lineage
 // COMPILE laid down), and states the values beside the bytes. FU1 given fu2.bin
-// is OLD-REFUSES-NEW: a hash this reader has never locked is layout_newer
+// is OLD-REFUSES-NEW: a hash this reader has never locked is layout_unknown
 // before any record (algorithm §5.3). A leg now has bytes to match AND a list
 // of values to match them against; before this, a leg-vs-reference divergence
 // on the nested-union shape was invisible on every leg at once.
@@ -2632,7 +2641,7 @@ static void fu_oracle_case( const char * dir )
 
         // 4. THE OTHER DIRECTION — FU1 given FU2's file. COMPILE from the lock
         // (algorithm §5.3): hash selects, a stranger's layout is never parsed.
-        // FU1's lineage is itself alone, so FU2's hash is layout_newer BEFORE
+        // FU1's lineage is itself alone, so FU2's hash is layout_unknown BEFORE
         // ANY RECORD — not a compiled backwards read, not kind_mismatch on the
         // two rungs. The rungs run FORWARD only (fu1 into FU2, above).
         tblfu1::FuRoot narrow[2];
@@ -2641,8 +2650,8 @@ static void fu_oracle_case( const char * dir )
         tblfu1::TableReport r1;
         std::vector<tblfu1::TableFixedEntry> plan1( 1024 );
         const int64_t got = tblfu1::FuRootFixedLoadTolerant( narrow, 2, fu2.data(), (int64_t) fu2.size(), plan1.data(), 1024, NULL, &r1 );
-        check( got < 0 && r1.refused && r1.reason == tblfu1::layout_newer,
-               "OLD-REFUSES-NEW: FU1 reading fu2.bin is layout_newer, nothing parsed" );
+        check( got < 0 && r1.refused && r1.reason == tblfu1::layout_unknown,
+               "OLD-REFUSES-NEW: FU1 reading fu2.bin is layout_unknown, nothing parsed" );
         check( r1.layout_hash == tblfu2::FuRootFixedHash,
                "OLD-REFUSES-NEW: the refusal carries the file's hash and nothing else (bill §12.4)" );
         check( r1.unknown == 0 && r1.kind_mismatch == 0 && r1.widened == 0 && r1.clamped == 0 && !r1.malformed,

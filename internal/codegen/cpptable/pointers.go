@@ -1120,7 +1120,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 		// Go oracle's tableIntegrityOpen, internal/codegen/gotable/integrity.go);
 		// the read then proceeds over the file without it.
 		g.pf("    if ( wire_file_bytes > 0 && wire_file[0] == kTableWireForm && !schema_integrity_holds( wire_file, wire_file_bytes ) )\n    {\n")
-		g.pf("        out->malformed = true;\n        out->damage_reason = integrity_mismatch;\n        return NULL;\n    }\n")
+		g.pf("        out->malformed = true;\n        out->damage_reason = integrity_mismatch;\n        return false;\n    }\n")
 		g.pf("    if ( wire_file_bytes > 0 && wire_file[0] == kTableWireForm ) { wire_file_bytes -= 4; } // checked form-1 trailer only\n")
 	}
 	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")

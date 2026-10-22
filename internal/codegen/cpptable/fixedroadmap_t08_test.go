@@ -499,7 +499,7 @@ int main( void )
     static TableFixedEntry plan[4096];
     TableReport r;
     memset( &r, 0, sizeof( r ) );
-    const int64_t n = FxRootFixedLoad( values, 8, data, len, plan, 4096, NULL, &r );
+    const int64_t n = FxRootFixedLoadTolerant( values, 8, data, len, plan, 4096, NULL, &r );
     if ( n < 0 ) { printf( "P2: the reference file did not load\n" ); return 1; }
     static uint8_t ob[1 << 20];
     const int64_t m = FxRootFixedSave( values, n, ob, (int64_t) sizeof( ob ) );
@@ -585,7 +585,7 @@ int main( void )
     static TableFixedEntry plan[4096];
     TableReport r;
     memset( &r, 0, sizeof( r ) );
-    const int64_t n = FxRootFixedLoad( values, 8, data, len, plan, 4096, NULL, &r );
+    const int64_t n = FxRootFixedLoadTolerant( values, 8, data, len, plan, 4096, NULL, &r );
     if ( n != 2 ) { printf( "R27: read %%lld records, want 2\n", (long long) n ); return 1; }
     printf( "r0.keep=%%lld\n", (long long) values[0].keep );
     printf( "r0.narrow=%%lld\n", (long long) values[0].narrow );
@@ -665,7 +665,7 @@ int main( void )
                 static TableFixedEntry plan[4096];
                 TableReport rr;
                 memset( &rr, 0, sizeof( rr ) );
-                const int64_t nn = FxRootFixedLoad( back, 8, data, len, plan, 4096, NULL, &rr );
+                const int64_t nn = FxRootFixedLoadTolerant( back, 8, data, len, plan, 4096, NULL, &rr );
                 ++loads;
                 if ( nn >= 0 )
                 {
