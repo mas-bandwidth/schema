@@ -345,13 +345,15 @@ func withArmKinds(runtime string, kinds map[string]bool) string {
 	if strings.Count(runtime, armNodeCheck) != 1 {
 		panic("elixirtable: arm node check not found exactly once")
 	}
-	check := "        if input == nil"
+	var check strings.Builder
+	check.WriteString("        if input == nil")
 	for _, k := range []string{"pointer", "blob"} {
 		if kinds[k] {
-			check += " and a.t != :" + k
+			check.WriteString(" and a.t != :" + k)
 		}
 	}
-	return strings.Replace(runtime, armNodeCheck, check+" do\n", 1)
+	check.WriteString(" do\n")
+	return strings.Replace(runtime, armNodeCheck, check.String(), 1)
 }
 
 // unionFamilies are the runtime functions that exist only to read, write,
