@@ -42,6 +42,21 @@ func nightlyFuzzCorpus(t *testing.T, path string) []string {
 	return paths
 }
 
+// nightlyCampaign confines a nightly test to its campaign. The three nightly
+// tests are minutes of interpreter time over the whole corpus, so they run only
+// under make schema-squirrel-nightly-fuzz, which sets SCHEMA_SQUIRREL_FUZZ_CORPUS;
+// the SCHEMA_SLOW=1 pull-request lane runs the same seeded differential at its
+// own budget in fuzz_test.go. The skip names the campaign, so a reader of the
+// slow lane sees what did not run and where it does. It returns the corpus file.
+func nightlyCampaign(t *testing.T) string {
+	t.Helper()
+	corpus := os.Getenv("SCHEMA_SQUIRREL_FUZZ_CORPUS")
+	if corpus == "" {
+		t.Skip("the nightly campaign, not the pull request: make schema-squirrel-nightly-fuzz sets SCHEMA_SQUIRREL_FUZZ_CORPUS and runs it")
+	}
+	return corpus
+}
+
 // TestSquirrelNightlyFuzz is the target's test: the corpus the Makefile
 // selected, then the differential within the budget. A campaign that cannot
 // finish in the budget fails by name (SCHEMA_SQUIRREL_FUZZ_SECONDS) rather than
@@ -50,10 +65,7 @@ func TestSquirrelNightlyFuzz(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Squirrel interpreter and the tables conformance corpus")
 
-	corpus := os.Getenv("SCHEMA_SQUIRREL_FUZZ_CORPUS")
-	if corpus == "" {
-		t.Fatal("SCHEMA_SQUIRREL_FUZZ_CORPUS is unset: run make schema-squirrel-nightly-fuzz")
-	}
+	corpus := nightlyCampaign(t)
 	paths := nightlyFuzzCorpus(t, corpus)
 
 	seconds := envInt("SCHEMA_SQUIRREL_FUZZ_SECONDS", 540)

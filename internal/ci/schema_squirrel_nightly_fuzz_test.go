@@ -85,3 +85,58 @@ func TestSquirrelNightlyFuzz(t *testing.T) {
 		}
 	}
 }
+
+// THE CAMPAIGN STAYS NIGHTLY IN GO TOO. The workflow keeps the campaign off the
+// pull request, but ci-full.yml's go-test lane runs `go test ./internal/codegen/...`
+// with SCHEMA_SLOW=1, which passes slowtest.Gate. A nightly test that forgot its
+// campaign gate ran there on 2026-10-21 and timed the package out at ten minutes
+// (TestSquirrelNightlyFuzzTextJSON). Every nightly test therefore opens with
+// nightlyCampaign(t), which skips unless make schema-squirrel-nightly-fuzz set
+// the corpus.
+var nightlyFuzzHarness = []string{
+	"internal/codegen/squirreltable/nightly_fuzz_test.go",
+	"internal/codegen/squirreltable/nightly_fuzz_readers_test.go",
+}
+
+// nightlyCampaignProblems names every TestSquirrelNightlyFuzz* function in src
+// whose body does not call nightlyCampaign(t).
+func nightlyCampaignProblems(src string) []string {
+	var bad []string
+	parts := strings.Split(src, "\nfunc TestSquirrelNightlyFuzz")
+	for _, body := range parts[1:] {
+		suffix, _, _ := strings.Cut(body, "(")
+		name := "TestSquirrelNightlyFuzz" + suffix
+		if end := strings.Index(body, "\n}\n"); end >= 0 {
+			body = body[:end]
+		}
+		if !strings.Contains(body, "nightlyCampaign(t)") {
+			bad = append(bad, name+" runs outside its campaign (no nightlyCampaign(t))")
+		}
+	}
+	return bad
+}
+
+func TestSquirrelNightlyFuzzTestsStayInTheCampaign(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	tests := 0
+	for _, rel := range nightlyFuzzHarness {
+		src, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tests += strings.Count(string(src), "\nfunc TestSquirrelNightlyFuzz")
+		if bad := nightlyCampaignProblems(string(src)); len(bad) > 0 {
+			t.Fatalf("%s:\n  %s", rel, strings.Join(bad, "\n  "))
+		}
+		// THE PLANTED PATTERN: the same file with the gate removed must be refused.
+		planted := strings.ReplaceAll(string(src), "nightlyCampaign(t)\n", "\n")
+		planted = strings.ReplaceAll(planted, "corpus := nightlyCampaign(t)", "corpus := \"\"")
+		if len(nightlyCampaignProblems(planted)) == 0 {
+			t.Fatalf("PLANTED PATTERN: %s with nightlyCampaign removed left the gate GREEN", rel)
+		}
+	}
+	if tests != 3 {
+		t.Fatalf("found %d TestSquirrelNightlyFuzz* tests, want the campaign's 3 (tolerant, strict, text/json)", tests)
+	}
+}

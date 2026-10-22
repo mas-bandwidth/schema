@@ -136,6 +136,7 @@ func nightlyReaderBudget(t *testing.T, what string) (time.Time, int) {
 func TestSquirrelNightlyFuzzStrict(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Squirrel interpreter and the tables conformance corpus")
+	nightlyCampaign(t)
 	dir, mods, seeds := fuzzReaderSeeds(t)
 	deadline, mutantsPer := nightlyReaderBudget(t, "strict")
 	var p strings.Builder
@@ -172,6 +173,7 @@ func TestSquirrelNightlyFuzzStrict(t *testing.T) {
 func TestSquirrelNightlyFuzzTextJSON(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Squirrel interpreter and the tables conformance corpus")
+	nightlyCampaign(t)
 	dir, mods, seeds := fuzzReaderSeeds(t)
 	deadline, mutantsPer := nightlyReaderBudget(t, "text/json")
 	var p strings.Builder
