@@ -119,7 +119,7 @@ check(idHoles === 0, `identity list: the unwritten-range census of the identity 
 
 // ---- 2: a writer that predates a field — the absent field's plan ----
 
-const own = keyed.TeamConfigFixedLayout; // count u32, then 17-byte entries
+const own = keyed.TeamConfigFixedLayoutCopy(); // count u32, then 17-byte entries
 const theirs = new Uint8Array(4 + 17 * 2);
 const t = new DataView(theirs.buffer);
 t.setUint32(0, 2, true);                 // the root and the banner

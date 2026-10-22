@@ -91,7 +91,7 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := &result{}
-		scoreAnswer(lang, "json-hostile", out, e, "", r)
+		scoreAnswer(lang, "json-hostile", out, e, Instance{}, r)
 		if len(r.failures) == 0 {
 			t.Fatalf("%s: %s answering %q scored green against %q; it must score red", caseName, lang, answer, e.want)
 		}
@@ -111,7 +111,7 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := &result{}
-		scoreAnswer(lang, "json-hostile", out, e, "", r)
+		scoreAnswer(lang, "json-hostile", out, e, Instance{}, r)
 		if len(r.failures) != 0 {
 			t.Fatalf("%s: %s answering %q scored red against %q: %v", caseName, lang, answer, e.want, r.failures)
 		}

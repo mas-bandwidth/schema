@@ -52,7 +52,7 @@ import { resolve } from "node:path";
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const mod = await import(pathToFileURL(resolve(generated, "examples/NestedTable.js")).href);
 
-const layout = mod.ArchiveConfigFixedLayout;
+const layout = mod.ArchiveConfigFixedLayoutCopy();
 const layoutBytes = mod.ArchiveConfigFixedLayoutBytes;
 
 let failures = 0;
