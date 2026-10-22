@@ -882,7 +882,7 @@ struct FN1 : FN1Codec
         v.deep.mid.deeper.z = 30;
         std::strcpy( v.label, "ab" );
         v.label_length = 2;
-        v.after = 7;
+        v.past = 7;
     }
     static void inspect( const T & v, Issues & i )
     {
@@ -892,7 +892,7 @@ struct FN1 : FN1Codec
         if ( v.picks_count < 0 || v.picks_count > 2 ) { i.unsafe = true; }
         if ( v.label_length < 0 || v.label_length > 4 ) { i.range_oob = true; }
         else if ( !utf8_ok( v.label, v.label_length ) ) { i.utf8_bad = true; }
-        if ( v.after < 0 || v.after > 1000 ) { i.range_oob = true; }
+        if ( v.past < 0 || v.past > 1000 ) { i.range_oob = true; }
         if ( v.deep.x < 0 || v.deep.x > 1000 ) { i.range_oob = true; }
         if ( v.deep.mid.y < 0 || v.deep.mid.y > 1000 ) { i.range_oob = true; }
         if ( v.deep.mid.deeper.z < 0 || v.deep.mid.deeper.z > 1000 ) { i.range_oob = true; }
@@ -911,7 +911,7 @@ struct FN1 : FN1Codec
     {
         return byte_of( &a.flag ) == byte_of( &b.flag ) && byte_of( &a.tier ) == byte_of( &b.tier ) &&
                byte_of( &a.opt_present ) == byte_of( &b.opt_present ) &&
-               a.picks_count == b.picks_count && a.after == b.after &&
+               a.picks_count == b.picks_count && a.past == b.past &&
                a.deep.x == b.deep.x && a.deep.mid.y == b.deep.mid.y && a.deep.mid.deeper.z == b.deep.mid.deeper.z &&
                a.label_length == b.label_length && a.label_length >= 0 && a.label_length <= 4 &&
                std::memcmp( a.label, b.label, (size_t) a.label_length ) == 0;
@@ -938,7 +938,7 @@ struct FN2 : FN2Codec
         v.deep.mid.deeper.z = 31;
         std::strcpy( v.caption, "cd" );
         v.caption_length = 2;
-        v.after = 8;
+        v.past = 8;
         v.tail = 3;
     }
     static void inspect( const T & v, Issues & i )
@@ -949,14 +949,14 @@ struct FN2 : FN2Codec
         if ( v.picks_count < 0 || v.picks_count > 2 ) { i.unsafe = true; }
         if ( v.caption_length < 0 || v.caption_length > 4 ) { i.range_oob = true; }
         else if ( !utf8_ok( v.caption, v.caption_length ) ) { i.utf8_bad = true; }
-        if ( v.after < 0 || v.after > 1000 ) { i.range_oob = true; }
+        if ( v.past < 0 || v.past > 1000 ) { i.range_oob = true; }
         if ( v.tail < 0 || v.tail > 1000 ) { i.range_oob = true; }
     }
     static bool same( const T & a, const T & b )
     {
         return byte_of( &a.flag ) == byte_of( &b.flag ) && byte_of( &a.tier ) == byte_of( &b.tier ) &&
                byte_of( &a.opt_present ) == byte_of( &b.opt_present ) &&
-               a.picks_count == b.picks_count && a.after == b.after && a.tail == b.tail &&
+               a.picks_count == b.picks_count && a.past == b.past && a.tail == b.tail &&
                a.caption_length == b.caption_length && a.caption_length >= 0 && a.caption_length <= 4 &&
                std::memcmp( a.caption, b.caption, (size_t) a.caption_length ) == 0;
     }
@@ -972,12 +972,12 @@ struct FM1 : FM1Codec
         std::strcpy( v.mark.narrow.s, "hello" );
         v.mark.narrow.s_length = 5;
         v.mark.narrow.n = 11;
-        v.after = 7;
+        v.past = 7;
     }
     static void inspect( const T & v, Issues & i )
     {
         if ( byte_of( &v.mark.type ) > (uint8_t) tblfm1::MarkType::Max ) { i.tag_oob = true; }
-        if ( v.after < 0 || v.after > 1000 ) { i.range_oob = true; }
+        if ( v.past < 0 || v.past > 1000 ) { i.range_oob = true; }
         if ( v.mark.type == tblfm1::MarkType::Narrow )
         {
             if ( v.mark.narrow.s_length < 0 || v.mark.narrow.s_length > 6 ) { i.range_oob = true; }
@@ -987,7 +987,7 @@ struct FM1 : FM1Codec
     }
     static bool same( const T & a, const T & b )
     {
-        if ( a.id != b.id || a.after != b.after || a.mark.type != b.mark.type ) { return false; }
+        if ( a.id != b.id || a.past != b.past || a.mark.type != b.mark.type ) { return false; }
         if ( a.mark.type == tblfm1::MarkType::Narrow )
         {
             return a.mark.narrow.s_length == b.mark.narrow.s_length && a.mark.narrow.n == b.mark.narrow.n &&
@@ -1008,13 +1008,13 @@ struct FM2 : FM2Codec
         std::strcpy( v.mark.narrow.s, "world" );
         v.mark.narrow.s_length = 5;
         v.mark.narrow.n = 12;
-        v.after = 8;
+        v.past = 8;
         v.tail = 3;
     }
     static void inspect( const T & v, Issues & i )
     {
         if ( byte_of( &v.mark.type ) > (uint8_t) tblfm2::MarkType::Max ) { i.tag_oob = true; }
-        if ( v.after < 0 || v.after > 1000 ) { i.range_oob = true; }
+        if ( v.past < 0 || v.past > 1000 ) { i.range_oob = true; }
         if ( v.tail < 0 || v.tail > 1000 ) { i.range_oob = true; }
         if ( v.mark.type == tblfm2::MarkType::Narrow )
         {
@@ -1024,7 +1024,7 @@ struct FM2 : FM2Codec
     }
     static bool same( const T & a, const T & b )
     {
-        if ( a.id != b.id || a.after != b.after || a.tail != b.tail || a.mark.type != b.mark.type ) { return false; }
+        if ( a.id != b.id || a.past != b.past || a.tail != b.tail || a.mark.type != b.mark.type ) { return false; }
         if ( a.mark.type == tblfm2::MarkType::Narrow )
         {
             return a.mark.narrow.s_length == b.mark.narrow.s_length && a.mark.narrow.n == b.mark.narrow.n &&
@@ -1205,7 +1205,7 @@ struct F1 : F1Codec
         v.quiet = 4.0;
         v.wide = 5.0;
         v.samples[0] = 6.0f;
-        v.after = 7;
+        v.past = 7;
     }
     static void inspect( const T & v, Issues & i ) { (void) v; (void) i; }
     static bool same( const T & a, const T & b )
@@ -1213,7 +1213,7 @@ struct F1 : F1Codec
         return std::memcmp( &a.signalling, &b.signalling, sizeof( float ) * 3 ) == 0 &&
                std::memcmp( &a.quiet, &b.quiet, sizeof( double ) * 2 ) == 0 &&
                std::memcmp( a.samples, b.samples, sizeof( a.samples ) ) == 0 &&
-               a.after == b.after;
+               a.past == b.past;
     }
 };
 

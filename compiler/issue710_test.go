@@ -110,12 +110,12 @@ func issue710Wire(body []byte, ids ...uint64) []byte {
 
 func TestIssue710TableRecovery(t *testing.T) {
 	src := `package p
- fixed table Text { label string(32) = "untitled"; after int32 }
+ fixed table Text { label string(32) = "untitled"; past int32 }
  fixed table Element { value int32 = 7 }
- fixed table Rows { items [..2]Element; after int32 }
- table Mapping { items map[uint32]Element; after int32 }
+ fixed table Rows { items [..2]Element; past int32 }
+ table Mapping { items map[uint32]Element; past int32 }
  enum Key { First, Second }
- fixed table Keyed { items [Key]Element; after int32 }
+ fixed table Keyed { items [Key]Element; past int32 }
  `
 	// The grammar terminates fields by newlines rather than semicolons.
 	u := unitFromSource(t, strings.ReplaceAll(src, "; ", "\n"))
@@ -130,14 +130,14 @@ func TestIssue710TableRecovery(t *testing.T) {
 	}{
 		{"default", "Text", issue710Wire(append([]byte{1, 12, 2, 'x', 0}, after...), fieldID("Text", 0), fieldID("Text", 1)), func(v *tabletext.Instance) bool {
 			return string(v.Fields[0].Cell.Str) == "untitled" && v.Fields[0].Count == 8
-		}, `Text v; TableReport r; if (!TextLoad(v, wire, sizeof(wire), &r) || !r.malformed || v.after!=42 || v.label_length!=8 || strcmp(v.label,"untitled")!=0) return 1;`},
+		}, `Text v; TableReport r; if (!TextLoad(v, wire, sizeof(wire), &r) || !r.malformed || v.past!=42 || v.label_length!=8 || strcmp(v.label,"untitled")!=0) return 1;`},
 		{"array", "Rows", issue710Wire(append([]byte{1, 14, 11, 13, 1, 8, 3, byte(ir.TableKindI32), 99, 0, 0, 0, 0, 0}, after...), fieldID("Rows", 0), fieldID("Rows", 1), fieldID("Element", 0)), func(v *tabletext.Instance) bool {
 			return v.Fields[0].Count == 1 && v.Fields[0].Elems[0].Tab.Fields[0].Cell.I == 7
-		}, `Rows v; TableReport r; if (!RowsLoad(v, wire, sizeof(wire), &r) || !r.malformed || v.after!=42 || v.items_count!=1 || v.items[0].value!=7) return 2;`},
-		{"map", "Mapping", issue710Wire(append([]byte{1, 14, 11, 13, 1, 8, 3, byte(ir.TableKindU32), 1, 0, 0, 0, 0, 0}, after...), fieldID("Mapping", 0), fieldID("Mapping", 1), ir.MapKeyWireId), func(v *tabletext.Instance) bool { return len(v.Fields[0].Entries) == 0 }, `MappingBuilder b; TableReport r; const bool ok=MappingLoadBuilder(b,wire,sizeof(wire),&r); const Mapping * v=b.GetRoot(); const bool pass=ok && r.malformed && v && v->after==42 && v->items.count==0; if(!pass) return 3;`},
+		}, `Rows v; TableReport r; if (!RowsLoad(v, wire, sizeof(wire), &r) || !r.malformed || v.past!=42 || v.items_count!=1 || v.items[0].value!=7) return 2;`},
+		{"map", "Mapping", issue710Wire(append([]byte{1, 14, 11, 13, 1, 8, 3, byte(ir.TableKindU32), 1, 0, 0, 0, 0, 0}, after...), fieldID("Mapping", 0), fieldID("Mapping", 1), ir.MapKeyWireId), func(v *tabletext.Instance) bool { return len(v.Fields[0].Entries) == 0 }, `MappingBuilder b; TableReport r; const bool ok=MappingLoadBuilder(b,wire,sizeof(wire),&r); const Mapping * v=b.GetRoot(); const bool pass=ok && r.malformed && v && v->past==42 && v->items.count==0; if(!pass) return 3;`},
 		{"keyed", "Keyed", issue710Wire(append([]byte{1, byte(ir.TableKindKeyed), 21, 13, 2, 4, 8, 3, byte(ir.TableKindI32), 99, 0, 0, 0, 0, 0, 5, 7, 3, byte(ir.TableKindI32), 55, 0, 0, 0, 0}, after...), fieldID("Keyed", 0), fieldID("Keyed", 1), fieldID("Element", 0), ir.TableWireId(u.Enums["Key"].VariantWireName(0)), ir.TableWireId(u.Enums["Key"].VariantWireName(1))), func(v *tabletext.Instance) bool {
 			return v.Fields[0].Elems[0].Tab.Fields[0].Cell.I == 7 && v.Fields[0].Elems[1].Tab.Fields[0].Cell.I == 55
-		}, `Keyed v; TableReport r; if (!KeyedLoad(v, wire, sizeof(wire), &r) || !r.malformed || v.after!=42 || v.items.slots[0].value!=7 || v.items.slots[1].value!=55) return 4;`},
+		}, `Keyed v; TableReport r; if (!KeyedLoad(v, wire, sizeof(wire), &r) || !r.malformed || v.past!=42 || v.items.slots[0].value!=7 || v.items.slots[1].value!=55) return 4;`},
 	}
 	c := New()
 	files, err := c.Generate(u, "cpp", Options{})
@@ -180,10 +180,10 @@ func TestIssue710TableRecovery(t *testing.T) {
 		}
 	}
 	checks := []string{
-		`Text v; TableReport r={0}; if(!text_load(&v,wire,sizeof(wire),&r) || !r.malformed || v.after!=42 || v.label_length!=8 || strcmp(v.label,"untitled")) return 1;`,
-		`Rows v; TableReport r={0}; if(!rows_load(&v,wire,sizeof(wire),&r) || !r.malformed || v.after!=42 || v.items_count!=1 || v.items[0].value!=7) return 2;`,
-		`MappingBuilder b; TableReport r={0}; int ok; if(!mapping_builder_init(&b))return 3; ok=mapping_load_builder(&b,wire,sizeof(wire),&r); if(!ok || !r.malformed || mapping_builder_root(&b)->after!=42 || mapping_builder_root(&b)->items.count) return 4; mapping_builder_shutdown(&b);`,
-		`Keyed v; TableReport r={0}; if(!keyed_load(&v,wire,sizeof(wire),&r) || !r.malformed || v.after!=42 || v.items[0].value!=7 || v.items[1].value!=55) return 5;`,
+		`Text v; TableReport r={0}; if(!text_load(&v,wire,sizeof(wire),&r) || !r.malformed || v.past!=42 || v.label_length!=8 || strcmp(v.label,"untitled")) return 1;`,
+		`Rows v; TableReport r={0}; if(!rows_load(&v,wire,sizeof(wire),&r) || !r.malformed || v.past!=42 || v.items_count!=1 || v.items[0].value!=7) return 2;`,
+		`MappingBuilder b; TableReport r={0}; int ok; if(!mapping_builder_init(&b))return 3; ok=mapping_load_builder(&b,wire,sizeof(wire),&r); if(!ok || !r.malformed || mapping_builder_root(&b)->past!=42 || mapping_builder_root(&b)->items.count) return 4; mapping_builder_shutdown(&b);`,
+		`Keyed v; TableReport r={0}; if(!keyed_load(&v,wire,sizeof(wire),&r) || !r.malformed || v.past!=42 || v.items[0].value!=7 || v.items[1].value!=55) return 5;`,
 	}
 	var csrc strings.Builder
 	csrc.WriteString("#include \"ProbeTable.h\"\nint main(void){\n")
@@ -316,9 +316,9 @@ int main(void) {
 }
 
 func TestIssue710ListRefusal(t *testing.T) {
-	u := unitFromSource(t, "package p\ntable Lists { items []int32\n after int32 }\ntable Nested { child Lists\n after int32 }\nenum Key { First }\ntable KeyedLists { items [Key]Lists\n after int32 }\n")
+	u := unitFromSource(t, "package p\ntable Lists { items []int32\n past int32 }\ntable Nested { child Lists\n past int32 }\nenum Key { First }\ntable KeyedLists { items [Key]Lists\n past int32 }\n")
 	m := tabletext.NewModel(u)
-	ids := []uint64{ir.TableWireId("items"), ir.TableWireId("after"), ir.TableWireId("child"), ir.TableWireId(u.Enums["Key"].VariantWireName(0))}
+	ids := []uint64{ir.TableWireId("items"), ir.TableWireId("past"), ir.TableWireId("child"), ir.TableWireId(u.Enums["Key"].VariantWireName(0))}
 	// count 2^31, followed by a sibling that must never decode.
 	body := []byte{1, 14, 6, byte(ir.TableKindI32), 0x80, 0x80, 0x80, 0x80, 8, 2, byte(ir.TableKindI32), 42, 0, 0, 0}
 	nested := append([]byte{3, 13, byte(len(body) + 1)}, body...)
@@ -365,7 +365,7 @@ func TestIssue710ListRefusal(t *testing.T) {
 		for _, b := range wire {
 			fmt.Fprintf(&cpp, "%d,", b)
 		}
-		fmt.Fprintf(&cpp, "}; %sBuilder b; TableReport r; if(%sLoadBuilder(b,wire,sizeof(wire),&r) || r.malformed || r.unknown || r.kind_mismatch || b.GetRoot()->after!=0) return 1; TableRefuseReason reason = count_over_length; if(%sLoadMeasure(wire,sizeof(wire),NULL,&reason)!=-1 || reason!=count_over_extent_cap) return 2; }\n", tc.root, tc.root, tc.root)
+		fmt.Fprintf(&cpp, "}; %sBuilder b; TableReport r; if(%sLoadBuilder(b,wire,sizeof(wire),&r) || r.malformed || r.unknown || r.kind_mismatch || b.GetRoot()->past!=0) return 1; TableRefuseReason reason = count_over_length; if(%sLoadMeasure(wire,sizeof(wire),NULL,&reason)!=-1 || reason!=count_over_extent_cap) return 2; }\n", tc.root, tc.root, tc.root)
 	}
 	cpp.WriteString("return 0;}\n")
 	issue710CompileRun(t, dir, "c++", ".cpp", cpp.String())
@@ -390,7 +390,7 @@ func TestIssue710ListRefusal(t *testing.T) {
 		for _, b := range wire {
 			fmt.Fprintf(&csrc, "%d,", b)
 		}
-		fmt.Fprintf(&csrc, "};%sBuilder b;TableReport r={0};int reason=0;if(!%s_builder_init(&b))return 1;if(%s_load_builder(&b,wire,sizeof(wire),&r) || r.malformed || r.unknown || r.kind_mismatch || %s_builder_root(&b)->after) return 2;if(%s_load_measure_ex(wire,sizeof(wire),NULL,&reason)!=-1 || reason!=11)return 3;%s_builder_shutdown(&b); }\n", tc.root, tc.fn, tc.fn, tc.fn, tc.fn, tc.fn)
+		fmt.Fprintf(&csrc, "};%sBuilder b;TableReport r={0};int reason=0;if(!%s_builder_init(&b))return 1;if(%s_load_builder(&b,wire,sizeof(wire),&r) || r.malformed || r.unknown || r.kind_mismatch || %s_builder_root(&b)->past) return 2;if(%s_load_measure_ex(wire,sizeof(wire),NULL,&reason)!=-1 || reason!=11)return 3;%s_builder_shutdown(&b); }\n", tc.root, tc.fn, tc.fn, tc.fn, tc.fn, tc.fn)
 	}
 	csrc.WriteString("return 0;}\n")
 	issue710CompileRun(t, cdir, "cc", ".c", csrc.String())

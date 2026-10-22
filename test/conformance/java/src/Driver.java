@@ -90,11 +90,11 @@ public final class Driver {
         return p;
     }
 
-    private static String openBlock(String name, byte[] bytes, long extent) {
+    private static String openBlock(String name, byte[] bytes, long extent, int lead) {
         // A CLAIM SHORTER THAN THE IMAGE IS A TRUNCATION: place copies what fits
         // and leaves the rest zero, so the array is the claim in that direction.
         long claim = extent < 0 ? bytes.length : extent;
-        Placed p = place(bytes, claim, 0);
+        Placed p = place(bytes, claim, lead);
         boolean opened;
         if (name.startsWith("block_render")) {
             opened = blockdemo.RenderFrameBlock.open(p.data, p.base, p.length) != null;
@@ -110,7 +110,7 @@ public final class Driver {
 
     private static int surfaceBlock(String out) throws IOException {
         for (String[] f : kind("block")) {
-            spill(out, f[1], openBlock(f[1], Files.readAllBytes(Paths.get(f[3])), -1));
+            spill(out, f[1], openBlock(f[1], Files.readAllBytes(Paths.get(f[3])), -1, 0));
         }
         return 0;
     }
@@ -136,7 +136,7 @@ public final class Driver {
 
     private static int surfaceBlockForeign(String out) throws IOException {
         for (String[] f : kind("block")) {
-            spill(out, f[1], openBlock(f[1], swapMagic(Files.readAllBytes(Paths.get(f[3]))), -1));
+            spill(out, f[1], openBlock(f[1], swapMagic(Files.readAllBytes(Paths.get(f[3]))), -1, 0));
         }
         return 0;
     }
@@ -155,7 +155,8 @@ public final class Driver {
             if (!f[2].equals("block")) {
                 continue; // the cook's battery is below
             }
-            spill(out, f[1], openBlock(f[3], Files.readAllBytes(Paths.get(f[4])), Long.parseLong(f[5])));
+            spill(out, f[1], openBlock(f[3], Files.readAllBytes(Paths.get(f[4])), Long.parseLong(f[5]),
+                    f[6].equals("null") ? 0 : Integer.parseInt(f[6])));
         }
         return 0;
     }

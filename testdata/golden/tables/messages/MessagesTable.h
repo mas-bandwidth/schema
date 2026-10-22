@@ -855,9 +855,18 @@ const uint8_t kTableWireForm = 1;
 // compile-time facts of this header, like the id table's own capacity, so the
 // probe allocates nothing and the header stays dependency-free: the slots are
 // a local of TableOpen and nothing outside it can see them.
-static const int32_t kTableProbeBound = 128;
-static const int32_t kTableProbeSlots = 256;
-static const int32_t kTableProbeShift = 56;   // 64 - 8, and 2^8 is kTableProbeSlots
+//
+// kTableProbeBound is THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): the
+// largest id table a reader accepts. A table that claims more entries is
+// MALFORMED for the whole wire, exactly as a count whose entries run past the
+// front of the file is, and is refused before any entry is touched. Below it
+// the whole distinctness walk is the probe, so a hostile file cannot steer a
+// reader into an O(n^2) pairwise scan: the worst case the probe can reach is
+// n(n-1)/2 slot-id comparisons at n = kTableProbeBound, a fixed 8,386,560,
+// against the bytes/8-bounded pairwise walk it replaces.
+static const int32_t kTableProbeBound = 4096;
+static const int32_t kTableProbeSlots = 8192;
+static const int32_t kTableProbeShift = 51;   // 64 - 13, and 2^13 is kTableProbeSlots
 
 // TableOpen reads the form byte and the trailer, in that order, and hands back
 // the ROOT BODY. It answers one of three verdicts, because five zero counters
@@ -886,6 +895,11 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     uint64_t hi = uint64_t( tail[4] ) | uint64_t( tail[5] ) << 8 | uint64_t( tail[6] ) << 16 | uint64_t( tail[7] ) << 24;
     uint64_t count = lo | ( hi << 32 );
     if ( count > (uint64_t) ( bytes / 8 ) ) { return TableOpenDamaged; }
+    // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that claims
+    // more than kTableProbeBound entries is malformed for the whole wire, even
+    // where the buffer would hold them, so the distinctness walk below stays
+    // bounded no matter how large the file is.
+    if ( count > (uint64_t) kTableProbeBound ) { return TableOpenDamaged; }
     const int64_t span = (int64_t) count * 8 + 8;
     if ( span + 1 > bytes ) { return TableOpenDamaged; }
     table.entries = buffer + bytes - span;
@@ -896,42 +910,27 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     // at (docs/SPEC-TABLES.md §3).
     //
     // The check is READ SIDE, so it is unconditional: it never compiles out
-    // under NDEBUG and it never softens (§3.4). The two arms below answer
-    // TableOpenDamaged on exactly the same tables and TableOpenOk on exactly
-    // the same tables — the entry count picks WHICH walk finds a repeat and
-    // nothing else.
+    // under NDEBUG and it never softens (§3.4). It is one PROBE over a stack
+    // array of kTableProbeSlots slots — the same Fibonacci multiply
+    // TableIds::bucket_of interns with, taken at the top thirteen bits, then
+    // linear probing — and there is no pairwise arm left to fall back to: the
+    // entry count is capped at kTableProbeBound above, so the probe always
+    // completes and the walk is bounded for every table a reader accepts.
+    // Which slots are taken rides in a separate OCCUPANCY BITMAP rather than
+    // in an empty-slot sentinel, because AN ENTRY IS fnv1a64( name ) AND
+    // NOTHING ELSE (§3): a hash of 0 is an ordinary id, 0xFFFFFFFFFFFFFFFF is
+    // the node table's, and there is no 64-bit value the wire holds back to
+    // mean "no id" — reference 0 is a POSITION and never an entry.
     //
-    // Up to kTableProbeBound entries the walk is a PROBE over a stack array of
-    // kTableProbeSlots slots: the same Fibonacci multiply TableIds::bucket_of
-    // interns with, taken at the top eight bits, then linear probing. Which
-    // slots are taken rides in a separate OCCUPANCY BITMAP rather than in an
-    // empty-slot sentinel, because AN ENTRY IS fnv1a64( name ) AND NOTHING
-    // ELSE (§3): a hash of 0 is an ordinary id, 0xFFFFFFFFFFFFFFFF is the node
-    // table's, and there is no 64-bit value the wire holds back to mean "no
-    // id" — reference 0 is a POSITION and never an entry. Above the bound the
-    // pairwise walk runs unchanged, and no table is ever charged for both.
-    //
-    // THE IDS ARE THE WRITER'S, SO THE WORST CASE IS THE ATTACKER'S, and it is
-    // worth stating plainly. The multiply is invertible, so a hostile writer
-    // can land every entry of a table in one bucket; the probe has no seed and
-    // cannot be steered away from that. The naive "bound x slots" ceiling is
-    // not the true one, because a linear-probe cluster can be no longer than
-    // the entries already standing in it, so the nth insert probes at most n
-    // slots and the whole probe costs at most n(n+1)/2 = 8,256 SLOT
-    // COMPARISONS at n = 128, against the pairwise walk's n(n-1)/2 = 8,128.
-    // The probe therefore does NOT beat the pairwise walk on comparison count
-    // in the worst case, and no choice of bound would make it: against chosen
-    // ids no fixed hash can. What it beats, at every count and in the worst
-    // case exactly as much as in the best, is how often the check touches the
-    // WIRE. TableIdTable::at() decodes eight bytes a call, and the probe makes
-    // EXACTLY n of them where the pairwise walk makes n(n-1)/2 inner decodes
-    // beside n-1 outer ones: 128 against 8,255 at n = 128. The comparisons
-    // that remain are u64 loads out of one stack array. That is the trade.
-    // The bound sits at 128 in 256 slots, not higher, for two reasons that are
-    // not the comparison count: the worst case a hostile table can force stays
-    // bounded at 8,256 rather than 32,896, and the slots are 2 KB of stack
-    // rather than 4 KB. Every table this schema writes is far under it.
-    if ( table.count > 1 && table.count <= (int64_t) kTableProbeBound )
+    // THE IDS ARE THE WRITER'S, SO THE WORST CASE IS THE ATTACKER'S. The
+    // multiply is invertible, so a hostile writer can land every entry in one
+    // bucket, and a linear-probe cluster can be no longer than the entries
+    // already standing in it: the nth insert probes at most n slots, so the
+    // whole walk costs at most n(n-1)/2 = 8,386,560 SLOT-ID COMPARISONS at
+    // n = kTableProbeBound, a fixed ceiling the count cap holds regardless of
+    // the file's size. Above the bound the table is refused before any entry
+    // is touched at all.
+    if ( table.count > 1 )
     {
         uint64_t seen[ kTableProbeSlots ];
         uint64_t used[ kTableProbeSlots / 64 ];
@@ -951,17 +950,6 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
                 }
                 if ( seen[s] == id ) { return TableOpenDamaged; }
                 s = ( s + 1 ) & uint32_t( kTableProbeSlots - 1 );
-            }
-        }
-    }
-    else
-    {
-        for ( int64_t i = 1; i < table.count; i++ )
-        {
-            const uint64_t id = table.at( uint64_t( i ) + 1 );
-            for ( int64_t j = 0; j < i; j++ )
-            {
-                if ( table.at( uint64_t( j ) + 1 ) == id ) { return TableOpenDamaged; }
             }
         }
     }
@@ -3916,7 +3904,7 @@ struct Script {
 // member initializers (docs/SPEC-TABLES.md)
 struct Selection {
     Cursor start;
-    Cursor end;
+    Cursor stop;
 };
 
 // OriginType: union Origin's tag — None = 0, then each variant in declared order (SPEC §4.8)
@@ -4244,7 +4232,7 @@ inline void ScriptReset( Script & value )
 inline void SelectionReset( Selection & value )
 {
     CursorReset( value.start );
-    CursorReset( value.end );
+    CursorReset( value.stop );
 }
 
 inline void InsertTextReset( InsertText & value )
@@ -5183,12 +5171,12 @@ inline int64_t SelectionMeasureBody( TableIds & ids, const Selection & value )
         else { ids.truncate( mark_start ); } // an all-default nested table elides, and costs no entry
     }
     {
-        const int32_t mark_end = ids.count;
-        const uint64_t ref_end = ids.ref_at( 42, 0xc2f00318f053500aull );
-        const int64_t body_end = CursorMeasureBody( ids, value.end );
-        if ( body_end < 0 ) { return -1; }
-        if ( body_end > 1 ) { bytes += TableLebBytes( ref_end ) + 1 + TableLebBytes( (uint64_t) ( body_end ) ) + ( body_end ); } // end
-        else { ids.truncate( mark_end ); } // an all-default nested table elides, and costs no entry
+        const int32_t mark_stop = ids.count;
+        const uint64_t ref_stop = ids.ref_at( 42, 0xc2f00318f053500aull );
+        const int64_t body_stop = CursorMeasureBody( ids, value.stop );
+        if ( body_stop < 0 ) { return -1; }
+        if ( body_stop > 1 ) { bytes += TableLebBytes( ref_stop ) + 1 + TableLebBytes( (uint64_t) ( body_stop ) ) + ( body_stop ); } // stop
+        else { ids.truncate( mark_stop ); } // an all-default nested table elides, and costs no entry
     }
     return bytes;
 }
@@ -5216,16 +5204,16 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionSaveBody( TableWriter & w, TableIds & ids
         else { ids.truncate( mark_start ); }
     }
     {
-        const int32_t mark_end = ids.count;
-        const uint64_t ref_end = ids.ref_at( 42, 0xc2f00318f053500aull );
-        const int64_t body_end = CursorMeasureBody( ids, value.end );
-        if ( body_end < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_end > 1 ) // all-default nested elides
+        const int32_t mark_stop = ids.count;
+        const uint64_t ref_stop = ids.ref_at( 42, 0xc2f00318f053500aull );
+        const int64_t body_stop = CursorMeasureBody( ids, value.stop );
+        if ( body_stop < 0 ) return false; // storage invariant, refused as measure refuses it
+        if ( body_stop > 1 ) // all-default nested elides
         {
-            w.header( ref_end, 13 ); w.putleb( (uint64_t) body_end ); // end
-            if ( !CursorSaveBody( w, ids, value.end ) ) return false;
+            w.header( ref_stop, 13 ); w.putleb( (uint64_t) body_stop ); // stop
+            if ( !CursorSaveBody( w, ids, value.stop ) ) return false;
         }
-        else { ids.truncate( mark_end ); }
+        else { ids.truncate( mark_stop ); }
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -5291,7 +5279,7 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBody( TableReader & r, Selection & va
                 r.offset += (int64_t) body_len;
                 break;
             }
-            case 0xc2f00318f053500aull: // end
+            case 0xc2f00318f053500aull: // stop
             {
                 if ( kind != 13 )
                 {
@@ -5305,11 +5293,11 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBody( TableReader & r, Selection & va
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
-                    CursorLoadBody( sub, value.end );
+                    CursorLoadBody( sub, value.stop );
                     if ( sub.offset != sub.size )
                     {
                         r.report->malformed = true;
-                        CursorReset( value.end );
+                        CursorReset( value.stop );
                     }
                 }
                 r.offset += (int64_t) body_len;
@@ -5392,12 +5380,12 @@ inline int64_t SelectionMeasureMessageBody( int64_t at, const Selection & value 
         }
     }
     {
-        const int64_t body_end = CursorMeasureMessageBody( at + bits, value.end );
-        if ( body_end < 0 ) { return -1; }
-        if ( body_end > kTableMessageRefBitsHere ) // an all-default nested table elides
+        const int64_t body_stop = CursorMeasureMessageBody( at + bits, value.stop );
+        if ( body_stop < 0 ) { return -1; }
+        if ( body_stop > kTableMessageRefBitsHere ) // an all-default nested table elides
         {
             bits += kTableMessageRefBitsHere;
-            bits += CursorMeasureMessageBody( at + bits, value.end );
+            bits += CursorMeasureMessageBody( at + bits, value.stop );
         }
     }
     bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
@@ -5420,12 +5408,12 @@ inline bool SelectionSaveMessageBody( TableBitWriter & w, const Selection & valu
         }
     }
     {
-        const int64_t body_end = CursorMeasureMessageBody( 0, value.end );
-        if ( body_end < 0 ) { return false; }
-        if ( body_end > kTableMessageRefBitsHere ) // an all-default nested table elides
+        const int64_t body_stop = CursorMeasureMessageBody( 0, value.stop );
+        if ( body_stop < 0 ) { return false; }
+        if ( body_stop > kTableMessageRefBitsHere ) // an all-default nested table elides
         {
             w.put( 17, kTableMessageRefBitsHere );
-            if ( !CursorSaveMessageBody( w, value.end ) ) { return false; }
+            if ( !CursorSaveMessageBody( w, value.stop ) ) { return false; }
         }
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -5467,7 +5455,7 @@ inline bool SelectionLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 if ( !CursorLoadMessageBody( r, vocabulary, report, index_bits, value.start ) ) { return false; }
                 break;
             }
-            case 0xc2f00318f053500aull: // end
+            case 0xc2f00318f053500aull: // stop
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
@@ -5478,7 +5466,7 @@ inline bool SelectionLoadMessageBody( TableBitReader & r, const TableVocabulary 
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
                 }
-                if ( !CursorLoadMessageBody( r, vocabulary, report, index_bits, value.end ) ) { return false; }
+                if ( !CursorLoadMessageBody( r, vocabulary, report, index_bits, value.stop ) ) { return false; }
                 break;
             }
             default:
@@ -14753,7 +14741,7 @@ static_assert( (uint32_t) __builtin_offsetof( Cursor, line ) == 0, "Cursor.line:
 static_assert( (uint32_t) __builtin_offsetof( Cursor, column ) == 4, "Cursor.column: the fixed form's plan lands here" );
 static_assert( sizeof( Selection ) == 16, "Selection: the fixed form's plan is laid out for this size" );
 static_assert( (uint32_t) __builtin_offsetof( Selection, start ) == 0, "Selection.start: the fixed form's plan lands here" );
-static_assert( (uint32_t) __builtin_offsetof( Selection, end ) == 8, "Selection.end: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( Selection, stop ) == 8, "Selection.stop: the fixed form's plan lands here" );
 static_assert( sizeof( InsertText ) == 304, "InsertText: the fixed form's plan is laid out for this size" );
 static_assert( (uint32_t) __builtin_offsetof( InsertText, at ) == 0, "InsertText.at: the fixed form's plan lands here" );
 static_assert( (uint32_t) __builtin_offsetof( InsertText, text ) == 8, "InsertText.text: the fixed form's plan lands here" );
@@ -14860,7 +14848,7 @@ inline void SelectionFixedWriteBody( uint8_t * b, const Selection & value )
 {
     (void) b; (void) value;
     CursorFixedWriteBody( b + 0, value.start );
-    CursorFixedWriteBody( b + 8, value.end );
+    CursorFixedWriteBody( b + 8, value.stop );
 }
 
 // InsertText's stores. The prefill — the hash, then zeros — is memcpy'd first,
@@ -16190,7 +16178,7 @@ constexpr TableFixedDst SelectionFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
 };
@@ -16866,7 +16854,7 @@ constexpr TableFixedDst RemoveTextFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
 };
@@ -17229,7 +17217,7 @@ constexpr TableFixedDst EditFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 4, 0, 0, 0, 0 }, // tally
@@ -18383,7 +18371,7 @@ constexpr TableFixedDst TransactionFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 4, 0, 0, 0, 0 }, // tally
@@ -18428,7 +18416,7 @@ constexpr TableFixedDst TransactionFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 4, 0, 0, 0, 0 }, // tally
@@ -18448,7 +18436,7 @@ constexpr TableFixedDst TransactionFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
 };
@@ -19549,7 +19537,7 @@ constexpr TableFixedDst ToolMessageFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 4, 0, 0, 0, 0 }, // tally
@@ -19594,7 +19582,7 @@ constexpr TableFixedDst ToolMessageFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 4, 0, 0, 0, 0 }, // tally
@@ -19614,7 +19602,7 @@ constexpr TableFixedDst ToolMessageFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 8, 0, 0, 0, 0 }, // ping
@@ -19682,7 +19670,7 @@ constexpr TableFixedDst ToolMessageFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 4, 0, 0, 0, 0 }, // tally
@@ -19727,7 +19715,7 @@ constexpr TableFixedDst ToolMessageFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 4, 0, 0, 0, 0 }, // tally
@@ -19747,7 +19735,7 @@ constexpr TableFixedDst ToolMessageFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // start
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // end
+    { 8, 0, 0, 0, 0 }, // stop
     { 0, 0, 0, 0, 0 }, // line
     { 4, 0, 0, 0, 0 }, // column
     { 8, 0, 0, 0, 0 }, // ping
@@ -22541,7 +22529,7 @@ inline void ScriptCookBody( uint8_t * at, const Script & value, TableByteOrder o
 inline void SelectionCookBody( uint8_t * at, const Selection & value, TableByteOrder order )
 {
     CursorCookBody( at + 0, value.start, order );
-    CursorCookBody( at + 8, value.end, order );
+    CursorCookBody( at + 8, value.stop, order );
 }
 
 inline void InsertTextCookBody( uint8_t * at, const InsertText & value, TableByteOrder order )
@@ -23424,7 +23412,7 @@ static_assert( offsetof( Script, line ) == 72, "Script's field line moved: the b
 static_assert( sizeof( Selection ) == 16, "Selection's sizeof moved: the build version was taken over 16, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Selection ) == 4, "Selection's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Selection, start ) == 0, "Selection's field start moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Selection, end ) == 8, "Selection's field end moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Selection, stop ) == 8, "Selection's field stop moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( sizeof( InsertText ) == 304, "InsertText's sizeof moved: the build version was taken over 304, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( InsertText ) == 4, "InsertText's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( InsertText, at ) == 0, "InsertText's field at moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
@@ -23508,7 +23496,7 @@ inline const TableTypeInfo * SelectionTableType()
 {
     static const TableFieldInfo fields[] = {
         { "start", "start", "Cursor", 0xee5d97ad45ad251full, 13, false, false, false, 0, (uint32_t) offsetof( Selection, start ), (uint32_t) sizeof( Selection::start ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
-        { "end", "end", "Cursor", 0xc2f00318f053500aull, 13, false, false, false, 0, (uint32_t) offsetof( Selection, end ), (uint32_t) sizeof( Selection::end ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
+        { "stop", "stop", "Cursor", 0xc2f00318f053500aull, 13, false, false, false, 0, (uint32_t) offsetof( Selection, stop ), (uint32_t) sizeof( Selection::stop ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL },
     };
     static const TableTypeInfo info = { "Selection", (uint32_t) sizeof( Selection ), 2, fields, +[]( void * p ) { SelectionReset( *(Selection *) p ); }, TableDocNone, 0, NULL };
     return &info;

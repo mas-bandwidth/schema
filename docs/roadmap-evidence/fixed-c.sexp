@@ -20,7 +20,7 @@
 (:id "c/R26" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t02_test.go: TestFixedRoadmapCT02Plans/c/R26") :tested-revision "43be0ff59bf11f227627ea9314829d69471a964f")
 (:id "c/W14" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t02_test.go: TestFixedRoadmapCT02Plans/c/W14") :tested-revision "43be0ff59bf11f227627ea9314829d69471a964f")
 (:id "c/C7" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t06_test.go: TestFixedRoadmapCT06Bounds/c/C7") :tested-revision "7aee80d8d10a2b9b89d4c3a04f0552686057939c")
-(:id "c/R30" :state :unknown :note "finer widens, coarser refuses by name and dropping the triple widens are the LOCK's monotone law held by internal/lockfile/cfloatrange_test.go (a package this card's PATHS do not cover and the ctable gate does not run), and fp-contract off on every leg is a build discipline in make/c.mk, not a value a unit read lands; the in-package test proves only rides-as-the-float and the 'Q' digest step")
+(:id "c/R30" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t14_test.go: TestFixedRoadmapCT14CompressedFloats/c/R30"))
 (:id "c/C9" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t06_test.go: TestFixedRoadmapCT06Bounds/c/C9") :tested-revision "7aee80d8d10a2b9b89d4c3a04f0552686057939c")
 (:id "c/C10" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t06_test.go: TestFixedRoadmapCT06Bounds/c/C10") :tested-revision "7aee80d8d10a2b9b89d4c3a04f0552686057939c")
 (:id "c/R31" :state :done :evidence ("internal/codegen/ctable/fixedroadmap_t16_test.go: TestFixedRoadmapCT16OrdinalLanes/c/R31") :tested-revision "9615ff3c30a429f8fd247820680d7839bfd6cd8c")
