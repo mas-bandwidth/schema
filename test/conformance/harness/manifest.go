@@ -39,6 +39,11 @@ type Instance struct {
 	// GoWireRefusal names a Go wire writer refusal the corpus requires this
 	// instance's Go leg to report instead of emitting bytes.
 	GoWireRefusal string
+	// WireRefusals names, per leg, the refusal the corpus requires that leg's
+	// wire answer to carry instead of bytes (`<lang>-refusal=<name>`): the Go,
+	// C and Lua writers refuse a shared blob when they measure it (SPEC-TABLES
+	// §2.5). WireRefusals["go"] is GoWireRefusal.
+	WireRefusals map[string]string
 }
 
 // Counts is a read report (docs/SPEC-TABLES.md §4), which is the whole
@@ -450,6 +455,19 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 						return nil, fmt.Errorf("%s: duplicate Go wire refusal marker", where)
 					}
 					inst.GoWireRefusal = strings.TrimPrefix(marker, "go-refusal=")
+					if inst.WireRefusals == nil {
+						inst.WireRefusals = map[string]string{}
+					}
+					inst.WireRefusals["go"] = inst.GoWireRefusal
+				case legWireRefusal(marker) != "":
+					leg, name, _ := strings.Cut(marker, "-refusal=")
+					if inst.WireRefusals[leg] != "" {
+						return nil, fmt.Errorf("%s: duplicate %s wire refusal marker", where, strings.ToUpper(leg))
+					}
+					if inst.WireRefusals == nil {
+						inst.WireRefusals = map[string]string{}
+					}
+					inst.WireRefusals[leg] = name
 				default:
 					return nil, fmt.Errorf("%s: %q is not a valid instance marker", where, marker)
 				}
@@ -661,4 +679,22 @@ type Refusal struct {
 	Forgery string
 	Reason  string
 	Kind    string
+}
+
+// legWireRefusal answers the leg a `<lang>-refusal=<name>` instance marker
+// names (any leg but go, whose marker is go-refusal= above), or "" when the
+// marker is not one: a lowercase leg name and a non-empty refusal name. A
+// mistyped leg names no leg's refusal, and that leg's named absence is then
+// red in scoreLeg, so a typo cannot pass.
+func legWireRefusal(marker string) string {
+	leg, name, ok := strings.Cut(marker, "-refusal=")
+	if !ok || name == "" || leg == "" || leg == "go" {
+		return ""
+	}
+	for _, r := range leg {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+			return ""
+		}
+	}
+	return leg
 }
