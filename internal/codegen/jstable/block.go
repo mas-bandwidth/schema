@@ -176,6 +176,11 @@ func (g *blockGen) emit() {
 		g.pf("// Its wire (§3) is unaffected — only this projection is absent, and it is\n")
 		g.pf("// absent by construction rather than by refusal.\n\n")
 	}
+	// a float32 accessor of this module calls the unit's one conversion,
+	// defined in the home (jsF32ReaderSource) and imported here
+	if !g.home && strings.Contains(g.body.String(), jsF32Reader+"(") {
+		g.needHome(jsF32Reader)
+	}
 }
 
 func (g *blockGen) assemble() []byte {
@@ -205,6 +210,7 @@ func (g *blockGen) assemble() []byte {
 	h.WriteString("// so the one alignment fact a consumer can state is where its view starts\n")
 	h.WriteString("// inside its buffer, and that is what Open measures against §19.1's sixty-four.\n\n")
 	if len(g.imports) > 0 {
+		used := jsIdentifiers(g.body.String())
 		bases := make([]string, 0, len(g.imports))
 		for b := range g.imports {
 			bases = append(bases, b)
@@ -216,6 +222,9 @@ func (g *blockGen) assemble() []byte {
 				syms = append(syms, s)
 			}
 			sort.Strings(syms)
+			if syms = liveImports(syms, used); len(syms) == 0 {
+				continue
+			}
 			fmt.Fprintf(&h, "import { %s } from \"./%s.js\";\n", strings.Join(syms, ", "), b)
 		}
 		h.WriteString("\n")
@@ -270,6 +279,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	g.emitBlockRecordDescriptor("", &bl.Projection, bl)
 	g.emitStrideChecks(bl)
 	g.emitBlockOpen(bl)
+	g.emitBlockBuild(bl)
 	g.emitBlockAccessors(bl)
 	g.pf("  return Object.freeze({\n")
 	g.pf("    // The storage a PRODUCER of this block allocates, sized from the declared\n")
@@ -285,7 +295,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 		g.pf("    %sStride: %d, %sMax: %d, %sProjectionOffset: %d,\n",
 			field, a.Stride, field, a.Max, field, a.TripleOffset)
 	}
-	members := []string{"Open", "Layout", "Type: projection"}
+	members := []string{"Open", "OpenReason", "Begin", "Layout", "Type: projection"}
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
 		members = append(members, field+"Count", field+"Pitch", field+"At")
@@ -353,21 +363,23 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.pf("  // BOUNDED BEFORE IT IS ADDED. A forged offset_of near 2^63 must refuse, and\n")
 	g.pf("  // a Number would have lost the low bits of it before the comparison ran.\n")
 	g.pf("  // The C++ and C# sides hold the same shape for the same reason.\n")
-	g.pf("  function Open(bytes) {\n")
-	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
-	g.pf("      throw new TypeError(\"%sBlock.Open takes the block's bytes as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", bl.Table.Name)
-	g.pf("    }\n")
-	g.pf("    if ((bytes.byteOffset %% %d) !== 0) { // the base's alignment\n", ir.BlockAlign)
-	g.pf("      throw new RangeError(\"%sBlock.Open: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and a block's base \" +\n", bl.Table.Name)
-	g.pf("        \"must be a multiple of %d (docs/SPEC-TABLES.md §19.1) — a pooled Node Buffer starts anywhere; copy the bytes \" +\n", ir.BlockAlign)
-	g.pf("        \"into a fresh Uint8Array first: new Uint8Array(bytes)\");\n")
-	g.pf("    }\n")
-	g.pf("    Layout();\n")
-	g.pf("    if (bytes.length < %d) { return null; }\n", bl.Projection.Size)
+	g.pf("  //\n")
+	g.pf("  // THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §19.2, §6.5): openCheck\n")
+	g.pf("  // runs the clauses in the reference's order (C++ and Go BlockOpen:\n")
+	g.pf("  // internal/codegen/gotable/block.go) and answers the FIRST failing one as\n")
+	g.pf("  // the TableRefuseReason value name the reference spells, or the handle\n")
+	g.pf("  // when every clause holds. Open is openCheck with this language's two\n")
+	g.pf("  // spellings of a refusal; OpenReason is its answer as the enum's value\n")
+	g.pf("  // name, \"ok\" for a block that opens — the block-reason surface\n")
+	g.pf("  // (test/conformance/README.md).\n")
+	g.pf("  function openCheck(bytes) {\n")
+	g.pf("    if (bytes.length < %d) { return \"truncated\"; }\n", bl.Projection.Size)
 	g.pf("    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
-	g.pf("    if (view.getBigUint64(0, true) !== TableBlockMagic) { return null; }\n")
-	g.pf("    if (view.getBigUint64(8, true) !== BuildVersion) { return null; }\n")
-	g.pf("    if (view.getBigUint64(16, true) !== TableBlockByteOrder) { return null; }\n")
+	g.pf("    if (view.getBigUint64(0, true) !== TableBlockMagic) {\n")
+	g.pf("      return view.getBigUint64(0, false) === TableBlockMagic ? \"foreign_order\" : \"not_a_cook\";\n")
+	g.pf("    }\n")
+	g.pf("    if (view.getBigUint64(16, true) !== TableBlockByteOrder) { return \"not_a_cook\"; }\n")
+	g.pf("    if (view.getBigUint64(8, true) !== BuildVersion) { return \"wrong_build_version\"; }\n")
 	g.pf("    const extent = BigInt(bytes.length);\n")
 	g.pf("    let used = %dn;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
@@ -380,15 +392,15 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		g.pf("      const offsetOf = view.getBigUint64(%d, true);\n", a.OffsetOfOffset)
 		g.pf("      const count = BigInt(view.getUint32(%d, true));\n", a.CountOffset)
 		g.pf("      const stride = BigInt(view.getUint32(%d, true));\n", a.StrideOffset)
-		g.pf("      if (stride !== %dn) { return null; }\n", a.Stride)
+		g.pf("      if (stride !== %dn) { return \"bad_layout\"; }\n", a.Stride)
 		g.pf("      // past the DECLARED MAXIMUM: Begin refuses this on the producer side\n")
 		g.pf("      // and Open refuses it here, because a consumer that sizes anything by\n")
 		g.pf("      // the maximum would overflow on a count the maximum does not bound\n")
-		g.pf("      if (count > %dn) { return null; }\n", a.Max)
-		g.pf("      if (offsetOf < %dn || (offsetOf %% %dn) !== 0n) { return null; }\n", bl.Projection.Size, alignment)
-		g.pf("      if (offsetOf > extent) { return null; }\n")
+		g.pf("      if (count > %dn) { return \"bad_layout\"; }\n", a.Max)
+		g.pf("      if (offsetOf < %dn || (offsetOf %% %dn) !== 0n) { return \"bad_layout\"; }\n", bl.Projection.Size, alignment)
+		g.pf("      if (offsetOf > extent) { return \"bad_layout\"; }\n")
 		g.pf("      const rows = count * stride; // both bounded above: this cannot carry\n")
-		g.pf("      if (rows > extent - offsetOf) { return null; }\n")
+		g.pf("      if (rows > extent - offsetOf) { return \"bad_layout\"; }\n")
 		g.pf("      const end = offsetOf + rows;\n")
 		g.pf("      if (end > used) { used = end; }\n")
 		g.pf("    }\n")
@@ -398,9 +410,99 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.pf("    // used is already inside the extent, and the padding is paid out of the\n")
 	g.pf("    // slack that is left rather than added and compared after.\n")
 	g.pf("    const padding = (%dn - (used %% %dn)) %% %dn;\n", ir.BlockAlign, ir.BlockAlign, ir.BlockAlign)
-	g.pf("    if (padding > extent - used) { return null; }\n")
+	g.pf("    if (padding > extent - used) { return \"truncated\"; }\n")
 	g.pf("    used += padding;\n")
+	g.pf("    if ((bytes.byteOffset %% %d) !== 0) { return \"unaligned_base\"; } // the base's alignment\n", ir.BlockAlign)
 	g.pf("    return { Bytes: bytes, View: view, Used: Number(used) };\n")
+	g.pf("  }\n\n")
+	g.pf("  function Open(bytes) {\n")
+	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
+	g.pf("      throw new TypeError(\"%sBlock.Open takes the block's bytes as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", bl.Table.Name)
+	g.pf("    }\n")
+	g.pf("    if ((bytes.byteOffset %% %d) !== 0) { // the base's alignment\n", ir.BlockAlign)
+	g.pf("      throw new RangeError(\"%sBlock.Open: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and a block's base \" +\n", bl.Table.Name)
+	g.pf("        \"must be a multiple of %d (docs/SPEC-TABLES.md §19.1) — a pooled Node Buffer starts anywhere; copy the bytes \" +\n", ir.BlockAlign)
+	g.pf("        \"into a fresh Uint8Array first: new Uint8Array(bytes)\");\n")
+	g.pf("    }\n")
+	g.pf("    Layout();\n")
+	g.pf("    const handle = openCheck(bytes);\n")
+	g.pf("    return typeof handle === \"string\" ? null : handle;\n")
+	g.pf("  }\n\n")
+	g.pf("  // OpenReason answers the same check as the enum's value name: no buffer at\n")
+	g.pf("  // all is the reference's null base, unaligned_base, rather than a throw.\n")
+	g.pf("  function OpenReason(bytes) {\n")
+	g.pf("    if (bytes === null || bytes === undefined) { return \"unaligned_base\"; }\n")
+	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
+	g.pf("      throw new TypeError(\"%sBlock.OpenReason takes the block's bytes as a Uint8Array, not \" + typeof bytes);\n", bl.Table.Name)
+	g.pf("    }\n")
+	g.pf("    Layout();\n")
+	g.pf("    const handle = openCheck(bytes);\n")
+	g.pf("    return typeof handle === \"string\" ? handle : \"ok\";\n")
+	g.pf("  }\n\n")
+}
+
+// emitBlockBuild emits §19.1's BUILD side: the prologue and the triples, and
+// NOT ONE OTHER BYTE. That is the whole of the rule that makes this side's
+// bytes the Go builder's bytes (internal/codegen/gotable/blockbuild.go,
+// emitBlockBuild) for the same counts: Go's Begin writes `p.Magic`,
+// `p.BuildVersion`, `p.ByteOrder` and one triple per array, and then advances
+// an offset the same way — the data region of each array starts at the running
+// offset rounded UP to max(§19.1's sixty-four, the row's own alignment), and
+// the used extent is that offset rounded up to sixty-four again. A builder that
+// also cleared the rows would differ from Go's, whose test pins that Begin
+// leaves a caller's bytes untouched; the rows and the padding belong to the
+// caller on both sides.
+//
+// The counts are checked against their declared maxima BEFORE any byte of the
+// extent changes, so a refusal leaves the caller's bytes exactly as they were —
+// §19.1's rule, and the one gotable's own test perturbs a count to prove. The
+// answer is the used extent, or -1 on a refusal; what the CALLER got wrong is a
+// throw, exactly as Open answers it.
+func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
+	name := bl.Table.Name
+	g.pf("  // ---- the block fill path (docs/SPEC-TABLES.md §19.1): begin ----\n")
+	g.pf("  // Begin writes ONLY the prologue and the triples — never a row and never\n")
+	g.pf("  // the padding — so its bytes are the Go builder's for the same counts.\n")
+	g.pf("  // Every count is checked BEFORE any byte of the extent changes, and the\n")
+	g.pf("  // answer is the used extent, (offset+63)&^63, or -1 on a refusal.\n")
+	// A layout with no out-of-line array has no count to read, so its Begin
+	// takes the extent alone (a caller's counts argument is ignored).
+	if len(bl.Arrays) > 0 {
+		g.pf("  function Begin(bytes, counts) {\n")
+	} else {
+		g.pf("  function Begin(bytes) {\n")
+	}
+	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
+	g.pf("      throw new TypeError(\"%sBlock.Begin takes the block's extent as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", name)
+	g.pf("    }\n")
+	g.pf("    if ((bytes.byteOffset %% %d) !== 0) {\n", ir.BlockAlign)
+	g.pf("      throw new RangeError(\"%sBlock.Begin: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and a block's base \" +\n", name)
+	g.pf("        \"must be a multiple of %d (docs/SPEC-TABLES.md §19.1) — copy the bytes into a fresh Uint8Array first\");\n", ir.BlockAlign)
+	g.pf("    }\n")
+	g.pf("    Layout();\n")
+	g.pf("    if (bytes.length < %d) { return -1; } // the storage owns a maximum-sized extent\n", bl.MaxBytes)
+	for _, a := range bl.Arrays {
+		field := ir.GoExportName(a.Field.Name)
+		g.pf("    const n%s = counts && counts.%s !== undefined ? counts.%s : 0;\n", field, field, field)
+		g.pf("    if (!Number.isInteger(n%s) || n%s < 0 || n%s > %d) { return -1; } // past the declared maximum\n", field, field, field, a.Max)
+	}
+	g.pf("    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
+	g.pf("    view.setBigUint64(0, TableBlockMagic, true); // §19.1's prologue\n")
+	g.pf("    view.setBigUint64(8, BuildVersion, true); // §20\n")
+	g.pf("    view.setBigUint64(16, TableBlockByteOrder, true); // §20.3\n")
+	g.pf("    let offset = %d;\n", bl.Projection.Size)
+	for _, a := range bl.Arrays {
+		alignment := int64(ir.BlockAlign)
+		if a.ElemAlign() > alignment {
+			alignment = a.ElemAlign()
+		}
+		g.pf("    offset = Math.floor((offset + %d) / %d) * %d; // the array's own start alignment\n", alignment-1, alignment, alignment)
+		g.pf("    view.setBigUint64(%d, BigInt(offset), true); // offset_of\n", a.OffsetOfOffset)
+		g.pf("    view.setUint32(%d, n%s, true); // count\n", a.CountOffset, ir.GoExportName(a.Field.Name))
+		g.pf("    view.setUint32(%d, %d, true); // stride: this build's constant\n", a.StrideOffset, a.Stride)
+		g.pf("    offset += n%s * %d;\n", ir.GoExportName(a.Field.Name), a.Stride)
+	}
+	g.pf("    return Math.floor((offset + %d) / %d) * %d;\n", ir.BlockAlign-1, ir.BlockAlign, ir.BlockAlign)
 	g.pf("  }\n\n")
 }
 
@@ -691,5 +793,5 @@ export const TableBlockLayout = Object.freeze({
   },
 });
 
-`
+` + jsF32ReaderSource()
 }

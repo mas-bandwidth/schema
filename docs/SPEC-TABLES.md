@@ -1500,8 +1500,9 @@ the whole page:
 - **THE SCOPE IS A TABLE BODY AND A UNION ARM.** A table body's own field
   takes the refusal, and so does a field of a union arm that body carries,
   in every spelling the bound has above. The same array held by a `type` a
-  table closure reaches is not refused: schema#606 ruled it on the WIRE, so
-  its kind `13` body keys the array (THE HAZARD REACHES A `type`, below).
+  table closure reaches is a case of its own with two answers that exclude
+  each other, and it is ruled on schema#606 (THE HAZARD REACHES A `type`,
+  below).
 - **The DIAGNOSTIC names the field, the enum the bound folds from, and the
   fix**, which is `[E]T`, the name-keyed form. Where the bound reaches the
   enum through a constant it names the constant. In arm position `[E]T` is
@@ -1519,21 +1520,19 @@ beside the keyed one leaves the class open for anyone who spells it that way
 and never touches the field again, which no kind number can catch, because
 nothing about the FIELD moved.
 
-**THE HAZARD REACHES A `type` A TABLE HOLDS, AND SCHEMA#606 CLOSES IT ON THE
-WIRE.** A `type` a table reaches rides this wire as a kind `13` body, and a
-variant inserted in the middle lands every later element one slot off in every
-stored file, exactly as it does in the table body's own field. What a `type`
-edit moves is the connect gate and the committed baseline (SPEC.md §3.1, §18),
-and a STORED FILE carries neither: a save written before the insert holds no
-protocol id and no baseline, so nothing in it can report the shift. **THE WIRE
-DECIDES, NOT THE BODY: an enum-extent array rides KEYED, kind `16`, on the
-table wire wherever it is declared.** `[E.Max]T` inside a reached `type` rides
-the same kind `[E]T` rides there, so the closed class §4.1 counts cannot be
-reopened one body away, and the positional spelling stays legal in that `type`
-because the wire closes the class without a non-local refusal. The table body
-and the union arm still REFUSE the positional spelling by name, because there
-the keyed spelling `[E]T` is the form to write and `flags` stays the table's
-one positional vocabulary.
+**THE HAZARD REACHES A `type` A TABLE HOLDS, AND SCHEMA#606 IS THE RULING.**
+A `type` a table reaches rides this wire as a kind `13` body, and a
+positional array inside it rides under kind `14` today (§3), so a variant
+inserted in the middle lands every later element one slot off in every stored
+file, exactly as it does in the table body's own field. What a `type` edit
+moves is the connect gate and the committed baseline (SPEC.md §3.1, §18), and
+a STORED FILE carries neither: a save written before the insert holds no
+protocol id and no baseline, so nothing in it can report the shift. Two
+answers close that and they exclude each other, refusing the shape in every
+`type` a table closure reaches or keying the table wire for an enum-extent
+array wherever it is declared, so this page states the refusal for the table
+body and the union arm and states neither answer for the `type` until the
+ruling lands.
 
 **THE RULE IS ALSO WHAT MAKES `flags` THE ONLY EXCEPTION to the reachability
 rule** (SPEC.md §3.1). Under a projection scoped to what a `type` reaches, an
@@ -1541,8 +1540,8 @@ enum only tables reach leaves the protocol id, so the connect gate stops
 refusing two peers whose variant orders disagree. That is correct for a
 vocabulary read by NAME and wrong for one read by POSITION, and the refusal
 above is what leaves `flags` as the only positional vocabulary a table body
-and a union arm have, with schema#606 keying the reached `type` on the table
-wire, and therefore the only exception the projection needs.
+and a union arm have, with schema#606 closing the `type` under either of its
+answers, and therefore the only exception the projection needs.
 
 **On the TYPE wire the spelling stays legal and positional**, in a `type` no
 table reaches: that body's `[E.Max]T` is a plain array whose extent is the
@@ -1550,8 +1549,7 @@ variant count, its bytes are the packet wire's, every fact of it projects,
 and the connect gate is what covers a variant insert (SPEC.md §3.1). The
 refusal above is the table body's and the union arm's, and it is what §2.2's
 mode derivation already made a per-body question. A `type` a table closure
-reaches keeps the spelling, and its kind `13` body keys the array on the table
-wire (above).
+reaches keeps the spelling until schema#606 rules.
 
 **HELD BY TEST: one diagnostics row a SHAPE, red first.** Each row is a unit
 the checker must refuse, and each is red if the unit compiles or if the
@@ -1585,10 +1583,9 @@ sections rest on this refusal being whole, §4.1's
 count of the silent class and SPEC.md §3.1's one exception to reachability, and
 both stand on the tree as well as on the rule.
 
-**RULING STATUS: the type-held case is closed on schema#606, on the WIRE.** A
-`type` no table reaches keeps the spelling, and a `type` a table reaches keeps
-the spelling too: its kind `13` body keys an enum-extent array rather than
-refusing it, so the closed class cannot be reopened one body away.
+**RULING STATUS: the type-held case is ruled on schema#606.** Until then a
+`type` no table reaches keeps the spelling and a `type` a table reaches is
+not refused.
 
 **A KEY ENUM IS IN THE TABLE CLOSURE'S VOCABULARY**, and the closure's
 rules reach it through the keying field. An enum that a table closure
@@ -1898,7 +1895,11 @@ stated before it is wire, as `[E]*T` does.
 construct.** Payload-free arms are outside that class and ride the packet
 wire in all nine backends (SPEC §4.8). A table-closure union is emitted beside
 the tables, in C++ in the Table header after the tables its arms name and
-never in the packet header, and a `type`
+never in the packet header, and in JavaScript in `<Base>.js` importing each
+`table` arm class its constructor instantiates (`new <Arm>()`) from the unit
+home that defines it (`./<Home>Table.js` when the union is in the unit's
+fixed-form closure, `./<Home>Variable.js` otherwise, and nothing it does not
+construct); a `type`
 body that holds one is refused by name, as is such a union that no table
 reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
 for every union in a block closure. The packet wire's encoding of a general
@@ -5942,9 +5943,9 @@ present slot, two bytes where both are small, and it closes that class. The corp
 generation step, and the negative control — encoding the slots
 positionally — turns the middle-insert test red. **The positional array is
 refused in a table body and a union arm, on the bound's provenance and not
-on its spelling** (§2.4). A `type` the table closure holds rides keyed there
-as every enum-extent array does, on schema#606's ruling (§2.4): its kind `13`
-body carries the array under kind `16`, not the positional kind `14`.
+on its spelling** (§2.4). Whether a `type` the table closure holds can still
+carry the class in on kind `14` under a kind `13` body, or rides keyed there
+as every enum-extent array would, is ruled on schema#606.
 
 **And the two spellings do not decode each other.** A `16` body read as a
 `14`, or the reverse, would take keys for values and values for keys — the
@@ -7792,7 +7793,12 @@ moved when a peer shipped, which is a performance cliff at exactly the moment a
 deployment cannot afford one. **The same loop runs over the same plan whether
 the writer is this build or another**, and the only thing that differs is which
 plan it was handed. There is no strict flag, no fast path, no second reader to
-keep honest against the first, and one row on the board.
+keep honest against the first, and one row on the board. **The one exception is
+per language, listed, and narrow**: a language may read its IDENTITY plan in
+place when that is necessary for performance in an extreme case — see THE
+IN-PLACE IDENTITY READ under THE ONE READER PATH below. Every compiled plan
+keeps the shared path, so this rule's guarantee holds for every peer that is not
+this build.
 
 ---
 
@@ -8293,6 +8299,63 @@ and a layout whose plan does not fit is a refusal by name. **THE PLAN IS
 COMPILED ONLY AFTER THE LAYOUT HAS PASSED EVERY RULE ABOVE**, so no arithmetic
 in this compiler is ever performed on a size or a child count a stranger chose
 and nobody checked.
+
+#### THE IN-PLACE IDENTITY READ: A PER-LANGUAGE EXCEPTION, LISTED
+
+*"update the spec accordingly please. per-language you may choose to do this as
+necessary for performance in extreme cases (js)"* — the project owner,
+2026-10-16, on the ruling above.
+
+**A LANGUAGE MAY GIVE ITS IDENTITY PLAN AN IN-PLACE READ** — the projection
+reads the record's body straight from the file, with no intermediate copy into
+the image — **WHEN THAT IS NECESSARY FOR PERFORMANCE IN AN EXTREME CASE.** The
+identity plan is one `copy` of the whole body, so its image IS the file's
+bytes; the copy is pure cost, and in a language whose word moves are slow it is
+most of the read. The rule has four conditions, and a language that does not
+meet all four does not have the exception:
+
+- **IT IS LISTED HERE**, with why and the measured numbers. A language not on
+  the list has no second reader, and its guard tests refuse one.
+- **ONLY THE IDENTITY PLAN.** Every COMPILED plan — a peer on another layout —
+  keeps the shared path: prefill, the loop over the plan into the image, and
+  the projection from the image. A peer's read costs what it cost before; what
+  moved is the cost of reading this build's own records.
+- **THE RESULTS ARE IDENTICAL.** Over the same bytes, clean and damaged, the
+  in-place read and the shared path answer the same count, the same report
+  (every counter and every refusal), the same values, and values that save back
+  to the same bytes. A test holds the two equal in each listed language.
+- **THE GUARD ALLOWS EXACTLY THE LIST.** The listed language's guard tests allow
+  its one door, of its one shape, only while this line names it, and refuse
+  any other second reader.
+
+The list, one line, read by the guard tests:
+
+```
+in-place identity readers: javascript
+```
+
+**JAVASCRIPT IS THE FIRST.** Why: the image copy in this language is a
+byte-at-a-time or a DataView word walk over the whole body (1236 bytes for the
+paired bench's `FixedTable`), and the projection reads every field again
+through a DataView; there is no `memcpy`-speed move to make the copy free, as
+there is in the compiled legs. Measured on the paired bench's 64 records
+(`bench/results/packet-read-js/RESULT.md`, node v26.7.0, pinned, two interleaved
+sittings, sitting 1 / sitting 2), `bench_fixed_read` best ns/record against the
+same leg's packet read `bench_mixed_read`:
+
+  | host | codec before the change | shared path, same codec | in-place identity | packet read |
+  |---|---|---|---|---|
+  | hetzner2 (Ryzen 9 7950X3D), 2026-10-16 | 833.2 / 844.4 | 736.7 / 751.7 | 338.4 / 348.9 | 346.7 / 353.4 |
+  | hulk (Threadripper 2990WX), 2026-10-16 | 1468.8 / 1475.3 | 1306.1 / 1306.5 | 708.9 / 672.0 | 677.6 / 677.3 |
+
+The in-place read is about half of the shared path on both hosts (the copy is
+the other half); against the packet read it is 1% to 2% faster on hetzner2 and
+level on hulk (one sitting slower, one faster). On the shared path the fixed
+read is about twice its own packet read on both. The JavaScript door is `if (identity)` in
+`<T>FixedLoad`, chosen by `entries === <T>FixedIdentity && holeN === 0`, and it
+projects with `<T>FixedDecode(values[k], srcView, at + 8, stage)`; the guards
+are `internal/codegen/jstable/fixedform_test.go` and the equality test is
+`internal/codegen/jstable/fixedform_inplace_test.go`.
 
 ---
 
@@ -8894,8 +8957,8 @@ on it.**
   from an enum is REFUSED BY NAME in a table body and a union arm** (§2.4,
   §11), so the closed class cannot be reopened by spelling the bound another
   way or folding it through a constant. The same array held by a `type` a
-  table closure reaches rides keyed on the table wire (schema#606), so the
-  class is closed there too, without a refusal. That refusal
+  table closure reaches is ruled on schema#606, by that refusal or by a keyed
+  wire, and the class is closed under either answer. That refusal
   is what leaves `flags` the ONE positional vocabulary a table has, which
   is in turn what makes `flags` the one exception to the reachability rule
   the protocol id is scoped by (SPEC.md §3.1).
@@ -13672,6 +13735,7 @@ in build version (§20.5).
   FixedClamp  FixedClampBody  FixedCheckBody  FixedCheckBodyExact
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
+  FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
   FixedKnown  FixedFloor  FixedLineagePlans
   ```
 
@@ -13696,7 +13760,11 @@ in build version (§20.5).
   BESIDE it rather than instead of it, because a sixty-four-bit constant
   becomes two wherever a per-record compare through a wide integer would be an
   allocation per record. All six are claimed on this list's own rule, like
-  every row above them.
+  every row above them. The JavaScript leg keeps its fixed tables module-private
+  and frozen, and hands each out by a copying accessor — `FixedDstCopy`,
+  `FixedIdentityCopy`, `FixedLayoutCopy`, `FixedPrefillCopy` — so a caller can
+  never edit a plan or an image the reader trusts; those four are claimed on
+  the same rule.
 
   The three after them are §21's, the LINEAGE as static data
   (docs/FIXED-FORM-ALGORITHM.md §5.2): a fixed table reads BACKWARD and never
@@ -14324,9 +14392,8 @@ are these rulings, in the owner's words:
   where the whole spelling projects and the connect gate covers a variant
   insert, and it is REFUSED in a TABLE BODY and a UNION ARM (§2.4), where
   nothing on the wire could report the same insert. `[E]T` is the table form.
-  A `type` a table closure reaches rides keyed on the table wire: schema#606
-  ruled the wire, not the body, so `[E.Max]T` there has the keyed kind `16`
-  and needs no refusal. What the user chooses is still a choice
+  A `type` a table closure reaches is ruled on schema#606. What the user
+  chooses is still a choice
   in the place the choice is safe, and the table body has one spelling
   because a table has one positional vocabulary, `flags`, and that is what
   makes `flags` the only exception the scoped projection needs.
@@ -17736,7 +17803,9 @@ compiled as one directory.
 **These are the §4.1 table's BASELINE column, and its fixtures are the pin**
 (`TestEvolutionTableFrames`): this subsection derives its list from that table
 rather than restating it, and a verdict that moves there and not here is the
-drift the golden exists to catch. **The BLOCK FORM takes no row here at all** (§18.1). A table's layout is a
+drift the golden exists to catch.
+
+**The BLOCK FORM takes no row here at all** (§18.1). A table's layout is a
 same-build contract that a compiler holds (§19.3), so an edit that moves an
 offset, a size or a pitch is a build error on both generated sides before it
 is anything else; a baseline row would only repeat the compiler, and a

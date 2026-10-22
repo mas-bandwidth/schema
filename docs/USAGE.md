@@ -2126,10 +2126,12 @@ An ordinal-indexed array is a positional
 vocabulary, and a table has exactly one of those — `flags` — so the refusal is
 what keeps the closed class closed: you cannot reopen it by spelling the bound
 another way or folding it through a constant. `[E.Max]T` stays legal in
-a `type` no table reaches, where it is a plain array, and in a `type` a table
-reaches the table wire keys it: an enum-extent array rides under the keyed
-kind `16` wherever it is declared, so the closed class is closed one body away
-without a refusal (SPEC-TABLES.md §2.4, §11).
+a `type` no table reaches, where it is a plain array (SPEC-TABLES.md §2.4,
+§11). *Whether a `type` a table reaches keeps the spelling, or the table wire
+keys the array there too, is
+open ([#606](https://github.com/mas-bandwidth/schema/issues/606)), so a
+`type` a table reaches is not refused
+today.*
 
 A key enum counts as part of the table closure: it rides by variant name, so
 colliding variant names are refused for it too, with the diagnostic naming
@@ -4777,8 +4779,10 @@ A cook reads the same way, with one addition: a reference is an eight-byte
 SIGNED SELF-RELATIVE delta, so `At` takes the SLOT's own offset and answers the
 target's — `null` for a null reference. A delta that leaves the region throws a
 `RangeError` naming the cook as corrupt, because a cook is trusted input and
-that is a file `schema cook-check` refuses:
+that is a file `schema cook-check` refuses. This fragment is compiled and run
+against the `tables/pointers` unit by `make tables-js-usage`:
 
+<!-- js-table-usage -->
 ```js
 import { SceneCook, SceneRow, ListNodeRow } from "./GraphCook.js";
 
@@ -4793,6 +4797,7 @@ if (cook !== null) {
   }
 }
 ```
+<!-- /js-table-usage -->
 
 The casing you meet is one rule, the packet emitter's, because a table's
 closure decodes into the classes that emitter wrote: types, functions,

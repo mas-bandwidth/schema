@@ -286,6 +286,12 @@ func (g *cookGen) emit() {
 				emitRecordObject(&g.body, g.unit, name, ml, refs)
 			}
 		}
+		// the unit's one float32 conversion lives in the block home when the
+		// block owns the runtime; a cook-only record that reads a float32
+		// imports it from there
+		if g.blockOwnsRuntime() && strings.Contains(g.body.String(), jsF32Reader+"(") {
+			g.need(blockHome(g.unit, g.blocks)+"Block", jsF32Reader)
+		}
 	}
 	if g.file == nil {
 		return // the runtime home the unit has no file for: nothing declares here
@@ -333,6 +339,7 @@ func (g *cookGen) assemble() []byte {
 	h.WriteString("// throws, naming the fix. A reference that leaves the region throws rather\n")
 	h.WriteString("// than reads: that is a corrupt cook, and the message says so.\n\n")
 	if len(g.imports) > 0 {
+		used := jsIdentifiers(g.body.String())
 		bases := make([]string, 0, len(g.imports))
 		for b := range g.imports {
 			bases = append(bases, b)
@@ -344,6 +351,9 @@ func (g *cookGen) assemble() []byte {
 				syms = append(syms, s)
 			}
 			sort.Strings(syms)
+			if syms = liveImports(syms, used); len(syms) == 0 {
+				continue
+			}
 			fmt.Fprintf(&h, "import { %s } from \"./%s.js\";\n", strings.Join(syms, ", "), b)
 		}
 		h.WriteString("\n")
@@ -449,7 +459,7 @@ func (g *cookGen) emitCookHandle(st *ir.Struct) {
 	g.pf("    RegionAlignment: %d, // the greatest alignof in the region, floor eight\n", align)
 	g.pf("    RootSize: %d,\n", ml.Size)
 	g.pf("    RootAlign: %d,\n", ml.Align)
-	g.pf("    Open, At, Layout, Type: root,\n")
+	g.pf("    Open, OpenReason, At, Layout, Type: root,\n")
 	g.pf("  });\n})();\n\n")
 }
 
@@ -477,40 +487,46 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.pf("  // whose byteOffset is not a multiple of the region's alignment is a\n")
 	g.pf("  // RangeError, because a pooled Node Buffer starts anywhere and the same\n")
 	g.pf("  // bytes copied into a fresh Uint8Array open.\n")
-	g.pf("  function Open(bytes) {\n")
-	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
-	g.pf("      throw new TypeError(\"%sCook.Open takes the cook's bytes as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", st.Name)
-	g.pf("    }\n")
-	g.pf("    Layout();\n")
-	g.pf("    if (bytes.length < %d) { return null; }\n", cookHeaderBytes)
+	g.pf("  //\n")
+	g.pf("  // THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §6.5, §7): openCheck runs\n")
+	g.pf("  // §7's clauses in §7's order and answers the FIRST failing one as the\n")
+	g.pf("  // TableRefuseReason value name the reference leg spells (C++ and Go:\n")
+	g.pf("  // internal/codegen/gotable/refusal.go), or the handle when every clause\n")
+	g.pf("  // holds. Open is openCheck with this language's two spellings of a refusal;\n")
+	g.pf("  // OpenReason is openCheck's answer as the enum's value name, \"ok\" for a cook\n")
+	g.pf("  // that opens — the cook-reason surface (test/conformance/README.md).\n")
+	g.pf("  function openCheck(bytes) {\n")
+	g.pf("    if (bytes.length < %d) { return \"truncated\"; }\n", cookHeaderBytes)
 	g.pf("    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
 	g.pf("    const extent = BigInt(bytes.length);\n\n")
 	g.pf("    // THE MAGIC, before anything else: it is what establishes the byte order\n")
 	g.pf("    // every other header word is written in. A cook of the other order reads\n")
 	g.pf("    // back this constant byte-reversed and refuses HERE, rather than reaching\n")
 	g.pf("    // a fix-up pass this design does not have.\n")
-	g.pf("    if (view.getBigUint64(0, true) !== TableCookMagic) { return null; }\n")
+	g.pf("    if (view.getBigUint64(0, true) !== TableCookMagic) {\n")
+	g.pf("      return view.getBigUint64(0, false) === TableCookMagic ? \"foreign_order\" : \"not_a_cook\";\n")
+	g.pf("    }\n")
 	g.pf("    // and the ORDER WORD does the other job: it RECORDS which order wrote the\n")
 	g.pf("    // file, so a refusal names the order rather than inferring it. A file\n")
 	g.pf("    // whose magic matched and whose order word did not is corrupt, and there\n")
 	g.pf("    // is no reading that recovers it.\n")
-	g.pf("    if (view.getBigUint64(16, true) !== TableCookByteOrder) { return null; }\n")
+	g.pf("    if (view.getBigUint64(16, true) !== TableCookByteOrder) { return \"not_a_cook\"; }\n")
 	g.pf("    // THE BUILD VERSION: under the match-and-point rule a matching id means\n")
 	g.pf("    // Open checks nothing further, so it is the sole guard between this\n")
 	g.pf("    // runtime and a foreign region (§20).\n")
-	g.pf("    if (view.getBigUint64(8, true) !== BuildVersion) { return null; }\n")
+	g.pf("    if (view.getBigUint64(8, true) !== BuildVersion) { return \"wrong_build_version\"; }\n")
 	g.pf("    // THE RESERVED WORDS: a non-zero one means a writer used a form this\n")
 	g.pf("    // build does not understand, and Open refuses rather than ignoring it.\n")
-	g.pf("    if (view.getBigUint64(48, true) !== 0n) { return null; }\n")
-	g.pf("    if (view.getBigUint64(56, true) !== 0n) { return null; }\n\n")
+	g.pf("    if (view.getBigUint64(48, true) !== 0n) { return \"reserved_not_zero\"; }\n")
+	g.pf("    if (view.getBigUint64(56, true) !== 0n) { return \"reserved_not_zero\"; }\n\n")
 	g.pf("    // THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than\n")
 	g.pf("    // only compares against — the data part begins at align_up(64, alignment)\n")
 	g.pf("    // and the base is measured against it — so a word that is not an\n")
 	g.pf("    // alignment rounds nothing and aligns nothing.\n")
 	g.pf("    const alignment = view.getBigUint64(40, true);\n")
-	g.pf("    if (alignment < %dn || alignment > %dn) { return null; }\n", ir.RegionAlignFloor, cookMaxAlign)
-	g.pf("    if ((alignment & (alignment - 1n)) !== 0n) { return null; } // a power of two\n")
-	g.pf("    if ((alignment %% %dn) !== 0n) { return null; }            // and a multiple of the ROOT's own alignof\n\n", ml.Align)
+	g.pf("    if (alignment < %dn || alignment > %dn) { return \"bad_alignment\"; }\n", ir.RegionAlignFloor, cookMaxAlign)
+	g.pf("    if ((alignment & (alignment - 1n)) !== 0n) { return \"bad_alignment\"; } // a power of two\n")
+	g.pf("    if ((alignment %% %dn) !== 0n) { return \"bad_alignment\"; } // and a multiple of the ROOT's own alignof\n\n", ml.Align)
 	g.pf("    // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader\n")
 	g.pf("    // computes is a fact two writers cannot disagree about.\n")
 	g.pf("    const dataOffset = (%dn + alignment - 1n) & ~(alignment - 1n);\n\n", cookHeaderBytes)
@@ -520,26 +536,48 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.pf("    // same refusal. Each term is bounded before it is added.\n")
 	g.pf("    const dataLength = view.getBigUint64(24, true);\n")
 	g.pf("    const attribution = view.getBigUint64(32, true);\n")
-	g.pf("    if (dataLength > extent || attribution > extent - dataLength) { return null; }\n")
-	g.pf("    if (dataOffset > extent - dataLength - attribution) { return null; }\n")
-	g.pf("    if (dataOffset + dataLength + attribution !== extent) { return null; }\n\n")
+	g.pf("    if (dataLength > extent || attribution > extent - dataLength) { return \"truncated\"; }\n")
+	g.pf("    if (dataOffset > extent - dataLength - attribution) { return \"truncated\"; }\n")
+	g.pf("    if (dataOffset + dataLength + attribution !== extent) { return \"truncated\"; }\n\n")
 	g.pf("    // THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they\n")
 	g.pf("    // do not say the region is at least sizeof(root). Without this a forged\n")
 	g.pf("    // short data part describes a root partly outside the file, and a\n")
 	g.pf("    // match-and-point reader would hand back storage the caller never gave it.\n")
-	g.pf("    if (dataLength < %dn) { return null; }\n\n", ml.Size)
+	g.pf("    if (dataLength < %dn) { return \"truncated\"; }\n\n", ml.Size)
 	g.pf("    // THE ALIGNMENT OF THE BASE. The header pads the data part to the region's\n")
 	g.pf("    // alignment, and the alignment divides 64, so the derived data offset\n")
 	g.pf("    // carries the property from the file's base to the region's. A base that\n")
-	g.pf("    // is not aligned is the CALLER's placement, not the file, and throws.\n")
-	g.pf("    if ((BigInt(bytes.byteOffset) %% alignment) !== 0n) {\n")
-	g.pf("      throw new RangeError(\"%sCook.Open: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and this cook's base \" +\n", st.Name)
-	g.pf("        \"must be a multiple of \" + alignment + \" (docs/SPEC-TABLES.md §7.1) — a pooled Node Buffer starts anywhere; copy the bytes \" +\n")
-	g.pf("        \"into a fresh Uint8Array first: new Uint8Array(bytes)\");\n")
-	g.pf("    }\n\n")
+	g.pf("    // is not aligned is the CALLER's placement, not the file: Open throws it,\n")
+	g.pf("    // and OpenReason names it unaligned_base, as the reference does.\n")
+	g.pf("    if ((BigInt(bytes.byteOffset) %% alignment) !== 0n) { return \"unaligned_base\"; }\n\n")
 	g.pf("    // `region` is the DATA part's offset inside the caller's view: the root\n")
 	g.pf("    // sits at region + 0, and every accessor takes an offset in these bytes.\n")
 	g.pf("    return { Bytes: bytes, View: view, Region: Number(dataOffset), Length: Number(dataLength) };\n")
+	g.pf("  }\n\n")
+	g.pf("  function Open(bytes) {\n")
+	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
+	g.pf("      throw new TypeError(\"%sCook.Open takes the cook's bytes as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", st.Name)
+	g.pf("    }\n")
+	g.pf("    Layout();\n")
+	g.pf("    const handle = openCheck(bytes);\n")
+	g.pf("    if (handle === \"unaligned_base\") {\n")
+	g.pf("      const alignment = new DataView(bytes.buffer, bytes.byteOffset, bytes.length).getBigUint64(40, true);\n")
+	g.pf("      throw new RangeError(\"%sCook.Open: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and this cook's base \" +\n", st.Name)
+	g.pf("        \"must be a multiple of \" + alignment + \" (docs/SPEC-TABLES.md §7.1) — a pooled Node Buffer starts anywhere; copy the bytes \" +\n")
+	g.pf("        \"into a fresh Uint8Array first: new Uint8Array(bytes)\");\n")
+	g.pf("    }\n")
+	g.pf("    return typeof handle === \"string\" ? null : handle;\n")
+	g.pf("  }\n\n")
+	g.pf("  // OpenReason answers the same check as the enum's value name: no buffer at\n")
+	g.pf("  // all is the reference's null base, unaligned_base, rather than a throw.\n")
+	g.pf("  function OpenReason(bytes) {\n")
+	g.pf("    if (bytes === null || bytes === undefined) { return \"unaligned_base\"; }\n")
+	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
+	g.pf("      throw new TypeError(\"%sCook.OpenReason takes the cook's bytes as a Uint8Array, not \" + typeof bytes);\n", st.Name)
+	g.pf("    }\n")
+	g.pf("    Layout();\n")
+	g.pf("    const handle = openCheck(bytes);\n")
+	g.pf("    return typeof handle === \"string\" ? handle : \"ok\";\n")
 	g.pf("  }\n\n")
 }
 
@@ -771,5 +809,10 @@ export const TableCookLayout = Object.freeze({
 });
 
 `)
+	if withBuildVersion {
+		// no block form owns the runtime, so the cook home carries the unit's
+		// one float32 conversion its record objects call (jsF32ReaderSource)
+		b.WriteString(jsF32ReaderSource())
+	}
 	return b.String()
 }

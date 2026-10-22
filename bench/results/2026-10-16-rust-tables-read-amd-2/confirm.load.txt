@@ -1,0 +1,13 @@
+03:09:47 start load1=0.74 buildbench=0 above5%:
+03:10:02 round-1 load1=0.79 buildbench=0 above5%:
+03:10:12 round-2 load1=0.83 buildbench=0 above5%:
+03:10:23 round-3 load1=0.85 buildbench=0 above5%:
+03:10:33 round-4 load1=0.88 buildbench=0 above5%:
+03:10:43 round-5 load1=0.90 buildbench=0 above5%:
+03:10:53 round-6 load1=1.23 buildbench=0 above5%:
+03:11:03 round-7 load1=1.20 buildbench=0 above5%:
+03:11:13 round-8 load1=1.25 buildbench=0 above5%:
+03:11:23 round-9 load1=1.28 buildbench=0 above5%:
+03:11:33 round-10 load1=1.24 buildbench=0 above5%:
+03:11:43 round-11 load1=1.20 buildbench=0 above5%:
+03:11:49 end load1=1.18 buildbench=0 above5%:
