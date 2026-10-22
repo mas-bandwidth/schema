@@ -15953,7 +15953,9 @@ conforming parser can read. Held first in Go, in both of its text readers:
 the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
 pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
 `scanStored` and `scanWString`), which refuses with the same `Malformed` and
-the same `Reason`; every other backend keeps its behaviour until its port.
+the same `Reason`. The C walk carries it too (`table_json_scan_unit`; C's report
+has no `Reason` text, so it answers `Malformed`); every other backend keeps its
+behaviour until its port.
 **The refusal comes BEFORE any clamp**: an ill-formed byte at or past a
 field's bound spells no code point, so there is nothing to clamp, and the read
 refuses by name rather than cutting the byte away and counting `clamped`
@@ -16039,7 +16041,9 @@ the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
 pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
 `scanStored` and `scanWString`), which refuses with the same `Malformed` and
 the same `Reason`, so a pack never encodes a wire its own decode calls
-`malformed`; every other backend keeps its behaviour until its port.
+`malformed`. The C walk carries it too (`table_json_scan_text`, and the wide
+scan), answering `Malformed`; every other backend keeps its behaviour until its
+port.
 
 ### 16.4 The key: `json`
 
@@ -17975,14 +17979,16 @@ to compile; the block form's cost is in the header too — a projection struct
 and a wall of asserts per table — so its declarations move out with it.
 
 **The zero-cost gate, and it is a gate rather than a hope** (§2.2): **the
-Table headers are BYTE-IDENTICAL with or without the Block files existing**,
+Table headers are BYTE-IDENTICAL with or without the block form**,
 and the Block files cost nothing unless they are included. It is held in two
 halves, because they answer different questions: the build fails if one symbol
 of the block machinery — a storage type, a `Begin`, an `Open`, a row accessor,
 a layout constant — appears in a Table source, AND every Table source is
-byte-compared against a pin the PRE-BLOCK compiler wrote, so the identity is
-measured against a build that could not emit a Block file at all rather than
-against the emitter's own output. The descriptor
+byte-compared against the SAME build with the block form removed from its
+emitters, so the identity is measured against a build that emitted no Block
+file at all rather than against frozen text. Both arms move together, so the
+comparison survives any legitimate Table-emitter change and goes red when the
+block form leaks into a Table source. The descriptor
 COLUMNS (§8) the block form reads are not machinery and ride in every unit as
 every other column does, because they describe the language.
 
