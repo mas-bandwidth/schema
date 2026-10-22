@@ -250,9 +250,9 @@ struct VariableRetain
 };
 
 #define FIXED( unit_key, ns, type ) \
-    { unit_key, #type, 1, 0, Fixed<ns::type, ns::TableReport>::run<ns::type##Load, ns::type##Measure, ns::type##Save> }
+    { unit_key, #type, 1, 0, Fixed<ns::type, ns::TableReport>::run<ns::type##LoadTolerant, ns::type##Measure, ns::type##Save> }
 #define VARIABLE( unit_key, ns, type ) \
-    { unit_key, #type, 1, 0, Variable<ns::type, ns::TableReport, ns::TableAllocator, ns::TableRefuseReason>::run<ns::type##LoadMeasure, ns::type##Load, ns::type##Measure, ns::type##Save, ns::TableDefaultAllocator> }
+    { unit_key, #type, 1, 0, Variable<ns::type, ns::TableReport, ns::TableAllocator, ns::TableRefuseReason>::run<ns::type##LoadMeasure, ns::type##LoadTolerant, ns::type##Measure, ns::type##Save, ns::TableDefaultAllocator> }
 #define RETAIN( unit_key, ns, type ) \
     { unit_key, #type, 1, 1, VariableRetain<ns::type, ns::TableReport, ns::TableRetain, ns::TableAllocator, ns::TableRefuseReason>::run< \
         ns::type##LoadMeasure, ns::type##LoadRetain, ns::type##MeasureRetain, ns::type##SaveRetain, ns::TableDefaultAllocator> }

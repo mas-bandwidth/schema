@@ -7368,7 +7368,7 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.active = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.active = bool_byte != 0; }
                 break;
             }
             case 0x2281498aa0200e40ull: // speed
@@ -7396,7 +7396,7 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.has_target = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.has_target = bool_byte != 0; }
                 break;
             }
             case 0xb7bc9ac015a25050ull: // target_id
@@ -8910,7 +8910,7 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.active = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.active = bool_byte != 0; }
                 break;
             }
             case 0x2281498aa0200e40ull: // speed
@@ -8938,7 +8938,7 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.has_target = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.has_target = bool_byte != 0; }
                 break;
             }
             case 0xb7bc9ac015a25050ull: // target_id

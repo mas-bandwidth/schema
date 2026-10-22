@@ -418,13 +418,15 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s        }\n", ind)
 		g.pf("%s        %s.offset += (int64_t) %s;\n", ind, rdr, length)
 		g.pf("%s    }\n", ind)
-		// AN ARM'S `L` FRAMES THE INNER UNION WHOLE (docs/SPEC-TABLES.md:3887):
-		// a nested-union arm whose reader stops short of its `L` leaves bytes
-		// inside the arm that no field claims — that arm's own framing damage,
-		// so the union reads None, malformed counts, and the parent reads on
-		// past `L` (:3900-3903). The body arm and the enum arm already check
-		// this (arms.go:284, arms.go:385).
-		g.pf("%s    if ( %s.offset != %s.size ) { %s = %s; r.report->malformed = true; }\n", ind, rdr, rdr, tag, none)
+		// BYTES LEFT INSIDE A NESTED-UNION ARM'S `L` ARE STEPPED OVER, as the
+		// Go oracle steps over them (internal/tablewire arm(), the
+		// UnionOf case) and as every other port does: the parent reads on
+		// past `L` and nothing counts. docs/SPEC-TABLES.md §3's arm table
+		// states the `L` a WRITER spells for a union arm, and its damage
+		// sentence names a fixed-width arm whose `L` is not its width and a
+		// length-shaped arm damaged inside its `L`; a whole inner union with
+		// bytes after it is neither, so the reader takes the oracle's reading
+		// until the spec rules on it (an open question for the owner).
 		g.pf("%s}\n", ind)
 	default:
 		g.emitTableReadScalarFrom(f, kind, value, ind, rdr,
