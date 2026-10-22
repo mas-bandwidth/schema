@@ -81,8 +81,17 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			return nil, fmt.Errorf("schema file serialize.schema collides with the serialize.js runtime shim the build wiring writes beside the generated modules; rename the file")
 		}
 	}
+	runtimeHome := ir.TableJSRuntimeHome(u)
+	fixedUnions := ir.TableFixedJSUnions(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, home: f.Base == home, imports: map[string]map[string]bool{}}
+		g := &gen{
+			unit:        u,
+			file:        f,
+			home:        f.Base == home,
+			runtimeHome: runtimeHome,
+			fixedUnions: fixedUnions,
+			imports:     map[string]map[string]bool{},
+		}
 		g.emitFile(g.home)
 		out[f.Base+".js"] = g.assemble()
 	}
@@ -95,9 +104,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 }
 
 type gen struct {
-	unit *ir.Unit
-	file *ir.File
-	home bool // this file carries ProtocolId and the unit-level target notes
+	unit        *ir.Unit
+	file        *ir.File
+	home        bool // this file carries ProtocolId and the unit-level target notes
+	runtimeHome string
+	fixedUnions map[string]bool
+	tableHome   string
 
 	body strings.Builder
 
@@ -130,6 +142,12 @@ func (g *gen) pf(format string, args ...any) {
 // addRef records that the current file references the declaration decl (by
 // the exported symbols listed), importing it when it lives in another file.
 func (g *gen) addRef(decl string, symbols ...string) {
+	if g.unit.Tables[decl] != nil {
+		if g.tableHome != "" {
+			g.addRefBase(g.tableHome, symbols...)
+		}
+		return
+	}
 	base, ok := g.unit.DeclFile[decl]
 	if !ok {
 		return
@@ -179,6 +197,7 @@ func (g *gen) assemble() []byte {
 	}
 	h.WriteString("\n")
 	if len(g.imports) > 0 {
+		used := jsIdentifiers(g.body.String())
 		bases := make([]string, 0, len(g.imports))
 		for b := range g.imports {
 			bases = append(bases, b)
@@ -190,6 +209,9 @@ func (g *gen) assemble() []byte {
 				syms = append(syms, s)
 			}
 			sort.Strings(syms)
+			if syms = liveImports(syms, used); len(syms) == 0 {
+				continue
+			}
 			fmt.Fprintf(&h, "import { %s } from \"./%s.js\";\n", strings.Join(syms, ", "), b)
 		}
 		h.WriteString("\n")
@@ -238,16 +260,13 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 			g.emitUnionFunctions(d)
 		}
 	}
-	// A UNION WHOSE ARM IS A UNION is a table-closure construct
-	// (docs/SPEC-TABLES.md §2.6): ir keeps it out of Unions and the decls, so the
-	// loop above never sees it, yet a fixed table reads its value into this
-	// class and its arms answer to the OUTER tag through the guard chain
-	// (docs/FIXED-FORM-ALGORITHM.md §4.1). It has no packet wire, so it takes the
-	// class and the tag object and none of the packet functions.
+	// A TABLE-CLOSURE UNION has no packet wire (docs/SPEC-TABLES.md §2.6), so it
+	// assembles beside the decl stream and the loop above never meets it — but
+	// the fixed form's table module imports its storage class and tag object for
+	// a by-value union field, so the class is emitted here after every `type`
+	// whose class an arm may name.
 	for _, un := range g.file.TableUnions {
-		if unionHasUnionArm(un) {
-			g.emitUnion(un)
-		}
+		g.emitTableUnion(un)
 	}
 }
 
@@ -497,35 +516,60 @@ func isClassRef(ref ir.Decl) bool {
 // object, then the class — the tag beside one pre-allocated arm per variant;
 // nothing allocates per value after construction.
 func (g *gen) emitUnion(d *ir.Union) {
-	members := make([]string, len(d.Variants))
-	docs := make([]string, len(d.Variants))
-	for i, v := range d.Variants {
+	g.emitTagUnion(d.Name, d.Doc, d.Variants)
+}
+
+// emitTableUnion emits a TABLE-CLOSURE union (docs/SPEC-TABLES.md §2.6): the
+// same tag object and storage class a packet union gets, but no Write/Read
+// pair — a union whose arm is a direct text, bytes, array or scalar field has
+// no packet wire, so the fixed form's table module imports the class and the
+// tag and nothing else. The class is what a fixed table's by-value union field
+// lands in (`new <Name>()`), and its arms are the arm's own field-line storage.
+func (g *gen) emitTableUnion(d *ir.Union) {
+	g.emitTagUnion(d.Name, d.Doc, d.Variants)
+}
+
+// emitTagUnion emits the <Name>Type tag object and the <Name> storage class —
+// the part the packet union and the table-closure union share.
+func (g *gen) emitTagUnion(name, doc string, variants []ir.UnionVariant) {
+	prevTableHome := g.tableHome
+	if g.fixedUnions[name] {
+		g.tableHome = g.runtimeHome + "Table"
+	} else {
+		g.tableHome = g.runtimeHome + "Variable"
+	}
+	defer func() { g.tableHome = prevTableHome }()
+
+	members := make([]string, len(variants))
+	docs := make([]string, len(variants))
+	for i, v := range variants {
 		members[i] = ir.GoExportName(v.Name)
 		docs[i] = v.Doc
 	}
-	g.emitTagEnum(d.Name+"Type", members, docs,
-		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", d.Name))
+	g.emitTagEnum(name+"Type", members, docs,
+		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", name))
 
-	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
-	g.pf("// %s — at most one of the arms; Type says which. Construction is the empty\n", d.Name)
+	g.pf("%s", ir.DocComment(doc, "", "//"))
+	g.pf("// %s — at most one of the arms; Type says which. Construction is the empty\n", name)
 	g.pf("// union (None). Every read initializes the selected arm as a fresh value\n")
 	g.pf("// before decoding it; unselected arms keep what they last held — the\n")
 	g.pf("// reused-storage discipline. Consumers read the selected arm only.\n")
-	g.pf("export class %s {\n", d.Name)
+	g.pf("export class %s {\n", name)
 	g.pf("  constructor() {\n")
-	g.pf("    this.Type = %sType.None;\n", d.Name)
-	for _, v := range d.Variants {
+	g.pf("    this.Type = %sType.None;\n", name)
+	for _, v := range variants {
 		if v.Void() {
 			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
 		}
-		// A TABLE UNION's arm may itself be a union (docs/SPEC-TABLES.md §2.6),
-		// whose class name is the arm field's type and not the packet arm's.
-		armType := v.Type
-		if armType == "" && v.F != nil {
-			armType = v.F.Type.Name
+		if v.Ref == nil {
+			// A DIRECT ARM (docs/SPEC-TABLES.md §2.6): an arm whose payload is
+			// its own field type — a scalar, text, bytes or array — carries its
+			// storage inline, exactly as a field of the same type would.
+			g.emitStorageField(v.F)
+			continue
 		}
-		g.addRef(armType, armType)
-		g.pf("    this.%s = new %s();\n", ir.GoExportName(v.Name), armType)
+		g.addRef(v.Type, v.Type)
+		g.pf("    this.%s = new %s();\n", ir.GoExportName(v.Name), v.Type)
 	}
 	g.pf("  }\n}\n\n")
 }
@@ -751,16 +795,66 @@ func formatFloat32(v float64) string {
 	return s
 }
 
-// unionHasUnionArm is whether one of a union's arms is itself a union: the
-// table union whose class this module emits beside the decls (§2.6, §4.1).
-func unionHasUnionArm(un *ir.Union) bool {
-	for _, v := range un.Variants {
-		if v.F == nil {
-			continue
-		}
-		if _, ok := v.F.Type.Ref.(*ir.Union); ok {
-			return true
+// liveImports keeps, of the symbols a module was about to import from one
+// sibling, only those its body names: an import nothing reads is an unused
+// binding (eslint no-unused-vars) and says nothing to a reader. The scan is
+// over identifier tokens, so a name that appears only in a comment is kept
+// rather than dropped: a miss here is a lint finding, never a broken module.
+func liveImports(syms []string, used map[string]bool) []string {
+	live := syms[:0:0]
+	for _, s := range syms {
+		if used[s] {
+			live = append(live, s)
 		}
 	}
-	return false
+	return live
+}
+
+// jsIdentifiers is the set of identifier tokens in a module body's code, the
+// lookup liveImports keeps an import by. Comments and string literals are
+// skipped, so a type named only in a string (a codec's "Envelope") or a
+// comment does not keep an import alive. A misread here can only drop an
+// import the code names, which the lint's no-undef then names.
+func jsIdentifiers(body string) map[string]bool {
+	set := map[string]bool{}
+	isWord := func(c byte, first bool) bool {
+		return c == '_' || c == '$' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (!first && c >= '0' && c <= '9')
+	}
+	for i := 0; i < len(body); {
+		c := body[i]
+		switch {
+		case c == '/' && i+1 < len(body) && body[i+1] == '/':
+			for i < len(body) && body[i] != '\n' {
+				i++
+			}
+		case c == '/' && i+1 < len(body) && body[i+1] == '*':
+			end := strings.Index(body[i+2:], "*/")
+			if end < 0 {
+				return set
+			}
+			i += end + 4
+		case c == '"' || c == '\'' || c == '`':
+			i++
+			for i < len(body) && body[i] != c {
+				if body[i] == '\\' {
+					i++
+				}
+				i++
+			}
+			i++
+		case isWord(c, true):
+			start := i
+			for i < len(body) && isWord(body[i], false) {
+				i++
+			}
+			set[body[start:i]] = true
+		case c >= '0' && c <= '9':
+			for i < len(body) && isWord(body[i], false) {
+				i++
+			}
+		default:
+			i++
+		}
+	}
+	return set
 }

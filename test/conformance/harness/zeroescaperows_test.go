@@ -116,7 +116,7 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := &result{}
-	scoreAnswer("go", "json-hostile", dir, valueWant, "", r)
+	scoreAnswer("go", "json-hostile", dir, valueWant, Instance{}, r)
 	if len(r.failures) == 0 {
 		t.Fatalf("%s: Go answering %q scored green against %q; it must score red", value.Name, baseCounters, valueWant.want)
 	}

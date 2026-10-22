@@ -137,22 +137,30 @@ fixed table Wide
 }
 
 // TestAcceleratorsEmitted: what a table unit gets — the two accelerators
-// (block and cook), their shared runtimes, records, and the build version.
-// No wire surface (*_table.rs or table_runtime.rs) is emitted.
+// (block and cook), their shared runtimes, records, and the build version —
+// and, because a FIXED TABLE rides the variable form too (docs/SPEC-TABLES.md
+// §2.2, §3), the form-1 wire surface: the variable runtime and the unit's
+// <base>_table.rs codec with the fixed root's load and save. valueOnly holds
+// only a fixed table, so this is the unit that once emitted no wire at all
+// (vt/fixed-class/rust).
 func TestAcceleratorsEmitted(t *testing.T) {
 	out := generate(t, valueOnly)
-	for _, unwanted := range []string{"probe_table.rs", "table_runtime.rs"} {
-		if _, ok := out[unwanted]; ok {
-			t.Errorf("emitted dead wire surface %s", unwanted)
-		}
+	if _, ok := out["table_runtime.rs"]; ok {
+		t.Errorf("emitted the retired wire runtime table_runtime.rs")
 	}
 	for _, want := range []string{
 		"probe_cook.rs", "probe_block.rs", "probe_records.rs",
 		"block_runtime.rs", BuildVersionModule + ".rs",
 		CookRuntimeModule + ".rs",
+		VariableRuntimeModule + ".rs", "probe_table.rs",
 	} {
 		if _, ok := out[want]; !ok {
 			t.Errorf("a table unit emitted no %s", want)
+		}
+	}
+	for _, verb := range []string{"config_load(", "config_save(", "config_to_json_checked(", "config_from_json("} {
+		if !strings.Contains(string(out["probe_table.rs"]), "pub fn "+verb) {
+			t.Errorf("the fixed root Config has no form-1 %s in probe_table.rs", strings.TrimSuffix(verb, "("))
 		}
 	}
 }
@@ -295,11 +303,10 @@ fixed table Holder
 }
 `
 
-// unionWithTextArm is the arm shape that is STILL refused, and it is refused
-// by §3.4's own layout law rather than by this port: an arm whose storage needs
-// a COMPANION beside it — a string's used length, a counted array's count — is
-// two pieces that must occupy one slot of the overlay, which the C++ reference
-// spells as an unnamed struct and no port lays out yet.
+// unionWithTextArm is a union with a direct companioned arm (`text string(8)`):
+// its Row twin emits `NoteRowArmText` (`value: [u8; 9]` beside `value_length:
+// i32`) inside `NoteRowArms`, and the fixed form carries it (SPEC-TABLES §2.6,
+// §3.4).
 const unionWithTextArm = `package probe
 
 union Note
@@ -405,17 +412,17 @@ func TestFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
 		t.Error("the scatter took a mutable reference into the overlay; a WRITE of a union field needs none")
 	}
 
-	// THE ARM SHAPE THAT IS STILL REFUSED, and it is §3.4's refusal: an arm
-	// whose storage needs a companion beside it.
+	// A COMPANIONED UNION ARM RIDES IN THE TWIN AND THE FIXED FORM (§2.6, §3.4):
+	// its companion pieces sit in `NoteRowArmText` inside `NoteRowArms`.
 	text := generate(t, unionWithTextArm)
-	if _, ok := text["probe_fixed.rs"]; ok {
-		t.Error("a union with a TEXT arm got a fixed form; the overlay's companion pieces are unnamed here")
+	if _, ok := text["probe_fixed.rs"]; !ok {
+		t.Error("a union with a TEXT arm got no fixed form")
 	}
-	if _, ok := text[FixedRuntimeModule+".rs"]; ok {
-		t.Error("the fixed runtime rode into a unit with no fixed root at all")
+	if _, ok := text[FixedRuntimeModule+".rs"]; !ok {
+		t.Error("the fixed runtime did not ride beside a union with a TEXT arm")
 	}
-	if strings.Contains(string(text["probe_records.rs"]), "pub union NoteRowArms") {
-		t.Error("a union with a companioned arm got a twin; its arm is two pieces in one slot")
+	if !strings.Contains(string(text["probe_records.rs"]), "pub union NoteRowArms") {
+		t.Error("a union with a companioned arm got no twin")
 	}
 
 	// A POINTER makes its holder VARIABLE (§2.2), which §3.4 refuses outright:

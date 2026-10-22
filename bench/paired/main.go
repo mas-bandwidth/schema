@@ -396,8 +396,8 @@ func abs(p string) string {
 }
 
 // pairedSchemas are the paired unit's two schema files, generated as ONE unit
-// for every leg (and a second time, beside the lineage's lock, for the C plan
-// lane: table.go, buildCPlan).
+// for every leg (and a second time, beside the lineage's lock, for the plan
+// lanes: table.go, buildCPlan, buildCSPlan and buildRustPlan).
 var pairedSchemas = []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}
 
 func binary(wire, lang string) string {
@@ -613,29 +613,11 @@ func corpusPaths(wire string) map[string]string {
 	return paths
 }
 
+// corpusIDOf is §1.6's id over named files. One hash, defined once
+// (fnvCorpusID), so the read arm's id, the plan-read board's and an ordinary
+// pass's cannot drift apart in how they are computed.
 func corpusIDOf(paths map[string]string) (string, error) {
-	keys := []string{}
-	for k := range paths {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	h := uint64(0xcbf29ce484222325)
-	feed := func(b []byte) {
-		for _, v := range b {
-			h ^= uint64(v)
-			h *= 0x100000001b3
-		}
-	}
-	for _, k := range keys {
-		b, e := os.ReadFile(paths[k])
-		if e != nil {
-			return "", e
-		}
-		feed([]byte(k))
-		feed([]byte{0})
-		feed(b)
-	}
-	return fmt.Sprintf("%016x", h), nil
+	return fnvCorpusID(paths, os.ReadFile)
 }
 
 // cppBuildFlags is the ONE C++ flag line: the table leg, the packet leg and
@@ -872,6 +854,12 @@ func generateAndBuild(langs []string) error {
 			if e = os.WriteFile(binary("table", lang), built, 0755); e != nil {
 				return e
 			}
+			// AND THE PLAN LANE'S BINARY (BENCH-STANDARD.md §1.10): the same
+			// runner source, against the unit generated beside the lineage's
+			// lock (table.go, buildRustPlan). -mode plan-read runs this one.
+			if e := buildRustPlan(schema, cargoEnv); e != nil {
+				return e
+			}
 		case "java":
 			// The generated unit and the runner, compiled beside each other
 			// into one classpath under the same javac flags the Java legs
@@ -924,6 +912,22 @@ func generateAndBuild(langs []string) error {
 	}
 	if b, e := capture(command{args: []string{"elixir", "--version"}, env: []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}}); e == nil {
 		info.Tools["elixir"] = strings.TrimSpace(string(b))
+	}
+	if contains(langs, "rust") {
+		// The plan lane's binary, its generated sources and its corpus are
+		// recorded like every other artifact, so a regeneration or a re-pin
+		// after the build refuses the sitting (verifyRecordedArtifacts).
+		modules, e := rustPlanModules()
+		if e != nil {
+			return e
+		}
+		for _, p := range append(modules, binary("plan", "rust")) {
+			h, e := hashFile(p)
+			if e != nil {
+				return e
+			}
+			info.Binaries[p] = h
+		}
 	}
 	for _, lang := range langs {
 		modules, e := generatedModules(lang)
@@ -1077,6 +1081,12 @@ func generateAndBuild(langs []string) error {
 	}
 	info.Binaries["build/paired/corpus"] = hash
 	corpora := []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema", "testdata/wire/bench_mixed.bin", "bench/corpus/variants/bench_mixed.variants.bin", "bench/paired/corpus/bench_table.bin", "bench/paired/corpus/bench_table.variants.bin", "bench/paired/corpus/bench_table.lengths", "bench/paired/corpus/bench_fixed.bin", "bench/paired/corpus/bench_fixed.layout"}
+	if contains(langs, "rust") {
+		corpora = append(corpora, rustLineageDir+"/VOLD_bench_lineage.schema")
+		for _, name := range lineageCorpusFiles {
+			corpora = append(corpora, rustLineageDir+"/"+name)
+		}
+	}
 	if contains(langs, "c") && cPlanRefusal(fileExists) == "" {
 		// the C plan lane's lineage, lock included: a re-pin after the build
 		// refuses the sitting like any other corpus change
@@ -1580,7 +1590,7 @@ func renderReport(dir string, writeOutputs bool) error {
 	return nil
 }
 func main() {
-	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, plan-read (the read arm, C++, C, C# or Elixir), run confirmation, or render")
+	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, plan-read (the read arm for C++, C, C# or Elixir; the plan-read board for Rust), run confirmation, or render")
 	readArm := flag.Bool("read-arm", false, "run the read arm (-mode plan-read)")
 	out := flag.String("out", "", "new results directory (or existing directory for render)")
 	langsFlag := flag.String("langs", "cpp,c,go,cs", "comma-separated required build/gate languages")
@@ -1662,16 +1672,17 @@ func main() {
 			fail(errors.New("table mode discovers its languages from bench/tables; -langs does not apply"))
 		}
 	}
-	if *mode == "fast" || *mode == "table" {
+	if *mode == "fast" || *mode == "table" || *mode == "plan-read" {
 		if e := fast.validate(); e != nil {
 			fail(e)
 		}
 	}
-	if *mode == "plan-read" && strings.TrimSpace(*receipt) == "" {
+	if *mode == "plan-read" && !planReadBoardSitting(langs) && strings.TrimSpace(*receipt) == "" {
 		fail(errors.New("plan-read requires -quiet-window with the operator’s READY/START receipt or reference"))
 	}
 	// plan-read measures a build, like fast and table: it never builds, so the
-	// compile can never land inside its quiet window.
+	// compile can never land inside its quiet window. On the plan-read board
+	// (the Rust leg) -rounds (1..7) is its round count (§2.1's seven).
 	if !*reuse && *mode != "fast" && *mode != "table" && *mode != "plan-read" {
 		if e := generateAndBuild(langs); e != nil {
 			fail(e)
@@ -1694,6 +1705,12 @@ func main() {
 		return
 	}
 	if *mode == "plan-read" {
+		if planReadBoardSitting(langs) {
+			if e := planReadPass(langs, *out, info, fast, *rounds, *lane); e != nil {
+				fail(e)
+			}
+			return
+		}
 		if e := planReadPassOn(langs, *out, *rounds, info, *receipt, *lane); e != nil {
 			fail(e)
 		}
