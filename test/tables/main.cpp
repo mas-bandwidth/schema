@@ -7349,8 +7349,8 @@ static void test_absent_optional_is_not_descended()
         root->always = b.Alloc<tblg1::Node>();
         tblg1::NodeAt( b.arena, root->always )->value = 1;
         root->optional_present = false;                 // ABSENT
-        root->optional.node = b.Alloc<tblg1::Node>();   // set, inside the absent table
-        tblg1::NodeAt( b.arena, root->optional.node )->value = 2;
+        root->optional.vertex = b.Alloc<tblg1::Node>();   // set, inside the absent table
+        tblg1::NodeAt( b.arena, root->optional.vertex )->value = 2;
         one = tblg1::GuardedSave( b, wire, sizeof( wire ) );
         CHECK( one > 0 );
         CHECK( tblg1::GuardedMeasure( b ) == one );
@@ -7366,7 +7366,7 @@ static void test_absent_optional_is_not_descended()
     if ( loaded != NULL )
     {
         CHECK( tblg1::NodeAt( loaded->always ) != NULL && tblg1::NodeAt( loaded->always )->value == 1 );
-        CHECK( tblg1::NodeAt( loaded->optional.node ) == NULL ); // never written, never read
+        CHECK( tblg1::NodeAt( loaded->optional.vertex ) == NULL ); // never written, never read
     }
 
     // THE CONTROL: the same value with the optional PRESENT
@@ -7379,8 +7379,8 @@ static void test_absent_optional_is_not_descended()
         root->always = b.Alloc<tblg1::Node>();
         tblg1::NodeAt( b.arena, root->always )->value = 1;
         root->optional_present = true;
-        root->optional.node = b.Alloc<tblg1::Node>();
-        tblg1::NodeAt( b.arena, root->optional.node )->value = 2;
+        root->optional.vertex = b.Alloc<tblg1::Node>();
+        tblg1::NodeAt( b.arena, root->optional.vertex )->value = 2;
         two = tblg1::GuardedSave( b, two_wire, sizeof( two_wire ) );
         CHECK( two > 0 );
         pin_table_golden( "optional_present_edge", two_wire, two );
@@ -7393,7 +7393,7 @@ static void test_absent_optional_is_not_descended()
     CHECK( all != NULL && !control.malformed );
     if ( all != NULL )
     {
-        CHECK( tblg1::NodeAt( all->optional.node ) != NULL && tblg1::NodeAt( all->optional.node )->value == 2 );
+        CHECK( tblg1::NodeAt( all->optional.vertex ) != NULL && tblg1::NodeAt( all->optional.vertex )->value == 2 );
     }
     CHECK( control_need > need );
 }
