@@ -119,15 +119,13 @@ func TestWireFuzzZeroSeedRosterRefusesByName(t *testing.T) {
 	}
 }
 
-// fakeClock is an injected clock for the driver-reply deadline, starting at
-// 1000.0 as a timed test does, and firing the After channel when the test
-// signals the deadline passed. It never uses real time.
+// fakeClock is an injected timer for the driver-reply deadline, firing the
+// After channel when the test signals the deadline passed. It never uses real
+// time.
 type fakeClock struct {
-	now     time.Time
 	afterCh chan time.Time
 }
 
-func (f *fakeClock) Now() time.Time                       { return f.now }
 func (f *fakeClock) After(time.Duration) <-chan time.Time { return f.afterCh }
 
 // TestWireFuzzDriverStall pins the hang's cause at the layer this card fixed
@@ -152,7 +150,7 @@ func TestWireFuzzDriverStall(t *testing.T) {
 		defer stdinW.Close()
 		_, _ = io.Copy(io.Discard, stdinR)
 	}()
-	clk := &fakeClock{now: time.Unix(1000, 0), afterCh: make(chan time.Time)}
+	clk := &fakeClock{afterCh: make(chan time.Time)}
 	result := make(chan error, 1)
 	go func() {
 		_, err := leg.receiveWithDeadline(clk)

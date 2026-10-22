@@ -132,16 +132,30 @@ func main() {
 		if exp == "" {
 			exp = filepath.Join(*corpus, "expected")
 		}
-		// --work names the run's own scratch directory, so two cards runs side
-		// by side under make -j never score each other's answers; unset, it is
-		// build/cards-conformance as it always was
-		cardsWork := "build/cards-conformance"
+		// ONE WORK DIRECTORY PER RUN: a negative control and the clean run it
+		// sits beside run at once under make -j, and a shared directory let
+		// one run's answers stand in for the other's. --work names it; unset,
+		// the run makes its own under build/ and removes it after.
+		cardsWork, madeWork := "", false
 		fs.Visit(func(f *flag.Flag) {
 			if f.Name == "work" {
 				cardsWork = *work
 			}
 		})
+		if cardsWork == "" {
+			if err := os.MkdirAll("build", 0o755); err != nil {
+				fatalf("%v", err)
+			}
+			tmp, err := os.MkdirTemp("build", "cards-conformance-")
+			if err != nil {
+				fatalf("%v", err)
+			}
+			cardsWork, madeWork = tmp, true
+		}
 		ok, err := runCards(os.Stdout, *corpus, exp, *driver, *require, cardsWork, nil)
+		if madeWork {
+			_ = os.RemoveAll(cardsWork)
+		}
 		if err != nil {
 			fatalf("%v", err)
 		}

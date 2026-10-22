@@ -8504,7 +8504,6 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                     }
                                     sub.offset += (int64_t) arm_inner_len;
                                 }
-                                if ( sub.offset != sub.size ) { value.outer.type = OuterType::None; r.report->malformed = true; }
                             }
                             break;
                         }
@@ -12202,7 +12201,6 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                     }
                                     sub.offset += (int64_t) arm_inner_len;
                                 }
-                                if ( sub.offset != sub.size ) { value.outer.type = OuterType::None; r.report->malformed = true; }
                             }
                             break;
                         }
