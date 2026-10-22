@@ -470,7 +470,7 @@ final class AllocPaths {
             case "graph_shared.bin": return 1472;   // floor 1448 (1280 before 9f280fb4d)
             case "blob_small.bin": return 1536;     // floor 1512 (1376 before 9f280fb4d)
             case "keyed_config.bin": return 4736; // floors 4000..4640 across pinned-JDK launches
-            case "arms_gate.bin": return 768;     // floors 672..740.5 on the pinned JDK (536 before 9f280fb4d)
+            case "arms_gate.bin": return 832;     // floors 672..784 on the pinned JDK: 784 on ubuntu-latest, run 39778538132 (536 before 9f280fb4d)
             default: return 0;
         }
     }
