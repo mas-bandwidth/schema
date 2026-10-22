@@ -159,7 +159,7 @@ func t12UnionFieldArms(t *testing.T) {
 
 union Pick
 {
-    num   int32
+    amount int32
     label string(8)
     blob  bytes(4)
     cells [..3]int32
@@ -175,7 +175,7 @@ fixed table Root
 
 union Pick
 {
-    num   int32
+    amount int32
     label string(8)
     blob  bytes(4)
     cells [..3]int32
@@ -197,7 +197,7 @@ fixed table Root
 
 	uNew := unitFrom(t, newSchema)
 	body := strings.ReplaceAll(`  v0 = %Probe.Root{
-    pick: %Probe.Pick{type: Probe.PickType.num(), num: -2_147_483_648},
+    pick: %Probe.Pick{type: Probe.PickType.amount(), amount: -2_147_483_648},
     tail: 1
   }
   v1 = %Probe.Root{
@@ -253,7 +253,7 @@ func t12PayloadFreeArms(t *testing.T) {
 
 union Pick
 {
-    num  int32
+    amount int32
     ping
 }
 
@@ -268,7 +268,7 @@ fixed table Root
     tail: 5
   }
   v1 = %Probe.Root{
-    pick: %Probe.Pick{type: Probe.PickType.num(), num: 2_147_483_647},
+    pick: %Probe.Pick{type: Probe.PickType.amount(), amount: 2_147_483_647},
     tail: 6
   }
   saved = @@SAVE@@([v0, v1])

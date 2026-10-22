@@ -367,7 +367,7 @@ union Reach arm 2 text id=fa04f4ef1995407e payload=*string record=no field=yes k
 union Reach arm 3 plain id=fd4d194e1652b207 payload=int32 record=no field=yes kind=4 bound=0 overlay=0 tags=[] doc=
 union Slot file=Ring.schema max=2 bits=8 variants=3 tags=[] doc=
 union Slot arm 0 None id=0000000000000000 payload=- record=no field=no kind=- bound=- overlay=- tags=[] doc=
-union Slot arm 1 node id=3c2f1bbad18642ad payload=*Node record=no field=yes kind=17 bound=0 overlay=0 tags=[] doc=
+union Slot arm 1 vertex id=3c2f1bbad18642ad payload=*Node record=no field=yes kind=17 bound=0 overlay=0 tags=[] doc=
 union Slot arm 2 plain id=fd4d194e1652b207 payload=int32 record=no field=yes kind=4 bound=0 overlay=0 tags=[] doc=
 union Slots file=Ring.schema max=2 bits=8 variants=3 tags=[] doc=
 union Slots arm 0 None id=0000000000000000 payload=- record=no field=no kind=- bound=- overlay=- tags=[] doc=
@@ -375,13 +375,13 @@ union Slots arm 1 many id=1f6459a2cea1fc02 payload=[..2]*Node record=no field=ye
 union Slots arm 2 plain id=fd4d194e1652b207 payload=int32 record=no field=yes kind=4 bound=0 overlay=0 tags=[] doc=
 table Chain file=Carry.schema fields=2 tags=[] doc=
 table Chain field links json=links type=Carry id=5cc201a9f1b8274e optional=false tags=[] doc=
-table Chain field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Chain field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Gate file=Gate.schema fields=2 tags=[] doc=
 table Gate field reach json=reach type=Reach id=891da1f305deb858 optional=false tags=[] doc=
-table Gate field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Gate field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Hand file=Carry.schema fields=2 tags=[] doc=
 table Hand field entries json=entries type=Carry id=c5b2a72c0845a253 optional=false tags=[] doc=
-table Hand field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Hand field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Holder file=Carry.schema fields=2 tags=[] doc=
 table Holder field carry json=carry type=Carry id=afcd9a3b099f8ef0 optional=false tags=[] doc=
 table Holder field tail json=tail type=int32 id=d94c56ef0798d723 optional=false tags=[] doc=
@@ -396,13 +396,13 @@ table Only file=Gate.schema fields=1 tags=[] doc=
 table Only field w json=w type=int32 id=af63ea4c86020456 optional=false tags=[] doc=
 table Rack file=Ring.schema fields=2 tags=[] doc=
 table Rack field items json=items type=Slots id=3e7884bf4f412c6f optional=false tags=[] doc=
-table Rack field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Rack field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Ring file=Ring.schema fields=2 tags=[] doc=
 table Ring field items json=items type=Slot id=3e7884bf4f412c6f optional=false tags=[] doc=
-table Ring field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Ring field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Tray file=Ring.schema fields=2 tags=[] doc=
 table Tray field entries json=entries type=Slots id=c5b2a72c0845a253 optional=false tags=[] doc=
-table Tray field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Tray field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Twig file=Nest.schema fields=1 tags=[] doc=
 table Twig field inner json=inner type=Inner id=2d4c068f5f889287 optional=false tags=[] doc=
 `
@@ -420,26 +420,26 @@ union Force arm 1 squad id=d5c2bb95d63e6331 payload=Squad record=yes field=no ki
 union Force arm 2 plain id=fd4d194e1652b207 payload=int32 record=no field=yes kind=4 bound=0 overlay=0 tags=[] doc=
 table Cells file=Cells.schema fields=2 tags=[] doc=
 table Cells field rows json=rows type=map[string(8)]int32 id=a3a7061ff10a8138 optional=false tags=[] doc=
-table Cells field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Cells field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Chunks file=Chunks.schema fields=2 tags=[] doc=
 table Chunks field blobs json=blobs type=map[int32]*bytes id=14e2eaab9cde925b optional=false tags=[] doc=
-table Chunks field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Chunks field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Crews file=Crews.schema fields=2 tags=[] doc=
 table Crews field members json=members type=map[uint32]*Item id=79d594675e391090 optional=false tags=[] doc=
-table Crews field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Crews field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Depth file=Depth.schema fields=5 tags=[] doc=
 table Depth field one json=one type=Squad id=1a08aa1921ca5caf optional=false tags=[] doc=
 table Depth field many json=many type=Squad id=1f6459a2cea1fc02 optional=false tags=[] doc=
 table Depth field keyed json=keyed type=Squad id=70551ff29550f15d optional=false tags=[] doc=
 table Depth field arm json=arm type=Force id=e756c0190570ccb5 optional=false tags=[] doc=
-table Depth field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Depth field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Docs file=Docs.schema fields=2 tags=[] doc=
 table Docs field pages json=pages type=map[string(8)]*string id=ab01daa76a48769f optional=false tags=[] doc=
-table Docs field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Docs field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table EdgeRow file=Rows.schema fields=3 tags=[] doc=
 table EdgeRow field names json=names type=map[string(300)]Item id=afb728fff268814f optional=false tags=[] doc=
 table EdgeRow field ids json=ids type=map[uint64]Item id=2b7dea192bb7be29 optional=false tags=[] doc=
-table EdgeRow field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table EdgeRow field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Fleet file=Fleet.schema fields=5 tags=[] doc=
 table Fleet field ships json=ships type=map[string(32)]ShipConfig id=294a5c4913e1ad44 optional=false tags=[] doc=
 table Fleet field by_id json=by_id type=map[uint32]*ShipConfig id=7b024c46e98d3404 optional=false tags=[] doc=
@@ -450,33 +450,33 @@ table Item file=Fleet.schema fields=1 tags=[] doc=
 table Item field count json=count type=int32 id=b1e5e28e4479a274 optional=false tags=[] doc=
 table Pairs file=Pairs.schema fields=2 tags=[] doc=
 table Pairs field slots json=slots type=map[uint32]*Item id=e68c2e6bb1ee5646 optional=false tags=[] doc=
-table Pairs field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Pairs field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Row file=Rows.schema fields=2 tags=[] doc=
 table Row field entries json=entries type=map[string(8)]Item id=c5b2a72c0845a253 optional=false tags=[] doc=
-table Row field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Row field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Runs file=Runs.schema fields=2 tags=[] doc=
 table Runs field spans json=spans type=map[uint16]Item id=437dfc8ab2566816 optional=false tags=[] doc=
-table Runs field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Runs field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table ShipConfig file=Fleet.schema fields=2 tags=[] doc=
 table ShipConfig field name json=name type=string id=c4bcadba8e631b86 optional=false tags=[] doc=
 table ShipConfig field health json=health type=int32 id=7f69d4b5288ba9cf optional=false tags=[] doc=
 table Slots file=Slots.schema fields=2 tags=[] doc=
 table Slots field seats json=seats type=map[int32]int32 id=7f6548303072b061 optional=false tags=[] doc=
-table Slots field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Slots field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Spans file=Spans.schema fields=2 tags=[] doc=
 table Spans field tracks json=tracks type=map[uint8]Item id=755332609c470fbd optional=false tags=[] doc=
-table Spans field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Spans field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Squad file=Depth.schema fields=1 tags=[] doc=
 table Squad field roster json=roster type=map[uint8]Item id=1c84390d304f4f42 optional=false tags=[] doc=
 table Text file=Text.schema fields=4 tags=[] doc=
 table Text field names json=names type=map[string(8)]string id=afb728fff268814f optional=false tags=[] doc=
 table Text field wide json=wide type=map[uint16]wstring id=a633f1f655715cca optional=false tags=[] doc=
 table Text field blobs json=blobs type=map[int32]bytes id=14e2eaab9cde925b optional=false tags=[] doc=
-table Text field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Text field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Trails file=Trails.schema fields=2 tags=[] doc=
 table Trails field steps json=steps type=map[uint32]*Item id=124250ad5a5b6d14 optional=false tags=[] doc=
-table Trails field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table Trails field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table WideRow file=Rows.schema fields=2 tags=[] doc=
 table WideRow field entries json=entries type=map[uint32]Item id=c5b2a72c0845a253 optional=false tags=[] doc=
-table WideRow field after json=after type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
+table WideRow field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 `
