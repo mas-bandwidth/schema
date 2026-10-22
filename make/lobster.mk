@@ -43,10 +43,12 @@ toolchain-lobster:
 # test-lobster runs both Lobster packages: the type surface
 # (internal/codegen/lobster) and the table surface
 # (internal/codegen/lobstertable), each under the pinned toolchain. The
-# fixed-form tests read the shared byte-oracle corpus, so it is built first.
+# fixed-form tests read the shared byte-oracle corpus, so it is built first,
+# and SCHEMA_REQUIRE_CORPUS=1 makes a missing oracle a failure rather than the
+# skip a bare `go test` takes.
 .PHONY: test-lobster update-goldens-lobster
 test-lobster: toolchain-lobster build/fixedform-corpus/.stamp
-	go test -count=1 -timeout 600s ./internal/codegen/lobster/... ./internal/codegen/lobstertable/...
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobster/... ./internal/codegen/lobstertable/...
 update-goldens-lobster: ;
 
 # build/conformance-lobster is the manifest's units generated for lobster, one

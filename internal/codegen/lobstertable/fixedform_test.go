@@ -35,10 +35,7 @@ var fixedCorpus = []struct{ file, schema, root string }{
 // bytes and Save writes them. docs/SPEC-TABLES.md §3.4.
 func TestLobsterFixedFormAgreesWithTheByteOracle(t *testing.T) {
 	t.Parallel()
-	corpus := filepath.Join(root, "build", "fixedform-corpus")
-	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
-		t.Fatalf("the fixed-form corpus is absent: run make tables-fixedform-corpus (%v)", err)
-	}
+	corpus := fixedCorpusDir(t)
 	compared := 0
 	for _, c := range fixedCorpus {
 		want, err := os.ReadFile(filepath.Join(corpus, c.file))
@@ -59,10 +56,10 @@ func TestLobsterFixedFormAgreesWithTheByteOracle(t *testing.T) {
 // planted input. docs/FIXED-FORM-ALGORITHM.md §7 item 3.
 func TestLobsterFixedFormNegativeControl(t *testing.T) {
 	t.Parallel()
-	corpus := filepath.Join(root, "build", "fixedform-corpus")
+	corpus := fixedCorpusDir(t)
 	want, err := os.ReadFile(filepath.Join(corpus, "fx1.bin"))
 	if err != nil {
-		t.Fatalf("the fixed-form corpus is absent: run make tables-fixedform-corpus (%v)", err)
+		t.Fatalf("fx1.bin: %v", err)
 	}
 	corrupt := append([]byte(nil), want...)
 	layout := int(corrupt[16]) | int(corrupt[17])<<8 | int(corrupt[18])<<16 | int(corrupt[19])<<24
@@ -72,6 +69,25 @@ func TestLobsterFixedFormNegativeControl(t *testing.T) {
 	if string(got) == string(want) {
 		t.Fatalf("the negative control did not go red: a flipped offset %d still saved the oracle's bytes", at)
 	}
+}
+
+// fixedCorpusDir is the C++ reference's byte oracle, built by
+// `make tables-fixedform-corpus`. It follows every other leg's corpus-reading
+// suite (cpptable's fixedversioning_test.go, and the contract ci-fast.yml's
+// go-test-touched names): a bare `go test` on a tree that never built the
+// oracle has nothing to read and says so, and under SCHEMA_REQUIRE_CORPUS —
+// which `make test-lobster` sets after building the corpus — a missing oracle
+// is a failure, never a quiet skip.
+func fixedCorpusDir(t *testing.T) string {
+	t.Helper()
+	corpus := filepath.Join(root, "build", "fixedform-corpus")
+	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", corpus, err)
+		}
+		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+	}
+	return corpus
 }
 
 // fixedRun generates one schema for Lobster, runs a main that loads the
