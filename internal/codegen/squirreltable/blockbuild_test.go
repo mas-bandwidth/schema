@@ -281,7 +281,7 @@ func TestSquirrelBlockBuilderMatchesTheCorpus(t *testing.T) {
 		if got[table] != fmt.Sprintf("%x", want) {
 			first := -1
 			shown := min(len(got[table])/2, len(want))
-			for i := 0; i < shown; i++ {
+			for i := range shown {
 				if got[table][2*i:2*i+2] != fmt.Sprintf("%02x", want[i]) {
 					first = i
 					break
