@@ -383,17 +383,15 @@ type wireLeg struct {
 	known  []bool
 }
 
-// wireClock is the clock the driver-reply deadline reads: real time in the
-// harness, an injected clock in a test (a timed test starts its clock at
-// 1000.0).
+// wireClock is the timer the driver-reply deadline waits on: real time in the
+// harness, an injected one in a test. The deadline only ever waits, so the
+// interface is After alone; nothing here reads the time of day.
 type wireClock interface {
-	Now() time.Time
 	After(d time.Duration) <-chan time.Time
 }
 
 type realClock struct{}
 
-func (realClock) Now() time.Time                         { return time.Now() }
 func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
 // replyDeadline turns a stalled driver into a named failure instead of a hang

@@ -4907,7 +4907,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.moving = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.moving = bool_byte != 0; }
                 break;
             }
             case 0x7674cfd19b9031caull: // firing
@@ -4921,7 +4921,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.firing = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.firing = bool_byte != 0; }
                 break;
             }
             default:
@@ -6444,7 +6444,7 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.crit = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.crit = bool_byte != 0; }
                 break;
             }
             default:
@@ -8935,7 +8935,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.has_extra = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.has_extra = bool_byte != 0; }
                 break;
             }
             case 0xfd29ee12a979cb69ull: // extra

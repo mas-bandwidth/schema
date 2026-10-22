@@ -7702,7 +7702,7 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigLoadBody( TableReader & r, WeaponConfig 
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.homing = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.homing = bool_byte != 0; }
                 break;
             }
             case 0x36c1c83b51f24394ull: // effect
@@ -9930,7 +9930,7 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBody( TableReader & r, ProfileConfi
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.has_loadout = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.has_loadout = bool_byte != 0; }
                 break;
             }
             case 0x5759ce7586bbb5a3ull: // loadout
@@ -15420,7 +15420,7 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigLoadBodyRetain( TableReader & r, WeaponC
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.homing = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.homing = bool_byte != 0; }
                 break;
             }
             case 0x36c1c83b51f24394ull: // effect
@@ -17050,7 +17050,7 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBodyRetain( TableReader & r, Profil
                     break;
                 }
                 if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-                value.has_loadout = r.get8() != 0;
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.has_loadout = bool_byte != 0; }
                 break;
             }
             case 0x5759ce7586bbb5a3ull: // loadout

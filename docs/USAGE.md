@@ -1020,9 +1020,11 @@ pays for its check by storing only the live extent, as
 [FIXED-FORM-ALGORITHM.md](FIXED-FORM-ALGORITHM.md) §3.1 always said it must: a
 counted array's `count` elements and a text field's `length` bytes, onto the
 zeroed template, never all `Max` and never the slack of the caller's storage.
-The write path is benchmarked before and after (`TestGoTableWriterSpeedTable`,
-a functional test: `NOVA_WRITER_BENCH=1`) under a speed gate: a save may not
-get slower than the before-run's spread. The packet writers and the other
+The write path is measured before and after through the one sanctioned
+benchmark, the tables bench ([bench/tables](../bench/tables/README.md), the
+variable form) and the paired pass ([bench/paired](../bench/paired/README.md),
+the fixed form), under a speed gate: a save may not get slower than the
+before-run's spread. The packet writers and the other
 languages' table writers are unchanged by this paragraph.
 A variable-wire `bool` a Go table writer saves always holds `0` or `1`; a read
 that meets any other byte on the variable wire keeps the value (`true`), counts
@@ -1711,6 +1713,20 @@ overload; Java at `--release 17` has no second spelling, since `MemorySegment`
 is not stable before 22. The `long length` on both `open`s is the seat that
 overload takes when the floor moves — it is a named follow-on, not an oversight,
 and until it lands a cook past 2 GiB has no Java reader.
+
+**A Java blob is one OBJECT, and two slots holding the same one are refused.**
+§2.5 owns a blob by one slot, and the Java writers (`save`, the measure by
+save, `toJson`) number a `*string` or `*bytes` slot by the identity of the
+`String` or `byte[]` it holds. Two slots holding the same object are a shared
+blob, `blob_shared`, and the write answers `null`. That INCLUDES two slots set
+from one string literal, because Java interns literals: `v.note = "x";
+v.head.caption = "x";` is one `String` and is refused. Give each slot its own
+object (`new String(...)`, or a fresh `byte[]`) when two slots must hold equal
+bytes; equal contents in distinct objects are two records and save. The
+tolerant `load` of a wire whose two slots name one blob keeps the one object
+in both, so a later save of that value refuses as the oracle does
+(`TestJavaWritersRefuseASharedBlob`). Letting caller-built equal strings
+save by value is the roadmap row `java/per-value-shared-marker`.
 
 **Elixir carries the two accelerators and no table wire.** A unit that
 declares tables grows `<Base>Block.ex` and `<Base>Cook.ex` beside its packet
@@ -4699,6 +4715,26 @@ if (!ok) {
     // malformed or hostile — drop it
 }
 ```
+
+The Java accelerators read the same two forms, as members of the generated
+`<Table>Block` and `<Root>Cook` types. This fragment is compiled and run
+against the `tables/pointers` unit by `make tables-java-usage`:
+
+<!-- java-table-usage -->
+```java
+// open the cook another build wrote; a null is a foreign build, a corrupt
+// file or the other byte order — fall back to the tolerant wire
+SceneCook cook = SceneCook.open(bytes, 0, bytes.length);
+if (cook != null) {
+    int root = cook.root();
+    int at = cook.at(SceneRow.headSlot(root), ListNodeRow.size);
+    while (at >= 0) {            // -1 is null AND a delta whose record does not fit
+        use(ListNodeRow.value(cook.data(), at));
+        at = cook.at(ListNodeRow.nextSlot(at), ListNodeRow.size);
+    }
+}
+```
+<!-- /java-table-usage -->
 
 **Rust** — no `unsafe` in the generated PACKET code, `Result`-returning read
 and write. **The generated TABLE WIRE is safe Rust too**: `<name>_measure`,

@@ -233,6 +233,7 @@ Existing targets:
 - `make cards-example` — stage and run the separate `cardsexample` customer module.
 - `make cards-corpus-check` — pin the current declaration and require every SHIPPED case.
 - `make cards-corpus-create` / `make cards-fuzz-fixture` — author fixtures under an explicit flag.
+- `make cards-java-test cards-java-conformance` — the Java facade (`tables/cards/java`): the same shared corpus load/save/render/parse round-trips, and the upgrade, edit, task-hash and view walks, pinned by conformance and the negative controls.
 - `make cards-conformance-go` — run the Go reference driver across all nine conformance surfaces (`load,save,render,parse,bounds,upgrade,edit,taskhash,view`).
 - `make cards-conformance-all` — run `cards-conformance-go` and every language leg's `cards-<lang>-conformance` target (`c`, `cpp`, `cs`, `rust`, `java`, `js`, `dart`, `elixir`) with `--require-surfaces load,save,render,parse,bounds,upgrade,edit,taskhash,view`, printing the 81-line leg-by-surface matrix.
 

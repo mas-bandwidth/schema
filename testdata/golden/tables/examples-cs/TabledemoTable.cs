@@ -4972,7 +4972,9 @@ namespace Tabledemo
                     raw = r.Fixed(width);
                     if (kind >= 2 && kind <= 5 && width < 8)
                     { int shift = 64 - width * 8; raw = unchecked((ulong)((long)(raw << shift) >> shift)); }
-                    if (kind == 1) { raw = raw == 0 ? 0ul : 1ul; }
+                    // A BOOL BYTE THAT IS NEITHER 0 NOR 1 reads true and is MALFORMED on the
+                    // tolerant read (docs/SPEC-TABLES.md §6.5), as the Go oracle counts it.
+                    if (kind == 1) { if (raw > 1) { report.Malformed = true; } raw = raw == 0 ? 0ul : 1ul; }
                     if (kind == 10 && f.Kind == 11) { raw = WidenFloat((uint)raw); }
                     if (f.ClampRaw != null) { raw = f.ClampRaw(raw, report); }
                 }

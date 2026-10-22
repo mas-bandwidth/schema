@@ -84,14 +84,15 @@ test: cards-cpp-test cards-cpp-conformance cards-cpp-conformance-negative-contro
 # path that retains a little per call, or allocates where that pass does not
 # go, is invisible to it. test/tables/soak_main.cpp loops the C soak's corpus
 # (every pinned root, exact and evolution seams) through Load, the indexed and
-# iterated reads, Measure, Save and the text form for SOAK_SECONDS of real
-# time, reads the allocation COUNT at every sample and fails the moment it
-# moves after the warmup pass. The count is operator new's, plus the C
+# iterated reads, Measure, Save and the text form for
+# TABLES_CPP_SOAK_ITERATIONS passes (a count, not a clock), reads the
+# allocation COUNT at every sample and fails the moment it moves after the
+# warmup pass. The count is operator new's, plus the C
 # allocator's own entry points on glibc, where the generated schema_allocate
 # (calloc) would otherwise go unseen. Live-heap drift is reported and gated
-# beside it as the weaker instrument. Real time makes it a FUNCTIONAL test:
-# the hour is the release act (`make tables-cpp-soak SOAK_SECONDS=3600`, the
-# Makefile's default), and `make test` runs 20 seconds of it below.
+# beside it as the weaker instrument. It is a FUNCTIONAL test: the release
+# act is the Makefile's default count (about an hour), and `make test` runs
+# 4096 passes of it.
 TABLES_CPP_SOAK_SRCS = test/tables/soak_main.cpp \
 	build/tables-generated/examples/TablesTable.cpp build/tables-generated/examples/KeyedTable.cpp \
 	build/tables-generated/examples/NestedTable.cpp build/tables-generated/examples/WideTable.cpp \
@@ -104,7 +105,7 @@ build/schema_test_tables_soak: build/tables-generated/.stamp test/tables/soak_ma
 
 .PHONY: tables-cpp-soak
 tables-cpp-soak: build/schema_test_tables_soak
-	./build/schema_test_tables_soak $(SOAK_SECONDS)
+	./build/schema_test_tables_soak $(TABLES_CPP_SOAK_ITERATIONS)
 
 # THE SOAK'S NEGATIVE CONTROL. The live-heap sample is a LEAK instrument: a
 # matched new/delete pair inside the loop returns it to where it was before it
@@ -118,7 +119,7 @@ tables-cpp-soak-negative-control: build/tables-generated/.stamp test/tables/soak
 	@rm -rf build/cpp-soak-sabotage && mkdir -p build/cpp-soak-sabotage
 	$(CXX) $(TABLES_CXXFLAGS) -O2 -DSCHEMA_SOAK_PLANT_PAIR $(TABLES_INCLUDES) $(TABLES_CPP_SOAK_SRCS) \
 		-o build/cpp-soak-sabotage/soak
-	@if ./build/cpp-soak-sabotage/soak 2 > build/cpp-soak-sabotage/log 2>&1; then \
+	@if ./build/cpp-soak-sabotage/soak 4096 > build/cpp-soak-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a new/delete pair per iteration left the C++ soak green"; \
 		cat build/cpp-soak-sabotage/log; exit 1; \
 	fi
