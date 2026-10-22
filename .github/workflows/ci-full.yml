@@ -1757,6 +1757,14 @@ jobs:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
 
+      # THE Squirrel PIN for the squirrel row: its conformance control runs the
+      # leg's toolchain gate (make/squirrel.mk's toolchain-squirrel), which
+      # refuses by name when SQ does not resolve. dist-squirrel installs the
+      # interpreter at the sha256 it names, into the dist/ path SQ defaults to.
+      - name: install the Squirrel pin
+        if: matrix.name == 'squirrel'
+        run: make dist-squirrel
+
       # The compiler and the generated tree ONCE, in parallel, before any
       # control runs. Every control in the group hangs off these two, and
       # building them here keeps the build cost out of the first control's
