@@ -554,6 +554,13 @@ serialize_assert( value.health >= 0 && value.health <= MaxHealth );
 write_bits( stream, uint32_t( value.health ), 10 );
 ```
 
+On `uint8`, `uint16`, `uint32` and `uint64`, an omitted `min` is 0 when
+`max` is declared: `health uint32 | max = MaxHealth` has the same range,
+projection and protocol id as `health uint32 | min = 0, max = MaxHealth`.
+`min` alone is still refused on an unsigned integer; its storage maximum is
+not a declared bound. Signed integers require both bounds when ranged.
+`uint128` remains raw only, and `fixed`/`ufixed` require both bounds.
+
 A read outside the range **fails** — see
 [Reading untrusted data](#reading-untrusted-data).
 
@@ -2085,12 +2092,10 @@ An ordinal-indexed array is a positional
 vocabulary, and a table has exactly one of those — `flags` — so the refusal is
 what keeps the closed class closed: you cannot reopen it by spelling the bound
 another way or folding it through a constant. `[E.Max]T` stays legal in
-a `type` no table reaches, where it is a plain array (SPEC-TABLES.md §2.4,
-§11). *Whether a `type` a table reaches keeps the spelling, or the table wire
-keys the array there too, is
-open ([#606](https://github.com/mas-bandwidth/schema/issues/606)), so a
-`type` a table reaches is not refused
-today.*
+a `type` no table reaches, where it is a plain array, and in a `type` a table
+reaches the table wire keys it: an enum-extent array rides under the keyed
+kind `16` wherever it is declared, so the closed class is closed one body away
+without a refusal (SPEC-TABLES.md §2.4, §11).
 
 A key enum counts as part of the table closure: it rides by variant name, so
 colliding variant names are refused for it too, with the diagnostic naming
@@ -3349,7 +3354,15 @@ configs/tables.baseline: ShipConfig.damage: specified default 21.0 -> 25.0 — t
 edit changes what data already written MEANS, and no reader can report it; if you
 mean it, record it: schema tables-baseline --update --reason "..." (SPEC-TABLES.md §18)
 schema: 1 error(s)
+schema <version>
 ```
+
+A refusal batch is dated once. When any diagnostic cites a spec section, a
+single `schema <version>` line follows the error count — the build that
+produced the refusals, so a message pasted from a stale binary dates itself
+instead of contradicting the page as it reads today. A batch whose diagnostics
+cite nothing prints no version line, and an individual diagnostic never
+carries one.
 
 Sometimes you mean it. The override is one command and it is never silent:
 
@@ -4219,6 +4232,16 @@ The compiler is a Go library as well as a binary. `cmd/schema` is a client of
 that library and holds nothing else — the flags, the printing, the exit codes —
 so anything the CLI does, your program can do.
 
+Pin a release tag, or between releases a promotion tag: every commit promoted
+to `main` is tagged `main-<shorthash>` (docs/VERSIONING.md), so
+
+```
+go get github.com/mas-bandwidth/schema/v2@v2.5.0             # a release
+go get github.com/mas-bandwidth/schema/v2@main-0123456789ab  # a promotion
+```
+
+names one commit either way; never pin a bare branch.
+
 ```go
 import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -4381,10 +4404,11 @@ the `#include` and `::GameVec2 p;`. A sibling that stays in `A.schema` beside
 at that one reference and rides at every other. What the refusal is of is a
 mapping that rides nowhere at all.
 
-**`cpp_native` names a GLOBAL type.** The value is an identifier and the
-emitted spelling is `::GameVec2`, so a namespaced engine type — `math::Vec2`,
-the common case — is named through a global alias you declare in your own
-header.
+**`cpp_native` names a C++ type.** The value is a type name and the emitted
+spelling is `::`-qualified: the bare `GameVec2` emits as `::GameVec2`, and a
+namespaced engine type — `math::Vec2`, the common case — is written
+`cpp_native = math::Vec2` and emits as `::math::Vec2`. No global alias in
+your own header is needed.
 
 **C#** — C# 9 / netstandard2.1-clean, so it runs on Unity-class runtimes.
 Reads scalars without boxing.

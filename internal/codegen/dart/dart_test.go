@@ -58,6 +58,61 @@ func TestFixedDefaultIsRawNotDoubleScaled(t *testing.T) {
 	}
 }
 
+// TestDartWStringWriteChecksAreDebugOnly pins SER-E25, SER-SCHEMA-15 and
+// SCG-03: the write-side wstring contract checks (length in [0, N] and no
+// interior null code unit) are Dart asserts — active only under
+// --enable-asserts, compiled out in release. The read side keeps its
+// unconditional validation.
+func TestDartWStringWriteChecksAreDebugOnly(t *testing.T) {
+	t.Parallel()
+	src := "package t\n\n" +
+		"type Wide {\n" +
+		"    text wstring(2)\n" +
+		"}\n"
+	f, perrs := parser.Parse("Wide.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Wide.schema", Name: "Wide.schema", Base: "Wide",
+		Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var all strings.Builder
+	for _, b := range files {
+		all.Write(b)
+	}
+	out := all.String()
+
+	// Release writer: no unconditional throw ArgumentError for wstring checks.
+	if strings.Contains(out, "throw ArgumentError('wstring length')") {
+		t.Errorf("release writer carries unconditional 'wstring length' throw")
+	}
+	if strings.Contains(out, "throw ArgumentError('wstring null unit')") {
+		t.Errorf("release writer carries unconditional 'wstring null unit' throw")
+	}
+
+	// Debug/checked writer: the contracts are asserts (gone without --enable-asserts).
+	if !strings.Contains(out, "assert(wideLength >= 0 && wideLength <= 2)") {
+		t.Errorf("debug writer missing 'wstring length' assert")
+	}
+	if !strings.Contains(out, "assert(v != 0)") {
+		t.Errorf("debug writer missing 'wstring null unit' assert")
+	}
+
+	// Read side: unconditional validation must stay.
+	if !strings.Contains(out, "if (v == 0 || v > 0xFFFF)") {
+		t.Errorf("read side missing unconditional null/range check")
+	}
+}
+
 // TestReservedDeclarationNamesRefused pins #162: the shadow-hazard entries
 // (String, List, Object, Endian, ByteData) exist for DECLARATION names, which
 // emit verbatim as Dart class names — a `type List` would shadow dart:core.

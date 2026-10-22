@@ -608,22 +608,47 @@ cards-cs-driver: cards-cs-generate
 	$(DOTNET) build tables/cards/cs/Driver/Driver.csproj -c Release -o build/cards-driver-cs --nologo -v quiet
 
 # cards-cs-conformance runs the harness `cards` subcommand over the C#
-# driver with the five surfaces this card owns required; upgrade, edit,
-# taskhash and view are a-cs-card-upgrades-edits-and-walks-the-shared-corpus's
-# and are answered absent.
+# driver with all nine surfaces required and no absence accepted: load, save,
+# render, parse and bounds from a-cs-card-round-trips-and-renders-the-shared-
+# corpus, upgrade, edit, taskhash and view from
+# a-cs-card-upgrades-edits-and-walks-the-shared-corpus.
 .PHONY: cards-cs-conformance
 cards-cs-conformance: build/conformance-harness cards-cs-driver
-	./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/cs/cards-driver --require load,save,render,parse,bounds
+	./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/cs/cards-driver --require load,save,render,parse,bounds,upgrade,edit,taskhash,view
 
 # cards-cs-conformance-negative-control: the same check against the driver
 # with a test-only environment switch that changes one rendered byte,
-# required to FAIL on render while the other four surfaces pass.
+# required to FAIL on render while the other eight surfaces pass.
 .PHONY: cards-cs-conformance-negative-control
 cards-cs-conformance-negative-control: build/conformance-harness cards-cs-driver
-	@if CARDS_CS_SABOTAGE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/cs/cards-driver --require load,save,render,parse,bounds > build/cards-cs-conformance-neg.log 2>&1; then \
+	@if CARDS_CS_SABOTAGE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/cs/cards-driver --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-cs-conformance-neg.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; fi
 	@grep -qE 'cards render .*FAIL' build/cards-cs-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-cs-conformance-neg.log; exit 1; }
-	@grep -qE 'cards (load|save|parse|bounds) pass' build/cards-cs-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-cs-conformance-neg.log; exit 1; }
+	@grep -qE 'cards (load|save|parse|bounds|upgrade|edit|taskhash|view) pass' build/cards-cs-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-cs-conformance-neg.log; exit 1; }
 	@echo 'cards C# negative control: one changed rendered byte turns exactly render red'
 
-test-cs: cards-cs-test cards-cs-conformance cards-cs-conformance-negative-control
+# cards-cs-conformance-upgrade-negative-control: a test-only switch that
+# drops the retained fields (the package-private retention seam driven with
+# no id storage) must FAIL upgrade alone, while the other eight surfaces —
+# including the five that share the driver's load path and the three that
+# share its edit and hash paths — stay green.
+.PHONY: cards-cs-conformance-upgrade-negative-control
+cards-cs-conformance-upgrade-negative-control: build/conformance-harness cards-cs-driver
+	@if CARDS_CS_UPGRADE_SABOTAGE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/cs/cards-driver --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-cs-conformance-upgrade-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with the retained fields dropped'; exit 1; fi
+	@grep -qE 'cards upgrade .*FAIL' build/cards-cs-conformance-upgrade-neg.log || { echo 'NEGATIVE CONTROL FAILED: upgrade did not go red'; cat build/cards-cs-conformance-upgrade-neg.log; exit 1; }
+	@grep -qE 'cards (load|save|render|parse|bounds|edit|taskhash|view) pass' build/cards-cs-conformance-upgrade-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-cs-conformance-upgrade-neg.log; exit 1; }
+	@echo 'cards C# negative control: dropping the retained fields turns exactly upgrade red'
+
+# cards-cs-conformance-hash-negative-control: a test-only switch that folds
+# the excluded needs list into the task hash must FAIL taskhash alone, while
+# the other eight surfaces stay green.
+.PHONY: cards-cs-conformance-hash-negative-control
+cards-cs-conformance-hash-negative-control: build/conformance-harness cards-cs-driver
+	@if CARDS_CS_HASH_SABOTAGE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/cs/cards-driver --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-cs-conformance-hash-neg.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with needs folded into the hash'; exit 1; fi
+	@grep -qE 'cards taskhash .*FAIL' build/cards-cs-conformance-hash-neg.log || { echo 'NEGATIVE CONTROL FAILED: taskhash did not go red'; cat build/cards-cs-conformance-hash-neg.log; exit 1; }
+	@grep -qE 'cards (load|save|render|parse|bounds|upgrade|edit|view) pass' build/cards-cs-conformance-hash-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-cs-conformance-hash-neg.log; exit 1; }
+	@echo 'cards C# negative control: folding needs into the hash turns exactly taskhash red'
+
+test-cs: cards-cs-test cards-cs-conformance cards-cs-conformance-negative-control cards-cs-conformance-upgrade-negative-control cards-cs-conformance-hash-negative-control

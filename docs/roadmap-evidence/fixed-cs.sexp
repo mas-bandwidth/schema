@@ -84,7 +84,7 @@
 (:id "cs/E5" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t04_test.go: TestFixedRoadmapCSharpT04Versions/cs/E5") :tested-revision "de8a25e29")
 (:id "cs/W2" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t04_test.go: TestFixedRoadmapCSharpT04Versions/cs/W2") :tested-revision "de8a25e29")
 (:id "cs/C7" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t06_test.go: TestFixedRoadmapCSharpT06Bounds/cs/C7") :tested-revision "7880901aeb9e5b71ac1242bd108e05387750ee5f")
-(:id "cs/R30" :state :unknown :note "the clauses \"finer widens\", \"coarser refuses by name\" and \"dropping the triple widens\" are the lock's (internal/lockfile) and the C++ reference's, and \"fp-contract off on every leg\" has no C# emitter spelling; this leg asserts only \"rides as the float\" and the digest 'Q' step")
+(:id "cs/R30" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t14_test.go: TestFixedRoadmapCSharpT14CompressedFloats/cs/R30"))
 (:id "cs/C9" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t06_test.go: TestFixedRoadmapCSharpT06Bounds/cs/C9") :tested-revision "7880901aeb9e5b71ac1242bd108e05387750ee5f")
 (:id "cs/C10" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t06_test.go: TestFixedRoadmapCSharpT06Bounds/cs/C10") :tested-revision "7880901aeb9e5b71ac1242bd108e05387750ee5f")
 (:id "cs/R31" :state :done :evidence ("internal/codegen/cstable/fixedroadmap_t06_test.go: TestFixedRoadmapCSharpT06Bounds/cs/R31") :tested-revision "7880901aeb9e5b71ac1242bd108e05387750ee5f")

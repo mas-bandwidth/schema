@@ -249,10 +249,10 @@ quests or achievements growing weekly, cannot arise in one. The other
 positional vocabulary a table could have had is gone rather than excepted:
 a positional array whose bound folds from an enum is REFUSED BY NAME in a
 table body and a union arm, and the same array held by a `type` a table
-closure reaches is ruled on schema#606, by that refusal or by a keyed wire
-(SPEC-TABLES.md §2.4, §11), so
-`[E]T` is the table form and an enum a table reaches moves no slot when it
-changes. Flags is therefore the whole of the exception, and there is no
+closure reaches rides KEYED on the table wire (schema#606), so its kind `13`
+body moves no slot when the enum changes (SPEC-TABLES.md §2.4, §11): `[E]T` is
+the table form and a `type`-held enum-extent array keys like it. Flags is
+therefore the whole of the exception, and there is no
 second.
 
 **What reachability does not change is what the projection MEANS.** The
@@ -675,8 +675,9 @@ Bound       = IntExpr | ".." IntExpr | IntExpr ".." IntExpr .       // [N] exact
 AttrSection = "|" Attr { "," Attr } .                            // runs to END OF LINE: the newline
                                                                  // or a // comment terminates it —
                                                                  // nothing follows a qualification
-Attr        = ident "=" ( ConstExpr | ident | string )           // valued:    min = 0, max = 100,
-                                                                 //            cpp_include = "a.h"
+Attr        = ident "=" ( ConstExpr | QualIdent | string )       // valued:    min = 0, max = 100,
+                                                                 //            cpp_include = "a.h",
+                                                                 //            cpp_native = math::Vec2
             | ident .                                            // valueless: a TAG (§4.2) — legal
                                                                  // in every qualification section,
                                                                  // in an open namespace
@@ -684,6 +685,9 @@ Attr        = ident "=" ( ConstExpr | ident | string )           // valued:    m
                                                                  // each valued key declares whether
                                                                  // it takes an expression, a word,
                                                                  // or a quoted string)
+QualIdent   = ident { "::" ident } .                             // a `::`-qualified C++ type name:
+                                                                 // the global spelling the emitter
+                                                                 // writes verbatim (cpp_native, §4.2)
 
 If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
 
@@ -939,7 +943,9 @@ sequence    uint16
   our own shit! It's a DSL anyway").
 - **The VALUED vocabulary is typed and closed per compiler version — an
   unknown valued key is a compile error**, never a silently ignored string.
-  The vocabulary: integers take `min`/`max` (both together or neither);
+  The vocabulary: integers take `min`/`max` (both together or neither,
+  except `uint8`/`uint16`/`uint32`/`uint64` may omit `min` when `max`
+  is declared: the omitted `min` is 0 — §4.6);
   `float32` takes `min`/`max`/`resolution` (all three together — §4.3: this
   IS the compressed float); `fixed`/`ufixed`/`int128` take `min`/`max`
   (required — §4.3); enum and flags declarations take `max`; type
@@ -1111,10 +1117,14 @@ property (§4.11) survive untouched.
 
 The rules:
 
-- **`cpp_native` takes an identifier** — the global (`::`-qualified) C++ type
-  name. **`cpp_include` takes a quoted header path** — the header declaring
-  it. They go together: one without the other is an error. String literals
-  (`"..."`, no escapes) exist in the grammar for attribute values only.
+- **`cpp_native` takes a C++ type name** — a bare identifier names a global
+  type, and a `::`-qualified name (`math::Vec2`) names one inside a
+  namespace. The emitter writes it `::`-qualified verbatim (`::GameVec2` for
+  the bare spelling, `::math::Vec2` for the qualified one), so a namespaced
+  engine type needs no global alias. **`cpp_include` takes a quoted header
+  path** — the header declaring it. They go together: one without the other
+  is an error. String literals (`"..."`, no escapes) exist in the grammar for
+  attribute values only.
 - **Inside the basis type's own generated header the mapping is off** —
   references there keep the basis name. The native header includes that
   header to derive from the basis; a mapped reference would be circular.
@@ -1226,7 +1236,7 @@ classic twin, which is the wire oracle for the stated model.
 |---|---|---|
 | `f bits(N)` | N raw bits, N in [1,64] | `serialize_bits` ([1,64]; >32 = low 32 bits first, then the high remainder) |
 | `f intN` / `f uintN` (bare, N ∈ 8/16/32/64) | N raw bits (two's complement for signed) | `serialize_uint8/16/32/64`; signed raw is the same bits, cast |
-| `f intN | min = A, max = B` / `f uintN | min = A, max = B` | minimal bits for the range, value − A; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
+| `f intN | min = A, max = B` / `f uintN | min = A, max = B` | minimal bits for the range, value − A; unsigned N ∈ 8/16/32/64 may spell only `max = B`, meaning A = 0 with the same projection and protocol id; read rejects out-of-range; **the range must fit the declared storage** | `serialize_int` (≤32-bit int ranges) / `serialize_int64` / width-computed `serialize_bits` for full-unsigned ranges |
 | `f uint128` (bare only) | 128 raw bits — the low 64-bit half first, then the high half; representation-independent (native `__int128` and the emulated two-lane pair produce identical bytes) | `serialize_uint128` |
 | `f int128 | min = A, max = B` (range required) | value − A in `bits_required128(A, B)` bits, 32-bit groups from the bottom; read rejects an offset above B − A — reject, never clamp; **where the range fits 64 bits or fewer the bytes are identical to `serialize_int64` over the same bounds.** Bare `int128` and ranged `uint128` are compile errors — serialize's own surface, mirrored exactly (uint→raw, int→ranged) | `serialize_int128` |
 | `f fixed(I, F) | min = A, max = B` (range required; **signed**) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom — **except A == B, which costs ZERO bits (not F): the reader materializes raw = A << F from the range alone (§4.6)**; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
@@ -1368,7 +1378,9 @@ All compile errors with positions:
   byte. A one-sided range is still refused by name on a float, a fixed-point,
   `int128` or `uint128` field, a timestamp or a named type, beside
   `resolution`, and on a field of a `type` body or a packet — the sentence
-  below is scoped to those. A one-sided range whose given side excludes zero
+  below is scoped to those, save that `max` alone on `uint8`..`uint64` is the
+  zero-minimum spelling everywhere (the attribute discipline below), so it never
+  reaches this rule. A one-sided range whose given side excludes zero
   needs a default in range exactly as a two-sided one does.
 - **A range that excludes zero requires a declared default in range:**
   `x uint8 | min = 1, max = 255` is a compile error, because zero
@@ -1418,9 +1430,15 @@ All compile errors with positions:
   The READ is untouched: a decoded count outside [A, B] fails the read in
   every build, in all nine.
 - **Attribute discipline:** an unknown attribute key, a key repeated, an
-  attribute on a type that does not take it, `min` without `max` (or vice
-  versa), and `resolution` without both bounds are compile errors, each
-  naming the field and the legal vocabulary for its type.
+  attribute on a type that does not take it, `min` without `max`, and
+  `resolution` without both bounds are compile errors, each naming the field
+  and the legal vocabulary for its type. A signed integer requires both
+  `min` and `max` when ranged. On `uint8`/`uint16`/`uint32`/`uint64`,
+  `max` alone declares a range whose omitted `min` is 0: it has exactly the
+  same projection and protocol id as `min = 0, max = B`. `min` alone on an
+  unsigned integer remains a compile error; the storage maximum is not a
+  declared bound. This omission rule does not extend to `uint128` (raw only)
+  or `ufixed` (both bounds required).
 - **Non-finite compressed-float parameters are rejected:** each of
   `min`/`max`/`resolution` (§4.3's triple)
   must be finite at float64 AND at float32, where every runtime evaluates the
@@ -1476,6 +1494,14 @@ All compile errors with positions:
 - **Duplicate field names anywhere in one type — including across branch
   sides.** One name, one field, declared once. (schema owns the type, and
   unique names keep the flattened generated output unambiguous.)
+- **Retired field, table and enum-value names:** a field, table or enum value
+  name (or wire id under `was`) that the unit's committed `tables.baseline` or
+  `schema.lock` records as retired cannot be reused in the same scope with a
+  new type or meaning; the checker refuses it by name (`VERSIONING.md`).
+  Re-adding a retired name with the same meaning is allowed only where
+  `VERSIONING.md` says so (when `--update --reason` acknowledges the
+  resurrection in `tables.baseline`, or when a `| deprecated` field in
+  `schema.lock` remains at its locked slot with its locked type and meaning).
 - Back-reference violations (§4.5); `if` conditions that are not `bool`
   fields.
 - Cycles in type composition, undefined types, duplicate declarations,
@@ -2959,8 +2985,12 @@ does not satisfy that control. These controls also run through `make test`.
 
 **Floating-point discipline.** Strict IEEE-754 arithmetic is the normative
 wire for compressed floats: a fused multiply-add diverges by one quantization
-step at boundary values, so all C and C++ conformance builds compile with
-`-ffp-contract=off`, and the golden-wire corpus pins compressed-float values
+step at boundary values, so every leg computes a compressed float's
+quantization without fused multiply-add — the C and C++ conformance builds
+compile with `-ffp-contract=off`, Go rounds each product explicitly (an
+explicit rounding conversion of each product), and java, cs and elixir rely
+on the language's strict semantics (Glenn, 2026-10-12, all features across
+all languages) — and the golden-wire corpus pins compressed-float values
 chosen to DISCRIMINATE — values where a fused or double-precision build
 produces a different step index — with the discrimination property itself
 asserted in the C and C++ legs, so a vector cannot quietly stop
