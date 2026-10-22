@@ -113,6 +113,8 @@ var catalog = []Entry{
 	e("internal/codegen/javatable", "Java table emitter", "go test ./internal/codegen/javatable", "go test ./internal/codegen/javatable"),
 	e("internal/codegen/js", "JS packet emitter", "go test ./internal/codegen/js", "go test ./internal/codegen/js"),
 	e("internal/codegen/jstable", "JS table emitter", "go test ./internal/codegen/jstable", "go test ./internal/codegen/jstable"),
+	e("internal/codegen/lobster", "Lobster type emitter (docs/PORT-LOBSTER.md)", "go test ./internal/codegen/lobster", "go test ./internal/codegen/lobster/..."),
+	e("internal/codegen/lobstertable", "Lobster table emitter (docs/PORT-LOBSTER.md)", "go test ./internal/codegen/lobstertable", "go test ./internal/codegen/lobstertable"),
 	e("internal/codegen/rust", "Rust packet emitter", "go test ./internal/codegen/rust", "go test ./internal/codegen/rust"),
 	e("internal/codegen/rusttable", "Rust table emitter", "go test ./internal/codegen/rusttable", "go test ./internal/codegen/rusttable"),
 

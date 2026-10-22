@@ -1,0 +1,16 @@
+# Vendored serialize.lobster pin (docs/PORT-LOBSTER.md, THE RUNTIME LAYOUT).
+# Format: repository <url>, commit <sha>, then one line per vendored file:
+#   sha256  <hash>  <file>
+# The files are copied verbatim from the port's src/ directory at the commit.
+repository https://github.com/mas-bandwidth/serialize.lobster.git
+commit b929e81b9f5f9ae1127c4ef709e1683ff6127801
+sha256  e9350e9fdb66419d21843fba22b6ab1ea22f48e0cfdfa2bf794564a9e63283bb  serialize_bitpacker.lobster
+sha256  248c13556f7822c48941e53756fd0ebb1b4441f4fce3360382e2c64e832231c1  serialize_bytes.lobster
+sha256  2c4bf6adaa5379b62262e0203dbe0389af642d8e6db04b6c03aac3b51e3e758e  serialize_compressed_float.lobster
+sha256  572c930558123f966b14c348eadcc753400e3f43e1d226025d102f214b450f3c  serialize_fixed.lobster
+sha256  bcbe7d360db4b9deb8f855cd588b4e1869656a867f025548019117b9e61184f7  serialize_float.lobster
+sha256  62e8e0ab17a1c32cb3452a389b959e4474adcb30480ac203fc0ef39605ba38f8  serialize_int128.lobster
+sha256  f56ca0f114e7b3815f2d369a23808b8404306c65b069339d120deb9bbf259575  serialize_int.lobster
+sha256  449375487953549681f778eb5ea3c685498299a324e1bd1687f340de99fea06c  serialize.lobster
+sha256  3a9819abcfca14ba9b58af6422a6d8e8419f6e54fea78d48b25a95c4975a0e9b  serialize_object.lobster
+sha256  68592f11b05c349612c95b7f71c15ff5461aee97b3c19df94139f730ba2317bd  serialize_stream.lobster

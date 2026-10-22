@@ -494,6 +494,26 @@ jobs:
             exit 1
           fi
 
+      # THE Lobster PIN, when the diff touches a Lobster package (or is broad):
+      # internal/codegen/lobster and internal/codegen/lobstertable run generated
+      # Lobster under the pinned compiler and fail, never skip, without it, as
+      # ci-full.yml's go-test does. The release binary links libOpenGL and
+      # libGLX, which the fleet hosts carry and the hosted ubuntu image does not.
+      - name: install the Lobster pin
+        env:
+          PACKAGES: ${{ needs.plan.outputs.packages }}
+        run: |
+          set -euo pipefail
+          case " $PACKAGES " in
+            *" ./internal/codegen/lobster "*|*" ./internal/codegen/lobstertable "*|*" ./... "*)
+              if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+                sudo apt-get update
+                sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+              fi
+              make dist-lobster
+              ;;
+          esac
+
       - name: go test the touched packages
         env:
           PACKAGES: ${{ needs.plan.outputs.packages }}
@@ -521,6 +541,14 @@ jobs:
             *" ./internal/codegen/gotable "*|*" ./... "*)
               make tables-go-fixedform
               make conformance-go-rows
+              ;;
+          esac
+          # The Lobster fixed-form suite reads the C++ reference's byte oracle
+          # and skips without it, like every leg's; test-lobster builds the
+          # corpus and sets SCHEMA_REQUIRE_CORPUS=1, so here it runs.
+          case " $PACKAGES " in
+            *" ./internal/codegen/lobster "*|*" ./internal/codegen/lobstertable "*|*" ./... "*)
+              make test-lobster
               ;;
           esac
 

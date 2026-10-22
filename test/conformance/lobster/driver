@@ -1,0 +1,43 @@
+#!/bin/sh
+# THE LOBSTER LEG's driver (test/conformance/README.md; docs/PORT-LOBSTER.md,
+# THE HARNESS).
+#
+# Every surface is handed to ONE Lobster program,
+# test/conformance/lobster/main.lobster, under the pinned toolchain (its
+# default JIT through TinyCC). A Lobster program reads files and arguments, so
+# the manifest goes IN as a file path argument (after --) and the answers come
+# OUT on stdout, one line per case — the case name, a space, the answer's
+# bytes as lowercase hex — which this script writes as one file per case into
+# <outdir> (a case the leg cannot answer is the line "<case> absent", written
+# as <case>.absent).
+#
+# While main.lobster is absent the leg answers ABSENT: `list` prints nothing
+# and every surface exits 2. The surfaces' cards add main.lobster and the list
+# grows with them (docs/PORT-LOBSTER.md, THE CARD MAP).
+#
+# The working directory is the repository root.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+main=test/conformance/lobster/main.lobster
+lobster=${LOBSTER:-dist/lobster-v2026.8/bin/lobster}
+if [ ! -f "$main" ]; then
+	case "$2" in
+	list) exit 0 ;;
+	*) exit 2 ;;
+	esac
+fi
+dir=build/conformance-lobster/driver
+mkdir -p "$dir" || exit 1
+case "$2" in
+list)
+	exec "$lobster" "$main" -- "$1" list
+	;;
+*)
+	mkdir -p "$3" || exit 1
+	"$lobster" "$main" -- "$1" "$2" >"$dir/$2.out"
+	status=$?
+	[ "$status" -eq 0 ] || exit "$status"
+	LOBSTER_OUTDIR=$3 perl -ne 'chomp; my ($c, $h) = split / /, $_, 2; next unless defined $c && $c ne ""; if (defined $h && $h eq "absent") { open(my $f, ">", "$ENV{LOBSTER_OUTDIR}/$c.absent") or die; close $f; next } open(my $f, ">:raw", "$ENV{LOBSTER_OUTDIR}/$c") or die "$c: $!"; print $f pack("H*", defined $h ? $h : ""); close $f;' <"$dir/$2.out"
+	;;
+esac
