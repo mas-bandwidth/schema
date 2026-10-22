@@ -1020,9 +1020,11 @@ pays for its check by storing only the live extent, as
 [FIXED-FORM-ALGORITHM.md](FIXED-FORM-ALGORITHM.md) §3.1 always said it must: a
 counted array's `count` elements and a text field's `length` bytes, onto the
 zeroed template, never all `Max` and never the slack of the caller's storage.
-The write path is benchmarked before and after (`TestGoTableWriterSpeedTable`,
-a functional test: `NOVA_WRITER_BENCH=1`) under a speed gate: a save may not
-get slower than the before-run's spread. The packet writers and the other
+The write path is measured before and after through the one sanctioned
+benchmark, the tables bench ([bench/tables](../bench/tables/README.md), the
+variable form) and the paired pass ([bench/paired](../bench/paired/README.md),
+the fixed form), under a speed gate: a save may not get slower than the
+before-run's spread. The packet writers and the other
 languages' table writers are unchanged by this paragraph.
 A variable-wire `bool` a Go table writer saves always holds `0` or `1`; a read
 that meets any other byte on the variable wire keeps the value (`true`), counts
