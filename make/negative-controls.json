@@ -438,16 +438,32 @@
     {
       "name": "cs",
       "when": "pull-request",
-      "why": "the C# port's conformance leg, its soak allocation-count negative control, its four packet families, the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached.",
+      "why": "the C# port's conformance leg and its runtime counters: the conformance driver's planted defect, the allocation gate's off-pin runtime refusal, the soak allocation-count control (a short-lived managed allocation per sample, invisible to drift), and the retain control. Split three ways from one cs group when the merged stream's fourteen controls ran the job past its 5-minute timeout on the runner (the job was cancelled during the last control, about 4m40s after the controls began).",
       "targets": [
         "conformance-negative-control-cs",
         "tables-cs-alloc-runtime-negative-control",
         "tables-cs-soak-negative-control",
-        "tables-cs-retain-negative-control",
+        "tables-cs-retain-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-tables",
+      "when": "pull-request",
+      "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout.",
+      "targets": [
         "tables-cs-pack-negative-control",
         "tables-cs-message-blob-endian-negative-control",
         "tables-cs-fixedform-arm-negative-control",
-        "tables-cs-json-differential-negative-control",
+        "tables-cs-json-differential-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-packet",
+      "when": "pull-request",
+      "why": "the C# packet families (arm defaults, defaults, UTF-8, wide), the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Split from the cs group for its 5-minute timeout.",
+      "targets": [
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",
@@ -670,7 +686,7 @@
   "excluded": [
     {
       "target": "tables-cs-clean-negative-control-run",
-      "reason": "the body of tables-cs-clean-negative-control, which calls it only when the pinned dotnet resolves; the cs group already runs the wrapper, so running the body again proves the same planted misindent twice."
+      "reason": "the body of tables-cs-clean-negative-control, which calls it only when the pinned dotnet resolves; the cs-packet group already runs the wrapper, so running the body again proves the same planted misindent twice."
     },
     {
       "target": "packet-arm-defaults-negative-controls",
