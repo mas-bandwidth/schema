@@ -119,7 +119,7 @@ Future<void> main(List<String> args) async {
   );
   // One real write before warm-up, not an empty one: the first non-empty
   // write runs dart:io's per-file write bookkeeping for the first time
-  // (_ReadWriteResourceInfo.addWrite, its Stopwatch and DateTime.now, each
+  // (_ReadWriteResourceInfo.addWrite and the timing calls it makes, each
   // compiled on first use), and measured under --trace_compiler that ran
   // after the begin marker reached the fd, inside the window.
   stderr.add(Uint8List.fromList('floatjit: warm-up begins\n'.codeUnits));

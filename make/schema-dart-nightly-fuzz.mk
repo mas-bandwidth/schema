@@ -15,15 +15,18 @@
 # Each table root is driven three ways: tolerant wire load, save-then-load
 # (strict), and fromJson text parse.
 #
-# THE CLOCK IS AN ARGUMENT. DART_NIGHTLY_FUZZ_SECONDS defaults to 10 minutes
-# (the card's budget per port); the replay target passes no clock at all and is
-# the fast per-push gate.
+# THE BUDGET IS A CASE COUNT, NEVER A CLOCK. DART_NIGHTLY_FUZZ_CASES defaults to
+# 24 million cases, about five minutes on the studio (~80k cases a second) and
+# inside the card's 10-minute budget per port on a CI runner; since every
+# case is a pure function of the seed a count makes the whole run replayable;
+# `make shape-gate` refuses a timing primitive outside the sanctioned bench. The
+# replay target runs no mutation at all and is the fast per-push gate.
 #
 # THE SEEDS are the Go fuzz corpus, internal/fuzz/testdata, and the committed
 # conformance wire vectors under testdata/ and tables/ — copied into
 # build/nightly-fuzz/seeds and given to every table before the random pass.
 
-DART_NIGHTLY_FUZZ_SECONDS ?= 600
+DART_NIGHTLY_FUZZ_CASES ?= 24000000
 DART_NIGHTLY_FUZZ_SEED ?= 1
 DART_NIGHTLY_FUZZ_BUILD ?= build/nightly-fuzz
 
@@ -78,7 +81,7 @@ $(DART_NIGHTLY_FUZZ_BUILD)/registry.dart: schema-dart-nightly-fuzz-corpus test/d
 schema-dart-nightly-fuzz: toolchain-dart $(DART_NIGHTLY_FUZZ_BUILD)/registry.dart
 	@cp test/dart-tables/nightly_fuzz.dart $(DART_NIGHTLY_FUZZ_BUILD)/harness.dart
 	@$(DART) $(DART_NIGHTLY_FUZZ_BUILD)/harness.dart \
-		--seconds $(DART_NIGHTLY_FUZZ_SECONDS) \
+		--cases $(DART_NIGHTLY_FUZZ_CASES) \
 		--seed $(DART_NIGHTLY_FUZZ_SEED) \
 		--seeds $(DART_NIGHTLY_FUZZ_BUILD)/seeds
 
@@ -117,10 +120,10 @@ schema-dart-nightly-fuzz-replay: toolchain-dart $(DART_NIGHTLY_FUZZ_BUILD)/regis
 
 # THE PLANTED BAD PATTERN: the generated open() count bound is removed from a
 # SCRATCH COPY of a reader, the fuzzer is pointed at the scratch registry, and
-# it must go red inside one nightly
-# budget. The minimised input is then replayed against the same scratch reader
-# and must fail, so the saved input is the replay proof and not a log line.
-# Nothing tracked is written to.
+# it must go red inside a million cases (seed 1 finds it near case 40000). The
+# minimised input is then replayed against the same scratch reader and must
+# fail, so the saved input is the replay proof and not a log line. Nothing
+# tracked is written to.
 .PHONY: schema-dart-nightly-fuzz-negative-control
 schema-dart-nightly-fuzz-negative-control: toolchain-dart schema-dart-nightly-fuzz-corpus
 	@rm -rf $(DART_NIGHTLY_FUZZ_BUILD)-nc
@@ -139,7 +142,7 @@ schema-dart-nightly-fuzz-negative-control: toolchain-dart schema-dart-nightly-fu
 		$(DART_NIGHTLY_FUZZ_BUILD)-nc/gen $(DART_NIGHTLY_FUZZ_BUILD)-nc/registry.dart $(CURDIR)
 	@cp test/dart-tables/nightly_fuzz.dart $(DART_NIGHTLY_FUZZ_BUILD)-nc/harness.dart
 	@if $(DART) $(DART_NIGHTLY_FUZZ_BUILD)-nc/harness.dart \
-			--seconds 30 --seed 1 --seeds $(DART_NIGHTLY_FUZZ_BUILD)-nc/seeds \
+			--cases 1000000 --seed 1 --seeds $(DART_NIGHTLY_FUZZ_BUILD)-nc/seeds \
 			> $(DART_NIGHTLY_FUZZ_BUILD)-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the fuzzer stayed green with the readLeb bound removed"; \
 		cat $(DART_NIGHTLY_FUZZ_BUILD)-nc/log; exit 1; \

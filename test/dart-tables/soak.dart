@@ -3,23 +3,27 @@
 // (test/dart-tables/gcgate.dart) is the instrument.
 //
 // Worker + sampling driver, mirroring gcgate's two modes:
-//   1. Worker (`soak <seconds>`): opens the fixtures, allocates all caller-owned
-//      storage up front, warms the path so one-time setup sits before the
-//      marker, writes `soak: steady phase begins` to stderr, loops Load, the
-//      reads, Measure and Save over the rows the allocation gate gates (fixed
-//      load, measure, save, block, cook) for `seconds` of real time, and writes
-//      `soak: steady phase ends`.
-//   2. Driver (`soak drive <dart-bin> <aot-bin> [seconds]`): enforces the
+//   1. Worker (`soak <passes>`): opens the fixtures, allocates all caller-owned
+//      storage up front, warms the path for a fixed number of passes so
+//      one-time setup sits before the marker, writes `soak: steady phase
+//      begins` to stderr, loops Load, the reads, Measure and Save over the rows
+//      the allocation gate gates (fixed load, measure, save, block, cook) for
+//      `passes` passes, writes `soak: sample N` to stderr after every
+//      sixteenth of them, and writes `soak: steady phase ends`.
+//   2. Driver (`soak drive <dart-bin> <aot-bin> [passes]`): enforces the
 //      pinned SDK rule (reusing gcgate's pinnedDartSdk and the escape hatch),
 //      runs the worker under the AOT executable with the gate's VM flags, reads
-//      the scavenge count off its stderr and samples it every second after the
-//      warmup, failing if it moves, and reports the worker's resident-memory
-//      drift beside it as the weaker instrument that sees retention.
+//      the scavenge count off its stderr and takes a sample at each of the
+//      worker's sample lines (the stream is in order, so a sample sees exactly
+//      the scavenges before it), failing if the count moves after the first,
+//      and reports the worker's resident-memory drift beside it as the weaker
+//      instrument that sees retention.
 //
-// The soak is a FUNCTIONAL test run from a make target with real time and the
-// VM; it is never a unit test.
+// The soak is COUNTED, not clocked: a pass is what the scavenge count is read
+// across, and `make shape-gate` refuses a timing primitive outside the
+// sanctioned bench, as the C++ and C# soaks are counted. It is a FUNCTIONAL
+// test run from a make target with the VM; it is never a unit test.
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -61,7 +65,7 @@ int _childRss(int pid) {
   }
 }
 
-void _runPhase(int seconds) {
+void _runPhase(int passes) {
   final fx1Bytes = File('build/fixedform-corpus/fx1.bin').readAsBytesSync();
   final keyedBytes = File('build/fixedform-corpus/keyed.bin').readAsBytesSync();
   final packBytes = File('build/fixedform-corpus/pack.bin').readAsBytesSync();
@@ -323,22 +327,40 @@ void _runPhase(int seconds) {
   }
 
   // warmup: settle one-time lazy initialisation before the marker
-  final sw = Stopwatch()..start();
-  while (sw.elapsedMilliseconds < 4000) {
+  for (var i = 0; i < soakWarmupPasses; i++) {
     step();
   }
   stderr.writeln('soak: steady phase begins');
-  sw.reset();
-  while (sw.elapsedMilliseconds ~/ 1000 < seconds) {
+  final every = passes ~/ soakSamples;
+  var sampled = 0;
+  for (var i = 1; i <= passes; i++) {
     step();
+    if (every > 0 && i % every == 0 && sampled < soakSamples) {
+      sampled++;
+      stderr.writeln('soak: sample $sampled');
+    }
   }
   stderr.writeln('soak: steady phase ends');
-  stdout.writeln('soak: seconds=$seconds checksum=$checksum');
+  stdout.writeln('soak: passes=$passes checksum=$checksum');
 }
+
+// The warmup is a count, like the steady phase: enough passes for the VM's
+// one-time lazy initialisation, settled before the marker.
+const soakWarmupPasses = 16384;
+
+// The steady phase is read at sixteen evenly spaced samples, so a soak of
+// fewer than sixteen passes is refused by the driver.
+const soakSamples = 16;
 
 Future<int> _drive(List<String> args) async {
   final aotBin = args.length > 2 ? args[2] : 'build/dart_tables_soak';
-  final seconds = args.length > 3 ? int.parse(args[3]) : 20;
+  final passes = args.length > 3 ? int.parse(args[3]) : 65536;
+  if (passes < soakSamples) {
+    stdout.writeln(
+      'SOAK FAILED: $passes passes is fewer than the $soakSamples samples the soak reads',
+    );
+    return 1;
+  }
 
   final runningSdk =
       Platform.environment['SCHEMA_DART_ALLOC_SDK_VERSION'] ??
@@ -359,12 +381,12 @@ Future<int> _drive(List<String> args) async {
 
   final env = Map<String, String>.from(Platform.environment);
   env['DART_VM_OPTIONS'] = vmFlagsCsv;
-  // The worker's main reads args[0] as the mode and args[1] as the seconds,
-  // so the driver passes both; passing the seconds alone left the worker on
-  // its 20-second default whatever SOAK_SECONDS said.
+  // The worker's main reads args[0] as the mode and args[1] as the passes,
+  // so the driver passes both; passing the count alone would leave the worker
+  // on its default whatever TABLES_DART_SOAK_PASSES said.
   final proc = await Process.start(aotBin, <String>[
     'soak',
-    '$seconds',
+    '$passes',
   ], environment: env);
   final workerOut = StringBuffer();
   final outDone = proc.stdout
@@ -379,10 +401,7 @@ Future<int> _drive(List<String> args) async {
   final samples = <String>[];
   final rssSamples = <int>[];
 
-  final sampler = Timer.periodic(const Duration(seconds: 1), (_) {
-    if (!started) {
-      return;
-    }
+  void sample() {
     final rss = _childRss(proc.pid);
     if (baseline < 0) {
       baseline = scavenges;
@@ -391,9 +410,9 @@ Future<int> _drive(List<String> args) async {
     }
     rssSamples.add(rss);
     samples.add(
-      't=${samples.length + 1}s scavenges=$scavenges rss_kb=${rss < 0 ? "?" : rss}',
+      'sample=${samples.length + 1} scavenges=$scavenges rss_kb=${rss < 0 ? "?" : rss}',
     );
-  });
+  }
 
   await for (final line
       in proc.stderr.transform(utf8.decoder).transform(const LineSplitter())) {
@@ -405,11 +424,16 @@ Future<int> _drive(List<String> args) async {
       started = false;
       continue;
     }
+    if (line.startsWith('soak: sample ')) {
+      if (started) {
+        sample();
+      }
+      continue;
+    }
     if (line.contains('Scavenge')) {
       scavenges++;
     }
   }
-  sampler.cancel();
   final workerCode = await proc.exitCode;
   await outDone;
 
@@ -425,23 +449,23 @@ Future<int> _drive(List<String> args) async {
   for (final s in samples) {
     stdout.writeln('  $s');
   }
-  // The run must be as long as it claims: the worker reports the seconds it
-  // ran and the driver took one sample per steady second, so a worker that
-  // ignored SOAK_SECONDS (or a sampler that stalled) cannot print "over N s".
-  final ran = RegExp(r'soak: seconds=(\d+) ').firstMatch(workerOut.toString());
-  final workerSeconds = ran == null ? -1 : int.parse(ran.group(1)!);
+  // The run must be as long as it claims: the worker reports the passes it
+  // ran and the driver took one sample per sixteenth of them, so a worker
+  // that ignored TABLES_DART_SOAK_PASSES cannot print "over N passes".
+  final ran = RegExp(r'soak: passes=(\d+) ').firstMatch(workerOut.toString());
+  final workerPasses = ran == null ? -1 : int.parse(ran.group(1)!);
   stdout.writeln(
-    'soak: worker ran $workerSeconds s, driver took ${samples.length} samples for SOAK_SECONDS=$seconds',
+    'soak: worker ran $workerPasses passes, driver took ${samples.length} samples for TABLES_DART_SOAK_PASSES=$passes',
   );
-  if (workerSeconds != seconds) {
+  if (workerPasses != passes) {
     stdout.writeln(
-      'SOAK FAILED: the worker ran $workerSeconds s but SOAK_SECONDS is $seconds',
+      'SOAK FAILED: the worker ran $workerPasses passes but TABLES_DART_SOAK_PASSES is $passes',
     );
     return 1;
   }
-  if (samples.length < seconds - 1 || samples.length > seconds + 1) {
+  if (samples.length != soakSamples) {
     stdout.writeln(
-      'SOAK FAILED: ${samples.length} one-second samples for a $seconds s soak (want ${seconds - 1}..${seconds + 1})',
+      'SOAK FAILED: ${samples.length} samples for a $passes-pass soak (want $soakSamples)',
     );
     return 1;
   }
@@ -470,7 +494,7 @@ Future<int> _drive(List<String> args) async {
     return 1;
   }
   stdout.writeln(
-    'soak: scavenge count flat at $scavenges after warmup over $seconds s',
+    'soak: scavenge count flat at $scavenges after warmup over $passes passes',
   );
   return 0;
 }
@@ -480,6 +504,6 @@ Future<void> main(List<String> args) async {
   if (mode == 'drive') {
     exit(await _drive(args));
   }
-  final seconds = args.length > 1 ? int.parse(args[1]) : 20;
-  _runPhase(seconds);
+  final passes = args.length > 1 ? int.parse(args[1]) : 65536;
+  _runPhase(passes);
 }

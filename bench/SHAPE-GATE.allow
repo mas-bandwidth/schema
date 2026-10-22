@@ -175,9 +175,6 @@ paths test/bench/table_main.cpp 1 the tables corpus's producer and §1.5 oracle:
 # conformance corpus's own manifest, and it reports no time.
 
 timing test/go-tables/soak_test.go 2 the Go port's allocation soak: the clock BOUNDS the loop, the allocation counter is what is watched — no time is reported and no shape is measured
-timing test/dart-tables/soak.dart 1 the Dart port's allocation soak (make tables-dart-soak): the Stopwatch BOUNDS the warmup and the steady phase, the scavenge count is what is watched — no time is reported and no shape is measured
-timing test/dart-tables/nightly_fuzz.dart 1 the Dart nightly fuzz's time budget: the Stopwatch bounds the loop to the nightly's seconds — no time is reported and no shape is measured
-timing test/dart/floatjit.dart 2 prose only: a comment naming dart:io's own Stopwatch and DateTime.now, which the float JIT gate warms before its marker — nothing is timed
 # Matched wire coordinator: existing runners, no field list or timing loop.
 names bench/paired/main.go 3 source filenames passed to the existing compiler; no corpus fields
 paths test/bench/paired_main.cpp 1 shared-data producer and packet/table equivalence oracle; no timing

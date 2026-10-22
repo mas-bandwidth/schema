@@ -10,7 +10,7 @@ import (
 
 // TestSchemaDartNightlyFuzzWiring holds the card's artefacts to the shape that
 // makes the nightly fuzz a gate rather than a script: a make fragment with a
-// time budget, a workflow that fuzzes only on the schedule, a replay gate on
+// case-count budget, a workflow that fuzzes only on the schedule, a replay gate on
 // pushes, a registry built from the generated corpus, saved regression inputs,
 // and the planted-pattern control registered in the negative-control manifest.
 //
@@ -27,11 +27,11 @@ func TestSchemaDartNightlyFuzzWiring(t *testing.T) {
 	}
 	makeText := string(makeBody)
 	for _, want := range []string{
-		"DART_NIGHTLY_FUZZ_SECONDS ?=",
+		"DART_NIGHTLY_FUZZ_CASES ?=",
 		"schema-dart-nightly-fuzz:",
 		"schema-dart-nightly-fuzz-replay:",
 		"schema-dart-nightly-fuzz-negative-control:",
-		"--seconds $(DART_NIGHTLY_FUZZ_SECONDS)",
+		"--cases $(DART_NIGHTLY_FUZZ_CASES)",
 		"--seed $(DART_NIGHTLY_FUZZ_SEED)",
 		"nightly-fuzz-regressions",
 	} {

@@ -19,7 +19,11 @@
 // any other escaping exception is a finding, and so is a strict save that its
 // own reader refuses.
 //
-// usage: nightly_fuzz.dart --seconds N --seed N --seeds DIR
+// usage: nightly_fuzz.dart --cases N --seed N --seeds DIR
+//
+// The budget is a CASE COUNT, never a clock: every case is a pure function of
+// the seed, so a count also makes a whole run replayable, and `make
+// shape-gate` refuses a timing primitive outside the sanctioned bench.
 //        nightly_fuzz.dart --replay FILE...
 import 'dart:convert';
 import 'dart:io';
@@ -206,7 +210,7 @@ Uint8List minimise(Table t, Uint8List data, int target) {
 }
 
 void main(List<String> args) {
-  final secondsAt = args.indexOf('--seconds');
+  final casesAt = args.indexOf('--cases');
   final seedAt = args.indexOf('--seed');
   final seedsAt = args.indexOf('--seeds');
   final replayAt = args.indexOf('--replay');
@@ -251,11 +255,11 @@ void main(List<String> args) {
     return;
   }
 
-  if (secondsAt < 0 || seedAt < 0 || seedsAt < 0) {
-    stderr.writeln('usage: nightly_fuzz.dart --seconds N --seed N --seeds DIR');
+  if (casesAt < 0 || seedAt < 0 || seedsAt < 0) {
+    stderr.writeln('usage: nightly_fuzz.dart --cases N --seed N --seeds DIR');
     exit(2);
   }
-  final seconds = int.parse(args[secondsAt + 1]);
+  final limit = int.parse(args[casesAt + 1]);
   final seed = int.parse(args[seedAt + 1]);
   final seedDir = Directory(args[seedsAt + 1]);
 
@@ -286,12 +290,11 @@ void main(List<String> args) {
   }
 
   final rng = Rng(seed);
-  final clock = Stopwatch()..start();
   var cases = 0;
   final regressions = Directory('build/nightly-fuzz/regressions');
   regressions.createSync(recursive: true);
 
-  while (clock.elapsed.inSeconds < seconds) {
+  while (cases < limit) {
     for (final t in all) {
       final seeds = seedsFor[t.name]!;
       for (var target = 0; target < 3; target++) {
@@ -309,5 +312,5 @@ void main(List<String> args) {
       }
     }
   }
-  print('nightly_fuzz: OK ${all.length} tables, $cases cases, seed=$seed, ${clock.elapsed.inSeconds}s');
+  print('nightly_fuzz: OK ${all.length} tables, $cases cases, seed=$seed');
 }

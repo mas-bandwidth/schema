@@ -8,7 +8,7 @@ name: schema dart nightly fuzz
 #
 # Nightly, and on workflow_dispatch: the seeded mutation fuzz over every table
 # root in the Dart corpus (tolerant load, save-then-load, JSON parse), for the
-# target's own DART_NIGHTLY_FUZZ_SECONDS budget (10 minutes by default), then
+# target's own DART_NIGHTLY_FUZZ_CASES budget (a case count, never a clock), then
 # the planted-pattern control that proves the fuzzer still finds a dropped
 # readLeb bound and that the saved input fails replay.
 #
@@ -57,6 +57,6 @@ jobs:
         with:
           sdk: 3.13.2
       - name: fuzz
-        run: make schema-dart-nightly-fuzz DART=dart DART_NIGHTLY_FUZZ_SECONDS=600
+        run: make schema-dart-nightly-fuzz DART=dart DART_NIGHTLY_FUZZ_CASES=24000000
       - name: planted pattern
         run: make schema-dart-nightly-fuzz-negative-control DART=dart
