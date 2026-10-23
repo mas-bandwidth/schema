@@ -209,7 +209,8 @@ type runPatternException struct {
 // until `make cards-generate` builds it; six run inside test/go-tables, a
 // separate Go module whose generated replacements do not exist until `make`
 // builds them; and one is a $(3) template with no value until the caller
-// expands it.
+// expands it; two pair an empty -run '^$' with -fuzz so only the fuzz target
+// runs.
 var runPatternExceptions = []runPatternException{
 	{"make/go.mk:312", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root"},
 	{"make/go.mk:448", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'"},

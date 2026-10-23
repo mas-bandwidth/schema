@@ -200,8 +200,11 @@ func elixirLeg(wire string) string {
 func elixirInputs(wire string) ([]string, error) {
 	out := []string{elixirLeg(wire), filepath.Join(filepath.Dir(elixirLeg(wire)), "runner.exs")}
 	gen := "generated/bench/elixir"
-	if wire != "packet" {
+	switch wire {
+	case "table":
 		gen = "generated/bench/paired/elixir"
+	case "plan":
+		gen = filepath.Join(elixirPlanBuild, "new")
 	}
 	found, err := filepath.Glob(filepath.Join(gen, "*.ex"))
 	if err != nil {
@@ -212,6 +215,59 @@ func elixirInputs(wire string) ([]string, error) {
 	}
 	sort.Strings(found)
 	return append(out, found...), nil
+}
+
+func elixirEbin(wire string) string {
+	return filepath.Join("build", "paired", wire+"-elixir", "ebin")
+}
+
+func elixirBeams(wire string) ([]string, error) {
+	found, err := filepath.Glob(filepath.Join(elixirEbin(wire), "*.beam"))
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(found)
+	return found, nil
+}
+
+func compileElixirUnit(wire string) error {
+	env := []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}
+	inputs, e := elixirInputs(wire)
+	if e != nil {
+		return e
+	}
+	sources := inputs[2:] // the generated modules; [0] and [1] are the leg
+	if e := execute(command{args: append([]string{"mix", "format"}, sources...), env: env}); e != nil {
+		return e
+	}
+	if e := execute(command{args: append([]string{"mix", "format", "--check-formatted"}, inputs...), env: env}); e != nil {
+		return e
+	}
+	ebin := elixirEbin(wire)
+	if e := os.RemoveAll(ebin); e != nil {
+		return e
+	}
+	if e := os.MkdirAll(ebin, 0755); e != nil {
+		return e
+	}
+	var runtimeFiles, restFiles []string
+	for _, s := range sources {
+		if filepath.Base(s) == "FixedRuntime.ex" {
+			runtimeFiles = append(runtimeFiles, s)
+		} else {
+			restFiles = append(restFiles, s)
+		}
+	}
+	if len(runtimeFiles) > 0 {
+		if e := execute(command{args: append([]string{"elixirc", "--warnings-as-errors", "-o", ebin}, runtimeFiles...), env: env}); e != nil {
+			return e
+		}
+	}
+	if e := execute(command{args: append([]string{"elixirc", "--warnings-as-errors", "-pa", ebin, "-o", ebin}, restFiles...), env: env}); e != nil {
+		return e
+	}
+	_, e = elixirManifest(wire)
+	return e
 }
 
 // elixirManifest writes the one path binary() can name for an interpreted leg:
@@ -527,8 +583,17 @@ func runner(wire, lang string, args ...string) command {
 		// The leg is a script, and it is spawned from the REPOSITORY ROOT like
 		// every other leg, so its corpus paths arrive through --wire-dir and
 		// --variant-dir rather than through a working directory.
-		a = []string{"elixir", elixirLeg(wire)}
+		a = []string{"elixir"}
+		if wire != "packet" {
+			if ebin := elixirEbin(wire); fileExists(ebin) {
+				a = append(a, "-pa", ebin)
+			}
+		}
+		a = append(a, elixirLeg(wire))
 		env = []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}
+		if wire == "plan" {
+			env = append(env, "SCHEMA_ELIXIR_GEN_DIR="+filepath.Join(elixirPlanBuild, "new"))
+		}
 	}
 	if wire == "table" || wire == "plan" {
 		a = append(a, "--indexed", "--wire-dir", "bench/paired/corpus", "--variant-dir", "bench/paired/corpus")
@@ -769,33 +834,22 @@ func generateAndBuild(langs []string) error {
 				}
 			}
 		case "elixir":
-			// NOTHING IS LINKED AND NOTHING IS CACHED: the leg is a script that
-			// compiles the generated modules into the VM it measures in. What
-			// this stage does instead is (a) hold the generated Elixir to the
-			// SAME TWO GATES the make targets hold it to — `mix format
-			// --check-formatted`, because the emitter emits the formatter's own
-			// shape rather than being checked afterwards, and `elixirc
-			// --warnings-as-errors`, because a warning in generated code is a
-			// defect in the emitter — and (b) write the manifest that stands in
-			// for an executable in the provenance.
-			env := []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}
+			// NOTHING IS LINKED: the leg is a script that loads the generated
+			// modules into the VM it measures in. What this stage does instead
+			// is (a) hold the generated Elixir to the SAME TWO GATES the make
+			// targets hold it to — `mix format --check-formatted` (after
+			// formatting the emitted files so unformatted generator output does
+			// not break the build) and `elixirc --warnings-as-errors`, because
+			// a warning in generated code is a defect in the emitter — and (b)
+			// write the manifest that stands in for an executable in the
+			// provenance.
 			for _, wire := range []string{"table", "packet"} {
-				inputs, e := elixirInputs(wire)
-				if e != nil {
+				if e := compileElixirUnit(wire); e != nil {
 					return e
 				}
-				sources := inputs[2:] // the generated modules; [0] and [1] are the leg
-				if e := execute(command{args: append([]string{"mix", "format", "--check-formatted"}, inputs...), env: env}); e != nil {
-					return e
-				}
-				ebin := filepath.Join("build", "paired", wire+"-elixir", "ebin")
-				if e := os.MkdirAll(ebin, 0755); e != nil {
-					return e
-				}
-				if e := execute(command{args: append([]string{"elixirc", "--warnings-as-errors", "-o", ebin}, sources...), env: env}); e != nil {
-					return e
-				}
-				if _, e := elixirManifest(wire); e != nil {
+			}
+			if elixirPlanRefusal(fileExists) == "" {
+				if e := buildElixirPlan(schema); e != nil {
 					return e
 				}
 			}
@@ -962,7 +1016,11 @@ func generateAndBuild(langs []string) error {
 				if e != nil {
 					return e
 				}
-				for _, in := range inputs {
+				beams, e := elixirBeams(wire)
+				if e != nil {
+					return e
+				}
+				for _, in := range append(inputs, beams...) {
 					h, e := hashFile(in)
 					if e != nil {
 						return e
@@ -1018,6 +1076,27 @@ func generateAndBuild(langs []string) error {
 		}
 	}
 	info.Tools["c_table_flags"] = strings.Join(cFlags, " ") + " -DBENCH_MATCHED -ffp-contract=off"
+	if contains(langs, "elixir") {
+		info.Tools["elixir_table_flags"] = "elixirc --warnings-as-errors; mix format --check-formatted"
+		if elixirPlanRefusal(fileExists) == "" {
+			info.Tools["elixir_plan_flags"] = "elixirc --warnings-as-errors; mix format --check-formatted (with " + elixirLineageDir + "/schema.lock)"
+			inputs, e := elixirInputs("plan")
+			if e != nil {
+				return e
+			}
+			beams, e := elixirBeams("plan")
+			if e != nil {
+				return e
+			}
+			for _, p := range append(append(inputs, beams...), binary("plan", "elixir")) {
+				h, e := hashFile(p)
+				if e != nil {
+					return e
+				}
+				info.Binaries[p] = h
+			}
+		}
+	}
 	if contains(langs, "cs") {
 		info.Tools["cs_table_flags"] = "dotnet build -c Release -property:UseSharedCompilation=false; DefineConstants=BENCH_MATCHED AllowUnsafeBlocks=true"
 		if b, e := capture(command{args: []string{"dotnet", "--version"}}); e == nil {
@@ -1086,6 +1165,9 @@ func generateAndBuild(langs []string) error {
 		// the C plan lane's lineage, lock included: a re-pin after the build
 		// refuses the sitting like any other corpus change
 		corpora = append(corpora, cLineageCorpus...)
+	}
+	if contains(langs, "elixir") && elixirPlanRefusal(fileExists) == "" {
+		corpora = append(corpora, elixirLineageCorpus...)
 	}
 	if contains(langs, "cs") && csPlanRefusal(fileExists) == "" {
 		corpora = append(corpora, csLineageCorpus...)
@@ -1587,7 +1669,8 @@ func renderReport(dir string, writeOutputs bool) error {
 	return nil
 }
 func main() {
-	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, plan-read (the read arm for C++, C, C# or Dart; the plan-read board for Rust), run confirmation, or render")
+	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, plan-read (the read arm for C++, C, C#, Dart or Elixir; the plan-read board for Rust), run confirmation, or render")
+	readArm := flag.Bool("read-arm", false, "run the read arm (-mode plan-read)")
 	out := flag.String("out", "", "new results directory (or existing directory for render)")
 	langsFlag := flag.String("langs", "cpp,c,go,cs", "comma-separated required build/gate languages")
 	rounds := flag.Int("rounds", 7, "interleaved measured rounds")
@@ -1605,6 +1688,12 @@ func main() {
 	lane := flag.String("lane", "", "core this sitting was pinned to, recorded in the board header, table and plan-read modes only")
 	flag.Parse()
 	fail := func(e error) { fmt.Fprintln(os.Stderr, "paired:", e); os.Exit(1) }
+	if *readArm {
+		if *mode != "gate" && *mode != "plan-read" {
+			fail(errors.New("-read-arm conflicts with -mode " + *mode))
+		}
+		*mode = "plan-read"
+	}
 	if _, e := os.Stat("bench/corpus/Bench.schema"); e != nil {
 		fail(errors.New("run from repository root"))
 	}

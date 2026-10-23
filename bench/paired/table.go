@@ -727,6 +727,59 @@ func buildCPlan(schema, cc string, cFlags []string, serC string) error {
 	return run(a...)
 }
 
+const elixirLineageDir = "bench/tables/elixir/lineage"
+
+var elixirLineageCorpus = []string{elixirLineageDir + "/schema.lock", elixirLineageDir + "/bench_lineage.bin", elixirLineageDir + "/bench_lineage.layout"}
+
+func elixirPlanRefusal(present func(string) bool) string {
+	var missing []string
+	for _, p := range elixirLineageCorpus {
+		if !present(p) {
+			missing = append(missing, p)
+		}
+	}
+	if len(missing) > 0 {
+		return "no lineage corpus on this tree: " + strings.Join(missing, ", ") + " absent (BENCH-STANDARD §1.10 work list items 1–7)"
+	}
+	return ""
+}
+
+const elixirPlanBuild = "build/paired/plan-elixir-unit"
+
+func buildElixirPlan(schema string) error {
+	if err := os.RemoveAll(elixirPlanBuild); err != nil {
+		return err
+	}
+	unit := filepath.Join(elixirPlanBuild, "unit")
+	if err := os.MkdirAll(unit, 0755); err != nil {
+		return err
+	}
+	renamed := []string{"Bench.schema", "Wrap.schema"}
+	for i, to := range renamed {
+		b, err := os.ReadFile(pairedSchemas[i])
+		if err != nil {
+			return err
+		}
+		to = filepath.Join(unit, to)
+		if err := os.WriteFile(to, b, 0644); err != nil {
+			return err
+		}
+		renamed[i] = to
+	}
+	lockBytes, err := os.ReadFile(elixirLineageDir + "/schema.lock")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(unit, "schema.lock"), lockBytes, 0644); err != nil {
+		return err
+	}
+	newDir := filepath.Join(elixirPlanBuild, "new")
+	if err := run(append([]string{schema, "generate", "--lang", "elixir", "--out", newDir}, renamed...)...); err != nil {
+		return fmt.Errorf("generating the paired unit beside %s/schema.lock: %w", elixirLineageDir, err)
+	}
+	return compileElixirUnit("plan")
+}
+
 // THE C# LEG'S PLAN LANE reads the same lineage pair under bench/tables/cs/lineage/
 // and compiles a second assembly with BENCH_PLAN defined against the unit
 // generated beside bench/tables/cs/lineage/schema.lock.
@@ -902,28 +955,10 @@ func lineageDirFor(leg string) string {
 		return csLineageDir
 	case "dart":
 		return dartLineageDir
+	case "elixir":
+		return elixirLineageDir
 	}
 	return cLineageDir
-}
-
-// planGateClaim is the sentence the board prints for what the leg's plan gate
-// checked before the clock. It names only checks the leg's runner makes, and it
-// is the same name and signature as the Elixir leg's (commit 286194156, PR
-// #1987 on sprint/schema-elixir), so the two merge as one function.
-//
-// The C runner (bench/tables/c/table_main.c, gates P2 to P4) derives the plan's
-// answer from the 64 identity records it already held byte for byte to the C++
-// reference (plan_expected_build, after bfb8be239's plan_expected), requires the
-// plan read to save to those bytes with the counters exactly docs/
-// FIXED-FORM-ALGORITHM.md section 5.4's (widened = 64 records x min(their_n,
-// my_n) = 64 x 64 = 4096, every other counter zero), reads again into a
-// poisoned destination (gate P3), and refuses an answer equal to the identity
-// corpus's (gate P4).
-func planGateClaim(leg string) string {
-	if leg == "c" {
-		return "its gate before the clock requires all 64 records to equal the plan's answer derived from the byte-gated identity corpus (every OLD field value, and the appended field at its declared default), the counters exactly widened 4096 (64 per record, min(their_n, my_n) of the stats bound) with every other counter zero, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
-	}
-	return "its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
 }
 
 func fileExists(p string) bool {
@@ -1225,8 +1260,9 @@ type readArmBoard struct {
 	Anchor       anchorResult `json:"anchor"`
 	Absent       []skipped    `json:"other_legs"`
 	// THE LEG this board measures: "" and "cpp" are the C++ board, "c" the
-	// C one. Plan is measured only on a leg whose plan build ran (PlanRefusal
-	// empty); its corpus id is the identity row's, one invocation's union.
+	// C one, "cs" the C# one, "elixir" the Elixir one. Plan is measured only
+	// on a leg whose plan build ran (PlanRefusal empty); its corpus id is the
+	// identity row's, one invocation's union.
 	Leg       string   `json:"leg,omitempty"`
 	Lane      string   `json:"lane,omitempty"`
 	Plan      rowStats `json:"plan_read"`
@@ -1248,6 +1284,8 @@ func legTitle(leg string) string {
 		return "C++"
 	case "c":
 		return "C"
+	case "elixir":
+		return "Elixir"
 	case "cs":
 		return "C#"
 	case "dart":
@@ -1256,7 +1294,9 @@ func legTitle(leg string) string {
 	return leg
 }
 
-func (b readArmBoard) windowOK() bool { return b.Window == "OK" }
+func (b readArmBoard) windowOK() bool {
+	return b.Window == "OK" && b.ControlDelta <= controlTolerance*100
+}
 
 // otherLegs names every leg but C++ with the reason it has no line yet.
 func otherLegs() []skipped { return otherLegsBut("cpp") }
@@ -1294,6 +1334,9 @@ func (b readArmBoard) markdown() string {
 		dirty = "dirty, build-regenerated only: " + strings.Join(b.Dirty, ", ")
 	}
 	window := b.Window
+	if !b.windowOK() {
+		window = "INVALID"
+	}
 	if b.WindowReason != "" {
 		window += " (" + b.WindowReason + ")"
 	}
@@ -1322,7 +1365,7 @@ func (b readArmBoard) markdown() string {
 	} else {
 		fmt.Fprintf(&w, "# bytes_per_op: fixed %.1f B/record, packet %.0f B/record (§5.3 rule 2 — the division is this driver's alone)\n", b.FixedBytes, b.PacketBytes)
 	}
-	w.WriteString("# checks: table=contract, packet C/C++/C#=removed, packet Go=always (§1.9)\n")
+	w.WriteString(checksLine(leg))
 	switch {
 	case leg != "cpp":
 		fmt.Fprintf(&w, "# anchor: none for %s (SPEC-TABLES §3.4's straight-line reference, %s, is the C++ leg's alone)\n", legTitle(leg), anchorSource)
@@ -1333,11 +1376,19 @@ func (b readArmBoard) markdown() string {
 	}
 	w.WriteString("\nleg      identity read    plan read    packet read    GATE identity  GATE plan    plan/identity\n")
 	w.WriteString("         ns/record        ns/record    ns/record      vs packet      vs packet    x (reported)\n")
+	gateIdentity := b.GateIdentity
+	gatePlan := b.GatePlan
+	if !b.windowOK() {
+		gateIdentity = faster(b.Identity, b.Packet, false)
+		if planMeasured {
+			gatePlan = faster(b.Plan, b.Packet, false)
+		}
+	}
 	ratio := "—"
-	if planMeasured && b.windowOK() && len(b.Identity.Samples) > 0 {
+	if b.windowOK() && planMeasured && len(b.Identity.Samples) > 0 {
 		ratio = fmt.Sprintf("%.2f", b.Plan.BestNs/b.Identity.BestNs)
 	}
-	fmt.Fprintf(&w, "%-8s %12s %12s %14s    %-14s %-12s %s\n", leg, nsCell(b.Identity), nsCell(b.Plan), nsCell(b.Packet), b.GateIdentity, b.GatePlan, ratio)
+	fmt.Fprintf(&w, "%-8s %12s %12s %14s    %-14s %-12s %s\n", leg, nsCell(b.Identity), nsCell(b.Plan), nsCell(b.Packet), gateIdentity, gatePlan, ratio)
 	for _, s := range b.Absent {
 		fmt.Fprintf(&w, "%-8s %12s %12s %14s    %-14s %-12s %s     %s\n", s.Language, "—", "—", "—", "—", "—", "—", s.Reason)
 	}
@@ -1436,13 +1487,57 @@ func porcelain() (string, error) {
 }
 
 // readArmLegs are the legs whose runner carries `--read-arm` on this tree.
-var readArmLegs = []string{"cpp", "c", "cs", "dart"}
+var readArmLegs = []string{"cpp", "c", "cs", "dart", "elixir"}
 
-// planReadPassOn is the whole of `-mode plan-read` (gate, window, control,
-// rounds, control, verdicts, board), with the sitting's pinned core recorded.
+// checksLine is the board's §1.9 checks axis. It names the measured leg's
+// packet axis as expectedChecks has it: the Dart and Elixir boards' packet
+// rows are checks=contract, which the C/C++/C#/Go sentence alone never says.
+func checksLine(leg string) string {
+	line := "# checks: table=contract, packet C/C++/C#=removed, packet Go=always"
+	if leg == "dart" || leg == "elixir" {
+		line += ", packet " + legTitle(leg) + "=" + expectedChecks(leg, "packet")
+	}
+	return line + " (§1.9)\n"
+}
+
+// planGateClaim is the sentence the board prints for what the leg's plan gate
+// checked before the clock. It names only checks the leg's runner makes.
+//
+// The C runner (bench/tables/c/table_main.c, gates P2 to P4) derives the plan's
+// answer from the 64 identity records it already held byte for byte to the C++
+// reference (plan_expected_build, after bfb8be239's plan_expected), requires the
+// plan read to save to those bytes with the counters exactly docs/
+// FIXED-FORM-ALGORITHM.md section 5.4's (widened = 64 records x min(their_n,
+// my_n) = 64 x 64 = 4096, every other counter zero), reads again into a
+// poisoned destination (gate P3), and refuses an answer equal to the identity
+// corpus's (gate P4). The Elixir runner (bench/tables/elixir/runner.exs gates
+// P2 to P4) pins the same answer and counters and repeats an ordinary load; it
+// supplies no poisoned destination, so its sentence claims none.
+func planGateClaim(leg string) string {
+	switch leg {
+	case "c":
+		return "its gate before the clock requires all 64 records to equal the plan's answer derived from the byte-gated identity corpus (every OLD field value, and the appended field at its declared default), the counters exactly widened 4096 (64 per record, min(their_n, my_n) of the stats bound) with every other counter zero, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
+	case "elixir":
+		return "its gate before the clock requires all 64 records to equal the plan's answer derived from the byte-gated identity corpus (every OLD field value, and the appended field at its declared default), the counters exactly widened 4096 (64 per record, min(their_n, my_n) of the stats bound) with every other counter zero, a second ordinary load saving to the same bytes, and an answer that is not the identity corpus's"
+	}
+	return "its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
+}
+
+// readArmIterationsFor is the per-sample record count for a read-arm sitting:
+// 4,000,000 for native legs, 400,000 for the BEAM leg so each sample stays comfortably
+// above §2.1's 200ms floor without dragging a 7-round sitting across minutes.
+func readArmIterationsFor(leg string) int64 {
+	if leg == "elixir" {
+		return 400000
+	}
+	return readArmIterations
+}
+
+// planReadPassOn is the whole of `-mode plan-read`: gate, window, control,
+// rounds, control, verdicts, board, with the sitting's pinned core recorded.
 func planReadPassOn(langs []string, out string, rounds int, info buildInfo, receipt, lane string) (resultErr error) {
 	if len(langs) != 1 || !contains(readArmLegs, langs[0]) {
-		return errors.New("plan-read measures ONE leg per sitting, and only a leg whose runner has a read arm (-langs cpp, -langs c, -langs cs or -langs dart)")
+		return errors.New("plan-read measures ONE leg per sitting, and only a leg whose runner has a read arm (-langs cpp, -langs c, -langs cs, -langs dart or -langs elixir)")
 	}
 	leg := langs[0]
 	if rounds < 7 {
@@ -1467,8 +1562,9 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 			return fmt.Errorf("cached build lacks %s/%s; build it first (-mode build -langs %s)", leg, wire, leg)
 		}
 	}
-	// THE PLAN LANE runs where the leg's plan build ran: the C, C# and Dart legs,
-	// with the lineage corpus on the tree. That one binary then times all three reads.
+	// THE PLAN LANE runs where the leg's plan build ran: the C, C#, Dart or
+	// Elixir leg, with the lineage corpus on the tree. That one build then times
+	// all three reads.
 	planRefusal := planLaneRefusal(fileExists)
 	readWire, plan := "table", false
 	switch leg {
@@ -1476,6 +1572,14 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 		planRefusal = cPlanRefusal(fileExists)
 		if planRefusal == "" && info.Binaries[binary("plan", "c")] == "" {
 			planRefusal = "the cached build has no C plan binary (" + binary("plan", "c") + "); rebuild with -mode build -langs c"
+		}
+		if planRefusal == "" {
+			readWire, plan = "plan", true
+		}
+	case "elixir":
+		planRefusal = elixirPlanRefusal(fileExists)
+		if planRefusal == "" && info.Binaries[binary("plan", "elixir")] == "" {
+			planRefusal = "the cached build has no Elixir plan modules; rebuild with -mode build -langs elixir"
 		}
 		if planRefusal == "" {
 			readWire, plan = "plan", true
@@ -1501,6 +1605,7 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 	if err != nil {
 		return err
 	}
+	iters := readArmIterationsFor(leg)
 	arm := func(flags ...string) []string {
 		a := append([]string{"--read-arm"}, flags...)
 		a = append(a, "--packet-wire-dir", "testdata/wire", "--packet-variant-dir", "bench/corpus/variants")
@@ -1510,7 +1615,7 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 		return a
 	}
 	readArgs := func(round int) []string {
-		return arm("--csv", "--round", strconv.Itoa(round), "--iterations", strconv.FormatInt(readArmIterations, 10), "--packet-iterations", strconv.FormatInt(readArmIterations, 10))
+		return arm("--csv", "--round", strconv.Itoa(round), "--iterations", strconv.FormatInt(iters, 10), "--packet-iterations", strconv.FormatInt(iters, 10))
 	}
 	// THE GATES BEFORE ANY CLOCK: the shared producer's identity check, both
 	// legs, and the read arm's own (both wires' goldens, every variant, and
@@ -1564,10 +1669,15 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 		if plan {
 			flags = info.Tools["dart_plan_flags"]
 		}
+	case "elixir":
+		serialize = "none"
+		if plan {
+			flags = info.Tools["elixir_plan_flags"]
+		}
 	}
 	board := readArmBoard{
 		Host: info.Host, OS: info.OS, Arch: info.Arch, CPU: info.CPU, Compiler: compiler, Flags: flags,
-		Revision: info.Revision, Serialize: serialize, Dirty: dirty, Rounds: rounds, Iterations: readArmIterations, AnchorReps: anchorReps,
+		Revision: info.Revision, Serialize: serialize, Dirty: dirty, Rounds: rounds, Iterations: iters, AnchorReps: anchorReps,
 		CorpusID: id, PlanRefusal: planRefusal, Window: "INVALID", Receipt: strings.TrimSpace(receipt), Absent: otherLegsBut(leg),
 		GatePlan: "— (absent)", Leg: leg, Lane: lane,
 	}
@@ -1579,16 +1689,23 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 	var anchors []anchorSample
 	measureErr := func() error {
 		control := func(label string) (map[string]float64, error) {
-			controlWire := "packet"
+			controlWire, cIters := "packet", readArmIterations
 			if contains(tableOnlyLanguages, leg) {
-				controlWire = "table"
+				// a table-only leg (Dart) has no packet runner: its control is
+				// its own table leg at the table wire's iteration count
+				controlWire, cIters = "table", 400000
 			}
-			output, runErr := window.capture(runner(controlWire, leg, "--csv", "--round", "0"), "control-"+label+"-"+controlWire)
+			cArgs := []string{"--csv", "--round", "0"}
+			if leg == "elixir" {
+				cIters = iters
+				cArgs = append(cArgs, "--iterations", strconv.FormatInt(cIters, 10))
+			}
+			output, runErr := window.capture(runner(controlWire, leg, cArgs...), "control-"+label+"-"+controlWire)
 			writeErr := os.WriteFile(filepath.Join(tmp, "control-"+label+"-"+controlWire+".csv"), output, 0644)
 			if err := errors.Join(runErr, writeErr); err != nil {
 				return nil, err
 			}
-			rows, err := parseRows(output, leg, controlWire, info.CorpusIDs[controlWire])
+			rows, err := parseRowsForIterations(output, leg, controlWire, info.CorpusIDs[controlWire], cIters, fastMinimumSeconds)
 			if err != nil {
 				return nil, err
 			}
@@ -1616,7 +1733,7 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 					if err := errors.Join(runErr, os.WriteFile(filepath.Join(tmp, phase+".csv"), output, 0644)); err != nil {
 						return err
 					}
-					rows, err := parseReadArmLeg(output, leg, id, readArmIterations, plan)
+					rows, err := parseReadArmLeg(output, leg, id, iters, plan)
 					if err != nil {
 						return err
 					}

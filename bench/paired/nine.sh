@@ -3,7 +3,7 @@
 #
 #   bench/paired/nine.sh [--lane N] [--rounds 1|2|3] [--out DIR] [--note TEXT]
 #   bench/paired/nine.sh --plan-read LANGS [--lane N | --pin N] [--rounds 1..7] [--out DIR] [--note TEXT]
-#   bench/paired/nine.sh --read-arm --receipt TEXT [--leg cpp|c|cs|dart] [--pin N] [--out DIR]
+#   bench/paired/nine.sh --read-arm --receipt TEXT [--leg cpp|c|cs|dart|elixir] [--pin N] [--out DIR]
 #
 # It builds the driver and every leg, then runs `-mode table`, which asks the
 # TREE which table runners it carries (bench/tables/<lang>/), measures exactly
@@ -45,18 +45,18 @@
 # fixed form's identity read, plan read and the same leg's packet read, each
 # MEASURED alone, the two GATE verdicts against that packet read, and the C++
 # anchor line against the hand-written straight-line reader. It builds and
-# gates the requested leg (cpp, c, cs or dart) and runs `-mode plan-read` inside the
+# gates the requested leg (cpp, c, cs, dart or elixir) and runs `-mode plan-read` inside the
 # confirmation pass's quiet window, bracketed by that leg's packet control leg.
 # --receipt is the operator's READY/START record for that window and is
 # required. An INVALID window prints its numbers with no verdict and the script
 # exits non-zero.
 #
-# --leg c is the C leg's board, --leg cs the C# leg's and --leg dart the Dart
-# leg's: that leg's runner's --read-arm, bracketed by that leg's packet control
-# leg (Dart, table-only, by its table control leg), and with the lineage corpus
-# on the tree (bench/tables/<leg>/lineage/) its PLAN lane too, all three reads
-# out of the one plan build. --pin N runs the measuring pass under
-# `taskset -c N` and records the core on the board.
+# --leg c, --leg cs, --leg dart or --leg elixir is the C, C#, Dart or Elixir
+# leg's board: that runner's --read-arm, bracketed by its packet control leg
+# (Dart, table-only, by its table control leg), and with the lineage corpus on
+# the tree (bench/tables/<leg>/lineage/) its PLAN lane too, all three reads out
+# of the one plan build. --pin N runs the measuring pass under `taskset -c N`
+# and records the core on the board.
 #
 # THE RESULT IS NOT CERTIFIED. It is the fast diagnostic's numbers in the
 # published table's shape: reduced iteration counts, no bracketing drift
@@ -84,7 +84,7 @@ while [ $# -gt 0 ]; do
     --plan-read) PLANREAD="$2"; shift 2 ;;
     --read-arm) READ_ARM=1; shift ;;
     --receipt) RECEIPT="$2"; shift 2 ;;
-    --leg)    LEG="$2"; shift 2 ;;
+    --leg|-langs|--langs) LEG="$2"; shift 2 ;;
     -h|--help)
         sed -n '2,64p' "$0" | cut -c 3-
         exit 0 ;;
@@ -113,8 +113,8 @@ if [ -n "$READ_ARM" ]; then
         exit 2
     fi
     case "$LEG" in
-    cpp|c|cs|dart) ;;
-    *) echo "nine.sh: --leg takes cpp, c, cs or dart (the legs whose runner has a read arm)" >&2; exit 2 ;;
+    cpp|c|cs|dart|elixir) ;;
+    *) echo "nine.sh: --leg takes cpp, c, cs, dart or elixir (the legs whose runner has a read arm)" >&2; exit 2 ;;
     esac
     : "${OUT:=build/paired-read/$(date -u +%Y%m%dT%H%M%SZ)}"
     go build -o bin/schema-paired ./bench/paired

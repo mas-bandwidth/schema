@@ -3,7 +3,7 @@
     {
       "name": "base",
       "when": "pull-request",
-      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, the float-NaN widening control, the C/C++ fixed-runtime twin gate's planted leftover-line control, the generated-tree gate's ten planted verdicts (seven red, three green, on prepared directories — no regeneration), and the fixed form's run-copy bound in both systems legs beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them.",
+      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, the float-NaN widening control, the C/C++ fixed-runtime twin gate's planted leftover-line control, the generated-tree gate's ten planted verdicts (seven red, three green, on prepared directories \u2014 no regeneration), and the fixed form's run-copy bound in both systems legs beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them.",
       "targets": [
         "check-enum-bound-negative-control",
         "check-zero-range-negative-control",
@@ -581,7 +581,7 @@
     {
       "name": "dart",
       "when": "pull-request",
-      "why": "the Dart port's controls and its four packet families: fifteen controls, the fixed form's among them and the accessor/descriptor agreement gate's two (each a go build and a regeneration of the block and pointers corpora, a few seconds apiece). Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of §5.7.",
+      "why": "the Dart port's controls and its four packet families: fifteen controls, the fixed form's among them and the accessor/descriptor agreement gate's two (each a go build and a regeneration of the block and pointers corpora, a few seconds apiece). Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of \u00a75.7.",
       "targets": [
         "cards-dart-conformance-hash-negative-control",
         "cards-dart-conformance-negative-control",
@@ -671,7 +671,7 @@
     {
       "name": "elixir",
       "when": "pull-request",
-      "why": "the Elixir port's controls and its three packet families. Measured 1 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (one rendered byte, one dropped retained field, extra needs in the task hash, each required to red exactly its own surface) ride here too: 16 s over 3 controls on the author's machine.",
+      "why": "the Elixir port's small controls: the card driver's three (one rendered byte, one dropped retained field, extra needs in the task hash, each required to red exactly its own surface), its three packet families, the accessor offset, the allocation audit's refusal on a pin nothing runs, the I13 text differential, the keyed accessor's two ends, the runtime pin and the slot control. 2:02 of controls on the runner, plus 54 s for the slot control. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
       "targets": [
         "cards-elixir-conformance-negative-control",
         "cards-elixir-conformance-upgrade-negative-control",
@@ -679,11 +679,76 @@
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
         "packet-wide-elixir-negative-control",
-        "tables-elixir-block-lead-negative-control",
-        "tables-elixir-fixed-form-negative-control",
-        "tables-elixir-fuzz-negative-control",
+        "tables-elixir-accessor-negative-control",
+        "tables-elixir-alloc-runtime-negative-control",
+        "tables-elixir-json-differential-negative-control",
+        "tables-elixir-keyed-max-negative-control",
+        "tables-elixir-keyed-none-negative-control",
         "tables-elixir-runtime-pin-negative-control",
-        "tables-elixir-versioning-negative-control"
+        "tables-elixir-slot-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-alloc",
+      "when": "pull-request",
+      "why": "the Elixir allocation audit's sabotaged emitter (issue #420: every load allocating sixteen refc binaries and a thousand-cell list must red the heap-word and binary-call columns of every pinned case). 173 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
+        "tables-elixir-alloc-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-offsets",
+      "when": "pull-request",
+      "why": "the Elixir composed-offset control: the block's offset_of read back as a whole word must red the forged-offset check. 95 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
+        "tables-elixir-offsets-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-block",
+      "when": "pull-request",
+      "why": "the Elixir block base-alignment control: dropping the check must red the gate. 134 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
+        "tables-elixir-block-lead-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-fuzz",
+      "when": "pull-request",
+      "why": "the Elixir wire fuzzer's planted defect, which must red the fuzz gate. 27 s on the studio; it had not finished 55 s after the block control on the runner when the wire group was cancelled. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
+        "tables-elixir-fuzz-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-form",
+      "when": "pull-request",
+      "why": "the Elixir cook's delta-read control and the raw-output format gate's control. 86 s and 59 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
+        "tables-elixir-cook-negative-control",
+        "tables-elixir-emit-format-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-versioning",
+      "when": "pull-request",
+      "why": "the Elixir fixed form's, versioning's and hostile-corpus controls. 26 s, then 75 s for the other two, on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
+        "tables-elixir-fixed-form-negative-control",
+        "tables-elixir-versioning-negative-control",
+        "schema-elixir-runs-hostile-corpus-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
@@ -709,7 +774,7 @@
     {
       "name": "go-containers",
       "when": "pull-request",
-      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md §3.4).",
+      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md \u00a73.4).",
       "targets": [
         "tables-go-containers-negative-controls",
         "tables-go-accessor-negative-control",
