@@ -137,7 +137,7 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 	// the construct here, once, by name, so none can write an edge an absent
 	// value does not own.
 	if fields := ir.TableOptionalPointerClosures(u); !carries(carrier, carryOptionalVariableClosure) && len(fields) > 0 {
-		return nil, fmt.Errorf("target %q refuses the construct optional over a variable closure on field %s — Go, C, C# and C++ carry ?T and the by-value ?[N]T over a variable closure; every other target gates its walks on presence until its turn (docs/SPEC-TABLES.md §2.3)", carrier, fields[0])
+		return nil, fmt.Errorf("target %q refuses the construct optional over a variable closure on field %s — Go, C, C#, C++ and Dart carry ?T and the by-value ?[N]T over a variable closure; every other target gates its walks on presence until its turn (docs/SPEC-TABLES.md §2.3)", carrier, fields[0])
 	}
 	// GO CARRIES THE OPTIONAL MAP FIRST (docs/SPEC-TABLES.md §2.8)
 	if err := refuseOptionalMaps(u, carrier); err != nil {

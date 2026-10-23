@@ -518,7 +518,7 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	# corpus's, the file loads, it saves back identical, reused storage
 	# round-trips twice.
 	$(MAKE) tables-rust-fixed-matched
-	# THE SOAK (docs/PORTING.md I9): 20 s gated on the allocator call count,
+	# THE SOAK (docs/PORTING.md I9): 4194304 passes gated on the allocator call count,
 	# and the control that watches the count go red on a planted pair
 	$(MAKE) tables-rust-soak TABLES_RUST_SOAK_ITERATIONS=4194304
 	$(MAKE) tables-rust-soak-negative-control

@@ -110,18 +110,15 @@ SCHEMAS_TABLES_BACKEND := $(wildcard tables/backend/*.schema)
 SCHEMAS_TABLES_VOCAB := $(wildcard tables/vocab/*.schema)
 SCHEMAS_TABLES_VOCAB9 := $(wildcard tables/vocab9/*.schema)
 
-# The soak length the clocked legs' soaks take, in seconds (the C++, C# and
-# Rust soaks are counted instead, below). The hour is the release act — `make
-# tables-<lang>-soak SOAK_SECONDS=3600` — and `make test` runs the short forms
-# with an explicit value.
-SOAK_SECONDS ?= 3600
-
-# The C++, C# and Rust soaks are COUNTED, not clocked: each takes a number of
-# passes, because a pass is what the allocation count is read across, and
-# because `make shape-gate` refuses a timing primitive outside the sanctioned
-# bench.
-# The defaults are the release act, about an hour each on the studio; `make
-# test` runs the short forms with an explicit value.
+# EVERY SOAK IS COUNTED, NOT CLOCKED: each leg's soak takes a number of passes,
+# because a pass is what the allocation count is read across, because a count
+# runs the same loop on every machine, and because `make shape-gate` refuses a
+# timing primitive outside the sanctioned bench. Each default is the release
+# act, about an hour on the studio; `make test` runs the short forms with an
+# explicit value. (Java's and Dart's sit in make/java.mk and make/dart.mk
+# beside their targets.)
+TABLES_C_SOAK_ITERATIONS ?= 800000
+TABLES_GO_SOAK_ITERATIONS ?= 600000
 TABLES_CPP_SOAK_ITERATIONS ?= 1000000
 TABLES_CS_SOAK_ITERATIONS ?= 250000000
 TABLES_RUST_SOAK_ITERATIONS ?= 800000000
@@ -1103,12 +1100,12 @@ tables-block-fuzz-extent-negative-control: build/block-fuzz/.stamp build/tables-
 # down in an afternoon. This reads and writes the WHOLE corpus in a loop and
 # watches the ALLOCATION COUNTER, which must not move at all.
 #
-# Two seconds of it ride `go test ./...` so a regression is caught on the way
-# past; SOAK names the real one. It found a real defect on its first run: the
+# A short count of it (the test's own -soak-iterations default) rides `go test
+# ./...` so a regression is caught on the way past; TABLES_GO_SOAK_ITERATIONS
+# (above, about an hour) is the real one. It found a real defect on its first run: the
 # text walk rebuilt a union field's arms table on every call, ten objects per
 # ToJson of an instance carrying five unions, which no byte comparison could
 # ever have seen.
-SOAK ?= 1h
 
 # The DECLARED MAXIMUM check: a count past the maximum Begin refuses on the
 # producer side. This is §19.2's tenth forgery, the one a reader found OPEN,
@@ -5409,6 +5406,38 @@ tables-wire-fuzz-oracle-negative-control: build/conformance-harness build/wire-f
 		  cat $(ORACLE_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(ORACLE_NC)/log
 	@echo "negative control: removing the oracle's body-span clamp turns the pinned vector RED"
+
+# BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the append
+# rule): the standing control for the pinned vector nested_arm_trailing. The
+# ORACLE is taught the opposite reading, a nested-union arm whose L runs past
+# the whole inner union is malformed, through a Go build overlay on a COPY of
+# decode.go, and a replay of that vector must go red on it by name: the leg
+# reads the envelope clean and the sabotaged oracle no longer agrees. The
+# replay, not a whole run, because the enumerated pass meets an envelope of the
+# same shape earlier (message_arms, pass arm #21) and would stop there first.
+# Nothing tracked is written to.
+NESTED_TRAIL_NC := build/wire-fuzz-nc-nested-arm-trailing
+.PHONY: tables-wire-fuzz-nested-arm-trailing-negative-control
+tables-wire-fuzz-nested-arm-trailing-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	@rm -rf $(NESTED_TRAIL_NC) && mkdir -p $(NESTED_TRAIL_NC)
+	@sed -e 's|^\(\t\tok = r.unionCell(&fv.Cell, fv, -1)\)$$|\1; if ok \&\& r.off != n { r.report.Malformed = true; return false } // NEGATIVE CONTROL: the envelope refused|' \
+		internal/tablewire/decode.go > $(NESTED_TRAIL_NC)/decode.go.txt
+	@cmp -s internal/tablewire/decode.go $(NESTED_TRAIL_NC)/decode.go.txt && \
+		{ echo "NEGATIVE CONTROL: the nested-arm sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/$(NESTED_TRAIL_NC)/decode.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(NESTED_TRAIL_NC)/overlay.json
+	go build -overlay $(NESTED_TRAIL_NC)/overlay.json -o $(NESTED_TRAIL_NC)/harness ./test/conformance/harness
+	@if $(NESTED_TRAIL_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
+			--replay testdata/wire/tables/nested_arm_trailing.bin --unit messagedemo --root ToolMessage \
+			--failed $(NESTED_TRAIL_NC)/failed.bin > $(NESTED_TRAIL_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the oracle refuses a nested-union envelope's trailing bytes and the wire fuzzer stayed green"; \
+		cat $(NESTED_TRAIL_NC)/log; exit 1; \
+	fi
+	@grep -q "nested_arm_trailing.bin" $(NESTED_TRAIL_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector nested_arm_trailing"; \
+		  cat $(NESTED_TRAIL_NC)/log; exit 1; }
+	@grep -m1 "FAILED" $(NESTED_TRAIL_NC)/log
+	@echo "negative control: refusing a nested-union envelope's trailing bytes in the oracle turns the pinned vector RED"
 
 # ---- THE RETENTION LEG (docs/SPEC-TABLES.md §6.6, §4.2) ---------------------
 #

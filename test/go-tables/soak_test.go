@@ -3,12 +3,15 @@
 // Correctness tests are necessary and not sufficient: a read path that leaks
 // one object per call passes every byte comparison in this repo and takes a
 // server down in an afternoon. So this reads and writes the WHOLE corpus in a
-// loop for as long as it is given, and the thing it watches is not the bytes —
+// loop for as many passes as it is given, and the thing it watches is not the bytes —
 // those are the conformance harness's business — but the ALLOCATION COUNTER,
 // which must be flat.
 //
-// It runs for two seconds by default, so it rides `go test ./...` and catches a
-// regression on the way past; `make tables-go-soak` gives it the hour.
+// ITS LENGTH IS A PASS COUNT, NOT A CLOCK (-soak-iterations): the allocation
+// counter is read across passes, so the number of passes is what matters, and
+// a count runs the same loop on every machine. The default is a short one, so
+// it rides `go test ./...` and catches a regression on the way past; `make
+// tables-go-soak` gives it the hour's worth (TABLES_GO_SOAK_ITERATIONS).
 //
 // WHAT IT WATCHES, and why each one:
 //
@@ -30,7 +33,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	"tabledemo"
 	"tblp1"
@@ -39,7 +41,7 @@ import (
 	"tblv2"
 )
 
-var soakFor = flag.Duration("soak", 2*time.Second, "how long the soak runs")
+var soakIterations = flag.Int64("soak-iterations", 256, "how many passes of the corpus the soak runs")
 
 // one corpus row: the wire golden, its text, and the three operations bound to
 // the generated surface. Erased the way the conformance driver erases them, so
@@ -199,9 +201,8 @@ func TestSoak(t *testing.T) {
 	runtime.MemProfileRate = 1
 	defer func() { runtime.MemProfileRate = oldRate }()
 
-	deadline := time.Now().Add(*soakFor)
 	iterations := int64(0)
-	for time.Now().Before(deadline) {
+	for iterations < *soakIterations {
 		pass()
 		iterations++
 		if t.Failed() {
@@ -256,8 +257,8 @@ func TestSoak(t *testing.T) {
 			"the read and write paths own no memory, so an allocation that SCALES with the loop is a leak",
 			grew, iterations, allowed)
 	}
-	t.Logf("%d passes of %d cases in %v, %d objects allocated (bound %d) across %d site(s), %d of them the port's",
-		iterations, len(corpus), *soakFor, grew, allowed, len(sites), mine)
+	t.Logf("%d passes of %d cases, %d objects allocated (bound %d) across %d site(s), %d of them the port's",
+		iterations, len(corpus), grew, allowed, len(sites), mine)
 	if os.Getenv("VERBOSE") != "" {
 		t.Logf("heap in use: %d -> %d bytes", before.HeapAlloc, after.HeapAlloc)
 	}
@@ -456,9 +457,8 @@ func TestNoCodecWorkProfilerClean(t *testing.T) {
 	var memBefore, memAfter runtime.MemStats
 	runtime.ReadMemStats(&memBefore)
 
-	// No codec work performed. Sleep briefly to simulate time passing.
-	time.Sleep(20 * time.Millisecond)
-
+	// No codec work performed between the two reads: whatever the window
+	// shows is the harness's own bookkeeping, and none of it may be the port's.
 	runtime.ReadMemStats(&memAfter)
 	grew := memAfter.Mallocs - memBefore.Mallocs
 
