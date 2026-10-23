@@ -327,8 +327,9 @@
     {
       "name": "wire-fuzz",
       "when": "pull-request",
-      "why": "the tolerant-wire oracle and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
+      "why": "the tolerant-wire oracle, nested-arm trailing and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
       "targets": [
+        "tables-wire-fuzz-nested-arm-trailing-negative-control",
         "tables-wire-fuzz-node-type-negative-control",
         "tables-wire-fuzz-oracle-negative-control"
       ]
@@ -581,18 +582,33 @@
     {
       "name": "dart",
       "when": "pull-request",
-      "why": "the Dart port's controls and its four packet families: eight controls, the fixed form's among them. Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of \u00a75.7. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
+      "why": "the Dart port's controls and its four packet families: fifteen controls, the fixed form's among them and the accessor/descriptor agreement gate's two (each a go build and a regeneration of the block and pointers corpora, a few seconds apiece). Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of \u00a75.7.",
       "targets": [
-        "cards-dart-conformance-negative-control", "cards-dart-conformance-upgrade-negative-control", "cards-dart-conformance-hash-negative-control",
+        "cards-dart-conformance-hash-negative-control",
+        "cards-dart-conformance-negative-control",
+        "cards-dart-conformance-upgrade-negative-control",
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
         "packet-utf8-dart-negative-control",
         "packet-wide-dart-negative-control",
+        "tables-dart-alloc-negative-control",
+        "tables-dart-alloc-runtime-negative-control",
+        "tables-dart-soak-negative-control",
         "tables-dart-fixed-form-negative-control",
         "tables-dart-versioning-negative-control",
         "tables-dart-fuzz-negative-control",
+        "tables-dart-keyed-negative-control",
+        "tables-dart-order-negative-control",
+        "tables-dart-fuzz-lead-negative-control",
         "tables-dart-names-negative-control",
-        "tables-dart-standalone-negative-control"
+        "tables-dart-runtime-home-negative-control",
+        "tables-dart-standalone-negative-control",
+        "tables-dart-accessor-negative-control",
+        "tables-dart-slot-negative-control",
+        "tables-dart-float-jit-negative-control",
+        "tables-dart-float-jit-sdk-negative-control",
+        "tables-dart-float-jit-boxing-negative-control",
+        "tables-dart-text-differential-negative-control"
       ],
       "dart": "3.13.2"
     },
@@ -749,6 +765,14 @@
       ]
     },
     {
+      "name": "dart-nightly",
+      "when": "nightly",
+      "why": "the Dart nightly fuzzer's planted reader-bound control takes its own scheduled job with the card's pinned Dart 3.13.2 toolchain and 10-minute mutation budget; it never joins the shared nightly group or per-push controls.",
+      "targets": [
+        "schema-dart-nightly-fuzz-negative-control"
+      ]
+    },
+    {
       "name": "go-containers",
       "when": "pull-request",
       "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md \u00a73.4).",
@@ -789,6 +813,16 @@
       "targets": [
         "tables-go-view-negative-controls"
       ]
+    },
+    {
+      "name": "schema-dart-strict-analyze",
+      "when": "nightly",
+      "why": "the strict Dart analyzer lens over the generated packet trees: one control plants a raw type in a scratch copy and requires the analyzer to reject it by file and rule, and the other plants an object != 0 (the fixed emitter's old nested-message default check) and requires unrelated_type_equality_checks by name. It runs nightly because the same job's heavy half generates and analyzes the table backend corpus, which is the costlier pass; the controls themselves are ~1 s each.",
+      "targets": [
+        "schema-dart-generated-strict-analyze-gate-negative-control",
+        "schema-dart-generated-strict-analyze-nested-default-negative-control"
+      ],
+      "dart": "3.13.2"
     }
   ],
   "excluded": [

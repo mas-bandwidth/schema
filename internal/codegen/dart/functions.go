@@ -709,8 +709,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.emitWriteCompressedFloat(f, name, ind)
 			return
 		}
-		g.needScratch, g.needF32Conv = true, true
-		g.chunkAdd(fmt.Sprintf("_float32BitsFromDouble(%s)", name), 32, ind)
+		g.emitWriteFloat32Bits(name, ind)
 	case ir.TFloat64:
 		g.needScratch, g.needF64Conv = true, true
 		g.chunkAdd(fmt.Sprintf("_float64BitsFromDouble(%s)", name), 64, ind)
@@ -730,6 +729,49 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.emitWriteUnion(ref, name, ind)
 		}
 	}
+}
+
+// emitWriteFloat32Bits stages the 32 bits of a float32 field's IEEE-754
+// single representation with the conversion AT THE ASSIGNMENT (issue 404,
+// PORTING M3): under the JIT a double crossing an out-of-line conversion
+// call is boxed, and whether the call is inlined is the inliner's budget,
+// not the codec's — make tables-dart-float-jit measured the helper form
+// boxing on the pinned SDK. Non-NaN goes through the hardware conversion; a
+// NaN narrows in software — sign kept, top 23 mantissa bits kept, the quiet
+// bit forced only for the all-low-payload case — so every pattern the read
+// half produces round trips (SPEC-TABLES §3; float32_cells_test.go). A
+// statement-form merge: v is computed in a branch.
+func (g *gen) emitWriteFloat32Bits(name, ind string) {
+	g.chunkFlush(ind)
+	g.needScratch, g.needF32Conv, g.needV = true, true, true
+	g.pf("%sif (!%s.isNaN) {\n", ind, name)
+	g.pf("%s  _f32[0] = %s;\n", ind, name)
+	g.pf("%s  v = _u32[0];\n", ind)
+	g.pf("%s} else {\n", ind)
+	g.pf("%s  _f64[0] = %s;\n", ind, name)
+	g.pf("%s  v = (_u64[0] >>> 29) & 0x7fffff;\n", ind)
+	g.pf("%s  if (v == 0) {\n", ind)
+	g.pf("%s    v = 0x400000;\n", ind)
+	g.pf("%s  }\n", ind)
+	g.pf("%s  v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;\n", ind)
+	g.pf("%s}\n", ind)
+	g.mergeW(32, ind)
+}
+
+// emitReadFloat32Bits assigns the double whose IEEE-754 single
+// representation is v, the conversion at the assignment (issue 404). A NaN
+// pattern widens in software (the hardware conversion quiets a signalling
+// NaN); the reader reproduces the transmitted pattern exactly. The bits are
+// a NaN exactly when their magnitude exceeds infinity's 0x7f800000.
+func (g *gen) emitReadFloat32Bits(name, ind string) {
+	g.pf("%sif ((v & 0x7fffffff) <= 0x7f800000) {\n", ind)
+	g.pf("%s  _u32[0] = v;\n", ind)
+	g.pf("%s  %s = _f32[0];\n", ind, name)
+	g.pf("%s} else {\n", ind)
+	g.pf("%s  _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);\n", ind)
+	g.pf("%s  _u64[0] |= 0x7ff0000000000000;\n", ind)
+	g.pf("%s  %s = _f64[0];\n", ind, name)
+	g.pf("%s}\n", ind)
 }
 
 // f32lit renders the float32 rounding of v as a Dart double literal (exact —
@@ -1394,7 +1436,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 		}
 		g.needScratch, g.needF32Conv = true, true
 		g.readR(32, ind)
-		g.pf("%s%s = _doubleFromFloat32Bits(v);\n", ind, name)
+		g.emitReadFloat32Bits(name, ind)
 	case ir.TFloat64:
 		g.needScratch, g.needF64Conv = true, true
 		g.emitReadWide64(64, ind)

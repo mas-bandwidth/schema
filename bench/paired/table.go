@@ -863,10 +863,98 @@ func buildCSPlan(schema, serCs string) error {
 	return run("dotnet", "build", proj, "-c", "Release", "-v", "q", "--nologo", "-property:UseSharedCompilation=false", "-property:SerializeCsRoot="+serCs, "--output", filepath.Dir(binary("plan", "cs")))
 }
 
+// THE DART LEG'S PLAN LANE reads the lineage pair the Rust leg committed
+// (bench/tables/rust/lineage/ on 337aaacf), carried byte for byte under the
+// Dart leg's own paths because the standard's home for it (bench/corpus/ +
+// bench/paired/corpus/, §1.10 items 1–6) is outside this leg's card. The
+// runner loads the .bin and the .layout (they ride its corpus id); the lock is
+// compiled in (the unit generated beside it) and is recorded with the build.
+const dartLineageDir = "bench/tables/dart/lineage"
+
+var dartLineageCorpus = []string{dartLineageDir + "/schema.lock", dartLineageDir + "/bench_lineage.bin", dartLineageDir + "/bench_lineage.layout"}
+
+// dartPlanRefusal is "" when the Dart plan lane can be built from this tree.
+func dartPlanRefusal(present func(string) bool) string {
+	var missing []string
+	for _, p := range dartLineageCorpus {
+		if !present(p) {
+			missing = append(missing, p)
+		}
+	}
+	if len(missing) > 0 {
+		return "no lineage corpus on this tree: " + strings.Join(missing, ", ") + " absent (BENCH-STANDARD §1.10 work list items 1–7)"
+	}
+	return ""
+}
+
+// dartPlanBuild is where the Dart plan lane's unit is staged and generated:
+// the paired unit's two schema files beside the lineage's lock, generated a
+// second time so its lineage holds the older layout. Nothing under it is
+// committed.
+const dartPlanBuild = "build/paired/plan-dart-unit"
+
+// dartPlanModules are the generated Dart sources the plan binary was compiled
+// from, recorded with the build so a regeneration after it refuses the sitting.
+func dartPlanModules() []string {
+	found, _ := filepath.Glob(filepath.Join(dartPlanBuild, "generated", "bench", "paired", "dart", "*.dart"))
+	sort.Strings(found)
+	return found
+}
+
+// buildDartPlan generates the paired unit beside the lineage's lock and
+// compiles the Dart table runner against it into one AOT executable.
+func buildDartPlan(schema, dart string) error {
+	if err := os.RemoveAll(dartPlanBuild); err != nil {
+		return err
+	}
+	unit := filepath.Join(dartPlanBuild, "unit")
+	if err := os.MkdirAll(unit, 0755); err != nil {
+		return err
+	}
+	var unitSchemas []string
+	for _, from := range append(append([]string(nil), pairedSchemas...), dartLineageDir+"/schema.lock") {
+		b, err := os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+		to := filepath.Join(unit, filepath.Base(from))
+		if err := os.WriteFile(to, b, 0644); err != nil {
+			return err
+		}
+		if strings.HasSuffix(to, ".schema") {
+			unitSchemas = append(unitSchemas, to)
+		}
+	}
+	pairedDir := filepath.Join(dartPlanBuild, "generated", "bench", "paired", "dart")
+	if err := run(append([]string{schema, "generate", "--lang", "dart", "--out", pairedDir}, unitSchemas...)...); err != nil {
+		return fmt.Errorf("generating the paired unit beside %s/schema.lock: %w", dartLineageDir, err)
+	}
+	packetDir := filepath.Join(dartPlanBuild, "generated", "bench", "dart")
+	if err := run(schema, "generate", "--lang", "dart", "--out", packetDir, "bench/corpus/Bench.schema"); err != nil {
+		return err
+	}
+	runnerDir := filepath.Join(dartPlanBuild, "bench", "tables", "dart")
+	if err := os.MkdirAll(runnerDir, 0755); err != nil {
+		return err
+	}
+	runnerBytes, err := os.ReadFile(filepath.Join("bench", "tables", "dart", "table_main.dart"))
+	if err != nil {
+		return err
+	}
+	runnerSource := filepath.Join(runnerDir, "table_main.dart")
+	if err := os.WriteFile(runnerSource, runnerBytes, 0644); err != nil {
+		return err
+	}
+	_ = os.Remove(binary("plan", "dart")) // a stale binary must never stand in for this build's
+	return run(dart, "compile", "exe", "-o", binary("plan", "dart"), runnerSource)
+}
+
 func lineageDirFor(leg string) string {
 	switch leg {
 	case "cs":
 		return csLineageDir
+	case "dart":
+		return dartLineageDir
 	case "elixir":
 		return elixirLineageDir
 	}
@@ -1200,6 +1288,8 @@ func legTitle(leg string) string {
 		return "Elixir"
 	case "cs":
 		return "C#"
+	case "dart":
+		return "Dart"
 	}
 	return leg
 }
@@ -1348,8 +1438,11 @@ func (b readArmBoard) markdown() string {
 // whose only changes are files under generated/ — the build regenerates them
 // from the committed emitter, and a revision whose committed copy is stale
 // would otherwise refuse every C++ sitting — and NAMES them on the board.
-// Any other change refuses the sitting.
-func dirtyPaths(porcelain string) ([]string, error) {
+// An UNTRACKED file is accepted only inside the measured leg's own emitter
+// output (generated/bench/paired/<leg>/ or generated/bench/<leg>/): a module
+// the emitter now writes that the committed copy predates (the Dart unit's
+// BenchWire.dart on sprint/schema-dart). Any other change refuses the sitting.
+func dirtyPaths(porcelain string, legs ...string) ([]string, error) {
 	var paths []string
 	for line := range strings.SplitSeq(porcelain, "\n") {
 		if strings.TrimSpace(line) == "" {
@@ -1359,12 +1452,28 @@ func dirtyPaths(porcelain string) ([]string, error) {
 			return nil, fmt.Errorf("unreadable status line %q", line)
 		}
 		p := strings.TrimSpace(line[3:])
-		if !strings.HasPrefix(p, "generated/") || strings.HasPrefix(line, "??") {
+		if !strings.HasPrefix(p, "generated/") || (strings.HasPrefix(line, "??") && !legEmitted(p, legs)) {
 			return nil, fmt.Errorf("the tree is dirty outside the build's own regenerated files: %s", p)
 		}
 		paths = append(paths, p)
 	}
 	return paths, nil
+}
+
+// legEmitted is true when p is a file (never a directory) directly inside one
+// of the legs' own generated output directories.
+func legEmitted(p string, legs []string) bool {
+	if strings.HasSuffix(p, "/") {
+		return false
+	}
+	for _, leg := range legs {
+		for _, dir := range []string{"generated/bench/paired/" + leg + "/", "generated/bench/" + leg + "/"} {
+			if rest, ok := strings.CutPrefix(p, dir); ok && rest != "" && !strings.Contains(rest, "/") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // porcelain is `git status --porcelain` UNTRIMMED: its first column is
@@ -1378,15 +1487,15 @@ func porcelain() (string, error) {
 }
 
 // readArmLegs are the legs whose runner carries `--read-arm` on this tree.
-var readArmLegs = []string{"cpp", "c", "cs", "elixir"}
+var readArmLegs = []string{"cpp", "c", "cs", "dart", "elixir"}
 
 // checksLine is the board's §1.9 checks axis. It names the measured leg's
-// packet axis as expectedChecks has it: the Elixir board's packet row is
-// checks=contract, which the C/C++/C#/Go sentence alone never says.
+// packet axis as expectedChecks has it: the Dart and Elixir boards' packet
+// rows are checks=contract, which the C/C++/C#/Go sentence alone never says.
 func checksLine(leg string) string {
 	line := "# checks: table=contract, packet C/C++/C#=removed, packet Go=always"
-	if leg == "elixir" {
-		line += ", packet Elixir=" + expectedChecks("elixir", "packet")
+	if leg == "dart" || leg == "elixir" {
+		line += ", packet " + legTitle(leg) + "=" + expectedChecks(leg, "packet")
 	}
 	return line + " (§1.9)\n"
 }
@@ -1428,7 +1537,7 @@ func readArmIterationsFor(leg string) int64 {
 // rounds, control, verdicts, board, with the sitting's pinned core recorded.
 func planReadPassOn(langs []string, out string, rounds int, info buildInfo, receipt, lane string) (resultErr error) {
 	if len(langs) != 1 || !contains(readArmLegs, langs[0]) {
-		return errors.New("plan-read measures ONE leg per sitting, and only a leg whose runner has a read arm (-langs cpp, -langs c, -langs cs or -langs elixir)")
+		return errors.New("plan-read measures ONE leg per sitting, and only a leg whose runner has a read arm (-langs cpp, -langs c, -langs cs, -langs dart or -langs elixir)")
 	}
 	leg := langs[0]
 	if rounds < 7 {
@@ -1444,18 +1553,18 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 	if err != nil {
 		return err
 	}
-	dirty, err := dirtyPaths(status)
+	dirty, err := dirtyPaths(status, leg)
 	if err != nil {
 		return err
 	}
-	for _, wire := range []string{"packet", "table"} {
+	for _, wire := range wiresFor(leg) {
 		if info.Binaries[binary(wire, leg)] == "" {
 			return fmt.Errorf("cached build lacks %s/%s; build it first (-mode build -langs %s)", leg, wire, leg)
 		}
 	}
-	// THE PLAN LANE runs where the leg's plan build ran: the C, C# or Elixir
-	// leg, with the lineage corpus on the tree. That one build then times all
-	// three reads.
+	// THE PLAN LANE runs where the leg's plan build ran: the C, C#, Dart or
+	// Elixir leg, with the lineage corpus on the tree. That one build then times
+	// all three reads.
 	planRefusal := planLaneRefusal(fileExists)
 	readWire, plan := "table", false
 	switch leg {
@@ -1479,6 +1588,14 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 		planRefusal = csPlanRefusal(fileExists)
 		if planRefusal == "" && info.Binaries[binary("plan", "cs")] == "" {
 			planRefusal = "the cached build has no C# plan assembly (" + binary("plan", "cs") + "); rebuild with -mode build -langs cs"
+		}
+		if planRefusal == "" {
+			readWire, plan = "plan", true
+		}
+	case "dart":
+		planRefusal = dartPlanRefusal(fileExists)
+		if planRefusal == "" && info.Binaries[binary("plan", "dart")] == "" {
+			planRefusal = "the cached build has no Dart plan binary (" + binary("plan", "dart") + "); rebuild with -mode build -langs dart"
 		}
 		if planRefusal == "" {
 			readWire, plan = "plan", true
@@ -1547,6 +1664,11 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 		if compiler == "" {
 			compiler = firstLine(info.Tools["dotnet"])
 		}
+	case "dart":
+		serialize = "none (generated AOT)"
+		if plan {
+			flags = info.Tools["dart_plan_flags"]
+		}
 	case "elixir":
 		serialize = "none"
 		if plan {
@@ -1567,18 +1689,23 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 	var anchors []anchorSample
 	measureErr := func() error {
 		control := func(label string) (map[string]float64, error) {
+			controlWire, cIters := "packet", readArmIterations
+			if contains(tableOnlyLanguages, leg) {
+				// a table-only leg (Dart) has no packet runner: its control is
+				// its own table leg at the table wire's iteration count
+				controlWire, cIters = "table", 400000
+			}
 			cArgs := []string{"--csv", "--round", "0"}
-			cIters := readArmIterations
 			if leg == "elixir" {
 				cIters = iters
 				cArgs = append(cArgs, "--iterations", strconv.FormatInt(cIters, 10))
 			}
-			output, runErr := window.capture(runner("packet", leg, cArgs...), "control-"+label+"-packet")
-			writeErr := os.WriteFile(filepath.Join(tmp, "control-"+label+"-packet.csv"), output, 0644)
+			output, runErr := window.capture(runner(controlWire, leg, cArgs...), "control-"+label+"-"+controlWire)
+			writeErr := os.WriteFile(filepath.Join(tmp, "control-"+label+"-"+controlWire+".csv"), output, 0644)
 			if err := errors.Join(runErr, writeErr); err != nil {
 				return nil, err
 			}
-			rows, err := parseRowsForIterations(output, leg, "packet", info.CorpusIDs["packet"], cIters, fastMinimumSeconds)
+			rows, err := parseRowsForIterations(output, leg, controlWire, info.CorpusIDs[controlWire], cIters, fastMinimumSeconds)
 			if err != nil {
 				return nil, err
 			}
@@ -1647,7 +1774,7 @@ func planReadPassOn(langs []string, out string, rounds int, info buildInfo, rece
 			delta := math.Abs(after[key]/start - 1)
 			board.ControlDelta = math.Max(board.ControlDelta, delta*100)
 			if delta > controlTolerance {
-				return fmt.Errorf("%s packet control %s moved %.1f%% (> 5%%); repeat the sitting", legTitle(leg), key, delta*100)
+				return fmt.Errorf("%s control %s moved %.1f%% (> 5%%); repeat the sitting", legTitle(leg), key, delta*100)
 			}
 		}
 		if now, err := porcelain(); err != nil || now != status {

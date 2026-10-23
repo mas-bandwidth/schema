@@ -92,6 +92,7 @@ int _retainWidth(int kind) {
     case 11:
     case 23:
     case 28:
+    case 36: // a timestamp (ir.TableKindWidth)
       return 8;
     case 18:
     case 19:
@@ -484,8 +485,12 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
 	g.pf("\tr.retain = retain;\n")
 	g.pf("\tr.path = [1];\n")
+	g.emitKnownTypes(st, "r", "v")
 	g.pf("\tfinal verdict = r.open();\n")
 	g.pf("\tif (verdict == 1) { r.report.refused = true; return v; }\n")
+	// verdict 3 is framing damage on the root body, not the file's: the body
+	// is read tolerantly up to the damage (docs/SPEC-TABLES.md §3.3, §4;
+	// internal/tablewire/decode.go decodeWith), so it falls through here.
 	g.pf("\tif (verdict == 2) { r.report.malformed = true; return v; }\n")
 	g.pf("\tr.scanNodeTable();\n")
 	g.pf("\tr.pos = 1;\n")
@@ -498,24 +503,14 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tfinal state = WireState();\n")
 	g.pf("\tstate.retain = retain;\n")
 	g.pf("\tstate.report = report;\n")
+	g.pf("\tstate.indexRoot(v);\n")
+	g.pf("\tfinal open = <Object>{v};\n")
+	g.pf("\t%sNumber(state, v, open);\n", d)
 	g.pf("\tfinal w = TableWireWriter(state);\n")
 	g.pf("\tw.path = [1];\n")
 	g.pf("\tw.putByte(1);\n")
 	g.pf("\t%sWireSaveBodyFields(w, v);\n", d)
-	g.pf("\tif (state.nodes.isNotEmpty) {\n")
-	g.pf("\t\tfinal ref = state.refFor(_kNodeTableId);\n")
-	g.pf("\t\tw.putLeb(ref);\n")
-	g.pf("\t\tw.putByte(%d);\n", wireKindString)
-	g.pf("\t\tfinal body = TableWireWriter(state);\n")
-	g.pf("\t\tbody.putLeb(state.nodes.length);\n")
-	g.pf("\t\tfor (final node in state.nodes) {\n")
-	g.pf("\t\t\tbody.putLeb(state.refFor(_kStringBlobId));\n")
-	g.pf("\t\t\tbody.putLeb(node.length);\n")
-	g.pf("\t\t\tbody.putBytes(node);\n")
-	g.pf("\t\t}\n")
-	g.pf("\t\tw.putLeb(body.buf.length);\n")
-	g.pf("\t\tw.putBytes(body.buf);\n")
-	g.pf("\t}\n")
+	g.pf("\t_writeNodeTable(w);\n")
 	g.pf("\tw.putByte(0);\n")
 	g.pf("\tfor (final id in state.ids) { w.putU64(id); }\n")
 	g.pf("\tw.putU64(state.ids.length);\n")
