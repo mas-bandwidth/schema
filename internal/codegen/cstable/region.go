@@ -252,8 +252,11 @@ const tableRegionSource = `
         if (!header.Var(out ulong count)) { Damage(report); return true; }
         a.Offset = Math.Min(a.Buffer.Length, header.Offset);
         if (kind != 13) { report.KindMismatch++; return true; }
+        // A REGION READ WHOSE COUNT THE FRAMED STORAGE CANNOT HOLD reports
+        // damage and resumes after the map's L, as the Go oracle's
+        // collectionCap does; only a builder's refusal stops the read.
         NativeResetField(value, f, true);
-        if (!NativeReserve(ref state, value, f, count, report)) { return false; }
+        if (!NativeReserve(ref state, value, f, count, report)) { return !state.Refused; }
         int landed = 0; bool widened = false; NativeMapKey last = default;
         TableFieldInfo keyField = f.Table.Fields[0];
         for (ulong i = 0; i < count; i++)
@@ -514,7 +517,9 @@ const tableRegionSource = `
             {
                 int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
                 if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; }
-                if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return false; }
+                // the same rule for a list: damage, then the parent resumes
+                // after the array's L (the Go oracle's collectionCap)
+                if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return !state.Refused; }
                 int previous = f.Counted ? value.Count(f) : 0;
                 int decoded = 0;
                 for (int i = 0; i < keep; i++)
