@@ -50,26 +50,14 @@ func TestCardConstructsAreNotRefused(t *testing.T) {
 func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 	t.Parallel()
 
-	enum := &ir.Enum{Name: "Tier"}
-	union := &ir.Union{Name: "Body"}
-
 	cases := []struct {
 		name     string
 		field    *ir.Field
 		keywords []string
 	}{
-		{"map", &ir.Field{Name: "by_key", MapEntry: &ir.Struct{Name: "Entry"}, Type: ir.FieldType{Kind: ir.TMap}}, []string{"map"}},
-		{"optional", &ir.Field{Name: "maybe", Type: ir.FieldType{Kind: ir.TInt, Width: 32, Optional: true}}, []string{"optional"}},
-		{"enum_keyed_array", &ir.Field{Name: "per_tier", KeyEnum: "Tier", KeyEnumRef: enum, Array: ir.ArrayFixed, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TNamed, Ref: enum}}, []string{"enum-keyed"}},
-		{"wide_int", &ir.Field{Name: "wide", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}, []string{"128-bit"}},
-		{"fixed", &ir.Field{Name: "ratio", Type: ir.FieldType{Kind: ir.TFixed, Width: 16}}, []string{"fixed-point"}},
-		{"union_arm", &ir.Field{Name: "body", Type: ir.FieldType{Kind: ir.TNamed, Ref: union}}, []string{"union arms"}},
-		{"wstring", &ir.Field{Name: "title", Type: ir.FieldType{Kind: ir.TWString, Size: 16}}, []string{"wstring"}},
 		{"guarded", &ir.Field{Name: "when", Guard: "armed", Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"guarded"}},
-		{"fixed_array", &ir.Field{Name: "slots", Array: ir.ArrayFixed, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"fixed-length array"}},
+		{"fixed_point", &ir.Field{Name: "rate", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, Signed: true}}, []string{"fixed-point"}},
 		{"counted_minimum", &ir.Field{Name: "some", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"declared minimum"}},
-		{"flags", &ir.Field{Name: "perms", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Flags{Name: "Perm"}}}, []string{"flags"}},
-		{"nested_type", &ir.Field{Name: "tint", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "Colour"}}}, []string{"nested type"}},
 		{"compressed_float", &ir.Field{Name: "speed", HasFloatRange: true, Type: ir.FieldType{Kind: ir.TFloat32}}, []string{"compressed float"}},
 	}
 
@@ -90,6 +78,26 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 	}
 }
 
+// TestFixedClassConstructsAreCarried pins the three constructs the fixed class
+// brought onto the Rust variable wire (docs/SPEC-TABLES.md §2, §2.2, §3): a
+// fixed-length array [N]T, a flags mask (kind 9, its set bits' names in text)
+// and a `type` nested by value (kind 13, a body like a table's). They were
+// refused by name before vt/fixed-class/rust; TestFixedClassOnTableWireRust
+// holds their bytes to the oracle.
+func TestFixedClassConstructsAreCarried(t *testing.T) {
+	t.Parallel()
+
+	for _, f := range []*ir.Field{
+		{Name: "three", Array: ir.ArrayFixed, ArrayBound: 3, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}},
+		{Name: "perms", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Flags{Name: "Perm"}}},
+		{Name: "tint", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "Colour"}}},
+	} {
+		if err := refuseCardUnsupportedVariableConstructs(cardUnit(f)); err != nil {
+			t.Errorf("%s: the fixed class's construct was refused: %v", f.Name, err)
+		}
+	}
+}
+
 // TestCardUnitWithOneExcludedConstructIsRefused pins the boundary on a full
 // card-shaped unit: the whole card slice plus one excluded construct is
 // refused, and the refusal names the table, the field and the construct, so
@@ -104,14 +112,14 @@ func TestCardUnitWithOneExcludedConstructIsRefused(t *testing.T) {
 		&ir.Field{Name: "attempt", Type: ir.FieldType{Kind: ir.TInt, Width: 64}},
 		&ir.Field{Name: "paths", Array: ir.ArrayList, Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "PathText", IsTable: true}}},
 		&ir.Field{Name: "body", Type: ir.FieldType{Kind: ir.TString, Pointer: true}},
-		&ir.Field{Name: "by_key", MapEntry: &ir.Struct{Name: "Entry"}, Type: ir.FieldType{Kind: ir.TMap}},
+		&ir.Field{Name: "rate", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, Signed: true}},
 	)
 
 	err := refuseCardUnsupportedVariableConstructs(unit)
 	if err == nil {
-		t.Fatal("a card unit carrying a map was not refused")
+		t.Fatal("a card unit carrying a fixed-point field was not refused")
 	}
-	for _, want := range []string{"Card", "by_key", "map"} {
+	for _, want := range []string{"Card", "rate", "fixed-point"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q does not name %q", err, want)
 		}

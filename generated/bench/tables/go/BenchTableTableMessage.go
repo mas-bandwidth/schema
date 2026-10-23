@@ -20,7 +20,7 @@ const TableMessageBatchMax = 256
 const TableMessageRefBitsHere = 7
 const TableMessageEntriesHere = 77
 
-var tableAnnouncement = [...]byte{0x01, 0x01, 0x09, 0x7f, 0xa9, 0x82, 0x9c, 0x0e, 0x85, 0xaa, 0xa9, 0x02, 0x0e, 0xfe, 0x06, 0x06, 0xfb, 0x06, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x04, 0x01, 0x02, 0x00, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac, 0xf1, 0xfb, 0x07, 0x01, 0x0c, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x01, 0x0c, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d, 0xb5, 0x07, 0x01, 0x09, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6, 0xa9, 0x53, 0x07, 0x01, 0x09, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6, 0xe6, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xb4, 0xec, 0x60, 0xeb, 0xb6, 0xe5, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xcd, 0xf1, 0x60, 0xeb, 0xb6, 0xe8, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x01, 0x0a, 0x00, 0x01, 0x6e, 0x2c, 0x5f, 0x20, 0x10, 0xb6, 0xa0, 0x1e, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x09, 0x01, 0x08, 0x00, 0xa7, 0x3d, 0x24, 0xd1, 0xc1, 0x4f, 0xa4, 0x11, 0x01, 0xca, 0x31, 0x90, 0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x50, 0x50, 0xa2, 0x15, 0xc0, 0x9a, 0xbc, 0xb7, 0x07, 0x01, 0x0c, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x04, 0x01, 0x0c, 0x00, 0x25, 0xb9, 0x59, 0xb0, 0x65, 0xc3, 0xfb, 0x01, 0x04, 0x01, 0x03, 0x00, 0x2d, 0xa5, 0x9a, 0x8c, 0x90, 0x67, 0x61, 0x12, 0x01, 0xfd, 0x15, 0xa1, 0x1a, 0xd9, 0x70, 0x5a, 0x6a, 0x07, 0x00, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x01, 0x10, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00, 0xbe, 0x0d, 0x04, 0x01, 0x10, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d, 0xae, 0x9b, 0x08, 0x01, 0x20, 0x00, 0x05, 0x0b, 0x59, 0x0a, 0x65, 0xb5, 0xd7, 0xb7, 0x09, 0x00, 0x7e, 0x96, 0x95, 0xd0, 0xe2, 0x98, 0x7b, 0x6d, 0x08, 0x00, 0xd8, 0xc0, 0x0d, 0xd6, 0x71, 0x4c, 0xa9, 0x73, 0x09, 0x01, 0x3f, 0x01, 0x85, 0xfc, 0x54, 0xbe, 0x51, 0x6b, 0xee, 0x3e, 0x05, 0x01, 0x29, 0xff, 0xbf, 0xa8, 0xca, 0x9a, 0x3a, 0x12, 0x01, 0x6d, 0x7b, 0x5f, 0x03, 0xbc, 0x7b, 0x09, 0x01, 0x30, 0x00, 0xc6, 0x69, 0xbe, 0xf9, 0x75, 0x04, 0x46, 0x3c, 0x0a, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x7f, 0x47, 0x0a, 0xd7, 0x23, 0x3c, 0x2a, 0x82, 0xb3, 0x7b, 0xb0, 0x0f, 0x5d, 0x93, 0x0e, 0x01, 0x08, 0x0d, 0x4c, 0x99, 0xb1, 0x45, 0xad, 0x9c, 0x63, 0xee, 0x0e, 0x00, 0x50, 0x0d, 0x90, 0x57, 0xaa, 0x21, 0x53, 0xdc, 0x35, 0x2e, 0x0f, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0e, 0x04, 0x04, 0x06, 0x00, 0x6e, 0xe8, 0xf8, 0x2c, 0x54, 0x2f, 0xa6, 0x13, 0x0c, 0x0f, 0xe5, 0xe9, 0xb5, 0x63, 0xd0, 0xa9, 0xb8, 0xcf, 0x0e, 0x00, 0x10, 0x06, 0x00, 0xc9, 0x96, 0x42, 0xe2, 0xe5, 0x7b, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x16, 0x95, 0x42, 0xe2, 0xe5, 0x7a, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x63, 0x93, 0x42, 0xe2, 0xe5, 0x79, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x57, 0xe4, 0xe2, 0xf7, 0xff, 0x31, 0xef, 0x9c, 0x0a, 0x00, 0x04, 0x6c, 0x1f, 0x34, 0xc9, 0xf9, 0xb3, 0x5a, 0x0b, 0x16, 0xaf, 0x1f, 0x46, 0x80, 0x85, 0x34, 0xa3, 0x09, 0x00, 0x42, 0x26, 0xaf, 0x08, 0x79, 0xdd, 0x1b, 0xd6, 0x05, 0x01, 0x3d, 0xff, 0xff, 0x9f, 0xf6, 0xf4, 0xac, 0xdb, 0xe0, 0x1b, 0xa9, 0x07, 0x33, 0xc5, 0x0d, 0xe0, 0x30, 0xbf, 0x0a, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7a, 0x43, 0x0a, 0xd7, 0x23, 0x3c, 0x5f, 0x51, 0xd8, 0xcc, 0x27, 0x65, 0x0d, 0x56, 0x08, 0x01, 0x18, 0x00, 0x72, 0x86, 0xfd, 0x6c, 0x17, 0x92, 0x82, 0xc0, 0x01, 0x69, 0xcb, 0x79, 0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x01, 0x08, 0x00, 0xfe, 0xbc, 0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x01, 0x04, 0x00, 0x56, 0xbd, 0x4f, 0x86, 0x6d, 0xd0, 0x7f, 0x9e, 0x07, 0x01, 0x0a, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x01, 0x08, 0x00, 0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x01, 0x08, 0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x01, 0x0a, 0xff, 0x07, 0x0c, 0xcf, 0x66, 0x27, 0xe1, 0xee, 0x90, 0xa7, 0x00, 0x76, 0x84, 0xda, 0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x00, 0x95, 0x8a, 0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x00, 0xf1, 0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x00, 0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f, 0x8d, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d, 0xcd, 0xd9, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae, 0x16, 0xdc, 0x04, 0x00, 0x17, 0x92, 0x12, 0x41, 0xc3, 0x3b, 0xe5, 0x35, 0x00, 0x31, 0x88, 0xde, 0xb0, 0x2f, 0x28, 0xc8, 0x2c, 0x00, 0x34, 0xb3, 0x8c, 0xbc, 0x21, 0xda, 0xba, 0x20, 0x00, 0xaa, 0x80, 0x06, 0x30, 0x19, 0x28, 0x73, 0x33, 0x0d, 0x8b, 0x34, 0x5b, 0x0b, 0x91, 0x8d, 0xa3, 0xf2, 0x0d, 0x65, 0xb7, 0xec, 0x86, 0x1c, 0xa4, 0xa3, 0x9f, 0x0d, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f, 0x00, 0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xd4, 0x7b, 0x26, 0xb0, 0x9d, 0x29, 0x5f, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72, 0x61, 0x31, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+var tableAnnouncement = [...]byte{0x01, 0x01, 0x09, 0x61, 0x9f, 0x62, 0x67, 0x6e, 0x36, 0xbe, 0x2c, 0x02, 0x0e, 0xfe, 0x06, 0x06, 0xfb, 0x06, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x04, 0x01, 0x02, 0x00, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac, 0xf1, 0xfb, 0x07, 0x01, 0x0c, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x01, 0x0c, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d, 0xb5, 0x07, 0x01, 0x09, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6, 0xa9, 0x53, 0x07, 0x01, 0x09, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6, 0xe6, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xb4, 0xec, 0x60, 0xeb, 0xb6, 0xe5, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xcd, 0xf1, 0x60, 0xeb, 0xb6, 0xe8, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x01, 0x0a, 0x00, 0x01, 0x6e, 0x2c, 0x5f, 0x20, 0x10, 0xb6, 0xa0, 0x1e, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x09, 0x01, 0x08, 0x00, 0xa7, 0x3d, 0x24, 0xd1, 0xc1, 0x4f, 0xa4, 0x11, 0x01, 0xca, 0x31, 0x90, 0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x50, 0x50, 0xa2, 0x15, 0xc0, 0x9a, 0xbc, 0xb7, 0x07, 0x01, 0x0c, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x04, 0x01, 0x0c, 0x00, 0x25, 0xb9, 0x59, 0xb0, 0x65, 0xc3, 0xfb, 0x01, 0x04, 0x01, 0x03, 0x00, 0x2d, 0xa5, 0x9a, 0x8c, 0x90, 0x67, 0x61, 0x12, 0x01, 0xfd, 0x15, 0xa1, 0x1a, 0xd9, 0x70, 0x5a, 0x6a, 0x07, 0x00, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x01, 0x10, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00, 0xbe, 0x0d, 0x04, 0x01, 0x10, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d, 0xae, 0x9b, 0x08, 0x01, 0x20, 0x00, 0x05, 0x0b, 0x59, 0x0a, 0x65, 0xb5, 0xd7, 0xb7, 0x09, 0x00, 0x7e, 0x96, 0x95, 0xd0, 0xe2, 0x98, 0x7b, 0x6d, 0x08, 0x00, 0xd8, 0xc0, 0x0d, 0xd6, 0x71, 0x4c, 0xa9, 0x73, 0x09, 0x01, 0x3f, 0x01, 0x85, 0xfc, 0x54, 0xbe, 0x51, 0x6b, 0xee, 0x3e, 0x05, 0x01, 0x29, 0xff, 0xbf, 0xa8, 0xca, 0x9a, 0x3a, 0x12, 0x01, 0x6d, 0x7b, 0x5f, 0x03, 0xbc, 0x7b, 0x09, 0x01, 0x30, 0x00, 0xc6, 0x69, 0xbe, 0xf9, 0x75, 0x04, 0x46, 0x3c, 0x0a, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x7f, 0x47, 0x0a, 0xd7, 0x23, 0x3c, 0x2a, 0x82, 0xb3, 0x7b, 0xb0, 0x0f, 0x5d, 0x93, 0x0e, 0x01, 0x08, 0x0d, 0x4c, 0x99, 0xb1, 0x45, 0xad, 0x9c, 0x63, 0xee, 0x0e, 0x00, 0x50, 0x0d, 0x90, 0x57, 0xaa, 0x21, 0x53, 0xdc, 0x35, 0x2e, 0x0f, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0e, 0x04, 0x04, 0x06, 0x00, 0x6e, 0xe8, 0xf8, 0x2c, 0x54, 0x2f, 0xa6, 0x13, 0x0c, 0x0f, 0xe5, 0xe9, 0xb5, 0x63, 0xd0, 0xa9, 0xb8, 0xcf, 0x0e, 0x00, 0x10, 0x06, 0x00, 0xc9, 0x96, 0x42, 0xe2, 0xe5, 0x7b, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x16, 0x95, 0x42, 0xe2, 0xe5, 0x7a, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x63, 0x93, 0x42, 0xe2, 0xe5, 0x79, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x57, 0xe4, 0xe2, 0xf7, 0xff, 0x31, 0xef, 0x9c, 0x0a, 0x00, 0x04, 0x6c, 0x1f, 0x34, 0xc9, 0xf9, 0xb3, 0x5a, 0x0b, 0x16, 0xaf, 0x1f, 0x46, 0x80, 0x85, 0x34, 0xa3, 0x09, 0x00, 0x42, 0x26, 0xaf, 0x08, 0x79, 0xdd, 0x1b, 0xd6, 0x05, 0x01, 0x3d, 0xff, 0xff, 0x9f, 0xf6, 0xf4, 0xac, 0xdb, 0xe0, 0x1b, 0xa9, 0x07, 0x33, 0xc5, 0x0d, 0xe0, 0x30, 0xbf, 0x0a, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7a, 0x43, 0x0a, 0xd7, 0x23, 0x3c, 0x5f, 0x51, 0xd8, 0xcc, 0x27, 0x65, 0x0d, 0x56, 0x08, 0x01, 0x18, 0x00, 0x72, 0x86, 0xfd, 0x6c, 0x17, 0x92, 0x82, 0xc0, 0x01, 0x69, 0xcb, 0x79, 0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x01, 0x08, 0x00, 0xfe, 0xbc, 0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x01, 0x04, 0x00, 0x56, 0xbd, 0x4f, 0x86, 0x6d, 0xd0, 0x7f, 0x9e, 0x07, 0x01, 0x0a, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x01, 0x08, 0x00, 0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x01, 0x08, 0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x01, 0x0a, 0xff, 0x07, 0x0c, 0xcf, 0x66, 0x27, 0xe1, 0xee, 0x90, 0xa7, 0x00, 0x76, 0x84, 0xda, 0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x00, 0x95, 0x8a, 0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x00, 0xf1, 0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x00, 0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f, 0x8d, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d, 0xcd, 0xd9, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae, 0x16, 0xdc, 0x04, 0x00, 0x17, 0x92, 0x12, 0x41, 0xc3, 0x3b, 0xe5, 0x35, 0x00, 0x31, 0x88, 0xde, 0xb0, 0x2f, 0x28, 0xc8, 0x2c, 0x00, 0x34, 0xb3, 0x8c, 0xbc, 0x21, 0xda, 0xba, 0x20, 0x00, 0xaa, 0x80, 0x06, 0x30, 0x19, 0x28, 0x73, 0x33, 0x0d, 0x8b, 0x34, 0x5b, 0x0b, 0x91, 0x8d, 0xa3, 0xf2, 0x0d, 0x65, 0xb7, 0xec, 0x86, 0x1c, 0xa4, 0xa3, 0x9f, 0x0d, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f, 0x00, 0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xd4, 0x7b, 0x26, 0xb0, 0x9d, 0x29, 0x5f, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72, 0x61, 0x31, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 var tableMessageEntries = [...]TableMessageEntry{
 	TableMessageEntry{Id: 0xa5013e9ad5caeda4, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 2, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
 	TableMessageEntry{Id: 0xfbf1ac4d96ebd022, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
@@ -139,7 +139,7 @@ func (w *TableBitWriter) Put(value uint64, n int64) {
 			w.Buffer[index+8] = byte(value >> (64 - shift))
 		}
 	} else {
-		for j := int64(0); j < need; j++ {
+		for j := range need {
 			w.Buffer[index+j] = byte(word >> (j * 8))
 		}
 	}
@@ -176,7 +176,7 @@ func (r *TableBitReader) Get(n int64) (uint64, bool) {
 			value |= uint64(r.Buffer[at+8]) << (64 - shift)
 		}
 	} else {
-		for j := int64(0); j < need; j++ {
+		for j := range need {
 			value |= uint64(r.Buffer[at+j]) << (8 * j)
 		}
 		value >>= shift
@@ -236,6 +236,7 @@ func Announce(buffer []byte) int64 {
 }
 func tableMessageRefuse(r *TableReport, reason string) bool {
 	r.Verdict = TableOpenRefused
+	r.FixedRaised = false
 	r.Reason = reason
 	return false
 }
@@ -348,7 +349,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		if e.Id == 0xffffffffffffffff {
 			nodeSeen = true
 		}
-		for i := int64(0); i < count; i++ {
+		for i := range count {
 			o := v.Entries[i].Shape
 			if o.Max-o.Min == src.Offset-began && o.Min >= 0 && o.Max <= int64(len(words)) {
 				same := true
@@ -370,7 +371,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		count++
 	}
 	src.Offset = 0
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		e, ok := tableMessageEntryRead(&src)
 		if !ok {
 			report.Malformed = true
@@ -401,7 +402,10 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 // count, and the entry count is bounded above at 4096, so it is at most eight
 // million compares on a path that runs ONCE a connection and never again. The
 // compare is spelled inline so the emitter claims no new runtime name.
-func tableMessageKnownKind(k uint8) bool { return k <= 33 }
+// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..33 plus the
+// timestamp 36 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3 entry shape table); 34, 35 and 37
+// stay malformed.
+func tableMessageKnownKind(k uint8) bool { return k <= 33 || k == 36 }
 func tableMessageKindBits(k uint8) int64 {
 	if k == 0 || k == 32 {
 		return 0
@@ -416,7 +420,7 @@ func tableMessageKindBits(k uint8) int64 {
 		return 16
 	case 4, 8, 10, 22, 27:
 		return 32
-	case 5, 9, 11, 23, 28:
+	case 5, 9, 11, 23, 28, 36:
 		return 64
 	case 18, 19, 24, 29:
 		return 128
@@ -603,15 +607,13 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		}
 		if e.Element.Bits >= 0 || e.Element.Kind == 0 || e.Element.Kind == 32 {
 			width := e.Element.Bits
-			if width < 0 {
-				width = 0
-			}
+			width = max(width, 0)
 			if s.Kind == 16 {
 				width += v.RefBits
 			}
 			return r.Skip(int64(n) * width)
 		}
-		for i := uint64(0); i < n; i++ {
+		for range n {
 			if s.Kind == 16 && !r.Skip(v.RefBits) {
 				return false
 			}
@@ -933,6 +935,7 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.entity_id")
 						}
 						value.EntityId = uint32(v)
 					}
@@ -972,9 +975,11 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_x")
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_x")
 						}
 						value.PosX = int32(v)
 					}
@@ -1014,9 +1019,11 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_y")
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_y")
 						}
 						value.PosY = int32(v)
 					}
@@ -1056,9 +1063,11 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v < -16383 {
 							v = -16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_z")
 						} else if v > 16383 {
 							v = 16383
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pos_z")
 						}
 						value.PosZ = int32(v)
 					}
@@ -1098,6 +1107,7 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v > 511 {
 							v = 511
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.yaw")
 						}
 						value.Yaw = uint32(v)
 					}
@@ -1137,6 +1147,7 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v > 511 {
 							v = 511
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.pitch")
 						}
 						value.Pitch = uint32(v)
 					}
@@ -1176,9 +1187,11 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_x")
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_x")
 						}
 						value.VelX = int32(v)
 					}
@@ -1218,9 +1231,11 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_y")
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_y")
 						}
 						value.VelY = int32(v)
 					}
@@ -1260,9 +1275,11 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v < -2048 {
 							v = -2048
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_z")
 						} else if v > 2047 {
 							v = 2047
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.vel_z")
 						}
 						value.VelZ = int32(v)
 					}
@@ -1302,9 +1319,11 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.health")
 						} else if v > 1000 {
 							v = 1000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableEntity.health")
 						}
 						value.Health = int32(v)
 					}
@@ -1412,7 +1431,16 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					value.Moving = payload12.Get8() != 0
+					{
+						b := payload12.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: Moving"
+							}
+						}
+						value.Moving = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -1444,7 +1472,16 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					value.Firing = payload13.Get8() != 0
+					{
+						b := payload13.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: Firing"
+							}
+						}
+						value.Firing = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -1459,7 +1496,32 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 		}
 	}
 }
+
+// TableEntityLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
+// recovered value, with the counters counted onto the report passed.
+// TableEntityLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
+// TableEntityReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
+// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
 func TableEntityLoadMessages(values []TableEntity, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+	read := report
+	if read == nil {
+		read = &TableReport{}
+	} else {
+		*read = TableReport{}
+	}
+	count, ok := TableEntityLoadMessagesTolerant(values, vocabulary, data, read)
+	if !ok {
+		return count, false
+	}
+	if read.Err() != nil {
+		for i := range count {
+			TableEntityReset(&values[i])
+		}
+		return 0, false
+	}
+	return count, true
+}
+func TableEntityLoadMessagesTolerant(values []TableEntity, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -1472,7 +1534,7 @@ func TableEntityLoadMessages(values []TableEntity, vocabulary *TableVocabulary, 
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !TableEntityLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -1589,6 +1651,7 @@ func TableStatLoadMessageBody(r *TableMessageReader, value *TableStat) bool {
 						if v > 255 {
 							v = 255
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableStat.stat_id")
 						}
 						value.StatId = uint32(v)
 					}
@@ -1628,9 +1691,11 @@ func TableStatLoadMessageBody(r *TableMessageReader, value *TableStat) bool {
 						if v < -512 {
 							v = -512
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableStat.delta")
 						} else if v > 511 {
 							v = 511
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableStat.delta")
 						}
 						value.Delta = int32(v)
 					}
@@ -1648,7 +1713,32 @@ func TableStatLoadMessageBody(r *TableMessageReader, value *TableStat) bool {
 		}
 	}
 }
+
+// TableStatLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
+// recovered value, with the counters counted onto the report passed.
+// TableStatLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
+// TableStatReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
+// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
 func TableStatLoadMessages(values []TableStat, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+	read := report
+	if read == nil {
+		read = &TableReport{}
+	} else {
+		*read = TableReport{}
+	}
+	count, ok := TableStatLoadMessagesTolerant(values, vocabulary, data, read)
+	if !ok {
+		return count, false
+	}
+	if read.Err() != nil {
+		for i := range count {
+			TableStatReset(&values[i])
+		}
+		return 0, false
+	}
+	return count, true
+}
+func TableStatLoadMessagesTolerant(values []TableStat, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -1661,7 +1751,7 @@ func TableStatLoadMessages(values []TableStat, vocabulary *TableVocabulary, data
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !TableStatLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -1739,7 +1829,7 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 				return false
 			}
 			w.Put(uint64(value.EntitiesCount)-1, 3)
-			for i := 0; i < int(value.EntitiesCount); i++ {
+			for i := range int(value.EntitiesCount) {
 				if !TableEntitySaveMessageBody(w, &value.Entities[i]) {
 					return false
 				}
@@ -1756,7 +1846,7 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 				return false
 			}
 			w.Put(uint64(value.StatsCount)-0, 7)
-			for i := 0; i < int(value.StatsCount); i++ {
+			for i := range int(value.StatsCount) {
 				if !TableStatSaveMessageBody(w, &value.Stats[i]) {
 					return false
 				}
@@ -1807,7 +1897,7 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 			w.Put(34, TableMessageRefBitsHere)
 			w.Put(uint64(4)-4, 0)
 			w.Align()
-			for i := 0; i < int(4); i++ {
+			for i := range int(4) {
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Loadout[i]), uint64(0))
 			}
 		}
@@ -1836,7 +1926,7 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 			}
 			w.Put(uint64(value.PayloadLength)-0, 5)
 			w.Align()
-			for i := 0; i < int(value.PayloadLength); i++ {
+			for i := range int(value.PayloadLength) {
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Payload[i]), uint64(0))
 			}
 		}
@@ -1860,13 +1950,13 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 		}
 	}
 	{
-		if value.Recoil != 0.0 {
+		if math.Float32bits(value.Recoil) != math.Float32bits(0.0) {
 			w.Put(40, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Recoil)), uint64(0))
 		}
 	}
 	{
-		if value.Drift != 0.0 {
+		if math.Float64bits(value.Drift) != math.Float64bits(0.0) {
 			w.Put(41, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Drift), uint64(0))
 		}
@@ -2049,6 +2139,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.sequence")
 						}
 						value.Sequence = uint32(v)
 					}
@@ -2088,9 +2179,11 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ack_sequence")
 						} else if v > 65535 {
 							v = 65535
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ack_sequence")
 						}
 						value.AckSequence = int32(v)
 					}
@@ -2130,6 +2223,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v > 4294967295 {
 							v = 4294967295
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ack_bits")
 						}
 						value.AckBits = uint32(v)
 					}
@@ -2239,9 +2333,11 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v < 1 {
 							v = 1
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.nonce")
 						} else if v > 9223372036854775807 {
 							v = 9223372036854775807
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.nonce")
 						}
 						value.Nonce = uint64(v)
 					}
@@ -2281,9 +2377,11 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v < -1000000000000 {
 							v = -1000000000000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.world_time")
 						} else if v > 1000000000000 {
 							v = 1000000000000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.world_time")
 						}
 						value.WorldTime = int64(v)
 					}
@@ -2323,6 +2421,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v > 281474976710655 {
 							v = 281474976710655
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.frame_tick")
 						}
 						value.FrameTick = uint64(v)
 					}
@@ -2362,12 +2461,15 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v != v {
 							v = 0.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.server_time")
 						} else if v < 0.0 {
 							v = 0.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.server_time")
 						} else if v > 65535.0 {
 							v = 65535.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.server_time")
 						} else if v == 0 {
 							v = 0
 						}
@@ -2801,12 +2903,15 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v != v {
 							v = -1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_x")
 						} else if v < -1.0 {
 							v = -1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_x")
 						} else if v > 1.0 {
 							v = 1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_x")
 						} else if v == 0 {
 							v = 0
 						}
@@ -2848,12 +2953,15 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v != v {
 							v = -1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_y")
 						} else if v < -1.0 {
 							v = -1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_y")
 						} else if v > 1.0 {
 							v = 1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_y")
 						} else if v == 0 {
 							v = 0
 						}
@@ -2895,12 +3003,15 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v != v {
 							v = -1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_z")
 						} else if v < -1.0 {
 							v = -1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_z")
 						} else if v > 1.0 {
 							v = 1.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_z")
 						} else if v == 0 {
 							v = 0
 						}
@@ -2939,6 +3050,9 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 					}
 					{
 						v := math.Float32frombits(payload47.Get32())
+						if v != v || v-v != 0 {
+							tableNonFinite(&r.Report.Reason, "TableMixed.recoil")
+						}
 						value.Recoil = v
 					}
 				}
@@ -2978,6 +3092,9 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 							v = math.Float64frombits(tableWidenFloat(payload48.Get32()))
 						} else {
 							v = math.Float64frombits(payload48.Get64())
+						}
+						if v != v || v-v != 0 {
+							tableNonFinite(&r.Report.Reason, "TableMixed.drift")
 						}
 						value.Drift = v
 					}
@@ -3052,9 +3169,11 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v < -1000000000000000000 {
 							v = -1000000000000000000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.flux")
 						} else if v > 1000000000000000000 {
 							v = 1000000000000000000
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.flux")
 						}
 						value.Flux = int64(v)
 					}
@@ -3094,12 +3213,15 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v != v {
 							v = 0.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ping")
 						} else if v < 0.0 {
 							v = 0.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ping")
 						} else if v > 250.0 {
 							v = 250.0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.ping")
 						} else if v == 0 {
 							v = 0
 						}
@@ -3141,6 +3263,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v > 16777215 {
 							v = 16777215
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.crc_hint")
 						}
 						value.CrcHint = uint32(v)
 					}
@@ -3175,7 +3298,16 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					value.HasExtra = payload53.Get8() != 0
+					{
+						b := payload53.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: HasExtra"
+							}
+						}
+						value.HasExtra = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -3212,9 +3344,11 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.extra")
 						} else if v > 255 {
 							v = 255
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.extra")
 						}
 						value.Extra = int32(v)
 					}
@@ -3254,9 +3388,11 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.idle_ticks")
 						} else if v > 15 {
 							v = 15
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableMixed.idle_ticks")
 						}
 						value.IdleTicks = int32(v)
 					}
@@ -3274,7 +3410,32 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 		}
 	}
 }
+
+// TableMixedLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
+// recovered value, with the counters counted onto the report passed.
+// TableMixedLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
+// TableMixedReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
+// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
 func TableMixedLoadMessages(values []TableMixed, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+	read := report
+	if read == nil {
+		read = &TableReport{}
+	} else {
+		*read = TableReport{}
+	}
+	count, ok := TableMixedLoadMessagesTolerant(values, vocabulary, data, read)
+	if !ok {
+		return count, false
+	}
+	if read.Err() != nil {
+		for i := range count {
+			TableMixedReset(&values[i])
+		}
+		return 0, false
+	}
+	return count, true
+}
+func TableMixedLoadMessagesTolerant(values []TableMixed, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -3287,7 +3448,7 @@ func TableMixedLoadMessages(values []TableMixed, vocabulary *TableVocabulary, da
 	if count > int64(len(values)) {
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		if !TableMixedLoadMessageBody(&r, &values[i]) {
 			return i, false
 		}
@@ -3374,6 +3535,7 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.target_id")
 						}
 						value.TargetId = uint32(v)
 					}
@@ -3413,9 +3575,11 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.damage")
 						} else if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.damage")
 						}
 						value.Damage = int32(v)
 					}
@@ -3455,9 +3619,11 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.hit_kind")
 						} else if v > 7 {
 							v = 7
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.hit_kind")
 						}
 						value.HitKind = int32(v)
 					}
@@ -3492,7 +3658,16 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 						r.Report.Malformed = true
 						return false
 					}
-					value.Crit = payload59.Get8() != 0
+					{
+						b := payload59.Get8()
+						if b > 1 {
+							r.Report.Malformed = true
+							if r.Report.Reason == "" {
+								r.Report.Reason = "malformed: Crit"
+							}
+						}
+						value.Crit = b != 0
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -3571,9 +3746,11 @@ func TableChatEventLoadMessageBody(r *TableMessageReader, value *TableChatEvent)
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableChatEvent.channel")
 						} else if v > 3 {
 							v = 3
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableChatEvent.channel")
 						}
 						value.Channel = int32(v)
 					}
@@ -3613,6 +3790,7 @@ func TableChatEventLoadMessageBody(r *TableMessageReader, value *TableChatEvent)
 						if v > 4095 {
 							v = 4095
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TableChatEvent.speaker")
 						}
 						value.Speaker = uint32(v)
 					}
@@ -3694,6 +3872,7 @@ func TablePickupEventLoadMessageBody(r *TableMessageReader, value *TablePickupEv
 						if v > 1023 {
 							v = 1023
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TablePickupEvent.item_id")
 						}
 						value.ItemId = uint32(v)
 					}
@@ -3733,9 +3912,11 @@ func TablePickupEventLoadMessageBody(r *TableMessageReader, value *TablePickupEv
 						if v < 0 {
 							v = 0
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TablePickupEvent.amount")
 						} else if v > 255 {
 							v = 255
 							r.Report.Clamped++
+							tableTextClamped(&r.Report.ClampedField, "TablePickupEvent.amount")
 						}
 						value.Amount = int32(v)
 					}

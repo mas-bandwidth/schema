@@ -54,8 +54,12 @@ func cardVariableModules(u *ir.Unit) (map[string][]byte, error) {
 // emits the fixed form. The by-name refusal lives on the card's own path, in
 // [cardVariableModules], where a unit that gains an excluded construct is
 // refused naming table, field and construct (docs/SPEC-TABLES.md §11).
+//
+// A closure that holds only FIXED tables takes the modules too: a fixed table
+// rides the variable form as well as its own (docs/SPEC-TABLES.md §2.2, §3),
+// so the gate is the closure, not the variable class.
 func scopedVariableModules(u *ir.Unit) map[string][]byte {
-	if len(ir.VariableTables(u)) == 0 {
+	if len(ir.TableClosure(u)) == 0 {
 		return nil
 	}
 	return variableModules(u)
@@ -66,7 +70,7 @@ func scopedVariableModules(u *ir.Unit) map[string][]byte {
 func variableModules(u *ir.Unit) map[string][]byte {
 	vc := newVariableClass(u)
 	any := false
-	for n := range ir.VariableTables(u) {
+	for n := range ir.TableClosure(u) {
 		if vc.emitted[n] {
 			any = true
 			break
@@ -107,31 +111,9 @@ use std::rc::Rc;
 /// header is the form byte alone. Nothing is aligned and nothing is padded.
 pub const TABLE_WIRE_FORM: u8 = 1;
 
-/// The tolerant read report (docs/SPEC-TABLES.md §4, §5): a field this build
-/// cannot name is skipped and counted, a field it can name but that arrives at
-/// another kind is a kind mismatch, and an absent field reads its default.
-/// widened counts a kind that GREW since the writer (§4), duplicate a repeated
-/// id (zero on the card's wire: no maps), and refused is the form byte this
-/// reader does not carry (§3) — the verdict, not one of §4's events.
-#[derive(Default, Clone, Copy)]
-pub struct TableReport {
-    pub unknown: u64,
-    pub kind_mismatch: u64,
-    pub widened: u64,
-    pub clamped: u64,
-    pub duplicate: u64,
-    pub malformed: bool,
-    pub refused: bool,
-    /// RETAIN-UNKNOWN'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6): retained
-    /// counts the unknown fields whose bytes were kept, retain_lost counts
-    /// every unknown this load or save could not keep (capacity, an excluded
-    /// class, or a damaged resolving walk). Both are zero in every read that
-    /// did not opt in, and both ride the one report type for the reason
-    /// duplicate does (§4).
-    pub retained: u64,
-    pub retain_lost: u64,
-}
-
+`)
+	b.WriteString(tableReportRust)
+	b.WriteString(`
 /// Read one canonical LEB128 u64 from the cursor; None when it overruns, runs
 /// past ten bytes, or is NON-MINIMAL — a redundant continuation byte, or a tenth
 /// byte above the 64th value bit, is malformed (docs/SPEC-TABLES.md §3).
@@ -191,17 +173,69 @@ pub fn text_valid(b: &[u8]) -> bool {
     std::str::from_utf8(b).is_ok() && !b.contains(&0)
 }
 
+/// WIDE TEXT ON THE WIRE (docs/SPEC-TABLES.md §3, kind 33; SPEC.md §4.12): a
+/// payload of L BYTES is L / 2 UTF-16 code units, little-endian. None is
+/// damage, the oracle's (internal/tablewire decode.go): an odd L is not a
+/// wstring at any length, and the content rule is paired surrogates with no
+/// zero unit among the used units. The bound is the reader's, applied after.
+pub fn table_wide_units(b: &[u8]) -> Option<Vec<u16>> {
+    if b.len() & 1 != 0 { return None; }
+    let units: Vec<u16> = b.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
+    let mut i = 0;
+    while i < units.len() {
+        let u = units[i];
+        if u == 0 || (0xDC00..=0xDFFF).contains(&u) { return None; }
+        if (0xD800..=0xDBFF).contains(&u) {
+            if i + 1 >= units.len() || !(0xDC00..=0xDFFF).contains(&units[i + 1]) { return None; }
+            i += 2;
+            continue;
+        }
+        i += 1;
+    }
+    Some(units)
+}
+
+/// A CLAMP NEVER SPLITS A PAIR (docs/SPEC-TABLES.md §3): the longest prefix
+/// of at most the bound's units that does not end on a pair's high half.
+pub fn table_wide_boundary(units: &[u16], bound: usize) -> usize {
+    if units.len() <= bound { return units.len(); }
+    let mut keep = bound;
+    if keep > 0 && (0xD800..=0xDBFF).contains(&units[keep - 1]) { keep -= 1; }
+    keep
+}
+
+/// THE WRITER'S BOUND (docs/SPEC-TABLES.md §3, SPEC.md §4.12): a value over
+/// the bound's code units is the save's refusal, recorded BY NAME (at is
+/// <owner>.<field>) for <root>_save_checked; the units that ride are the
+/// longest prefix that fits without splitting a pair.
+pub fn table_wide_fit(ids: &mut IdTable, units: &[u16], bound: usize, at: &str) -> usize {
+    if units.len() <= bound { return units.len(); }
+    if ids.refused.is_none() {
+        ids.refused = Some(format!("{at}: wstring({bound}) holds {} code units, over its bound (docs/SPEC-TABLES.md §3)", units.len()));
+    }
+    table_wide_boundary(units, bound)
+}
+
+/// The units, little-endian, with no length of their own: the caller's L
+/// frames them (docs/SPEC-TABLES.md §3, kind 33 and an arm's payload).
+pub fn table_wide_put(dst: &mut Vec<u8>, units: &[u16]) {
+    for u in units { dst.extend_from_slice(&u.to_le_bytes()); }
+}
+
 /// The id table a save builds in FIRST-USE order (docs/SPEC-TABLES.md §3): one
 /// entry per distinct id, referenced by position from 1. id_ref returns the
 /// position, appending the id when it has not been named yet.
 #[derive(Default)]
 pub struct IdTable {
     pub entries: Vec<u64>,
+    /// the save's refusal BY NAME, when a value is over its bound
+    /// (docs/SPEC-TABLES.md §3): <root>_save_checked answers it
+    pub refused: Option<String>,
 }
 
 impl IdTable {
     pub fn new() -> Self {
-        IdTable { entries: Vec::new() }
+        IdTable { entries: Vec::new(), refused: None }
     }
 
     /// A mark to roll back to: an ELIDED field costs nothing in the id table
@@ -255,6 +289,9 @@ pub struct TableNodeGraph {
     pub records: Vec<TableNodeRecord>,
     tables: HashMap<usize, u64>,
     blobs: HashMap<usize, u64>,
+    /// A blob two slots name (docs/SPEC-TABLES.md §2.5): the walk met its Rc
+    /// a second time, so every writer refuses the graph by name, blob_shared.
+    pub blob_shared: bool,
 }
 
 impl TableNodeGraph {
@@ -279,6 +316,9 @@ impl TableNodeGraph {
     /// key is the blob's identity, the address its Rc owns.
     pub fn visit_blob(&mut self, type_id: u64, key: usize, bytes: &[u8]) {
         if self.blobs.contains_key(&key) {
+            // A BLOB IS OWNED BY ONE SLOT (§2.5): the second naming is the
+            // writer's refusal, never a second record or a copy per slot
+            self.blob_shared = true;
             return;
         }
         self.records.push(TableNodeRecord::Blob(type_id, bytes.to_vec()));
@@ -325,8 +365,13 @@ pub struct TableNodeReader {
     pub good: bool,
     pub root_type: u64,
     pub retaining: bool,
+    pub retain_capacity: usize,
+    pub retained: Vec<u8>,
     pub recs: Vec<(u64, usize, usize)>,
     pub slots: Vec<TableNodeSlot>,
+    /// which blob records a slot has already named (§2.5): each later naming
+    /// of the same record counts blob_shared on the tolerant read
+    pub blob_named: Vec<bool>,
 }
 
 impl TableNodeReader {
@@ -340,11 +385,11 @@ impl TableNodeReader {
     /// place keeps its index and counts unknown once; a *string blob that is
     /// not well-formed text is malformed and its slots read null.
     #[allow(clippy::too_many_arguments)]
-    pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, report: &mut TableReport) -> Option<TableNodeReader> {
-        let mut reader = TableNodeReader { good: true, root_type, retaining, recs: Vec::new(), slots: Vec::new() };
+    pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
+        let mut reader = TableNodeReader { good: true, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new() };
         let mut off = 1usize;
         while off < end {
-            let Some(r) = leb_read(wire, &mut off) else { report.malformed = true; return None; };
+            let Some(r) = leb_read(&wire[..end], &mut off) else { break; };
             if r == 0 { break; }
             if off >= end { report.malformed = true; return None; }
             let kind = wire[off]; off += 1;
@@ -360,18 +405,20 @@ impl TableNodeReader {
                 if !leb_skip(wire, &mut off, end, kind) { return None; }
                 continue;
             }
-            let Some(l) = leb_read(wire, &mut off) else { report.malformed = true; return None; };
-            if l > (end - off) as u64 { report.malformed = true; return None; }
+            // A truncated node-table length cannot borrow trailer bytes. The
+            // root body still decodes its preceding fields with null nodes.
+            let Some(l) = leb_read(&wire[..end], &mut off) else { report.malformed = true; reader.good = false; reader.recs.clear(); break; };
+            if off > end || l > (end - off) as u64 { report.malformed = true; reader.good = false; reader.recs.clear(); break; }
             let sub = off + l as usize;
             let mut recs = Vec::new();
             let mut scan_ok = true;
-            match leb_read(wire, &mut off) {
+            match leb_read(&wire[..sub], &mut off) {
                 None => scan_ok = false,
                 Some(declared) => {
                     while off < sub {
-                        let Some(tref) = leb_read(wire, &mut off) else { scan_ok = false; break; };
+                        let Some(tref) = leb_read(&wire[..sub], &mut off) else { scan_ok = false; break; };
                         if tref == 0 || tref as usize > ids.len() { scan_ok = false; break; }
-                        let Some(bl) = leb_read(wire, &mut off) else { scan_ok = false; break; };
+                        let Some(bl) = leb_read(&wire[..sub], &mut off) else { scan_ok = false; break; };
                         if off > sub || bl > (sub - off) as u64 { scan_ok = false; break; }
                         recs.push((ids[tref as usize - 1], off, off + bl as usize));
                         off += bl as usize;
@@ -380,7 +427,6 @@ impl TableNodeReader {
                 }
             }
             if !scan_ok {
-                report.malformed = true;
                 reader.good = false;
                 reader.recs.clear();
             } else {
@@ -412,6 +458,7 @@ impl TableNodeReader {
                 }
             }
         } else {
+            report.malformed = true;
             reader.recs.clear();
         }
         Some(reader)
@@ -468,23 +515,42 @@ impl TableNodeReader {
         Some(&self.slots[(index - 2) as usize])
     }
 
-    /// Resolve a *bytes slot (§2.5, §3.1): the ONE blob every slot naming the
-    /// record shares; a *string record or a table record is a kind mismatch.
-    pub fn bytes_slot(&self, index: u64, report: &mut TableReport) -> Option<Rc<[u8]>> {
-        match self.blob_record(index, report)? {
-            TableNodeSlot::Null => None,
-            TableNodeSlot::Bytes(b) => Some(b.clone()),
-            _ => { report.kind_mismatch += 1; None }
+    /// Count a blob record's naming (§2.5): the tolerant read keeps the ONE
+    /// node every slot names and counts each naming after the first in the
+    /// report's blob_shared counter.
+    fn name_blob(&mut self, index: u64, report: &mut TableReport) {
+        let k = (index - 2) as usize;
+        if self.blob_named.len() < self.slots.len() {
+            self.blob_named.resize(self.slots.len(), false);
+        }
+        if self.blob_named[k] {
+            report.blob_shared += 1;
+        } else {
+            self.blob_named[k] = true;
         }
     }
 
+    /// Resolve a *bytes slot (§2.5, §3.1): the ONE blob every slot naming the
+    /// record shares; a *string record or a table record is a kind mismatch.
+    pub fn bytes_slot(&mut self, index: u64, report: &mut TableReport) -> Option<Rc<[u8]>> {
+        let b = match self.blob_record(index, report)? {
+            TableNodeSlot::Null => return None,
+            TableNodeSlot::Bytes(b) => b.clone(),
+            _ => { report.kind_mismatch += 1; return None; }
+        };
+        self.name_blob(index, report);
+        Some(b)
+    }
+
     /// Resolve a *string slot (§2.5, §3.1), the same way.
-    pub fn text_slot(&self, index: u64, report: &mut TableReport) -> Option<Rc<str>> {
-        match self.blob_record(index, report)? {
-            TableNodeSlot::Null => None,
-            TableNodeSlot::Text(s) => Some(s.clone()),
-            _ => { report.kind_mismatch += 1; None }
-        }
+    pub fn text_slot(&mut self, index: u64, report: &mut TableReport) -> Option<Rc<str>> {
+        let s = match self.blob_record(index, report)? {
+            TableNodeSlot::Null => return None,
+            TableNodeSlot::Text(s) => s.clone(),
+            _ => { report.kind_mismatch += 1; return None; }
+        };
+        self.name_blob(index, report);
+        Some(s)
     }
 }
 
@@ -495,7 +561,8 @@ pub fn table_kind_width(kind: u8) -> usize {
         1 | 2 | 6 => 1,
         3 | 7 => 2,
         4 | 8 | 10 => 4,
-        5 | 9 | 11 => 8,
+        5 | 9 | 11 | 36 => 8,
+        18 | 19 => 16,
         _ => 0,
     }
 }
@@ -508,6 +575,8 @@ pub fn table_kind_widens(kind: u8, declared: u8) -> bool {
         3..=5 => (2..declared).contains(&kind),
         7..=9 => (6..declared).contains(&kind),
         11 => kind == 10,
+        18 => matches!(kind, 2..=5),
+        19 => matches!(kind, 6..=9),
         _ => false,
     }
 }
@@ -517,7 +586,7 @@ pub fn table_kind_widens(kind: u8, declared: u8) -> bool {
 /// end.
 pub fn table_scalar_read(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> Option<u64> {
     let w = table_kind_width(kind);
-    if w == 0 || *off + w > end {
+    if w == 0 || w > 8 || *off + w > end {
         return None;
     }
     let mut raw = 0u64;
@@ -528,6 +597,25 @@ pub fn table_scalar_read(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> O
     if matches!(kind, 2..=5) && w < 8 {
         let s = 64 - 8 * w as u32;
         raw = (((raw << s) as i64) >> s) as u64;
+    }
+    Some(raw)
+}
+
+/// Read one 128-bit scalar (or a narrower integer widened into it) at kind's
+/// own width (§3, §4): little-endian, sign-extended into u128 for signed kinds.
+pub fn scalar_read_128(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> Option<u128> {
+    let w = table_kind_width(kind);
+    if w == 0 || *off + w > end {
+        return None;
+    }
+    let mut raw = 0u128;
+    for i in 0..w {
+        raw |= (buf[*off + i] as u128) << (8 * i);
+    }
+    *off += w;
+    if matches!(kind, 2..=5) && w < 16 {
+        let s = 128 - 8 * w as u32;
+        raw = (((raw << s) as i128) >> s) as u128;
     }
     Some(raw)
 }
@@ -550,8 +638,12 @@ pub fn table_widen_f32(bits: u32) -> f64 {
 /// one LEB128; a union reads its arm header and L. A kind the reader does not
 /// know at all is framing damage and returns false (§3).
 pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
+    // A nested body has its own byte boundary (§3, §4). Parse every LEB from
+    // that slice so a truncated header cannot consume the parent's next byte.
+    if end > buf.len() { return false; }
+    let bounded = &buf[..end];
     let fixed = |o: &mut usize, w: usize| -> bool {
-        if *o + w > end { return false; }
+        if *o > end || w > end - *o { return false; }
         *o += w;
         true
     };
@@ -559,26 +651,27 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         1 | 2 | 6 | 20 | 25 => fixed(off, 1),
         3 | 7 | 21 | 26 => fixed(off, 2),
         4 | 8 | 10 | 22 | 27 => fixed(off, 4),
-        5 | 9 | 11 | 23 | 28 => fixed(off, 8),
+        // kind 36, a timestamp, is one eight-byte payload (§2.11, §3)
+        5 | 9 | 11 | 23 | 28 | 36 => fixed(off, 8),
         18 | 19 | 24 | 29 => fixed(off, 16),
         17 | 30 => {
-            if let Some(_) = leb_read(buf, off) { *off <= end } else { false }
+            if let Some(_) = leb_read(bounded, off) { *off <= end } else { false }
         }
         12 | 13 | 14 | 16 | 31 | 32 | 33 => {
-            let Some(n) = leb_read(buf, off) else { return false; };
+            let Some(n) = leb_read(bounded, off) else { return false; };
             let n = n as usize;
-            if *off + n > end { return false; }
+            if *off > end || n > end - *off { return false; }
             *off += n;
             true
         }
         15 => {
-            let Some(arm) = leb_read(buf, off) else { return false; };
+            let Some(arm) = leb_read(bounded, off) else { return false; };
             if arm == 0 { return true; }
-            if *off + 1 > end { return false; }
+            if *off >= end { return false; }
             *off += 1;
-            let Some(n) = leb_read(buf, off) else { return false; };
+            let Some(n) = leb_read(bounded, off) else { return false; };
             let n = n as usize;
-            if *off + n > end { return false; }
+            if *off > end || n > end - *off { return false; }
             *off += n;
             true
         }
@@ -632,13 +725,59 @@ impl TableRetainPath {
     }
 }
 
+/// A retained node body's address follows the Rc through save numbering.
+/// Input node indices may change when the save visits the reachable graph;
+/// the pointer identity is stable for this load/save pair and fits in the
+/// path's existing two words without growing either caller-owned store.
+pub fn retain_node_path(node: &Rc<dyn Any>) -> TableRetainPath {
+    let key = Rc::as_ptr(node) as *const () as usize as u64;
+    TableRetainPath::default().step(key as u32, (key >> 32) as u32)
+}
+
+pub fn retain_bind_node(retain: &mut TableRetain, node: &Rc<dyn Any>) {
+    let path = retain_node_path(node);
+    let mut at = 0usize;
+    while at + 17 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[at..]);
+        if len < 17 || len > retain.bytes.len() - at { break; }
+        let depth = retain_record_depth(&retain.bytes[at..]);
+        if depth > 0 && 17 + 8 * depth <= len {
+            retain.bytes[at + 17..at + 21].copy_from_slice(&path.steps[0].0.to_le_bytes());
+            retain.bytes[at + 21..at + 25].copy_from_slice(&path.steps[0].1.to_le_bytes());
+        }
+        at += len;
+    }
+}
+
 /// ONE RETAINED RECORD is
 /// [u32 len][u32 depth][u64 field id][u8 kind][depth × (u32 ordinal, u32 index)][resolved payload],
 /// len = 17 + 8×depth + payload.len(). The payload is READER-PRIVATE (§6.6):
 /// every reference is the eight-byte id it names and every framed length is
 /// eight bytes, so a save re-interns references against a different id table.
 pub fn retain_record_len(rec: &[u8]) -> usize {
-    u32::from_le_bytes(rec[..4].try_into().unwrap()) as usize
+    (u32::from_le_bytes(rec[..4].try_into().unwrap()) & 0x7fff_ffff) as usize
+}
+
+/// The high bit of the private record length is a per-save placement mark
+/// (§6.6). Each save clears it, then counts records no body visited.
+pub fn retain_clear_placed(retain: &mut TableRetain) {
+    let mut at = 0usize;
+    while at + 4 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[at..]);
+        if len < 17 || len > retain.bytes.len() - at { break; }
+        retain.bytes[at + 3] &= 0x7f;
+        at += len;
+    }
+}
+
+pub fn retain_count_unplaced(retain: &TableRetain, report: &mut TableReport) {
+    let mut at = 0usize;
+    while at + 4 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[at..]);
+        if len < 17 || len > retain.bytes.len() - at { break; }
+        if retain.bytes[at + 3] & 0x80 == 0 { report.retain_lost += 1; }
+        at += len;
+    }
 }
 
 /// The record's path depth (docs/SPEC-TABLES.md §6.6), read from the four bytes
@@ -735,7 +874,7 @@ fn retain_skip(c: &mut RetainCur, kind: u8) -> bool {
         1 | 2 | 6 | 20 | 25 => w(c, 1),
         3 | 7 | 21 | 26 => w(c, 2),
         4 | 8 | 10 | 22 | 27 => w(c, 4),
-        5 | 9 | 11 | 23 | 28 => w(c, 8),
+        5 | 9 | 11 | 23 | 28 | 36 => w(c, 8),
         18 | 19 | 24 | 29 => w(c, 16),
         12 | 31 | 32 | 33 => {
             let Some(n) = c.leb() else { return false; };
@@ -958,6 +1097,7 @@ pub fn retain_emit_tail(out: &mut Vec<u8>, ids: &mut IdTable, retain: &mut Table
         let field_id = u64::from_le_bytes(rec[8..16].try_into().unwrap());
         let kind = rec[16];
         let payload = rec[17 + 8 * depth..len].to_vec();
+        retain.bytes[at - len + 3] |= 0x80;
         let mut bad = false;
         let slot = retain_ref(ids, retain, known, field_id);
         if slot == 0 {
@@ -1006,6 +1146,27 @@ pub fn retain_discard(retain: &mut TableRetain, path: TableRetainPath, ordinal: 
     retain.bytes.truncate(write);
 }
 
+/// A repeated map key replaces one entry occurrence (§6.6), including the
+/// unknown fields retained directly in that entry and its nested bodies.
+pub fn retain_discard_body(retain: &mut TableRetain, path: TableRetainPath) {
+    let mut read = 0usize;
+    let mut write = 0usize;
+    while read + 4 <= retain.bytes.len() {
+        let len = retain_record_len(&retain.bytes[read..]);
+        if len < 17 || len > retain.bytes.len() - read { break; }
+        let rec = &retain.bytes[read..read + len];
+        let depth = retain_record_depth(rec);
+        let drop = depth <= TABLE_RETAIN_DEPTH_CAP && 17 + 8 * depth <= len
+            && (retain_path_eq(rec, depth, &path) || retain_under(rec, depth, &path, false, 0));
+        if !drop {
+            if write != read { retain.bytes.copy_within(read..read + len, write); }
+            write += len;
+        }
+        read += len;
+    }
+    retain.bytes.truncate(write);
+}
+
 fn retain_emit_ref(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], bad: &mut bool) -> u64 {
     if c.off + 8 > c.buf.len() {
         *bad = true;
@@ -1013,6 +1174,8 @@ fn retain_emit_ref(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetai
     }
     let id = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap());
     c.off += 8;
+    // The zero reference is a union/enum None, not an id to intern (§3, §6.6).
+    if id == 0 { return 0; }
     retain_ref(ids, retain, known, id)
 }
 
@@ -1174,6 +1337,7 @@ pub static KNOWN_IDS: &[u64] = &[
 		fmt.Fprintf(&b, "    0x%016x,\n", id)
 	}
 	b.WriteString("];\n")
+	b.WriteString(textHelpers())
 	text := b.String()
 	text = strings.Replace(text, "STRING_TYPE_ID_VALUE", fmt.Sprintf("0x%016x", ir.StringWireTypeId), 1)
 	text = strings.Replace(text, "BYTES_TYPE_ID_VALUE", fmt.Sprintf("0x%016x", ir.BytesWireTypeId), 1)
@@ -1192,9 +1356,23 @@ func cardVariableTableNames(g *gen) []string {
 		vc = newVariableClass(g.unit)
 		g.vc = vc
 	}
+	return fileVariableTableNames(g.unit, g.file, vc)
+}
+
+func fileVariableTableNames(u *ir.Unit, file *ir.File, vc *variableClass) []string {
+	if vc == nil {
+		vc = newVariableClass(u)
+	}
 	names := make([]string, 0)
-	for _, st := range g.file.Tables {
+	for _, st := range file.Tables {
 		if vc.emitted[st.Name] {
+			names = append(names, st.Name)
+		}
+	}
+	// a `type` the carried set reaches by value is a body of this file's
+	// codec too (docs/SPEC-TABLES.md §2, §3)
+	for _, d := range file.Decls {
+		if st, ok := d.(*ir.Struct); ok && vc.emitted[st.Name] {
 			names = append(names, st.Name)
 		}
 	}
@@ -1202,12 +1380,13 @@ func cardVariableTableNames(g *gen) []string {
 	return names
 }
 
-// isVariableRoot reports whether an emitted table is a VARIABLE-class root,
-// which takes the whole-file save, load and text roots; a fixed table the
-// variable class reaches takes only its body codec (a fixed root's own form-1
-// file is vt/fixed-class's row, not this one's).
+// isVariableRoot reports whether an emitted body is a ROOT of the variable
+// form, which takes the whole-file save, load and text roots: every table of
+// the closure, a FIXED table included, because a fixed table's own form-1 file
+// is a variable-form file like any other (docs/SPEC-TABLES.md §2.2, §3). A map
+// entry and a `type` are bodies only, never a file's root.
 func (g *gen) isVariableRoot(st *ir.Struct) bool {
-	return ir.VariableTables(g.unit)[st.Name]
+	return st.IsTable && ir.TableClosure(g.unit)[st.Name] && !st.IsMapEntry()
 }
 
 // variableModule emits one source file's variable-table constant block. Nil
@@ -1222,7 +1401,7 @@ func (g *gen) variableModule() []byte {
 	var b strings.Builder
 	b.WriteString(header(g.file.Base, g.unit.Package, "the variable wire's field header constants (docs/SPEC-TABLES.md §3, §5)"))
 	for _, n := range names {
-		g.emitVariableConstants(&b, g.unit.Tables[n])
+		g.emitVariableConstants(&b, vStruct(g.unit, n))
 	}
 	return []byte(b.String())
 }

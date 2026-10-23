@@ -194,6 +194,7 @@ struct Report
     int unknown, kind_mismatch, widened, clamped, duplicate;
     bool malformed;
     bool refused;
+    int blob_shared; // the extra slots that named a blob another slot named (§2.5)
 };
 
 struct Codec
@@ -226,6 +227,7 @@ static void copy_report( const T & from, Report * to )
     to->duplicate = from.duplicate;
     to->malformed = from.malformed;
     to->refused = from.refused;
+    to->blob_shared = from.blob_shared;
 }
 
 template <typename T>
@@ -240,12 +242,15 @@ struct Erase
     static void reset( void * p ) { new ( p ) T(); }
 };
 
+// The surfaces ask what the TOLERANT read reports, so the codecs call the
+// named tolerant reads; the plain names are strict (docs/SPEC-TABLES.md
+// §16.11), as the Go driver's rows call ...Tolerant too.
 #define CODEC( unit_key, ns, type )                                                            \
     {                                                                                          \
         unit_key, #type,                                                                       \
         []( void * v, const uint8_t * b, int64_t n, Report * r ) {                             \
             ns::TableReport inner;                                                             \
-            bool ok = ns::type##Load( *(ns::type *) v, b, n, &inner );                         \
+            bool ok = ns::type##LoadTolerant( *(ns::type *) v, b, n, &inner );                 \
             copy_report( inner, r );                                                           \
             return ok;                                                                         \
         },                                                                                     \
@@ -255,7 +260,7 @@ struct Erase
         },                                                                                     \
         []( void * v, const char * t, int64_t n, Report * r ) {                                \
             ns::TableReport inner;                                                             \
-            bool ok = ns::type##FromJson( *(ns::type *) v, t, n, &inner );                     \
+            bool ok = ns::type##FromJsonTolerant( *(ns::type *) v, t, n, &inner );             \
             copy_report( inner, r );                                                           \
             return ok;                                                                         \
         },                                                                                     \
@@ -347,7 +352,7 @@ struct VarCodec
             int64_t need = ns::type##LoadMeasure( b, n );                                       \
             region.assign( (size_t) need, 0 );                                                  \
             ns::TableReport inner;                                                              \
-            const ns::type * root = ns::type##Load( region.data(), need, b, n, &inner );        \
+            const ns::type * root = ns::type##LoadTolerant( region.data(), need, b, n, &inner ); \
             copy_report( inner, r );                                                            \
             return (const void *) root;                                                         \
         },                                                                                     \
@@ -364,7 +369,7 @@ struct VarCodec
         []( const char * t, int64_t n, Report * r, std::vector<uint8_t> & bytes ) {             \
             ns::type##Builder builder;                                                          \
             ns::TableReport inner;                                                              \
-            bool ok = ns::type##FromJson( builder, t, n, &inner );                              \
+            bool ok = ns::type##FromJsonTolerant( builder, t, n, &inner );                      \
             copy_report( inner, r );                                                            \
             if ( !ok ) return false;                                                            \
             int64_t size = ns::type##Measure( builder );                                        \
@@ -690,15 +695,20 @@ struct Aligned
     // battery are about, and a file alone cannot carry it. The allocation is
     // the claim, so a reader that walks past what it was given walks into a
     // sanitizer's redzone rather than into a neighbour.
-    bool create( const std::vector<uint8_t> & data, int64_t extent )
+    //
+    // `lead` is the POINTER column: 0 an aligned base, 1..63 that many bytes
+    // past one. An unaligned base is a pointer fact and not a file fact, so the
+    // bytes are copied AT the base the column states and the base-alignment
+    // clause is the one that must refuse them.
+    bool create( const std::vector<uint8_t> & data, int64_t extent, int lead = 0 )
     {
         // the allocation IS the claim, and the claim may be shorter than the
         // file: a driver copies what fits and zeroes the rest, which is the one
         // rule both forgery batteries read the extent column by.
         bytes = extent < 0 ? (int64_t) data.size() : extent;
-        raw = (uint8_t *) malloc( (size_t) ( bytes > 0 ? bytes : 1 ) + 64 );
+        raw = (uint8_t *) malloc( (size_t) ( bytes > 0 ? bytes : 1 ) + 64 + (size_t) lead );
         if ( raw == NULL ) return false;
-        base = (uint8_t *) ( ( (uintptr_t) raw + 63 ) & ~(uintptr_t) 63 );
+        base = (uint8_t *) ( ( (uintptr_t) raw + 63 ) & ~(uintptr_t) 63 ) + lead;
         memset( base, 0, (size_t) bytes );
         const size_t copy = data.size() < (size_t) bytes ? data.size() : (size_t) bytes;
         memcpy( base, data.data(), copy );
@@ -711,10 +721,10 @@ struct Aligned
 // false (docs/SPEC-TABLES.md §19.2): the caller's own initial value is what
 // a match leaves standing
 static bool open_block( const std::string & name, const std::vector<uint8_t> & data, int64_t extent,
-                        blockdemo::TableRefuseReason * reason = NULL )
+                        blockdemo::TableRefuseReason * reason = NULL, int lead = 0 )
 {
     Aligned storage = {};
-    if ( !storage.create( data, extent ) ) return false;
+    if ( !storage.create( data, extent, lead ) ) return false;
     bool opened = false;
     if ( name.rfind( "block_render", 0 ) == 0 )
     {
@@ -981,6 +991,17 @@ static int surface_wire( const std::string & out )
             const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
             if ( root == NULL ) return 1;
             int64_t size = variable->measure( root );
+            if ( size < 0 && report.blob_shared > 0 )
+            {
+                // A blob two slots name has one owner too many, and every
+                // writer refuses it by name (docs/SPEC-TABLES.md §2.5): the
+                // row's answer is that refusal, as the Go driver's is.
+                std::string path = out + "/" + f[1] + ".absent";
+                FILE * file = fopen( path.c_str(), "wb" );
+                if ( file == NULL || fputs( "blob_shared", file ) < 0 ) { if ( file ) fclose( file ); return 1; }
+                fclose( file );
+                continue;
+            }
             if ( size < 0 ) return 1;
             scratch.assign( (size_t) size, 0 );
             if ( variable->save( root, scratch.data(), size ) != size ) return 1;
@@ -1393,7 +1414,11 @@ static int surface_forgery( const std::string & out )
         if ( f[2] != "block" ) continue; // the cook's battery is its own binary's
         std::vector<uint8_t> data;
         if ( !slurp( f[4].c_str(), data ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
-        const char * verdict = open_block( f[3], data, (int64_t) strtoll( f[5].c_str(), NULL, 0 ) ) ? "open\n" : "refuse\n";
+        // the POINTER column is the caller's buffer: 0 an aligned base, 1..63
+        // that many bytes past one. The block battery carries one such row, so
+        // the base-alignment clause is held here as it is in the cook battery.
+        const int lead = f[6] == "null" ? 0 : (int) strtol( f[6].c_str(), NULL, 0 );
+        const char * verdict = open_block( f[3], data, (int64_t) strtoll( f[5].c_str(), NULL, 0 ), NULL, lead ) ? "open\n" : "refuse\n";
         if ( !spill( out, f[1], verdict, strlen( verdict ) ) ) return 1;
     }
     return 0;
@@ -1420,6 +1445,37 @@ static const char * reason_name( blockdemo::TableRefuseReason reason )
         case blockdemo::count_over_extent_cap: return "count_over_extent_cap";
         case blockdemo::blob_over_size_cap: return "blob_over_size_cap";
         case blockdemo::data_cycle: return "data_cycle";
+        case blockdemo::invalid_value: return "invalid_value";
+        case blockdemo::allocation_failed: return "allocation_failed";
+        case blockdemo::wire_damaged: return "wire_damaged";
+        case blockdemo::malformed: return "malformed";
+        case blockdemo::clamped: return "clamped";
+        case blockdemo::kind_mismatch: return "kind_mismatch";
+        case blockdemo::base64_damaged: return "base64_damaged";
+        case blockdemo::base64_not_canonical: return "base64_not_canonical";
+        case blockdemo::integrity_mismatch: return "integrity_mismatch";
+        case blockdemo::non_finite: return "non_finite";
+        case blockdemo::blob_shared: return "blob_shared";
+        case blockdemo::previous_form: return "previous_form";
+        case blockdemo::newer_form: return "newer_form";
+        case blockdemo::message_form_as_file: return "message_form_as_file";
+        case blockdemo::layout_unknown: return "layout_unknown";
+        case blockdemo::layout_unsupported: return "layout_unsupported";
+        case blockdemo::layout_newer: return "layout_newer";
+        case blockdemo::layout_malformed: return "layout_malformed";
+        case blockdemo::layout_count_mismatch: return "layout_count_mismatch";
+        case blockdemo::layout_kind_unknown: return "layout_kind_unknown";
+        case blockdemo::layout_kind_invalid: return "layout_kind_invalid";
+        case blockdemo::layout_size_mismatch: return "layout_size_mismatch";
+        case blockdemo::layout_tree_unclosed: return "layout_tree_unclosed";
+        case blockdemo::layout_too_deep: return "layout_too_deep";
+        case blockdemo::layout_record_too_large: return "layout_record_too_large";
+        case blockdemo::plan_too_large: return "plan_too_large";
+        case blockdemo::no_layout: return "no_layout";
+        case blockdemo::batch_too_large: return "batch_too_large";
+        case blockdemo::text_ill_formed: return "text_ill_formed";
+        case blockdemo::count_over_bound: return "count_over_bound";
+        case blockdemo::length_over_bound: return "length_over_bound";
     }
     return "?";
 }
@@ -1441,7 +1497,8 @@ static int surface_block_reason( const std::string & out )
         std::vector<uint8_t> data;
         if ( !slurp( f[4].c_str(), data ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
         blockdemo::TableRefuseReason reason = blockdemo::ok;
-        const bool opened = open_block( f[3], data, (int64_t) strtoll( f[5].c_str(), NULL, 0 ), &reason );
+        const int lead = f[6] == "null" ? 0 : (int) strtol( f[6].c_str(), NULL, 0 );
+        const bool opened = open_block( f[3], data, (int64_t) strtoll( f[5].c_str(), NULL, 0 ), &reason, lead );
         std::string answer = std::string( opened ? "ok" : reason_name( reason ) ) + "\n";
         if ( !spill( out, r[1], answer.data(), answer.size() ) ) return 1;
     }
@@ -1455,8 +1512,9 @@ static int surface_block_reason( const std::string & out )
 // The battery in test/tables/block_main.cpp names the words it damages through
 // the projection's own field names, which no other language can read out of a
 // manifest. This mode resolves each of them to a BYTE OFFSET inside the block
-// image and prints the manifest lines, so the eleven forgeries become data
-// every backend runs — the C++ one included, through the same path.
+// image and prints the manifest lines, so the eleven words — and the
+// base-alignment row that damages no word — become data every backend runs, the
+// C++ one included, through the same path.
 
 struct Patch
 {
@@ -1527,11 +1585,12 @@ static int emit_block_forgeries()
 
     printf( "# THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from\n" );
     printf( "# test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one\n" );
-    printf( "# word of an otherwise valid block image, resolved to a byte offset.\n" );
+    printf( "# word of an otherwise valid block image, resolved to a byte offset, plus the\n" );
+    printf( "# base-alignment row the cook battery has always carried and the block's had not.\n" );
     printf( "#\n" );
     printf( "#   forgery <name> block <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>\n" );
     printf( "#\n" );
-    printf( "# <base> names the block line the image comes from; <extent> is the length the\n# CALLER claims (-1: the image's own); <pointer> is 0 — every block row is read\n# out of an ALIGNED base, and the column is the cook battery's.\n" );
+    printf( "# <base> names the block line the image comes from; <extent> is the length the\n# CALLER claims (-1: the image's own); <pointer> is the BUFFER the caller holds —\n# 0 an aligned base, 1..63 that many bytes past one, `null` no buffer at all —\n# because an unaligned base is a pointer fact and not a file fact.\n" );
     printf( "# The harness applies the patch and hands a driver a path.\n" );
     printf( "# Repin with: make conformance-pin.\n" );
     for ( size_t i = 0; i < sizeof( patches ) / sizeof( patches[0] ); i++ )
@@ -1541,6 +1600,11 @@ static int emit_block_forgeries()
                 p.name, (unsigned long long) p.offset, p.width,
                 (unsigned long long) p.value, (long long) p.claim, p.verdict, p.label );
     }
+    // and the base-alignment row, which damages no word: the image is whole and
+    // the CALLER's buffer sits one byte past an aligned base, so only the last
+    // clause of the read can refuse it (docs/SPEC-TABLES.md §19.2).
+    printf( "forgery %-26s block block_render block_render 1 -1 0 0 -1 refuse a base one byte past an aligned one\n",
+            "block_base_unaligned" );
     storage.destroy();
     return 0;
 }

@@ -226,6 +226,9 @@ static void poison( char16_t * buffer, int n )
 // ---------------------------------------------------------------------------
 // A FIELD of a table (§3), which is the site the vectors are stated at.
 
+// The vectors ask what the TOLERANT read reports, damage and clamps included,
+// so they call the named tolerant read: the plain CaptionLoad is strict
+// (docs/SPEC-TABLES.md §16.11). The clean round trips keep the strict name.
 static int field_vectors()
 {
     for ( const Vector & v : vectors )
@@ -235,7 +238,7 @@ static int field_vectors()
         out.title_length = 99;
         TableReport report;
         const Bytes wire = frame( id_title, 33, wide_field( v.units, v.count ) );
-        const bool ok = CaptionLoad( out, wire.data(), (int64_t) wire.size(), &report );
+        const bool ok = CaptionLoadTolerant( out, wire.data(), (int64_t) wire.size(), &report );
         check_vector( ok, v.name );
         check_vector( !report.refused, v.name );
         check_vector( report.malformed == ( v.malformed != 0 ), v.name );
@@ -264,7 +267,7 @@ static void odd_length()
     Bytes payload = wide_payload( one, 1, 3 ); // L = 3 over two payload bytes
     payload.push_back( 0x00 );                 // the third byte L claims
     const Bytes wire = frame( id_title, 33, payload );
-    check( CaptionLoad( out, wire.data(), (int64_t) wire.size(), &report ) );
+    check( CaptionLoadTolerant( out, wire.data(), (int64_t) wire.size(), &report ) );
     check( report.malformed );
     check( report.clamped == 0 );
     check( out.title_length == 0 ); // the declared default
@@ -369,7 +372,7 @@ static void nested_type_site()
     put_u64( bad_wire, id_line );
     put_u64( bad_wire, id_text );
     put_u64( bad_wire, 2 );
-    check( CaptionLoad( bad_out, bad_wire.data(), (int64_t) bad_wire.size(), &bad_report ) );
+    check( CaptionLoadTolerant( bad_out, bad_wire.data(), (int64_t) bad_wire.size(), &bad_report ) );
     check( bad_report.malformed );
     check( bad_out.line.text_length == 0 );
     check( bad_out.line.text[0] == 0 );
@@ -404,7 +407,7 @@ static void arm_site()
 
         Caption out;
         TableReport report;
-        check( CaptionLoad( out, wire.data(), (int64_t) wire.size(), &report ) );
+        check( CaptionLoadTolerant( out, wire.data(), (int64_t) wire.size(), &report ) );
         if ( bad_row )
         {
             // ILL-FORMED TEXT AT AN ARM: the union reads None (§3, §4)
@@ -455,7 +458,7 @@ static void element_site()
 
         Caption out;
         TableReport report;
-        check( CaptionLoad( out, wire.data(), (int64_t) wire.size(), &report ) );
+        check( CaptionLoadTolerant( out, wire.data(), (int64_t) wire.size(), &report ) );
         check( out.lines_count == 1 );
         if ( bad_row )
         {
@@ -511,7 +514,7 @@ static void text_form()
         const int n = snprintf( text, sizeof( text ), "{ \"title\": %s }", row.text );
         Caption value;
         TableReport report;
-        check_vector( CaptionFromJson( value, text, n, &report ), row.name );
+        check_vector( CaptionFromJsonTolerant( value, text, n, &report ), row.name );
         check_vector( !report.malformed, row.name );
         check_vector( report.clamped == row.clamped, row.name );
         check_vector( units_equal( value.title, value.title_length, row.units, row.count ), row.name );

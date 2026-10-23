@@ -161,6 +161,10 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 				g.emitMessageBody(st)
 			}
 		}
+		// Cook write lives in the home beside the classes it names
+		// (docs/SPEC-TABLES.md §7.6). A file that only declares a root imports
+		// TableCookWrite and emits that root's three functions.
+		g.emitFixedCookWrite()
 	}
 	for _, st := range tables {
 		if reason := fixedRefusal(st); reason != "" {
@@ -214,9 +218,13 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// THE LAYOUT (form 1 calls this the vocabulary block): %d entries, a\n", len(w.entries))
 	g.pf("// PRE-ORDER walk of the closure in the\n")
 	g.pf("// writer's declared order. Every byte is settled by the compiler.\n")
-	g.pf("export const %sFixedLayout = new Uint8Array([\n", st.Name)
+	g.pf("//\n")
+	g.pf("// THE TABLE IS MODULE-PRIVATE: an importer reads a COPY through the\n")
+	g.pf("// accessor below, so a write to it cannot move this realm's decode.\n")
+	g.pf("const %sFixedLayout = new Uint8Array([\n", st.Name)
 	g.emitBytes(layout)
 	g.pf("]);\n")
+	g.pf("export function %sFixedLayoutCopy() { return %sFixedLayout.slice(); }\n", st.Name, st.Name)
 	g.pf("export const %sFixedLayoutBytes = %d;\n\n", st.Name, len(layout))
 
 	g.pf("// THE PREFILL: the declared defaults as a constant run of bytes. Load copies\n")
@@ -224,7 +232,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// list is empty — one COPY of the whole body — so that copy is a no-op.\n")
 	g.pf("const %sFixedPrefill = new Uint8Array([\n", st.Name)
 	g.emitBytes(prefill)
-	g.pf("]);\n\n")
+	g.pf("]);\n")
+	g.pf("export function %sFixedPrefillCopy() { return %sFixedPrefill.slice(); }\n\n", st.Name, st.Name)
 
 	g.pf("// MY SIDE of the layout, five lanes per entry: the storage facts a layout\n")
 	g.pf("// entry cannot carry. In C++ these are offsetof rows; the reader's own\n")
@@ -233,14 +242,16 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	for i, d := range w.dst {
 		g.pf("  %d, %d, %d, %d, %d, // %d %s\n", d.dst, d.stride, d.aux, d.counted, d.arg, i, w.entries[i].note)
 	}
-	g.pf("]);\n\n")
+	g.pf("]);\n")
+	g.pf("export function %sFixedDstCopy() { return %sFixedDst.slice(); }\n\n", st.Name, st.Name)
 
 	g.pf("// THE IDENTITY PLAN. Every entry a copy, with ADJACENT RUNS COALESCED — and\n")
 	g.pf("// because the reader's own storage in this language IS the wire's layout,\n")
 	g.pf("// source and destination advance together over the whole body and the walk\n")
 	g.pf("// coalesces to exactly ONE run. That is the same coalescer the plan compiler\n")
 	g.pf("// runs, reaching its best case rather than skipping a step.\n")
-	g.pf("const %sFixedIdentity = new Int32Array([0, 0, 0, %d, 0, -1, 0, 0, 1]);\n\n", st.Name, body)
+	g.pf("const %sFixedIdentity = new Int32Array([0, 0, 0, %d, 0, -1, 0, 0, 1, 0, 0]);\n", st.Name, body)
+	g.pf("export function %sFixedIdentityCopy() { return %sFixedIdentity.slice(); }\n\n", st.Name, st.Name)
 
 	// ---- THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2) ----
 	//
@@ -270,7 +281,11 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		g.pf("  new TableFixedKnownLayout(0x%08x, 0x%08x, TableFixedDecodeLayout(\n", uint32(e.Wire), uint32(e.Wire>>32))
 		g.pf("    %q), %d, %d),\n", fixedLayoutBase64(e.Layout), len(e.Layout), e.Record)
 	}
-	g.pf("];\n\n")
+	g.pf("];\n")
+	g.pf("// THE OBJECT TABLE IS FROZEN, descriptors included: an importer can hold\n")
+	g.pf("// the module's own entries to their values but cannot replace one.\n")
+	g.pf("for (const entry of %sFixedKnown) { Object.freeze(entry); }\n", st.Name)
+	g.pf("Object.freeze(%sFixedKnown);\n\n", st.Name)
 	g.pf("// THE FLOOR is one number and the lineage is one array, so \"retired\" is an\n")
 	g.pf("// index cut and the operator's two answers stay distinct: below it a layout\n")
 	g.pf("// this build once served is layout_unsupported (upgrade the client), outside\n")
@@ -280,8 +295,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// load: nothing compiles on the load path, nothing on it parses a layout,\n")
 	g.pf("// and the load path cannot fail for want of a plan (§5.9 #3, §5.8 row 3).\n")
 	g.pf("const %sFixedLineagePlans = TableFixedLineagePlans(%sFixedKnown,\n", st.Name, st.Name)
-	g.pf("  %sFixedHashLo, %sFixedHashHi, %sFixedLayout, %sFixedDst, %sFixedBodyBytes);\n\n",
+	g.pf("  %sFixedHashLo, %sFixedHashHi, %sFixedLayout, %sFixedDst, %sFixedBodyBytes);\n",
 		st.Name, st.Name, st.Name, st.Name, st.Name)
+	g.pf("// THE PLAN TABLE IS FROZEN, its descriptors included, so an importer that\n")
+	g.pf("// reaches it cannot replace a lane with one of its own.\n")
+	g.pf("for (const lane of %sFixedLineagePlans) { if (lane !== null) { Object.freeze(lane); } }\n", st.Name)
+	g.pf("Object.freeze(%sFixedLineagePlans);\n\n", st.Name)
 
 	// ---- the caller's plan storage ----
 	g.pf("// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC\n")
@@ -327,11 +346,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	// ---- the read ----
 	g.pf("// THE READ: a prefill and ONE loop over ONE plan — the identity plan when\n")
 	g.pf("// the layout's hash is this build's own, and a plan compiled once from the\n")
-	g.pf("// writer's layout otherwise. THE SAME LOOP EITHER WAY: there is no strict\n")
-	g.pf("// flag, no fast path and no second reader to keep honest against the first,\n")
-	g.pf("// which is the owner's own ruling — a form whose cost moved when a peer\n")
-	g.pf("// shipped would be a cliff at exactly the moment a deployment cannot afford\n")
-	g.pf("// one. Answers the records read, or -1 with the reason named in the report.\n")
+	g.pf("// writer's layout otherwise. Every COMPILED plan runs the same loop; there\n")
+	g.pf("// is no strict flag. THE ONE LISTED EXCEPTION (docs/SPEC-TABLES.md §3.4,\n")
+	g.pf("// THE IN-PLACE IDENTITY READ): this language's identity plan is one copy of\n")
+	g.pf("// the whole body, so it projects straight from the file's view with no\n")
+	g.pf("// intermediate copy, and its results are held equal to the shared path's by\n")
+	g.pf("// test. Answers the records read, or -1 with the reason named in the report.\n")
 	g.pf("export function %sFixedLoad(values, capacity, bytes, byteLength, plan, report) {\n", st.Name)
 	g.pf("  TableFixedResetReport(report);\n")
 	g.pf("  if (bytes === null || byteLength < 1) { report.malformed = true; return -1; }\n")
@@ -372,8 +392,20 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	// at read time at all: no stranger's layout is ever walked.
 	g.pf("  const known = %sFixedKnown[pick];\n", st.Name)
 	g.pf("  if (layoutBytes !== known.layoutBytes) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }\n")
-	g.pf("  for (let i = 0; i < layoutBytes; i++) {\n")
-	g.pf("    if (bytes[layoutAt + i] !== known.layout[i]) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }\n")
+	// ONE VIEW OVER THE FILE, MADE ONCE PER READ AND NEVER PER RECORD: the
+	// layout compare, the record hashes and the identity projection all read
+	// through it, in 32-bit lanes where they move words (§3.4).
+	g.pf("  const srcView = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
+	g.pf("  {\n")
+	g.pf("    // THE LAYOUT COMPARE MOVES IN 32-BIT LANES, then a tail of at most three bytes.\n")
+	g.pf("    const lv = known.layoutView;\n")
+	g.pf("    let i = 0;\n")
+	g.pf("    for (; i + 4 <= layoutBytes; i += 4) {\n")
+	g.pf("      if (srcView.getUint32(layoutAt + i, true) !== lv.getUint32(i, true)) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }\n")
+	g.pf("    }\n")
+	g.pf("    for (; i < layoutBytes; i++) {\n")
+	g.pf("      if (bytes[layoutAt + i] !== known.layout[i]) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }\n")
+	g.pf("    }\n")
 	g.pf("  }\n")
 	// STEP 8: the plan this peer resolves to — laid down at module load, never
 	// here — and the record size FROM THE LOCK and never from the file.
@@ -411,41 +443,59 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one\n")
 	g.pf("  // COPY of the whole body, so the hole list is empty and the inner loop is a\n")
 	g.pf("  // no-op. A compiled plan that leaves a field out has that field in the list,\n")
-	g.pf("  // and the declared default is what it keeps. Same loop either way. There is\n")
-	g.pf("  // no identity flag in the record loop — an empty list is what skips the work.\n")
+	g.pf("  // and the declared default is what it keeps. An empty list is what skips\n")
+	g.pf("  // the prefill; the identity door below is §3.4's in-place read, not a hole rule.\n")
 	g.pf("  const holeN = TableFixedHoles(entries, entryCount, plan.cover, plan.holes);\n")
-	g.pf("  // ONE VIEW OVER THE FILE, MADE ONCE PER READ AND NEVER PER RECORD: the\n")
-	g.pf("  // read loop moves a run in 32-bit lanes and a DataView is what has an\n")
-	g.pf("  // unaligned word move in this language (§3.4).\n")
-	g.pf("  const srcView = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
+	g.pf("  // §4.5, §5.3: stage the record loop's counters so a refusal leaves the\n")
+	g.pf("  // caller's clamped and widened untouched; commit after the loop.\n")
+	g.pf("  const stage = TableFixedResetReport(plan.stage);\n")
+	// THE IN-PLACE IDENTITY READ (docs/SPEC-TABLES.md §3.4, owner's decision
+	// 2026-10-16: a language MAY read its identity plan in place when that is
+	// necessary for performance in an extreme case, and JavaScript is the first
+	// listed). The identity plan is ONE COPY OF THE WHOLE BODY, so its image is
+	// the file itself: projecting straight from the file's view skips the
+	// copy, which was about half of the read. A COMPILED plan still runs
+	// prefill, loop and projection over the image. fixedform_test.go holds the
+	// door to exactly this shape and only while §3.4 lists javascript, and
+	// fixedform_inplace_test.go holds both paths' results equal.
+	g.pf("  const identity = entries === %sFixedIdentity && holeN === 0;\n", st.Name)
 	g.pf("  let at = layoutAt + layoutBytes;\n")
 	g.pf("  for (let k = 0; k < n; k++) {\n")
 	g.pf("    // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY\n")
 	g.pf("    // NAME, never a guess and never damage: nothing is decoded, no counter moves.\n")
-	g.pf("    if (((bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16) | (bytes[at + 3] << 24)) >>> 0) !== hashLo ||\n")
-	g.pf("        ((bytes[at + 4] | (bytes[at + 5] << 8) | (bytes[at + 6] << 16) | (bytes[at + 7] << 24)) >>> 0) !== hashHi) {\n")
+	g.pf("    if (srcView.getUint32(at, true) !== hashLo || srcView.getUint32(at + 4, true) !== hashHi) {\n")
 	g.pf("      report.refused = TableFixedRefusal.NoLayout; return -1;\n")
+	g.pf("    }\n")
+	g.pf("    if (identity) {\n")
+	g.pf("      %sFixedDecode(values[k], srcView, at + 8, stage);\n", st.Name)
+	g.pf("      if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }\n")
+	g.pf("      at += recordBytes;\n")
+	g.pf("      continue;\n")
 	g.pf("    }\n")
 	g.pf("    for (let h = 0; h < holeN; h++) {\n")
 	g.pf("      const o = plan.holes[h * 2], z = plan.holes[h * 2 + 1];\n")
 	g.pf("      for (let i = 0; i < z; i++) { image[o + i] = %sFixedPrefill[o + i]; }\n", st.Name)
 	g.pf("    }\n")
-	g.pf("    TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, report);\n")
+	g.pf("    TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, stage);\n")
 	g.pf("    // A TEXT OP THAT REFUSED ITS CONTENT stops the read HERE, before the\n")
 	g.pf("    // projection: refuse is total, no counter moves and no record lands.\n")
-	g.pf("    if (report.refused !== 0) { return -1; }\n")
-	g.pf("    %sFixedDecode(values[k], imageView, 0, report);\n", st.Name)
-	g.pf("    // THE IDENTITY PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): the body is\n")
-	g.pf("    // one COPY, so no text op ran, and the decode is where a byte string or\n")
-	g.pf("    // a wide string refuses by name.\n")
-	g.pf("    if (report.refused !== 0) { return -1; }\n")
+	g.pf("    if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }\n")
+	g.pf("    %sFixedDecode(values[k], imageView, 0, stage);\n", st.Name)
+	g.pf("    // THE PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): a copied run carries\n")
+	g.pf("    // no text op, so the decode is where a byte string or a wide string\n")
+	g.pf("    // refuses by name, here and at the in-place door alike.\n")
+	g.pf("    if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }\n")
 	g.pf("    at += recordBytes;\n")
 	g.pf("  }\n")
-	g.pf("  // THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, on a read that returns\n")
-	g.pf("  // (§5.9 #6). On a LAWFUL lineage it lands zero, always (§5.9 #30).\n")
+	g.pf("  // THE COMPILE CENSUS AND THE LOOP'S COUNTERS LAND ONCE, AFTER THE LOOP, on\n")
+	g.pf("  // a read that returns (§5.3, §5.9 #6). On a LAWFUL lineage unknown and\n")
+	g.pf("  // kindMismatch land zero, always (§5.9 #30).\n")
+	g.pf("  report.clamped += stage.clamped;\n")
+	g.pf("  report.widened += stage.widened;\n")
 	g.pf("  report.unknown += censusUnknown;\n")
 	g.pf("  report.kindMismatch += censusKind;\n")
 	g.pf("  return n;\n}\n\n")
+	g.emitFixedCookExports(st)
 }
 
 func (g *fixedModule) emitBytes(b []byte) {
@@ -495,6 +545,7 @@ func (g *fixedModule) assemble() []byte {
 	h.WriteString("// Nothing throws: a write answers its byte count or -1, a read answers its\n")
 	h.WriteString("// record count or -1 with the reason named in the report.\n")
 
+	used := jsIdentifiers(g.body.String())
 	bases := make([]string, 0, len(g.imports))
 	for b := range g.imports {
 		bases = append(bases, b)
@@ -509,6 +560,9 @@ func (g *fixedModule) assemble() []byte {
 			syms = append(syms, s)
 		}
 		sort.Strings(syms)
+		if syms = liveImports(syms, used); len(syms) == 0 {
+			continue
+		}
 		fmt.Fprintf(&h, "import { %s } from \"./%s.js\";\n", strings.Join(syms, ", "), b)
 	}
 	h.WriteString("\n")

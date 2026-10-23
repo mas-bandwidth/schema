@@ -44,7 +44,7 @@ fixed table ShipConfig
 // §20.2's worked example, to the character. Every number in it derives from a
 // rule on a page and none of it is declared, so a second implementation
 // reproduces it — and a reader did, independently, before this one existed.
-const workedProjection = `schema-build-version 3
+const workedProjection = `schema-build-version 4
 protocol 0123456789abcdef
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -69,8 +69,8 @@ func TestCookProjectionMatchesThePagesWorkedExample(t *testing.T) {
 	if got != workedProjection {
 		t.Errorf("the cook projection is not the page's (docs/SPEC-TABLES.md §20.2).\n--- got ---\n%s\n--- want ---\n%s", got, workedProjection)
 	}
-	if v := ir.BuildVersion(u); v != 0xa9df771f6051391f {
-		t.Errorf("build version = 0x%016x, want 0xa9df771f6051391f (docs/SPEC-TABLES.md §20.2)", v)
+	if v := ir.BuildVersion(u); v != 0x91cc2ade8160c4c7 {
+		t.Errorf("build version = 0x%016x, want 0x91cc2ade8160c4c7 (docs/SPEC-TABLES.md §20.2)", v)
 	}
 }
 
@@ -80,13 +80,13 @@ func TestCookProjectionMatchesThePagesWorkedExample(t *testing.T) {
 func TestCookProjectionOfATablelessUnit(t *testing.T) {
 	u := unitFrom(t, "package demo\n\ntype Point\n{\n    x float32\n}\n")
 	u.ProtocolId = 0x0123456789abcdef
-	want := "schema-build-version 3\nprotocol 0123456789abcdef\nbyteorder little\n" +
+	want := "schema-build-version 4\nprotocol 0123456789abcdef\nbyteorder little\n" +
 		"block prologue=magic:8,build_version:8,byte_order:8\n"
 	if got := ir.CookProjection(u); got != want {
 		t.Errorf("a table-free unit projects its header lines alone.\n--- got ---\n%s", got)
 	}
-	if v := ir.BuildVersion(u); v != 0xc4adaacfe6cb2809 {
-		t.Errorf("build version = 0x%016x, want 0xc4adaacfe6cb2809 (docs/SPEC-TABLES.md §20.2)", v)
+	if v := ir.BuildVersion(u); v != 0xb0834916acb6dd3c {
+		t.Errorf("build version = 0x%016x, want 0xb0834916acb6dd3c (docs/SPEC-TABLES.md §20.2)", v)
 	}
 	if v := ir.BuildVersion(u); v == u.ProtocolId {
 		t.Error("the two ids are equal — one could be substituted for the other by accident")
@@ -159,8 +159,8 @@ table Row
     scores [Grade]int32
     fx     Effect
     label  string(8) | json = "name"
-    guard  bool
-    if guard
+    gate   bool
+    if gate
     {
         extra int32
     }
@@ -223,7 +223,7 @@ table Row
 		to   string
 	}{
 		{"a was rename", "slot   int32 | min = 0, max = 10", "position int32 | was = \"slot\", min = 0, max = 10"},
-		{"a guard removed", "    if guard\n    {\n        extra int32\n    }\n", "    extra int32\n"},
+		{"a guard removed", "    if gate\n    {\n        extra int32\n    }\n", "    extra int32\n"},
 		{"a json key changed", `json = "name"`, `json = "label"`},
 		{"a comment added", "table Row", "// a comment\ntable Row"},
 	}
@@ -355,5 +355,95 @@ func TestTheBuildVersionMovesWhenTheListGainsABound(t *testing.T) {
 	// pins.
 	if got := ir.BuildVersion(unitFrom(t, workedSource)); got != ir.BuildVersion(unitFrom(t, workedSource)) {
 		t.Errorf("a list-free unit's build version is not stable: %016x", got)
+	}
+}
+
+// TestBuildVersionForm4WireNamesAndElemSize (docs/SPEC-TABLES.md §20.2, §4.1,
+// §5) pins FORM 4: the `block` line prints the table's WIRE name, a by-value
+// arm's `payload=` prints its referent's WIRE name, and a variant default's
+// `default=` prints the variant's WIRE name — so a `was` rename of a block-form
+// table, of a by-value arm's payload table, or of an enum variant named by a
+// default moves nothing — and `elem=` is the element's own storage size, even
+// for a padded pointer array and a small counted array.
+func TestBuildVersionForm4WireNamesAndElemSize(t *testing.T) {
+	t.Parallel()
+
+	const src = `package demo
+
+fixed table Node
+{
+    id int32
+}
+
+fixed table Frame
+{
+    nodes [..2]Node
+}
+
+fixed table User
+{
+    name string(16)
+}
+
+enum Grade { Bronze, Silver, Gold }
+
+union Origin
+{
+    user User
+}
+
+union Bundle
+{
+    many [..2]*Node
+    plain int32
+}
+
+table Rack
+{
+    slots [..2]*Node
+    octets [..1]uint8
+    grade Grade = Silver
+    origin Origin
+    many Bundle
+}
+`
+	baseUnit := unitFrom(t, src)
+	base := ir.BuildVersion(baseUnit)
+	text := ir.CookProjection(baseUnit)
+
+	if !strings.Contains(text, "schema-build-version 4") {
+		t.Errorf("the header does not read schema-build-version 4:\n%s", text)
+	}
+	for _, want := range []string{
+		"block Frame sizeof=",
+		"size=24 type=Node elem=8 array=bounded bound=2",
+		"elem=1 array=bounded bound=1",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the projection does not carry %q:\n%s", want, text)
+		}
+	}
+
+	renames := []struct {
+		what  string
+		pairs [][2]string
+	}{
+		{"a block-form table renamed under was", [][2]string{{"fixed table Frame", "fixed table FrameV2 | was = \"Frame\""}}},
+		{"a by-value arm's payload table renamed under was", [][2]string{{"fixed table User", "fixed table UserV2 | was = \"User\""}, {"    user User", "    user UserV2"}}},
+		{"an enum variant named by a default renamed under was", [][2]string{{"enum Grade { Bronze, Silver, Gold }", "enum Grade\n{\n    Bronze\n    Aurum | was = \"Silver\"\n    Gold\n}"}, {"grade Grade = Silver", "grade Grade = Aurum"}}},
+	}
+	for _, r := range renames {
+		edited := src
+		for _, p := range r.pairs {
+			next := strings.Replace(edited, p[0], p[1], 1)
+			if next == edited {
+				t.Fatalf("%s: the edit patched nothing — the fixture drifted: %q", r.what, p[0])
+			}
+			edited = next
+		}
+		renamed := unitFrom(t, edited)
+		if ir.BuildVersion(renamed) != base {
+			t.Errorf("%s: the build version moved (0x%016x -> 0x%016x), and no cook byte depends on it", r.what, base, ir.BuildVersion(renamed))
+		}
 	}
 }

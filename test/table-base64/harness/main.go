@@ -79,15 +79,21 @@ func corpus() []vector {
 		}
 	}
 	// Raw bytes include NUL, high-bit values, whitespace and JSON escapes.
-	// None is a Base64 symbol. They must report a kind mismatch (or JSON
-	// damage for the closing quote), never index
-	// outside the table or turn the NUL alphabet terminator into a symbol.
+	// None is a Base64 symbol, and none may index outside the table or turn
+	// the NUL alphabet terminator into a symbol. A byte the JSON layer refuses
+	// is malformed (docs/SPEC-TABLES.md §16.2 and the JSONTestSuite rule: the
+	// read is RFC 8259's): a control byte below 0x20 unescaped in a string
+	// (n_string_unescaped_ctrl_char), the closing quote, a backslash that
+	// starts no escape (`\A`), and a lone byte at or above 0x80, which is not
+	// UTF-8 (string_not_utf8). Every other byte is a valid JSON string and an
+	// invalid Base64 symbol: a kind mismatch, the field left at its default.
 	for c := range 256 {
 		if strings.IndexByte(alphabet, byte(c)) >= 0 || c == '=' {
 			continue
 		}
-		add(fmt.Sprintf("invalid-%02x", c), "QQ"+string([]byte{byte(c)})+"AA", nil, c == '"')
-		if c != '"' {
+		jsonRefuses := c < 0x20 || c == '"' || c == '\\' || c >= 0x80
+		add(fmt.Sprintf("invalid-%02x", c), "QQ"+string([]byte{byte(c)})+"AA", nil, jsonRefuses)
+		if !jsonRefuses {
 			cases[len(cases)-1].mismatch = 1
 		}
 	}

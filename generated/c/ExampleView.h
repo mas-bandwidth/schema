@@ -94,6 +94,9 @@ typedef struct TableReport
     int32_t duplicate;
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
+    /* a blob record another slot already named (docs/SPEC-TABLES.md §2.5):
+       the tolerant read keeps the one node and counts each extra naming. */
+    int32_t blob_shared;
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
@@ -463,6 +466,8 @@ static SCHEMA_UNUSED void vec2_reset( Vec2 * value );
 static SCHEMA_UNUSED void schema_example_vec2_reset_raw_( void * storage );
 static SCHEMA_UNUSED void vec3_reset( Vec3 * value );
 static SCHEMA_UNUSED void schema_example_vec3_reset_raw_( void * storage );
+static SCHEMA_UNUSED void vec3_sole_reset( Vec3Sole * value );
+static SCHEMA_UNUSED void schema_example_vec3_sole_reset_raw_( void * storage );
 static SCHEMA_UNUSED void w1_reset( W1 * value );
 static SCHEMA_UNUSED void schema_example_w1_reset_raw_( void * storage );
 static SCHEMA_UNUSED void w13_reset( W13 * value );
@@ -1258,6 +1263,15 @@ static SCHEMA_UNUSED void schema_example_vec3_reset_raw_( void * storage ) { vec
 
 extern const TableTypeInfo schema_example_vec3_info_;
 static SCHEMA_UNUSED const TableTypeInfo * vec3_table_type(void) { return &schema_example_vec3_info_; }
+static SCHEMA_UNUSED void vec3_sole_reset( Vec3Sole * value )
+{
+    vec3_reset( &value->v );
+}
+
+static SCHEMA_UNUSED void schema_example_vec3_sole_reset_raw_( void * storage ) { vec3_sole_reset( (Vec3Sole *) storage ); }
+
+extern const TableTypeInfo schema_example_vec3_sole_info_;
+static SCHEMA_UNUSED const TableTypeInfo * vec3_sole_table_type(void) { return &schema_example_vec3_sole_info_; }
 static SCHEMA_UNUSED void w1_reset( W1 * value )
 {
     memset( value->items, 0, sizeof( value->items ) );

@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -36,12 +37,13 @@ func TestSkippedLegIsNotAConformancePrerequisite(t *testing.T) {
 				env = append(env, kv)
 			}
 		}
-		mk.Env = append(env, "SCHEMA_SKIP_LEGS="+skip)
+		env = append(env, "SCHEMA_SKIP_LEGS="+skip)
+		mk.Env = env
 		out, err := mk.Output()
 		if err != nil {
 			t.Fatalf("make -s registry SCHEMA_SKIP_LEGS=%q: %v", skip, err)
 		}
-		for _, line := range strings.Split(string(out), "\n") {
+		for line := range strings.SplitSeq(string(out), "\n") {
 			if rest, ok := strings.CutPrefix(line, "conformance:"); ok {
 				return strings.Fields(rest)
 			}
@@ -49,14 +51,7 @@ func TestSkippedLegIsNotAConformancePrerequisite(t *testing.T) {
 		t.Fatalf("make -s registry SCHEMA_SKIP_LEGS=%q printed no conformance line:\n%s", skip, out)
 		return nil
 	}
-	names := func(legs []string, target string) bool {
-		for _, l := range legs {
-			if l == target {
-				return true
-			}
-		}
-		return false
-	}
+	names := slices.Contains[[]string]
 
 	// CONTROL: nothing skipped, and the C leg IS a conformance prerequisite.
 	if all := conformance(""); !names(all, "build/conformance-c") {

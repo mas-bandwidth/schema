@@ -63,7 +63,7 @@ namespace Wide
 
         public ref readonly T this[int index]
         {
-            get { return ref *(T*) (rows + (long) index * stride); }
+            get { return ref *(T*)(rows + (long)index * stride); }
         }
 
         public Enumerator GetEnumerator() { return new Enumerator(rows, count, stride); }
@@ -89,7 +89,7 @@ namespace Wide
                 return true;
             }
 
-            public ref readonly T Current { get { return ref *(T*) at; } }
+            public ref readonly T Current { get { return ref *(T*)at; } }
         }
     }
 
@@ -164,7 +164,7 @@ namespace Wide
         // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION
         // is what everything cooked or blocked is keyed by. A table edit moves
         // this and never the protocol id; a type edit moves both.
-        public const ulong BuildVersion = 0xe8bbfd2a65953c70UL;
+        public const ulong BuildVersion = 0x39cdb9bf25cd122cUL;
 
         // The block's magic (docs/SPEC-TABLES.md §19.1), read BYTEWISE: it is the one
         // field read without assuming the order the rest of the block is in.
@@ -242,13 +242,13 @@ namespace Wide
             checked_ = true;
             {
                 StampBlockProjection probe = default;
-                byte* at = (byte*) &probe;
+                byte* at = (byte*)&probe;
                 Size("StampBlockProjection", Unsafe.SizeOf<StampBlockProjection>(), 48);
-                Offset("StampBlockProjection.Magic", (byte*) &probe.Magic - at, 0);
-                Offset("StampBlockProjection.BuildVersion", (byte*) &probe.BuildVersion - at, 8);
-                Offset("StampBlockProjection.ByteOrder", (byte*) &probe.ByteOrder - at, 16);
-                Offset("StampBlockProjection.Label", (byte*) probe.Label - at, 24);
-                Offset("StampBlockProjection.Seq", (byte*) &probe.Seq - at, 40);
+                Offset("StampBlockProjection.Magic", (byte*)&probe.Magic - at, 0);
+                Offset("StampBlockProjection.BuildVersion", (byte*)&probe.BuildVersion - at, 8);
+                Offset("StampBlockProjection.ByteOrder", (byte*)&probe.ByteOrder - at, 16);
+                Offset("StampBlockProjection.Label", (byte*)probe.Label - at, 24);
+                Offset("StampBlockProjection.Seq", (byte*)&probe.Seq - at, 40);
             }
         }
 

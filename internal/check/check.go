@@ -19,7 +19,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
-	"github.com/mas-bandwidth/schema/v2/internal/version"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -45,6 +44,12 @@ type checker struct {
 	structs  map[string]*ir.Struct
 	unions   map[string]*ir.Union
 	tables   map[string]*ir.Struct // `table` declarations (docs/SPEC-TABLES.md)
+
+	// unboundedText is set while a text-list ELEMENT or a map KEY resolves
+	// (docs/SPEC-TABLES.md §2.13.1): the two places a bare `string` stands.
+	// mapValue is set while a map VALUE resolves, so a bare `string` there is
+	// refused naming the value.
+	unboundedText, mapValue bool
 
 	// the GENERATED entry tables of the `map` fields resolved so far, in
 	// synthesis order — innermost first, so a header emitting them in list
@@ -94,24 +99,13 @@ type constEntry struct {
 }
 
 func (c *checker) errf(pos ast.Pos, format string, args ...any) {
-	c.errs = append(c.errs, fmt.Errorf("%s: %s", pos, versioned(fmt.Sprintf(format, args...))))
+	c.errs = append(c.errs, fmt.Errorf("%s: %s", pos, fmt.Sprintf(format, args...)))
 }
 
-// versioned appends the build's version line to a refusal that cites a spec
-// section (#458): a section is cited as it stands in the build that printed
-// the refusal, so a message pasted into an issue from a stale binary dates
-// itself instead of contradicting the page as it reads today. A refusal
-// that cites nothing is returned as it is.
-func versioned(msg string) string {
-	if !strings.Contains(msg, "§") {
-		return msg
-	}
-	return msg + "\nschema " + version.Version()
-}
-
-// Unit checks the files and lowers them to IR. Files may arrive in any order;
-// the unit is processed in sorted-basename order, so everything derived from
-// it is deterministic.
+// Unit checks the files against every supported language's reserved words
+// (SPEC §4.6: whatever target is generated) and lowers them to IR. Files may
+// arrive in any order; the unit is processed in sorted-basename order, so
+// everything derived from it is deterministic.
 func Unit(files []SourceFile) (*ir.Unit, []error) {
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 
@@ -152,6 +146,10 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.checkTargetNames()
 	c.assemble()
 	c.checkSizes()
+	if len(c.errs) > 0 {
+		return nil, c.errs
+	}
+	c.checkRetiredNames()
 	if len(c.errs) > 0 {
 		return nil, c.errs
 	}
@@ -295,9 +293,14 @@ func (c *checker) checkNativeMapping() {
 // target's namespace/module/package concept verbatim (SPEC §6.1), which exposes
 // it to three collision classes no declaration or field name can hit.
 func (c *checker) checkPackageName(name string, pos ast.Pos) {
-	if lang, ok := targetReserved[name]; ok {
+	if langs := c.reservedTargetLangs(name); len(langs) > 0 {
 		c.errf(pos, "package name %q is a reserved word in %s (the package ident becomes the target's namespace/module/package name verbatim) — rename the package; no escaping machinery (SPEC §4.6)",
-			name, lang)
+			name, listReservedLangs(langs))
+		return
+	}
+	if cppNamespaceCollisions[name] {
+		c.errf(pos, "package name %q collides with a C system header identifier visible at C++ namespace scope (the generated `namespace %s` cannot be declared beside sys/select.h or sys/types.h's %s) — rename the package (SPEC §4.6)",
+			name, name, name)
 		return
 	}
 	if libcNamespaceScope[name] {
@@ -308,6 +311,17 @@ func (c *checker) checkPackageName(name string, pos ast.Pos) {
 	if name == "main" {
 		c.errf(pos, "package name \"main\" makes the generated Go a program package that cannot be imported (\"function main is undeclared in the main package\") — rename the package (SPEC §4.6)")
 	}
+}
+
+// cppNamespaceCollisions are identifiers the generated C++ cannot use as a
+// package name — declaring `namespace <name>` beside sys/select.h or
+// sys/types.h collides with the header's own declaration of the same name
+// (g++ rejects it) — even though none is a C++ keyword. They are refused only
+// at namespace scope, whatever target is generated (SPEC §4.6).
+var cppNamespaceCollisions = map[string]bool{
+	"select": true,
+	"ulong":  true,
+	"ushort": true,
 }
 
 func (c *checker) collectDecls() {
@@ -681,6 +695,8 @@ var valuedKeys = map[string]bool{
 	"resolution":  true,
 	"was":         true,
 	"json":        true,
+	"forms":       true,
+	"integrity":   true,
 	"cpp_native":  true,
 	"cpp_include": true,
 }
@@ -762,6 +778,63 @@ func (c *checker) qualification(where, kind string, attrs []ast.Attr, takes map[
 	return tags, valued
 }
 
+// tableForms reads a `forms = "wire,json"` declaration (docs/SPEC-TABLES.md
+// §2.12): a comma-separated quoted string of form names from the closed
+// vocabulary. A form outside it is refused by name; a spelling that is not a
+// quoted string is refused too. The table carries exactly the named forms —
+// the Go backend honours them, every other backend refuses the whole construct
+// by name (compiler/generate.go).
+func (c *checker) tableForms(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
+	lit, ok := a.Value.(*ast.StringLit)
+	if !ok || lit.Value == "" {
+		c.errf(a.Pos, `forms takes a comma-separated quoted list of form names, e.g. forms = "wire,json" (docs/SPEC-TABLES.md §2.12)`)
+		return
+	}
+	seen := map[string]bool{}
+	bad := false
+	for raw := range strings.SplitSeq(lit.Value, ",") {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			c.errf(a.Pos, "table %s: forms = %q contains an empty form name — write a comma-separated list of wire, json, block, cook (docs/SPEC-TABLES.md §2.12)", d.Name, lit.Value)
+			bad = true
+			continue
+		}
+		if !ir.TableForms[name] {
+			c.errf(a.Pos, "table %s: forms = %q names no form — the forms are wire, json, block and cook (docs/SPEC-TABLES.md §2.12)", d.Name, name)
+			bad = true
+			continue
+		}
+		if seen[name] {
+			c.errf(a.Pos, "table %s: forms = %q repeats form %q — each form may be named at most once (docs/SPEC-TABLES.md §2.12)", d.Name, lit.Value, name)
+			bad = true
+			continue
+		}
+		seen[name] = true
+		st.Forms = append(st.Forms, name)
+	}
+	if !bad && !seen["wire"] {
+		c.errf(a.Pos, "table %s: forms = %q must include wire — the wire form is always carried (docs/SPEC-TABLES.md §2.12)", d.Name, lit.Value)
+	}
+}
+
+// tableIntegrity reads an `integrity = "crc32c"` declaration
+// (docs/SPEC-TABLES.md §2.14): one quoted check name from the closed
+// vocabulary [ir.TableIntegrityChecks]. A `fixed table` takes it too: its
+// form-3 file carries the trailer once per file (§2.14, §3.4), and its
+// message-form batch carries it once per batch (§2.14, §3.3).
+func (c *checker) tableIntegrity(d *ast.TableDecl, st *ir.Struct, a *ast.Attr) {
+	lit, ok := a.Value.(*ast.StringLit)
+	if !ok || lit.Value == "" {
+		c.errf(a.Pos, `integrity takes one quoted check name, e.g. integrity = "crc32c" (docs/SPEC-TABLES.md §2.14)`)
+		return
+	}
+	if !ir.TableIntegrityChecks[lit.Value] {
+		c.errf(a.Pos, "table %s: integrity = %q names no check — the checks are crc32c (docs/SPEC-TABLES.md §2.14)", d.Name, lit.Value)
+		return
+	}
+	st.Integrity = lit.Value
+}
+
 // vocabulary spells a line kind's valued keys for a diagnostic.
 func vocabulary(takes map[string]bool) string {
 	if len(takes) == 0 {
@@ -814,12 +887,9 @@ func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
 	return big.NewInt(en.Max), true
 }
 
-// declaredCount resolves E.Count (SPEC §4.2): the DECLARED variant count of
-// an enum or a flags declaration — one word meaning one thing in both. It
-// excludes an enum's implicit None, and it is not the wire extent: under
-// | max = K headroom an enum's Max and a flags declaration's wire width rise
-// above the count, and Count stays the count. Unlike .Max it needs no bound,
-// so an enum whose | max = ... failed to resolve still answers it exactly.
+// declaredCount resolves F.Count (SPEC §4.2): the DECLARED variant count of a
+// flags declaration. An enum has no Count — its variant count is its Max, so
+// one number gets one name; E.Count is refused naming the enum.
 func (c *checker) declaredCount(e *ast.MaxExpr) (*big.Int, bool) {
 	d, ok := c.astDecls[e.Enum]
 	if !ok {
@@ -834,11 +904,8 @@ func (c *checker) declaredCount(e *ast.MaxExpr) (*big.Int, bool) {
 		}
 		return big.NewInt(int64(len(fl.Variants))), true
 	case *ast.EnumDecl:
-		en := c.resolveEnum(d)
-		if en == nil {
-			return nil, false
-		}
-		return big.NewInt(int64(len(en.Variants))), true
+		c.errf(e.Pos, "enum %s has no Count — an enum's variant count is its Max, and one number gets one name; write %s.Max (SPEC §4.2)", e.Enum, e.Enum)
+		return nil, false
 	}
 	c.errf(e.Pos, "%s is neither an enum nor a flags declaration — .Count names a declared variant count (SPEC §4.2)", e.Enum)
 	return nil, false
@@ -894,6 +961,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 	seen := map[string]bool{}
 	var variants, was, docs []string
 	var vtags [][]string
+	var deprecated []bool
 	for _, v := range d.Variants {
 		// the three names below are reservedEnumVariant's set, and
 		// checkClaimedNames reads the same predicate: a variant that IS the
@@ -907,10 +975,6 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 			c.errf(v.Pos, "variant Max is a compile error — every generated enum carries its extent as the member Max, the same number E.Max names (SPEC §4.2)")
 			continue
 		}
-		if v.Text == "Count" {
-			c.errf(v.Pos, "variant Count is a compile error — every generated enum carries its declared variant count as the member Count, the same number E.Count names (SPEC §4.2)")
-			continue
-		}
 		if seen[v.Text] {
 			c.errf(v.Pos, "duplicate variant %s", v.Text)
 			continue
@@ -921,6 +985,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 		vw, vt := c.variantQualification("enum", d.Name, v, map[string]bool{"was": true})
 		was = append(was, vw)
 		vtags = append(vtags, vt)
+		deprecated = append(deprecated, contains(vt, deprecatedTag))
 	}
 	// An enum with no variants is LEGAL: it holds only the implicit None = 0,
 	// so its wire range is the degenerate [0, 0] and it costs zero bits. That
@@ -959,7 +1024,7 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 		max = v.Int64()
 	}
 	en := &ir.Enum{Name: d.Name, Variants: variants, Was: was, Max: max, StorageBits: ir.StorageBitsFor(max),
-		Doc: d.Doc, Tags: tags, VariantDocs: docs, VariantTags: vtags}
+		Doc: d.Doc, Tags: tags, VariantDocs: docs, VariantTags: vtags, VariantDeprecated: deprecated}
 	c.enums[d.Name] = en
 	return en
 }
@@ -1061,8 +1126,32 @@ func (c *checker) resolveBodies() {
 				// refuses a fixed table whose closure cannot hold the class.
 				st := &ir.Struct{Name: d.Name, IsTable: true, FixedDeclared: d.Fixed, Doc: d.Doc}
 				var tvalued []*ast.Attr
-				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true})
+				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true, "forms": true, "json": true, "integrity": true})
 				for _, a := range tvalued {
+					if a.Key == "json" {
+						// the ARRAY ROOT (docs/SPEC-TABLES.md §16.10): a text
+						// form fact, kept out of the rename switch below so
+						// it never touches the wire identity
+						c.tableJsonRoot(d, st, a)
+						continue
+					}
+					if a.Key == "integrity" {
+						// the file's CHECKSUM TRAILER (docs/SPEC-TABLES.md
+						// §2.14): framing, kept out of the rename switch
+						// below so it never touches the wire identity
+						c.tableIntegrity(d, st, a)
+						continue
+					}
+					if a.Key == "forms" {
+						// the table's FORM declaration (docs/SPEC-TABLES.md
+						// §2.12). A `forms` is not a `was`: dispatching by key
+						// here keeps it out of the rename switch below, so a
+						// declared form never touches WasName and can never
+						// move the wire identity (docs/SPEC-TABLES.md §3.1,
+						// §5).
+						c.tableForms(d, st, a)
+						continue
+					}
 					// the table's RENAME (docs/SPEC-TABLES.md §5): its node
 					// type id stays the hash of the OLD name, so every
 					// stored record of that name still reads as this table
@@ -1104,7 +1193,13 @@ func (c *checker) resolveBodies() {
 			case *ast.TableDecl:
 				c.mapEntries = nil
 				c.tables[d.Name].Fields, c.tables[d.Name].Items = c.resolveBody(d.Name, d.Body, true)
+				if c.tables[d.Name].JsonArray {
+					c.checkArrayRoot(d, c.tables[d.Name])
+				}
 				if len(c.mapEntries) > 0 {
+					for _, entry := range c.mapEntries {
+						entry.Forms = append([]string(nil), c.tables[d.Name].Forms...)
+					}
 					c.mapEntriesFor[d.Name] = c.mapEntries
 					c.mapEntries = nil
 				}
@@ -1113,12 +1208,14 @@ func (c *checker) resolveBodies() {
 			}
 		}
 	}
+	// an array-root table no pointer may target (docs/SPEC-TABLES.md §16.10)
+	c.checkArrayRootTargets()
 }
 
 // resolveUnion fills a union shell's variants (SPEC §4.8): names checked over
-// the EXPORTED spelling (None/Count/Max reserved post-mapping, uniqueness
+// the EXPORTED spelling (None/Max reserved post-mapping, uniqueness
 // post-mapping — box_a and boxA both export BoxA), payloads restricted to
-// declared types.
+// declared types. Count is an ordinary arm name: a tag enum carries no Count.
 func (c *checker) resolveUnion(d *ast.UnionDecl) {
 	un := c.unions[d.Name]
 	seen := map[string]ast.Pos{}
@@ -1131,12 +1228,6 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 		case "Max":
 			c.errf(v.Pos, "variant %s is a compile error — every generated union tag enum carries its extent as the member Max, checked over the exported spelling (SPEC §4.8, §4.2)", v.Name)
 			continue
-		case "Count":
-			// EVERY union's tag enum carries Count, the packet shape and the
-			// table-closure shape alike (docs/SPEC-TABLES.md §2.6), so an arm
-			// exporting it defines the member twice wherever the union lands
-			c.errf(v.Pos, "variant %s is a compile error — a union's generated tag enum carries its declared variant count as the member Count, checked over the exported spelling (SPEC §4.8, §4.2)", v.Name)
-			continue
 		case "Type":
 			c.errf(v.Pos, "variant %s is a compile error — its exported spelling is Type, the tag member's own name in the Go and C# representations; rename at the source (SPEC §4.8)", v.Name)
 			continue
@@ -1145,8 +1236,8 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 			c.errf(v.Pos, "variant %s is a compile error — its exported spelling equals the union's own name, which C# refuses (CS0542); rename at the source (SPEC §4.6)", v.Name)
 			continue
 		}
-		if lang, bad := targetReserved[v.Name]; bad {
-			c.errf(v.Pos, "variant %s is a reserved word in %s — rename at the source, no escaping machinery (SPEC §4.6)", v.Name, lang)
+		if langs := c.reservedTargetLangsGoEscaped(v.Name); len(langs) > 0 {
+			c.errf(v.Pos, "variant %s is a reserved word in %s — rename at the source, no escaping machinery (SPEC §4.6)", v.Name, listReservedLangs(langs))
 			continue
 		}
 		if prev, dup := seen[exported]; dup {
@@ -1443,6 +1534,11 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		// on its own path and comes back as an ir.TMap field.
 		return c.resolveMapField(owner, f, inTable)
 	}
+	if f.Array != nil && (f.Type.ElemOptional || f.Type.Kind == ast.ScalarString && !f.Type.Pointer) {
+		// `rules [..16]string(64)` — a TEXT LIST (docs/SPEC-TABLES.md §2.13),
+		// and `[..N]?T` for every other element, refused by name
+		return c.resolveTextListField(owner, f, inTable)
+	}
 	out := &ir.Field{Name: f.Name, Doc: f.Doc}
 
 	// scalar type
@@ -1523,6 +1619,17 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 				c.errf(f.Type.Pos, "field %s: *wstring is specified ahead of its implementation and no backend emits it (docs/SPEC-TABLES.md §2.5); declare *string for an unbounded byte buffer, or wstring(N) in a `type` for inline wide text (SPEC §4.12, schema#522)", f.Name)
 				return nil
 			}
+		}
+		if f.Type.Unbounded && !f.Type.Pointer {
+			// a bare `string` — UNBOUNDED text (docs/SPEC-TABLES.md §2.13.1):
+			// legal as a text-list element and a map key, through this one
+			// path, and refused by name everywhere else
+			if !c.unboundedText {
+				c.refuseBareString(owner, f, inTable)
+				return nil
+			}
+			out.Type = ir.FieldType{Kind: ir.TString, Unbounded: true}
+			break
 		}
 		if f.Type.Pointer {
 			// `*bytes` / `*string` — a BYTE BUFFER at its used size
@@ -1714,7 +1821,7 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		}
 	}
 
-	c.resolveAttrs(f, out)
+	c.resolveAttrsInTable(f, out, inTable)
 	if out.Required {
 		if !inTable {
 			c.errf(f.Pos, "field %s: | required is refused on a `type` field — a type's wire is positional and every field always rides, so there is no absence for a required marker to cure; move the field to a table body (docs/SPEC-TABLES.md §2.3)", f.Name)
@@ -1774,6 +1881,13 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 // diagnostic says so.
 func (c *checker) requireDefaultInRange(f *ast.Field, out *ir.Field) {
 	if f.Default != nil {
+		return
+	}
+	if out.Required {
+		// A `| required` field takes no default: its fresh value is the
+		// storage zero, which is outside the range, so the writer refuses the
+		// record until the field is set, and a stored record lacking it is
+		// missing_required on read (docs/SPEC-TABLES.md §2.3, SPEC §4.6).
 		return
 	}
 	var rng, fix string
@@ -1971,6 +2085,10 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 				c.errf(f.Default.ExprPos(), "field %s: an enum default names a variant of %s", f.Name, en.Name)
 				return
 			}
+			if i := slices.Index(en.Variants, id.Name); i >= 0 && i < len(en.VariantDeprecated) && en.VariantDeprecated[i] {
+				c.errf(f.Default.ExprPos(), "field %s: default names variant %s of %s, which is marked `| deprecated` — a deprecated variant is retired in place and a default is a NEW USE that names it; default a live variant (docs/SPEC-TABLES.md §2.15)", f.Name, id.Name, en.Name)
+				return
+			}
 			out.HasDefault = true
 			out.DefVariant = id.Name
 			return
@@ -1995,11 +2113,18 @@ func scalarName(k ir.FieldTypeKind) string {
 	return "?"
 }
 
+// resolveAttrs reads a `type` body's or packet field's attributes. A table
+// field goes through resolveAttrsInTable, which knows the owner's kind (the
+// one-sided integer range is a table spelling, docs/SPEC-TABLES.md §4.3).
 func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
+	c.resolveAttrsInTable(f, out, false)
+}
+
+func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool) {
 	// the section's tags, and its valued entries with every refusal the
 	// vocabulary shares already drawn (a bare valued key, doc, round, an
 	// unknown or repeated key), so nothing below meets a nil value
-	tags, valued := c.qualification("field "+f.Name, "a field", f.Attrs, fieldKeys)
+	tags, valued := c.qualification("field "+f.Name, "a field", f.Attrs, fieldKeys, "total")
 	out.Tags = tags
 	// THE `deprecated` MARKER (docs/SPEC-TABLES.md §2.10). It is a TAG, not a
 	// valued key — there is nothing for it to take a value of — so it costs
@@ -2024,6 +2149,13 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 		switch a.Key {
 		case "min", "max", "resolution":
 			// validated below
+		case "total":
+			// a text list's total (docs/SPEC-TABLES.md §2.13): read and placed
+			// by resolveTextListField, and refused by name on every other field
+			if out.TextTotal == 0 {
+				c.errf(a.Pos, "field %s: total applies only to a text list — | total = N bounds the sum of a [..N]string(M) or []string(M) list's element bytes in a plain table; drop the attribute (docs/SPEC-TABLES.md §2.13, §11)", f.Name)
+				return
+			}
 		case "was":
 			// rename aliasing (docs/SPEC-TABLES.md): the field's TABLE-wire id
 			// stays the hash of the OLD name, so identity survives the
@@ -2078,7 +2210,18 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 			c.errf(f.Pos, "field %s: the compressed float is float32 (SPEC §4.3)", f.Name)
 			return
 		}
-		if !hasMin || !hasMax || !hasRes {
+		if hasMin != hasMax {
+			// a one-sided float range — with or without resolution beside it — is
+			// refused by name: a compressed float needs the whole triple
+			// (SPEC §4.6)
+			if hasRes {
+				c.errf(f.Pos, "field %s: a one-sided range beside resolution is refused — a float range is min, max and resolution, all three together (SPEC §4.6)", f.Name)
+			} else {
+				c.errf(f.Pos, "field %s: a one-sided float range is refused — a float range is min, max and resolution, all three together (SPEC §4.6)", f.Name)
+			}
+			return
+		}
+		if !hasMin || !hasRes {
 			c.errf(f.Pos, "field %s: a float range is min, max and resolution, all three together (SPEC §4.6)", f.Name)
 			return
 		}
@@ -2155,17 +2298,76 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 		return
 	}
 
+	// SPEC §4.6: an unsigned integer's omitted min is zero when max is
+	// declared. Normalize before the range checks and projection so both
+	// spellings carry the same bounds and symbolic expressions. uint128 is
+	// still raw-only and is refused below; fixed-point still needs both. A
+	// table field takes the one-sided rule below instead, which fills the
+	// same zero and marks the field RangeOneSided (docs/SPEC-TABLES.md §4.3).
+	if !inTable && isInt && !out.Type.Signed && hasMax && !hasMin {
+		byKey["min"] = &ast.Attr{
+			Key: "min", Pos: f.Pos,
+			Value: &ast.IntLit{Pos: f.Pos, Value: new(big.Int), Text: "0"},
+		}
+		hasMin = true
+	}
 	if hasMin != hasMax {
-		c.errf(f.Pos, "field %s: min without max (or vice versa) is a compile error (SPEC §4.6)", f.Name)
-		return
+		if inTable && isInt && out.Type.Width != 128 {
+			// A one-sided range on an integer table field IS the two-sided
+			// declaration: the type's own limit stands in for the missing side
+			// (docs/SPEC-TABLES.md §4, SPEC §4.6). The filled spelling is byte
+			// identical to spelling both sides, so the checkers' two-sided path
+			// below runs unchanged.
+			out.RangeOneSided = true
+			lo, hi := storageBounds(out.Type.Signed, out.Type.Width)
+			side := byKey["min"]
+			if !hasMin {
+				side = byKey["max"]
+				byKey["min"] = &ast.Attr{Key: "min", Pos: side.Pos, Value: &ast.IntLit{Pos: side.Pos, Value: lo, Text: lo.String()}}
+			} else {
+				byKey["max"] = &ast.Attr{Key: "max", Pos: side.Pos, Value: &ast.IntLit{Pos: side.Pos, Value: hi, Text: hi.String()}}
+			}
+			hasMin, hasMax = true, true
+		} else {
+			side := byKey["min"]
+			if !hasMin {
+				side = byKey["max"]
+			}
+			switch {
+			case !inTable && hasMin && isInt && !out.Type.Signed:
+				// an unsigned max-only range was normalized above; min alone is
+				// still refused off a table (SPEC §4.6)
+				c.errf(f.Pos, "field %s: min without max is a compile error — the unsigned storage maximum is not a declared bound; declare max (SPEC §4.6)", f.Name)
+			case !inTable && hasMax && isInt && out.Type.Signed:
+				c.errf(f.Pos, "field %s: max without min is a compile error on a signed integer — declare both bounds (SPEC §4.6)", f.Name)
+			case !inTable:
+				// the sentence the SPEC has always carried — a one-sided range is
+				// a compile error on a type body or a packet field (SPEC §4.6)
+				c.errf(f.Pos, "field %s: min without max (or vice versa) is a compile error (SPEC §4.6)", f.Name)
+			case out.Type.Timestamp:
+				c.errf(side.Pos, "field %s: a one-sided range is not valid on timestamp — every count of nanoseconds is a legal time (SPEC §4.13)", f.Name)
+			case out.Type.Kind == ir.TNamed:
+				c.errf(side.Pos, "field %s: a one-sided range is not valid on %s — a field that indexes a declared set derives its range from the set (SPEC §4.2)", f.Name, out.Type.Name)
+			case isFixed:
+				c.errf(side.Pos, "field %s: a one-sided range is not valid on fixed point — a fixed-point range always spells both bounds (SPEC §4.6)", f.Name)
+			case isInt && out.Type.Width == 128 && !out.Type.Signed:
+				c.errf(side.Pos, "field %s: a one-sided range is not valid on uint128 — it is the raw 128-bit field; a ranged 128-bit integer always spells both bounds (SPEC §4.3)", f.Name)
+			case isInt && out.Type.Width == 128:
+				c.errf(side.Pos, "field %s: a one-sided range is not valid on int128 — a ranged 128-bit integer always spells both bounds (SPEC §4.3)", f.Name)
+			default:
+				c.errf(f.Pos, "field %s: min without max (or vice versa) is a compile error (SPEC §4.6)", f.Name)
+			}
+			return
+		}
 	}
 	if hasMin && hasMax {
 		if !isInt && !isFixed {
-			if out.Type.Timestamp {
+			switch {
+			case out.Type.Timestamp:
 				c.errf(byKey["min"].Pos, "min/max are not valid on timestamp — every count of nanoseconds is a legal time and the zero time is its fresh value, so a range would clamp a time the wire can carry (SPEC §4.13)")
-			} else if out.Type.Kind == ir.TNamed {
+			case out.Type.Kind == ir.TNamed:
 				c.errf(byKey["min"].Pos, "min/max are not valid on %s — a field that indexes a declared set derives its range from the set (SPEC §4.2)", out.Type.Name)
-			} else {
+			default:
 				c.errf(byKey["min"].Pos, "min/max apply to integer fields (SPEC §4.6)")
 			}
 			return
@@ -2294,8 +2496,8 @@ func (c *checker) checkCycles() {
 	visit = func(name string) bool {
 		switch color[name] {
 		case grey:
-			c.errs = append(c.errs, fmt.Errorf("%s", versioned(fmt.Sprintf("type composition cycle: %s -> %s (SPEC §4.6)",
-				strings.Join(path, " -> "), name))))
+			c.errs = append(c.errs, fmt.Errorf("%s", fmt.Sprintf("type composition cycle: %s -> %s (SPEC §4.6)",
+				strings.Join(path, " -> "), name)))
 			return false
 		case black:
 			return true
@@ -2635,15 +2837,15 @@ func (c *checker) checkTables() {
 	c.checkWasInClosure()
 }
 
-// checkOptionalVariableClosures refuses an OPTIONAL whose value's closure is
-// VARIABLE-LENGTH — `?T` and `?[N]T`/`?[..N]T` where T declares or nests a
-// pointer — as a named follow-on (docs/SPEC-TABLES.md §2.3, §15). An absent
-// field is not an edge (§3.1), so the authoring walks (the numbering, the
-// pack, Lock's sizing) must gate on the presence companion before an optional
-// field may hold pointer edges; until that gating lands, the refusal is what
-// keeps the two writers byte-identical. The derivation mirrors
-// ir.VariableTables over the checker's own members, because the unit is not
-// assembled yet when this runs.
+// checkOptionalVariableClosures refuses an OPTIONAL ARRAY whose element's
+// closure is VARIABLE-LENGTH — `?[N]T`/`?[..N]T` where T declares or nests a
+// pointer — as a named follow-on (docs/SPEC-TABLES.md §2.3, §15). The SCALAR
+// `?T` over a variable closure is allowed: §2.3's rule gates every walk that
+// follows pointer edges on the presence companion, so an absent value owns no
+// node (§3.1); the array forms wait for that gate over each element, and a map
+// value is not lifted with it. The derivation mirrors ir.VariableTables over
+// the checker's own members, because the unit is not assembled yet when this
+// runs.
 // unionVariable mirrors ir.VariableTables' arm rule over the checker's own
 // members (docs/SPEC-TABLES.md §2.2, §2.6): a POINTER arm makes the holder
 // variable, as does an arm naming a variable member or an arm that is a union
@@ -2727,7 +2929,18 @@ func (c *checker) checkOptionalVariableClosures(names []string) {
 			if !ok || !variable[ref.Name] {
 				continue
 			}
-			c.errf(pos, "%s.%s: ? on a value whose closure is variable-length is a named follow-on — %s holds a pointer, an absent field is not an edge, and the authoring walks must gate on the presence companion before an optional field may hold pointer edges; drop the ?, or point at the table instead (docs/SPEC-TABLES.md §2.3, §15)",
+			// the SCALAR ?T and the BY-VALUE ?[N]T are §2.3's gated
+			// constructs: allowed — every walk gates on the presence companion,
+			// so an absent value owns no node (G1.schema pins it)
+			if (f.Array == ir.ArrayNone || f.Array == ir.ArrayFixed) && st.MapEntryOf == "" {
+				continue
+			}
+			if st.MapEntryOf != "" {
+				c.errf(pos, "%s.%s: ? on a map value whose closure is variable-length is a named follow-on — %s holds a pointer, and §2.3's presence gate is held for a scalar ?T and a by-value ?[N]T only, not over a map value; drop the ?, or wrap the field in a table and make that optional (docs/SPEC-TABLES.md §2.3, §2.8, §15)",
+					name, f.Name, ref.Name)
+				continue
+			}
+			c.errf(pos, "%s.%s: ? on a value whose closure is variable-length is a named follow-on — %s holds a pointer, and §2.3's presence gate is held for a scalar ?T and a by-value ?[N]T only, not over each element of an optional counted array; drop the ?, or wrap the field in a table and make that optional (docs/SPEC-TABLES.md §2.3, §15)",
 				name, f.Name, ref.Name)
 		}
 	}
@@ -3189,6 +3402,12 @@ func (c *checker) resolveKeyBound(f *ast.Field, out *ir.Field) bool {
 	if en == nil {
 		return true // the enum failed its own checks; it was already diagnosed
 	}
+	for i, v := range en.Variants {
+		if i < len(en.VariantDeprecated) && en.VariantDeprecated[i] {
+			c.errf(pos, "field %s: the key bound [%s] names variant %s, which is marked `| deprecated` — a deprecated variant is retired in place and a keyed array is a NEW USE that numbers a slot by it; key by a live enum, or size the array with a constant (docs/SPEC-TABLES.md §2.15)", f.Name, name, v)
+			return false
+		}
+	}
 	out.KeyEnum = name
 	out.KeyEnumRef = en
 	return true
@@ -3293,39 +3512,217 @@ func describeTableJsonField(f *ir.Field) string {
 
 // ---- target-name safety (SPEC §4.6) ----
 
-// targetReserved is the union of the four target languages' reserved words.
-// A declaration or field using one is rejected: no escaping machinery, rename
-// at the source.
-var targetReserved = func() map[string]string {
-	m := map[string]string{}
-	add := func(lang, words string) {
-		for w := range strings.FieldsSeq(words) {
-			if _, ok := m[w]; !ok {
-				m[w] = lang
-			}
-		}
-	}
-	add("C++", `alignas alignof and and_eq asm auto bitand bitor bool break case catch char
+// reservedLanguages is every supported language, by the display name the
+// diagnostics use, with the reserved words a generated identifier in it must
+// not take (SPEC §4.6): the language's keywords and literals, plus the
+// predeclared names a generated declaration would shadow (Go's universe block,
+// Dart's dart:core types and Object members, Elixir's arity-0 Kernel imports).
+// It is THE one list: the checker refuses a schema name in any of them,
+// whatever target is generated (Glenn, 2026-10-21: "generated output never
+// puts out keywords in Y"), and an emitter that tests its own mapped spellings
+// reads its language's words from here (ReservedIn), never from a copy. A
+// port is added by adding its row; one cannot register without it
+// (ReservedLanguageOf, read by the compiler's registration).
+var reservedLanguages = []struct {
+	lang    string   // the display name the diagnostics print
+	targets []string // the --lang spellings that generate it
+	words   string
+}{
+	{"C", []string{"c"}, `auto break case char const continue default do double else enum extern float for
+		goto if inline int long register restrict return short signed sizeof static struct switch
+		typedef union unsigned void volatile while _Alignas _Alignof _Atomic _Bool _Complex _Generic
+		_Imaginary _Noreturn _Static_assert _Thread_local alignas alignof bool constexpr false
+		nullptr static_assert thread_local true typeof typeof_unqual _BitInt _Decimal32 _Decimal64
+		_Decimal128`},
+	{"C++", []string{"cpp"}, `alignas alignof and and_eq asm auto bitand bitor bool break case catch char
 		char8_t char16_t char32_t class compl concept const consteval constexpr constinit
 		const_cast continue co_await co_return co_yield decltype default delete do double
 		dynamic_cast else enum explicit export extern false float for friend goto if inline
-		int long mutable namespace new noexcept not not_eq nullptr operator or or_eq private
+		int long mutable namespace new noexcept not not_eq nullptr operator or or_eq out private
 		protected public register reinterpret_cast requires return short signed sizeof static
 		static_assert static_cast struct switch template this thread_local throw true try
-		typedef typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq`)
-	add("C#", `abstract as base bool break byte case catch char checked class const continue
+		typedef typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq`},
+	{"C#", []string{"cs", "csharp"}, `abstract as base bool break byte case catch char checked class const continue
 		decimal default delegate do double else enum event explicit extern false finally fixed
 		float for foreach goto if implicit in int interface internal is lock long namespace
 		new null object operator out override params private protected public readonly ref
 		return sbyte sealed short sizeof stackalloc static string struct switch this throw
-		true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while`)
-	add("Go", `break case chan const continue default defer else fallthrough for func go goto
-		if import interface map package range return select struct switch type var`)
-	add("Rust", `as async await break const continue crate dyn else enum extern false fn for
-		if impl in let loop match mod move mut pub ref return self Self static struct super
-		trait true type unsafe use where while`)
-	return m
+		true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while`},
+	// Go's keywords, then its universe block (SPEC.md §4.6): every predeclared
+	// identifier, so a schema name equal to one takes the treatment every
+	// other Go word takes (a table escapes to name_, a field, arm or variant
+	// is carried exported) rather than shadowing the builtin.
+	{"Go", []string{"go"}, `break byte case chan const continue default defer else fallthrough false for func go goto
+		if import interface map package range ref return select struct switch true type unsafe var
+		append cap clear close complex copy delete imag len make max min new panic print println real recover
+		any bool comparable complex64 complex128 error float32 float64 int int8 int16 int32 int64 rune string
+		uint uint8 uint16 uint32 uint64 uintptr iota nil`},
+	{"Rust", []string{"rust"}, `abstract as async await become box break char const continue crate do dyn
+		else enum extern false final fn for if impl in let loop macro match mod move mut
+		override priv pub ref return self Self static struct super trait true try type typeof
+		unsafe unsized use virtual where while yield`},
+	// Java's keywords and literals, the contextual words a simple identifier
+	// cannot safely be (var, yield, record), and the lone underscore.
+	{"Java", []string{"java"}, `abstract assert boolean break byte case catch char class const continue default
+		do double else enum extends final finally float for goto if implements import instanceof
+		int interface long native new package private protected public return short static
+		strictfp super switch synchronized this throw throws transient try void volatile while
+		true false null var yield record _`},
+	{"JavaScript", []string{"js", "javascript"}, `await break case catch class const continue debugger default delete do else
+		enum export extends false finally for function if implements import in instanceof
+		interface let new null package private protected public return static super switch
+		this throw true try typeof var void while with yield`},
+	// Dart 3's reserved words, the dart:core types generated files use
+	// unqualified (shadowing `int` would corrupt every declaration below it),
+	// and Object's members, which a static member may not share.
+	{"Dart", []string{"dart"}, `assert break case catch class const continue default do else enum extends false
+		final finally for if in is new null rethrow return super switch this throw true try var
+		void when while with
+		bool double int num String List Object Endian ByteData dynamic
+		hashCode runtimeType toString noSuchMethod`},
+	// Elixir's reserved words, and the arity-0 Kernel auto-imports a generated
+	// 0-arity function would collide with (`def node, do: ...`).
+	{"Elixir", []string{"elixir"}, `true false nil when and or not in fn do end catch rescue after else
+		node self make_ref binding`},
+	{"Lua", []string{"lua"}, `and break do else elseif end false for function goto if in local nil not or
+		repeat return then true until while`},
+	// Luau's reserved words, and its contextual keywords.
+	{"Luau", []string{"luau"}, `and break do else elseif end false for function if in local nil not or
+		repeat return then true until while continue export type typeof`},
+	// Squirrel 3.2's reserved words (squirrel/sqlexer.cpp).
+	{"Squirrel", []string{"squirrel"}, `while do if else break continue return null function local for foreach in
+		typeof base delete try catch throw clone yield resume switch case default this class
+		extends constructor instanceof true false static enum const __LINE__ __FILE__ rawcall`},
+	// Goose's reserved words (the pinned v2026.2 goose_spec.md). Its scalar
+	// type names (i8 ... f64) and std/main are namespace hazards only, which
+	// the Goose port refuses for the package name alone.
+	{"Goose", []string{"goose"}, `as block break const continue else enum export extern false fn for from guard
+		if import in inline let loop match namespace null pad recursive return reusable self
+		simd struct thread_fn true type var varint while`},
+	// Lobster's keywords (docs/language_reference.html) and the predeclared
+	// type names a declaration could shadow.
+	{"Lobster", []string{"lobster"}, `nil return class struct import int float string any void def fn is from
+		program private resource enum enum_flags typeof var let pakfile switch case default
+		out_of_range namespace not and or attribute if for while super constructor guard
+		abstract union member member_frame static static_frame operator elif else break
+		continue bool true false`},
+}
+
+// targetReserved maps each reserved word of the supported languages to the
+// SORTED list of languages that reserve it. A declaration or field using one
+// is rejected, rename at the source, whatever target is generated — except
+// where the Go escape carries a Go word (SPEC §4.6: fields, arms, variants and
+// table names, which Go never refuses; see reservedTargetLangsGoEscaped).
+var targetReserved = func() map[string][]string {
+	m := map[string]map[string]bool{}
+	for _, row := range reservedLanguages {
+		for w := range strings.FieldsSeq(row.words) {
+			if m[w] == nil {
+				m[w] = map[string]bool{}
+			}
+			m[w][row.lang] = true
+		}
+	}
+	out := map[string][]string{}
+	for w, langs := range m {
+		l := make([]string, 0, len(langs))
+		for lang := range langs {
+			l = append(l, lang)
+		}
+		sort.Strings(l)
+		out[w] = l
+	}
+	return out
 }()
+
+// ReservedWords returns the §4.6 reserved-word table as a copy: each word a
+// supported language reserves, mapped to the sorted list of languages that
+// reserve it (SPEC §4.6). Tests pin the table against the emitters' real
+// behavior.
+func ReservedWords() map[string][]string {
+	out := make(map[string][]string, len(targetReserved))
+	for w, langs := range targetReserved {
+		out[w] = append([]string(nil), langs...)
+	}
+	return out
+}
+
+// ReservedLanguages returns every supported language's display name, in the
+// table's order (SPEC §4.6).
+func ReservedLanguages() []string {
+	out := make([]string, 0, len(reservedLanguages))
+	for _, row := range reservedLanguages {
+		out = append(out, row.lang)
+	}
+	return out
+}
+
+// ReservedIn returns lang's reserved words (lang is a display name: "Java",
+// "Dart", ...) as a fresh set, read from the one table. An emitter that tests
+// the spelling it maps a name to reads its words here; an unknown language
+// panics, because a port without its words is a defect, not an empty list.
+func ReservedIn(lang string) map[string]bool {
+	for _, row := range reservedLanguages {
+		if row.lang == lang {
+			out := map[string]bool{}
+			for w := range strings.FieldsSeq(row.words) {
+				out[w] = true
+			}
+			return out
+		}
+	}
+	panic("check: no reserved words for language " + lang + " (SPEC §4.6: a port adds its row to reservedLanguages)")
+}
+
+// ReservedLanguageOf returns the display name of the language a --lang
+// spelling generates, and false when the table has no row for it: the
+// compiler refuses to register such a port (SPEC §4.6).
+func ReservedLanguageOf(target string) (string, bool) {
+	for _, row := range reservedLanguages {
+		if slices.Contains(row.targets, target) {
+			return row.lang, true
+		}
+	}
+	return "", false
+}
+
+// reservedTargetLangs returns the languages the checked run must flag `name`
+// for: every supported language that reserves it, whatever target is
+// generated (§4.6). A name no language reserves returns nil.
+func (c *checker) reservedTargetLangs(name string) []string {
+	return targetReserved[name]
+}
+
+// reservedTargetLangsGoEscaped is reservedTargetLangs for a name the Go escape
+// carries (SPEC §4.6, the Go escape): a field name, a union arm, an enum or
+// flags variant — which Go emits exported or prefixed, never bare — and a
+// table's declared name, which Go emits as ir.GoEscape's spelling. Go does not
+// refuse such a name, so it is left out; every other target still refuses its
+// own words.
+func (c *checker) reservedTargetLangsGoEscaped(name string) []string {
+	var out []string
+	for _, l := range c.reservedTargetLangs(name) {
+		if l != "Go" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// listReservedLangs joins the languages a name collides with into one
+// diagnostic's target list: "C++", "C++ and C#", "C++, C#, and Go".
+func listReservedLangs(langs []string) string {
+	switch len(langs) {
+	case 0:
+		return ""
+	case 1:
+		return langs[0]
+	case 2:
+		return langs[0] + " and " + langs[1]
+	default:
+		return strings.Join(langs[:len(langs)-1], ", ") + ", and " + langs[len(langs)-1]
+	}
+}
 
 // libcNamespaceScope is the C standard library's identifier set as a generated
 // C++ translation unit sees it at namespace scope: the functions, types and
@@ -3431,14 +3828,23 @@ func goExportName(name string) string {
 
 func (c *checker) checkTargetNames() {
 	checkName := func(name string, pos ast.Pos, what string) {
-		if lang, ok := targetReserved[name]; ok {
+		if langs := c.reservedTargetLangs(name); len(langs) > 0 {
 			c.errf(pos, "%s %q is a reserved word in %s — rename at the source; no escaping machinery (SPEC §4.6)",
-				what, name, lang)
+				what, name, listReservedLangs(langs))
+		}
+	}
+	// a name the Go escape carries (SPEC §4.6): Go is not refused for it
+	checkEscaped := func(name string, pos ast.Pos, what string) {
+		if langs := c.reservedTargetLangsGoEscaped(name); len(langs) > 0 {
+			c.errf(pos, "%s %q is a reserved word in %s — rename at the source; no escaping machinery (SPEC §4.6)",
+				what, name, listReservedLangs(langs))
 		}
 	}
 	for _, f := range c.files {
 		for _, d := range f.AST.Decls {
-			if d.DeclName() != "" {
+			if _, table := d.(*ast.TableDecl); table && d.DeclName() != "" {
+				checkEscaped(d.DeclName(), d.DeclPos(), "declaration name")
+			} else if d.DeclName() != "" {
 				checkName(d.DeclName(), d.DeclPos(), "declaration name")
 			}
 			// each generated name records which field claims it and AS WHAT —
@@ -3474,7 +3880,7 @@ func (c *checker) checkTargetNames() {
 				for _, item := range b.Items {
 					switch item := item.(type) {
 					case *ast.Field:
-						checkName(item.Name, item.Pos, "field name")
+						checkEscaped(item.Name, item.Pos, "field name")
 						register(item.Pos, item.Name, goExportName(item.Name), "")
 						if owner != "" && goExportName(item.Name) == owner {
 							c.errf(item.Pos, "field %s's exported name equals its declaring type %s — C# forbids a member sharing its enclosing type's name; rename at the source (SPEC §4.6)", item.Name, owner)
@@ -3508,11 +3914,11 @@ func (c *checker) checkTargetNames() {
 				walkBlock(d.Body, d.Name, map[string]claim{})
 			case *ast.EnumDecl:
 				for _, v := range d.Variants {
-					checkName(v.Text, v.Pos, "enum variant")
+					checkEscaped(v.Text, v.Pos, "enum variant")
 				}
 			case *ast.FlagsDecl:
 				for _, v := range d.Variants {
-					checkName(v.Text, v.Pos, "flags variant")
+					checkEscaped(v.Text, v.Pos, "flags variant")
 				}
 			}
 		}
@@ -3686,6 +4092,7 @@ func (c *checker) checkClaimedNames() {
 		declNames = append(declNames, name)
 	}
 	sort.Strings(declNames)
+	c.checkGoEscapeClaims(declNames)
 	// addRust registers a derived Rust spelling beside its Go/C++ siblings,
 	// skipping a spelling that coincides with one already registered for the
 	// same declaration (identical names would self-collide, not collide).
@@ -3723,11 +4130,9 @@ func (c *checker) checkClaimedNames() {
 			// including against the implicit NONE
 			add(name+"None", fmt.Sprintf("enum %s's generated None constant", name), d.Pos)
 			add(name+"Max", fmt.Sprintf("enum %s's generated Max extent (Go form)", name), d.Pos)
-			add(name+"Count", fmt.Sprintf("enum %s's generated Count constant (Go form)", name), d.Pos)
 			assoc := map[string]string{
-				"NONE":  "the implicit None variant",
-				"MAX":   "the generated Max extent",
-				"COUNT": "the generated Count constant",
+				"NONE": "the implicit None variant",
+				"MAX":  "the generated Max extent",
 			}
 			for _, v := range d.Variants {
 				if reservedEnumVariant(v.Text) {
@@ -3754,7 +4159,7 @@ func (c *checker) checkClaimedNames() {
 				}
 			}
 			// the C target flattens variants as #define ENUM_VARIANT into the
-			// one preprocessor namespace, plus _NONE, _MAX, _COUNT and the
+			// one preprocessor namespace, plus _NONE, _MAX and the
 			// debug-name function — spellings no other claim covers (they were
 			// emitted and never registered, so a const like DriveModeLudicrous
 			// beside enum DriveMode { Ludicrous } produced a silent duplicate
@@ -3767,7 +4172,6 @@ func (c *checker) checkClaimedNames() {
 			// alone could not tell you which two declarations collided.
 			addRust(ir.RustConstName(name)+"_NONE", fmt.Sprintf("enum %s's generated None constant (C form)", name), d.Pos, name+"None")
 			addRust(ir.RustConstName(name)+"_MAX", fmt.Sprintf("enum %s's generated Max extent (C form)", name), d.Pos)
-			addRust(ir.RustConstName(name)+"_COUNT", fmt.Sprintf("enum %s's generated Count constant (C form)", name), d.Pos, name+"Count")
 			addRust("enum_name_"+ir.RustSnake(name), fmt.Sprintf("enum %s's generated debug-name function (C form)", name), d.Pos)
 			for _, v := range d.Variants {
 				if reservedEnumVariant(v.Text) {
@@ -3814,6 +4218,10 @@ func (c *checker) checkClaimedNames() {
 			whyRustU := fmt.Sprintf("union %s's generated functions and constants (Rust/C form)", name)
 			addRust("write_"+ir.RustSnake(name), whyRustU, d.Pos, "Write"+name)
 			addRust("read_"+ir.RustSnake(name), whyRustU, d.Pos, "Read"+name)
+			// the Elixir BITS-CONSUMED entry beside it (SPEC §5, §6.1): a union
+			// named Frame claims read_frame_bits, so a second union named
+			// FrameBits cannot take the same binding through read_frame_bits.
+			addRust("read_"+ir.RustSnake(name)+"_bits", whyRustU, d.Pos, "Read"+name)
 			addRust(ir.RustConstName(name+"MaxBits"), whyRustU, d.Pos, name+"MaxBits")
 			addRust(ir.RustConstName(name+"MaxBytes"), whyRustU, d.Pos, name+"MaxBytes")
 			whyCTag := fmt.Sprintf("union %s's generated tag constants (C form)", name)
@@ -3823,6 +4231,18 @@ func (c *checker) checkClaimedNames() {
 				addRust(ir.RustConstName(name+"Type")+"_"+ir.RustConstName(v.Name), whyCTag, v.Pos, name+"Type"+ir.GoExportName(v.Name))
 			}
 			addRust("enum_name_"+ir.RustSnake(name+"Type"), fmt.Sprintf("union %s's generated tag debug-name function (C form)", name), d.Pos)
+			// the C per-arm selectors (#449): <snake(union)>_select_<arm>,
+			// one static function per arm in the data header. The spelling is
+			// MANY-TO-ONE across legal declarations — Foo's arm select_bar and
+			// FooSelect's arm bar both become foo_select_select_bar — and an
+			// unclaimed pair was a redefinition in the C header while the
+			// schema checked clean. Spelled exactly as internal/codegen/c's
+			// emitUnionSelectors spells it; TestUnionArmSetterSetsTagAndArmC
+			// holds the two together.
+			for _, v := range d.Variants {
+				addRust(ir.RustSnake(name)+"_select_"+v.Name,
+					fmt.Sprintf("union %s's generated arm %s selector (C form)", name, v.Name), v.Pos)
+			}
 			// THE UNION TWIN (docs/SPEC-TABLES.md §7.2, §15): the blittable
 			// `<Name>Row` a union takes in the Rust table surface, and the
 			// `#[repr(C)]` overlay of its arms beside it. C++ spells the
@@ -3942,6 +4362,21 @@ func (c *checker) checkClaimedNames() {
 					}
 					add(base+"At", whyList, d.DeclPos())
 				}
+				// AND A TEXT LIST claims its element record and its three
+				// accessors (docs/SPEC-TABLES.md §2.13, §11)
+				whyText := fmt.Sprintf("%s's generated text-list surface (docs/SPEC-TABLES.md §2.13, §11)", name)
+				for _, f := range st.Fields {
+					if !f.IsTextList() {
+						continue
+					}
+					base := name + ir.GoExportName(f.Name)
+					for _, verb := range ir.TextListVerbs {
+						if verb == "Text" {
+							continue // the element record, claimed as a closure member
+						}
+						add(base+verb, whyText, d.DeclPos())
+					}
+				}
 			}
 		}
 	}
@@ -3961,7 +4396,21 @@ func (c *checker) checkClaimedNames() {
 // runtime names are reconciled.
 func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name string, pos ast.Pos) {
 	why := fmt.Sprintf("%s's generated TABLE-wire functions", name)
+	// The runtime registry (internal/tablenames) claims one spelled per-table
+	// literal at unit scope — <T>FixedPlanMax, the §5.2 template spelling
+	// (docs/FIXED-FORM-ALGORITHM.md §5.2). A table whose own name spells that
+	// same literal (a fixed table named T) would otherwise collide with its
+	// own generated symbol — the same symbol claimed from two places — so a
+	// spelling the runtime already claims is not re-added here; the runtime
+	// claim still refuses a user declaration of the same name.
+	claimedRuntime := make(map[string]bool)
+	for _, gen := range tablenames.Claimed() {
+		claimedRuntime[gen] = true
+	}
 	for _, verb := range tableGeneratedVerbs {
+		if claimedRuntime[name+verb] {
+			continue
+		}
 		add(name+verb, why, pos)
 	}
 	// BlockMaxBytes is the one name-first verb the RUST backend spells as a
@@ -3970,6 +4419,29 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 	// literal one, exactly as the unit-level runtime constants are.
 	add(ir.RustConstName(name+"BlockMaxBytes"),
 		fmt.Sprintf("%s's generated block extent constant (Rust form, docs/SPEC-TABLES.md §11)", name), pos)
+}
+
+// checkGoEscapeClaims claims the Go escape's spelling (SPEC §4.6, the Go
+// escape), whatever target is generated: a table named with a Go word is the Go
+// type ir.GoEscape(word), and every Go name generated from it begins with that
+// spelling (the codecs are name-first: func_Reset, func_Load). Every other
+// generated name begins with its own declaration's name or with a capitalised
+// prefix, and a Go word is lowercase letters only, so a declaration whose name
+// begins with the escaped spelling is the one way to collide with it, and it
+// is refused by name.
+func (c *checker) checkGoEscapeClaims(declNames []string) {
+	for _, name := range declNames {
+		if _, table := c.astDecls[name].(*ast.TableDecl); !table || !slices.Contains(targetReserved[name], "Go") {
+			continue
+		}
+		esc := ir.GoEscape(name)
+		for _, other := range declNames {
+			if strings.HasPrefix(other, esc) {
+				c.errf(c.astDecls[other].DeclPos(), "declaration %s collides with table %s's Go spelling: under the Go escape table %s is the Go type %s, and every Go name generated from it begins with %s — rename at the source (SPEC §4.6, the Go escape)",
+					other, name, name, esc, esc)
+			}
+		}
+	}
 }
 
 // tableGeneratedVerbs is the full name-first suffix set a closure member
@@ -4021,20 +4493,40 @@ var tableGeneratedVerbs = []string{
 	"LoadRetain", "LoadRetainBuilder", "MeasureRetain", "SaveRetain", "LoadRetainMessages", "SaveRetainMessages",
 	"LoadBodyRetain", "LoadMessageBodyRetain", "MeasureBodyRetain", "SaveBodyRetain", "SaveBodyFieldsRetain",
 	"MeasureWireRetain", "SaveWireRetain", "NodeBodyRetain",
-	"FromJson", "ToJson", "ToJsonMeasure",
+	"FromJson", "ToJson", "ToJsonMeasure", "ToJsonMeasureReason",
+	// docs/SPEC-TABLES.md §16.2's three options ride in the Go backend's With
+	// calls beside the plain three, so their suffixes are claimed on the same rule
+	"FromJsonWith", "ToJsonWith", "ToJsonMeasureWith",
 	// the TEXT TRANSPORT helpers (docs/SPEC-TABLES.md §16.8): the Go backend
 	// emits <Name>SaveText and <Name>LoadText beside the JSON functions, for
 	// base64 of the binary wire, so both suffixes are claimed on this list's own
 	// rule: a schema declaring Root and RootSaveText would otherwise pass
 	// checking and redeclare the function in the generated package.
 	"SaveText", "LoadText",
+	// the TEXT FORM's three package-level helpers (docs/SPEC-TABLES.md §16.4):
+	// <Name>LoadTextForm reads the document strictly, <Name>SaveTextForm writes
+	// it back, and <Name>EditTextForm replaces scalars by their token spans, and
+	// each is a package-level function Go emits beside the JSON functions, so
+	// each is claimed on this list's own rule.
+	"LoadTextForm", "SaveTextForm", "EditTextForm",
+	// the TOLERANT twins of the plain reads (docs/SPEC-TABLES.md §6.5): the
+	// plain Load, LoadBuilder, FromJson, FixedLoad and LoadMessages are the
+	// strict read, and the read that keeps a recovered value with its report
+	// exists only under these explicit names, which Go emits beside each plain
+	// read, so each is claimed on this list's own rule.
+	"LoadTolerant", "LoadBuilderTolerant", "FromJsonTolerant", "FixedLoadTolerant", "LoadMessagesTolerant",
+	// and the tolerant twin of §16.2's FromJsonWith, which is strict as FromJson is
+	"FromJsonTolerantWith",
+	// and the STRICT read itself (docs/SPEC-TABLES.md §6.5): one call, its own
+	// builder, one typed reason, emitted beside the plain reads.
+	"ReadStrict",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
 	// THE FIXED FORM's spellings (docs/SPEC-TABLES.md §3.4). Nothing declares
 	// the form and every fixed table whose closure §3.4 lays out has one, so a
 	// name that is free today becomes a collision the day a field of the type
 	// changes — which is this list's own rule. The C backend spells the same
 	// set in snake_case (<name>_fixed_save) and the two are one claim.
-	"FixedMeasure", "FixedSave", "FixedLoad", "FixedWriteBody", "FixedLeaves",
+	"FixedMeasure", "FixedSave", "FixedSaveReason", "FixedLoad", "FixedWriteBody", "FixedLeaves",
 	"FixedBodyBytes", "FixedRecordBytes", "FixedHash", "FixedLayout", "FixedLayoutBytes",
 	"FixedDst", "FixedPlan", "FixedPlanCount", "FixedPlanGuarded", "FixedCover",
 	// and §3.4's READ-SIDE BOUNDS: the straight-line pass a read makes after
@@ -4043,6 +4535,15 @@ var tableGeneratedVerbs = []string{
 	// a `min` or a `max`, or a union or an enum, as an ordinary edit, and the
 	// name has to already be taken when it does.
 	"FixedClamp", "FixedClampBody",
+	// the FIXED FORM's WRITE-SIDE CHECK (docs/SPEC-TABLES.md §3.4): the fast
+	// per-value pass and its exact twin, each a package-level function Go emits
+	// for every fixed table, claimed on this list's own rule.
+	"FixedCheckBody", "FixedCheckBodyExact",
+	// Go emits these package-level fixed-form image and hole data and the
+	// maximum plan capacity for each root table (docs/SPEC-TABLES.md §3.4).
+	// The bound probe is also an exported package-level helper emitted for
+	// each root (docs/SPEC-TABLES.md, “The bound probes”, §4).
+	"FixedResetImage", "FixedHoles", "FixedLineageHoles", "FixedPlanMax", "GenPastBound",
 	// THE READING TIER'S OWN SIX (internal/codegen/jstable). A language with no
 	// struct layout cannot land a plan at `offsetof( T, member )`, so it lands
 	// it in a canonical body image and then PROJECTS that image into the
@@ -4055,6 +4556,9 @@ var tableGeneratedVerbs = []string{
 	// allocation per record, and the pair is claimed beside FixedHash rather
 	// than instead of it, because both spellings are emitted somewhere.
 	"FixedDecode", "FixedPrefill", "FixedIdentity", "FixedNewPlan", "FixedHashLo", "FixedHashHi",
+	// The fixed tables are module-private and frozen on the JS leg, and each
+	// is handed out by a copying accessor instead: four more per declaration.
+	"FixedDstCopy", "FixedIdentityCopy", "FixedLayoutCopy", "FixedPrefillCopy",
 	// AND §5'S THREE (docs/FIXED-FORM-ALGORITHM.md §5.2): a fixed table reads
 	// BACKWARD and never forward, so every root carries its LINEAGE as static
 	// data — the known layouts oldest first, the floor as one number, and one
@@ -4139,6 +4643,10 @@ func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), add
 	whyRust := fmt.Sprintf("type %s's generated functions and constants (Rust/C form)", name)
 	addRust("write_"+ir.RustSnake(name), whyRust, pos, "Write"+name)
 	addRust("read_"+ir.RustSnake(name), whyRust, pos, "Read"+name)
+	// the Elixir BITS-CONSUMED entry beside it (SPEC §5, §6.1): `type Frame`
+	// claims read_frame_bits, so a `type FrameBits` cannot take the same
+	// module binding through its own read_frame_bits.
+	addRust("read_"+ir.RustSnake(name)+"_bits", whyRust, pos, "Read"+name)
 	addRust(ir.RustConstName(name+"MaxBits"), whyRust, pos, name+"MaxBits")
 	addRust(ir.RustConstName(name+"MaxBytes"), whyRust, pos, name+"MaxBytes")
 }
@@ -4384,9 +4892,10 @@ func (c *checker) checkTableArmsReached(closure map[string]bool) {
 	}
 }
 
-// reservedEnumVariant reports whether a variant name is one of the three every
-// enum generates for itself (SPEC §4.2): the implicit None = 0, the exported
-// Max extent and the exported Count. resolveEnum refuses each by name, with the
+// reservedEnumVariant reports whether a variant name is one of the two every
+// enum generates for itself (SPEC §4.2): the implicit None = 0 and the exported
+// Max extent. Count is NOT reserved: an enum has no Count, so it is an ordinary
+// variant name. resolveEnum refuses each reserved name by name, with the
 // sentence that says what the enum already carries; checkClaimedNames reads
 // this same predicate and registers no generated symbol for such a variant, so
 // the reserved-word refusal is not restated once per target as a collision.
@@ -4396,7 +4905,7 @@ func (c *checker) checkTableArmsReached(closure map[string]bool) {
 // collision diagnostics are the whole answer and stay live.
 func reservedEnumVariant(text string) bool {
 	switch text {
-	case "None", "Max", "Count":
+	case "None", "Max":
 		return true
 	}
 	return false

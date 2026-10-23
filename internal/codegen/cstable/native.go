@@ -223,7 +223,7 @@ const tableNativeSource = `
     public static long Cook(object value, TableTypeInfo type, Span<byte> bytes, TableByteOrder order, bool measure)
     {
         if (value == null || order != TableByteOrder.Little && order != TableByteOrder.Big) { return -1; }
-        Graph graph = type.Variable ? Number(value, type) : null;
+        Graph graph = type.Variable ? Number(value, type, true) : null;
         if (type.Variable && graph == null) { return -1; }
         long data = NativePlace(value, type, graph, out int alignment);
         if (data < 0) { return -1; }

@@ -72,7 +72,7 @@ export const TableFixedRecordMaxBytes = 65536;
 // otherwise spend a reader's stack before any rule fired. The reference states 64.
 export const TableFixedMaxDepth = 64;
 
-// A PLAN ENTRY is nine int32 lanes of one flat Int32Array. A flat array of a
+// A PLAN ENTRY is eleven int32 lanes of one flat Int32Array. A flat array of a
 // fixed stride is what keeps the read loop monomorphic: every lane is a
 // Smi, the loop never touches a property name, and nothing is allocated.
 export const TableFixedLanes = 11;
@@ -255,6 +255,7 @@ export class TableFixedPlan {
     this.unknown = 0;
     this.kindMismatch = 0;
     this.why = 0;
+    this.stage = new TableFixedReport();
   }
 }
 
@@ -523,9 +524,15 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
       case TableFixedOpWidenF: {
         // every f32 value is exactly representable in an f64, infinities and
         // NaN payloads included, so there is nothing to round and nothing to lose
-        TableFixedConv.setUint8(0, src[s]); TableFixedConv.setUint8(1, src[s + 1]);
-        TableFixedConv.setUint8(2, src[s + 2]); TableFixedConv.setUint8(3, src[s + 3]);
-        TableFixedConv.setFloat64(8, TableFixedConv.getFloat32(0, true), true);
+        const bits = TableFixedGetU32(src, s);
+        if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {
+          const payload = bits & 0x007fffff;
+          TableFixedConv.setUint32(8, ((payload & 7) << 29) >>> 0, true);
+          TableFixedConv.setUint32(12, ((bits & 0x80000000) | 0x7ff00000 | (payload >>> 3)) >>> 0, true);
+        } else {
+          TableFixedConv.setUint32(0, bits, true);
+          TableFixedConv.setFloat64(8, TableFixedConv.getFloat32(0, true), true);
+        }
         for (let k = 0; k < 8; k++) { dst[d + k] = TableFixedConv.getUint8(8 + k); }
         report.widened++;
         break;
@@ -1334,6 +1341,9 @@ export class TableFixedKnownLayout {
     this.layout = layout;
     this.layoutBytes = layoutBytes | 0;
     this.recordBytes = recordBytes | 0;
+    // the lock's bytes as a view, made ONCE at module load, so the per-read
+    // layout compare moves in 32-bit lanes and allocates nothing
+    this.layoutView = new DataView(layout.buffer, layout.byteOffset, layout.length);
   }
 }
 

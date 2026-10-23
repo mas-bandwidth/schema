@@ -15,6 +15,7 @@
 //	schema uncook     --root T --in C --out F        the cook becomes the wire again
 //	schema version                                   print the build identity
 //	schema new-leg    <lang> [--root .] [--verbose]  write a language-leg skeleton
+//	schema pin        <version> <dir>... [--mixed-ok]  move every go:generate pin to <version>
 //
 // Every command here is a few lines over the public API in
 // github.com/mas-bandwidth/schema/v2/compiler: this binary holds the CLI's
@@ -24,11 +25,15 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -280,21 +285,72 @@ func main() {
 		fs := flag.NewFlagSet("generate", flag.ExitOnError)
 		lang := fs.String("lang", "cpp", "target language ("+strings.Join(c.Targets(), ", ")+")")
 		out := fs.String("out", "generated", "output directory")
+		surface := fs.String("surface", "", "for --lang go: the table surfaces to emit, comma-separated from wire,fixed,json,cook,block,view,message,retain (default: all; SPEC-TABLES.md §8.8)")
+		runtime := fs.String("runtime", "", "for --lang go: the table runtime, shared (default) or standalone (SPEC-TABLES.md §8.4)")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		surfaceSet := false
+		runtimeSet := false
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "surface" {
+				surfaceSet = true
+			}
+			if f.Name == "runtime" {
+				runtimeSet = true
+			}
+		})
+		if err := refuseSurfaceForTarget(surfaceSet, *lang); err != nil {
+			fail(err)
+		}
+		if err := refuseRuntimeForTarget(runtimeSet, *runtime, *lang); err != nil {
+			fail(err)
+		}
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
 		unit := loadUnit(c, fs.Args())
-		files, err := c.Generate(unit, *lang, compiler.Options{})
+		files, err := c.Generate(unit, *lang, compiler.Options{"runtime": *runtime, "surface": *surface})
 		if err != nil {
 			fail(err)
 		}
 		if err := os.MkdirAll(*out, 0o755); err != nil {
 			fatalf("%v", err)
 		}
-		if err := writeGenerated(*out, files, verbose); err != nil {
+		// A default go generate removes stale surface files it wrote on an
+		// earlier run and no longer emits (SPEC-TABLES.md §8.8): only for
+		// --lang go, and never when --surface is present.
+		removeStale := *lang == "go" && !surfaceSet
+		var schemaBases []string
+		if removeStale {
+			for _, f := range unit.Files {
+				schemaBases = append(schemaBases, f.Base)
+			}
+		}
+		if err := writeGenerated(*out, files, *lang, removeStale, unit.Package, schemaBases, verbose); err != nil {
+			fail(err)
+		}
+	case "testgen":
+		// THE GENERATED TESTS (docs/SPEC-TABLES.md §16.11): one
+		// <Base>Table_gen_test.go per unit file, beside what generate wrote.
+		// The unit is loaded as generate loads it, so the tests are of the
+		// same tables.
+		fs := flag.NewFlagSet("testgen", flag.ExitOnError)
+		lang := fs.String("lang", "go", "target language (go only: every other target refuses testgen by name)")
+		out := fs.String("out", "generated", "output directory: the directory generate wrote")
+		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		c.TablesBaseline = true
+		c.SchemaLock = true
+		unit := loadUnit(c, fs.Args())
+		files, err := c.Testgen(unit, *lang)
+		if err != nil {
+			fail(err)
+		}
+		if err := os.MkdirAll(*out, 0o755); err != nil {
+			fatalf("%v", err)
+		}
+		if err := writeGenerated(*out, files, *lang, false, unit.Package, nil, verbose); err != nil {
 			fail(err)
 		}
 	case "pack":
@@ -566,6 +622,8 @@ func main() {
 		if verbose {
 			fmt.Printf("uncooked %s into %s: %d wire bytes\n", *in, *out, len(wire))
 		}
+	case "pin":
+		cmdPin(os.Args[2:])
 	case "new-leg", "newleg":
 		// A LANGUAGE-LEG SKELETON (docs/CONTRIBUTING.md, "Adding a language"):
 		// files, makefile, harness, one passing fixture. Not a codec. The
@@ -637,8 +695,13 @@ func packTree(verb string, args []string) (string, []string) {
 
 // writeAtomic writes through a temporary beside the destination and renames it
 // into place, so a run that never reaches this line leaves nothing at all and a
-// half-written file is never observable.
+// half-written file is never observable. An existing file keeps its mode; a new
+// one is 0644, the mode every generated file in this tree carries.
 func writeAtomic(path string, data []byte) error {
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
 		return err
@@ -654,7 +717,7 @@ func writeAtomic(path string, data []byte) error {
 		if err := tmp.Close(); err != nil {
 			return err
 		}
-		if err := os.Chmod(name, 0o644); err != nil {
+		if err := os.Chmod(name, mode); err != nil {
 			return err
 		}
 		return os.Rename(name, path)
@@ -691,8 +754,8 @@ func reportLineStage(r compiler.TableReport, verbose, tolerate bool, stage strin
 		}
 		return
 	}
-	fmt.Printf("%s: unknown %d, kind_mismatch %d, widened %d, clamped %d, duplicate %d, malformed %v\n",
-		label, r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed)
+	fmt.Printf("%s: unknown %d, kind_mismatch %d, widened %d, clamped %d, duplicate %d, blob_shared %d, malformed %v\n",
+		label, r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.BlobShared, r.Malformed)
 	if tolerate {
 		return
 	}
@@ -704,6 +767,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
   schema check      [--verbose] [--fixed-record-limit N] [saved-file] [dir|files...]
   schema generate   [--lang <target>] [--out generated] [--verbose] [--fixed-record-limit N] [dir|files...]
+  schema testgen    [--lang go] [--out generated] [--verbose] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
   schema build-version [--facts] [dir|files...]
@@ -717,6 +781,7 @@ func usage() {
   schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
   schema version
   schema new-leg    <lang> [--root .] [--verbose]
+  schema pin        <version> <dir>... [--mixed-ok]
 
 check handed a SAVED FILE rather than a schema source answers its FORM BYTE
 first, on one line — FORM 1 the variable form, FORM 2 the message form, FORM 3
@@ -730,6 +795,10 @@ the unit as it sits on disk and leaves it alone, so a read-only tree works and
 a check never edits what it checked. Success is silent: --verbose lists the
 files a command wrote. pack and unpack exit nonzero when their read report is
 not silent; --tolerate accepts it.
+
+testgen writes the round-trip and damage tests of every table beside the code
+generate wrote, one <Base>Table_gen_test.go per schema file (docs/SPEC-TABLES.md
+§16.11); go test runs them. Go only today: every other --lang is refused.
 
 A FIXED table's record body warns past 4096 bytes and stops carrying the fixed
 form past 65536, which is the size no conforming reader decodes
@@ -746,16 +815,48 @@ func fatalf(format string, args ...any) {
 
 // fail reports a driver error and exits nonzero: a unit's diagnostics one per
 // line with a count — there is no first error worth privileging when a file
-// has twenty — and anything else as the single line it is.
+// has twenty — and anything else as the single line it is. A refusal batch is
+// dated once: when any diagnostic cites a spec section, one 'schema <version>'
+// line follows the count.
 func fail(err error) {
 	if diags, ok := errors.AsType[compiler.Diagnostics](err); ok {
 		for _, e := range diags {
 			fmt.Fprintln(os.Stderr, e)
 		}
 		fmt.Fprintf(os.Stderr, "schema: %d error(s)\n", len(diags))
+		if diags.HasSection() {
+			// the dating line is the last line Diagnostics.Error builds, so the
+			// CLI prints the one the public API composes rather than its own
+			s := diags.Error()
+			fmt.Fprintln(os.Stderr, s[strings.LastIndex(s, "\n")+1:])
+		}
 		os.Exit(1)
 	}
 	fatalf("%v", err)
+}
+
+// refuseSurfaceForTarget returns an error when a non-Go target is handed the
+// --surface flag: the flag is refused by name, not by value, so the empty
+// `--surface=` is refused too (SPEC §8.8).
+func refuseSurfaceForTarget(surfaceSet bool, lang string) error {
+	if surfaceSet && lang != "go" {
+		return fmt.Errorf("the %s target refuses the --surface flag by name; only the go target honors it (SPEC-TABLES.md §8.8)", lang)
+	}
+	return nil
+}
+
+// refuseRuntimeForTarget returns an error when a non-Go target is handed the
+// --runtime flag (refused by name, including the empty `--runtime=`) or when
+// the Go target is handed a value other than shared or standalone
+// (SPEC-TABLES.md §8.4).
+func refuseRuntimeForTarget(runtimeSet bool, runtime, lang string) error {
+	if runtimeSet && lang != "go" {
+		return fmt.Errorf("the %s target refuses the --runtime flag by name; only the go target honors it (SPEC-TABLES.md §8.4)", lang)
+	}
+	if lang == "go" && runtime != "" && runtime != "shared" && runtime != "standalone" {
+		return fmt.Errorf("go option runtime=%q is not a runtime: use shared (the default) or standalone (docs/SPEC-TABLES.md §8.4)", runtime)
+	}
+	return nil
 }
 
 // wireFile is one argument that named a SAVED FILE rather than a schema
@@ -832,7 +933,7 @@ func (t *messageTrees) Set(value string) error {
 
 // writeGenerated confines even third-party generator output and existing
 // symlinks to the requested output tree.
-func writeGenerated(dir string, files map[string][]byte, verbose bool) error {
+func writeGenerated(dir string, files map[string][]byte, lang string, removeStale bool, pkg string, schemaBases []string, verbose bool) error {
 	names := make([]string, 0, len(files))
 	for name := range files {
 		if !filepath.IsLocal(name) || strings.Contains(name, "\\") {
@@ -852,6 +953,54 @@ func writeGenerated(dir string, files map[string][]byte, verbose bool) error {
 		}
 		if verbose {
 			fmt.Printf("wrote %s\n", filepath.Join(dir, name))
+		}
+	}
+	// A default go generate removes stale surface files it wrote on an earlier
+	// run and this run did not write (SPEC-TABLES.md §8.8): a .go file whose
+	// first line is exactly the compiler's own header naming one of this
+	// unit's .schema files or its package. With --surface (removeStale false)
+	// nothing is removed; no other file is ever touched.
+	if removeStale && lang == "go" {
+		if err := removeStaleGoFiles(dir, files, pkg, schemaBases, verbose); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func removeStaleGoFiles(dir string, files map[string][]byte, pkg string, schemaBases []string, verbose bool) error {
+	owned := make(map[string]bool, len(schemaBases)+1)
+	for _, b := range schemaBases {
+		owned[fmt.Sprintf("// Code generated by the schema compiler from %s.schema. DO NOT EDIT.", b)] = true
+	}
+	owned[fmt.Sprintf("// Code generated by the schema compiler for package %s. DO NOT EDIT.", pkg)] = true
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		if _, written := files[name]; written {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return err
+		}
+		firstLine := data
+		if before, _, ok := bytes.Cut(data, []byte{'\n'}); ok {
+			firstLine = before
+		}
+		if owned[string(firstLine)] {
+			if err := os.Remove(filepath.Join(dir, name)); err != nil {
+				return err
+			}
+			if verbose {
+				fmt.Printf("removed %s\n", filepath.Join(dir, name))
+			}
 		}
 	}
 	return nil
@@ -918,27 +1067,128 @@ func writeNewLeg(root string, files map[string][]byte, verbose bool) error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	return writeNewLegConfined(root, names, files, verbose)
+}
+
+// newLegBeforeCreate runs between the preflight and each file's creation; it
+// is nil outside the tests, which use it to race a file in where one is about
+// to land.
+var newLegBeforeCreate func(rel string)
+
+// writeNewLegConfined lays the named files into root, confined to it. Every
+// output goes through an os.Root, so no path — a symlink planted in the tree
+// or raced in later included — resolves outside --root; a preflight refuses,
+// by name, any output whose path is or passes through a symlink, a file where
+// a directory goes, and any file that already exists, before anything is
+// written; and each file is then created O_CREATE|O_EXCL, so one that appears
+// after the preflight (a file or a dangling symlink alike) is refused rather
+// than written through. Only "does not exist" counts as free: any other lookup
+// error is reported. A failure part-way removes what this run created, so a
+// refusal leaves the tree as it found it.
+func writeNewLegConfined(root string, names []string, files map[string][]byte, verbose bool) (err error) {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = r.Close() }()
 	for _, name := range names {
-		path := filepath.Join(root, filepath.FromSlash(name))
-		if _, err := os.Stat(path); err == nil {
-			return fmt.Errorf("new-leg refuses to overwrite %s", path)
+		if perr := newLegPreflight(r, name); perr != nil {
+			return perr
 		}
 	}
+	var written []string // the files this run created
+	var made []string    // the directories this run created, outermost first
+	defer func() {
+		if err == nil {
+			return
+		}
+		for _, w := range slices.Backward(written) {
+			_ = r.Remove(filepath.FromSlash(w))
+		}
+		for _, d := range slices.Backward(made) {
+			_ = r.Remove(filepath.FromSlash(d)) // fails, harmlessly, on one not empty
+		}
+	}()
 	for _, name := range names {
-		path := filepath.Join(root, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return err
+		if derr := newLegMkdirs(r, path.Dir(name), &made); derr != nil {
+			return derr
+		}
+		if newLegBeforeCreate != nil {
+			newLegBeforeCreate(name)
 		}
 		mode := os.FileMode(0o644)
 		if compiler.NewLegExec(name) {
 			mode = 0o755
 		}
-		if err := os.WriteFile(path, files[name], mode); err != nil {
-			return err
+		f, oerr := r.OpenFile(filepath.FromSlash(name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+		if errors.Is(oerr, fs.ErrExist) {
+			return fmt.Errorf("%s appeared while new-leg was writing — it never overwrites a file", name)
+		}
+		if oerr != nil {
+			return fmt.Errorf("%s: %w", name, oerr)
+		}
+		written = append(written, name)
+		_, werr := f.Write(files[name])
+		if cerr := f.Close(); werr == nil {
+			werr = cerr
+		}
+		if werr != nil {
+			return fmt.Errorf("%s: %w", name, werr)
 		}
 		if verbose {
-			fmt.Printf("wrote %s\n", path)
+			fmt.Printf("wrote %s\n", filepath.Join(root, filepath.FromSlash(name)))
 		}
+	}
+	return nil
+}
+
+// newLegPreflight walks rel one element at a time with Lstat, so no link is
+// followed: a symlink anywhere on the path is refused, as is a file where a
+// directory goes and a final file that already exists; the first element that
+// does not exist ends the walk, since everything below it is free too.
+func newLegPreflight(r *os.Root, rel string) error {
+	elems := strings.Split(rel, "/")
+	for i := range elems {
+		p := strings.Join(elems[:i+1], "/")
+		info, err := r.Lstat(filepath.FromSlash(p))
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("new-leg cannot tell whether %s exists: %w", rel, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("new-leg refuses %s: %s is a symlink, and every output stays a plain path inside --root", rel, p)
+		}
+		if i == len(elems)-1 {
+			if info.IsDir() {
+				return fmt.Errorf("new-leg refuses %s: it is already a directory", rel)
+			}
+			return fmt.Errorf("new-leg refuses to overwrite %s", rel)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("new-leg refuses %s: %s is not a directory", rel, p)
+		}
+	}
+	return nil
+}
+
+// newLegMkdirs creates the directories on dir that are missing, recording each
+// one it made in made (outermost first) so a failed run can remove them again.
+func newLegMkdirs(r *os.Root, dir string, made *[]string) error {
+	if dir == "." || dir == "/" {
+		return nil
+	}
+	elems := strings.Split(dir, "/")
+	for i := range elems {
+		p := strings.Join(elems[:i+1], "/")
+		if _, err := r.Lstat(filepath.FromSlash(p)); err == nil {
+			continue
+		}
+		if err := r.Mkdir(filepath.FromSlash(p), 0o755); err != nil {
+			return fmt.Errorf("new-leg cannot make %s: %w", p, err)
+		}
+		*made = append(*made, p)
 	}
 	return nil
 }

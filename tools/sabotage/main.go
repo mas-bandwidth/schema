@@ -370,11 +370,11 @@ var sabotages = map[string][]edit{
 
 	// the same walk on the C# leg's Open
 	"cook-open-walk-cs": {{
-		old: `	g.hf("        cook = new %sCook(at + dataOffset, (long) dataLength);\n", name)`,
+		old: `	g.hf("        cook = new %sCook(at + dataOffset, (long)dataLength);\n", name)`,
 		new: `	g.hf("        ulong walk = 0; // SABOTAGED: Open walks every word of the region\n")
-	g.hf("        for (ulong i = 0; i < bytes / 8; i++) { walk += ((ulong*) at)[i]; }\n")
+	g.hf("        for (ulong i = 0; i < bytes / 8; i++) { walk += ((ulong*)at)[i]; }\n")
 	g.hf("        if (walk == ulong.MaxValue) { return false; }\n")
-	g.hf("        cook = new %sCook(at + dataOffset, (long) dataLength);\n", name)`,
+	g.hf("        cook = new %sCook(at + dataOffset, (long)dataLength);\n", name)`,
 	}},
 }
 

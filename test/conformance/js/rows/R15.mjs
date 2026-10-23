@@ -18,7 +18,7 @@
 
 import { CellFixedLoad } from "../../../../build/tables-generated-js/v1/V1Table.js";
 import { TableFixedResetReport } from "../../../../build/tables-generated-js/v1/Tblv1Table.js";
-import { CellFixedLayout, CellFixedLayoutBytes } from "../../../../build/tables-generated-js/v1/V1Table.js";
+import { CellFixedLayoutCopy, CellFixedLayoutBytes } from "../../../../build/tables-generated-js/v1/V1Table.js";
 
 // Constants for building a minimal form-1 file
 const FORM_1 = 3;               // TableFixedForm (not TableFixedVariableForm=1)
@@ -79,7 +79,7 @@ function buildUnknownLayoutFile() {
 
   // Layout bytes (copy from CellFixedLayout)
   for (let i = 0; i < layoutLen; i++) {
-    bytes[20 + i] = CellFixedLayout[i];
+    bytes[20 + i] = CellFixedLayoutCopy()[i];
   }
 
   // Record header at the end (unknown hash again)

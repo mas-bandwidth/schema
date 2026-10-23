@@ -5,6 +5,8 @@
 # the serialize.go runtime the generated Go targets, a sibling checkout;
 # test/go/go.mod and its ludicrous twin carry the same relative path
 SERIALIZE_GO ?= ../serialize.go
+SERIALIZE_GO_FETCHED := build/serialize.go
+SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))
 
 build/packet-text/go/.stamp: bin/schema test/packet-text/Narrow.schema make/go.mk
 	./bin/schema generate --lang go --out build/packet-text/go test/packet-text/Narrow.schema
@@ -55,12 +57,69 @@ generated/go/.stamp: bin/schema $(SCHEMAS)
 # is ONE walk, and the way to hold that is to compare the emitted bytes. One
 # walker per unit — Go emits it into <Home>TableJson.go — and the same bytes in
 # every unit of the corpus.
-.PHONY: tables-go-fixedform
-tables-go-fixedform:
+.PHONY: tables-go-fixedform tables-go-sibling-runtime
+tables-go-sibling-runtime: deps
+	@test -f "$(SERIALIZE_GO)/go.mod" || { echo "tables Go sibling runtime: make deps did not provision $(SERIALIZE_GO)" >&2; exit 1; }
+tables-go-fixedform: tables-fixedform-corpus tables-go-sibling-runtime
 	sh test/slowgate/proof tables-go-fixedform \
-		'TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestTimestampKindInGo TestFixedLoadAllocatesNothingPerCall TestFixedLoadNamesEveryRefusal TestFixedFormWriteSideRefusesInEveryGoBuild TestGoTableWritersRefuseWhatTheirReadersRefuse TestFixedLoadUnknownHashIsLayoutUnknown' \
-		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadAllocatesNothingPerCall|TestFixedLoadNamesEveryRefusal|TestGoTableWritersRefuseWhatTheirReadersRefuse|TestFixedLoadUnknownHashIsLayoutUnknown' -count=1
+		'TestFixedFormCountAndLengthOverBoundRefuseByName TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestTimestampKindInGo TestFixedLoadAllocatesNothingPerCall TestFixedLoadNamesEveryRefusal TestFixedFormWriteSideRefusesInEveryGoBuild TestGoTableWritersRefuseWhatTheirReadersRefuse TestFixedLoadUnknownHashIsLayoutUnknown' \
+		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadAllocatesNothingPerCall|TestFixedFormCountAndLengthOverBoundRefuseByName|TestFixedLoadNamesEveryRefusal|TestFixedFormWriteSideRefusesInEveryGoBuild|TestGoTableWritersRefuseWhatTheirReadersRefuse|TestFixedLoadUnknownHashIsLayoutUnknown' -count=1
 test-go: tables-go-fixedform
+
+# The hand-editable text form (docs/SPEC-TABLES.md §16.9): the textform surface,
+# both table classes, held to test/conformance/textform/ (the positive vectors
+# and their oracles, the leaf edits, every refusal by name, the attachment
+# oracle and a seeded edit fuzz).
+.PHONY: tables-go-textform
+tables-go-textform:
+	sh test/slowgate/proof tables-go-textform \
+		'TestCommentedTextForm/emitted TestCommentedTextForm/fixed TestCommentedTextForm/variable' \
+		./internal/codegen/gotable -run '^TestCommentedTextForm$$' -count=1 -timeout 600s
+test-go: tables-go-textform
+
+# THE OPTIONAL SHARED GO RUNTIME (docs/SPEC-TABLES.md §8.4). tables/goruntime is
+# GENERATED from the emitter, never edited: `make go-runtime` rewrites it, and
+# the gate fails when the checked-in package is not what the emitter derives, or
+# when a unit generated with runtime=shared stops producing the standalone
+# unit's wires and reports.
+.PHONY: go-runtime tables-go-shared-runtime
+go-runtime:
+	SCHEMA_SLOW=1 SCHEMA_WRITE_GORUNTIME=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run TestGoSharedRuntimePackageIsCurrent
+
+tables-go-shared-runtime:
+	sh test/slowgate/proof tables-go-shared-runtime \
+		'TestGoSharedRuntimePackageIsCurrent TestGoSharedRuntimeIsOptionalAndEquivalent' \
+		./internal/codegen/gotable -run 'TestGoSharedRuntime' -count=1
+test-go: tables-go-shared-runtime
+
+# THE GO CONFORMANCE ROWS (docs/SPEC-CARD-CONTRACT.md). The rows live in
+# test/conformance/go/rows under the test/conformance/go module; the fixed-form
+# rows read the C++ reference corpus, so the gate stands on the two build
+# stamps and the sibling runtime, exactly as tables-go-fixedform does.
+.PHONY: conformance-go-rows conformance-go-rows-negative-control
+conformance-go-rows: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
+	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows \
+		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
+		./rows/ -count=1 -timeout 600s
+test-go: conformance-go-rows
+
+# The reversed witness, modelled on projection-variant-order-negative-control:
+# plant one failing row without touching a tracked file, via `go test -overlay`
+# adding a new file, and require the gate to go red ON that row. The planted
+# source is written with a leading underscore (build/rows-planted/_ZZ_planted_test.go)
+# so the go tool ignores it: `go list ./...` from the checkout root must not
+# pick up a second package in build/rows-planted.
+conformance-go-rows-negative-control: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
+	@mkdir -p build/rows-planted
+	@printf 'package main\n\nimport "testing"\n\nfunc TestRowZZPlanted(t *testing.T) { t.Parallel(); t.Fatal("planted failing row") }\n' > build/rows-planted/_ZZ_planted_test.go
+	@printf '{"Replace":{"%s/test/conformance/go/rows/ZZ_planted_test.go":"%s/build/rows-planted/_ZZ_planted_test.go"}}\n' "$(CURDIR)" "$(CURDIR)" > build/rows-planted/overlay.json
+	@if cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-negative-control \
+		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
+		./rows/ -count=1 -timeout 600s -overlay=$(CURDIR)/build/rows-planted/overlay.json > $(CURDIR)/build/rows-planted/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the planted failing row left the gate green"; \
+		cat $(CURDIR)/build/rows-planted/log; exit 1; fi
+	@grep -q "planted failing row" $(CURDIR)/build/rows-planted/log || { echo "NEGATIVE CONTROL FAILED: it went red, but not on the planted row"; cat $(CURDIR)/build/rows-planted/log; exit 1; }
+	@echo "rows negative control: the planted failing row turns the gate red"
 
 .PHONY: tables-go-json-walk
 tables-go-json-walk: build/tables-generated-go/.stamp
@@ -177,7 +236,7 @@ cards-generate: bin/schema
 	./bin/schema generate --lang go --out build/tables-generated-go/cards-future tables/cards/testdata/upgrade/future/DECLARATION.schema
 	$(call go_table_module,cards-initial,cardsinitial)
 	$(call go_table_module,cards-future,cardsfuture)
-	@printf 'module cards\n\ngo 1.23\n\nrequire (\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n\tcardsinitial v0.0.0\n\tcardsfuture v0.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n\nreplace cardsinitial => ../cards-initial\n\nreplace cardsfuture => ../cards-future\n' > build/tables-generated-go/cards/go.mod
+	@printf 'module cards\n\ngo 1.26\n\nrequire (\n\tcardsfuture v0.0.0\n\tcardsinitial v0.0.0\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n\nreplace cardsinitial => ../cards-initial\n\nreplace cardsfuture => ../cards-future\n' > build/tables-generated-go/cards/go.mod
 	cp tables/cards/cards.go build/tables-generated-go/cards/cards.go
 	cp tables/cards/cards_test.go build/tables-generated-go/cards/cards_test.go
 	cp tables/cards/parse.go build/tables-generated-go/cards/parse.go
@@ -323,6 +382,45 @@ cards-conformance-create: cards-driver-go
 cards-conformance-go: build/conformance-harness cards-driver-go
 	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'build/cards-driver-go' --require $(CARDS_REQUIRE)
 
+# ONE GATE FOR EVERY LEG (the-cards-page-and-roadmap-name-every-language): runs
+# cards-conformance-go and every cards-<lang>-conformance target across all nine
+# languages with CARDS_REQUIRE set to all nine surfaces (load, save, render,
+# parse, bounds, upgrade, edit, taskhash, view), continuing after a failure so
+# the full matrix is collected, prints one `<leg> <surface> pass n/m` (or FAIL /
+# absent) line per leg and surface, and exits nonzero if any leg fails, answers
+# a required surface absent, or has no target.
+CARDS_ALL_SURFACES := load,save,render,parse,bounds,upgrade,edit,taskhash,view
+.PHONY: cards-conformance-all
+cards-conformance-all:
+	@mkdir -p build/cards-conformance-all
+	@fail=0; \
+	for leg in go c cpp cs rust java js dart elixir; do \
+		if [ "$$leg" = "go" ]; then target=cards-conformance-go; else target=cards-$$leg-conformance; fi; \
+		log=build/cards-conformance-all/$$leg.log; \
+		if ! $(MAKE) -n $$target >/dev/null 2>&1; then \
+			echo "$$leg FAIL: missing target $$target"; \
+			fail=1; \
+			continue; \
+		fi; \
+		if $(MAKE) --no-print-directory $$target CARDS_REQUIRE=$(CARDS_ALL_SURFACES) CARDS_CPP_SURFACES=$(CARDS_ALL_SURFACES) CARDS_JAVA_REQUIRE=$(CARDS_ALL_SURFACES) > "$$log" 2>&1; then \
+			status=0; \
+		else \
+			status=$$?; fail=1; \
+		fi; \
+		lines=$$(sed -n "s/^cards /$$leg /p" "$$log"); \
+		if [ -z "$$lines" ]; then \
+			cat "$$log"; \
+			echo "$$leg FAIL: $$target exited $$status without surface lines"; \
+			fail=1; \
+			continue; \
+		fi; \
+		printf '%s\n' "$$lines"; \
+		for s in load save render parse bounds upgrade edit taskhash view; do \
+			printf '%s\n' "$$lines" | grep -qE "^$$leg $$s pass [1-9][0-9]*/[1-9][0-9]*$$" || fail=1; \
+		done; \
+	done; \
+	exit $$fail
+
 # THE NEGATIVE CONTROL (STEP 6): copy expected/ into build/, flip one byte of one
 # render answer and one taskhash answer, run the check against the copy, and
 # require it to fail naming those two surfaces while the rest pass.
@@ -383,8 +481,10 @@ test-go: cards-test cards-example cards-wire-fuzz
 
 # one generated unit's module wiring (build wiring, not schema output — the
 # emitter writes only .go files)
+# The shared Go runtime is the default (docs/SPEC-TABLES.md §8.4), so every
+# generated table module requires this module and replaces it with the tree.
 define go_table_module
-@printf 'module %s\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' $(2) > build/tables-generated-go/$(1)/go.mod
+@printf 'module %s\n\ngo 1.26\n\nrequire (\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n' $(2) > build/tables-generated-go/$(1)/go.mod
 endef
 
 # THE STANDALONE GATE, Go — the M4b twin of `tables-cs-standalone`,
@@ -418,6 +518,31 @@ tables-go-standalone: build/tables-generated-go/.stamp
 .PHONY: tables-go-soak
 tables-go-soak: build/tables-generated-go/.stamp
 	cd test/go-tables && go test -run Soak -timeout 0 -soak $(SOAK) -v .
+
+# FUZZ-TABLES-GO: the permanent native fuzz target over the table compiler
+# front end and the Go table emitter (internal/fuzz/tablefrontend_test.go).
+# The long campaign runs by hand or on the certify nightly, never in ci-fast or
+# ci-full. FUZZTIME and FUZZPARALLEL default to 10m and 4.
+FUZZTIME ?= 10m
+FUZZPARALLEL ?= 4
+.PHONY: fuzz-tables-go
+fuzz-tables-go:
+	go test ./internal/fuzz/ -run '^$$' -fuzz '^FuzzTableFrontEnd$$' -fuzztime $(FUZZTIME) -parallel $(FUZZPARALLEL) -timeout 600s
+
+# FUZZ-GENERATED-READERS-GO: a functional smoke over every generated Go table
+# reader (internal/codegen/gotable/fuzzunit). The targets are listed from the
+# package, so a new reader or entry-point kind joins with no edit here; each
+# runs briefly by hand or on the certify nightly, never in ci-fast or ci-full.
+.PHONY: fuzz-generated-readers-go
+fuzz-generated-readers-go:
+	@targets=$$(nice -n 19 go test -list '^Fuzz' -timeout 600s ./internal/codegen/gotable/fuzzunit/ | grep '^Fuzz'); \
+	if [ -z "$$targets" ]; then echo "FUZZ-GENERATED-READERS-GO: no Fuzz targets"; exit 1; fi; \
+	for name in $$targets; do \
+		race=; \
+		if [ "$$name" = FuzzOpen ]; then race=-race; fi; \
+		echo "fuzz-generated-readers-go: $$name 10s"; \
+		nice -n 19 go test ./internal/codegen/gotable/fuzzunit/ -run '^$$' -fuzz "^$$name$$" -fuzztime 10s -timeout 600s $$race || exit 1; \
+	done
 
 .PHONY: tables-go-fuzz
 tables-go-fuzz: build/tables-generated-go/.stamp build/conformance-harness
@@ -481,22 +606,28 @@ tables-go-fuzz-extent-negative-control: build/tables-generated-go/.stamp
 tables-go-fuzz-maximum-negative-control: build/tables-generated-go/.stamp
 	$(call go_fuzz_sabotage,maximum)
 
+# The runtime the committed Go bench trees are generated with, and the runtime
+# the rules below pass. One source: internal/ci/gobenchcurrent_test.go's
+# goBenchRuntime pins the same spelling, and
+# TestGeneratedCurrentEmitsStandaloneBenchTrees holds the two to it.
+GO_BENCH_RUNTIME := standalone
+
 generated/bench/tables/go/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/go
-	./bin/schema generate --lang go --out generated/bench/tables/go bench/corpus/BenchTable.schema
+	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/tables/go bench/corpus/BenchTable.schema
 	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/tables/go/go.mod
 
 # Keep both compiler-owned source and module wiring in the discovered generation
 # graph. Default wiring is byte-identical to the paired driver's generated unit.
 generated/bench/paired/go/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema make/go.mk
 	@mkdir -p generated/bench/paired/go
-	./bin/schema generate --lang go --out generated/bench/paired/go bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/paired/go bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/paired/go/go.mod
 	@touch $@
 
 generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
-	./bin/schema generate --lang go --out generated/bench/go bench/corpus/Bench.schema
-	./bin/schema generate --lang go --out generated/bench/go/realworld bench/corpus/RealWorld.schema
+	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/go bench/corpus/Bench.schema
+	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/go/realworld bench/corpus/RealWorld.schema
 	@printf 'module bench\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' > generated/bench/go/go.mod
 	@touch $@
 
@@ -643,7 +774,9 @@ test-go: tables-go-accessor-descriptor-agreement tables-go-accessor-negative-con
 # requires the home to move.
 .PHONY: tables-go-runtime-home tables-go-runtime-home-negative-control
 tables-go-runtime-home:
-	go test ./internal/codegen/gotable -run '^TestSharedRuntimeHomeIsPackageNamed$$' -count=1
+	sh test/slowgate/proof tables-go-runtime-home \
+		'TestSharedRuntimeHomeIsPackageNamed' \
+		./internal/codegen/gotable -run '^TestSharedRuntimeHomeIsPackageNamed$$' -count=1
 tables-go-runtime-home-negative-control: bin/schema
 	@mkdir -p build
 	@sed 's|home := ir.GoExportName(u.Package)|home := ir.ProtocolIdHome(u) // SABOTAGED: back to the file order|' \
@@ -845,7 +978,7 @@ test-go: tables-go-versioning
 # sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE: under this
 # name a missing corpus can never pass silently.
 .PHONY: tables-go-versioning
-tables-go-versioning: tables-fixedform-corpus
+tables-go-versioning: tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/gotable/ -count=1 -run 'TestFixedVersioning|TestHash|TestFloor|TestLineageMerge|TestFixedRoadmapGoT02Plans|TestFixedRoadmapGoT12ConformanceHostile'
 	@echo 'tables Go versioning: §5 read both columns of every row against the C++ reference bytes'
 
@@ -865,7 +998,7 @@ tables-go-fixed-form-negative-control: bin/schema build/schema_test_bench_paired
 	@printf '{"Replace":{"%s/internal/codegen/gotable/fixedform.go":"%s/build/go-fixed-sabotage/fixedform.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/go-fixed-sabotage/overlay.json
 	@go build -overlay=build/go-fixed-sabotage/overlay.json -o build/go-fixed-sabotage/schema ./cmd/schema
-	@./build/go-fixed-sabotage/schema generate --lang go --out build/go-fixed-sabotage/gen bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@./build/go-fixed-sabotage/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out build/go-fixed-sabotage/gen bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => $(CURDIR)/$(SERIALIZE_GO)\n' > build/go-fixed-sabotage/gen/go.mod
 	@cp bench/paired/go/go.mod build/go-fixed-sabotage/table.mod
 	@cd bench/paired/go && go mod edit -modfile $(CURDIR)/build/go-fixed-sabotage/table.mod \
@@ -894,7 +1027,9 @@ test-go: tables-go-usage
 # it needs no SCHEMA_SLOW.
 .PHONY: tables-go-subsets
 tables-go-subsets:
-	go test -count=1 -timeout 600s ./internal/codegen/gotable/ -run '^TestGoTableCompilesWithAnySubsetOfItsForms$$'
+	sh test/slowgate/proof tables-go-subsets \
+		'TestGoTableCompilesWithAnySubsetOfItsForms' \
+		./internal/codegen/gotable -run '^TestGoTableCompilesWithAnySubsetOfItsForms$$' -count=1 -timeout 600s
 test-go: tables-go-subsets
 
 # I13 (docs/PORTING.md:1278): the go leg's text differential against a third
@@ -911,3 +1046,29 @@ tables-go-text-differential:
 tables-go-text-differential-negative-control:
 	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestTextDifferentialNegativeControl$$' -count=1
 test-go: tables-go-text-differential
+
+# The random-schema table differential (card
+# schema-go-fuzz-random-table-differential): seeds 0..SCHEMA_TABLE_DIFF_TO of
+# generated VALID units through compiler.New().Generate, the generated Go leg
+# under -race, every read/write path, every damage, hostile JSON plants and the
+# compiler's engine in both directions. Nightly in certify.yml, never in
+# ci-fast or ci-full: SCHEMA_TABLE_DIFF=1, set only here, is what opts the two
+# tests in; ci-full's SCHEMA_SLOW=1 run of ./internal/fuzz skips them.
+.PHONY: fuzz-tables-diff
+fuzz-tables-diff:
+	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 SCHEMA_TABLE_DIFF_TO=200 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
+	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferentialNegativeControl$$' -v
+
+# The property-based random-schema tests (card schema-go-rapid-property-tests):
+# rapid drives the SAME generator as the differential above, so a failure
+# shrinks to a small schema and value. Each check compiles a generated unit, so
+# the check count is bounded here; nightly in certify.yml, never in ci-fast or
+# ci-full (SCHEMA_RAPID_PROPS=1 opts them in, and a CI process without it skips
+# them).
+.PHONY: fuzz-tables-props
+fuzz-tables-props:
+	SCHEMA_SLOW=1 SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestProp' -rapid.checks=24 -v
+	SCHEMA_SLOW=1 SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRapidPropsNegativeControl$$' -rapid.checks=4 -v
+
+.PHONY: test-go
+test-go: deps

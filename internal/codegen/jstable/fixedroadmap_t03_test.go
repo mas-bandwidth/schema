@@ -194,7 +194,7 @@ fixed table Host
 // js/R14 probe, one hostile lineage entry handed to the build the way a lock
 // would hand it (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.9 #18).
 import { Host, InitHost, HostFixedSave, HostFixedMeasure, HostFixedLoad, HostFixedNewPlan,
-         HostFixedLayout, HostFixedLayoutBytes, HostFixedBodyBytes, HostFixedRecordBytes,
+         HostFixedLayoutCopy, HostFixedLayoutBytes, HostFixedBodyBytes, HostFixedRecordBytes,
          HostFixedHashLo, HostFixedHashHi,
          TableFixedReport, TableFixedRefusal, TableFixedRefusalName, TableFixedLayoutView,
          TableFixedParseLayout, TableFixedPlan, TableFixedCompile, TableFixedKnownLayout,
@@ -216,7 +216,7 @@ if (!TableFixedParseLayout(hostile, 0, hostile.length, lay)) {
 const dst = new Int32Array([
 %s]);
 const plan = new TableFixedPlan(256, HostFixedBodyBytes, 4096);
-const made = TableFixedCompile(lay, HostFixedLayout, dst, plan, new TableFixedReport());
+const made = TableFixedCompile(lay, HostFixedLayoutCopy(), dst, plan, new TableFixedReport());
 if (made !== -2) { fail("R14: the compile answers " + made + ", want -2 (hostile)"); }
 if (plan.hostile !== true) { fail("R14: the over-reach is not recorded on the plan"); }
 
@@ -225,9 +225,9 @@ if (plan.hostile !== true) { fail("R14: the over-reach is not recorded on the pl
 //    plan.
 const known = [
   new TableFixedKnownLayout(%d, %d, hostile, hostile.length, %d),
-  new TableFixedKnownLayout(HostFixedHashLo, HostFixedHashHi, HostFixedLayout, HostFixedLayoutBytes, HostFixedRecordBytes),
+  new TableFixedKnownLayout(HostFixedHashLo, HostFixedHashHi, HostFixedLayoutCopy(), HostFixedLayoutBytes, HostFixedRecordBytes),
 ];
-const plans = TableFixedLineagePlans(known, HostFixedHashLo, HostFixedHashHi, HostFixedLayout, dst, HostFixedBodyBytes);
+const plans = TableFixedLineagePlans(known, HostFixedHashLo, HostFixedHashHi, HostFixedLayoutCopy(), dst, HostFixedBodyBytes);
 if (plans[0].why !== TableFixedRefusal.LayoutRecordTooLarge) {
   fail("R14: the hostile entry owes layout_record_too_large, got " + TableFixedRefusalName(plans[0].why));
 }

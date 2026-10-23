@@ -78,5 +78,5 @@ fixed table FnRoot
     picks [..2]Pick
     deep  Deep1
     label string(4)
-    after int32 = 7 | min = 0, max = 1000
+    past int32 = 7 | min = 0, max = 1000, was = "after"
 }

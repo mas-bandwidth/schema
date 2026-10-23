@@ -185,6 +185,8 @@ func TestDiagnostics(t *testing.T) {
 		// have none, so the key diagnostic names string(N) (§2.8, §11)
 		{name: "a wstring map key", want: "a wstring(N) key is refused",
 			src: "package t\ntable T { m map[wstring(4)]uint8 }\n"},
+		{name: "a map as a union arm is refused by name", want: "a map is not an arm",
+			src: "package t\nunion U { m map[uint8]int32 }\ntable Root { u U }\n"},
 		{name: "array bound zero", want: "below 1",
 			src: "package t\ntype T { a [0]uint8 }\n"},
 		{name: "count range backwards", want: "0 <= Min < N",
@@ -275,7 +277,7 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { x ufixed(64, 0) | min = 0, max = 18446744073709551615 }\n"},
 		{name: "ufixed default below its unsigned range", want: "outside its range",
 			src: "package t\ntype T { x ufixed(16, 16) = -1.0 | min = 0, max = 5 }\n"},
-		{name: "a table declaration takes tags and was and no other valued key", want: "the valued vocabulary is typed and closed per compiler version, and here it is was alone",
+		{name: "a table declaration takes tags and was and forms and json and no other valued key", want: "the valued vocabulary is typed and closed per compiler version, and here it is forms, integrity, json and was",
 			src: "package t\ntable T | pinned, min = 3\n{\n    x int32\n}\n"},
 		{name: "message is not part of the language", want: "messages are not part of the language",
 			src: "package t\nmessage M { x uint8 }\n"},
@@ -316,10 +318,8 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype V { x uint8 }\nconst N = V.Count\n"},
 		{name: "Count reference undefined", want: "undefined enum or flags",
 			src: "package t\nconst N = F.Count\n"},
-		{name: "variant named Count", want: "carries its declared variant count as the member Count",
-			src: "package t\nenum E { A, Count }\n"},
-		{name: "a decl collides with an enum's generated Count constant (Go)", want: "generated Count constant",
-			src: "package t\nenum Weapon { Laser }\nconst WeaponCount = 3\n"},
+		{name: "Count reference to an enum", want: "has no Count",
+			src: "package t\nenum E { A }\nconst N = E.Count\n"},
 		{name: "65 flags variants overflow uint64 storage", want: "one bit per variant, up to 64",
 			src: "package t\nflags F { " + flags65 + " }\n"},
 		// ---- unions (SPEC §4.8) ----
@@ -333,13 +333,6 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\nunion U {\n    u Box\n}\ntype Box { x uint8 }\n"},
 		{name: "union variants colliding after export mapping", want: "both become BoxA",
 			src: "package t\nunion U {\n    box_a Box\n    boxA Box\n}\ntype Box { x uint8 }\n"},
-		// COUNT IS RESERVED ON EVERY UNION, packet and table closure alike:
-		// both tag enums carry the member, so the arm would define it twice
-		// (SPEC §4.8, §4.11, docs/SPEC-TABLES.md §2.6)
-		{name: "union variant named count on a packet union (exported spelling)", want: "carries its declared variant count as the member Count",
-			src: "package t\nunion U {\n    count Box\n}\ntype Box { x uint8 }\ntype T { u U }\n"},
-		{name: "union variant named count on a table-closure union (exported spelling)", want: "carries its declared variant count as the member Count",
-			src: "package t\ntable Box { x uint8 }\nunion U {\n    thing Box\n    count int32 | min = 0, max = 100\n}\ntable Root { u U }\n"},
 		// AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an enum, a
 		// scalar, a string, an array, a pointer and a union are arms, and
 		// what refuses them OUTSIDE a table closure is the closure rule —
@@ -591,6 +584,23 @@ func TestDiagnostics(t *testing.T) {
 		{name: "a table spelling the Go cook's descriptor graph",
 			src:  "package probe\n\ntable tableCookRecords\n{\n    n int32\n}\n",
 			want: "tableCookRecords"},
+		// ---- the ELIXIR bits-consumed entry, read_<name>_bits (schema#584,
+		// ---- SPEC §6.1 item 3) ----
+		// Every type and union generates read_<snake>_bits beside
+		// read_<snake>, so `type Frame` claims read_frame_bits and a
+		// `FrameBits` declared beside it would take the same module binding.
+		// Reverting the two addRust(..."_bits") lines in checkClaimedNames and
+		// addStructSymbols turns all three red: the unit compiles clean and the
+		// generated Elixir module defines read_frame_bits twice.
+		{name: "a type whose read entry is another type's bits entry",
+			src:  "package t\ntype Frame { x uint8 }\ntype FrameBits { y uint8 }\n",
+			want: "both generate the symbol read_frame_bits"},
+		{name: "a union whose read entry is another union's bits entry",
+			src:  "package t\ntype A { x uint8 }\nunion Frame\n{\n    a A\n    b A\n}\nunion FrameBits\n{\n    a A\n    b A\n}\n",
+			want: "both generate the symbol read_frame_bits"},
+		{name: "a type whose read entry is a union's bits entry",
+			src:  "package t\ntype A { x uint8 }\nunion Frame\n{\n    a A\n    b A\n}\ntype FrameBits { y uint8 }\n",
+			want: "both generate the symbol read_frame_bits"},
 		// ---- the ANNOUNCEMENT and REFUSAL vocabulary, beside a table ----
 		// These are the table wire's own names, and they are claimed where the
 		// generated table sources define them: in a unit that declares a table
@@ -700,6 +710,11 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		// untouched (docs/SPEC-TABLES.md §11).
 		{name: "near-miss spellings of the table runtime's names",
 			src: "package t\nconst tableJsonMaxDepths = 5\ntype tableJsonInput { n int32 }\ntype TableReports { n int32 }\n"},
+		// THE BITS-ENTRY CLAIM IS EXACT (schema#584): read_frame_bits is
+		// claimed and nothing wider, so a near miss (FrameBit -> read_frame_bit)
+		// and a bare `Bits` (read_bits) beside `type Frame` stay legal.
+		{name: "near-miss spellings of the Elixir bits entry",
+			src: "package t\ntype Frame { x uint8 }\ntype FrameBit { y uint8 }\ntype Bits { z uint8 }\n"},
 		// THE PACKET-ONLY UNIT KEEPS THE TABLE RUNTIME'S OWN NAMES
 		// (docs/SPEC-TABLES.md §11). The every-unit claim rests on one
 		// reason, that the view file defines the name, and the announcement
@@ -728,6 +743,14 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			srcs: map[string]string{
 				"A.schema": "package t\ntype V | cpp_native = VMath, cpp_include = \"v.h\" { x float64 }\ntype Near { p V }\n",
 				"B.schema": "package t\ntype Far { q V }\n",
+			}},
+		// A QUALIFIED native name is accepted and kept whole (schema#451):
+		// `math::Vec2` is the global engine type's own spelling, so no global
+		// alias is needed. It rides from another file like the bare form.
+		{name: "cpp_native with a ::-qualified name",
+			srcs: map[string]string{
+				"A.schema": "package t\ntype V | cpp_native = math::Vec2, cpp_include = \"math/vec2.h\" { x float64 }\n",
+				"B.schema": "package t\ntype Body { p V }\n",
 			}},
 		// A BASE NAME THAT ONLY LOOKS LIKE A C HEADER (#521 G-20). The list is
 		// the C standard's own and is compared whole: a name that merely
@@ -763,10 +786,6 @@ func TestGoodCornersStillCompile(t *testing.T) {
 			src: "package t\nflags F { " + strings.Replace(flags65, ", V64", "", 1) + " }\n"},
 		{name: "F.Count in a constant expression",
 			src: "package t\nflags F { A, B }\nconst N = F.Count\n"},
-		{name: "E.Count in a constant expression, headroom included",
-			src: "package t\nenum E | max = 15\n{ A, B }\nconst N = E.Count\n"},
-		{name: "E.Count as an array bound",
-			src: "package t\nenum E | max = 15\n{ A, B }\ntype T { xs [..E.Count]uint8 }\n"},
 		{name: "a // comment terminates the qualification section",
 			src: "package t\ntype T { h int16 | min = 0, max = 5 // the section ends here\n}\n"},
 		{name: "a qualified declaration's body opens on the next line",
@@ -916,15 +935,16 @@ func TestCReservedMacroNeighborsAccepted(t *testing.T) {
 }
 
 // ONE MISTAKE, ONE DIAGNOSTIC (#447 F-01, #521 G-02). A variant that IS one of
-// the three names an enum generates for itself used to draw four errors: the
+// the two names an enum generates for itself used to draw four errors: the
 // rule, then the same fact restated as a Go-symbol collision, a Rust
 // associated-const collision and a C #define collision. The actionable line
-// was one of four, and it was a beginner's first enum mistake.
+// was one of four, and it was a beginner's first enum mistake. Count is not
+// among them: an enum has no Count (SPEC §4.2), so it is an ordinary variant.
 //
 // Reverting reservedEnumVariant's two uses in checkClaimedNames turns this red
-// at four errors for None and Count and four for Max.
+// at four errors for None and four for Max.
 func TestReservedEnumVariantDrawsOneDiagnostic(t *testing.T) {
-	for _, reserved := range []string{"None", "Max", "Count"} {
+	for _, reserved := range []string{"None", "Max"} {
 		errs := runUnit(t, map[string]string{
 			"Bad.schema": "package t\nenum E { " + reserved + ", Fighter }\n",
 		})

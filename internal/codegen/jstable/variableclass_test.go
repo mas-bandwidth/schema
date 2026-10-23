@@ -71,6 +71,10 @@ type vcCase struct {
 	Wire       string `json:"wire"`
 	Text       string `json:"text"` // "" for a wire-only instance (no-text)
 	RefuseText bool   `json:"refuseText"`
+	// RefuseSave: the value the load keeps is one every writer refuses (a
+	// blob two slots name, blob_shared, §2.5), so Save answers null and
+	// Measure -1, as the oracle's encode refuses it
+	RefuseSave bool `json:"refuseSave"`
 	// Same names two slots that must land as ONE object after the load (the
 	// shared node or blob the wire numbers once, §3.1)
 	Same []string `json:"same"`
@@ -120,6 +124,7 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 			func() *vcCase {
 				c := corpus("blob_shared", "Catalog", false, "thumb", "alias")
 				c.RefuseText = true
+				c.RefuseSave = true
 				return c
 			}(),
 			corpus("blob_str8", "Catalog", true),
@@ -149,7 +154,14 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 				t.Fatalf("%s: the oracle did not decode its own wire: %v", c.Name, err)
 			}
 			again, err := tablewire.Encode(m, inst)
-			if err != nil || !bytes.Equal(again, c.wire) {
+			if rep.BlobShared > 0 {
+				// a blob two slots name is refused by every writer (docs/SPEC-TABLES.md
+				// §2.5): the oracle's tolerant read keeps the one node, and its encode
+				// refuses by name rather than reproducing the committed wire
+				if err == nil || !strings.Contains(err.Error(), "blob_shared") {
+					t.Fatalf("%s: the oracle's encode of a shared blob = %v, want the named refusal blob_shared", c.Name, err)
+				}
+			} else if err != nil || !bytes.Equal(again, c.wire) {
 				t.Fatalf("%s: the oracle does not re-encode the committed wire (%v)", c.Name, err)
 			}
 			if c.RefuseText {
@@ -196,10 +208,11 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 		}
 		probeCases = append(probeCases, &vcCase{Name: pc.name, Root: "Probe", wire: wire, text: append(text, '\n')})
 	}
-	// ONE *string BLOB TWO SLOTS NAME: the oracle shares the note's blob into
-	// note2, numbers ONE record for the two, and its writer refuses the text
-	// (§2.5, §16.7). A JavaScript load must hand both slots one String object,
-	// or its save would write the blob twice.
+	// ONE *string BLOB TWO SLOTS NAME: every writer refuses it by name,
+	// blob_shared (§2.5, §16.7), the oracle's numbering and binary encode
+	// included, so the oracle can no longer mint this wire. The JavaScript
+	// load of a shared blob stays held by the committed blob_shared corpus case
+	// above (thumb and alias land as one object).
 	{
 		inst := pm.New(pm.Lookup("Probe"))
 		var rep tabletext.Report
@@ -216,18 +229,15 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 			}
 		}
 		note2.Cell.Blob = note.Cell.Blob
-		g, err := tablewire.Number(pm, inst)
-		if err != nil || len(g.Records()) != 1 {
-			t.Fatalf("probe_shared_string: the oracle does not number one record for one shared blob (%v)", err)
+		if _, err := tablewire.Number(pm, inst); err == nil || !strings.Contains(err.Error(), "blob_shared") {
+			t.Fatalf("probe_shared_string: the oracle numbers a shared blob (%v), want the named refusal blob_shared", err)
 		}
-		wire, err := tablewire.Encode(pm, inst)
-		if err != nil {
-			t.Fatal(err)
+		if _, err := tablewire.Encode(pm, inst); err == nil || !strings.Contains(err.Error(), "blob_shared") {
+			t.Fatalf("probe_shared_string: the oracle encodes a shared blob (%v), want the named refusal blob_shared", err)
 		}
 		if _, err := pm.Write(inst); err == nil {
 			t.Fatal("probe_shared_string: the oracle's writer did not refuse a shared blob")
 		}
-		probeCases = append(probeCases, &vcCase{Name: "probe_shared_string", Root: "Probe", wire: wire, RefuseText: true, Same: []string{"note", "note2"}})
 	}
 	// A LONG CHAIN (§3.1, §16.7): 5,000 and 100,000 Leaves, each naming the
 	// next. The oracle saves them, and its text writer refuses past the depth
@@ -376,7 +386,11 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 			if err := os.WriteFile(c.Wire, c.wire, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			want = append(want, "WIRE "+c.Name+" OK", "MEASURE "+c.Name+" OK")
+			if c.RefuseSave {
+				want = append(want, "WIRE "+c.Name+" SAVEREFUSED OK", "MEASURE "+c.Name+" REFUSED OK")
+			} else {
+				want = append(want, "WIRE "+c.Name+" OK", "MEASURE "+c.Name+" OK")
+			}
 			if c.text != nil {
 				c.Text = filepath.Join(work, c.Name+".json")
 				if err := os.WriteFile(c.Text, c.text, 0o600); err != nil {
@@ -662,10 +676,17 @@ for (const c of spec.cases) {
   const v = m[c.root + "Load"](wire, rep);
   if (v === null) { console.log("WIRE " + c.name + " REFUSED " + JSON.stringify(rep)); continue; }
   const saved = m[c.root + "Save"](v);
-  if (same(saved, wire) && clean(rep)) { console.log("WIRE " + c.name + " OK"); }
+  if (c.refuseSave) {
+    // every writer refuses a blob two slots name (§2.5): null and -1
+    console.log("WIRE " + c.name + (saved === null && !rep.malformed ? " SAVEREFUSED OK" : " SAVED " + (saved === null ? "null" : saved.length)));
+    const refusedMeasure = m[c.root + "Measure"](v);
+    console.log("MEASURE " + c.name + (refusedMeasure === -1 ? " REFUSED OK" : " DIFF " + refusedMeasure));
+  } else if (same(saved, wire) && clean(rep)) { console.log("WIRE " + c.name + " OK"); }
   else { console.log("WIRE " + c.name + " DIFF " + firstDiff(saved, wire) + " report " + JSON.stringify(rep)); }
-  const measured = m[c.root + "Measure"](v);
-  console.log("MEASURE " + c.name + (saved !== null && measured === saved.length ? " OK" : " DIFF " + measured));
+  if (!c.refuseSave) {
+    const measured = m[c.root + "Measure"](v);
+    console.log("MEASURE " + c.name + (saved !== null && measured === saved.length ? " OK" : " DIFF " + measured));
+  }
   if (c.same !== null && c.same.length === 2) {
     const a = v[c.same[0]], b = v[c.same[1]];
     console.log("SAME " + c.name + (a !== null && a === b ? " OK" : " DIFF"));

@@ -24,7 +24,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTable, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedDecodeLayout, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
+import { FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
@@ -45,7 +45,10 @@ export const FixedTableFixedHashHi = 0x5f132092;
 // THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
 // PRE-ORDER walk of the closure in the
 // writer's declared order. Every byte is settled by the compiler.
-export const FixedTableFixedLayout = new Uint8Array([
+//
+// THE TABLE IS MODULE-PRIVATE: an importer reads a COPY through the
+// accessor below, so a write to it cannot move this realm's decode.
+const FixedTableFixedLayout = new Uint8Array([
   0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,
   0x00, 0x01, 0x00, 0x00, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0xd4, 0x04,
   0x00, 0x00, 0x1b, 0x00, 0x00, 0x00, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x04,
@@ -127,6 +130,7 @@ export const FixedTableFixedLayout = new Uint8Array([
   0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0xbc,
   0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ]);
+export function FixedTableFixedLayoutCopy() { return FixedTableFixedLayout.slice(); }
 export const FixedTableFixedLayoutBytes = 1279;
 
 // THE PREFILL: the declared defaults as a constant run of bytes. Load copies
@@ -212,6 +216,7 @@ const FixedTableFixedPrefill = new Uint8Array([
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
   0x00, 0x00, 0x00, 0x00,
 ]);
+export function FixedTableFixedPrefillCopy() { return FixedTableFixedPrefill.slice(); }
 
 // MY SIDE of the layout, five lanes per entry: the storage facts a layout
 // entry cannot carry. In C++ these are offsetof rows; the reader's own
@@ -293,13 +298,15 @@ const FixedTableFixedDst = new Int32Array([
   1228, 0, 0, 0, 0, // 73 extra
   1232, 0, 0, 0, 0, // 74 idle_ticks
 ]);
+export function FixedTableFixedDstCopy() { return FixedTableFixedDst.slice(); }
 
 // THE IDENTITY PLAN. Every entry a copy, with ADJACENT RUNS COALESCED — and
 // because the reader's own storage in this language IS the wire's layout,
 // source and destination advance together over the whole body and the walk
 // coalesces to exactly ONE run. That is the same coalescer the plan compiler
 // runs, reaching its best case rather than skipping a step.
-const FixedTableFixedIdentity = new Int32Array([0, 0, 0, 1236, 0, -1, 0, 0, 1]);
+const FixedTableFixedIdentity = new Int32Array([0, 0, 0, 1236, 0, -1, 0, 0, 1, 0, 0]);
+export function FixedTableFixedIdentityCopy() { return FixedTableFixedIdentity.slice(); }
 
 // THE KNOWN LAYOUTS (docs/FIXED-FORM-ALGORITHM.md §5.2): one entry per
 // locked layout, OLDEST FIRST, the current one LAST. A file is matched on
@@ -313,6 +320,10 @@ const FixedTableFixedIdentity = new Int32Array([0, 0, 0, 1236, 0, -1, 0, 0, 1]);
 const FixedTableFixedKnown = [
   new TableFixedKnownLayout(0x7e9ad910, 0x5f132092, FixedTableFixedLayout, 1279, 1244),
 ];
+// THE OBJECT TABLE IS FROZEN, descriptors included: an importer can hold
+// the module's own entries to their values but cannot replace one.
+for (const entry of FixedTableFixedKnown) { Object.freeze(entry); }
+Object.freeze(FixedTableFixedKnown);
 
 // THE FLOOR is one number and the lineage is one array, so "retired" is an
 // index cut and the operator's two answers stay distinct: below it a layout
@@ -325,6 +336,10 @@ export const FixedTableFixedFloor = 0;
 // and the load path cannot fail for want of a plan (§5.9 #3, §5.8 row 3).
 const FixedTableFixedLineagePlans = TableFixedLineagePlans(FixedTableFixedKnown,
   FixedTableFixedHashLo, FixedTableFixedHashHi, FixedTableFixedLayout, FixedTableFixedDst, FixedTableFixedBodyBytes);
+// THE PLAN TABLE IS FROZEN, its descriptors included, so an importer that
+// reaches it cannot replace a lane with one of its own.
+for (const lane of FixedTableFixedLineagePlans) { if (lane !== null) { Object.freeze(lane); } }
+Object.freeze(FixedTableFixedLineagePlans);
 
 // THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
 // NEVER ALLOCATES. One of these per peer; a layout whose plan does not fit is
@@ -370,11 +385,12 @@ export function FixedTableFixedSave(values, count, bytes) {
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. THE SAME LOOP EITHER WAY: there is no strict
-// flag, no fast path and no second reader to keep honest against the first,
-// which is the owner's own ruling — a form whose cost moved when a peer
-// shipped would be a cliff at exactly the moment a deployment cannot afford
-// one. Answers the records read, or -1 with the reason named in the report.
+// writer's layout otherwise. Every COMPILED plan runs the same loop; there
+// is no strict flag. THE ONE LISTED EXCEPTION (docs/SPEC-TABLES.md §3.4,
+// THE IN-PLACE IDENTITY READ): this language's identity plan is one copy of
+// the whole body, so it projects straight from the file's view with no
+// intermediate copy, and its results are held equal to the shared path's by
+// test. Answers the records read, or -1 with the reason named in the report.
 export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, report) {
   TableFixedResetReport(report);
   if (bytes === null || byteLength < 1) { report.malformed = true; return -1; }
@@ -406,8 +422,17 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   if (pick < FixedTableFixedFloor) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi); }
   const known = FixedTableFixedKnown[pick];
   if (layoutBytes !== known.layoutBytes) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
-  for (let i = 0; i < layoutBytes; i++) {
-    if (bytes[layoutAt + i] !== known.layout[i]) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
+  const srcView = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+  {
+    // THE LAYOUT COMPARE MOVES IN 32-BIT LANES, then a tail of at most three bytes.
+    const lv = known.layoutView;
+    let i = 0;
+    for (; i + 4 <= layoutBytes; i += 4) {
+      if (srcView.getUint32(layoutAt + i, true) !== lv.getUint32(i, true)) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
+    }
+    for (; i < layoutBytes; i++) {
+      if (bytes[layoutAt + i] !== known.layout[i]) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
+    }
   }
   if (plan === null) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }
   let entries = FixedTableFixedIdentity, entryCount = 1, remap = null;
@@ -438,38 +463,46 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one
   // COPY of the whole body, so the hole list is empty and the inner loop is a
   // no-op. A compiled plan that leaves a field out has that field in the list,
-  // and the declared default is what it keeps. Same loop either way. There is
-  // no identity flag in the record loop — an empty list is what skips the work.
+  // and the declared default is what it keeps. An empty list is what skips
+  // the prefill; the identity door below is §3.4's in-place read, not a hole rule.
   const holeN = TableFixedHoles(entries, entryCount, plan.cover, plan.holes);
-  // ONE VIEW OVER THE FILE, MADE ONCE PER READ AND NEVER PER RECORD: the
-  // read loop moves a run in 32-bit lanes and a DataView is what has an
-  // unaligned word move in this language (§3.4).
-  const srcView = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+  // §4.5, §5.3: stage the record loop's counters so a refusal leaves the
+  // caller's clamped and widened untouched; commit after the loop.
+  const stage = TableFixedResetReport(plan.stage);
+  const identity = entries === FixedTableFixedIdentity && holeN === 0;
   let at = layoutAt + layoutBytes;
   for (let k = 0; k < n; k++) {
     // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY
     // NAME, never a guess and never damage: nothing is decoded, no counter moves.
-    if (((bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16) | (bytes[at + 3] << 24)) >>> 0) !== hashLo ||
-        ((bytes[at + 4] | (bytes[at + 5] << 8) | (bytes[at + 6] << 16) | (bytes[at + 7] << 24)) >>> 0) !== hashHi) {
+    if (srcView.getUint32(at, true) !== hashLo || srcView.getUint32(at + 4, true) !== hashHi) {
       report.refused = TableFixedRefusal.NoLayout; return -1;
+    }
+    if (identity) {
+      FixedTableFixedDecode(values[k], srcView, at + 8, stage);
+      if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }
+      at += recordBytes;
+      continue;
     }
     for (let h = 0; h < holeN; h++) {
       const o = plan.holes[h * 2], z = plan.holes[h * 2 + 1];
       for (let i = 0; i < z; i++) { image[o + i] = FixedTableFixedPrefill[o + i]; }
     }
-    TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, report);
+    TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, stage);
     // A TEXT OP THAT REFUSED ITS CONTENT stops the read HERE, before the
     // projection: refuse is total, no counter moves and no record lands.
-    if (report.refused !== 0) { return -1; }
-    FixedTableFixedDecode(values[k], imageView, 0, report);
-    // THE IDENTITY PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): the body is
-    // one COPY, so no text op ran, and the decode is where a byte string or
-    // a wide string refuses by name.
-    if (report.refused !== 0) { return -1; }
+    if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }
+    FixedTableFixedDecode(values[k], imageView, 0, stage);
+    // THE PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): a copied run carries
+    // no text op, so the decode is where a byte string or a wide string
+    // refuses by name, here and at the in-place door alike.
+    if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }
     at += recordBytes;
   }
-  // THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, on a read that returns
-  // (§5.9 #6). On a LAWFUL lineage it lands zero, always (§5.9 #30).
+  // THE COMPILE CENSUS AND THE LOOP'S COUNTERS LAND ONCE, AFTER THE LOOP, on
+  // a read that returns (§5.3, §5.9 #6). On a LAWFUL lineage unknown and
+  // kindMismatch land zero, always (§5.9 #30).
+  report.clamped += stage.clamped;
+  report.widened += stage.widened;
   report.unknown += censusUnknown;
   report.kindMismatch += censusKind;
   return n;

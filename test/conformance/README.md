@@ -30,7 +30,9 @@ goes red everywhere localises nothing:
 | `conformance-negative-control-cs` | the C# walker, in the emitter | `cs / json-read` | `json-write` |
 | `conformance-negative-control-go` | the Go leg, in the emitter | its own surface | the rest |
 | `conformance-negative-control-go-walk` | the Go walk's field offset | `go / json-read` | `json-write` |
+| `conformance-negative-control-js-walk` | the bool arm of the generated JavaScript text reader | `js / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-java-block` | the array PITCH CHECK in the Java `open` | `java / forgery` | `block`, `block-dump` |
+| `conformance-negative-control-java-walk` | the field-key match in the Java `fromJson` | `java / json-read` | `json-write`, `wire` |
 
 Two of those rows are the reason two surfaces exist at all. The row-dump one is
 why `block-dump` is separate from `block`: `Open` reads the prologue and the
@@ -41,10 +43,12 @@ which no valid image can show you.
 
 **A PER-BACKEND WALK CONTROL, one per port with a text form**, because a
 walker's break is the backend's and not the data's:
-`conformance-negative-control-go-walk` breaks the Go walk's offset arithmetic.
-It has the same second half as every control here, and it is the point:
-`json-read` goes red and `json-write` stays green, which is what says the
-break is the READER's. (Elixir emits no text form and has no walk control;
+`conformance-negative-control-go-walk` breaks the Go walk's offset arithmetic,
+`conformance-negative-control-c` breaks the C walk's field index, and
+`conformance-negative-control-java-walk` breaks the Java `fromJson`'s field-key
+match. Each has the same second half as every control here, and it is the
+point: `json-read` goes red and `json-write` stays green, which is what says
+the break is the READER's. (Elixir emits no text form and has no walk control;
 schema#515 brings its wire.)
 
 ## The shape
@@ -159,7 +163,7 @@ One process per surface, so a runtime starts once rather than once per case.
 | `retain-save` | the rows that name a save | the same round trip, the SAVED BYTES, one body after another | the pinned saves, back to back |
 | `json-read` | `instance` | FromJson `json/<name>.json`, Save, the bytes | the wire golden |
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
-| `json-hostile` | `json-hostile` | FromJson `<tree>/<root>.json`, the report as `u,k,w,c,d,m,verdict\n`, or `refused\n` | the verdict in the manifest |
+| `json-hostile` | `json-hostile` | FromJson `<tree>/<root>.json`, the report as `u,k,w,c,d,m,verdict\n`, or `refused\n` | the verdict in the manifest, or the row's uncarried verdict for an exempt port |
 | `cook` | `cook` | Open the cook, the canonical node dump | `cook/<case>.dump` |
 | `cook-write` | `cook-write` | Load the instance's wire, `Cook` it in each byte order, the bytes, as `<instance>` and `<instance>-be` | the two files `schema cook` wrote |
 | `cook-foreign` | `cook` | byte-swap the file's MAGIC word, Open, `open\n` or `refuse\n` | `refuse\n` |
@@ -173,6 +177,20 @@ One process per surface, so a runtime starts once rather than once per case.
 
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
+
+**A `json-hostile` ROW MAY EXEMPT A PORT THAT HAS NOT TAKEN ITS RULE YET**
+(docs/SPEC-TABLES.md §16.3). The manifest line
+`json-hostile <case> <unit> <root> <tree> <verdict> carried-by=<ports> uncarried=<verdict>`
+states the standard's answer and the ports that carry it; a port named in
+`carried-by` owes `<verdict>`, and every other port still owes the `uncarried`
+verdict its behaviour gives, because the rule was held first in Go and every
+other backend keeps its behaviour until its port. The harness scores each port
+against the answer it owes and prints the exemption by name — it never skips
+the row. `str-illformed-at-bound` is the first such row: Go carries the
+`string_not_utf8` refusal and C++ keeps `0,0,0,1,0,false,read`. The zero-escape
+rows are the refusal pair: Go answers `refused` and another port keeps
+`0,0,0,0,0,false,read`, because it stores the zero byte as text. The mark is for
+reuse: the lone-surrogate rows take it as their ports land.
 
 **`message` IS THE ONE SURFACE THAT READS TWO FILES**, because a message's id
 table is somewhere else (docs/SPEC-TABLES.md §3.3): the CONNECTION's
@@ -527,3 +545,11 @@ preflight or compare region extents. In particular, an int32 list count-cap
 refusal stops without inventing the region reader's malformed-data event.
 `--builder` cannot be combined with `--message` or `--retain`. The existing
 region and retention arms retain their measurement and bounds checks.
+
+For an instance with a Go writer refusal, the manifest may carry the
+go-refusal=<reason> marker. On that Go wire row the driver writes the
+case.absent file with the exact reason bytes, and the harness counts one named
+absence while rejecting emitted bytes or an empty/wrong reason. Other language
+legs keep comparing their wire bytes with the golden. The blob_shared row uses
+this marker because one blob node named from two slots is refused by Go
+writers (blob_shared, SPEC-TABLES sections 2.5 and 16.7).

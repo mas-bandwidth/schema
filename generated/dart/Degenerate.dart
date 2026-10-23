@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xeb26c970fde3fd71
 
 import 'dart:typed_data';
+
+import 'Types.dart' show Vec3, initVec3, zeroVec3;
 
 // One 8-byte conversion scratch under overlaid typed-data views — single
 // threaded per isolate, always consumed in the same operation that fills it.
@@ -1099,6 +1101,154 @@ bool readTrioSole(TrioSole value, ByteData view, int numBits) {
 // measureTrioSole is the exact wire bits writeTrioSole would produce for value —
 // trusted like the writer; static runs fold to literals at generation time.
 int measureTrioSole(TrioSole value) => 64;
+
+// type Vec3Sole
+final class Vec3Sole {
+  final Vec3 v = Vec3();
+}
+
+// vec3SoleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// vec3SoleMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const int vec3SoleMaxBits = 192;
+const int vec3SoleMaxBytes = 24;
+
+// The §5 zero form: all-zero storage; specified defaults live only in
+// construction.
+void zeroVec3Sole(Vec3Sole value) {
+  zeroVec3(value.v);
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initVec3Sole(Vec3Sole value) {
+  initVec3(value.v);
+}
+
+// writeVec3Sole packs value into view — the trusted writer (contracts asserted,
+// compiled out without --enable-asserts). The buffer behind view must hold
+// vec3SoleMaxBytes. Returns the bytes written.
+int writeVec3Sole(Vec3Sole value, ByteData view) {
+  assert(view.lengthInBytes % 8 == 0);
+  assert(view.lengthInBytes >= vec3SoleMaxBytes);
+  var scratch = 0;
+  var scratchBits = 0;
+  var wordIndex = 0;
+  var v = 0;
+  v = _float64BitsFromDouble(value.v.x);
+  scratch |= v << scratchBits;
+  scratchBits += 64;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (64 - scratchBits);
+  }
+  v = _float64BitsFromDouble(value.v.y);
+  scratch |= v << scratchBits;
+  scratchBits += 64;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (64 - scratchBits);
+  }
+  v = _float64BitsFromDouble(value.v.z);
+  scratch |= v << scratchBits;
+  scratchBits += 64;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (64 - scratchBits);
+  }
+  if (scratchBits != 0) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+  }
+  return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+}
+
+// readVec3Sole decodes value from the first numBits of view — the family read
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// hostile bytes never throw. No slack past the payload is required.
+bool readVec3Sole(Vec3Sole value, ByteData view, int numBits) {
+  if (numBits > view.lengthInBytes * 8) {
+    return false; // the payload cannot exceed the buffer behind view
+  }
+  // the final 64-bit window, assembled once so every load stays inside
+  // the buffer (serialize.dart's own no-slack reader stance)
+  var tailBase = view.lengthInBytes - 8;
+  var tailWord = 0;
+  if (tailBase >= 0) {
+    tailWord = view.getUint64(tailBase, Endian.little);
+  } else {
+    tailBase = 0;
+    for (var i = view.lengthInBytes - 1; i >= 0; i--) {
+      tailWord = (tailWord << 8) | view.getUint8(i);
+    }
+  }
+  var bitsRead = 0;
+  var window = 0;
+  var v = 0;
+  var lo = 0;
+  if (bitsRead + 192 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+  } else {
+    window = tailWord >>> (bitsRead - tailBase * 8);
+  }
+  v = window & 0xffffffff;
+  bitsRead += 32;
+  lo = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+  } else {
+    window = tailWord >>> (bitsRead - tailBase * 8);
+  }
+  v = window & 0xffffffff;
+  bitsRead += 32;
+  lo |= v << 32;
+  value.v.x = _doubleFromFloat64Bits(lo);
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+  } else {
+    window = tailWord >>> (bitsRead - tailBase * 8);
+  }
+  v = window & 0xffffffff;
+  bitsRead += 32;
+  lo = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+  } else {
+    window = tailWord >>> (bitsRead - tailBase * 8);
+  }
+  v = window & 0xffffffff;
+  bitsRead += 32;
+  lo |= v << 32;
+  value.v.y = _doubleFromFloat64Bits(lo);
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+  } else {
+    window = tailWord >>> (bitsRead - tailBase * 8);
+  }
+  v = window & 0xffffffff;
+  bitsRead += 32;
+  lo = v;
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+  } else {
+    window = tailWord >>> (bitsRead - tailBase * 8);
+  }
+  v = window & 0xffffffff;
+  bitsRead += 32;
+  lo |= v << 32;
+  value.v.z = _doubleFromFloat64Bits(lo);
+  return true;
+}
+
+// measureVec3Sole is the exact wire bits writeVec3Sole would produce for value —
+// trusted like the writer; static runs fold to literals at generation time.
+int measureVec3Sole(Vec3Sole value) => 192;
 
 // type TrioFirst
 final class TrioFirst {

@@ -43,37 +43,31 @@
 package main
 
 import (
-	"os"
-	"strings"
 	"testing"
 
 	"tblp3"
 )
 
-// scanGeneratedCode reads the generated P3Table.go file and returns true if the
-// layout_record_too_large check is present in the embedded runtime.
+// scanGeneratedCode reads the generated per-package runtime file Tblp3Table.go
+// and returns true if the layout_record_too_large check is present.
 func scanGeneratedCode(t *testing.T) bool {
 	t.Helper()
-	data, err := os.ReadFile("../../../../build/tables-generated-go/p3/P3Table.go")
-	if err != nil {
-		t.Fatalf("cannot read generated code: %v", err)
-	}
-	src := string(data)
+	src := generatedRuntimeSource(t, "../../../../build/tables-generated-go/p3/Tblp3Table.go")
 
 	// The runtime string that names the refusal.
-	if !strings.Contains(src, "layout_record_too_large") {
+	if !runtimeHas(src, "layout_record_too_large") {
 		return false
 	}
 	// The tableFixedPush check: the tooLarge flag set when srcEnd > c.record.
-	if !strings.Contains(src, "c.tooLarge = true") {
+	if !runtimeHas(src, "c.tooLarge = true") {
 		return false
 	}
 	// The check uses tableFixedSrcEnd, not only the ceiling constant.
-	if !strings.Contains(src, "tableFixedSrcEnd") {
+	if !runtimeHas(src, "tableFixedSrcEnd") {
 		return false
 	}
 	// The compile return path: -3 is layout_record_too_large.
-	if !strings.Contains(src, `return -3`) {
+	if !runtimeHas(src, `return -3`) {
 		return false
 	}
 	return true
@@ -91,17 +85,13 @@ func TestRowR14(t *testing.T) {
 	//    c.record (the writer's declared root size), not tableFixedRecordMaxBytes,
 	//    in the tableFixedPush guard. This is the fix-3 distinction from R6.
 	{
-		data, err := os.ReadFile("../../../../build/tables-generated-go/p3/P3Table.go")
-		if err != nil {
-			t.Fatalf("cannot read generated code: %v", err)
-		}
-		src := string(data)
+		src := generatedRuntimeSource(t, "../../../../build/tables-generated-go/p3/Tblp3Table.go")
 		// The fix-3 check: c.record as the bound, not the ceiling constant.
-		if !strings.Contains(src, "c.record != 0 && tableFixedSrcEnd(e) > uint64(c.record)") {
+		if !runtimeHas(src, "c.record != 0 && tableFixedSrcEnd(e) > uint64(c.record)") {
 			t.Fatal("R14: the tableFixedPush check does not use c.record as the bound")
 		}
 		// The ceiling check is a DIFFERENT line (e.Size > tableFixedRecordMaxBytes).
-		if !strings.Contains(src, "e.Size > tableFixedRecordMaxBytes") {
+		if !runtimeHas(src, "e.Size > tableFixedRecordMaxBytes") {
 			t.Fatal("R14: the ceiling check should also be present (R6's territory)")
 		}
 		t.Log("PASS fix-3-distinction: tableFixedPush uses c.record, not the ceiling, as the entry bound")
@@ -110,14 +100,10 @@ func TestRowR14(t *testing.T) {
 	// 3. THE COMPILE RETURN PATH: -3 means layout_record_too_large (not -1
 	//    plan_too_large, not -2 the reader's own layout).
 	{
-		data, err := os.ReadFile("../../../../build/tables-generated-go/p3/P3Table.go")
-		if err != nil {
-			t.Fatalf("cannot read generated code: %v", err)
-		}
-		src := string(data)
-		if !strings.Contains(src, "c.tooLarge {\n\t\treturn -3") &&
-			!strings.Contains(src, "c.tooLarge {\r\n\t\treturn -3") &&
-			!strings.Contains(src, "c.tooLarge {\n\t\treturn -3") {
+		src := generatedRuntimeSource(t, "../../../../build/tables-generated-go/p3/Tblp3Table.go")
+		if !runtimeHas(src, "c.tooLarge {\n\t\treturn -3") &&
+			!runtimeHas(src, "c.tooLarge {\r\n\t\treturn -3") &&
+			!runtimeHas(src, "c.tooLarge {\n\t\treturn -3") {
 			t.Fatal("R14: tableFixedCompile does not return -3 on tooLarge")
 		}
 		t.Log("PASS compile-return: tableFixedCompile returns -3 (layout_record_too_large) on tooLarge")
@@ -126,12 +112,8 @@ func TestRowR14(t *testing.T) {
 	// 4. THE LINEAGE PATH: tableFixedLineagePlans maps -3 to the refusal
 	//    string.
 	{
-		data, err := os.ReadFile("../../../../build/tables-generated-go/p3/P3Table.go")
-		if err != nil {
-			t.Fatalf("cannot read generated code: %v", err)
-		}
-		src := string(data)
-		if !strings.Contains(src, `out[i].Why = "layout_record_too_large"`) {
+		src := generatedRuntimeSource(t, "../../../../build/tables-generated-go/p3/Tblp3Table.go")
+		if !runtimeHas(src, "out[i].Why = TableRefuseLayoutRecordTooLarge.Error()") {
 			t.Fatal("R14: tableFixedLineagePlans does not map -3 to layout_record_too_large")
 		}
 		t.Log("PASS lineage-path: tableFixedLineagePlans maps -3 to layout_record_too_large")
@@ -170,4 +152,38 @@ func TestRowR14(t *testing.T) {
 		}
 		t.Log("PASS smoke: ChainFixedLoad round-trips a valid file")
 	}
+}
+
+// TestRowR14LayoutRecordTooLargeByName pins the emission of the
+// layout_record_too_large check in the generated per-package runtime
+// (Tblp3Table.go). The check fires during plan compilation (tableFixedPush /
+// tableFixedCompile), which runs at package init and is cached; the tblp3
+// identity and lineage plans are all well-formed, so the refusal cannot be
+// reached from the exported load surface from outside the package. The test
+// therefore asserts the new spelling of the check in the emitted runtime (the
+// card's fallback: search for the new spelling where no behaviour can be
+// reached from outside).
+func TestRowR14LayoutRecordTooLargeByName(t *testing.T) {
+	t.Parallel()
+	src := generatedRuntimeSource(t, "../../../../build/tables-generated-go/p3/Tblp3Table.go")
+
+	// The refusal string the runtime emits.
+	if !runtimeHas(src, "layout_record_too_large") {
+		t.Fatal("layout_record_too_large string not emitted in the generated runtime")
+	}
+	// The tableFixedPush fix-3 guard: an entry whose source extent reaches past
+	// the writer's declared record (c.record) is flagged tooLarge — not only the
+	// 65536 ceiling.
+	if !runtimeHas(src, "c.record != 0 && tableFixedSrcEnd(e) > uint64(c.record)") {
+		t.Fatal("tableFixedPush does not guard the writer's declared record via c.record")
+	}
+	// Compile returns -3 (layout_record_too_large) when tooLarge.
+	if !runtimeHas(src, "c.tooLarge {\n\t\treturn -3") {
+		t.Fatal("tableFixedCompile does not return -3 on tooLarge")
+	}
+	// The lineage plans map the refusal by name.
+	if !runtimeHas(src, "out[i].Why = TableRefuseLayoutRecordTooLarge.Error()") {
+		t.Fatal("tableFixedLineagePlans does not map -3 to layout_record_too_large")
+	}
+	t.Log("PASS layout_record_too_large spelled in the generated runtime (Tblp3Table.go)")
 }

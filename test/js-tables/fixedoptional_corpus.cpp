@@ -129,8 +129,8 @@ int main( int argc, char ** argv )
         four[0].opt_present = true;
         four[0].opt.v = 11;
         set_text( four[0].opt.tag, four[0].opt.tag_length, "op" );
-        four[0].num_present = true;
-        four[0].num = 12;
+        four[0].number_present = true;
+        four[0].number = 12;
         four[0].mark_present = true;
         four[0].mark = Grade::Gold;
         four[0].wrap.n = 13;
@@ -162,8 +162,8 @@ int main( int argc, char ** argv )
         set_text( four[2].name, four[2].name_length, "mix" );
         four[2].plain = 301;
         four[2].opt_present = false;
-        four[2].num_present = true;
-        four[2].num = -302;
+        four[2].number_present = true;
+        four[2].number = -302;
         four[2].mark_present = true;
         four[2].mark = Grade::Bronze;
         four[2].wrap.n = 303;
@@ -180,7 +180,7 @@ int main( int argc, char ** argv )
         four[3].opt_present = true;
         four[3].opt.v = 402;
         set_text( four[3].opt.tag, four[3].opt.tag_length, "r" );
-        four[3].num_present = false;
+        four[3].number_present = false;
         four[3].mark_present = false;
         four[3].wrap.n = 403;
         four[3].wrap.leaf_present = false;

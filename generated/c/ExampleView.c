@@ -688,6 +688,12 @@ static const TableFieldInfo schema_example_vec3_fields_[] = {
 
 const TableTypeInfo schema_example_vec3_info_ = { "Vec3", (uint32_t) sizeof( Vec3 ), 3, schema_example_vec3_fields_, schema_example_vec3_reset_raw_, TableDocNone, 0, NULL };
 
+static const TableFieldInfo schema_example_vec3_sole_fields_[] = {
+    { "v", NULL, "Vec3", 0x0000000000000000ull, 13, 0, 0, 0, 0, (uint32_t) offsetof( Vec3Sole, v ), (uint32_t) sizeof( ( (Vec3Sole *) 0 )->v ), 0xffffffffu, 0xffffffffu, &schema_example_vec3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+};
+
+const TableTypeInfo schema_example_vec3_sole_info_ = { "Vec3Sole", (uint32_t) sizeof( Vec3Sole ), 1, schema_example_vec3_sole_fields_, schema_example_vec3_sole_reset_raw_, TableDocNone, 0, NULL };
+
 static const TableFieldInfo schema_example_w1_fields_[] = {
     { "items", NULL, "uint8", 0x0000000000000000ull, 6, 1, 1, 0, 20, (uint32_t) offsetof( W1, items ), (uint32_t) sizeof( ( (W1 *) 0 )->items[0] ), (uint32_t) offsetof( W1, items_count ), 0xffffffffu, NULL, 1, 0.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
 };
@@ -891,6 +897,7 @@ const UnitViewInfo * schema_example_unit_view_(void)
         { "TrioStraddle", "Degenerate.schema", 0, &schema_example_trio_straddle_info_, TableDocNone, 0, NULL },
         { "Vec2", "Degenerate.schema", 0, &schema_example_vec2_info_, TableDocNone, 0, NULL },
         { "Vec3", "Types.schema", 0, &schema_example_vec3_info_, TableDocNone, 0, NULL },
+        { "Vec3Sole", "Degenerate.schema", 0, &schema_example_vec3_sole_info_, TableDocNone, 0, NULL },
         { "W1", "Clauses.schema", 0, &schema_example_w1_info_, TableDocNone, 0, NULL },
         { "W13", "Clauses.schema", 0, &schema_example_w13_info_, TableDocNone, 0, NULL },
         { "W17", "Clauses.schema", 0, &schema_example_w17_info_, TableDocNone, 0, NULL },
@@ -923,8 +930,8 @@ const UnitViewInfo * schema_example_unit_view_(void)
         { "TickRate", "Wire.schema", "float32", 1, 0, 60.0, TableDocNone, 0, NULL },
         { "VelocityUnits", "Constants.schema", "int64", 0, INT64_C(1024), 0.0, TableDocNone, 0, NULL },
     };
-    static const UnitViewInfo info = { "example", 0x8656ae68c06b97a7ull,
-        73, types,
+    static const UnitViewInfo info = { "example", 0xeb26c970fde3fd71ull,
+        74, types,
         0, NULL,
         6, enums,
         2, flags_decls,

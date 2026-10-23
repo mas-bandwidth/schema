@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"encoding/hex"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 // The C++ CatalogLoadMeasure returns 400 bytes (112 attribution) for this
@@ -46,10 +50,10 @@ func TestFileFuzzCountCapIsFramingRefusal(t *testing.T) {
 	if !answer.measureRefused || answer.bytes != -1 || answer.report.Malformed {
 		t.Fatalf("count cap: %+v", answer)
 	}
-	if verdict := wireVerdict(root, legReply{measure: -1}, answer); verdict != "" {
+	if verdict := wireVerdict(root, legReply{measure: -1}, answer, len(wire)); verdict != "" {
 		t.Fatal(verdict)
 	}
-	if verdict := wireVerdict(root, legReply{loaded: true, measure: 1024}, answer); verdict == "" {
+	if verdict := wireVerdict(root, legReply{loaded: true, measure: 1024}, answer, len(wire)); verdict == "" {
 		t.Fatal("accepted loaded count above the cap")
 	}
 }
@@ -79,13 +83,86 @@ func TestBuilderFuzzChecksCountRefusalWithoutRegionPreflight(t *testing.T) {
 				t.Fatalf("builder count cap: %+v", answer)
 			}
 			reply := legReply{loaded: false, measure: -1, report: answer.report, saveFail: true}
-			if verdict := wireVerdict(root, reply, answer); verdict != "" {
+			if verdict := wireVerdict(root, reply, answer, len(wire)); verdict != "" {
 				t.Fatal(verdict)
 			}
 			reply.report.Malformed = true
-			if verdict := wireVerdict(root, reply, answer); verdict == "" {
+			if verdict := wireVerdict(root, reply, answer, len(wire)); verdict == "" {
 				t.Fatal("builder gate ignored an invented region recovery event")
 			}
 		})
+	}
+}
+
+// TestWireFuzzZeroSeedRosterRefusesByName drives the wire-fuzz roster build
+// over an empty roster — a manifest that names no seed — and asserts the
+// harness refuses by name with no panic (docs/SPEC-TABLES.md §4.2, the wire
+// fuzzer; test/conformance/README.md). This is the zero-roster defect: before,
+// the harness's empty-roster path was a panic rather than a named refusal.
+func TestWireFuzzZeroSeedRosterRefusesByName(t *testing.T) {
+	t.Parallel()
+	manifest := filepath.Join(t.TempDir(), "empty.MANIFEST.txt")
+	if err := os.WriteFile(manifest, []byte("unit cards tables/cards\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := ReadManifest(manifest, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := wireFuzzOptions{vectors: ""}
+	seeds, roots, _, _, err := buildWireFuzzRoster(m, opts)
+	if err == nil {
+		t.Fatalf("empty roster was not refused: seeds=%d roots=%d", len(seeds), len(roots))
+	}
+	if got := err.Error(); !strings.Contains(got, "0 seeds over 0 roots: the roster is empty") {
+		t.Fatalf("refusal is not the named empty-roster one: %s", got)
+	}
+}
+
+// fakeClock is an injected timer for the driver-reply deadline, firing the
+// After channel when the test signals the deadline passed. It never uses real
+// time.
+type fakeClock struct {
+	afterCh chan time.Time
+}
+
+func (f *fakeClock) After(time.Duration) <-chan time.Time { return f.afterCh }
+
+// TestWireFuzzDriverStall pins the hang's cause at the layer this card fixed
+// it: the harness's reply read had no bound, so a driver that stopped
+// answering hung the run forever. Over a fake driver on io.Pipe (no process,
+// no socket, no real time), the injected clock passing the deadline must turn
+// the stall into a named failure (test/conformance/README.md, "The wire-fuzz
+// driver").
+func TestWireFuzzDriverStall(t *testing.T) {
+	t.Parallel()
+	stdinR, stdinW := io.Pipe()
+	stdoutR, stdoutW := io.Pipe()
+	defer stdinR.Close()
+	defer stdoutW.Close()
+	leg := &wireLeg{
+		stdin:  stdinW,
+		stdout: bufio.NewReader(stdoutR),
+		known:  []bool{true},
+	}
+	// a fake driver that drains its stdin but never answers a reply
+	go func() {
+		defer stdinW.Close()
+		_, _ = io.Copy(io.Discard, stdinR)
+	}()
+	clk := &fakeClock{afterCh: make(chan time.Time)}
+	result := make(chan error, 1)
+	go func() {
+		_, err := leg.receiveWithDeadline(clk)
+		result <- err
+	}()
+	// the reply never comes; the injected clock passes the deadline
+	close(clk.afterCh)
+	err := <-result
+	if err == nil {
+		t.Fatal("a stalled driver returned no error")
+	}
+	if !strings.Contains(err.Error(), "stalled") {
+		t.Fatalf("the stall is not named: %v", err)
 	}
 }

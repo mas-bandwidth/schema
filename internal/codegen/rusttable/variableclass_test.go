@@ -72,6 +72,10 @@ func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
 		// refuseText: the oracle's writer REFUSES this value (a blob two
 		// slots name has no text spelling, §16.7), and so must the leg's
 		refuseText bool
+		// shared: how many extra namings of one blob the oracle's tolerant
+		// read counts (docs/SPEC-TABLES.md §2.5); nonzero, the leg must count
+		// the same and its writer must refuse the value by name, blob_shared
+		shared uint64
 	}
 	type vcUnit struct {
 		module string
@@ -124,14 +128,23 @@ func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
 	// Go oracle produces.
 	for _, u := range units {
 		m := tabletext.NewModel(u.unit)
-		for _, c := range u.cases {
+		for i := range u.cases {
+			c := &u.cases[i]
 			inst := m.New(m.Lookup(c.root))
 			var rep tabletext.Report
 			if ok, err := tablewire.Decode(m, inst, c.wire, &rep); !ok || err != nil {
 				t.Fatalf("%s: the oracle did not decode its own wire: %v", c.name, err)
 			}
 			again, err := tablewire.Encode(m, inst)
-			if err != nil || !bytes.Equal(again, c.wire) {
+			c.shared = uint64(rep.BlobShared)
+			if rep.BlobShared > 0 {
+				// a blob two slots name is refused by every writer (docs/SPEC-TABLES.md
+				// §2.5): the oracle's tolerant read keeps the one node, and its encode
+				// refuses by name rather than reproducing the committed wire
+				if err == nil || !strings.Contains(err.Error(), "blob_shared") {
+					t.Fatalf("%s: the oracle's encode of a shared blob = %v, want the named refusal blob_shared", c.name, err)
+				}
+			} else if err != nil || !bytes.Equal(again, c.wire) {
 				t.Fatalf("%s: the oracle does not re-encode the committed wire (%v)", c.name, err)
 			}
 			if c.refuseText {
@@ -248,6 +261,20 @@ func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
 			if err := os.WriteFile(wirePath, c.wire, 0o600); err != nil {
 				t.Fatal(err)
 			}
+			snake := ir.RustSnake(c.root)
+			if c.shared > 0 {
+				// THE SHARED BLOB (§2.5): the tolerant read keeps the one node
+				// and counts each extra naming; the writer refuses by name
+				want = append(want, "SHARED "+c.name+" OK")
+				fmt.Fprintf(&main, "    shared_case!(%q, %q, crate::%s::%s, %s_load, %s_save_checked, %d);\n",
+					c.name, wirePath, u.module, table, snake, snake, c.shared)
+				if c.refuseText {
+					want = append(want, "JSONREFUSE "+c.name+" OK")
+					fmt.Fprintf(&main, "    refuse_case!(%q, %q, crate::%s::%s, %s_load, %s_to_json_checked);\n",
+						c.name, wirePath, u.module, table, snake, snake)
+				}
+				continue
+			}
 			jsonPath := "None"
 			want = append(want, "WIRE "+c.name+" OK")
 			if c.text != nil {
@@ -258,7 +285,6 @@ func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
 				jsonPath = fmt.Sprintf("Some(%q)", p)
 				want = append(want, "JSONW "+c.name+" OK", "JSONR "+c.name+" OK")
 			}
-			snake := ir.RustSnake(c.root)
 			if c.refuseText {
 				want = append(want, "JSONREFUSE "+c.name+" OK")
 				fmt.Fprintf(&main, "    refuse_case!(%q, %q, crate::%s::%s, %s_load, %s_to_json_checked);\n",
@@ -478,6 +504,22 @@ macro_rules! run_case {
                     }
                 }
             }
+        }
+    }};
+}
+
+macro_rules! shared_case {
+    ($case:expr, $wire:expr, $m:path, $load:ident, $save_checked:ident, $count:expr) => {{
+        use $m as table;
+        let wire = std::fs::read($wire).unwrap();
+        let mut r = Default::default();
+        match table::$load(&wire, &mut r) {
+            None => println!("SHARED {} LOAD REFUSED", $case),
+            Some(v) => match table::$save_checked(&v) {
+                Err(why) if why == "blob_shared" && r.blob_shared == $count && !r.malformed => println!("SHARED {} OK", $case),
+                Err(why) => println!("SHARED {} REFUSED {} counted {}", $case, why, r.blob_shared),
+                Ok(b) => println!("SHARED {} WROTE {} bytes counted {}", $case, b.len(), r.blob_shared),
+            },
         }
     }};
 }

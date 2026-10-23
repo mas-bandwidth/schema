@@ -117,13 +117,32 @@ func New() *Compiler {
 // them all reaches it with errors.AsType.
 type Diagnostics []error
 
-// Error joins the diagnostics one per line.
+// HasSection reports whether any diagnostic cites a spec section (a "§"): a
+// refusal batch is dated once, by one version line, never per diagnostic.
+func (d Diagnostics) HasSection() bool {
+	for _, e := range d {
+		if strings.Contains(e.Error(), "§") {
+			return true
+		}
+	}
+	return false
+}
+
+// Error joins the diagnostics one per line, and appends the build's version
+// line when any diagnostic cites a spec section: the section is cited as it
+// stands in the build that printed the refusal, so a message pasted from a
+// stale binary dates itself instead of contradicting the page as it reads
+// today. The version rides once, at the end, never per diagnostic.
 func (d Diagnostics) Error() string {
 	msgs := make([]string, 0, len(d))
 	for _, e := range d {
 		msgs = append(msgs, e.Error())
 	}
-	return strings.Join(msgs, "\n")
+	s := strings.Join(msgs, "\n")
+	if d.HasSection() {
+		s += "\nschema " + version.Version()
+	}
+	return s
 }
 
 // Load gathers the given *.schema files into one compilation unit (SPEC §3.2):

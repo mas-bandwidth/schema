@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xeb26c970fde3fd71
 
 package example
 
@@ -108,7 +108,6 @@ const (
 	DefaultChoiceTypeNone   DefaultChoiceType = 0
 	DefaultChoiceTypeFirst  DefaultChoiceType = 1
 	DefaultChoiceTypeSecond DefaultChoiceType = 2
-	DefaultChoiceTypeCount  DefaultChoiceType = 2 // the declared variant count (SPEC §4.2)
 	DefaultChoiceTypeMax    DefaultChoiceType = 2 // the exported extent (SPEC §4.2)
 )
 
@@ -271,7 +270,6 @@ const (
 	DefaultBulkChoiceTypeNone   DefaultBulkChoiceType = 0
 	DefaultBulkChoiceTypeFirst  DefaultBulkChoiceType = 1
 	DefaultBulkChoiceTypeSecond DefaultBulkChoiceType = 2
-	DefaultBulkChoiceTypeCount  DefaultBulkChoiceType = 2 // the declared variant count (SPEC §4.2)
 	DefaultBulkChoiceTypeMax    DefaultBulkChoiceType = 2 // the exported extent (SPEC §4.2)
 )
 

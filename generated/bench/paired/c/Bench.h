@@ -362,6 +362,30 @@ typedef struct MixedEvent {
 #define MIXED_EVENT_MAX_BITS 30   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
 #define MIXED_EVENT_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
 
+/* Selectors for MixedEvent: each sets the tag and initializes the arm together,
+   the arm with its declared defaults as a read does (SPEC §4.8), and returns
+   the fresh arm to populate; a payload-free arm's selector sets the tag alone. */
+static SCHEMA_UNUSED MixedHitEvent * mixed_event_select_hit( MixedEvent * value )
+{
+    value->type = MIXED_EVENT_TYPE_HIT;
+    memset( &value->as.hit, 0, sizeof( value->as.hit ) );
+    return &value->as.hit;
+}
+
+static SCHEMA_UNUSED MixedChatEvent * mixed_event_select_chat( MixedEvent * value )
+{
+    value->type = MIXED_EVENT_TYPE_CHAT;
+    memset( &value->as.chat, 0, sizeof( value->as.chat ) );
+    return &value->as.chat;
+}
+
+static SCHEMA_UNUSED MixedPickupEvent * mixed_event_select_pickup( MixedEvent * value )
+{
+    value->type = MIXED_EVENT_TYPE_PICKUP;
+    memset( &value->as.pickup, 0, sizeof( value->as.pickup ) );
+    return &value->as.pickup;
+}
+
 
 /* type BenchMixed */
 typedef struct BenchMixed {

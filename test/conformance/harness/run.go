@@ -40,7 +40,13 @@ type result struct {
 	// so about the rest, which is a missing FEATURE per case rather than a
 	// failing test — the same distinction the surface-level absence draws, at
 	// the grain the corpus now needs (test/conformance/README.md).
-	missing  int
+	missing int
+	// named counts the cases among missing that a leg answered with the
+	// row's NAMED WRITER REFUSAL (an instance's go-refusal= marker): every
+	// writer refuses the value by that name (docs/SPEC-TABLES.md §2.5), so the
+	// answer is the refusal and not a feature the leg lacks, and the reference
+	// leg may give it.
+	named    int
 	failures []string
 }
 
@@ -219,6 +225,25 @@ func deriveManifest(m *Manifest, path string) error {
 type expectation struct {
 	name string // the file the driver writes
 	want []byte
+}
+
+// hostileExpectations is the answer each port owes the hostile battery: the
+// standard's verdict from a port the row names in carried-by, and the row's
+// uncarried verdict from every other port, which still answers with the
+// behaviour it had before the ruling. A row with no mark is owed by every port
+// as the standard states it. The exemptions come back beside the expectations
+// so a run prints them rather than skipping the row in silence.
+func hostileExpectations(m *Manifest, lang string) ([]expectation, []string) {
+	out := make([]expectation, 0, len(m.Hostiles))
+	var exemptions []string
+	for _, h := range m.Hostiles {
+		out = append(out, expectation{h.Name, []byte(h.VerdictFor(lang) + "\n")})
+		if !h.Carries(lang) && h.Uncarried != "" {
+			exemptions = append(exemptions, fmt.Sprintf("%s / json-hostile / %s: the row is carried by %s; %s keeps %s (docs/SPEC-TABLES.md §16.3)",
+				lang, h.Name, strings.Join(h.CarriedBy, ","), lang, h.Uncarried))
+		}
+	}
+	return out, exemptions
 }
 
 func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDir string) ([]expectation, error) {
@@ -434,6 +459,12 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 		want[s] = e
 	}
 
+	wireRefusals := map[string]Instance{}
+	for _, instance := range m.Instances {
+		if instance.GoWireRefusal != "" {
+			wireRefusals[instance.Name] = instance
+		}
+	}
 	results := map[string]map[string]*result{}
 	var langs []string
 	for i, d := range drivers {
@@ -465,7 +496,12 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 			return false, fmt.Errorf("%s: %w", d.lang, err)
 		}
 		for _, s := range surfaces {
-			r := &result{total: len(want[s])}
+			legWant := want[s]
+			var exemptions []string
+			if s == "json-hostile" {
+				legWant, exemptions = hostileExpectations(m, d.lang)
+			}
+			r := &result{total: len(legWant)}
 			results[d.lang][s] = r
 			if !listed[s] {
 				r.absent = true
@@ -496,34 +532,80 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 				r.failures = append(r.failures, fmt.Sprintf("the driver exited %d\n%s", code, indent(stderr, "    ")))
 				continue
 			}
-			for _, e := range want[s] {
-				got, err := os.ReadFile(filepath.Join(out, e.name))
-				if err != nil {
-					if _, absent := os.Stat(filepath.Join(out, e.name+".absent")); absent == nil {
-						// the driver SAID it cannot answer this case, which is
-						// a feature it lacks and not a test it failed
-						r.missing++
-						continue
-					}
-					r.failures = append(r.failures, fmt.Sprintf("%s: the driver wrote nothing", e.name))
-					continue
-				}
-				if !bytes.Equal(got, e.want) {
-					r.failures = append(r.failures, describeDiff(e.name, e.want, got))
-					continue
-				}
-				r.pass++
+			for _, line := range exemptions {
+				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
-			if reference && r.missing > 0 {
+			for _, e := range legWant {
+				scoreAnswer(d.lang, s, out, e, wireRefusals[e.name], r)
+			}
+			if reference && r.missing > r.named {
 				r.failures = append(r.failures, fmt.Sprintf(
 					"the REFERENCE leg answered ABSENT for %d case(s) — an absence here is the corpus "+
 						"losing its own expectation, not a missing feature; the reference answers every case "+
-						"it registers a surface for", r.missing))
+						"it registers a surface for", r.missing-r.named))
 			}
 		}
 	}
 
 	return report(w, langs, results), nil
+}
+
+// scoreAnswer scores one case written by a leg. The blob-shared marker
+// changes that one wire expectation from bytes to a named writer refusal, for
+// Go and for every port refused-by= names (inst.WireRefusal); inst is the zero
+// Instance for a case that carries no marker.
+func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *result) {
+	answer := filepath.Join(out, e.name)
+	if goWireRefusal := inst.WireRefusal(lang); surface == "wire" && goWireRefusal != "" {
+		if _, err := os.Stat(answer); err == nil {
+			r.failures = append(r.failures, fmt.Sprintf("%s: expected named writer refusal %q, got bytes", e.name, goWireRefusal))
+			return
+		} else if !errors.Is(err, os.ErrNotExist) {
+			r.failures = append(r.failures, fmt.Sprintf("%s: checking wire answer: %v", e.name, err))
+			return
+		}
+		marker := answer + ".absent"
+		reason, err := os.ReadFile(marker)
+		if err != nil {
+			r.failures = append(r.failures, fmt.Sprintf("%s: expected named absence %q, driver wrote nothing", e.name, goWireRefusal))
+			return
+		}
+		if string(reason) != goWireRefusal {
+			r.failures = append(r.failures, fmt.Sprintf("%s: absent reason %q, want %q", e.name, string(reason), goWireRefusal))
+			return
+		}
+		r.missing++
+		r.named++
+		return
+	}
+	// ANOTHER LEG MAY GIVE THE SAME NAMED REFUSAL, and must give it by that
+	// name: §2.5 makes every writer refuse the value. A leg that still writes
+	// bytes is held to them below, as before.
+	if surface == "wire" && inst.GoWireRefusal != "" {
+		if _, err := os.Stat(answer); errors.Is(err, os.ErrNotExist) {
+			if reason, err := os.ReadFile(answer + ".absent"); err == nil && string(reason) == inst.GoWireRefusal {
+				r.missing++
+				r.named++
+				return
+			}
+		}
+	}
+
+	got, err := os.ReadFile(answer)
+	if err != nil {
+		if _, absent := os.Stat(answer + ".absent"); absent == nil {
+			// An ordinary per-case absence is a missing feature for this leg.
+			r.missing++
+			return
+		}
+		r.failures = append(r.failures, fmt.Sprintf("%s: the driver wrote nothing", e.name))
+		return
+	}
+	if !bytes.Equal(got, e.want) {
+		r.failures = append(r.failures, describeDiff(e.name, e.want, got))
+		return
+	}
+	r.pass++
 }
 
 // absentReference is what the REFERENCE leg's absence reads as in the failure

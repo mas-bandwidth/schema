@@ -2,9 +2,11 @@ package compiler
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -54,7 +56,12 @@ var stringTargets []string
 // they carry BOTH byte buffers — `*bytes` and `*string`; a target that carries
 // one and not the other registers the string blob alone through
 // registerStringCarrier.
+//
+// A target cannot register without its language's reserved words in the one
+// table (check.ReservedLanguageOf, SPEC §4.6): every name it generates must be
+// one the checker has already proven legal in it.
 func registerBuiltin(g Generator, tables, arms, unionArrays, blobs bool) {
+	requireReservedWords(g.Names()[0])
 	builtinTargets = append(builtinTargets, g)
 	if tables {
 		tableTargets = append(tableTargets, g.Names()[0])
@@ -68,6 +75,14 @@ func registerBuiltin(g Generator, tables, arms, unionArrays, blobs bool) {
 	if blobs {
 		blobTargets = append(blobTargets, g.Names()[0])
 		stringTargets = append(stringTargets, g.Names()[0])
+	}
+}
+
+// requireReservedWords panics when target's language has no row in the one
+// reserved-word table (SPEC §4.6): a port is added by adding its words first.
+func requireReservedWords(target string) {
+	if _, ok := check.ReservedLanguageOf(target); !ok {
+		panic("compiler: target " + target + " has no reserved words in internal/check's table (SPEC §4.6); add its row before registering it")
 	}
 }
 
@@ -94,11 +109,7 @@ func refuseTables(u *ir.Unit, target string) error {
 	if len(u.Tables) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(u.Tables))
-	for name := range u.Tables {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(u.Tables))
 	carry, flags := carriers(tableTargets)
 	return fmt.Errorf("unit declares tables (%s) — tables are %s only today, and the %s table backend is a named follow-on; generate with %s, or move the tables to their own unit (docs/SPEC-TABLES.md)",
 		englishList(names), englishList(carry), target, englishList(flags))
@@ -117,11 +128,7 @@ func refuseTableArms(u *ir.Unit, target string) error {
 	if len(u.TableUnions) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(u.TableUnions))
-	for name := range u.TableUnions {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(u.TableUnions))
 	carry, flags := carriers(tableArmTargets)
 	return fmt.Errorf("unit declares a union a TABLE CLOSURE holds (%s) — the table side of a union, whose arms are field lines of any type, is %s only today, and the %s form is a named follow-on; generate with %s, or move the union and its tables to their own unit (docs/SPEC-TABLES.md §2.6, §11)",
 		englishList(names), englishList(carry), target, englishList(flags))
@@ -158,7 +165,13 @@ func refuseBlobs(u *ir.Unit, target string) error {
 	if len(names) == 0 {
 		return nil
 	}
-	carry, flags := carriers(blobTargets)
+	legacy := make([]string, 0, len(blobTargets))
+	for _, t := range blobTargets {
+		if t != "java" {
+			legacy = append(legacy, t)
+		}
+	}
+	carry, flags := carriers(legacy)
 	return fmt.Errorf("unit declares a byte buffer field (%s) — *bytes and *string are %s only today, and the %s form is a named follow-on; generate with %s, or move the table to its own unit (docs/SPEC-TABLES.md §2.5, §11)",
 		englishList(names), englishList(carry), target, englishList(flags))
 }
@@ -169,10 +182,7 @@ func refuseBlobs(u *ir.Unit, target string) error {
 // the other refuses only the one it does not carry, by name.
 func blobFieldsByKind(u *ir.Unit) (bytes, str []string) {
 	for name := range ir.TableClosure(u) {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
+		st := ir.ClosureMember(u, name)
 		if st == nil {
 			continue
 		}

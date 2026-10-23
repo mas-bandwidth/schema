@@ -40,7 +40,6 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	listdemo "listdemo"
@@ -51,17 +50,13 @@ import (
 	tblm2 "tblm2"
 )
 
-// r20wire reads one pinned conformance vector, anchored at this file so the
-// test holds under any working directory `go test` is invoked from.
+// r20wire reads one pinned conformance vector. The vector path below resolves
+// relative to the working directory, which under `go test` is the package
+// directory (test/conformance/go/rows), so the test expects to run from there.
 func r20wire(t *testing.T, name string) []byte {
 	t.Helper()
-	_, self, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller cannot name this file")
-	}
 	// rows/ -> go/ -> conformance/ -> test/ -> repo, then into testdata.
-	p := filepath.Join(filepath.Dir(self), "..", "..", "..", "..",
-		"testdata", "wire", "tables", name)
+	p := filepath.Join("..", "..", "..", "..", "testdata", "wire", "tables", name)
 	data, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatalf("cannot read pinned vector %s: %v", name, err)
@@ -253,8 +248,8 @@ func TestRowR20NarrowIntWidensExactly(t *testing.T) {
 			t.Errorf("key[%d] landed %d, want the narrow wire's %d", i, got, want)
 		}
 	}
-	if ch.After != 8 {
-		t.Errorf("the scalar beside the widened map did not land: after=%d", ch.After)
+	if ch.Past != 8 {
+		t.Errorf("the scalar beside the widened map did not land: after=%d", ch.Past)
 	}
 }
 
@@ -361,7 +356,7 @@ func TestRowR20VocabularyIdentity(t *testing.T) {
 	var kback tblk2.Root
 	tblk2.RootReset(&kback)
 	var kr tblk2.TableReport
-	if !tblk2.RootLoad(&kback, kwire, &kr) {
+	if !tblk2.RootLoadTolerant(&kback, kwire, &kr) {
 		t.Fatalf("the respelled reader refused the file: %+v", kr)
 	}
 	if kback.Grade != 0 {

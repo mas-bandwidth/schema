@@ -57,6 +57,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -76,16 +77,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return out, nil
 }
 
-// elixirReserved is every spelling a generated Elixir identifier must not
-// take: the reserved words of Elixir, plus the arity-0 Kernel auto-imports a
-// generated 0-arity function would collide with — `def node, do: ...` is a
-// compile error against Kernel.node/0.
-var elixirReserved = map[string]bool{
-	"true": true, "false": true, "nil": true, "when": true, "and": true,
-	"or": true, "not": true, "in": true, "fn": true, "do": true, "end": true,
-	"catch": true, "rescue": true, "after": true, "else": true,
-	"node": true, "self": true, "make_ref": true, "binding": true,
-}
+// elixirReserved is Elixir's reserved words, read from the one table (check.ReservedIn,
+// SPEC §4.6) and never copied here.
+var elixirReserved = schemacheck.ReservedIn("Elixir")
 
 // elixirName maps an exported member/constant/variant name into Elixir's
 // snake_case: ir.RustSnake over ir.GoExportName. The spellings are a

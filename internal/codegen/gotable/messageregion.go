@@ -2,31 +2,33 @@ package gotable
 
 import (
 	"github.com/mas-bandwidth/schema/v2/ir"
-	"strings"
 )
 
 // Message batches use one caller-owned region. Every body's directory comes
 // first, then its records, then its root, matching the C++ message layout.
-func (g *tableGen) emitRegionMessage(st *ir.Struct) {
-	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
-	// "`fixed table T` may ride here, a plain `table T` may not".
-	// A plain table root carries no message verbs, and a fixed table root uses
-	// the non-region batch surface emitted by emitMessageWrite/emitMessageRead.
-}
-
+// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
+// "`fixed table T` may ride here, a plain `table T` may not". A fixed table
+// root uses the non-region batch surface emitted by emitMessageWrite and
+// emitMessageRead; the region runtime below carries the variable form's
+// directory.
 func tableMessageRegionRuntime(u *ir.Unit) string {
 	s := goMessageRegionRuntime
 	if unitHasContainers(u) {
-		s = strings.Replace(s, "return tableMessageSkipBody(&r.Bits,r.Vocabulary,r.IndexBits,0)", "return tableMessageExtentBody(r,t,at)", 1)
-		s = strings.Replace(s, "return t.LoadMessageBody(r,p)", "r.Nodes.Carve=TableExtentCarve{Base:p,At:tableRegionRound(int64(t.Size)),Limit:size};return t.LoadMessageBody(r,p)", 1)
+		s = tableSourceReplace(s, "return tableMessageSkipBody(&r.Bits,r.Vocabulary,r.IndexBits,0)", "return tableMessageExtentBody(r,t,at)", 1)
+		s = tableSourceReplace(s, "return t.LoadMessageBody(r,p)", "r.Nodes.Carve=TableExtentCarve{Base:p,At:tableRegionRound(int64(t.Size)),Limit:size};return t.LoadMessageBody(r,p)", 1)
 		s += goMessageExtentRuntime + goMessageMapRuntime
 	}
 	return s
 }
 
+// The region writer refuses a blob named from two slots by name, blob_shared
+// (the reason is left in w.numbering.reason), and never writes a copy per slot;
+// the region reader resolves under Once, so a second slot naming one blob names
+// the one decoded node and counts TableReport.BlobShared (docs/SPEC-TABLES.md
+// §2.5, §16.7).
 const goMessageRegionRuntime = `
 func tableMessageRegionWrite(w *TableMessageWriter,p unsafe.Pointer,t *TableTypeInfo,a *TableArena,allocator ...TableAllocator)bool {
- var ok bool;w.numbering,ok=tableNumber(p,t,a,allocator...);if !ok{return false};n:=&w.numbering;defer n.Release();defer func(){w.Numbering=nil}();w.Numbering=n;w.IndexBits=tableMessageBits(uint64(len(n.entries)));if w.IndexBits<1{w.IndexBits=1}
+ var ok bool;w.numbering,ok=tableNumber(p,t,a,allocator...);if !ok{return false};if w.numbering.shared{w.numbering.Release();w.numbering.reason=TableRefuseBlobShared;return false};n:=&w.numbering;defer n.Release();defer func(){w.Numbering=nil}();w.Numbering=n;w.IndexBits=tableMessageBits(uint64(len(n.entries)));w.IndexBits=max(w.IndexBits,1)
  if len(n.entries)>1 {slot:=uint64(0);for i:=range tableMessageEntries {if tableMessageEntries[i].Id==0xffffffffffffffff {slot=uint64(i+1);break}};if slot==0||uint64(len(n.entries)-1)>math.MaxUint32{return false};w.Put(slot,TableMessageRefBitsHere);w.Put(uint64(len(n.entries)-1),32)
  for i:=1;i<len(n.entries);i++ {node:=&n.entries[i];slot:=tableMessageNameSlot(node.id);if slot==0{return false};w.Put(slot,TableMessageRefBitsHere);if node.info!=nil {if !node.info.SaveMessageBody(w,node.node){return false}}else {length:=uint64(*(*uint32)(node.node));if length>math.MaxUint32{return false};w.Put(length,32);w.Raw(unsafe.Slice((*byte)(unsafe.Add(node.node,8)),int(length)))}}
  };return t.SaveMessageBody(w,p)
@@ -35,14 +37,14 @@ func tableMessageNodeOpen(r *TableMessageReader)(int64,bool){start:=r.Bits.Offse
 func tableMessageExtent(r *TableMessageReader,t *TableTypeInfo,at *int64)bool {return tableMessageSkipBody(&r.Bits,r.Vocabulary,r.IndexBits,0)}
 type tableMessageRecord struct { id uint64; size,length int64 }
 func tableMessageRecordScan(r *TableMessageReader,root *TableTypeInfo,blobs int)(record tableMessageRecord,ok bool){ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{return record,false};record.id,ok=r.Vocabulary.Name(ref);if !ok{return record,false};if record.id==tableBytesTypeId||record.id==tableStringTypeId {n,ok:=r.Bits.Get(32);if !ok||!r.Bits.Align()||!r.Bits.Skip(int64(n)*8){return record,false};record.length=int64(n);if record.id==tableBytesTypeId&&blobs&1!=0||record.id==tableStringTypeId&&blobs&2!=0 {extra:=int64(0);if record.id==tableStringTypeId{extra=1};record.size=tableRegionRound(8+record.length+extra)};return record,true};t:=root.NodeType(record.id);if t==nil{return record,tableMessageSkipBody(&r.Bits,r.Vocabulary,r.IndexBits,0)};extent:=int64(0);if !tableMessageExtent(r,t,&extent){return record,false};record.size=tableRegionRound(tableRegionRound(int64(t.Size))+extent);return record,true}
-func tableMessageBodyStorage(r *TableMessageReader,root *TableTypeInfo,blobs int)(size int64,complete,ok bool){count,ok:=tableMessageNodeOpen(r);if !ok{return 0,false,false};r.IndexBits=tableMessageBits(uint64(count+1));size=(count+1)*16;for k:=int64(0);k<count;k++ {record,ok:=tableMessageRecordScan(r,root,blobs);if !ok{return 0,false,false};size+=record.size};extent:=int64(0);complete=tableMessageExtent(r,root,&extent);size+=tableRegionRound(tableRegionRound(int64(root.Size))+extent);return size,complete,true}
-func tableMessageRegionMeasure(v *TableVocabulary,data []byte,root *TableTypeInfo,blobs int)int64 {var ignored TableReport;r,count:=tableMessageBatchOpen(v,data,&ignored);if count<0{return -1};total:=int64(0);for i:=int64(0);i<count;i++ {size,complete,ok:=tableMessageBodyStorage(&r,root,blobs);if !ok{return -1};total+=size;if !complete{break}};return total}
+func tableMessageBodyStorage(r *TableMessageReader,root *TableTypeInfo,blobs int)(size int64,complete,ok bool){count,ok:=tableMessageNodeOpen(r);if !ok{return 0,false,false};r.IndexBits=tableMessageBits(uint64(count+1));size=(count+1)*16;for range count {record,ok:=tableMessageRecordScan(r,root,blobs);if !ok{return 0,false,false};size+=record.size};extent:=int64(0);complete=tableMessageExtent(r,root,&extent);size+=tableRegionRound(tableRegionRound(int64(root.Size))+extent);return size,complete,true}
+func tableMessageRegionMeasure(v *TableVocabulary,data []byte,root *TableTypeInfo,blobs int)int64 {var ignored TableReport;r,count:=tableMessageBatchOpen(v,data,&ignored);if count<0{return -1};total:=int64(0);for range count {size,complete,ok:=tableMessageBodyStorage(&r,root,blobs);if !ok{return -1};total+=size;if !complete{break}};return total}
 func tableMessageLoadInto(r TableMessageReader,t *TableTypeInfo,p unsafe.Pointer,size int64)(TableMessageReader,bool){return t.LoadMessageBody(r,p)}
 func tableMessageRegionInto(r *TableMessageReader,root *TableTypeInfo,blobs int,region []byte,used *int64)(out unsafe.Pointer,ok bool){
- count,ok:=tableMessageNodeOpen(r);if !ok{r.Report.Malformed=true;return nil,false};directoryBytes:=(count+1)*16;limit:=int64(len(region));if *used>limit||directoryBytes>limit-*used {r.Report.Malformed=true;return nil,false};base:=unsafe.Pointer(&region[0]);directory:=unsafe.Slice((*TableNodeDirEntry)(unsafe.Add(base,*used)),int(count+1));*used+=directoryBytes;r.IndexBits=tableMessageBits(uint64(count+1));nodes:=TableNodeMap{Base:base,Entries:directory};recordsStart:=r.Bits.Offset;unknown:=int32(0)
- for k:=int64(0);k<count;k++ {record,good:=tableMessageRecordScan(r,root,blobs);if !good{r.Report.Malformed=true;return nil,false};entry:=&directory[k+1];entry.TypeId=record.id;if record.size<=0 {entry.Offset=^uint64(0);unknown++;continue};if record.size>limit-*used{r.Report.Malformed=true;return nil,false};entry.Offset=uint64(*used);p:=unsafe.Add(base,*used);if t:=root.NodeType(record.id);t!=nil{t.Reset(p)}else{*(*TableBlob)(p)=TableBlob{Length:uint32(uint64(record.length))}};*used+=record.size}
+ count,ok:=tableMessageNodeOpen(r);if !ok{r.Report.Malformed=true;return nil,false};directoryBytes:=(count+1)*16;limit:=int64(len(region));if *used>limit||directoryBytes>limit-*used {r.Report.Malformed=true;return nil,false};base:=unsafe.Pointer(&region[0]);directory:=unsafe.Slice((*TableNodeDirEntry)(unsafe.Add(base,*used)),int(count+1));*used+=directoryBytes;r.IndexBits=tableMessageBits(uint64(count+1));nodes:=TableNodeMap{Base:base,Entries:directory,Once:true};recordsStart:=r.Bits.Offset;unknown:=int32(0)
+ for k := range count {record,good:=tableMessageRecordScan(r,root,blobs);if !good{r.Report.Malformed=true;return nil,false};entry:=&directory[k+1];entry.TypeId=record.id;if record.size<=0 {entry.Offset=^uint64(0);unknown++;continue};if record.size>limit-*used{r.Report.Malformed=true;return nil,false};entry.Offset=uint64(*used);p:=unsafe.Add(base,*used);if t:=root.NodeType(record.id);t!=nil{t.Reset(p)}else{*(*TableBlob)(p)=TableBlob{Length:uint32(uint64(record.length))}};*used+=record.size}
  fieldsStart:=r.Bits.Offset;walk:=*r;extent:=int64(0);complete:=tableMessageExtent(&walk,root,&extent);if !complete&&tableMessageHasExtent(root){r.Report.Malformed=true;return nil,false};rootSize:=tableRegionRound(tableRegionRound(int64(root.Size))+extent);if rootSize>limit-*used {r.Report.Malformed=true;return nil,false};directory[0]=TableNodeDirEntry{Offset:uint64(*used),TypeId:root.Id};out=unsafe.Add(base,*used);root.Reset(out);*used+=rootSize;nodes.Good=true;r.Report.Unknown+=unknown;r.Nodes=nodes;r.Bits.Offset=recordsStart
- for k:=int64(0);k<count;k++ {if _,good:=r.Bits.Get(r.Vocabulary.RefBits);!good{r.Report.Malformed=true;return out,false};entry:=directory[k+1];if entry.TypeId==tableBytesTypeId||entry.TypeId==tableStringTypeId {n,good:=r.Bits.Get(32);if !good||!r.Bits.Align(){r.Report.Malformed=true;return out,false};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){r.Report.Malformed=true;return out,false};payload:=r.Bits.Buffer[start:start+int64(n)];if entry.TypeId==tableStringTypeId&&blobs&2!=0&&!tableUtf8Valid(payload){r.Report.Malformed=true;return out,false};if entry.Offset!=^uint64(0){copy(unsafe.Slice((*byte)(unsafe.Add(base,entry.Offset+8)),int(n)),payload)};continue};if entry.Offset==^uint64(0){if !tableMessageSkipBody(&r.Bits,r.Vocabulary,r.IndexBits,0){r.Report.Malformed=true;return out,false};continue};t:=root.NodeType(entry.TypeId);walk:=*r;extent:=int64(0);if !tableMessageExtent(&walk,t,&extent){r.Report.Malformed=true;return out,false};*r,ok=tableMessageLoadInto(*r,t,unsafe.Add(base,entry.Offset),tableRegionRound(int64(t.Size))+extent);if !ok{return out,false}}
+ for k := range count {if _,good:=r.Bits.Get(r.Vocabulary.RefBits);!good{r.Report.Malformed=true;return out,false};entry:=directory[k+1];if entry.TypeId==^tableBytesTypeId||entry.TypeId==^tableStringTypeId{entry.TypeId=^entry.TypeId};if entry.TypeId==tableBytesTypeId||entry.TypeId==tableStringTypeId {n,good:=r.Bits.Get(32);if !good||!r.Bits.Align(){r.Report.Malformed=true;return out,false};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){r.Report.Malformed=true;return out,false};payload:=r.Bits.Buffer[start:start+int64(n)];if entry.TypeId==tableStringTypeId&&blobs&2!=0&&!tableUtf8Valid(payload){r.Report.Malformed=true;return out,false};if entry.Offset!=^uint64(0){copy(unsafe.Slice((*byte)(unsafe.Add(base,entry.Offset+8)),int(n)),payload)};continue};if entry.Offset==^uint64(0){if !tableMessageSkipBody(&r.Bits,r.Vocabulary,r.IndexBits,0){r.Report.Malformed=true;return out,false};continue};t:=root.NodeType(entry.TypeId);walk:=*r;extent:=int64(0);if !tableMessageExtent(&walk,t,&extent){r.Report.Malformed=true;return out,false};*r,ok=tableMessageLoadInto(*r,t,unsafe.Add(base,entry.Offset),tableRegionRound(int64(t.Size))+extent);if !ok{return out,false}}
  if r.Bits.Offset!=fieldsStart{r.Report.Malformed=true;return out,false};*r,ok=tableMessageLoadInto(*r,root,out,rootSize);return out,ok
 }
 func tableMessageHasExtent(t *TableTypeInfo)bool {for i:=range t.Fields{if tableMessageFieldHasExtent(&t.Fields[i]){return true}};return false}
@@ -52,7 +54,7 @@ func tableMessageFieldHasExtent(f *TableFieldInfo)bool {if f.List||f.Map{return 
 const goMessageExtentRuntime = `
 func tableMessageExtentBody(r *TableMessageReader,t *TableTypeInfo,at *int64)bool {for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok||ref==0{return ok};e,ok:=r.Vocabulary.Entry(ref);if !ok||e.Id>=0xfffffffffffffffd{return false};var field *TableFieldInfo;for i:=range t.Fields{if t.Fields[i].Id==e.Id{field=&t.Fields[i];break}};if field==nil||!tableMessageFieldHasExtent(field){if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,e,0){return false};continue};if !tableMessageExtentField(r,e,field,at){return false}}}
 func tableMessageExtentField(r *TableMessageReader,e TableMessageEntry,f *TableFieldInfo,at *int64)bool {
- if f.IsArray {kind:=uint8(14);if f.KeyName!=nil{kind=16};if e.Shape.Kind!=kind||e.Element.Kind!=f.Kind&&!tableKindWidens(e.Element.Kind,f.Kind){return tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,e,0)};n,ok:=tableMessageCount(&r.Bits,e.Shape);if !ok{return false};if e.Shape.Kind==14&&e.Element.Kind==6&&!r.Bits.Align(){return false};if f.List||f.Map {if n>math.MaxInt32{return false};*at=(*at+int64(f.ElemAlign)-1)& -int64(f.ElemAlign);*at+=int64(n)*int64(f.ElemSize)};element:=TableMessageEntry{Shape:e.Element};if e.Element.Bits>=0{return r.Bits.Skip(int64(n)*e.Element.Bits)};for i:=uint64(0);i<n;i++ {if kind==16&&!r.Bits.Skip(r.Vocabulary.RefBits){return false};if !tableMessageExtentValue(r,element,f,at){return false}};return true};return tableMessageExtentValue(r,e,f,at)
+ if f.IsArray {kind:=uint8(14);if f.KeyName!=nil{kind=16};if e.Shape.Kind!=kind||e.Element.Kind!=f.Kind&&!tableKindWidens(e.Element.Kind,f.Kind){return tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,e,0)};n,ok:=tableMessageCount(&r.Bits,e.Shape);if !ok{return false};if e.Shape.Kind==14&&e.Element.Kind==6&&!r.Bits.Align(){return false};if f.List||f.Map {if n>math.MaxInt32{return false};*at=(*at+int64(f.ElemAlign)-1)& -int64(f.ElemAlign);*at+=int64(n)*int64(f.ElemSize)};element:=TableMessageEntry{Shape:e.Element};if e.Element.Bits>=0{return r.Bits.Skip(int64(n)*e.Element.Bits)};for range n {if kind==16&&!r.Bits.Skip(r.Vocabulary.RefBits){return false};if !tableMessageExtentValue(r,element,f,at){return false}};return true};return tableMessageExtentValue(r,e,f,at)
 }
 func tableMessageExtentValue(r *TableMessageReader,e TableMessageEntry,f *TableFieldInfo,at *int64)bool {
  if e.Shape.Kind==13&&f.Kind==13&&!f.Pointer {return tableMessageExtentBody(r,f.Table(),at)}

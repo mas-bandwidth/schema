@@ -7,7 +7,7 @@ table Album
 
 table Army
     field squads id=0x7848019b0c02a926 kind=14 elem=13 type=Squad array=unbounded
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Bounded
     field items id=0x3e7884bf4f412c6f kind=14 elem=13 type=Unit array=bounded bound=8
@@ -15,19 +15,19 @@ table Bounded
 
 table Bytes
     field data id=0x855b556730a34a05 kind=14 elem=6 array=unbounded
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Deck
     field hands id=0x81b46a69304ee2c9 kind=14 elem=13 type=Row array=bounded bound=3
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Floats
     field values id=0x21277bcf1a4d67fb kind=14 elem=10 array=unbounded
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Ints
     field values id=0x21277bcf1a4d67fb kind=14 elem=4 array=unbounded
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Item
     field count id=0xb1e5e28e4479a274 kind=4
@@ -105,3 +105,10 @@ union Hit
 
 ### 2026-09-05 (UTC) — Deck: the unreached-slot control
 - no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-10-21 (UTC) — schema#reserved-words: fields renamed off every supported language's reserved words (SPEC §4.6, Glenn 2026-10-21) under was =, so the wire ids hold; the JSON keys follow the new names
+- Army.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Bytes.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Deck.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Floats.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Ints.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]

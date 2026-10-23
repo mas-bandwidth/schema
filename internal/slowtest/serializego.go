@@ -15,39 +15,38 @@ import (
 	"testing"
 )
 
-// SerializeGo returns the absolute path of the serialize.go runtime the Go
-// probes compile against. `root` is the repository root relative to the calling
-// package's directory (gotable passes `../../..`). It looks first for the
-// sibling checkout `../serialize.go` beside the root — the default the bench
-// tooling at bench/paired assumes — and then for `build/serialize.go` under the
-// root, the copy `make tables-fixedform-corpus` fetches when there is no
-// sibling. A directory only counts as a runtime when it holds a go.mod.
-//
-// When neither exists SerializeGo refuses by name under SCHEMA_REQUIRE_CORPUS
-// (the gate promised a corpus and must not go green having run nothing) and
-// skips by name otherwise. It never fetches and never touches the network; the
-// Makefile fetches, this only looks.
+// gateSkipMarker is shared in meaning with tools/slowgatescan's transcript
+// parser. Keep the literal in sync with its scanner test.
+const gateSkipMarker = "SCHEMA_SLOW: this test shells out"
+
+// SerializeGo returns the absolute path of the serialize.go runtime used by Go
+// probes. An explicit absolute SERIALIZE_GO wins, then the sibling checkout,
+// then the copy provisioned by make deps under build/serialize.go.
 func SerializeGo(t testing.TB, root string) string {
 	t.Helper()
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		t.Fatalf("slowtest: resolving the repository root %q: %v", root, err)
 	}
+	configured := os.Getenv("SERIALIZE_GO")
 	sibling := filepath.Join(absRoot, "..", "serialize.go")
 	fetched := filepath.Join(absRoot, "build", "serialize.go")
+	if filepath.IsAbs(configured) && isSerializeGoDir(configured) {
+		return configured
+	}
 	if isSerializeGoDir(sibling) {
 		return sibling
 	}
 	if isSerializeGoDir(fetched) {
 		return fetched
 	}
-	msg := "slowtest: the Go runtime serialize.go is absent: looked for a sibling at " + sibling +
-		" and a fetched copy at " + fetched + "; `make tables-fixedform-corpus` fetches the runtime"
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatalf("%s", msg)
+	msg := "the Go runtime serialize.go is absent: looked for absolute SERIALIZE_GO " + configured +
+		", sibling " + sibling + ", and fetched copy " + fetched + "; run make deps"
+	if Enabled() {
+		t.Fatalf("slowtest: %s", msg)
 		return ""
 	}
-	t.Skipf("%s", msg)
+	t.Skipf("%s: %s", gateSkipMarker, msg)
 	return ""
 }
 

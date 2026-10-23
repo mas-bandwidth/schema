@@ -2,6 +2,7 @@ package darttable
 
 import (
 	"fmt"
+	"maps"
 	"math/big"
 	"os"
 	"os/exec"
@@ -61,9 +62,7 @@ fixed table M {
 	if err != nil {
 		t.Fatalf("generate table: %v", err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	home := runtimeHome(u) + "Fixed.dart"
 	rootLib := fixedTableBase(u, "M") + "Fixed.dart"
 

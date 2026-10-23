@@ -353,10 +353,12 @@ func (p *parser) parseVariantList(what string) []ast.Name {
 			p.refuseDoc(docPos, "a closing brace")
 			break
 		}
-		t := p.expect(scanner.Ident, what+" variant name")
-		if t.Kind != scanner.Ident {
+		t := p.tok()
+		if t.Kind != scanner.Ident && !t.Kind.IsKeyword() {
+			p.errf(t.Pos, "expected %s, found %q", what+" variant name", describe(t))
 			break
 		}
+		p.advance()
 		n := ast.Name{Text: t.Text, Pos: t.Pos, Doc: doc}
 		if p.kind() == scanner.Pipe {
 			// A QUALIFIED VARIANT (SPEC §4.2): the section runs to the end of
@@ -602,9 +604,17 @@ func (p *parser) parseFieldLine(t scanner.Token) ast.Item {
 			p.advance()
 			optional = true
 		}
+		// `first [..16]?string(64)` — a `?` AFTER the bound binds to the
+		// ELEMENT (docs/SPEC-TABLES.md §2.13); what may carry one is the
+		// checker's business, which takes string(M) and refuses the rest
+		elemOptional := false
 		if p.kind() == scanner.LBrack {
 			f.Array = p.parseArrayBound()
 			p.refuseArrayOfArrays()
+			if p.kind() == scanner.Question {
+				p.advance()
+				elemOptional = true
+			}
 		}
 		if p.kind() == scanner.KwMap {
 			// `ships map[string(32)]ShipConfig` — a MAP (docs/SPEC-TABLES.md
@@ -617,6 +627,7 @@ func (p *parser) parseFieldLine(t scanner.Token) ast.Item {
 		} else {
 			f.Type = p.parseScalar()
 			f.Type.Optional = optional
+			f.Type.ElemOptional = elemOptional
 		}
 		if p.kind() == scanner.Assign {
 			// optional specified default: `invulnerable bool = true | local`
@@ -806,6 +817,14 @@ func (p *parser) parseScalar() ast.ScalarType {
 		return ast.ScalarType{Kind: ast.ScalarFloat64, Pos: t.Pos}
 	case scanner.KwBits, scanner.KwString, scanner.KwWString, scanner.KwBytes:
 		p.advance()
+		if t.Kind == scanner.KwString && p.kind() != scanner.LParen {
+			// `rules []string`, `map[string]V` — a bare `string` is UNBOUNDED
+			// text (docs/SPEC-TABLES.md §2.13.1). It is recorded, not refused:
+			// where it may stand (a text-list element, a map key, in a plain
+			// table) is the CHECKER's business, so every other placement gets
+			// a diagnostic naming its route rather than a parse error.
+			return ast.ScalarType{Kind: ast.ScalarString, Unbounded: true, Pos: t.Pos}
+		}
 		p.expect(scanner.LParen, "(")
 		arg := p.parseExpr()
 		p.expect(scanner.RParen, ")")
@@ -1026,7 +1045,22 @@ func (p *parser) parsePrimary() ast.Expr {
 			}
 			return &ast.MaxExpr{Pos: t.Pos, Enum: t.Text, Sel: m.Text}
 		}
-		return &ast.IdentExpr{Pos: t.Pos, Name: t.Text}
+		// a `::`-qualified name (SPEC §4.2, `cpp_native`): the segments join
+		// into one identifier so the binding keeps the global C++ spelling —
+		// `math::Vec2` reaches the emitter whole and is `::`-qualified there.
+		var name strings.Builder
+		name.WriteString(t.Text)
+		for p.kind() == scanner.Colon && p.peek().Kind == scanner.Colon {
+			p.advance() // the first ':'
+			p.advance() // the second ':'
+			seg := p.expect(scanner.Ident, "a type name after ::")
+			if seg.Kind != scanner.Ident {
+				break
+			}
+			name.WriteString("::")
+			name.WriteString(seg.Text)
+		}
+		return &ast.IdentExpr{Pos: t.Pos, Name: name.String()}
 	case scanner.LParen:
 		p.advance()
 		x := p.parseExpr()

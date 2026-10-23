@@ -1,0 +1,24 @@
+{
+  "root": "Graph",
+  "items": [
+    {
+      "node": 7
+    },
+    {
+      "node": 7
+    },
+    null
+  ],
+  "nodes": {
+    "7": {
+      "id": 6
+    }
+  },
+  "lookup": {
+    "west": null,
+    "east": 2
+  },
+  "blob": {
+    "base64": ""
+  }
+}

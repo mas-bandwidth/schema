@@ -1,0 +1,91 @@
+package gotable
+
+import (
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
+)
+
+// TestGoEnumVariantTypeWords holds SPEC §4.1's rule that an enum variant may be
+// named a reserved word in the Go backend, through a generated unit compiled and
+// run in a t.TempDir(): a table holding an enum whose variants are text, int32,
+// map, list and table generates, compiles, round-trips the binary wire, base64
+// and the JSON text, and the JSON text form carries the words as written. The
+// words are schema keywords that no supported language but Go reserves (Go
+// carries them as variants, SPEC §4.6): a word another language reserves
+// (`int`, `enum`, `bool`) is refused whatever target is generated.
+func TestGoEnumVariantTypeWords(t *testing.T) {
+	t.Parallel()
+	f, perrs := parser.Parse("Probe.schema", []byte(enumTypeWordSchema))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(enumTypeWordSchema), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+	if out, err := runGeneratedUnit(t, u, enumTypeWordProbe, nil); err != nil {
+		t.Fatalf("generated unit: %v\n%s", err, out)
+	}
+}
+
+const enumTypeWordSchema = `package probe
+
+enum FieldType {
+    text
+    int32
+    map
+    list
+    table
+}
+
+fixed table Root {
+    kind FieldType
+}
+`
+
+const enumTypeWordProbe = `package probe
+import("testing";"bytes";"encoding/base64")
+func TestEnumWords(t *testing.T) {
+	for _, tc := range []struct{ kind FieldType; word string }{
+		{FieldTypeint32, "int32"}, {FieldTypemap, "map"}, {FieldTypetable, "table"},
+		{FieldTypetext, "text"}, {FieldTypelist, "list"},
+	} {
+		if got := EnumNameFieldType(tc.kind); got != tc.word {
+			t.Fatalf("name %s: %q", tc.word, got)
+		}
+		var v, got Root
+		RootReset(&v)
+		v.Kind = tc.kind
+		n := RootMeasure(&v)
+		b := make([]byte, n)
+		if RootSave(&v, b) != n {
+			t.Fatalf("save %s", tc.word)
+		}
+		var r TableReport
+		if !RootLoadTolerant(&got, b, &r) || r != (TableReport{}) || got.Kind != tc.kind {
+			t.Fatalf("wire round trip %s: %+v %+v", tc.word, got, r)
+		}
+		a := make([]byte, 128)
+		na := RootToJson(&v, a)
+		if na < 0 || !bytes.Contains(a[:na], []byte("\"kind\": \""+tc.word+"\"")) {
+			t.Fatalf("json %s: %d %s", tc.word, na, a)
+		}
+		var j Root
+		if !RootFromJson(&j, a[:na], &r) || j.Kind != tc.kind {
+			t.Fatalf("json round trip %s: %+v %+v", tc.word, j, r)
+		}
+		b64, err := RootSaveText(&v)
+		if err != nil || b64 != base64.StdEncoding.EncodeToString(b) {
+			t.Fatalf("base64 %s: %v", tc.word, err)
+		}
+		back, err := RootLoadText(b64, &r)
+		if err != nil || back == nil || back.Kind != tc.kind {
+			t.Fatalf("load text %s: %v", tc.word, err)
+		}
+	}
+}
+`

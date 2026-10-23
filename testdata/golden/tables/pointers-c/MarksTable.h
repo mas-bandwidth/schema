@@ -110,6 +110,9 @@ typedef struct TableReport
     int32_t duplicate;
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
+    /* a blob record another slot already named (docs/SPEC-TABLES.md §2.5):
+       the tolerant read keeps the one node and counts each extra naming. */
+    int32_t blob_shared;
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
@@ -548,53 +551,45 @@ static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
 }
 static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    uint64_t count, i, j; int64_t span; TableReader tail;
+    uint64_t count, i; int64_t span; TableReader tail;
     if ( bytes < 1 || buffer == NULL ) { report->malformed = 1; return 0; }
     if ( buffer[0] != 1 ) { report->refused = 1; report->reason = buffer[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE : SCHEMA_TABLE_NEWER_FORM; return 0; }
     if ( bytes < 9 ) { report->malformed = 1; return 0; }
     tail = table_reader_make( buffer + bytes - 8, 8, report ); count = table_reader_get64( &tail );
     if ( count > (uint64_t) ((bytes - 9) / 8) ) { report->malformed = 1; return 0; }
+    /* THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that claims
+       more than 4096 entries is malformed for the whole wire, even where the
+       buffer would hold them, so the distinctness walk below stays bounded no
+       matter how large the file is. */
+    if ( count > 4096 ) { report->malformed = 1; return 0; }
     span = (int64_t) count * 8 + 8;
     *r = table_reader_make( buffer + 1, bytes - span - 1, report );
     r->ids = buffer + bytes - span; r->id_count = count; r->nested = 0;
     /* THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
-       for the whole wire (docs/SPEC-TABLES.md §3). Count is attacker-controlled
-       up to (bytes-9)/8; an unbounded stack table is a stack-overflow primitive.
-       The open-addressed path therefore runs only at count<=256 with 512 slots.
-       A slot occupied by a different id is not a duplicate: compare the stored
-       id, not the hash. Probe length is capped at the slot count so a colliding
-       attacker-chosen set cannot walk forever. Exhausted probes and counts
-       above the bound keep the pairwise walk, which is the same verdict. The
-       mix is table_writer_id's. */
+       for the whole wire (docs/SPEC-TABLES.md §3). The walk is one open-addressed
+       probe over a fixed 8192-slot stack table, and there is no pairwise arm
+       left to fall back to: the count cap above guarantees the probe completes,
+       so a hostile file cannot steer a reader into an O(n^2) scan. A slot
+       occupied by a different id is not a duplicate: compare the stored id, not
+       the hash. The mix is table_writer_id's. */
     if ( count > 1 )
     {
-        int pairwise = count > 256;
-        if ( !pairwise )
+        uint64_t seen[8192];
+        uint8_t used[8192];
+        memset( used, 0, sizeof( used ) );
+        for ( i = 0; i < count; i++ )
         {
-            uint64_t seen[512];
-            uint8_t used[512];
-            memset( used, 0, sizeof( used ) );
-            for ( i = 0; i < count; i++ )
+            uint64_t id = table_reader_id_at( r, i + 1 );
+            uint64_t hash = id;
+            uint32_t slot;
+            hash ^= hash >> 33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash >> 33;
+            slot = (uint32_t) hash & 8191u;
+            for ( ;; )
             {
-                uint64_t id = table_reader_id_at( r, i + 1 );
-                uint64_t hash = id;
-                uint32_t slot, probes;
-                hash ^= hash >> 33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash >> 33;
-                slot = (uint32_t) hash & 511u;
-                for ( probes = 0; probes < 512; probes++ )
-                {
-                    if ( !used[slot] ) { used[slot] = 1; seen[slot] = id; break; }
-                    if ( seen[slot] == id ) { report->malformed = 1; return 0; }
-                    slot = (slot + 1) & 511u;
-                }
-                if ( probes == 512 ) { pairwise = 1; break; }
+                if ( !used[slot] ) { used[slot] = 1; seen[slot] = id; break; }
+                if ( seen[slot] == id ) { report->malformed = 1; return 0; }
+                slot = (slot + 1) & 8191u;
             }
-        }
-        if ( pairwise )
-        {
-            for ( i = 1; i < count; i++ ) { for ( j = 0; j < i; j++ ) {
-                if ( table_reader_id_at( r, i+1 ) == table_reader_id_at( r, j+1 ) ) { report->malformed = 1; return 0; }
-            } }
         }
     }
     /* Root slack invalidates the whole file before any overlay. A stopped
@@ -2397,7 +2392,18 @@ enum {
     SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
     SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
     SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
-    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13
+    SCHEMA_TABLE_REFUSE_DATA_CYCLE=13,
+    SCHEMA_TABLE_REFUSE_INVALID_VALUE=14,
+    SCHEMA_TABLE_REFUSE_ALLOCATION_FAILED=15,
+    SCHEMA_TABLE_REFUSE_WIRE_DAMAGED=16,
+    SCHEMA_TABLE_REFUSE_MALFORMED=17,
+    SCHEMA_TABLE_REFUSE_CLAMPED=18,
+    SCHEMA_TABLE_REFUSE_KIND_MISMATCH=19,
+    SCHEMA_TABLE_REFUSE_BASE64_DAMAGED=20,
+    SCHEMA_TABLE_REFUSE_BASE64_NOT_CANONICAL=21,
+    SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
+    SCHEMA_TABLE_REFUSE_NON_FINITE=23,
+    SCHEMA_TABLE_REFUSE_BLOB_SHARED=24
 };
 static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,TableRefuseReason reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
@@ -2970,8 +2976,13 @@ static SCHEMA_UNUSED void table_number_dispose( TableNumbering * n )
     memset(n,0,sizeof(*n));
 }
 
-static SCHEMA_UNUSED int table_number_build( TableNumbering * n, const TableCtx * ctx,
-                                            const void * root, const TableNodeType * type, TableAllocator allocator )
+/* table_number_walk numbers a graph. keep_shared_blobs is the one switch:
+   every WRITER refuses a blob a second slot names (blob_shared, §2.5), and
+   Lock and Cook pack the graph as they find it, the one node numbered once
+   (§2.5, §7.6), so a tolerant read's value still cooks. */
+static SCHEMA_UNUSED int table_number_walk( TableNumbering * n, const TableCtx * ctx,
+                                           const void * root, const TableNodeType * type, TableAllocator allocator,
+                                           int keep_shared_blobs )
 {
     memset(n,0,sizeof(*n)); n->ctx = ctx; n->allocator=allocator;
     if ( root == NULL || !table_number_edge(n,root,type) ) { return 0; }
@@ -2985,6 +2996,10 @@ static SCHEMA_UNUSED int table_number_build( TableNumbering * n, const TableCtx 
         if ( index )
         {
             if ( n->entries[index-1].open || n->entries[index-1].type->id != visit.type->id ) { return 0; }
+            /* A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): every
+               writer refuses a blob another slot already named, by name
+               blob_shared. Other shared nodes are numbered once. */
+            if ( visit.type->blob && !keep_shared_blobs ) { return 0; }
             continue;
         }
         if ( n->slot_capacity == 0 || n->count >= n->slot_capacity/2 )
@@ -3021,6 +3036,12 @@ static SCHEMA_UNUSED int table_number_build( TableNumbering * n, const TableCtx 
     }
     table_release(n->allocator,n->work); n->work = NULL; n->work_capacity = 0;
     return 1;
+}
+
+static SCHEMA_UNUSED int table_number_build( TableNumbering * n, const TableCtx * ctx,
+                                            const void * root, const TableNodeType * type, TableAllocator allocator )
+{
+    return table_number_walk(n,ctx,root,type,allocator,0);
 }
 
 
@@ -3109,7 +3130,7 @@ static SCHEMA_UNUSED uint8_t * table_graph_pack( const TableCtx * ctx, const voi
     int64_t total=0;
     uint8_t * packed=NULL;
     *bytes=0;
-    if ( !table_number_build(&n,ctx,root,type,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()) ) { table_number_dispose(&n); return NULL; }
+    if ( !table_number_walk(&n,ctx,root,type,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator(),1) ) { table_number_dispose(&n); return NULL; }
     for ( i=0; i<n.count; i++ )
     {
         int64_t size=table_node_storage(&n,n.entries[i].type,n.entries[i].value);
@@ -3145,10 +3166,11 @@ typedef struct TableNodeDirEntry { uint64_t offset, type_id; } TableNodeDirEntry
 typedef struct TableNodeMap
 {
     uint8_t * base;
-    const TableNodeDirEntry * entries;
+    TableNodeDirEntry * entries;
     uint64_t count;
     int good, arena, refused;
     TableSink * sink;
+    uint8_t * blob_named; /* parallel to entries; 1 = the blob node is already named */
 } TableNodeMap;
 
 static SCHEMA_UNUSED void table_node_resolve( const TableNodeMap * nodes, TableRef * slot,
@@ -3163,6 +3185,17 @@ static SCHEMA_UNUSED void table_node_resolve( const TableNodeMap * nodes, TableR
     if ( entry->type_id != target ) { report->kind_mismatch++; return; }
     slot->value = nodes->arena ? (int64_t)entry->offset
         : (int64_t)((nodes->base + entry->offset) - (uint8_t *)(void *)slot);
+}
+
+/* A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): the tolerant read
+   keeps the one node and counts each extra naming. Only a BLOB-pointer field's
+   reader calls this (the writer and the strict read refuse by name), and the
+   named state lives in the load-local blob_named array, not in the directory,
+   so the directory keeps its 16-byte entry and the framing numbers hold. */
+static SCHEMA_UNUSED void table_node_blob_mark( TableNodeMap * nodes, uint64_t index, TableReport * report )
+{
+    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count ) { return; }
+    if ( nodes->blob_named[index-1] ) { report->blob_shared++; } else { nodes->blob_named[index-1] = 1; }
 }
 
 typedef struct TableNodeScan
@@ -3236,7 +3269,7 @@ static SCHEMA_UNUSED int table_node_scan_whole( const TableNodeScan * scan )
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0x8478eba1cb4a55e5ull
+#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0xa6069b3ec0d99c3cull
 
 #endif /* SCHEMA_GRAPHDEMO_BUILD_VERSION */
 
@@ -3427,7 +3460,7 @@ static SCHEMA_UNUSED void table_cook_header(uint8_t * raw,uint64_t version,int64
 #ifndef SCHEMA_GRAPHDEMO_TABLE_MESSAGE
 #define SCHEMA_GRAPHDEMO_TABLE_MESSAGE
 enum { kTableMessageRefBitsHere=6, kTableMessageEntriesHere=51, kTableAnnounceBytes=536, kTableMessageBatchMax=256 };
-static const uint8_t kTableAnnounce[kTableAnnounceBytes]={0x01,0x01,0x09,0xe5,0x55,0x4a,0xcb,0xa1,0xeb,0x78,0x84,0x02,0x0e,0xf0,0x03,0x06,0xed,0x03,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x10,0x4c,0x8a,0x95,0x2e,0xef,0x84,0x49,0x1e,0x0d,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x0d,0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x0d,0x54,0x0b,0x60,0x56,0x19,0x76,0xaf,0x77,0x11,0x03,0x0c,0x9a,0x5f,0xcc,0x12,0x8f,0x0a,0x11,0xd5,0x0c,0x02,0x86,0x4c,0xef,0x63,0xaf,0x06,0x00,0x26,0xe9,0x01,0x86,0x4c,0xda,0x63,0xaf,0x06,0x00,0xa5,0xf1,0x01,0x86,0x4c,0xdf,0x63,0xaf,0x06,0x00,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x0c,0x0c,0xe9,0x52,0xe1,0x81,0xb9,0x9e,0xdd,0x10,0x02,0x0d,0x80,0x83,0x1c,0xb2,0x8a,0xee,0x39,0x43,0x0d,0xea,0x96,0xb2,0x00,0x76,0xe9,0xd8,0x75,0x04,0x01,0x07,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x04,0x00,0x28,0xf0,0x25,0xa0,0xba,0x6c,0x31,0xe5,0x11,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x08,0xdd,0x7c,0x58,0xd1,0xba,0xfb,0xf8,0x3b,0x11,0x03,0x0b,0xc7,0x98,0xe2,0x17,0x25,0x80,0x04,0x01,0x0a,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x0c,0x08,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x18,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x04,0x01,0x07,0x00,0x95,0xb3,0x1e,0x51,0xef,0xb8,0x25,0x5b,0x11,0xe8,0x4d,0xb4,0x48,0x7b,0x6d,0x5f,0xee,0x11,0xb7,0x46,0xa6,0x65,0xbb,0x20,0x92,0x50,0x11,0x7e,0x69,0xbe,0x95,0x23,0x9e,0x83,0x60,0x0d,0xdf,0x22,0x70,0x74,0x4a,0xe3,0x54,0x45,0x0e,0x00,0x04,0x0d,0x38,0xac,0x2e,0xe3,0xa2,0xe9,0x20,0x43,0x0d,0x66,0xfe,0x00,0x64,0x91,0x60,0x80,0x7a,0x04,0x01,0x03,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x10,0x3c,0x13,0xe2,0x5c,0x19,0x8a,0x3b,0x82,0x04,0x01,0x0a,0x00,0xbb,0xf0,0x0c,0x9b,0xcc,0xfb,0x2d,0x73,0x04,0x01,0x0e,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0c,0xb0,0x1c,0x04,0xa2,0xad,0x70,0xb0,0x24,0x11,0x05,0xd8,0x14,0x57,0x53,0xaa,0xaa,0x76,0x11,0xc1,0x52,0x85,0xb8,0x19,0xa3,0xf3,0x24,0x00,0x1d,0xa8,0xa8,0x9c,0xd8,0xef,0xee,0x9d,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xcc,0x14,0x15,0x7f,0xcb,0xc2,0x58,0xd8,0x00,0xfd,0x53,0x25,0x70,0xdc,0xe6,0x7f,0x32,0x00,0xb6,0x79,0xed,0x7a,0xf7,0x7e,0x16,0x9d,0x00,0xa9,0x9f,0xa6,0xa5,0x99,0xc8,0x0e,0xf6,0x00,0x57,0xd4,0x83,0xef,0x3e,0x8a,0x45,0xd6,0x00,0x18,0x6d,0x9d,0xe4,0xae,0xea,0xad,0x6d,0x00,0x13,0xf2,0xb5,0x3a,0x62,0x31,0x9a,0x4a,0x00,0xc8,0xc2,0x04,0xb4,0xa2,0x8a,0x8b,0x9d,0x00,0xa4,0x93,0xdb,0xb7,0x13,0x91,0x3b,0xae,0x00,0x3d,0xa7,0x42,0x42,0x90,0x34,0xff,0x69,0x00,0x1d,0x43,0x4c,0x78,0xa3,0x90,0x7e,0xb9,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+static const uint8_t kTableAnnounce[kTableAnnounceBytes]={0x01,0x01,0x09,0x3c,0x9c,0xd9,0xc0,0x3e,0x9b,0x06,0xa6,0x02,0x0e,0xf0,0x03,0x06,0xed,0x03,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x10,0x4c,0x8a,0x95,0x2e,0xef,0x84,0x49,0x1e,0x0d,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x0d,0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x0d,0x54,0x0b,0x60,0x56,0x19,0x76,0xaf,0x77,0x11,0x03,0x0c,0x9a,0x5f,0xcc,0x12,0x8f,0x0a,0x11,0xd5,0x0c,0x02,0x86,0x4c,0xef,0x63,0xaf,0x06,0x00,0x26,0xe9,0x01,0x86,0x4c,0xda,0x63,0xaf,0x06,0x00,0xa5,0xf1,0x01,0x86,0x4c,0xdf,0x63,0xaf,0x06,0x00,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x0c,0x0c,0xe9,0x52,0xe1,0x81,0xb9,0x9e,0xdd,0x10,0x02,0x0d,0x80,0x83,0x1c,0xb2,0x8a,0xee,0x39,0x43,0x0d,0xea,0x96,0xb2,0x00,0x76,0xe9,0xd8,0x75,0x04,0x01,0x07,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x04,0x00,0x28,0xf0,0x25,0xa0,0xba,0x6c,0x31,0xe5,0x11,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x08,0xdd,0x7c,0x58,0xd1,0xba,0xfb,0xf8,0x3b,0x11,0x03,0x0b,0xc7,0x98,0xe2,0x17,0x25,0x80,0x04,0x01,0x0a,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x0c,0x08,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x18,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x04,0x01,0x07,0x00,0x95,0xb3,0x1e,0x51,0xef,0xb8,0x25,0x5b,0x11,0xe8,0x4d,0xb4,0x48,0x7b,0x6d,0x5f,0xee,0x11,0xb7,0x46,0xa6,0x65,0xbb,0x20,0x92,0x50,0x11,0x7e,0x69,0xbe,0x95,0x23,0x9e,0x83,0x60,0x0d,0xdf,0x22,0x70,0x74,0x4a,0xe3,0x54,0x45,0x0e,0x00,0x04,0x0d,0x38,0xac,0x2e,0xe3,0xa2,0xe9,0x20,0x43,0x0d,0x66,0xfe,0x00,0x64,0x91,0x60,0x80,0x7a,0x04,0x01,0x03,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x10,0x3c,0x13,0xe2,0x5c,0x19,0x8a,0x3b,0x82,0x04,0x01,0x0a,0x00,0xbb,0xf0,0x0c,0x9b,0xcc,0xfb,0x2d,0x73,0x04,0x01,0x0e,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0c,0xb0,0x1c,0x04,0xa2,0xad,0x70,0xb0,0x24,0x11,0x05,0xd8,0x14,0x57,0x53,0xaa,0xaa,0x76,0x11,0xc1,0x52,0x85,0xb8,0x19,0xa3,0xf3,0x24,0x00,0x1d,0xa8,0xa8,0x9c,0xd8,0xef,0xee,0x9d,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xcc,0x14,0x15,0x7f,0xcb,0xc2,0x58,0xd8,0x00,0xfd,0x53,0x25,0x70,0xdc,0xe6,0x7f,0x32,0x00,0xb6,0x79,0xed,0x7a,0xf7,0x7e,0x16,0x9d,0x00,0xa9,0x9f,0xa6,0xa5,0x99,0xc8,0x0e,0xf6,0x00,0x57,0xd4,0x83,0xef,0x3e,0x8a,0x45,0xd6,0x00,0x18,0x6d,0x9d,0xe4,0xae,0xea,0xad,0x6d,0x00,0x13,0xf2,0xb5,0x3a,0x62,0x31,0x9a,0x4a,0x00,0xc8,0xc2,0x04,0xb4,0xa2,0x8a,0x8b,0x9d,0x00,0xa4,0x93,0xdb,0xb7,0x13,0x91,0x3b,0xae,0x00,0x3d,0xa7,0x42,0x42,0x90,0x34,0xff,0x69,0x00,0x1d,0x43,0x4c,0x78,0xa3,0x90,0x7e,0xb9,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
 
 typedef struct TableBitWriter { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default; TableNumbering * nodes; int64_t index_bits; } TableBitWriter;
 typedef struct TableBitReader { const uint8_t * buffer; int64_t bits,offset; } TableBitReader;
@@ -4020,7 +4053,7 @@ static SCHEMA_UNUSED int64_t table_graph_cook(const TableCtx * ctx,const void * 
     void * output,uint64_t capacity,int order,TableAllocator allocator,uint64_t version,int measure)
 {
     TableNumbering n; int64_t result=-1,align=8,bytes=0,need; uint64_t i; uint8_t * raw=(uint8_t *)output;
-    if(!table_number_build(&n,ctx,root,type,allocator)) { table_number_dispose(&n); return -1; }
+    if(!table_number_walk(&n,ctx,root,type,allocator,1)) { table_number_dispose(&n); return -1; }
     need=table_cook_layout(&n,&align,&bytes); if(need<0) { goto done; }
     if(measure) { result=need; goto done; }
     if(raw==NULL || (uint64_t)need>capacity || (uint64_t)need>SIZE_MAX) { goto done; }
@@ -6192,6 +6225,7 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_marker_load_layout_(const TableRea
     if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);
 }
+static SCHEMA_UNUSED int schema_graphdemo_marker_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t marker_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)
 {
     TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
@@ -6199,10 +6233,15 @@ static SCHEMA_UNUSED int64_t marker_load_measure_ex(const uint8_t * wire, int64_
     if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_marker_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
+    if(total>=0 && schema_graphdemo_marker_wire_blob_shared_(wire,bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;
 }
 static SCHEMA_UNUSED int64_t marker_load_measure(const uint8_t * wire, int64_t bytes)
-{ return marker_load_measure_ex(wire,bytes,NULL,NULL); }
+{
+    TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));
+    if (!table_wire_open(&reader,wire,bytes,&report)) { return -1; }
+    total=schema_graphdemo_marker_load_layout_(&reader,&data,&records); return total>=0 ? total : -1;
+}
 static SCHEMA_UNUSED int schema_graphdemo_marker_load_graph_(TableReader * reader, Marker * root, TableNodeMap * nodes, TableNodeDirEntry * directory, TableSink * sink)
 {
     TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id,k=0; int32_t unknown=0;
@@ -6258,10 +6297,10 @@ static SCHEMA_UNUSED const Marker * marker_load(uint8_t * region, int64_t region
     if(total<0 || region==NULL || region_bytes<total || ((uintptr_t)region & (kTableAlign-1))!=0) { report->malformed=1; return NULL; }
     memset(region,0,(size_t)total); directory=(TableNodeDirEntry *)(void *)(region+data);
     directory[0].offset=0; directory[0].type_id=UINT64_C(0xd6458a3eef83d457);
-    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL;
+    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_marker_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_marker_load_graph_(&reader,(Marker *)(void *)region,&nodes,directory,&sink)) { return NULL; }
-    return (const Marker *)(const void *)region;
+    if(!schema_graphdemo_marker_load_graph_(&reader,(Marker *)(void *)region,&nodes,directory,&sink)) { table_release(table_default_allocator(),nodes.blob_named); return NULL; }
+    table_release(table_default_allocator(),nodes.blob_named); return (const Marker *)(const void *)region;
 }
 static SCHEMA_UNUSED int marker_load_builder(MarkerBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)
 {
@@ -6274,8 +6313,21 @@ static SCHEMA_UNUSED int marker_load_builder(MarkerBuilder * builder, const uint
     directory=(TableNodeDirEntry *)table_allocate(builder->arena.allocator,(records+1)*(int64_t)sizeof(TableNodeDirEntry));
     if(directory==NULL) { report->malformed=1; return 0; }
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0xd6458a3eef83d457);
-    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_marker_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); return ok;
+    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
+    sink.region=NULL; sink.worker=&builder->main;
+    ok=schema_graphdemo_marker_load_graph_(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); table_release(builder->arena.allocator,nodes.blob_named); return ok;
+}
+/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
+static SCHEMA_UNUSED int schema_graphdemo_marker_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
+{
+    uint8_t * region; TableReport report; const Marker * loaded; int shared;
+    region=(uint8_t *)table_allocate(table_default_allocator(),total);
+    if(region==NULL) { return 1; }
+    memset(&report,0,sizeof(report));
+    loaded=marker_load(region,total,wire,bytes,&report);
+    table_release(table_default_allocator(),region);
+    if(loaded==NULL) { return 1; }
+    shared=report.blob_shared>0; return shared;
 }
 static SCHEMA_UNUSED int schema_graphdemo_marker_message_graph_save_(TableBitWriter * w,const Marker * root,TableAllocator allocator)
 {

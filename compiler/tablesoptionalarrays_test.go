@@ -88,16 +88,31 @@ func TestOptionalArraysCarriers(t *testing.T) {
 	u := unitFromSource(t, optionalArraySrc)
 	c := New()
 	for _, target := range c.Targets() {
-		if target == "cpp" || target == "c" || target == "cs" || target == "go" {
+		if target == "cpp" || target == "c" || target == "cs" || target == "go" || target == "js" || target == "rust" || target == "java" {
 			files, err := c.Generate(u, target, Options{})
 			if err != nil {
 				t.Fatalf("--lang %s refused the supported shape: %v", target, err)
+			}
+			if target == "java" {
+				if _, ok := files["LogVariable.java"]; !ok {
+					t.Fatalf("--lang java emitted no table source (LogVariable.java)")
+				}
+				continue
+			}
+			if target == "rust" {
+				if _, ok := files["probe_records.rs"]; !ok {
+					t.Fatalf("--lang rust emitted no table source")
+				}
+				continue
 			}
 			suffix := "h"
 			if target != "cpp" {
 				suffix = target
 			}
-			if _, ok := files["ProbeTable."+suffix]; !ok {
+			_, table := files["ProbeTable."+suffix]
+			// the JS variable class lives in <Package>Variable.js (§8.4)
+			_, variable := files["ProbeVariable.js"]
+			if !table && (target != "js" || !variable) {
 				t.Fatalf("--lang %s emitted no table source", target)
 			}
 			continue

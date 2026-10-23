@@ -2,8 +2,22 @@ package gotable
 
 import (
 	"fmt"
+
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+// optionalMapJson is the JSON walk's one change for an OPTIONAL MAP
+// (docs/SPEC-TABLES.md §2.8, §16.2), made only in a unit that declares one so
+// every other unit's walk is the same bytes it was: a `null` reads as ABSENT
+// and puts the field back at its defaults, and a map's defaults are the empty
+// sixteen-byte slot, never the ENTRY table its descriptor's Table names.
+func optionalMapJson(u *ir.Unit, s string) string {
+	if len(ir.OptionalMapFields(u)) == 0 {
+		return s
+	}
+	old := "\t\t\t\tif f.Table != nil {\n\t\t\t\t\tf.Table().Reset(unsafe.Add(base, uintptr(f.Offset)))"
+	return tableSourceReplace(s, old, "\t\t\t\tif f.Map {\n\t\t\t\t\tclear(unsafe.Slice((*byte)(unsafe.Add(base, uintptr(f.Offset))), 16))\n\t\t\t\t} else if f.Table != nil {\n\t\t\t\t\tf.Table().Reset(unsafe.Add(base, uintptr(f.Offset)))", 1)
+}
 
 func (g *tableGen) mapDescriptor(f *ir.Field) string {
 	for i, field := range g.owner.Fields {
@@ -40,6 +54,11 @@ func (g *tableGen) emitMapSurface(st *ir.Struct, f *ir.Field) {
 		kt = "string"
 		kv = "tableMapKey{text:[]byte(key)}"
 	}
+	if key.Type.TextUnbounded() {
+		// an UNBOUNDED key (docs/SPEC-TABLES.md §2.13.1): the same spelling,
+		// any length, compared whole
+		kv = "tableMapKey{text:unsafe.Slice(unsafe.StringData(key),len(key))}"
+	}
 	holder := "*TableMap[" + entry + "]"
 	desc := g.mapDescriptor(f)
 	g.pf("func %sInsert(worker *TableWorker,holder %s,key %s) *%s {p,_:=tableMapPlace(worker,(*tableContainer)(unsafe.Pointer(holder)),%s,%s);if p==nil{return nil};entry:=(*%s)(p);value:=entry;", name, holder, kt, typ, desc, kv, entry)
@@ -54,7 +73,10 @@ func (g *tableGen) emitMapSurface(st *ir.Struct, f *ir.Field) {
 	if key.Type.Kind == ir.TString {
 		keyexpr = "string(entry.Key[:entry.KeyLength])"
 	}
-	g.pf("func %sEach(holder %s,visit func(%s,*%s)bool,arena ...*TableArena) bool {c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(%s{})),tableOptionalArena(arena));for i:=int32(0);i<holder.Count;i++ {entry:=(*%s)(c.Next());if entry==nil||!visit(%s,%s){return false}};return true }\n", name, holder, kt, typ, entry, entry, keyexpr, access)
+	if key.Type.TextUnbounded() {
+		keyexpr = "tableTextString(&entry.Key,tableOptionalArena(arena))"
+	}
+	g.pf("func %sEach(holder %s,visit func(%s,*%s)bool,arena ...*TableArena) bool {c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(%s{})),tableOptionalArena(arena));for range holder.Count {entry:=(*%s)(c.Next());if entry==nil||!visit(%s,%s){return false}};return true }\n", name, holder, kt, typ, entry, entry, keyexpr, access)
 	g.pf("func %sIndexMeasure(holder %s) int64 {return tableMapIndexMeasure(holder.Count)}\n", name, holder)
 	g.pf("func %sIndex(holder %s,storage []byte) TableMapIndex {return tableMapIndex((*tableContainer)(unsafe.Pointer(holder)),%s,storage)}\n", name, holder, desc)
 	g.pf("func %sIndexFind(index TableMapIndex,holder %s,key %s) *%s {p:=tableMapIndexFind(index,(*tableContainer)(unsafe.Pointer(holder)),%s,%s);if p==nil{return nil};entry:=(*%s)(p);return %s }\n", name, holder, kt, typ, desc, kv, entry, access)
@@ -72,7 +94,12 @@ func (g *tableGen) emitMapRead(f *ir.Field, ind string) {
 	if g.retain {
 		keyReader = "elem.tableRetainPlainReader"
 	}
-	g.pf("%sfor i:=uint64(0);i<count;i++ {elem,ok:=sub.Body();if !ok {r.Report.Malformed=true;break};key,bad,over,wide,whole:=tableMapReadKey(%s,&field.Table().Fields[0]);if wide&&!widened {widened=true;r.Report.Widened++};if bad {r.Report.KindMismatch++;*holder=tableContainer{};break};if !whole {r.Report.Malformed=true;break};if over {r.Report.Clamped++;continue};order:= -1;if prior!=nil {order=tableMapKeyOrder(last,key,&field.Table().Fields[0])};if order>0 {r.Report.Malformed=true;break};p:=prior;if order==0 {r.Report.Duplicate++}else {p=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,holder,holder.Count,%d));if p==nil {r.Report.Malformed=true;break};if sub.Nodes.Carve.Worker==nil {holder.Count++}};\n", ind, keyReader, entry, layout.Size)
+	named := ""
+	if ir.MapKeyUnbounded(f) {
+		// an UNBOUNDED key's damage names the map (docs/SPEC-TABLES.md §2.13.1)
+		named = fmt.Sprintf("tableTextMalformed(r.Report,%q);", f.MapEntry.MapEntryOf)
+	}
+	g.pf("%sfor i:=uint64(0);i<count;i++ {elem,ok:=sub.Body();if !ok {r.Report.Malformed=true;"+named+"break};key,bad,over,wide,whole:=tableMapReadKey(%s,&field.Table().Fields[0]);if wide&&!widened {widened=true;r.Report.Widened++};if bad {r.Report.KindMismatch++;*holder=tableContainer{};break};if !whole {r.Report.Malformed=true;"+named+"break};if over {r.Report.Clamped++;continue};order:= -1;if prior!=nil {order=tableMapKeyOrder(last,key,&field.Table().Fields[0])};if order>0 {r.Report.Malformed=true;"+named+"break};p:=prior;if order==0 {r.Report.Duplicate++}else {p=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,holder,holder.Count,%d));if p==nil {r.Report.Malformed=true;break};if sub.Nodes.Carve.Worker==nil {holder.Count++}};\n", ind, keyReader, entry, layout.Size)
 	g.retainReadPath("elem", "r", "holder.Count-1")
 	g.pf("%sLoadBody(&elem,p);\n", f.MapEntry.Name)
 	g.emitCarveReturn("sub", "elem", ind)
@@ -88,28 +115,37 @@ func (m *TableMap[T]) At(index int32,arena ...*TableArena)*T {if m==nil||index<0
 func (c *tableContainerCursor) Release(){if c.memory!=nil {c.arena.Allocator.free(c.memory);c.memory=nil;c.order=nil}}
 func tableMapCursor(h *tableContainer,f *TableFieldInfo,a *TableArena) tableContainerCursor {
  c:=tableContainerCursorBegin(h,int64(f.ElemSize),a);if !f.Map||a==nil||h.Count==0{return c};bad:=tableContainerCursor{arena:a};if h.Count<0||h.Ref==0{return bad};memory:=a.Allocator.alloc(int64(h.Count)*8);if memory==nil{return bad};order:=unsafe.Slice((*int64)(unsafe.Pointer(&memory[0])),int(h.Count));head:=(*tableContainerHead)(a.At(h.Ref));n:=0
- for ref:=head.First;ref!=0; {chunk:=(*tableContainerChunk)(a.At(ref));if chunk==nil {a.Allocator.free(memory);return bad};for i:=int32(0);i<chunk.Count;i++ {if chunk.Dead&(uint64(1)<<uint(i))!=0{continue};if n>=len(order){a.Allocator.free(memory);return bad};order[n]=ref+32+int64(i)*int64(f.ElemSize);n++};ref=chunk.Next};if n!=len(order) {a.Allocator.free(memory);return bad};key:=&f.Table().Fields[0]
+ for ref:=head.First;ref!=0; {chunk:=(*tableContainerChunk)(a.At(ref));if chunk==nil {a.Allocator.free(memory);return bad};for i := range chunk.Count {if chunk.Dead&(uint64(1)<<uint(i))!=0{continue};if n>=len(order){a.Allocator.free(memory);return bad};order[n]=ref+32+int64(i)*int64(f.ElemSize);n++};ref=chunk.Next};if n!=len(order) {a.Allocator.free(memory);return bad};key:=&f.Table().Fields[0]
  slices.SortFunc(order,func(x,y int64)int{return tableMapKeyOrder(tableMapStoredKey(a.At(x),key),tableMapStoredKey(a.At(y),key),key)})
  for i,ref:=range order {k:=tableMapStoredKey(a.At(ref),key);if !tableMapKeyValid(k,key)||i>0&&tableMapKeyOrder(tableMapStoredKey(a.At(order[i-1]),key),k,key)>=0 {a.Allocator.free(memory);return bad}}
  return tableContainerCursor{arena:a,size:int64(f.ElemSize),order:order,memory:memory}
 }
-func tableMapFind(h *tableContainer,f *TableFieldInfo,key tableMapKey,a *TableArena) unsafe.Pointer {if h==nil||h.Count<=0||h.Ref==0{return nil};kf:=&f.Table().Fields[0];if !tableMapKeyValid(key,kf){return nil};if a==nil {base:=unsafe.Add(unsafe.Pointer(h),h.Ref);lo,hi:=int32(0),h.Count;for lo<hi {mid:=lo+(hi-lo)/2;p:=unsafe.Add(base,int64(mid)*int64(f.ElemSize));order:=tableMapKeyOrder(tableMapStoredKey(p,kf),key,kf);if order<0{lo=mid+1}else{hi=mid}};if lo<h.Count {p:=unsafe.Add(base,int64(lo)*int64(f.ElemSize));if tableMapKeyOrder(tableMapStoredKey(p,kf),key,kf)==0{return p}};return nil};c:=tableContainerCursorBegin(h,int64(f.ElemSize),a);for i:=int32(0);i<h.Count;i++ {p:=c.Next();if p==nil{return nil};if tableMapKeyOrder(tableMapStoredKey(p,kf),key,kf)==0{return p}};return nil}
+func tableMapFind(h *tableContainer,f *TableFieldInfo,key tableMapKey,a *TableArena) unsafe.Pointer {if h==nil||h.Count<=0||h.Ref==0{return nil};kf:=&f.Table().Fields[0];if !tableMapKeyValid(key,kf){return nil};if a==nil {base:=unsafe.Add(unsafe.Pointer(h),h.Ref);lo,hi:=int32(0),h.Count;for lo<hi {mid:=lo+(hi-lo)/2;p:=unsafe.Add(base,int64(mid)*int64(f.ElemSize));order:=tableMapKeyOrder(tableMapStoredKey(p,kf),key,kf);if order<0{lo=mid+1}else{hi=mid}};if lo<h.Count {p:=unsafe.Add(base,int64(lo)*int64(f.ElemSize));if tableMapKeyOrder(tableMapStoredKey(p,kf),key,kf)==0{return p}};return nil};c:=tableContainerCursorBegin(h,int64(f.ElemSize),a);for range h.Count {p:=c.Next();if p==nil{return nil};if tableMapKeyOrder(tableMapStoredKey(p,kf),key,kf)==0{return p}};return nil}
 func tableMapPlace(w *TableWorker,h *tableContainer,f *TableFieldInfo,key tableMapKey)(unsafe.Pointer,bool) {if w==nil||w.Arena==nil||w.Arena.Locked||!tableMapKeyValid(key,&f.Table().Fields[0]) {return nil,false};if p:=tableMapFind(h,f,key,w.Arena);p!=nil{return p,true};p:=tableContainerAppend(w,h,int64(f.ElemSize));if p==nil{return nil,false};f.Table().Reset(p);tableMapStoreKey(p,&f.Table().Fields[0],key);return p,false}
 func tableMapReadKey(r TableReader,f *TableFieldInfo)(key tableMapKey,bad,over,wide,whole bool) {
  for {ref,ok:=r.Leb();if !ok{return};if ref==0 {whole=r.Offset==int64(len(r.Buffer));return};id,ok:=r.Resolve(ref);if !ok||!r.Has(1){return};kind:=r.Get8();if id!=f.Id {if !r.Skip(kind){return};continue};if kind!=f.Kind&&tableKindWidens(kind,f.Kind) {wide=true}else{bad=kind!=f.Kind;if bad {if !r.Skip(kind){return};continue}};if kind==12 {body,ok:=r.Body();if !ok||!tableUtf8Valid(body.Buffer){return};key.text=body.Buffer;over=len(key.text)>int(f.ArrayBound)}else{size:=tableKindBytes(kind);if !r.Has(size){return};if f.Kind>=2&&f.Kind<=5 {key.raw=uint64(r.Signed(kind))}else{key.raw=r.Unsigned(kind)}} }
 }
 type TableMapIndex struct { slots []int32 }
 func tableMapIndexMeasure(count int32)int64 {if count<0||count>1<<29{return -1};capacity:=int64(2);for capacity<int64(count)*2 {capacity*=2};return capacity*4}
-func tableMapHash(k tableMapKey,f *TableFieldInfo) uint64 {h:=uint64(14695981039346656037);if f.Kind==12 {for _,b:=range k.text{h=(h^uint64(b))*1099511628211}}else{for i:=0;i<8;i++{h=(h^(k.raw>>uint(i*8)&255))*1099511628211}};return h}
-func tableMapIndex(h *tableContainer,f *TableFieldInfo,storage []byte) TableMapIndex {n:=tableMapIndexMeasure(h.Count);if n<0||int64(len(storage))<n||len(storage)==0||uintptr(unsafe.Pointer(&storage[0]))%4!=0 {return TableMapIndex{}};slots:=unsafe.Slice((*int32)(unsafe.Pointer(&storage[0])),int(n/4));clear(slots);if h.Count>0&&h.Ref==0{return TableMapIndex{}};base:=unsafe.Add(unsafe.Pointer(h),h.Ref);key:=&f.Table().Fields[0];for i:=int32(0);i<h.Count;i++ {p:=unsafe.Add(base,int64(i)*int64(f.ElemSize));at:=tableMapHash(tableMapStoredKey(p,key),key)&uint64(len(slots)-1);for slots[at]!=0{at=(at+1)&uint64(len(slots)-1)};slots[at]=i+1};return TableMapIndex{slots:slots}}
-func tableMapIndexFind(index TableMapIndex,h *tableContainer,f *TableFieldInfo,key tableMapKey) unsafe.Pointer {if len(index.slots)==0{return tableMapFind(h,f,key,nil)};kf:=&f.Table().Fields[0];if !tableMapKeyValid(key,kf)||h.Ref==0{return nil};base:=unsafe.Add(unsafe.Pointer(h),h.Ref);at:=tableMapHash(key,kf)&uint64(len(index.slots)-1);for i:=0;i<len(index.slots);i++ {slot:=index.slots[at];if slot==0{return nil};if slot<0||slot>h.Count{return nil};p:=unsafe.Add(base,int64(slot-1)*int64(f.ElemSize));if tableMapKeyOrder(tableMapStoredKey(p,kf),key,kf)==0{return p};at=(at+1)&uint64(len(index.slots)-1)};return nil}
+func tableMapHash(k tableMapKey,f *TableFieldInfo) uint64 {h:=uint64(14695981039346656037);if f.Kind==12 {for _,b:=range k.text{h=(h^uint64(b))*1099511628211}}else{for i := range 8 {h=(h^(k.raw>>uint(i*8)&255))*1099511628211}};return h}
+func tableMapIndex(h *tableContainer,f *TableFieldInfo,storage []byte) TableMapIndex {n:=tableMapIndexMeasure(h.Count);if n<0||int64(len(storage))<n||len(storage)==0||uintptr(unsafe.Pointer(&storage[0]))%4!=0 {return TableMapIndex{}};slots:=unsafe.Slice((*int32)(unsafe.Pointer(&storage[0])),int(n/4));clear(slots);if h.Count>0&&h.Ref==0{return TableMapIndex{}};base:=unsafe.Add(unsafe.Pointer(h),h.Ref);key:=&f.Table().Fields[0];for i := range h.Count {p:=unsafe.Add(base,int64(i)*int64(f.ElemSize));at:=tableMapHash(tableMapStoredKey(p,key),key)&uint64(len(slots)-1);for slots[at]!=0{at=(at+1)&uint64(len(slots)-1)};slots[at]=i+1};return TableMapIndex{slots:slots}}
+func tableMapIndexFind(index TableMapIndex,h *tableContainer,f *TableFieldInfo,key tableMapKey) unsafe.Pointer {if len(index.slots)==0{return tableMapFind(h,f,key,nil)};kf:=&f.Table().Fields[0];if !tableMapKeyValid(key,kf)||h.Ref==0{return nil};base:=unsafe.Add(unsafe.Pointer(h),h.Ref);at:=tableMapHash(key,kf)&uint64(len(index.slots)-1);for range len(index.slots) {slot:=index.slots[at];if slot==0{return nil};if slot<0||slot>h.Count{return nil};p:=unsafe.Add(base,int64(slot-1)*int64(f.ElemSize));if tableMapKeyOrder(tableMapStoredKey(p,kf),key,kf)==0{return p};at=(at+1)&uint64(len(index.slots)-1)};return nil}
 `
 
+// tableJsonMapSource reads and writes a map in the JSON text form. A map key is
+// a JSON string whatever its kind (docs/SPEC-TABLES.md 16.2), so a key that
+// decodes to U+0000 refuses the read as ONE Malformed event (16.3, counted as
+// 4.2 counts it on the wire): an integer key whose scan refused returns at
+// once and is never also counted a kind mismatch. A key the read DROPS for its
+// length (over a string key's bound, or no integer at all) is still a key: the
+// probe scans every key as text bound for storage into an empty buffer and a
+// scratch report first, so a zero in it refuses the same way, as the pack text
+// reader refuses it; its drop is counted as before (Clamped, KindMismatch).
 const tableJsonMapSource = `
-func tableJsonWriteMap(out *tableJsonOut,p unsafe.Pointer,f *TableFieldInfo,depth int32)bool {if depth>tableJsonMaxDepth{return false};count:=*(*int32)(unsafe.Add(p,8));if count<0{return false};out.put('{');if count>0 {ref:=*(*int64)(p);if ref==0{return false};base:=unsafe.Add(p,ref);entry:=f.Table();key,value:=&entry.Fields[0],&entry.Fields[1];for i:=int32(0);i<count;i++ {if i>0{out.put(',')};out.line(depth+1);at:=unsafe.Add(base,int64(i)*int64(f.ElemSize));k:=tableMapStoredKey(at,key);if key.Kind==12 {tableJsonWriteString(out,k.text)}else{out.put('"');if key.Kind>=2&&key.Kind<=5 {tableJsonWriteSigned(out,int64(k.raw))}else{tableJsonWriteUnsigned(out,k.raw)};out.put('"')};out.text(": ");if value.Optional&&!*(*bool)(unsafe.Add(at,value.PresentOffset)){out.text("null")}else if !tableJsonWriteField(out,at,value,depth+1){return false}};out.line(depth)};out.put('}');return true}
+func tableJsonWriteMap(out *tableJsonOut,p unsafe.Pointer,f *TableFieldInfo,depth int32)bool {if depth>tableJsonMaxDepth{return false};count:=*(*int32)(unsafe.Add(p,8));if count<0{return false};out.put('{');if count>0 {ref:=*(*int64)(p);if ref==0{return false};base:=unsafe.Add(p,ref);entry:=f.Table();key,value:=&entry.Fields[0],&entry.Fields[1];for i := range count {if i>0{out.put(',')};out.line(depth+1);at:=unsafe.Add(base,int64(i)*int64(f.ElemSize));k:=tableMapStoredKey(at,key);if key.Kind==12 {tableJsonWriteString(out,k.text)}else{out.put('"');if key.Kind>=2&&key.Kind<=5 {tableJsonWriteSigned(out,int64(k.raw))}else{tableJsonWriteUnsigned(out,k.raw)};out.put('"')};out.text(": ");if value.Optional&&!*(*bool)(unsafe.Add(at,value.PresentOffset)){out.text("null")}else if !tableJsonWriteField(out,at,value,depth+1){return false}};out.line(depth)};out.put('}');return true}
 func tableJsonReadMap(in *tableJsonIn,p unsafe.Pointer,f *TableFieldInfo,depth int32)bool {if depth>tableJsonMaxDepth||in.peek()!='{'||in.graph==nil||in.graph.mapPlace==nil {in.bad=true;return false};clear(unsafe.Slice((*byte)(p),16));in.pos++;entry:=f.Table();key,value:=&entry.Fields[0],&entry.Fields[1]
- for {if in.peek()=='}'{in.pos++;return true};probe:=*in;n,ok:=probe.scanString(nil);if !ok {in.bad=true;return false};good:=true;var k tableMapKey
- if key.Kind==12 {if n>key.ArrayBound {in.report.Clamped++;in.pos=probe.pos;good=false}else{memory,_:=in.graph.alloc(int64(n)+1);if memory==nil{in.bad=true;return false};k.text=unsafe.Slice((*byte)(memory),int(n));_,ok=in.scanString(k.text)}}else{var text [tableJsonMaxNumber]byte;if n>tableJsonMaxNumber {in.pos=probe.pos;good=false}else{_,ok=in.scanString(text[:n]);k.raw,good=tableJsonMapInteger(text[:n],key)};if !good{in.report.KindMismatch++}}
+ for {if in.peek()=='}'{in.pos++;return true};probe:=*in;n,ok:=probe.scanString(nil);if !ok {in.bad=true;return false};{zero:=*in;var r TableReport;zero.report=&r;var none [0]byte;if _,ok:=zero.scanString(none[:]);!ok&&zero.zero {in.zero=true;in.bad=true;return false}};good:=true;var k tableMapKey
+ if key.Kind==12 {if n>key.ArrayBound {in.report.Clamped++;in.pos=probe.pos;good=false}else{memory,_:=in.graph.alloc(int64(n)+1);if memory==nil{in.bad=true;return false};k.text=unsafe.Slice((*byte)(memory),int(n));_,ok=in.scanString(k.text)}}else{var text [tableJsonMaxNumber]byte;if n>tableJsonMaxNumber {in.pos=probe.pos;good=false}else{_,ok=in.scanString(text[:n]);if !ok {return false};k.raw,good=tableJsonMapInteger(text[:n],key)};if !good{in.report.KindMismatch++}}
  if !ok||in.peek()!=':' {in.bad=true;return false};in.pos++;if !good {tableJsonDropLabel(in);if !in.skipValue(depth+1){return false}}else{slot,duplicate:=in.graph.mapPlace(p,f,k);if slot==nil {in.bad=true;return false};if duplicate{in.report.Duplicate++};entry.Reset(slot);tableMapStoreKey(slot,key,k);shape:=in.valueShape();if value.Optional&&shape=='z' {if !in.literal("null"){return false}}else if shape!=tableJsonShape(value)&&!(value.Pointer&&shape=='z'){in.report.KindMismatch++;tableJsonDropLabel(in);if !in.skipValue(depth+1){return false}}else{if !tableJsonReadField(in,slot,value,depth+1){return false};if value.Optional{*(*bool)(unsafe.Add(slot,value.PresentOffset))=true}}};c:=in.peek();if c==','{in.pos++;continue};if c=='}'{in.pos++;return true};in.bad=true;return false }
 }
 func tableJsonMapInteger(text []byte,f *TableFieldInfo)(uint64,bool) {var report TableReport;in:=tableJsonIn{text:text,report:&report};integral,ok:=in.walkNumber();if !ok||in.pos!=len(text){return 0,false};_ = integral;v,ok:=tableJsonDecimalKey(text,f.Kind>=2&&f.Kind<=5,int(f.ElemSize)*8);return v,ok}

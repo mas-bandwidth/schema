@@ -228,7 +228,7 @@ fixed table Root {
 	if !strings.Contains(text, "e.Shape.Min=began;e.Shape.Max=src.Offset") {
 		t.Fatal("the emitted scan does not park the accepted entry's declared byte extent")
 	}
-	if !strings.Contains(text, "src.Offset=0;for i:=int64(0);i<count;i++ {e,ok:=tableMessageEntryRead(&src)") {
+	if !strings.Contains(text, "src.Offset=0;for i := range count {e,ok:=tableMessageEntryRead(&src)") {
 		t.Fatal("the emitted announce does not resolve the parked entries in a second pass")
 	}
 

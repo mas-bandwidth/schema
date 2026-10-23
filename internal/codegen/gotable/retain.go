@@ -24,7 +24,7 @@ func (g *tableGen) emitRetainRuntime() {
 	g.pf("%s", source)
 	load := tableRegionSource
 	if unitHasContainers(g.unit) {
-		load = containerRegionSource(load)
+		load = containerRegionSourceRetain(load)
 	}
 	load = tableSourceFunction(load, "func tableRegionLoad(")
 	load = tableSourceReplace(load, "func tableRegionLoad(", "func tableRegionLoadRetain(", 1)
@@ -109,7 +109,7 @@ var retainBodyName = regexp.MustCompile(`\b([A-Za-z_][A-Za-z_0-9]*)(LoadMessageB
 func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	if st.IsTable && !st.IsMapEntry() {
 		for _, verb := range []string{"LoadRetainBuilder", "SaveRetainMessages"} {
-			g.pf("const %s%s = %q\n", st.Name, verb, st.Name+": retention requires a region round trip through the VARIABLE form")
+			g.pf("const %s%s = %q\n", st.Name, verb, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
 		}
 		if !ir.VariableTables(g.unit)[st.Name] {
 			// The message form is a FIXED table's (docs/SPEC-TABLES.md §3.3):
@@ -118,9 +118,9 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 			// root has no region, so the form's LoadRetainMessages is refused by
 			// name beside its SaveRetainMessages refusal rather than left as a
 			// missing symbol.
-			g.pf("const %sLoadRetainMessages = %q\n", st.Name, st.Name+": retention requires a region round trip through the VARIABLE form")
+			g.pf("const %sLoadRetainMessages = %q\n", st.Name, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
 			for _, verb := range []string{"LoadRetain", "MeasureRetain", "SaveRetain"} {
-				g.pf("const %s%s = %q\n", st.Name, verb, st.Name+": retention requires a variable root and its region directory")
+				g.pf("const %s%s = %q\n", st.Name, verb, st.DeclaredName()+": retention requires a variable root and its region directory")
 			}
 		} else {
 			n := st.Name
@@ -133,12 +133,15 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 			if b {
 				blobs |= 2
 			}
-			g.pf("func %sLoadRetain(region,wire []byte,retain *TableRetain,report *TableReport)*%s{return (*%s)(tableRegionLoadRetain(region,wire,%sTableType(),%sTableType().NodeType,%d,report,retain))}\n", n, typ, typ, n, n, blobs)
-			g.pf("func %sMeasureRetain(value *%s,retain *TableRetain,allocator ...TableAllocator)int64{return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),nil,true,retain,nil,allocator...)}\n", n, typ, n)
-			g.pf("func %sSaveRetain(value *%s,retain *TableRetain,buffer []byte,report *TableReport,allocator ...TableAllocator)int64{if report==nil{return -1};return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),buffer,false,retain,report,allocator...)}\n", n, typ, n)
+			if st.Integrity != "" {
+				g.emitIntegrityRetain(st, blobs)
+			} else {
+				g.pf("func %sLoadRetain(region,wire []byte,retain *TableRetain,report *TableReport)*%s{return (*%s)(tableRegionLoadRetain(region,wire,%sTableType(),%sTableType().NodeType,%d,report,retain))}\n", n, typ, typ, n, n, blobs)
+				g.pf("func %sMeasureRetain(value *%s,retain *TableRetain,allocator ...TableAllocator)int64{return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),nil,true,retain,nil,allocator...)}\n", n, typ, n)
+				g.pf("func %sSaveRetain(value *%s,retain *TableRetain,buffer []byte,report *TableReport,allocator ...TableAllocator)int64{if report==nil{return -1};return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),buffer,false,retain,report,allocator...)}\n", n, typ, n)
+			}
 		}
 	}
-	g.emitRetainMessageSurface(st)
 	if !g.regional {
 		return
 	}
@@ -146,7 +149,15 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	side.emitTableMeasure(st)
 	side.emitTableWrite(st)
 	side.emitTableRead(st)
-	side.into(&side.message, func() { side.emitMessageRead(st) })
+	if g.surfaces.Message {
+		side.into(&side.message, func() { side.emitMessageRead(st) })
+	}
+	// The message-form reader rides only on a message surface; every other
+	// rewrite is the region body's and must be present. The whole family is
+	// validated against those stated surfaces first, so a vanished or doubled
+	// anchor panics by name (>=1, or ==0 when the surface is off) instead of
+	// silently dropping a behaviour; each half is then rewritten alone and the
+	// two halves must be the whole, byte for byte.
 	rewrites := []string{"TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds"}
 	retained := func(source string) string {
 		source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
@@ -155,21 +166,27 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 		}
 		return source
 	}
-	// the seams fail closed on the WHOLE family, exactly as before the message
-	// half had a file of its own; each half is then rewritten alone, and the
-	// two halves must be the whole, byte for byte
+	haveMessage := side.message.Len() > 0
 	whole := side.body.String() + side.message.String()
 	if !retainBodyName.MatchString(whole) {
 		panic("retaining body family has no source codecs")
 	}
-	whole = tableSourceRewriter(retainBodyName.ReplaceAllString(whole, "${1}${2}Retain"), rewrites...)
+	whole = retainBodyName.ReplaceAllString(whole, "${1}${2}Retain")
+	for i := 0; i < len(rewrites); i += 2 {
+		old, new := rewrites[i], rewrites[i+1]
+		want := -1
+		if old == "TableMessageReader" && !haveMessage {
+			want = 0
+		}
+		whole = tableSourceReplace(whole, old, new, want)
+	}
 	core, message := retained(side.body.String()), retained(side.message.String())
 	if core+message != whole {
 		panic("retaining body family does not split at the message form's seam")
 	}
 	g.pf("%s", core)
 	// the retaining MESSAGE read is the message form's, beside the plain one
-	if message != "" {
+	if message != "" && g.messageCarries(st) {
 		g.into(&g.message, func() { g.pf("%s", message) })
 	}
 	g.needsMath = g.needsMath || side.needsMath
@@ -212,7 +229,7 @@ func tableRetainRecordSize(b []byte)int{return int(binary.LittleEndian.Uint32(b)
 func(t *TableRetain)matches(b []byte,p tableRetainPath,under bool,field bool,ordinal uint32)bool{
  node:=binary.LittleEndian.Uint32(b[4:]);depth:=int(binary.LittleEndian.Uint32(b[8:]));if node==0||int(node)>len(t.directory)||t.directory[node-1].Offset==^uint64(0)||unsafe.Add(t.base,t.directory[node-1].Offset)!=p.at{return false}
  if depth<p.depth||!under&&depth!=p.depth||field&&depth==p.depth||p.depth>len(p.steps){return false}
- for i:=0;i<p.depth;i++{if binary.LittleEndian.Uint32(b[26+i*8:])!=p.steps[i].ordinal||binary.LittleEndian.Uint32(b[30+i*8:])!=p.steps[i].index{return false}}
+ for i := range p.depth {if binary.LittleEndian.Uint32(b[26+i*8:])!=p.steps[i].ordinal||binary.LittleEndian.Uint32(b[30+i*8:])!=p.steps[i].index{return false}}
  return !field||binary.LittleEndian.Uint32(b[26+p.depth*8:])==ordinal
 }
 func(t *TableRetain)discard(p tableRetainPath,field bool,ordinal uint32){if t==nil{return};at,out,count:=0,0,0;for at<int(t.Used){n:=tableRetainRecordSize(t.Bytes[at:]);b:=t.Bytes[at:at+n];if !t.matches(b,p,true,field,ordinal){copy(t.Bytes[out:],b);out+=n;count++};at+=n};t.Used=int64(out);t.Count=count}
@@ -228,7 +245,7 @@ func(r *TableRetainReader)capture(id uint64,kind uint8)bool{
  if p.depth>len(p.steps)||!probe.payload(kind,0)||probe.r.Offset!=int64(len(probe.r.Buffer)){r.Report.RetainLost++;return true}
  need:=int64(26+p.depth*8)+probe.w.Offset;if need>0xffffffff||need>int64(len(t.Bytes))-t.Used{r.Report.RetainLost++;return true}
  b:=t.Bytes[t.Used:t.Used+need];clear(b[:26]);binary.LittleEndian.PutUint32(b,uint32(need));binary.LittleEndian.PutUint32(b[4:],p.node);binary.LittleEndian.PutUint32(b[8:],uint32(p.depth));binary.LittleEndian.PutUint32(b[12:],uint32(probe.w.Offset));binary.LittleEndian.PutUint64(b[16:],id);b[24]=kind
- for i:=0;i<p.depth;i++{binary.LittleEndian.PutUint32(b[26+8*i:],p.steps[i].ordinal);binary.LittleEndian.PutUint32(b[30+8*i:],p.steps[i].index)}
+ for i := range p.depth {binary.LittleEndian.PutUint32(b[26+8*i:],p.steps[i].ordinal);binary.LittleEndian.PutUint32(b[30+8*i:],p.steps[i].index)}
  write:=tableRetainIn{r:probe.r,w:TableWriter{Buffer:b[26+p.depth*8:]},limit:limit};write.r.Offset=0;if !write.payload(kind,0)||write.w.Overflow{r.Report.RetainLost++;return true};t.Used+=need;t.Count++;r.Report.Retained++;return true
 }
 
@@ -242,7 +259,7 @@ func(s *tableRetainIn)content(kind uint8,n int64,depth int)bool{
  if depth>tableRetainWalkDepthMax||!s.r.Has(n){return false};end:=s.r.Offset+n
  switch kind {
  case 13:for{ref,ok:=s.ref(true);if !ok{return false};if ref==0{break};if !s.room(1)||!s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);if !s.payload(k,depth)||s.r.Offset>end{return false}}
- case 14,16:if !s.room(1)||!s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);count,ok:=s.r.Leb();if !ok||!s.room(tableLebBytes(count)){return false};s.w.PutLeb(count);minimum:=tableRetainFileMinimum(k);if kind==16{minimum=16};if minimum<=0||count>uint64(max(int64(0),s.limit-s.w.Offset)/minimum)||count>uint64(max(int64(0),end-s.r.Offset)){return false};for i:=uint64(0);i<count;i++{if kind==16{if _,ok:=s.ref(false);!ok{return false};length,ok:=s.r.Leb();if !ok||length>uint64(end-s.r.Offset)||!s.framed(k,int64(length),depth+1){return false}}else if !s.payload(k,depth){return false};if s.r.Offset>end{return false}}
+ case 14,16:if !s.room(1)||!s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);count,ok:=s.r.Leb();if !ok||!s.room(tableLebBytes(count)){return false};s.w.PutLeb(count);minimum:=tableRetainFileMinimum(k);if kind==16{minimum=16};if minimum<=0||count>uint64(max(int64(0),s.limit-s.w.Offset)/minimum)||count>uint64(max(int64(0),end-s.r.Offset)){return false};for range count {if kind==16{if _,ok:=s.ref(false);!ok{return false};length,ok:=s.r.Leb();if !ok||length>uint64(end-s.r.Offset)||!s.framed(k,int64(length),depth+1){return false}}else if !s.payload(k,depth){return false};if s.r.Offset>end{return false}}
  case 15,30:if !s.payload(kind,depth){return false}
  case 17:return false
  default:if !s.raw(n){return false}
@@ -263,7 +280,7 @@ type TableRetainIds struct {known TableIds;slots [tableIdCapacity]int;Numbering 
 func(i *TableRetainIds)Ref(id uint64)uint64{before:=i.known.Count;ref:=i.known.Ref(id);if i.known.Overflow{i.Overflow=true;return 0};if i.known.Count!=before{i.Count++;i.slots[ref-1]=i.Count};return uint64(i.slots[ref-1])}
 func(i *TableRetainIds)RefAt(ordinal int,id uint64)uint64{before:=i.known.Count;ref:=i.known.RefAt(ordinal,id);if i.known.Overflow{i.Overflow=true;return 0};if i.known.Count!=before{i.Count++;i.slots[ref-1]=i.Count};return uint64(i.slots[ref-1])}
 func(i *TableRetainIds)refAtHit(ordinal int,id uint64)uint64{before:=i.known.Count;ref:=i.known.refAtHit(ordinal,id);if i.known.Overflow{i.Overflow=true;return 0};if i.known.Count!=before{i.Count++;i.slots[ref-1]=i.Count};return uint64(i.slots[ref-1])}
-func(i *TableRetainIds)recordRef(id uint64)uint64{lo,hi:=0,len(tableRetainKnown);for lo<hi{m:=lo+(hi-lo)/2;if tableRetainKnown[m]<id{lo=m+1}else{hi=m}};if lo<len(tableRetainKnown)&&tableRetainKnown[lo]==id{return i.Ref(id)};t:=i.Retain;if t==nil{i.Lost=true;return 0};for k:=0;k<t.idUsed;k++{if t.Ids[k].Id==id{return uint64(t.Ids[k].Slot)}};if t.idUsed==len(t.Ids){i.Lost=true;return 0};i.Count++;t.Ids[t.idUsed]=TableRetainId{id,i.Count};t.idUsed++;return uint64(i.Count)}
+func(i *TableRetainIds)recordRef(id uint64)uint64{lo,hi:=0,len(tableRetainKnown);for lo<hi{m:=lo+(hi-lo)/2;if tableRetainKnown[m]<id{lo=m+1}else{hi=m}};if lo<len(tableRetainKnown)&&tableRetainKnown[lo]==id{return i.Ref(id)};t:=i.Retain;if t==nil{i.Lost=true;return 0};for k := range t.idUsed {if t.Ids[k].Id==id{return uint64(t.Ids[k].Slot)}};if t.idUsed==len(t.Ids){i.Lost=true;return 0};i.Count++;t.Ids[t.idUsed]=TableRetainId{id,i.Count};t.idUsed++;return uint64(i.Count)}
 func(i *TableRetainIds)Truncate(mark int){for i.known.Count>0&&i.slots[i.known.Count-1]>mark{i.known.Truncate(i.known.Count-1)};if t:=i.Retain;t!=nil{for t.idUsed>0&&t.Ids[t.idUsed-1].Slot>mark{t.idUsed--}};i.Count=mark}
 func(i *TableRetainIds)trailer(w *TableRetainWriter){a,b,count:=0,0,0;if i.Retain!=nil{count=i.Retain.idUsed};for a<i.known.Count||b<count{if b==count||a<i.known.Count&&i.slots[a]<i.Retain.Ids[b].Slot{w.Put64(i.known.Values[a]);a++}else{w.Put64(i.Retain.Ids[b].Id);b++}};w.Put64(uint64(i.Count))}
 
@@ -276,7 +293,7 @@ func(s *tableRetainOut)content(kind uint8,n int64,depth int)bool{
  if depth>tableRetainWalkDepthMax||!s.r.Has(n){return false};end:=s.r.Offset+n
  switch kind{
  case 13:for{id,ok:=s.ref();if !ok{return false};if id==0{break};if !s.r.Has(1){return false};k:=s.r.Buffer[s.r.Offset];if !s.raw(1)||!s.payload(k,depth)||s.r.Offset>end{return false}}
- case 14,16:if !s.r.Has(1){return false};k:=s.r.Buffer[s.r.Offset];if !s.raw(1){return false};count,ok:=s.r.Leb();if !ok{return false};s.leb(count);for i:=uint64(0);i<count;i++{if kind==16{if _,ok:=s.ref();!ok||!s.framed(k,depth+1){return false}}else if !s.payload(k,depth){return false};if s.r.Offset>end{return false}}
+ case 14,16:if !s.r.Has(1){return false};k:=s.r.Buffer[s.r.Offset];if !s.raw(1){return false};count,ok:=s.r.Leb();if !ok{return false};s.leb(count);for range count {if kind==16{if _,ok:=s.ref();!ok||!s.framed(k,depth+1){return false}}else if !s.payload(k,depth){return false};if s.r.Offset>end{return false}}
  case 15,30:if !s.payload(kind,depth){return false}
  default:if !s.raw(n){return false}
  };return s.r.Offset==end

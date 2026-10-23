@@ -1,5 +1,5 @@
-0xdafcc33c5f3de681
-schema-build-version 3
+0xfc41a41cbeaf79db
+schema-build-version 4
 protocol 727cea182a6959a7
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -52,5 +52,5 @@ union Slot
     arm 1 node kind=17 offset=8 size=8 type=Node
     arm 2 plain kind=4 offset=8 size=4
 union Slots
-    arm 1 many kind=17 offset=8 size=24 type=Node elem=10 array=bounded bound=2
+    arm 1 many kind=17 offset=8 size=24 type=Node elem=8 array=bounded bound=2
     arm 2 plain kind=4 offset=8 size=4

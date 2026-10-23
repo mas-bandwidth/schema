@@ -20,7 +20,7 @@ int main()
     tabledemo::KeyedConfig value;
     tabledemo::TableReport report;
     const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 5 }, \"Red\": { \"spawn_count\": 9 } } }";
-    if ( !tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) )
+    if ( !tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) )
     {
         printf( "keyed duplicate negative control: the sabotaged walker would not read at all — red\n" );
         return 0;

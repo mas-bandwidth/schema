@@ -241,7 +241,7 @@ static uint64_t row_digest( const uint8_t * base, uint64_t offset, size_t stride
     for ( int p = 0; p < 4; p++ )
     {
         uint64_t word = 0;
-        memcpy( &word, base + offset + (size_t) probes[p] * stride, 8 );
+        memcpy( (void *) &word, base + offset + (size_t) probes[p] * stride, 8 );
         h = h * 1099511628211ull + word;
     }
     return h;
@@ -361,8 +361,8 @@ int main( int argc, char ** argv )
         printf( "FAILED: the storage did not allocate\n" );
         return 1;
     }
-    memset( generated_storage.base, 0, (size_t) RenderFrameBlockMaxBytes );
-    memset( hand_storage.base, 0, (size_t) RenderFrameBlockMaxBytes );
+    memset( (void *) generated_storage.base, 0, (size_t) RenderFrameBlockMaxBytes );
+    memset( (void *) hand_storage.base, 0, (size_t) RenderFrameBlockMaxBytes );
 
     // THE GOLDEN GATE, FIRST: the two arms must agree on every byte of every
     // row before any clock starts. A runner that does not agree REFUSES to
