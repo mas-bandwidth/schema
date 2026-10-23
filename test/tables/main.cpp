@@ -7524,6 +7524,60 @@ static void test_escape_and_payload_free_kinds()
         CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
         CHECK( out.body.type == messagedemo::ToolBodyType::None );
     }
+    // BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the
+    // append rule): a nested-union arm whose L runs past the whole inner union
+    // it frames is NOT damage. The inner union decodes, the bytes after it are
+    // stepped over with the arm, the parent reads on and nothing counts.
+    {
+        uint8_t wire[256];
+        WireBuilder b;
+        b.field( "body", 15 );
+        b.leb( b.ref( "origin" ) );
+        b.u8( 15 );                           // the arm's payload is a union
+        b.leb( 8 );                           // the inner union's 7 bytes and one more
+        b.leb( b.ref( "pid" ) );
+        b.u8( 8 );
+        b.leb( 4 );
+        b.u32( 5 );
+        b.u8( 0xEE );                         // a newer writer's byte, claimed by no field here
+        b.field( "sequence", 8 );
+        b.u32( 41 );
+        b.end();
+        const int64_t n = b.finish( wire );
+        pin_table_golden( "nested_arm_trailing", wire, n );
+        messagedemo::ToolMessage out;
+        messagedemo::TableReport report;
+        CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
+        CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 );
+        CHECK( out.body.type == messagedemo::ToolBodyType::Origin );
+        CHECK( out.body.origin.type == messagedemo::OriginType::Pid && out.body.origin.pid == 5 );
+        CHECK( out.sequence == 41 );
+    }
+    // ITS TOP-LEVEL TWIN: the same byte after the ROOT's terminator, outside
+    // every envelope, is claimed by nothing and the file is malformed (§3:
+    // any byte between the root's terminator and the id table's first entry).
+    {
+        uint8_t wire[256];
+        WireBuilder b;
+        b.field( "body", 15 );
+        b.leb( b.ref( "origin" ) );
+        b.u8( 15 );
+        b.leb( 7 );                           // the inner union exactly
+        b.leb( b.ref( "pid" ) );
+        b.u8( 8 );
+        b.leb( 4 );
+        b.u32( 5 );
+        b.field( "sequence", 8 );
+        b.u32( 41 );
+        b.end();
+        b.u8( 0xEE );                         // after the whole message
+        const int64_t n = b.finish( wire );
+        pin_table_golden( "nested_arm_trailing_top", wire, n );
+        messagedemo::ToolMessage out;
+        messagedemo::TableReport report;
+        CHECK( !messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
+        CHECK( report.malformed );
+    }
     // (4) AS AN ELEMENT KIND: the array's own identity, so the same rule one
     // level in — the array reads empty and the field is skipped whole by its L
     {

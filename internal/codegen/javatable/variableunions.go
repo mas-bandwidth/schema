@@ -194,7 +194,17 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			if directText {
 				b.WriteString("parentReport.clamped+=report.clamped;parentReport.malformed|=report.malformed;if(report.malformed)return new Value();report=parentReport;\n")
 			}
-			fmt.Fprintf(&b, "        if(r.fail||r.off!=r.limit){report.malformed=true;return new Value();}v.tag=%d;return v;}\n", i+1)
+			// BYTES LEFT INSIDE A NESTED-UNION ARM'S `L` AFTER A WHOLE INNER
+			// UNION ARE NOT DAMAGE (docs/SPEC-TABLES.md §3, the append rule):
+			// the arm is stepped over by its `L` and nothing counts, as the Go
+			// oracle reads it. Every other arm shape still consumes its `L`.
+			_, nestedUnion := one.Type.Ref.(*ir.Union)
+			nestedUnion = nestedUnion && one.Type.Kind == ir.TNamed && !one.Type.Pointer && one.Array == ir.ArrayNone
+			if nestedUnion {
+				fmt.Fprintf(&b, "        if(r.fail){report.malformed=true;return new Value();}v.tag=%d;return v;}\n", i+1)
+			} else {
+				fmt.Fprintf(&b, "        if(r.fail||r.off!=r.limit){report.malformed=true;return new Value();}v.tag=%d;return v;}\n", i+1)
+			}
 		}
 		b.WriteString("        report.unknown++;")
 		if retaining {

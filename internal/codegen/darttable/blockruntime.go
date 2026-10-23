@@ -9,8 +9,74 @@ package darttable
 import "fmt"
 
 func blockRuntimeSource(buildVersion uint64) string {
-	return fmt.Sprintf(blockRuntimeTemplate, buildVersion)
+	return fmt.Sprintf(blockRuntimeTemplate, buildVersion) + dartRefuseReasonSource
 }
+
+// dartRefuseReasonSource is the accelerators' typed refusal (docs/SPEC-TABLES.md
+// §7, §19.2): the first failing clause of a cook or block Open, by name. It
+// rides beside the BUILD VERSION, in the one accelerator home that defines it
+// (§20.7), so a unit carries exactly one. The vocabulary is the reference
+// leg's, word for word and in order — internal/codegen/gotable/refusal.go's
+// TableRefuse* and their Error() strings — never a new word, and
+// TestWideningReasonsDart holds the two lists equal.
+const dartRefuseReasonSource = `
+// The reason beside a refused Open (docs/SPEC-TABLES.md §7, §19.2): the FIRST
+// failing clause, as the reference leg's TableRefuseReason names it. word is the
+// spelling every leg writes, so a conformance row pins one clause everywhere.
+enum TableRefuseReason {
+  ok('ok'),
+  notACook('not_a_cook'),
+  foreignOrder('foreign_order'),
+  wrongBuildVersion('wrong_build_version'),
+  reservedNotZero('reserved_not_zero'),
+  badAlignment('bad_alignment'),
+  truncated('truncated'),
+  unalignedBase('unaligned_base'),
+  badLayout('bad_layout'),
+  unknownForm('unknown_form'),
+  countOverLength('count_over_length'),
+  countOverExtentCap('count_over_extent_cap'),
+  blobOverSizeCap('blob_over_size_cap'),
+  dataCycle('data_cycle'),
+  invalidValue('invalid_value'),
+  allocationFailed('allocation_failed'),
+  wireDamaged('wire_damaged'),
+  malformed('malformed'),
+  clamped('clamped'),
+  kindMismatch('kind_mismatch'),
+  base64Damaged('base64_damaged'),
+  base64NotCanonical('base64_not_canonical'),
+  integrityMismatch('integrity_mismatch'),
+  nonFinite('non_finite'),
+  blobShared('blob_shared'),
+  previousForm('previous_form'),
+  newerForm('newer_form'),
+  messageFormAsFile('message_form_as_file'),
+  layoutUnknown('layout_unknown'),
+  layoutUnsupported('layout_unsupported'),
+  layoutNewer('layout_newer'),
+  layoutMalformed('layout_malformed'),
+  layoutCountMismatch('layout_count_mismatch'),
+  layoutKindUnknown('layout_kind_unknown'),
+  layoutKindInvalid('layout_kind_invalid'),
+  layoutSizeMismatch('layout_size_mismatch'),
+  layoutTreeUnclosed('layout_tree_unclosed'),
+  layoutTooDeep('layout_too_deep'),
+  layoutRecordTooLarge('layout_record_too_large'),
+  planTooLarge('plan_too_large'),
+  noLayout('no_layout'),
+  batchTooLarge('batch_too_large'),
+  textIllFormed('text_ill_formed'),
+  countOverBound('count_over_bound'),
+  lengthOverBound('length_over_bound');
+
+  final String word;
+  const TableRefuseReason(this.word);
+
+  @override
+  String toString() => word;
+}
+`
 
 const blockRuntimeTemplate = `
 // THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the bytes
@@ -46,6 +112,25 @@ int tableBlockRead64(ByteData view, int at) {
     value = (value << 8) | view.getUint8(at + i);
   }
   return value;
+}
+
+// ---- the block form's FILL half (docs/SPEC-TABLES.md §19.1) ----
+//
+// A producer's refusal, BY NAME: the array whose declared maximum a count
+// violates, the count the producer asked for and the maximum the declaration
+// bounds it by. Begin fills it before it refuses and clears it on a clean
+// begin, so a caller's one variable answers "which array, how many, against
+// what bound" with no second channel — the same three facts the reference
+// leg's TableBlockRefusal carries.
+final class TableBlockRefusal {
+  String array;
+  int count;
+  int maximum;
+
+  TableBlockRefusal({this.array = '', this.count = 0, this.maximum = 0});
+
+  /// A refusal that names nothing: what a clean begin leaves behind.
+  bool get empty => array.isEmpty;
 }
 
 // ---- the block form's reflection (docs/SPEC-TABLES.md §8, §19.2) ----

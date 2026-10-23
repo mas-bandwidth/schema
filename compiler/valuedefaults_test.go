@@ -39,6 +39,21 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
+		if target == "dart" {
+			if err != nil {
+				t.Fatalf("dart refused table defaults: %v", err)
+			}
+			var all strings.Builder
+			for _, b := range out {
+				all.Write(b)
+			}
+			for _, want := range []string{`String name = "untitled";`, `String tag = "ab";`, `int caps = 3;`} {
+				if !strings.Contains(all.String(), want) {
+					t.Errorf("dart storage lacks %q", want)
+				}
+			}
+			continue
+		}
 		if target == "cs" {
 			if err != nil {
 				t.Fatalf("cs refused table defaults: %v", err)

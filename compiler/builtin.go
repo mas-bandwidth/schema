@@ -41,9 +41,8 @@ var blobTargets []string
 
 // stringTargets is the canonical name of every built-in target whose table
 // backend carries a STRING BUFFER — `*string` (docs/SPEC-TABLES.md §2.5);
-// refuseStrings names them. The Rust variable wire carries *string but not
-// *bytes, so rust sits here through registerStringCarrier and not in
-// blobTargets.
+// refuseStrings names them. Every built-in target that carries one buffer
+// now carries both (registerBuiltin's blobs flag), so the two lists agree.
 var stringTargets []string
 
 // registerBuiltin is what a target's file calls from its init. tables says
@@ -53,9 +52,7 @@ var stringTargets []string
 // does not refuses a unit declaring one through refuseTableArms, the same way.
 // unionArrays says whether they carry an array of unions in a table closure;
 // one that does not refuses through refuseUnionArrays. blobs says whether
-// they carry BOTH byte buffers — `*bytes` and `*string`; a target that carries
-// one and not the other registers the string blob alone through
-// registerStringCarrier.
+// they carry BOTH byte buffers — `*bytes` and `*string`.
 //
 // A target cannot register without its language's reserved words in the one
 // table (check.ReservedLanguageOf, SPEC §4.6): every name it generates must be
@@ -84,15 +81,6 @@ func requireReservedWords(target string) {
 	if _, ok := check.ReservedLanguageOf(target); !ok {
 		panic("compiler: target " + target + " has no reserved words in internal/check's table (SPEC §4.6); add its row before registering it")
 	}
-}
-
-// registerStringCarrier is what a target whose variable wire carries the
-// string blob but not the bytes blob calls from its init, beside
-// registerBuiltin: `*string` is the card record's (docs/SPEC-TABLES.md §2.5),
-// `*bytes` is not, so the target is named a string carrier without joining
-// blobTargets.
-func registerStringCarrier(name string) {
-	stringTargets = append(stringTargets, name)
 }
 
 // builtins is the set [New] registers, in registration order.
