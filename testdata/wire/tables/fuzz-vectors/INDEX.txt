@@ -184,3 +184,12 @@ map_retained_replaced mapdemo Text testdata/wire/tables/fuzz-vectors/map_retaine
 # Both are the reference leg's bytes, pinned by test/tables/main.cpp.
 nested_arm_trailing     messagedemo ToolMessage testdata/wire/tables/nested_arm_trailing.bin
 nested_arm_trailing_top messagedemo ToolMessage testdata/wire/tables/nested_arm_trailing_top.bin
+
+# A REGION READ WHOSE LIST COUNT THE FRAMED STORAGE CANNOT HOLD reports damage
+# and RESUMES after the array's L (§3, §6.5; the oracle's collectionCap): the
+# next field is still read. Here it is an unknown id under a kind outside the
+# closed set, so the oracle counts one unknown before that field stops the
+# read. The C# region reader stopped the whole body at the cap and counted
+# nothing. Found by the random pass at mutant 193624 of seed 24845619678
+# (corpus seed list_shared), on the region fuzz of PR #2163.
+region_list_cap_resumes listdemo Album testdata/wire/tables/fuzz-vectors/region_list_cap_resumes.bin

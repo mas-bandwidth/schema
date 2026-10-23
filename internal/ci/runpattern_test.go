@@ -221,7 +221,7 @@ var runPatternExceptions = []runPatternException{
 	{"make/go.mk:1020", "same separate test/go-tables module, -run '^TestUsage$$'"},
 	{"make/go.mk:530", "-run '^$$' runs no test on purpose: the recipe runs the fuzz target FuzzTableFrontEnd alone"},
 	{"make/go.mk:544", "-run '^$$' runs no test on purpose: the recipe runs a fuzz target alone"},
-	{"Makefile:5541", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
+	{"Makefile:5573", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
 }
 
 // checkRunPatterns is the shared code path for both tests. It extracts every
