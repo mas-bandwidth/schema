@@ -169,6 +169,28 @@ func TestTheReadArmAcceptsOnlyTheBuildsOwnRegeneratedFiles(t *testing.T) {
 	}
 }
 
+func TestTheReadArmAcceptsAnUntrackedModuleOnlyFromTheMeasuredLegsEmitter(t *testing.T) {
+	t.Parallel()
+	got, err := dirtyPaths("?? generated/bench/paired/dart/BenchWire.dart\n M generated/bench/dart/Bench.dart\n", "dart")
+	if err != nil || len(got) != 2 || got[0] != "generated/bench/paired/dart/BenchWire.dart" {
+		t.Fatalf("%v %v", got, err)
+	}
+	for _, status := range []string{
+		"?? generated/stray.h\n",
+		"?? generated/bench/paired/cpp/BenchWire.h\n",
+		"?? generated/bench/paired/dart/\n",
+		"?? generated/bench/paired/dart/sub/x.dart\n",
+		"?? bench/paired/dart/BenchWire.dart\n",
+	} {
+		if _, err := dirtyPaths(status, "dart"); err == nil {
+			t.Errorf("accepted %q for the dart leg", status)
+		}
+	}
+	if _, err := dirtyPaths("?? generated/bench/paired/dart/BenchWire.dart\n"); err == nil {
+		t.Error("accepted an untracked module with no measured leg named")
+	}
+}
+
 func TestTheReadArmBoardHasTheStandardsShape(t *testing.T) {
 	t.Parallel()
 	b := readArmBoard{
@@ -517,5 +539,99 @@ func TestTheCPlanBoardClaimsOnlyTheChecksItsRunnerMakes(t *testing.T) {
 	}
 	if text := b.markdown(); !strings.Contains(text, claim) {
 		t.Errorf("the C board does not print its own plan claim:\n%s", text)
+	}
+}
+
+// THE DART LEG'S ARM: the same rules, its own leg name, and the plan lane's
+// third row required from the plan build and refused from any other.
+func TestTheDartReadArmRequiresItsPlanRowFromThePlanBuild(t *testing.T) {
+	t.Parallel()
+	const id = "0930f96c8320a75d"
+	const n = int64(4000000)
+	fixed := readArmLegRowLine("dart", "bench_fixed_read", "table", "contract", id, n, 1264.3, 1750)
+	plan := readArmLegRowLine("dart", "bench_plan_read", "table", "contract", id, n, 995.4, 2050)
+	packet := readArmLegRowLine("dart", "bench_mixed_read", "gen", "contract", id, n, 400, 480)
+	rows, err := parseReadArmLeg(readArmCSV(packet, plan, fixed), "dart", id, n, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(rows.Fixed.Ns-1750) > 0.01 || math.Abs(rows.Plan.Ns-2050) > 0.01 || math.Abs(rows.Packet.Ns-480) > 0.01 || rows.Plan.Bytes != 995.4 {
+		t.Fatalf("parsed %+v", rows)
+	}
+	if _, err := parseReadArmLeg(readArmCSV(fixed, packet), "dart", id, n, true); err == nil {
+		t.Error("a plan build with no plan row was read as two lanes")
+	}
+	if _, err := parseReadArmLeg(readArmCSV(fixed, plan, packet), "dart", id, n, false); err == nil {
+		t.Error("a plan row from a build that measures no plan lane was accepted")
+	}
+	if _, err := parseReadArmLeg(readArmCSV(fixed, packet), "cpp", id, n, false); err == nil {
+		t.Error("Dart rows were accepted as the C++ leg's")
+	}
+	if _, err := parseReadArmLeg(readArmCSV(fixed, readArmLegRowLine("dart", "bench_plan_read", "gen", "contract", id, n, 995.4, 2050), packet), "dart", id, n, true); err == nil {
+		t.Error("a plan row on the packet family was accepted")
+	}
+	if _, err := parseReadArmLeg(readArmCSV(fixed, packet), "dart", id, n, false); err != nil {
+		t.Errorf("the Dart two-lane arm was refused: %v", err)
+	}
+}
+
+func TestTheDartPlanLaneNamesTheLineageFilesItLacks(t *testing.T) {
+	t.Parallel()
+	none := dartPlanRefusal(func(string) bool { return false })
+	for _, p := range dartLineageCorpus {
+		if !strings.Contains(none, p) {
+			t.Errorf("refusal does not name %s: %s", p, none)
+		}
+	}
+	if got := dartPlanRefusal(func(string) bool { return true }); got != "" {
+		t.Errorf("with the lineage present the Dart plan lane is buildable: %q", got)
+	}
+	plan := readArmCorpusPathsFor("dart", true)
+	for _, name := range []string{"bench_lineage.bin", "bench_lineage.layout", "bench_fixed.bin", "bench_mixed.bin"} {
+		if plan[name] == "" {
+			t.Errorf("the plan build's corpus id does not cover %s", name)
+		}
+	}
+	if _, ok := readArmCorpusPathsFor("dart", false)["bench_lineage.bin"]; ok {
+		t.Error("the two-lane arm's corpus id covers a lineage file it never loads")
+	}
+}
+
+func TestTheDartBoardJudgesEachLaneAgainstItsOwnPacketRead(t *testing.T) {
+	t.Parallel()
+	b := readArmBoard{
+		Host: "bench", OS: "linux", Arch: "amd64", CPU: "cpu", Revision: "abc", Serialize: "none (generated AOT)", Rounds: 7, Iterations: 4000000,
+		CorpusID: "0930f96c8320a75d", Window: "OK", FixedBytes: 1264.3, PacketBytes: 400, PlanBytes: 995.4, Leg: "dart", Lane: "6",
+		Identity: statsOf([]float64{450, 451}), Plan: statsOf([]float64{2050, 2051}), Packet: statsOf([]float64{480, 481}),
+		Anchor: anchorOf(nil, "none for this leg", true), Absent: otherLegsBut("dart"),
+	}
+	b.GateIdentity = faster(b.Identity, b.Packet, b.windowOK())
+	b.GatePlan = faster(b.Plan, b.Packet, b.windowOK())
+	text := b.markdown()
+	for _, want := range []string{
+		"# The read arm: Dart\n",
+		"/ lane 6 /",
+		"# corpus_id(identity) 0930f96c8320a75d / corpus_id(plan) 0930f96c8320a75d",
+		"plan (lineage file) 995.4 B/record",
+		"# anchor: none for Dart",
+		"dart            450.0       2050.0          480.0    PASS           FAIL         4.56",
+		"dart `bench_plan_read` (plan lane, family table)",
+		"plan/identity is REPORTED, never a verdict",
+		"# checks: table=contract, packet C/C++/C#=removed, packet Go=always, packet Dart=contract (§1.9)\n",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("board lacks %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "C++ anchor") || strings.Contains(text, "anchor arm A") {
+		t.Errorf("the Dart board printed the C++ anchor:\n%s", text)
+	}
+	if !strings.Contains(text, "\ncpp ") || strings.Contains(text, "\ndart     —") {
+		t.Errorf("the Dart board must name the C++ leg as absent and not itself:\n%s", text)
+	}
+	b.Window = "INVALID"
+	b.GateIdentity, b.GatePlan = faster(b.Identity, b.Packet, b.windowOK()), faster(b.Plan, b.Packet, b.windowOK())
+	if invalid := b.markdown(); strings.Contains(invalid, " PASS ") || strings.Contains(invalid, " FAIL ") {
+		t.Errorf("an INVALID window printed a verdict:\n%s", invalid)
 	}
 }
