@@ -159,15 +159,26 @@ reads, the reason at `:375-382`) and `internal/codegen/jstable/cook.go:513-517`
 
 **Measured effect.** JavaScript's `Scene head deref` row went from a BigInt
 per edge to 0.7 bytes per iteration (ceiling 8) once the delta was composed.
+On Elixir (`TestOffsetsComposeFromHalvesElixir`, OTP 29, heap words per
+call from a garbage-collection trace in a fresh process): every corpus block
+open, every row of its arrays and every reference slot of three corpus cooks
+allocate exactly what a same-shaped immediate-value control allocates, and a
+forced-boxing control that passes the composition through a bignum allocates
+more (18 words per open), so the meter is shown to see one.
 
 **Negative control.** The JavaScript allocation gate's row for the path: a
-`getBigUint64` on it reads as bytes per iteration.
+`getBigUint64` on it reads as bytes per iteration. The Elixir control
+(`tables-elixir-offsets-negative-control`) sabotages the block's composed read
+back to the whole-word read; the forged-offset assertion must go red. The
+cook control (`tables-elixir-cook-negative-control`) does the same to the
+cook's delta read; the forged-delta assertion must go red. Both count minor
+collections over 50000 refusals against an immediate-high-half twin.
 
 **Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:513` | ✅ `internal/codegen/ctable/ctable.go:514-518` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:152` | ✅ `internal/codegen/cstable/cstable.go:986-991` | ❌ #517 | — the accelerator paths compose (`internal/codegen/jstable/block.go:384`, `cook.go:513`); a 64-bit wire FIELD's value is a BigInt or loses precision, so those rows read one under a stated ceiling (`test/js-tables/main.mjs`, the RootConfig rows) | — an `int` is a 64-bit machine word and nothing boxes (`internal/codegen/darttable/block.go:213`) | ❌ #403 |
+| ✅ `internal/codegen/cpptable/cpptable.go:513` | ✅ `internal/codegen/ctable/ctable.go:514-518` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:152` | ✅ `internal/codegen/cstable/cstable.go:986-991` | ❌ #517 | — the accelerator paths compose (`internal/codegen/jstable/block.go:384`, `cook.go:513`); a 64-bit wire FIELD's value is a BigInt or loses precision, so those rows read one under a stated ceiling (`test/js-tables/main.mjs`, the RootConfig rows) | — an `int` is a 64-bit machine word and nothing boxes (`internal/codegen/darttable/block.go:213`) | ✅ `tables-elixir-offsets` `tables-elixir-offsets-negative-control` `tables-elixir-cook-negative-control` `TestOffsetsComposeFromHalvesElixir` (the block's `offset_of` and the cook's delta compose from 32-bit halves, refused from the high half before any bignum forms; every corpus open, row and cook slot allocates no more than an immediate-value control, against a forced-boxing control that does; a 64-bit FIELD value of 2^59 or more is a bignum on the BEAM whatever a reader does) |
 
 ### M3 — A float never crosses a call
 
@@ -295,7 +306,7 @@ enum answered `undefined` before the guard was made symmetric.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-ndebug` `tables-c-keyed-max-refusal-ndebug` | ❌ #518 | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `TestCsKeyedAccessorCoversBothEnds` (`RefuseKey`, both ends) | ✅ `TestKeyedArrayIndexingJava` `tables-java-keyed` `tables-java-keyed-negative-control` (`v.ships(key)` / `v.ships(key, value)`, `FleetRow.shipsByKey(data, at, key)`, `FleetRow.shipsAtKey(at, key)`; `int` key, `Integer.compareUnsigned`) | ❌ #516 (a keyed array is a plain Array indexed from slot 0: no accessor takes the key, so the caller does the shift and the slot past Max answers undefined) | ❌ #407 (refuses both ends; no test holds it) | ❌ #407 (guards refuse both ends; no test holds it) |
+| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-ndebug` `tables-c-keyed-max-refusal-ndebug` | ❌ #518 | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `TestCsKeyedAccessorCoversBothEnds` (`RefuseKey`, both ends) | ✅ `TestKeyedArrayIndexingJava` `tables-java-keyed` `tables-java-keyed-negative-control` (`v.ships(key)` / `v.ships(key, value)`, `FleetRow.shipsByKey(data, at, key)`, `FleetRow.shipsAtKey(at, key)`; `int` key, `Integer.compareUnsigned`) | ❌ #516 (a keyed array is a plain Array indexed from slot 0: no accessor takes the key, so the caller does the shift and the slot past Max answers undefined) | ❌ #407 (refuses both ends; no test holds it) | ✅ `TestKeyedAccessorCoversBothEndsElixir` `tables-elixir-keyed` `tables-elixir-keyed-none-negative-control` `tables-elixir-keyed-max-negative-control` |
 
 ### M6 — The variable class on the wire: a flat node table and an identity map
 
@@ -328,7 +339,7 @@ in post-order in the emitter and requires the lock red;
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` | ✅ `tables-cs-leg` `tables-cs-region-fuzz` (flat native and managed graphs) | ❌ #349 the flat pointer wire round-trips (`TestVariableClassBeyondCardConstructsJava`) and the Java identity map writes a shared node once, but a cycle is not refused (its open-guard checks only un-indexed nodes and so is unreachable) and no named Java test pins either property | ✅ `tables-js-variable-class` `tables-js-variable-arms` `TestVariableClassBeyondCardConstructsJavaScript` `TestMapsAndUnionArmsOnTheTableWireJavaScript` (`internal/codegen/jstable/variableruntime.go:185`: pre-order at first visit over an identity `Map`, a cycle refused at an OPEN entry, the node table under `TableNodeTableId` at kind 12, pointers at kind 17) | ❌ #349 | ❌ #349 |
+| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` | ✅ `tables-cs-leg` `tables-cs-region-fuzz` (flat native and managed graphs) | ❌ #349 the flat pointer wire round-trips (`TestVariableClassBeyondCardConstructsJava`) and the Java identity map writes a shared node once, but a cycle is not refused (its open-guard checks only un-indexed nodes and so is unreachable) and no named Java test pins either property | ✅ `tables-js-variable-class` `tables-js-variable-arms` `TestVariableClassBeyondCardConstructsJavaScript` `TestMapsAndUnionArmsOnTheTableWireJavaScript` (`internal/codegen/jstable/variableruntime.go:185`: pre-order at first visit over an identity `Map`, a cycle refused at an OPEN entry, the node table under `TableNodeTableId` at kind 12, pointers at kind 17) | ❌ #349 | ✅ `tables-elixir-variable-class` |
 
 ### M7 — A block row is reached by stride, with no per-row object
 
@@ -358,7 +369,7 @@ table and 0.0 bytes per iteration in JavaScript's (`RenderFrame ships walk`).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/block.go:120` | ✅ `internal/codegen/ctable/block.go:109-125` | ✅ `internal/codegen/rusttable/block.go:583-598` (a slice over the region) | ✅ `internal/codegen/gotable/block.go:243-256` | ✅ `internal/codegen/cstable/block.go:781-790` | ✅ `internal/codegen/javatable/block.go:420-432` | ✅ `internal/codegen/jstable/block.go:382-386` | ✅ `internal/codegen/darttable/block.go:217-247` | ❌ #409 (an eager list of `count` sub-binaries per call) |
+| ✅ `internal/codegen/cpptable/block.go:120` | ✅ `internal/codegen/ctable/block.go:109-125` | ✅ `internal/codegen/rusttable/block.go:583-598` (a slice over the region) | ✅ `internal/codegen/gotable/block.go:243-256` | ✅ `internal/codegen/cstable/block.go:781-790` | ✅ `internal/codegen/javatable/block.go:420-432` | ✅ `internal/codegen/jstable/block.go:382-386` | ✅ `internal/codegen/darttable/block.go:217-247` | ✅ `internal/codegen/elixirtable/block.go:173` (`<F>_count`/`<F>_at`, and a lazy `Stream` walk) `TestElixirBlockRowsAreReachedWithoutAllocatingTheArray` |
 
 ### M8 — The cook opens in O(1)
 
@@ -686,7 +697,7 @@ reads it back after the nodes allocated behind it and the bytes are gone.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-blob-span-negative-control` | ✅ `internal/codegen/ctable/arena.go:312` `TestCTableWireBlobIdentity` | ❌ #259 | ✅ `TestBlobSpanHoldsAfterLaterAllocations` `tables-go-blob-span-negative-control` | ✅ `tables-cs-leg` (large spans, descending addresses and failed blob allocation) | ❌ #259 | — no arena and no slab: every blob is its own `Uint8Array` or string at exactly its length, so there is no slab for a large blob to outgrow; the property holds by the platform, and `blob_large`'s 66,000-byte `*bytes`, past the reference's 64 KB slab, round-trips the oracle bytes in `TestVariableClassBeyondCardConstructsJavaScript` | ❌ #259 | ❌ #259 |
+| ✅ `tables-blob-span-negative-control` | ✅ `internal/codegen/ctable/arena.go:312` `TestCTableWireBlobIdentity` | ❌ #259 | ✅ `TestBlobSpanHoldsAfterLaterAllocations` `tables-go-blob-span-negative-control` | ✅ `tables-cs-leg` (large spans, descending addresses and failed blob allocation) | ❌ #259 | — no arena and no slab: every blob is its own `Uint8Array` or string at exactly its length, so there is no slab for a large blob to outgrow; the property holds by the platform, and `blob_large`'s 66,000-byte `*bytes`, past the reference's 64 KB slab, round-trips the oracle bytes in `TestVariableClassBeyondCardConstructsJavaScript` | ❌ #259 | — the BEAM owns all memory; a blob lives in a managed binary and there is no caller-visible arena or address-space span (docs/SPEC-TABLES.md) |
 
 
 ### M18 — A union arm is a field line
@@ -1020,7 +1031,7 @@ a planted allocation).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-cpp-alloc` (a counting global `operator new` over Load, the indexed/iterated reads, Measure and Save on the root; #562's `tables-lists` and #615/#679's `tables-retain` hold the list and retain paths, and the cook WRITE is under `tables-cook-write`) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ✅ `tables-cs-alloc` | ✅ `tables-java-allocator` `tables-java-alloc-negative-control` (`test/java-tables/src/AllocPaths.java`: block walk and cook read 0 per row and per node beyond one handle; variable loadMeasure exact 0 per call and per node through a kept Measure, save the output byte[] alone with 0 per node through a kept Saver, and load at its measured Value-tree floor under #517) | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ❌ #514 | ❌ #515 |
+| ✅ `tables-cpp-alloc` (a counting global `operator new` over Load, the indexed/iterated reads, Measure and Save on the root; #562's `tables-lists` and #615/#679's `tables-retain` hold the list and retain paths, and the cook WRITE is under `tables-cook-write`) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ✅ `tables-cs-alloc` | ✅ `tables-java-allocator` `tables-java-alloc-negative-control` (`test/java-tables/src/AllocPaths.java`: block walk and cook read 0 per row and per node beyond one handle; variable loadMeasure exact 0 per call and per node through a kept Measure, save the output byte[] alone with 0 per node through a kept Saver, and load at its measured Value-tree floor under #517) | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ❌ #514 | ✅ `tables-elixir-alloc-audit` `tables-elixir-alloc-negative-control` — a PINNED BUDGET per case, not a zero floor (a decoded BEAM term is an allocation): 23 `instance` cases of the variable wire, one iteration a wire load, save, text read and text write, averaged over 200; the ceiling is the pinned heap words + 64 + 1/10000 (per process, `:erlang.trace/3` on `:garbage_collection`) and the pinned refc binary calls + 8 (VM-wide `binary_alloc`), over `test/conformance/elixir/alloc-budget.txt`; the control's sixteen refc binaries and thousand-cell list per load red both columns of every case |
 
 ### I2 — Emitter sabotage through `go build -overlay`
 
@@ -1330,7 +1341,7 @@ found a module name the packet emitter refuses — the drift a gate catches.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ✅ `tables-java-usage` | ✅ `tables-js-usage` | ❌ #514 | ❌ #418 |
+| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ✅ `tables-java-usage` | ✅ `tables-js-usage` | ❌ #514 | ✅ `tables-elixir-usage` |
 
 ### I13 — The text differential against a third implementation
 
@@ -1354,7 +1365,7 @@ a float32 at `-266744.625` rendering as an eight-digit tie.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ✅ `tables-cs-json-differential` `tables-cs-json-differential-negative-control` `TestCsTextDifferential` (`internal/codegen/cstable/textdifferential_test.go`; its first run found float64 written at fifteen digits, fixed in `internal/codegen/cstable/json.go`) | ✅ `tables-java-json-differential` (`TestTextDifferentialJava`, `TestTextDifferentialJavaNegativeControl`) | ✅ `tables-js-text-differential` | ❌ #419 | ❌ #419 |
+| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ✅ `tables-cs-json-differential` `tables-cs-json-differential-negative-control` `TestCsTextDifferential` (`internal/codegen/cstable/textdifferential_test.go`; its first run found float64 written at fifteen digits, fixed in `internal/codegen/cstable/json.go`) | ✅ `tables-java-json-differential` (`TestTextDifferentialJava`, `TestTextDifferentialJavaNegativeControl`) | ✅ `tables-js-text-differential` | ❌ #419 | ✅ `tables-elixir-json-differential`, `tables-elixir-json-differential-negative-control` (`TestTextDifferentialElixir`) |
 
 ### I14 — The allocation gate refuses to certify off the pinned runtime
 
@@ -1385,7 +1396,7 @@ to 17: it must refuse naming both majors and print no row);
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ✅ `tables-cs-alloc` `tables-cs-alloc-runtime-negative-control` (.NET 10, `.github/dotnet-version`; `SCHEMA_CS_ALLOC_ANY_RUNTIME=1` observes, never certifies) | ✅ `tables-java-allocator` `tables-java-allocator-runtime-negative-control` (JDK 21; refuses before measuring off the pin and with no counter; `SCHEMA_JAVA_ALLOC_ANY_JDK=1` prints NOT CERTIFIED) | ✅ `test/js-tables/main.mjs:903` | ❌ #420 (pinned SDK 3.13.2; there is no dart allocation measurement at all — nothing in `make/dart.mk` names one) | ❌ #420 (pinned OTP; there is no elixir allocation audit at all — `make/elixir.mk:231-233` says so in the leg's own words) |
+| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ✅ `tables-cs-alloc` `tables-cs-alloc-runtime-negative-control` (.NET 10, `.github/dotnet-version`; `SCHEMA_CS_ALLOC_ANY_RUNTIME=1` observes, never certifies) | ✅ `tables-java-allocator` `tables-java-allocator-runtime-negative-control` (JDK 21; refuses before measuring off the pin and with no counter; `SCHEMA_JAVA_ALLOC_ANY_JDK=1` prints NOT CERTIFIED) | ✅ `test/js-tables/main.mjs:903` | ❌ #420 (pinned SDK 3.13.2; there is no dart allocation measurement at all — nothing in `make/dart.mk` names one) | ✅ `tables-elixir-alloc-audit` `tables-elixir-alloc-runtime-negative-control` (OTP 29.0.5 with Elixir 1.20.4: the audit's first act is `test/elixir/runtime_pin.exs`, so on any other runtime it prints FAILED and measures nothing; SCHEMA_ELIXIR_ANY_OTP=1 prints the 23 cases' figures under NOT CERTIFIED, and the pin target refuses to write a budget under it) |
 
 ### I15 — The tolerant wire's differential fuzzer with an independent oracle
 
@@ -1444,7 +1455,7 @@ each through `go build -overlay`; each must turn the leg red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-accessor-descriptor-agreement` `tables-accessor-negative-control` `tables-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ✅ `tables-cs-accessor-descriptor-agreement` `tables-cs-accessor-negative-control` `tables-cs-slot-negative-control` | ✅ `tables-java-accessor-agreement` `tables-java-accessor-negative-control` `tables-java-slot-negative-control` | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ❌ #421 | ❌ #421 |
+| ✅ `tables-accessor-descriptor-agreement` `tables-accessor-negative-control` `tables-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ✅ `tables-cs-accessor-descriptor-agreement` `tables-cs-accessor-negative-control` `tables-cs-slot-negative-control` | ✅ `tables-java-accessor-agreement` `tables-java-accessor-negative-control` `tables-java-slot-negative-control` | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ❌ #421 | ✅ `tables-elixir-accessor-descriptor-agreement` `tables-elixir-accessor-negative-control` `tables-elixir-slot-negative-control` (plain scalar block-record fields and pointer cook slots (make/elixir.mk:279)) |
 
 ### J2 — The runtime home, with a file-order control
 
@@ -1524,7 +1535,7 @@ below.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #424 | ✅ `tables-c-clean` (`clang-format`) | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ✅ `tables-cs-clean` (`dotnet format` and the SDK analyzers over the table units, required by `test-cs`; 152,044 WHITESPACE findings in 295 units fixed in the emitters, #547; `tables-cs-clean-negative-control`; the packet units are held by `packet-clean-cs`) | ✅ `tables-java-clean` (google-java-format 1.37.0 `--aosp`, every table and packet file, at least 585, required by `test-java`); `tables-java-compile-all` (`--release 17 -Xlint:all -Werror`, all 25 units, from `tables-java-release`); its two negative controls are on [JAVA-DIALECT.md](JAVA-DIALECT.md) | ✅ `tables-js-clean` (`eslint`, over the table and packet units) | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) |
+| ❌ #424 | ✅ `tables-c-clean` (`clang-format`) | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ✅ `tables-cs-clean` (`dotnet format` and the SDK analyzers over the table units, required by `test-cs`; 152,044 WHITESPACE findings in 295 units fixed in the emitters, #547; `tables-cs-clean-negative-control`; the packet units are held by `packet-clean-cs`) | ✅ `tables-java-clean` (google-java-format 1.37.0 `--aosp`, every table and packet file, at least 585, required by `test-java`); `tables-java-compile-all` (`--release 17 -Xlint:all -Werror`, all 25 units, from `tables-java-release`); its two negative controls are on [JAVA-DIALECT.md](JAVA-DIALECT.md) | ✅ `tables-js-clean` (`eslint`, over the table and packet units) | ✅ `tables-dart-clean` | ✅ `tables-elixir-clean` (`mix format`) |
 
 ### J5 — The bench leg's golden gate runs before the clock
 

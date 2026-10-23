@@ -41,8 +41,19 @@ func writeModuleDir(t *testing.T, dir string, files map[string][]byte) []string 
 		}
 		names = append(names, name)
 	}
+	// BuildVersion.ex must load FIRST: a Cook or Block module names its
+	// build_version at COMPILE time through a module attribute, and `elixir -r`
+	// loads files in the order given, so a sorted order that put <Base>Cook.ex
+	// before BuildVersion.ex would fail to compile the corpus.
 	sort.Strings(names)
-	return names
+	first := []string{BuildVersionModule + ".ex"}
+	rest := make([]string, 0, len(names))
+	for _, n := range names {
+		if n != BuildVersionModule+".ex" {
+			rest = append(rest, n)
+		}
+	}
+	return append(first, rest...)
 }
 
 // runProbe writes probe.exs beside the generated modules and runs it with the
@@ -153,7 +164,7 @@ defmodule Probe do
 end
 wire = File.read!(` + elixirString(wire) + `)
 {:ok, value, report} = Cards.Table.load("Card", wire)
-Probe.check(report == %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}, "report: #{inspect(report)}")
+Probe.check(report == %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0, reason: ""}, "report: #{inspect(report)}")
 Probe.check(value["id"] == "populated", "id")
 Probe.check(value["sha"] == "0123456789012345678901234567890123456789", "sha")
 Probe.check(value["tier"] == "flash", "tier")

@@ -406,8 +406,8 @@ defmodule Bench.FixedRuntime do
   """
   def text(used, default, m), do: text(used, default, m, true)
 
-  def text(used, default, m, present) do
-    if present and not text_ok?(1, used), do: {default, true}, else: {used, m}
+  def text(used, _default, m, present) do
+    if present and not text_ok?(1, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}
   end
 
   @doc """
@@ -416,8 +416,8 @@ defmodule Bench.FixedRuntime do
   """
   def wtext(used, default, m), do: wtext(used, default, m, true)
 
-  def wtext(used, default, m, present) do
-    if present and not text_ok?(2, used), do: {default, true}, else: {used, m}
+  def wtext(used, _default, m, present) do
+    if present and not text_ok?(2, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}
   end
 
   # ---------------------------------------------------------------------------
@@ -1517,7 +1517,9 @@ defmodule Bench.FixedRuntime do
           end
         end)
 
-      entry = {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple([their_variants | remap])}
+      entry =
+        {:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi),
+         List.to_tuple([their_variants | remap])}
 
       {guarded(acc, guard, tag, entry), report}
     end
@@ -1648,7 +1650,7 @@ defmodule Bench.FixedRuntime do
           # NAME (§4.5 fix 11, the ruling this page gives where §3.4 disagrees):
           # the read refuses `text_ill_formed` and writes nothing, refusing the
           # whole read as the packet reader does rather than landing a default.
-          step(rest, body, writes, %{report | malformed: true})
+          throw({:refuse, :text_ill_formed})
         end
 
       _ ->
