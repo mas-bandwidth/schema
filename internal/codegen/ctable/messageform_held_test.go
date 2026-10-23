@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
@@ -352,6 +353,11 @@ func cMessageManifestRows(t *testing.T) {
 	}
 	units, connections := map[string]string{}, map[string][]string{}
 	var rows [][]string
+	// ONE COMPILE PER UNIT, shared by every row of that unit: the 18 rows name
+	// five units, and each row used to regenerate and recompile its unit's
+	// whole C surface beside a three-line main. The unit's objects are built
+	// once, on first use, and each row compiles only its own main against them.
+	builds := newCMessageUnitBuilds(t)
 	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
@@ -444,7 +450,7 @@ func cMessageManifestRows(t *testing.T) {
 				// "A batch of bodies is the unit this form reads and writes." (§3.3)
 				source += fmt.Sprintf("if(count!=1||%s_measure_messages(values,count,&report)!=sizeof(wire)||%s_save_messages(values,count,out,sizeof(out),&report)!=sizeof(wire))return 5;return memcmp(out,wire,sizeof(wire));}\n", fn, fn)
 			}
-			runCMessageUnit(t, unit, source)
+			runCMessageUnit(t, builds.of(t, connection[2], unit), source)
 		})
 	}
 }
@@ -458,39 +464,99 @@ func cMessageBytes(data []byte) string {
 	return strings.Join(parts, ",")
 }
 
-// runCMessageUnit executes the generated C announcement and batch surface (§3.3).
-func runCMessageUnit(t *testing.T, u *ir.Unit, source string) {
+// cMessageUnitBuild is one unit's generated C surface, written and compiled
+// to objects once and shared by every manifest row of that unit.
+type cMessageUnitBuild struct {
+	once sync.Once
+	dir  string
+	objs []string
+	err  error
+}
+
+// cMessageUnitBuilds holds the shared builds for one run of the manifest
+// rows, under a directory the parent test removes when every row is done.
+type cMessageUnitBuilds struct {
+	root string
+	mu   sync.Mutex
+	by   map[string]*cMessageUnitBuild
+}
+
+func newCMessageUnitBuilds(t *testing.T) *cMessageUnitBuilds {
+	t.Helper()
+	// the parent's TempDir outlives its parallel subtests: they run before
+	// the parent's cleanups do
+	return &cMessageUnitBuilds{root: t.TempDir(), by: map[string]*cMessageUnitBuild{}}
+}
+
+// of returns the unit's shared build, compiling it on first use.
+func (b *cMessageUnitBuilds) of(t *testing.T, name string, u *ir.Unit) *cMessageUnitBuild {
+	t.Helper()
+	b.mu.Lock()
+	build, ok := b.by[name]
+	if !ok {
+		build = &cMessageUnitBuild{dir: filepath.Join(b.root, name)}
+		b.by[name] = build
+	}
+	b.mu.Unlock()
+	build.once.Do(func() { build.err = build.compile(u) })
+	if build.err != nil {
+		t.Fatal(build.err)
+	}
+	return build
+}
+
+func (b *cMessageUnitBuild) compile(u *ir.Unit) error {
+	cc, err := exec.LookPath("cc")
+	if err != nil {
+		return fmt.Errorf("C message conformance requires cc")
+	}
+	files, err := cgen.Generate(u)
+	if err != nil {
+		return err
+	}
+	tables, err := Generate(u)
+	if err != nil {
+		return err
+	}
+	maps.Copy(files, tables)
+	if err := os.MkdirAll(b.dir, 0o700); err != nil {
+		return err
+	}
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(b.dir, name), data, 0600); err != nil {
+			return err
+		}
+	}
+	for name := range files {
+		if !strings.HasSuffix(name, ".c") {
+			continue
+		}
+		obj := filepath.Join(b.dir, strings.TrimSuffix(name, ".c")+".o")
+		args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O2", "-I", b.dir, "-c", filepath.Join(b.dir, name), "-o", obj}
+		if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+			return fmt.Errorf("compile %s: %w\n%s", name, err, out)
+		}
+		b.objs = append(b.objs, obj)
+	}
+	return nil
+}
+
+// runCMessageUnit executes the generated C announcement and batch surface
+// (§3.3): the row's own main, compiled against its unit's shared objects.
+func runCMessageUnit(t *testing.T, build *cMessageUnitBuild, source string) {
 	t.Helper()
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Fatal("C message conformance requires cc")
 	}
-	files, err := cgen.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tables, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	maps.Copy(files, tables)
 	dir := t.TempDir()
-	for name, data := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
 	main := filepath.Join(dir, "main.c")
 	if err := os.WriteFile(main, []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O2", "-I", dir, main}
-	for name := range files {
-		if strings.HasSuffix(name, ".c") {
-			args = append(args, filepath.Join(dir, name))
-		}
-	}
 	binary := filepath.Join(dir, "probe")
+	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O2", "-I", build.dir, main}
+	args = append(args, build.objs...)
 	args = append(args, "-lm", "-o", binary)
 	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
