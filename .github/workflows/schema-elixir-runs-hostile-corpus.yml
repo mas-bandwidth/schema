@@ -30,6 +30,10 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          # no Actions cache: the post step uploaded a 4.9 GB module and build
+          # cache at 3.5 MB/s and ran the corpus job past its timeout; the fleet
+          # runner keeps its own warm Go cache
+          cache: false
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         # the fleet's schema runners carry OTP and Elixir on PATH (the toolchains
         # role); setup-beam needs ImageOS, which only a hosted runner sets
@@ -49,6 +53,10 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          # no Actions cache: the post step uploaded a 4.9 GB module and build
+          # cache at 3.5 MB/s and ran the corpus job past its timeout; the fleet
+          # runner keeps its own warm Go cache
+          cache: false
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         # the fleet's schema runners carry OTP and Elixir on PATH (the toolchains
         # role); setup-beam needs ImageOS, which only a hosted runner sets
