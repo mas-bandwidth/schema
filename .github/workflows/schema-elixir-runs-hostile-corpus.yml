@@ -31,6 +31,9 @@ jobs:
         with:
           go-version-file: go.mod
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        # the fleet's schema runners carry OTP and Elixir on PATH (the toolchains
+        # role); setup-beam needs ImageOS, which only a hosted runner sets
+        if: runner.environment == 'github-hosted'
         with:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
@@ -47,6 +50,9 @@ jobs:
         with:
           go-version-file: go.mod
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        # the fleet's schema runners carry OTP and Elixir on PATH (the toolchains
+        # role); setup-beam needs ImageOS, which only a hosted runner sets
+        if: runner.environment == 'github-hosted'
         with:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
