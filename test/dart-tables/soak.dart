@@ -383,7 +383,7 @@ Future<int> _drive(List<String> args) async {
   env['DART_VM_OPTIONS'] = vmFlagsCsv;
   // The worker's main reads args[0] as the mode and args[1] as the passes,
   // so the driver passes both; passing the count alone would leave the worker
-  // on its default whatever TABLES_DART_SOAK_PASSES said.
+  // on its default whatever TABLES_DART_SOAK_ITERATIONS said.
   final proc = await Process.start(aotBin, <String>[
     'soak',
     '$passes',
@@ -451,15 +451,15 @@ Future<int> _drive(List<String> args) async {
   }
   // The run must be as long as it claims: the worker reports the passes it
   // ran and the driver took one sample per sixteenth of them, so a worker
-  // that ignored TABLES_DART_SOAK_PASSES cannot print "over N passes".
+  // that ignored TABLES_DART_SOAK_ITERATIONS cannot print "over N passes".
   final ran = RegExp(r'soak: passes=(\d+) ').firstMatch(workerOut.toString());
   final workerPasses = ran == null ? -1 : int.parse(ran.group(1)!);
   stdout.writeln(
-    'soak: worker ran $workerPasses passes, driver took ${samples.length} samples for TABLES_DART_SOAK_PASSES=$passes',
+    'soak: worker ran $workerPasses passes, driver took ${samples.length} samples for TABLES_DART_SOAK_ITERATIONS=$passes',
   );
   if (workerPasses != passes) {
     stdout.writeln(
-      'SOAK FAILED: the worker ran $workerPasses passes but TABLES_DART_SOAK_PASSES is $passes',
+      'SOAK FAILED: the worker ran $workerPasses passes but TABLES_DART_SOAK_ITERATIONS is $passes',
     );
     return 1;
   }

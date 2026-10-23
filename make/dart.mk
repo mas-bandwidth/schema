@@ -310,7 +310,7 @@ tables-dart-alloc-runtime-negative-control: build/dart_gcgate build/fixedform-co
 # target, never a unit test. The soak loops Load, the reads, Measure and Save
 # over the rows the allocation gate gates (fixed load, measure, save, block,
 # cook), compiled to an AOT executable like the gate's certified row, running
-# under the gate's VM flags, for TABLES_DART_SOAK_PASSES passes (a count, not
+# under the gate's VM flags, for TABLES_DART_SOAK_ITERATIONS passes (a count, not
 # a clock, as the C++ and C# soaks are counted: `make shape-gate` refuses a
 # timing primitive outside the sanctioned bench). The driver reads the
 # scavenge count at sixteen evenly spaced samples after the warmup and fails if
@@ -318,7 +318,7 @@ tables-dart-alloc-runtime-negative-control: build/dart_gcgate build/fixedform-co
 DART_SOAK_GC_FLAGS = --verbose_gc --new_gen_semi_initial_size=1 --new_gen_semi_max_size=1
 # The release act is about an hour on the studio (a pass is ~0.16 ms there);
 # `test-dart` runs the short form below with an explicit count.
-TABLES_DART_SOAK_PASSES ?= 22500000
+TABLES_DART_SOAK_ITERATIONS ?= 22500000
 
 build/dart_tables_soak: build/dart-fixed/.stamp build/tables-generated-dart/.stamp cards-dart-generate build/fixedform-corpus/.stamp build/cook-fuzz/.stamp test/dart-tables/soak.dart
 	@mkdir -p build
@@ -328,7 +328,7 @@ build/dart_tables_soak: build/dart-fixed/.stamp build/tables-generated-dart/.sta
 
 .PHONY: tables-dart-soak tables-dart-soak-negative-control
 tables-dart-soak: build/dart_tables_soak
-	$(DART) test/dart-tables/soak.dart drive $(DART) $(CURDIR)/build/dart_tables_soak $(TABLES_DART_SOAK_PASSES)
+	$(DART) test/dart-tables/soak.dart drive $(DART) $(CURDIR)/build/dart_tables_soak $(TABLES_DART_SOAK_ITERATIONS)
 
 tables-dart-soak-negative-control: build/dart_tables_soak
 	@mkdir -p build/dart-soak-nc
@@ -348,16 +348,16 @@ tables-dart-soak-negative-control: build/dart_tables_soak
 	@echo "negative control: one planted allocation per iteration turns the Dart soak RED on the count"
 
 # THE SHORT SOAK, REACHED FROM test-dart: the release act is about an hour
-# (the default TABLES_DART_SOAK_PASSES); the leg's own gate runs 65536 passes
+# (the default TABLES_DART_SOAK_ITERATIONS); the leg's own gate runs 65536 passes
 # (about ten seconds on the studio) so CI stays quick.
 .PHONY: tables-dart-soak-short tables-dart-soak-length
 tables-dart-soak-short:
-	$(MAKE) tables-dart-soak TABLES_DART_SOAK_PASSES=65536
+	$(MAKE) tables-dart-soak TABLES_DART_SOAK_ITERATIONS=65536
 	$(MAKE) tables-dart-soak-length
 	$(MAKE) tables-dart-soak-negative-control
 
 # THE LENGTH CHECK: a 1024-pass soak must run 1024 passes and take its sixteen
-# samples, so a worker that ignores TABLES_DART_SOAK_PASSES (and would run its
+# samples, so a worker that ignores TABLES_DART_SOAK_ITERATIONS (and would run its
 # default while claiming the release act's count) is red here, not silently
 # green.
 tables-dart-soak-length: build/dart_tables_soak
@@ -365,10 +365,10 @@ tables-dart-soak-length: build/dart_tables_soak
 	@$(DART) test/dart-tables/soak.dart drive $(DART) $(CURDIR)/build/dart_tables_soak 1024 \
 		> build/dart-soak-len/log 2>&1 || { cat build/dart-soak-len/log; exit 1; }
 	@grep -q 'soak: worker ran 1024 passes, driver took 16 samples' build/dart-soak-len/log || \
-		{ echo "SOAK LENGTH FAILED: the worker did not run TABLES_DART_SOAK_PASSES=1024"; \
+		{ echo "SOAK LENGTH FAILED: the worker did not run TABLES_DART_SOAK_ITERATIONS=1024"; \
 		  cat build/dart-soak-len/log; exit 1; }
 	@grep 'soak: worker ran' build/dart-soak-len/log
-	@echo "soak length: TABLES_DART_SOAK_PASSES=1024 ran 1024 passes"
+	@echo "soak length: TABLES_DART_SOAK_ITERATIONS=1024 ran 1024 passes"
 
 test-dart: tables-dart-soak-short
 # THE RUNTIME HOME GATE (docs/PORTING.md J2). A unit's shared Dart table

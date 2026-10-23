@@ -10,32 +10,42 @@ import (
 	"time"
 )
 
-// goReleaseSoak is the duration the tables-go-release target hands to TestSoak:
-// the GO_SOAK default in make/go.mk. It drives the Go soak docs/SPEC-TABLES.md
-// describes under "What allocates, and what never does", and tables-go-release is
-// one of the release gates that SPEC-TABLES.md says hold the Go backend's
-// file/message/cook surfaces.
+// goReleaseSoak is the share of an hour the tables-go-release target hands to
+// TestSoak. The soak is COUNTED, not clocked: tables-go-release passes
+// -soak-iterations $(TABLES_GO_RELEASE_SOAK_ITERATIONS), and
+// TABLES_GO_SOAK_ITERATIONS (the Makefile) is the count stated to be about an
+// hour, so the release soak's length is its count as a fraction of that hour.
+// It drives the Go soak docs/SPEC-TABLES.md describes under "What allocates,
+// and what never does", and tables-go-release is one of the release gates that
+// SPEC-TABLES.md says hold the Go backend's file/message/cook surfaces.
 func goReleaseSoak(t *testing.T, root string) time.Duration {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(root, "make", "go.mk"))
+	gomk, err := os.ReadFile(filepath.Join(root, "make", "go.mk"))
 	if err != nil {
 		t.Fatalf("read make/go.mk: %v", err)
 	}
-	text := string(data)
-
-	def := regexp.MustCompile(`(?m)^GO_SOAK \?= (\S+)$`).FindStringSubmatch(text)
-	if def == nil {
-		t.Fatal("make/go.mk sets no GO_SOAK default")
-	}
-	dur, err := time.ParseDuration(def[1])
+	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
-		t.Fatalf("GO_SOAK default %q is not a Go duration", def[1])
+		t.Fatalf("read Makefile: %v", err)
 	}
+	count := func(text, name, where string) int64 {
+		def := regexp.MustCompile(`(?m)^` + name + ` \?= (\S+)$`).FindStringSubmatch(text)
+		if def == nil {
+			t.Fatalf("%s sets no %s default", where, name)
+		}
+		n, err := strconv.ParseInt(def[1], 10, 64)
+		if err != nil || n <= 0 {
+			t.Fatalf("%s default %q is not a positive pass count", name, def[1])
+		}
+		return n
+	}
+	release := count(string(gomk), "TABLES_GO_RELEASE_SOAK_ITERATIONS", "make/go.mk")
+	hour := count(string(makefile), "TABLES_GO_SOAK_ITERATIONS", "Makefile")
 
-	if !regexp.MustCompile(`(?m)-soak \$\(GO_SOAK\)`).MatchString(text) {
-		t.Fatal("no `-soak $(GO_SOAK)` in the make sources — the release gate does not run the soak it claims")
+	if !regexp.MustCompile(`(?m)-soak-iterations \$\(TABLES_GO_RELEASE_SOAK_ITERATIONS\)`).MatchString(string(gomk)) {
+		t.Fatal("no `-soak-iterations $(TABLES_GO_RELEASE_SOAK_ITERATIONS)` in make/go.mk — the release gate does not run the soak it claims")
 	}
-	return dur
+	return time.Duration(float64(time.Hour) * float64(release) / float64(hour))
 }
 
 // certifyJobTimeouts maps every top-level job name in certify.yml to its
@@ -115,6 +125,6 @@ func TestGoReleaseSoakFitsItsCertifyJob(t *testing.T) {
 		t.Fatal("certify.yml has no release-gates job — the job that runs tables-go-release is missing")
 	}
 	if need := soak + allowance; need >= gate {
-		t.Errorf("tables-go-release passes a %v soak to TestSoak (GO_SOAK) plus a %v pre-soak allowance = %v, but the release-gates job allows %v — the soak does not fit and the job will be killed at the cap", soak, allowance, need, gate)
+		t.Errorf("tables-go-release passes a %v soak to TestSoak (TABLES_GO_RELEASE_SOAK_ITERATIONS as a share of TABLES_GO_SOAK_ITERATIONS' hour) plus a %v pre-soak allowance = %v, but the release-gates job allows %v — the soak does not fit and the job will be killed at the cap", soak, allowance, need, gate)
 	}
 }
