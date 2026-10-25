@@ -3,6 +3,7 @@ package luatable
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,14 +14,23 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestLuaCookWrite holds the Lua cook writer to the tool's bytes
 // (docs/SPEC-TABLES.md §7.6): for every instance row the Lua target generates
 // and the tool can cook, Cook of the loaded value is tablecook's file byte for
-// byte, and CookMeasure is its length. The tool refuses a map-bearing unit by
-// name (§2.8), so those rows have no tool oracle and are skipped.
+// byte IN BOTH BYTE ORDERS — order 1 against tablecook.Options{} and order 2
+// against tablecook.Options{Big: true}, because the order is a parameter of
+// the write and not a fact of the host (§7.6, §19.1) — and CookMeasure is its
+// length. The wide kinds (fixed(W, F), int128, §3, §15) ride as their raw
+// integer at the declared width, and a bits(N) slot as its uint32 or uint64,
+// which only the big-endian file tells apart from the low byte alone. The
+// tool refuses a map-bearing unit by name (§2.8), so those rows have no tool
+// oracle and are skipped.
+//
+// REVERSED WITNESSES: a writer that ignores the order writes the little-endian
+// file for order 2; one that writes a bits(N) slot at its wire width, or a
+// wide kind low half first in big-endian, differs from the tool's big file.
 func TestLuaCookWrite(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -34,9 +44,6 @@ func TestLuaCookWrite(t *testing.T) {
 				paths = append(paths, filepath.Join(repo, p))
 			}
 			u := luarun.LoadUnit(t, paths...)
-			if len(ir.TableWideFields(u)) > 0 {
-				t.Skipf("unit %s carries the wide kinds; the cook write half does not carry them yet", r.unit)
-			}
 			files, err := Generate(u)
 			if err != nil {
 				// the Lua target refuses this unit's kinds (docs/PORT-LUA.md)
@@ -52,11 +59,15 @@ func TestLuaCookWrite(t *testing.T) {
 			if _, err := tablewire.Decode(m, inst, wire, &report); err != nil {
 				t.Fatalf("decode %s: %v", r.caseName, err)
 			}
-			want, err := tablecook.Cook(m, inst, tablecook.Options{})
+			little, err := tablecook.Cook(m, inst, tablecook.Options{})
 			if err != nil {
 				// the tool refuses to write this cook (a map-bearing unit,
 				// docs/SPEC-TABLES.md §2.8); there is no oracle file.
 				t.Skipf("the tool writes no cook for %s: %v", r.caseName, err)
+			}
+			big, err := tablecook.Cook(m, inst, tablecook.Options{Big: true})
+			if err != nil {
+				t.Fatalf("the tool cooks %s little-endian but not big: %v", r.caseName, err)
 			}
 			dir := t.TempDir()
 			luarun.WriteFiles(t, dir, files)
@@ -70,10 +81,12 @@ local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, 
 local v = load.LoadTolerant(T, "` + r.root + `", inputs.wire, report)
 if v == nil then print("LOAD_REFUSED") else
   local n = cookwrite.CookMeasure(T, "` + r.root + `", v)
-  local c = cookwrite.Cook(T, "` + r.root + `", v)
-  if c == nil then print("COOK_REFUSED") else
-    print(string.format("MEASURE %d %d", n, #c))
-    hexline(c)
+  for order = 1, 2 do
+    local c = cookwrite.Cook(T, "` + r.root + `", v, nil, order)
+    if c == nil then print("COOK_REFUSED") else
+      print(string.format("MEASURE %d %d", n, #c))
+      hexline(c)
+    end
   end
 end
 `
@@ -81,43 +94,58 @@ end
 				t.Fatal(err)
 			}
 			out := string(luarun.Run(t, dir, "main.lua", map[string][]byte{"wire": wire}))
-			lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-			if len(lines) == 1 && lines[0] == "LOAD_REFUSED" {
+			all := strings.Split(strings.TrimRight(out, "\n"), "\n")
+			if len(all) == 1 && all[0] == "LOAD_REFUSED" {
 				t.Fatalf("%s: the Lua load refused an instance the target generated", r.caseName)
 			}
-			if len(lines) == 1 && lines[0] == "COOK_REFUSED" {
-				t.Fatalf("%s: the Lua cook refused an instance the tool cooks", r.caseName)
+			for _, line := range all {
+				if line == "COOK_REFUSED" {
+					t.Fatalf("%s: the Lua cook refused an instance the tool cooks", r.caseName)
+				}
 			}
-			if len(lines) != 2 || !strings.HasPrefix(lines[0], "MEASURE ") {
+			if len(all) != 4 {
 				t.Fatalf("%s: unexpected probe output %q", r.caseName, out)
 			}
-			f := strings.Fields(lines[0])
-			measure, err := strconv.Atoi(f[1])
-			if err != nil {
-				t.Fatalf("%s: measure %q: %v", r.caseName, f[1], err)
-			}
-			length, err := strconv.Atoi(f[2])
-			if err != nil {
-				t.Fatalf("%s: length %q: %v", r.caseName, f[2], err)
-			}
-			got, err := hex.DecodeString(lines[1])
-			if err != nil {
-				t.Fatalf("%s: probe line is not hex: %v", r.caseName, err)
-			}
-			if measure != len(want) {
-				t.Fatalf("%s: CookMeasure = %d, the tool's file is %d bytes", r.caseName, measure, len(want))
-			}
-			if length != len(want) {
-				t.Fatalf("%s: Cook wrote %d bytes, the tool's file is %d", r.caseName, length, len(want))
-			}
-			if !bytes.Equal(got, want) {
-				for i := range want {
-					if i >= len(got) || got[i] != want[i] {
-						t.Fatalf("%s: cook differs at byte %d: got %x want %x", r.caseName, i, got[i], want[i])
-					}
-				}
-				t.Fatalf("%s: cook differs in length", r.caseName)
+			for order, want := range [][]byte{little, big} {
+				checkCookOrder(t, r.caseName, order+1, all[2*order:2*order+2], want)
 			}
 		})
+	}
+}
+
+// checkCookOrder holds one order's probe lines (MEASURE, then the hex) to the
+// tool's file for that order.
+func checkCookOrder(t *testing.T, caseName string, order int, lines []string, want []byte) {
+	t.Helper()
+	name := fmt.Sprintf("%s order %d", caseName, order)
+	if !strings.HasPrefix(lines[0], "MEASURE ") {
+		t.Fatalf("%s: unexpected probe output %q", name, lines)
+	}
+	f := strings.Fields(lines[0])
+	measure, err := strconv.Atoi(f[1])
+	if err != nil {
+		t.Fatalf("%s: measure %q: %v", name, f[1], err)
+	}
+	length, err := strconv.Atoi(f[2])
+	if err != nil {
+		t.Fatalf("%s: length %q: %v", name, f[2], err)
+	}
+	got, err := hex.DecodeString(lines[1])
+	if err != nil {
+		t.Fatalf("%s: probe line is not hex: %v", name, err)
+	}
+	if measure != len(want) {
+		t.Fatalf("%s: CookMeasure = %d, the tool's file is %d bytes", name, measure, len(want))
+	}
+	if length != len(want) {
+		t.Fatalf("%s: Cook wrote %d bytes, the tool's file is %d", name, length, len(want))
+	}
+	if !bytes.Equal(got, want) {
+		for i := range want {
+			if i >= len(got) || got[i] != want[i] {
+				t.Fatalf("%s: cook differs at byte %d: got %x want %x", name, i, got[i], want[i])
+			}
+		}
+		t.Fatalf("%s: cook differs in length", name)
 	}
 }

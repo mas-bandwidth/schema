@@ -10,8 +10,8 @@ import (
 
 // TestLuaDriverListsItsSurfaces runs the Lua conformance driver's list from
 // the repository root (test/conformance/README.md, "Registering a language")
-// and holds it to the contract: `wire` and `report` are among the surfaces,
-// and every listed surface is one the conformance README names.
+// and holds it to the contract: it lists every surface the conformance README
+// names, and nothing else.
 func TestLuaDriverListsItsSurfaces(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -36,7 +36,9 @@ func TestLuaDriverListsItsSurfaces(t *testing.T) {
 			t.Errorf("the lua driver lists %q, which test/conformance/README.md does not name", s)
 		}
 	}
-	for _, want := range []string{"wire", "report"} {
+	// the Lua leg answers every surface (docs/PORT-LUA.md, THE CARD MAP); a
+	// case it cannot reach is <case>.absent, never a surface left unlisted
+	for want := range conformanceSurface {
 		if !seen[want] {
 			t.Errorf("the lua driver's list does not name %q", want)
 		}

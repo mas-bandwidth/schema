@@ -39,20 +39,46 @@ local function put(w, at, s)
   w.chunks[#w.chunks + 1] = { at = at, s = s }
 end
 
--- little-endian, the tool's default order (`tablecook.Options{}`, §7.6)
+-- THE BYTE ORDER IS A PARAMETER OF THE WRITE, never a fact of the host
+-- (docs/SPEC-TABLES.md §7.6, §19.1): Cook sets it for the one call it runs,
+-- little-endian ("<", order 1, the tool's default `tablecook.Options{}`) or
+-- big-endian (">", order 2, `tablecook.Options{Big: true}`), and every
+-- multi-byte piece below is packed in it. Lua runs one call at a time, so the
+-- order is the module's for exactly the length of that call.
+local ORD = "<"
+
 local function put_uint(w, at, v, width)
   if width == 1 then put(w, at, string.char(v & 0xff))
-  elseif width == 2 then put(w, at, string.pack("<I2", v & 0xffff))
-  elseif width == 4 then put(w, at, string.pack("<I4", v & 0xffffffff))
-  elseif width == 8 then put(w, at, string.pack("<i8", v))
+  elseif width == 2 then put(w, at, string.pack(ORD .. "I2", v & 0xffff))
+  elseif width == 4 then put(w, at, string.pack(ORD .. "I4", v & 0xffffffff))
+  elseif width == 8 then put(w, at, string.pack(ORD .. "i8", v))
   elseif width == 16 then
-    put(w, at, string.pack("<i8", v))
-    put(w, at + 8, string.pack("<i8", v < 0 and -1 or 0))
+    local hi = v < 0 and -1 or 0
+    if ORD == ">" then
+      put(w, at, string.pack(">i8", hi))
+      put(w, at + 8, string.pack(">i8", v))
+    else
+      put(w, at, string.pack("<i8", v))
+      put(w, at + 8, string.pack("<i8", hi))
+    end
   end
 end
 
-local function put_f32(w, at, v) put(w, at, string.pack("<f", v)) end
-local function put_f64(w, at, v) put(w, at, string.pack("<d", v)) end
+-- A WIDE KIND (fixed(W, F), ufixed(W, F), int128, uint128; §3, §15) is its
+-- raw integer at the declared width, the { lo, hi } halves of the load's
+-- value as little-endian bytes cut to the width, and a big-endian region
+-- holds it high byte first, exactly as it holds a u64 (internal/tablecook's
+-- putWide).
+local function put_wide(w, at, x, width)
+  local lo, hi = 0, 0
+  if type(x) == "table" then lo, hi = x.lo or 0, x.hi or 0 end
+  local le = (string.pack("<i8", lo) .. string.pack("<i8", hi)):sub(1, width)
+  if ORD == ">" then le = le:reverse() end
+  put(w, at, le)
+end
+
+local function put_f32(w, at, v) put(w, at, string.pack(ORD .. "f", v)) end
+local function put_f64(w, at, v) put(w, at, string.pack(ORD .. "d", v)) end
 
 -- THE NUMBERING (§3.1, internal/tablewire/nodes.go): the depth-first pre-order
 -- over pointer edges, the root first at index one. It is the save's walk
@@ -288,14 +314,22 @@ write_field_value = function(T, f, x, at, w, index)
   elseif s == "wstring" then
     local units = x or {}
     local n = math.min(#units, f.bound or #units)
-    for i = 1, n do put(w, at + (i - 1) * 2, string.pack("<I2", units[i] & 0xffff)) end
+    for i = 1, n do put(w, at + (i - 1) * 2, string.pack(ORD .. "I2", units[i] & 0xffff)) end
     put_uint(w, at + (f.companion or 0), n, 4)
     return true
   elseif s == "bool" then
     put_uint(w, at, x and 1 or 0, 1)
     return true
   elseif s == "int" then
-    put_uint(w, at, x or 0, f.width)
+    -- a bits(N) slot is a uint32 for N <= 32 and a uint64 past it (§7.2,
+    -- internal/tablecook's region writer), whatever width its wire kind has:
+    -- the low byte alone is the same file only in little-endian order
+    local width = f.width
+    if f.bits ~= nil then width = f.bits <= 32 and 4 or 8 end
+    put_uint(w, at, x or 0, width)
+    return true
+  elseif s == "wide" then
+    put_wide(w, at, x, f.width)
     return true
   elseif s == "flags" then
     put_uint(w, at, x or 0, 8)
@@ -607,9 +641,10 @@ function C.CookMeasure(T, name, v)
   return l.total
 end
 
--- Cook writes the cook (§7.6, §7.1, §7.2): header, data part, attribution part.
--- The capacity is the measure's answer; short input refuses and writes nothing.
-function C.Cook(T, name, v, capacity)
+-- cook writes the cook (§7.6, §7.1, §7.2): header, data part, attribution part,
+-- every multi-byte piece in ORD. The capacity is the measure's answer; short
+-- input refuses and writes nothing.
+local function cook(T, name, v, capacity, order)
   local refused = D.refuse_deprecated(T, name, v)
   if refused ~= nil then return nil, refused end
   local l = layout(T, name, v)
@@ -634,7 +669,7 @@ function C.Cook(T, name, v, capacity)
   -- the header (§7.1)
   put_uint(w, 0, MAGIC, 8)
   put_uint(w, 8, T.BuildVersion, 8)
-  put_uint(w, 16, 1, 8)
+  put_uint(w, 16, order, 8)
   put_uint(w, 24, l.data, 8)
   put_uint(w, 32, #l.entries * 16, 8)
   put_uint(w, 40, l.align, 8)
@@ -647,6 +682,25 @@ function C.Cook(T, name, v, capacity)
     put_uint(w, at + (i - 1) * 16 + 8, e.typeId, 8)
   end
   return assemble(w, l.total)
+end
+
+-- Cook writes the cook in the byte order the caller names (§7.6, §19.1): 1
+-- (or nil) is little-endian and 2 big-endian, the two values the header's
+-- order word carries (§7.1). The order is the call's: it is set for this one
+-- write and put back, so no other call is written in it.
+function C.Cook(T, name, v, capacity, order)
+  order = order or 1
+  if order ~= 1 and order ~= 2 then
+    error("Cook: the byte order is 1 (little-endian) or 2 (big-endian), not " .. tostring(order), 2)
+  end
+  ORD = order == 2 and ">" or "<"
+  local ok, out, why = pcall(cook, T, name, v, capacity, order)
+  ORD = "<"
+  if not ok then error(out, 0) end
+  -- one answer for a cook, two for a refusal that names itself, exactly the
+  -- results the single-order Cook answered
+  if why ~= nil then return out, why end
+  return out
 end
 
 -- assemble joins the pieces in offset order, filling every unclaimed byte with

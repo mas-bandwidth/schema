@@ -411,7 +411,7 @@ the harness's cook forgery battery (111 rows) holds every port.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cook.go:150-173` `tables-cook-open` | ✅ `internal/codegen/ctable/cook.go:157-178` | ✅ `internal/codegen/rusttable/cook.go:206` | ✅ `internal/codegen/gotable/cook.go:542-624` | ✅ `internal/codegen/cstable/cook.go:575-660` `tables-cook-open-cs` | ✅ `internal/codegen/javatable/cook.go:372-455` (an offset residue; the deref bounded to the record) | ✅ `internal/codegen/jstable/cook.go:438-483` | ✅ `internal/codegen/darttable/cook.go:390-446` (an offset residue) | ✅ `internal/codegen/elixirtable/cook.go:145` (a `lead` parameter; a binary has no address) | ❌ #381 (no card yet in the schema-lua stream): the cooked form |
+| ✅ `internal/codegen/cpptable/cook.go:150-173` `tables-cook-open` | ✅ `internal/codegen/ctable/cook.go:157-178` | ✅ `internal/codegen/rusttable/cook.go:206` | ✅ `internal/codegen/gotable/cook.go:542-624` | ✅ `internal/codegen/cstable/cook.go:575-660` `tables-cook-open-cs` | ✅ `internal/codegen/javatable/cook.go:372-455` (an offset residue; the deref bounded to the record) | ✅ `internal/codegen/jstable/cook.go:438-483` | ✅ `internal/codegen/darttable/cook.go:390-446` (an offset residue) | ✅ `internal/codegen/elixirtable/cook.go:145` (a `lead` parameter; a binary has no address) | ✅ `internal/codegen/luatable/runtime/cook.lua:527` `TestLuaCookOpenIsTheHeader` (Open is the header and the base alone; Check runs cook-check's two passes) |
 
 ### M9 — One text walk for the whole unit
 
@@ -1127,7 +1127,7 @@ reference leg never registers.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| — the reference leg may not answer absent (`test/conformance/README.md`) | ✅ `test/conformance/c/main.c:224-230` | ✅ `test/conformance/rust/src/main.rs:337-342` | ✅ `test/conformance/go/main.go:147` | ✅ `test/conformance/cs/src/Program.cs:54` | ✅ `test/conformance/java/src/Driver.java:646-649` (the five wire surfaces, absent at the `list` grain) | ✅ `test/conformance/js/main.mjs:74-76` | ✅ `test/conformance/dart/main.dart:337` | ❌ #515 | ❌ #381 schema-lua-conformance-leg |
+| — the reference leg may not answer absent (`test/conformance/README.md`) | ✅ `test/conformance/c/main.c:224-230` | ✅ `test/conformance/rust/src/main.rs:337-342` | ✅ `test/conformance/go/main.go:147` | ✅ `test/conformance/cs/src/Program.cs:54` | ✅ `test/conformance/java/src/Driver.java:646-649` (the five wire surfaces, absent at the `list` grain) | ✅ `test/conformance/js/main.mjs:74-76` | ✅ `test/conformance/dart/main.dart:337` | ❌ #515 | ✅ `test/conformance/lua/main.lua:94` (every case it cannot answer is <case>.absent with its reason) |
 
 ### I5 — The block lead gate
 
