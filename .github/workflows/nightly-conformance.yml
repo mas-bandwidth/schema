@@ -302,7 +302,10 @@ jobs:
 
       # THE FIXED FORM (form 3) is read from the C++ reference's byte oracle,
       # build/fixedform-corpus, by each leg's own gate — the targets ci-fast.yml's
-      # leg-gate runs. A leg with no gate yet is `none` in the coverage table.
+      # leg-gate runs. The gate rebuilds the oracle from this commit's C++
+      # reference (its make prerequisites always do); the oracle cpp-writes
+      # published is the same bytes, kept in cpp-corpus for reading. A leg with
+      # no gate yet is `none` in the coverage table.
       - name: the ${{ matrix.lang }} leg reads the C++ fixed form
         if: ${{ !cancelled() }}
         run: |
@@ -431,7 +434,7 @@ jobs:
       - name: the coverage table
         run: |
           set -euo pipefail
-          mkdir -p build/nightly/coverage
+          mkdir -p build/nightly/coverage build/nightly/rows
           go run ./test/conformance/harness coverage --in build/nightly/rows > build/nightly/coverage/coverage.md
           cat build/nightly/coverage/coverage.md >> "$GITHUB_STEP_SUMMARY"
           cat build/nightly/coverage/coverage.md

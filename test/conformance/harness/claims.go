@@ -7,9 +7,13 @@
 // [compiler.Generate] refuses a unit that uses a construct its target does not
 // carry. So a port claims a case exactly when the case's unit uses at least one
 // registered construct and the port's target carries every one of them: the
-// compiler would generate that unit for it, by its own registration, and the
-// leg owes the answer. A case whose unit uses no registered construct is one
-// the registry says nothing about, and its absence is coverage, not failure.
+// registration is the port saying, by name, that it carries what this case
+// exercises, and the leg owes the answer. A case whose unit uses no registered
+// construct is one the registry makes no statement about — the variable,
+// message, wide-scalar and byte-buffer classes a port lands one at a time are
+// not constructs there — so its absence is coverage, not failure. A class that
+// should be enforced is registered as a construct; this file does not invent
+// claims the registry does not make.
 //
 // THE ONE PIECE OF MAPPING DATA is which unit (and root) each case of each
 // surface reads, and that is the manifest's own lines: caseIndex reads it out
