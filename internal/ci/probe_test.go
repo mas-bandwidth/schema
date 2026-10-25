@@ -47,10 +47,11 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	}
 	// A real `schema new-leg` leg in the tree (make/<lang>.mk beside a
 	// compiler/target_<lang>.go behind its schema_leg_<lang> tag, such as
-	// luau, docs/PORT-LUAU.md) is a skeleton here too: its marker file is
-	// carried into the fixture, so the gate skips it by the same rule.
-	// one entry per leg, so a real lua leg (make/lua.mk and its tagged
-	// compiler/target_lua.go, docs/PORT-LUA.md) is the planted one, not a second
+	// luau, docs/PORT-LUAU.md, and goose, docs/PORT-GOOSE.md) is a skeleton
+	// here too: its marker file is carried into the fixture, so the gate skips
+	// it by the same rule. One entry per leg, so a real lua leg (make/lua.mk
+	// and its tagged compiler/target_lua.go, docs/PORT-LUA.md) is the planted
+	// one, not a second.
 	skeletons := map[string]bool{"lua": true} // the planted lua
 	tagged, err := filepath.Glob(filepath.Join(root, "compiler", "target_*.go"))
 	if err != nil {
@@ -157,7 +158,9 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err == nil {
 		t.Fatalf("unmarked unregistered backend passed the gate:\n%s", out)
 	}
-	if strings.Contains(out, "schema new-leg skeleton") || !strings.Contains(out, "backend stopped for another reason") {
+	// a tagged leg in the tree (goose) is still a skeleton; the unmarked lua
+	// must not be
+	if strings.Contains(out, "lua has no --lang yet (schema new-leg skeleton)") || !strings.Contains(out, "the lua backend stopped for another reason") {
 		t.Fatalf("unmarked backend did not fail as an ordinary backend:\n%s", out)
 	}
 }
