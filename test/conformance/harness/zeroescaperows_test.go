@@ -11,11 +11,11 @@ import (
 // battery to docs/SPEC-TABLES.md §16.3's zero rule: a string the read would
 // PLACE in text storage refuses the read (`text_holds_zero: <Table>.<field>`),
 // while a string it only SKIPS stores nothing and is not the event. The rule is
-// held first in Go, so the two refusals state the standard's answer with
-// `carried-by=go` and every other port keeps its BASE counters; Lua's reader
-// refuses a zero placed in a text value and in a map key too (the bounded rows
-// and the map-key row), so both rows are `carried-by=go,lua`. The skipped value
-// is the clean §4 report with the unknown key counted.
+// held first in Go and carried by C and Lua (Lua's reader refuses a zero placed
+// in a text value and in a map key), so the two refusals state the standard's
+// answer with `carried-by=go,c,lua` and every other port keeps its BASE
+// counters; the skipped value is the clean §4 report with the unknown key
+// counted.
 //
 // A Go answer of the clean counters on the value row must score red, because
 // the exemption is a different expectation and never a skip.
@@ -33,27 +33,25 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 	const baseCounters = "0,0,0,0,0,false,read"
 
 	refusals := []string{"str-zero-escape-value", "str-zero-escape-map-key"}
-	carriers := map[string]string{"str-zero-escape-value": "go,lua", "str-zero-escape-map-key": "go,lua"}
 	for _, caseName := range refusals {
 		row := findHostile(t, m, caseName)
 		if !row.Refused || row.Verdict() != "refused" {
 			t.Fatalf("%s: the standard verdict is %q; §16.3 refuses a zero placed in text", caseName, row.Verdict())
 		}
-		if strings.Join(row.CarriedBy, ",") != carriers[caseName] {
-			t.Fatalf("%s: carried-by=%v, want %s; Go holds the rule first and every other port keeps its behaviour", caseName, row.CarriedBy, carriers[caseName])
-		}
-		wantLua := baseCounters
-		if strings.Contains(carriers[caseName], "lua") {
-			wantLua = "refused"
-		}
-		if got := row.VerdictFor("lua"); got != wantLua {
-			t.Fatalf("%s: lua owes %q, got %q", caseName, wantLua, got)
+		if strings.Join(row.CarriedBy, ",") != "go,c,lua" {
+			t.Fatalf("%s: carried-by=%v; Go held the rule first, C and Lua carry it, and every other port keeps its behaviour", caseName, row.CarriedBy)
 		}
 		if row.Uncarried != baseCounters {
 			t.Fatalf("%s: uncarried=%q; every other port stores the zero and answers %q", caseName, row.Uncarried, baseCounters)
 		}
 		if got := row.VerdictFor("go"); got != "refused" {
 			t.Fatalf("%s: Go owes %q, got %q", caseName, "refused", got)
+		}
+		if got := row.VerdictFor("c"); got != "refused" {
+			t.Fatalf("%s: C owes %q, got %q", caseName, "refused", got)
+		}
+		if got := row.VerdictFor("lua"); got != "refused" {
+			t.Fatalf("%s: Lua owes %q, got %q", caseName, "refused", got)
 		}
 		if got := row.VerdictFor("cpp"); got != baseCounters {
 			t.Fatalf("%s: cpp owes %q, got %q", caseName, baseCounters, got)
@@ -123,7 +121,7 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := &result{}
-	scoreAnswer("go", "json-hostile", dir, valueWant, "", r)
+	scoreAnswer("go", "json-hostile", dir, valueWant, Instance{}, r)
 	if len(r.failures) == 0 {
 		t.Fatalf("%s: Go answering %q scored green against %q; it must score red", value.Name, baseCounters, valueWant.want)
 	}

@@ -39,11 +39,23 @@ type Instance struct {
 	// GoWireRefusal names a Go wire writer refusal the corpus requires this
 	// instance's Go leg to report instead of emitting bytes.
 	GoWireRefusal string
-	// WireRefusals names, per leg, the refusal the corpus requires that leg's
-	// wire answer to carry instead of bytes (`<lang>-refusal=<name>`): the Go,
-	// C and Lua writers refuse a shared blob when they measure it (SPEC-TABLES
-	// §2.5). WireRefusals["go"] is GoWireRefusal.
-	WireRefusals map[string]string
+	// WireRefusedBy names the ports BESIDES Go whose wire writer has taken the
+	// same refusal (marker refused-by=<ports>, which needs go-refusal=): their
+	// wire answer is the named absence too. A port not listed is still held to
+	// the committed bytes, as the reference is (docs/SPEC-TABLES.md §2.5).
+	WireRefusedBy []string
+}
+
+// WireRefusal answers the named wire writer refusal lang owes for this
+// instance, or "" when it owes the committed bytes.
+func (inst Instance) WireRefusal(lang string) string {
+	if inst.GoWireRefusal == "" {
+		return ""
+	}
+	if lang == "go" || slices.Contains(inst.WireRefusedBy, lang) {
+		return inst.GoWireRefusal
+	}
+	return ""
 }
 
 // Counts is a read report (docs/SPEC-TABLES.md §4), which is the whole
@@ -455,22 +467,20 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 						return nil, fmt.Errorf("%s: duplicate Go wire refusal marker", where)
 					}
 					inst.GoWireRefusal = strings.TrimPrefix(marker, "go-refusal=")
-					if inst.WireRefusals == nil {
-						inst.WireRefusals = map[string]string{}
+				case strings.HasPrefix(marker, "refused-by="):
+					if inst.WireRefusedBy != nil {
+						return nil, fmt.Errorf("%s: duplicate refused-by marker", where)
 					}
-					inst.WireRefusals["go"] = inst.GoWireRefusal
-				case legWireRefusal(marker) != "":
-					leg, name, _ := strings.Cut(marker, "-refusal=")
-					if inst.WireRefusals[leg] != "" {
-						return nil, fmt.Errorf("%s: duplicate %s wire refusal marker", where, strings.ToUpper(leg))
+					inst.WireRefusedBy = strings.Split(strings.TrimPrefix(marker, "refused-by="), ",")
+					if slices.Contains(inst.WireRefusedBy, "") || slices.Contains(inst.WireRefusedBy, "go") {
+						return nil, fmt.Errorf("%s: refused-by names an empty port or go (go-refusal= already holds go)", where)
 					}
-					if inst.WireRefusals == nil {
-						inst.WireRefusals = map[string]string{}
-					}
-					inst.WireRefusals[leg] = name
 				default:
 					return nil, fmt.Errorf("%s: %q is not a valid instance marker", where, marker)
 				}
+			}
+			if inst.WireRefusedBy != nil && inst.GoWireRefusal == "" {
+				return nil, fmt.Errorf("%s: refused-by= needs go-refusal= to name the refusal", where)
 			}
 			m.Instances = append(m.Instances, inst)
 		case "connection":
@@ -679,22 +689,4 @@ type Refusal struct {
 	Forgery string
 	Reason  string
 	Kind    string
-}
-
-// legWireRefusal answers the leg a `<lang>-refusal=<name>` instance marker
-// names (any leg but go, whose marker is go-refusal= above), or "" when the
-// marker is not one: a lowercase leg name and a non-empty refusal name. A
-// mistyped leg names no leg's refusal, and that leg's named absence is then
-// red in scoreLeg, so a typo cannot pass.
-func legWireRefusal(marker string) string {
-	leg, name, ok := strings.Cut(marker, "-refusal=")
-	if !ok || name == "" || leg == "" || leg == "go" {
-		return ""
-	}
-	for _, r := range leg {
-		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
-			return ""
-		}
-	}
-	return leg
 }

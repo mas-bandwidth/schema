@@ -106,17 +106,23 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.emitInitFunction(st)
 	g.emitZeroFunction(st)
 
-	g.pf("export function Write%s(stream, value) {\n", st.Name)
+	// An EMPTY type's wire functions read neither the stream nor the value, so
+	// they take neither (an unread parameter is eslint no-unused-vars); a
+	// caller's arguments are accepted and ignored, exactly as before.
 	if len(st.Items) == 0 {
+		g.pf("export function Write%s() {\n", st.Name)
 		g.pf("  // empty body — presence is the payload (SPEC §4.6)\n")
 	} else {
+		g.pf("export function Write%s(stream, value) {\n", st.Name)
 		g.emitWriteItems(st.Items, "  ")
 	}
 	g.pf("  return true;\n}\n\n")
 
-	g.pf("export function Read%s(stream, value) {\n", st.Name)
 	if len(st.Items) > 0 {
+		g.pf("export function Read%s(stream, value) {\n", st.Name)
 		g.emitReadItems(st.Items, "  ")
+	} else {
+		g.pf("export function Read%s() {\n", st.Name)
 	}
 	g.pf("  return true;\n}\n\n")
 }
@@ -126,7 +132,11 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 // selecting a reused payload; changing a public tag alone does not call it.
 func (g *gen) emitInitFunction(st *ir.Struct) {
 	g.pf("// Init%s restores fresh construction values in place, preserving storage.\n", st.Name)
-	g.pf("export function Init%s(value) {\n", st.Name)
+	if len(st.Fields) == 0 {
+		g.pf("export function Init%s() {\n", st.Name)
+	} else {
+		g.pf("export function Init%s(value) {\n", st.Name)
+	}
 	for _, f := range st.Fields {
 		g.emitInitField(f, "value", "  ")
 	}
@@ -189,9 +199,11 @@ func (g *gen) emitInitComposite(typ ir.FieldType, path, ind string) {
 // without declared defaults or birth counts. Untaken branches still use it.
 func (g *gen) emitZeroFunction(st *ir.Struct) {
 	g.pf("// The §5 zero form: all-zero storage, without declared defaults or birth counts.\n")
-	g.pf("export function Zero%s(value) {\n", st.Name)
 	if len(st.Fields) == 0 {
+		g.pf("export function Zero%s() {\n", st.Name)
 		g.pf("  // empty body — nothing to reset (SPEC §4.6)\n")
+	} else {
+		g.pf("export function Zero%s(value) {\n", st.Name)
 	}
 	for _, f := range st.Fields {
 		g.emitZeroField(f, "  ")

@@ -202,13 +202,13 @@ static bool ref_inside( const uint8_t * base, int64_t bytes, const TableRef & re
         static int64_t Measure( const Root * r ) { return Root##Measure( r ); }                                          \
         static int64_t Save( const Root * r, uint8_t * out, int64_t capacity ) { return Root##Save( r, out, capacity ); } \
         static int64_t LoadMeasure( const uint8_t * wire, int64_t bytes ) { return Root##LoadMeasure( wire, bytes ); }   \
-        static const Root * Load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t bytes, TableReport * report ) \
+        static const Root * LoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t bytes, TableReport * report ) \
         {                                                                                                                \
-            return Root##Load( region, region_bytes, wire, bytes, report );                                              \
+            return Root##LoadTolerant( region, region_bytes, wire, bytes, report );                                              \
         }                                                                                                                \
-        static bool LoadBuilder( Builder & into, const uint8_t * wire, int64_t bytes, TableReport * report )             \
+        static bool LoadBuilderTolerant( Builder & into, const uint8_t * wire, int64_t bytes, TableReport * report )             \
         {                                                                                                                \
-            return Root##LoadBuilder( into, wire, bytes, report );                                                       \
+            return Root##LoadBuilderTolerant( into, wire, bytes, report );                                                       \
         }                                                                                                                \
         static int64_t CookMeasure( const Builder & b ) { return Root##CookMeasure( b ); }                               \
         static bool Cook( const Builder & b, void * out, uint64_t capacity, TableByteOrder order ) { return Root##Cook( b, out, capacity, order ); } \
@@ -269,7 +269,7 @@ static void exercise( const char * name, void ( * build )( typename S::Builder &
         if ( region != NULL )
         {
             TableReport report;
-            const Root * loaded = S::Load( region, need, wire, saved, &report );
+            const Root * loaded = S::LoadTolerant( region, need, wire, saved, &report );
             CHECK( loaded != NULL );
             report_silent( report, "a loaded region" );
             if ( loaded != NULL )
@@ -280,14 +280,14 @@ static void exercise( const char * name, void ( * build )( typename S::Builder &
             }
             Builder into;
             TableReport tool;
-            CHECK( S::LoadBuilder( into, wire, saved, &tool ) );
+            CHECK( S::LoadBuilderTolerant( into, wire, saved, &tool ) );
             reports_agree( tool, report );
             CHECK_EQ( S::Save( into, again, sizeof( again ) ), saved );
             CHECK( memcmp( again, wire, (size_t) saved ) == 0 );
             // the region is EXACT: one byte short is refused. Load zeroes the
             // region it is handed before it refuses, so this is the last act.
             TableReport short_report;
-            CHECK( S::Load( region, need - 1, wire, saved, &short_report ) == NULL );
+            CHECK( S::LoadTolerant( region, need - 1, wire, saved, &short_report ) == NULL );
             free( region );
         }
     }
@@ -322,8 +322,8 @@ static void exercise( const char * name, void ( * build )( typename S::Builder &
         CHECK( b.RegionBytes() <= (int64_t) sizeof( relocated ) );
         if ( b.RegionBytes() <= (int64_t) sizeof( relocated ) )
         {
-            memset( relocated, 0, sizeof( relocated ) );
-            memcpy( relocated, b.Region(), (size_t) b.RegionBytes() );
+            memset( (void *) relocated, 0, sizeof( relocated ) );
+            memcpy( (void *) relocated, b.Region(), (size_t) b.RegionBytes() );
             check( (const Root *) relocated, relocated, b.RegionBytes(), "the relocated region" );
         }
 
@@ -376,17 +376,17 @@ static void build_ring( RingBuilder & b )
 {
     Ring * ring = b.GetRoot();
     Slot * first = RingItemsAdd( b.main, ring->items );
-    first->type = SlotType::Node;
-    Node * shared = NodeEmplace( b.main, first->node );
+    first->type = SlotType::Vertex;
+    Node * shared = NodeEmplace( b.main, first->vertex );
     shared->v = 7;
     Slot * second = RingItemsAdd( b.main, ring->items );
-    second->type = SlotType::Node;
-    second->node = first->node; // two elements, one node
+    second->type = SlotType::Vertex;
+    second->vertex = first->vertex; // two elements, one node
     Slot * third = RingItemsAdd( b.main, ring->items );
     third->type = SlotType::Plain;
     third->plain = 5;
     RingItemsAdd( b.main, ring->items ); // a None element in its place
-    ring->after = 11;
+    ring->past = 11;
 }
 
 static void check_ring( const Ring * r, const uint8_t * base, int64_t bytes, const char * where )
@@ -396,20 +396,20 @@ static void check_ring( const Ring * r, const uint8_t * base, int64_t bytes, con
     if ( r->items.size() != 4 ) { return; }
     const Slot & first = r->items[0];
     const Slot & second = r->items[1];
-    CHECK( first.type == SlotType::Node );
-    CHECK( second.type == SlotType::Node );
-    CHECK( ref_inside( base, bytes, first.node, (int64_t) sizeof( Node ) ) );
-    CHECK( ref_inside( base, bytes, second.node, (int64_t) sizeof( Node ) ) );
-    if ( ref_inside( base, bytes, first.node, (int64_t) sizeof( Node ) ) && ref_inside( base, bytes, second.node, (int64_t) sizeof( Node ) ) )
+    CHECK( first.type == SlotType::Vertex );
+    CHECK( second.type == SlotType::Vertex );
+    CHECK( ref_inside( base, bytes, first.vertex, (int64_t) sizeof( Node ) ) );
+    CHECK( ref_inside( base, bytes, second.vertex, (int64_t) sizeof( Node ) ) );
+    if ( ref_inside( base, bytes, first.vertex, (int64_t) sizeof( Node ) ) && ref_inside( base, bytes, second.vertex, (int64_t) sizeof( Node ) ) )
     {
-        const Node * a = NodeAt( first.node );
-        const Node * again = NodeAt( second.node );
+        const Node * a = NodeAt( first.vertex );
+        const Node * again = NodeAt( second.vertex );
         CHECK( a != NULL && a == again ); // one node, two elements
         if ( a != NULL ) { CHECK_EQ( a->v, 7 ); }
     }
     CHECK( r->items[2].type == SlotType::Plain && r->items[2].plain == 5 );
     CHECK( r->items[3].type == SlotType::None );
-    CHECK_EQ( r->after, 11 );
+    CHECK_EQ( r->past, 11 );
 }
 
 // C2: a BY-VALUE TABLE ARM holding a non-empty list, with a container after
@@ -495,7 +495,7 @@ static void build_hand( HandBuilder & b )
     *LeafItemsAdd( b.main, hand->entries[1].leaf.items ) = 5;
     *LeafItemsAdd( b.main, hand->entries[1].leaf.items ) = 6;
     *LeafItemsAdd( b.main, hand->entries[1].leaf.items ) = 7;
-    hand->after = 2;
+    hand->past = 2;
 }
 
 static void check_hand( const Hand * h, const uint8_t * base, int64_t bytes, const char * where )
@@ -513,7 +513,7 @@ static void check_hand( const Hand * h, const uint8_t * base, int64_t bytes, con
         CHECK_EQ( leaf.items[0], 5 );
         CHECK_EQ( leaf.items[2], 7 );
     }
-    CHECK_EQ( h->after, 2 );
+    CHECK_EQ( h->past, 2 );
 }
 
 // C1 crossed with C2: a LIST OF UNIONS whose set arm is a table holding a
@@ -534,7 +534,7 @@ static void build_chain( ChainBuilder & b )
     Carry * fourth = ChainLinksAdd( b.main, chain->links );
     fourth->type = CarryType::Leaf;
     LeafReset( fourth->leaf ); // a selected leaf whose list is empty
-    chain->after = 9;
+    chain->past = 9;
 }
 
 static void check_chain( const Chain * c, const uint8_t * base, int64_t bytes, const char * where )
@@ -560,7 +560,7 @@ static void check_chain( const Chain * c, const uint8_t * base, int64_t bytes, c
     CHECK( c->links[2].type == CarryType::None );
     CHECK( c->links[3].type == CarryType::Leaf );
     if ( c->links[3].type == CarryType::Leaf ) { CHECK_EQ( c->links[3].leaf.items.size(), 0 ); }
-    CHECK_EQ( c->after, 9 );
+    CHECK_EQ( c->past, 9 );
 }
 
 // C10: a NODE REACHABLE ONLY THROUGH A UNION ARM, and a string blob likewise.
@@ -571,7 +571,7 @@ static void build_gate( GateBuilder & b )
     Gate * gate = b.GetRoot();
     gate->reach.type = ReachType::Only;
     OnlyEmplace( b.main, gate->reach.only )->w = 3;
-    gate->after = 4;
+    gate->past = 4;
 }
 
 static void check_gate( const Gate * g, const uint8_t * base, int64_t bytes, const char * where )
@@ -586,7 +586,7 @@ static void check_gate( const Gate * g, const uint8_t * base, int64_t bytes, con
         CHECK( only != NULL );
         if ( only != NULL ) { CHECK_EQ( only->w, 3 ); }
     }
-    CHECK_EQ( g->after, 4 );
+    CHECK_EQ( g->past, 4 );
 }
 
 static void build_gate_text( GateBuilder & b )
@@ -595,7 +595,7 @@ static void build_gate_text( GateBuilder & b )
     gate->reach.type = ReachType::Text;
     gate->reach.text = TableRef();
     CHECK( TableStringEmplace( b.main, gate->reach.text, "arm", 3 ) != NULL );
-    gate->after = 6;
+    gate->past = 6;
 }
 
 static void check_gate_text( const Gate * g, const uint8_t * base, int64_t bytes, const char * where )
@@ -610,7 +610,7 @@ static void check_gate_text( const Gate * g, const uint8_t * base, int64_t bytes
         CHECK( text.data != NULL && text.length == 3 );
         if ( text.data != NULL && text.length == 3 ) { CHECK( memcmp( text.data, "arm", 4 ) == 0 ); }
     }
-    CHECK_EQ( g->after, 6 );
+    CHECK_EQ( g->past, 6 );
 }
 
 // A LIST OF UNIONS WHOSE ARM IS AN ARRAY OF POINTERS: two elements, each
@@ -636,7 +636,7 @@ static void build_rack( RackBuilder & b )
     third->type = SlotsType::Plain;
     third->plain = 5;
     RackItemsAdd( b.main, rack->items ); // a None element in its place
-    rack->after = 12;
+    rack->past = 12;
 }
 
 // every slot of one array arm resolves inside the block and holds the value
@@ -670,7 +670,7 @@ static void check_rack( const Rack * r, const uint8_t * base, int64_t bytes, con
     check_slots( r->items[1], base, bytes, 3 );
     CHECK( r->items[2].type == SlotsType::Plain && r->items[2].plain == 5 );
     CHECK( r->items[3].type == SlotsType::None );
-    CHECK_EQ( r->after, 12 );
+    CHECK_EQ( r->past, 12 );
 }
 
 // A BOUNDED ARRAY OF UNIONS whose arm is the same array of pointers: both
@@ -687,7 +687,7 @@ static void build_tray( TrayBuilder & b )
         NodeEmplace( b.main, tray->entries[e].many.value[0] )->v = 1 + 2 * e;
         NodeEmplace( b.main, tray->entries[e].many.value[1] )->v = 2 + 2 * e;
     }
-    tray->after = 13;
+    tray->past = 13;
 }
 
 static void check_tray( const Tray * t, const uint8_t * base, int64_t bytes, const char * where )
@@ -697,7 +697,7 @@ static void check_tray( const Tray * t, const uint8_t * base, int64_t bytes, con
     if ( t->entries_count != 2 ) { return; }
     check_slots( t->entries[0], base, bytes, 1 );
     check_slots( t->entries[1], base, bytes, 3 );
-    CHECK_EQ( t->after, 13 );
+    CHECK_EQ( t->past, 13 );
 }
 
 int main()

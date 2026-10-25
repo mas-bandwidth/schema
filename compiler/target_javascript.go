@@ -29,7 +29,9 @@ func (t jsTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) 
 // jstable opens no file and a build ships a reader for every layout the lock
 // records.
 func (jsTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	// Packet wide text is carried; table kind 33 remains refused.
+	// Wide text is carried on the packet wire and on both table wires (kind 33
+	// on the variable form, docs/SPEC-TABLES.md §3; §3.4's fixed form), so
+	// refuseWideText answers nil for js (compiler/widetext.go).
 	if err := refuseWideText(u, "js"); err != nil {
 		return nil, err
 	}
@@ -137,5 +139,16 @@ func init() {
 	// The variable wire carries BOTH blobs (§2.5) — *string and *bytes — so js
 	// registers as a full byte-buffer carrier through registerBuiltin's blobs
 	// flag, which lifts refuseBytes and refuseStrings in GenerateLineage (§11).
-	registerBuiltin(jsTarget{}, true, false, false, true)
+	// It carries a union with table arms and an array of unions too (§2.6, §3),
+	// so the arms and unionArrays flags are set, and refuseUnionArrays answers
+	// nil for it.
+	registerBuiltin(jsTarget{}, true, true, true, true)
+	// MAPS (§2.8) and OPTIONAL ARRAYS (§2.3) ride the variable wire
+	// (internal/codegen/jstable variablearms.go): refuseMaps and
+	// refuseOptionalArrays answer nil for js. A table the variable wire still
+	// does not carry is refused BY NAME per table in jstable (§11), never here
+	// per unit.
+	registerMapCarrier("js")
+	registerOptionalArrayCarrier("js")
+	wasRowTargets = append(wasRowTargets, "js")
 }

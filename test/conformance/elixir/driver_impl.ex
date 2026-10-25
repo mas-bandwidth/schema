@@ -9,12 +9,11 @@
 # whichever module under it exports block_open_<root> or cook_open_<root>. That
 # keeps the leg free of a generated name nothing else in the language needs.
 #
-# THE FIVE WIRE-CARRYING SURFACES ARE ABSENT, and not as a gap the leg counts:
-# Elixir emits no table wire at all. The port that once did wrote the form that
-# preceded the id-table wire and was removed rather than carried; schema#515
-# brings the id-table wire to Elixir, and these surfaces with it. What this leg
-# drives is the two ACCELERATORS the backend does emit — the block (§19) and
-# the cook (§7), both read halves.
+# The backend emits the VARIABLE FORM for the whole variable class (the
+# id-table wire's codec, descriptors and text form of docs/SPEC-TABLES.md §3,
+# §16) beside the two ACCELERATORS it emits — the block (§19) and the cook
+# (§7), both read halves. The variable class's codec answers the driver's wire,
+# json-read, json-write and report surfaces; the block and cook answer the rest.
 
 # The block's canonical ROW dump (docs/SPEC-TABLES.md §19.2).
 #
@@ -317,10 +316,10 @@ defmodule CookDump do
 end
 
 defmodule Driver do
-  # the two accelerators' surfaces and nothing else: Elixir emits no table
-  # wire, so wire, report and the three text surfaces are not on this list
-  # (schema#515 brings the id-table wire to Elixir)
-  @surfaces ~w(cook cook-foreign block block-foreign block-dump forgery cook-forgery)
+  # the accelerators' surfaces beside the variable form's: wire, json-read,
+  # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
+  # the block and cook readers
+  @surfaces ~w(wire message json-read json-write json-hostile report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -511,9 +510,335 @@ defmodule Driver do
     end
   end
 
+  # THE REASON BESIDE THE REFUSAL (test/conformance/README.md, docs/SPEC-TABLES.md
+  # §7, §19.2): the same forged file the two forgery surfaces open, answered
+  # with Open's FIRST FAILING CLAUSE as the reference leg's TableRefuseReason
+  # value name (internal/codegen/gotable/refusal.go), or `ok`. The reason is the
+  # generated reader's own (cook_open_reason_<root>, block_open_reason_<root>),
+  # never one this driver derives. A `null` pointer is no buffer at all, which
+  # the reader takes as nil and names an unaligned base, as the reference does.
+  defp run("cook-reason", rows, outdir) do
+    for [name, kind, subject, file, extent, pointer] <- rows(rows, "forgery"), kind == "cook" do
+      {mod, reason} = accessor(cook_unit(rows, subject), subject, "cook_open_reason", 2)
+      write(outdir, name, reason_line(mod, reason, file, extent, pointer))
+    end
+  end
+
+  defp run("block-reason", rows, outdir) do
+    for [name, kind, subject, file, extent, pointer] <- rows(rows, "forgery"), kind == "block" do
+      {mod, reason} =
+        accessor(block_unit(subject), block_table(subject), "block_open_reason", 2)
+
+      write(outdir, name, reason_line(mod, reason, file, extent, pointer))
+    end
+  end
+
+  # ---- the VARIABLE FORM's surfaces (docs/SPEC-TABLES.md §3, §16) ----
+
+  # the variable-form codec a (unit, root) names: <Unit>.Table, which exports
+  # load/2, save/2, to_json/2 and from_json/2. nil when the leg has no codec.
+  # a manifest unit key names its module by the unit's package, which is the
+  # key itself except where the schema's package line says otherwise
+  @unit_packages %{"scalars" => "scalardemo", "widedemo" => "wide"}
+
+  # the namespace a manifest unit key names: the key itself except where the
+  # schema's package line says otherwise.
+  def unit_package(unit), do: Map.get(@unit_packages, unit, unit)
+
+  defp table_module(unit) do
+    mod = Module.concat([Macro.camelize(unit_package(unit)), "Table"])
+
+    if Code.ensure_loaded?(mod) and function_exported?(mod, :load, 2) and
+         function_exported?(mod, :save, 2),
+       do: mod,
+       else: nil
+  end
+
+  defp run("wire", rows, outdir) do
+    for [name, unit, root, wire | _] <- rows(rows, "instance") do
+      answer_load_save(table_module(unit), root, wire, outdir, name)
+    end
+  end
+
+  defp run("json-read", rows, outdir) do
+    for [name, unit, root, _wire | rest] <- rows(rows, "instance"), rest == [] do
+      json = Path.join("testdata/conformance/tables/json", name <> ".json")
+      mod = table_module(unit)
+
+      case mod do
+        nil ->
+          write_absent(outdir, name)
+
+        _ ->
+          case mod.from_json(root, File.read!(json)) do
+            {:ok, value, _report} ->
+              case mod.save(root, value) do
+                {:ok, bytes} -> write(outdir, name, bytes)
+                _ -> write_absent(outdir, name)
+              end
+
+            _ ->
+              write_absent(outdir, name)
+          end
+      end
+    end
+  end
+
+  defp run("json-write", rows, outdir) do
+    for [name, unit, root, wire | rest] <- rows(rows, "instance"), rest == [] do
+      mod = table_module(unit)
+
+      case mod do
+        nil ->
+          write_absent(outdir, name <> ".json")
+
+        _ ->
+          case mod.load(root, File.read!(wire)) do
+            {:ok, value, _report} ->
+              case mod.to_json(root, value) do
+                {:ok, text} -> write(outdir, name <> ".json", text)
+                _ -> write_absent(outdir, name <> ".json")
+              end
+
+            _ ->
+              write_absent(outdir, name <> ".json")
+          end
+      end
+    end
+  end
+
+  defp run("cook-write", rows, outdir) do
+    instances =
+      Map.new(rows(rows, "instance"), fn [name | rest] -> {name, rest} end)
+
+    for [name | _] <- rows(rows, "cook-write") do
+      case Map.get(instances, name) do
+        [unit, root, wire | _] ->
+          cook_one(table_module(unit), root, wire, outdir, name)
+
+        _ ->
+          write_absent(outdir, name)
+          write_absent(outdir, name <> "-be")
+      end
+    end
+  end
+
+  # cook-write (docs/SPEC-TABLES.md §7.6): load the instance, measure, refuse a
+  # short buffer, then write both byte orders. A root this leg does not carry
+  # writes <case>.absent rather than a wrong byte.
+  defp cook_one(nil, _root, _wire, outdir, name) do
+    write_absent(outdir, name)
+    write_absent(outdir, name <> "-be")
+  end
+
+  defp cook_one(mod, root, wire, outdir, name) do
+    if not function_exported?(mod, :cook_from, 4) or not mod.carried?(root) do
+      write_absent(outdir, name)
+      write_absent(outdir, name <> "-be")
+    else
+      case mod.load(root, File.read!(wire)) do
+        {:ok, value, report} ->
+          if Map.get(report, :malformed, false) do
+            write_absent(outdir, name)
+            write_absent(outdir, name <> "-be")
+          else
+            case mod.cook_measure_reason(root, value) do
+              {size, :ok} when is_integer(size) and size > 0 ->
+                for {order, suffix} <- [{:little, ""}, {:big, "-be"}] do
+                  stamp = :binary.copy(<<0xA5>>, size)
+                  short = binary_part(stamp, 0, size - 1)
+
+                  if mod.cook_from(root, value, short, order) != false do
+                    raise "short cook buffer wrote #{name}#{suffix}"
+                  end
+
+                  case mod.cook_from(root, value, stamp, order) do
+                    {true, out} -> write(outdir, name <> suffix, binary_part(out, 0, size))
+                    _ -> raise "cook write refused #{name}#{suffix}"
+                  end
+                end
+
+              _ ->
+                write_absent(outdir, name)
+                write_absent(outdir, name <> "-be")
+            end
+          end
+
+        _ ->
+          write_absent(outdir, name)
+          write_absent(outdir, name <> "-be")
+      end
+    end
+  end
+
+  defp run("report", rows, outdir) do
+    for [name, unit, root, wire] <- rows(rows, "report") do
+      case report_line(table_module(unit), root, wire) do
+        :absent -> write_absent(outdir, name)
+        line -> write(outdir, name, line)
+      end
+    end
+  end
+
+  defp run("json-hostile", rows, outdir) do
+    for [name, unit, root, tree | _] <- rows(rows, "json-hostile") do
+      json = Path.join(tree, root <> ".json")
+      mod = table_module(unit)
+
+      if mod == nil or not mod.carried?(root) do
+        write_absent(outdir, name)
+      else
+        case mod.from_json(root, File.read!(json)) do
+          {:ok, value, report} ->
+            if Map.get(report, :malformed, false) do
+              write(outdir, name, "refused\n")
+            else
+              {:ok, wire} = mod.save(root, value)
+              {:ok, _back, _r2} = mod.load(root, wire)
+              write(outdir, name, report_counters(report) <> ",read\n")
+            end
+
+          _ ->
+            write(outdir, name, "refused\n")
+        end
+      end
+    end
+  end
+
+  defp answer_load_save(mod, root, wire, outdir, name) do
+    case mod do
+      nil ->
+        write_absent(outdir, name)
+
+      _ ->
+        case mod.load(root, File.read!(wire)) do
+          {:ok, value, _report} ->
+            case mod.save(root, value) do
+              {:ok, bytes} -> write(outdir, name, bytes)
+              _ -> write_absent(outdir, name)
+            end
+
+          _ ->
+            write_absent(outdir, name)
+        end
+    end
+  end
+
+  # A unit with no variable-form codec, and a root the codec names uncarried,
+  # write <case>.absent (docs/SPEC-TABLES.md §11). A line that says "absent"
+  # is a wrong answer against the reference's "read"; the sidecar is the
+  # absence the harness already counts as a missing feature.
+  defp report_line(nil, _root, _wire), do: :absent
+
+  # The verdict is the REPORT'S REASON (docs/SPEC-TABLES.md §4, §4.2): a load
+  # that finished is a read, its counters as they stand (wire_damaged there
+  # is damage below the root, carried by the malformed flag); a refusal's
+  # unknown_form is a refused form, and its wire_damaged framing damage, which
+  # reports.txt spells as a read with malformed set.
+  defp report_line(mod, root, wire) do
+    case mod.load(root, File.read!(wire)) do
+      {:ok, _value, report} ->
+        report_counters(report) <> ",read\n"
+
+      {:error, _refusal, %{reason: "unknown_form"}} ->
+        "0,0,0,0,0,false,refused\n"
+
+      {:error, _refusal, %{reason: "wire_damaged"}} ->
+        "0,0,0,0,0,true,read\n"
+
+      _ ->
+        :absent
+    end
+  end
+
+  defp reason_line(mod, reason, file, extent, pointer) do
+    answer =
+      case claim(file, extent, pointer) do
+        :no_buffer -> apply(mod, reason, [nil, 0])
+        bytes -> apply(mod, reason, [bytes, String.to_integer(pointer)])
+      end
+
+    Atom.to_string(answer) <> "\n"
+  end
+
+  defp report_counters(report) do
+    [
+      Map.get(report, :unknown, 0),
+      Map.get(report, :kind_mismatch, 0),
+      Map.get(report, :widened, 0),
+      Map.get(report, :clamped, 0),
+      Map.get(report, :duplicate, 0),
+      if(Map.get(report, :malformed, false), do: "true", else: "false")
+    ]
+    |> Enum.join(",")
+  end
+
+  defp write_absent(outdir, name) do
+    File.write!(Path.join(outdir, name <> ".absent"), "")
+  end
+
+  # ---- the MESSAGE FORM's surface (docs/SPEC-TABLES.md §3.3) ----
+
+  # THE ONE SURFACE THAT READS TWO FILES (test/conformance/README.md): each
+  # `message` row is joined BY KEY to the `connection` line naming its unit and
+  # announcement; the announcement read gives the vocabulary, the batch loads
+  # against it, and the saved bytes are the answer. A row the leg cannot answer
+  # writes <case>.absent and says why on stderr.
+  defp run("message", rows, outdir) do
+    connections =
+      Map.new(rows(rows, "connection"), fn [key, unit, _hash, announcement | _] ->
+        {key, {unit, announcement}}
+      end)
+
+    for [name, connection, root, _file, batch | _] <- rows(rows, "message") do
+      case message_answer(Map.get(connections, connection), root, batch) do
+        {:ok, bytes} ->
+          write(outdir, name, bytes)
+
+        {:absent, why} ->
+          IO.puts(:stderr, "message #{name}: absent: #{why}")
+          write_absent(outdir, name)
+      end
+    end
+  end
+
   defp run(surface, _rows, _outdir) do
     IO.puts(:stderr, "the Elixir leg does not implement #{surface}")
     System.halt(2)
+  end
+
+  # the unit's message module, <Package>.TableMessage, resolved the way
+  # table_module resolves <Package>.Table. nil when the leg has none.
+  defp message_module(unit) do
+    mod =
+      Module.concat([Macro.camelize(Map.get(@unit_packages, unit, unit)), "TableMessage"])
+
+    if Code.ensure_loaded?(mod) and function_exported?(mod, :announce_read, 1) and
+         function_exported?(mod, :load_messages, 2) and function_exported?(mod, :save_messages, 2),
+       do: mod,
+       else: nil
+  end
+
+  defp message_answer(nil, _root, _batch),
+    do: {:absent, "the row names no connection the manifest defines"}
+
+  defp message_answer({unit, announcement}, root, batch) do
+    case message_module(unit) do
+      nil ->
+        {:absent, "unit #{unit} has no TableMessage module"}
+
+      mod ->
+        with {:announce_read, {:ok, vocab}} <-
+               {:announce_read, mod.announce_read(File.read!(announcement))},
+             {:load_messages, {:ok, values}} <-
+               {:load_messages, mod.load_messages(vocab, File.read!(batch))},
+             {:save_messages, {:ok, bytes}} <-
+               {:save_messages, mod.save_messages(vocab, values)} do
+          {:ok, bytes}
+        else
+          {verb, answer} -> {:absent, "#{root}: #{verb} answered #{inspect(answer)}"}
+        end
+    end
   end
 
   defp foreign(<<magic::binary-size(8), rest::binary>>) do
@@ -797,15 +1122,54 @@ defmodule WireFuzz do
     :io.setopts(:standard_io, encoding: :latin1)
     roster = read_roster()
     stdout_write(for(r <- roster, do: <<avail(r)>>))
+    write_unopened(roster)
     loop(roster)
   end
 
-  # the variable-form codec a (unit, root) names: the unit's namespace's Table
-  # module, whose load_measure/2 is this card's whole answer (docs/SPEC-TABLES.md
-  # §3). A root this leg does not carry answers 0 in the roster and is never
-  # sent a mutant.
-  defp codec(unit, _root) do
-    mod = Module.concat([Macro.camelize(unit), "Table"])
+  # THE ROOTS THIS LEG CANNOT OPEN, BY NAME (make/elixir.mk,
+  # tables-elixir-wire-fuzz-all). The harness counts the seeds a roster 0
+  # leaves out and names none of them, so a root that stopped opening would
+  # only move a count. When ELIXIR_WIRE_FUZZ_ABSENT names a file, the driver
+  # writes one line per roster entry it answers 0 for: `<unit>.<root> form=<f>`
+  # and why (no-codec: the unit has no generated module for the entry's form;
+  # uncarried: the variable form refuses the root, docs/SPEC-TABLES.md §2.6,
+  # §2.8, §11). The gate compares that list with its pinned one. Unset, nothing
+  # is written.
+  defp write_unopened(roster) do
+    case System.get_env("ELIXIR_WIRE_FUZZ_ABSENT") do
+      nil ->
+        :ok
+
+      "" ->
+        :ok
+
+      path ->
+        lines =
+          for r <- roster, avail(r) == 0 do
+            reason = if codec(r) == nil, do: "no-codec", else: "uncarried"
+            "#{r.unit}.#{r.root} form=#{r.form} #{reason}\n"
+          end
+
+        File.write!(path, lines)
+    end
+  end
+
+  # THE CODEC A ROSTER ENTRY NAMES (docs/SPEC-TABLES.md §3, §3.3). The roster's
+  # form byte says which wire the entry will be sent: form 1 is the FILE form,
+  # whose codec is the unit's `<Package>.Table`; form 2 is the MESSAGE form,
+  # whose codec is the unit's `<Package>.TableMessage` (announcement plus the
+  # batch verbs). Reading the form here is what keeps an entry from being
+  # answered by a codec that refuses its wire: the file codec answers
+  # `:newer_form` for byte 2 (variableform.go's open/1), so a form-2 entry
+  # bound to it was available and then diverged instead of being fuzzed.
+  # The namespace is the unit's PACKAGE, not its manifest key
+  # (Driver.table_module does the same mapping).
+  defp codec(%{form: 2} = r), do: message_codec(r.unit, r.root)
+  defp codec(r), do: file_codec(r.unit, r.root)
+
+  # the FILE form's codec, docs/SPEC-TABLES.md §3: load_measure/2 and load/2.
+  defp file_codec(unit, _root) do
+    mod = Module.concat([Macro.camelize(Driver.unit_package(unit)), "Table"])
 
     if Code.ensure_loaded?(mod) and function_exported?(mod, :load_measure, 2) and
          function_exported?(mod, :load, 2),
@@ -813,8 +1177,43 @@ defmodule WireFuzz do
        else: nil
   end
 
+  # the MESSAGE form's codec, docs/SPEC-TABLES.md §3.3: the unit's announced
+  # vocabulary and the batch verbs load_messages/2, save_messages/2 and
+  # measure_messages/2.
+  defp message_codec(unit, _root) do
+    mod = Module.concat([Macro.camelize(Driver.unit_package(unit)), "TableMessage"])
+
+    if Code.ensure_loaded?(mod) and function_exported?(mod, :announce, 0) and
+         function_exported?(mod, :announce_read, 1) and
+         function_exported?(mod, :load_messages, 2) and
+         function_exported?(mod, :save_messages, 2) and
+         function_exported?(mod, :measure_messages, 2),
+       do: mod,
+       else: nil
+  end
+
+  # carried?/1 is the variable form's own answer (docs/SPEC-TABLES.md §2.6,
+  # §2.8, §11): a root that reaches a map or a union is uncarried. Roster 0
+  # means the harness never sends it a mutant. An error return while the root
+  # is marked available would be scored against the oracle. A form-2 entry is
+  # the fixed table's announced wire (§3.3) and is carried whenever its
+  # TableMessage module is present.
+  defp avail(%{form: 2} = r) do
+    if message_codec(r.unit, r.root) == nil, do: 0, else: 1
+  end
+
   defp avail(r) do
-    if codec(r.unit, r.root) == nil, do: 0, else: 1
+    case file_codec(r.unit, r.root) do
+      nil ->
+        0
+
+      mod ->
+        if function_exported?(mod, :carried?, 1) and not mod.carried?(r.root) do
+          0
+        else
+          1
+        end
+    end
   end
 
   defp read_roster do
@@ -849,12 +1248,94 @@ defmodule WireFuzz do
 
   defp answer(roster, index, wire) do
     r = Enum.at(roster, index)
-    mod = codec(r.unit, r.root)
 
-    if r.retain == 1 do
-      answer_retain(mod, r, wire)
+    if r.form == 2 do
+      # THE MESSAGE FORM IS ITS OWN ARM (docs/SPEC-TABLES.md §3.3): the batch
+      # verbs read and write it, and the file codec never sees a form-2 byte.
+      answer_message(r, wire)
     else
-      answer_plain(mod, r, wire)
+      mod = file_codec(r.unit, r.root)
+
+      if r.retain == 1 do
+        answer_retain(mod, r, wire)
+      else
+        answer_plain(mod, r, wire)
+      end
+    end
+  end
+
+  # the MESSAGE arm (docs/SPEC-TABLES.md §3.3): resolve the unit's own
+  # announcement once, read the batch, and write body one back as the batch of
+  # one — the same single body the oracle encodes (test/conformance/harness/
+  # wirefuzz.go, the `r.message` branch). A clean batch reports no counter and
+  # a damaged one reports `malformed`, which is the one counter the batch verbs
+  # themselves name; the message surface carries no per-kind counters, so those
+  # stay zero here rather than being invented.
+  defp answer_message(r, wire) do
+    case message_codec(r.unit, r.root) do
+      nil ->
+        stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
+
+      mod ->
+        case vocab(mod) do
+          nil ->
+            stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
+
+          vocab ->
+            case mod.load_messages(vocab, wire) do
+              {:ok, bodies} -> message_reply(mod, vocab, bodies, false)
+              {:malformed, _count, bodies} -> message_reply(mod, vocab, bodies, true)
+              _ -> stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
+            end
+        end
+    end
+  end
+
+  # THE ANNOUNCEMENT IS A CONSTANT OF THE UNIT (§3.3), so it is resolved once
+  # per unit and kept for the run: the vocabulary is a pure function of the
+  # build version and the driver makes a fresh copy never.
+  defp vocab(mod) do
+    key = {__MODULE__, mod}
+
+    case Process.get(key) do
+      nil ->
+        case mod.announce_read(mod.announce()) do
+          {:ok, vocab} ->
+            Process.put(key, vocab)
+            vocab
+
+          _ ->
+            nil
+        end
+
+      vocab ->
+        vocab
+    end
+  end
+
+  defp message_reply(mod, vocab, bodies, malformed) do
+    report = %{malformed: malformed}
+
+    measure =
+      case mod.measure_messages(vocab, bodies) do
+        {:ok, n} -> n
+        _ -> 0
+      end
+
+    case bodies do
+      [first | _] ->
+        case mod.save_messages(vocab, [first]) do
+          {:ok, bytes} ->
+            stdout_write(header(1, report, measure) <> <<byte_size(bytes)::little-signed-64>>)
+            stdout_write(bytes)
+
+          _ ->
+            stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
+        end
+
+      [] ->
+        # damage before body one: the batch delivered no body to save
+        stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
     end
   end
 

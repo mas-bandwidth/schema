@@ -77,7 +77,19 @@ var unpublishedLanguages = []string{"elixir"}
 // filling this driver's second wire with a fabricated row would be inventing a
 // measurement, so js rides the table wire alone and appears in no ratio, no
 // confirmation pass and no board.
-var tableOnlyLanguages = []string{"rust", "java", "js"}
+//
+// dart is here for java's reason: bench/dart/main.dart is the TYPE BOARD's
+// packet runner, with neither `--gate` nor `--iterations`, and the paired set
+// is the four the board is defined over. The table leg
+// (bench/tables/dart/table_main.dart) is this driver's own shape, compiled
+// with `dart compile exe` — the AOT form, the one that ships — so like rust it
+// runs as this driver's own build product. Dart has no form-1 table wire
+// (schema#514), so the leg is the FIXED form alone, as js's is. A packet leg
+// here is separate work with its own ruling, so dart rides the table wire
+// alone and appears in no ratio, no confirmation pass and no board; its packet
+// number is the type board's, measured by its own runner over the same
+// sixty-four records.
+var tableOnlyLanguages = []string{"rust", "java", "js", "dart"}
 
 // A PENDING LANGUAGE is a row the published table names that this driver has
 // no leg for at all: no generator invocation, no build step, no runner, no
@@ -85,9 +97,10 @@ var tableOnlyLanguages = []string{"rust", "java", "js"}
 // nothing can generate, build, gate or measure it. The nine-language table
 // carries the name so the row it will one day fill reads as absent rather than
 // silently missing, and `bench/paired/table.go` takes it from here rather than
-// keeping a list of its own — dart's fixed-form emitter has landed, its bench
-// leg has not.
-var pendingLanguages = []string{"dart"}
+// keeping a list of its own. It is EMPTY on this tree: dart, the last pending
+// row, has its leg (tableOnlyLanguages). The mechanism stays, because the next
+// row the published table names before its leg lands goes here.
+var pendingLanguages = []string{}
 
 // names is the ONE display-name map: every language this driver knows, plus
 // the pending rows, so nothing downstream keeps a second one.
@@ -187,8 +200,11 @@ func elixirLeg(wire string) string {
 func elixirInputs(wire string) ([]string, error) {
 	out := []string{elixirLeg(wire), filepath.Join(filepath.Dir(elixirLeg(wire)), "runner.exs")}
 	gen := "generated/bench/elixir"
-	if wire != "packet" {
+	switch wire {
+	case "table":
 		gen = "generated/bench/paired/elixir"
+	case "plan":
+		gen = filepath.Join(elixirPlanBuild, "new")
 	}
 	found, err := filepath.Glob(filepath.Join(gen, "*.ex"))
 	if err != nil {
@@ -199,6 +215,59 @@ func elixirInputs(wire string) ([]string, error) {
 	}
 	sort.Strings(found)
 	return append(out, found...), nil
+}
+
+func elixirEbin(wire string) string {
+	return filepath.Join("build", "paired", wire+"-elixir", "ebin")
+}
+
+func elixirBeams(wire string) ([]string, error) {
+	found, err := filepath.Glob(filepath.Join(elixirEbin(wire), "*.beam"))
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(found)
+	return found, nil
+}
+
+func compileElixirUnit(wire string) error {
+	env := []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}
+	inputs, e := elixirInputs(wire)
+	if e != nil {
+		return e
+	}
+	sources := inputs[2:] // the generated modules; [0] and [1] are the leg
+	if e := execute(command{args: append([]string{"mix", "format"}, sources...), env: env}); e != nil {
+		return e
+	}
+	if e := execute(command{args: append([]string{"mix", "format", "--check-formatted"}, inputs...), env: env}); e != nil {
+		return e
+	}
+	ebin := elixirEbin(wire)
+	if e := os.RemoveAll(ebin); e != nil {
+		return e
+	}
+	if e := os.MkdirAll(ebin, 0755); e != nil {
+		return e
+	}
+	var runtimeFiles, restFiles []string
+	for _, s := range sources {
+		if filepath.Base(s) == "FixedRuntime.ex" {
+			runtimeFiles = append(runtimeFiles, s)
+		} else {
+			restFiles = append(restFiles, s)
+		}
+	}
+	if len(runtimeFiles) > 0 {
+		if e := execute(command{args: append([]string{"elixirc", "--warnings-as-errors", "-o", ebin}, runtimeFiles...), env: env}); e != nil {
+			return e
+		}
+	}
+	if e := execute(command{args: append([]string{"elixirc", "--warnings-as-errors", "-pa", ebin, "-o", ebin}, restFiles...), env: env}); e != nil {
+		return e
+	}
+	_, e = elixirManifest(wire)
+	return e
 }
 
 // elixirManifest writes the one path binary() can name for an interpreted leg:
@@ -338,6 +407,12 @@ func abs(p string) string {
 	}
 	return s
 }
+
+// pairedSchemas are the paired unit's two schema files, generated as ONE unit
+// for every leg (and a second time, beside the lineage's lock, for the plan
+// lanes: table.go, buildCPlan, buildCSPlan, buildDartPlan and buildRustPlan).
+var pairedSchemas = []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}
+
 func binary(wire, lang string) string {
 	// AN INTERPRETED LEG HAS NO BUILD PRODUCT, so the thing this driver pins,
 	// hashes and runs is the runner source itself. Its generated modules are
@@ -354,6 +429,10 @@ func binary(wire, lang string) string {
 	if lang == "java" {
 		return filepath.Join(javaClassDir, "TableMain.class")
 	}
+	// THE DART LEG'S BUILD PRODUCT is one AOT executable, `dart compile exe`
+	// of bench/tables/dart/table_main.dart with the generated unit compiled
+	// into it, so it takes the ordinary path below and its hash covers the
+	// generated code the way rust's does.
 	p := filepath.Join("build", "paired", wire+"-"+lang)
 	if lang == "elixir" {
 		// AN INTERPRETED LEG HAS NO EXECUTABLE. What stands in its place is the
@@ -475,6 +554,20 @@ func jdkTool(name, tool string) string {
 	return tool
 }
 func nodeExecutable() string { return setting("NODE", "node") }
+
+// dartExecutable is the pin make/dart.mk carries: the repository-local SDK
+// when it is there, and the one on PATH otherwise, with DART overriding both
+// (CI passes DART=dart).
+func dartExecutable() string {
+	if s := os.Getenv("DART"); s != "" {
+		return s
+	}
+	local := filepath.Join("dist", "dart-sdk-3.13.2", "bin", "dart")
+	if _, err := os.Stat(local); err == nil {
+		return local
+	}
+	return "dart"
+}
 func runner(wire, lang string, args ...string) command {
 	a := []string{binary(wire, lang)}
 	var env []string
@@ -490,10 +583,19 @@ func runner(wire, lang string, args ...string) command {
 		// The leg is a script, and it is spawned from the REPOSITORY ROOT like
 		// every other leg, so its corpus paths arrive through --wire-dir and
 		// --variant-dir rather than through a working directory.
-		a = []string{"elixir", elixirLeg(wire)}
+		a = []string{"elixir"}
+		if wire != "packet" {
+			if ebin := elixirEbin(wire); fileExists(ebin) {
+				a = append(a, "-pa", ebin)
+			}
+		}
+		a = append(a, elixirLeg(wire))
 		env = []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}
+		if wire == "plan" {
+			env = append(env, "SCHEMA_ELIXIR_GEN_DIR="+filepath.Join(elixirPlanBuild, "new"))
+		}
 	}
-	if wire == "table" {
+	if wire == "table" || wire == "plan" {
 		a = append(a, "--indexed", "--wire-dir", "bench/paired/corpus", "--variant-dir", "bench/paired/corpus")
 	} else {
 		a = append(a, "--wire-dir", "testdata/wire", "--variant-dir", "bench/corpus/variants")
@@ -516,6 +618,15 @@ func gitValue(dir string, args ...string) string {
 	return strings.TrimSpace(string(b))
 }
 func corpusID(wire string) (string, error) {
+	return corpusIDOf(corpusPaths(wire))
+}
+
+// corpusPaths maps the basename a runner hashes to the file it loads, for one
+// wire. The read arm (-mode plan-read) loads BOTH wires' files in one
+// invocation and hashes their union (corpusIDOf over readArmCorpusPathsFor), so its id differs from
+// either wire's by §1.6's own definition and its rows are never divisible
+// against a row of an ordinary pass.
+func corpusPaths(wire string) map[string]string {
 	paths := map[string]string{}
 	if wire == "packet" {
 		paths["bench_mixed.bin"] = "testdata/wire/bench_mixed.bin"
@@ -530,29 +641,27 @@ func corpusID(wire string) (string, error) {
 			paths[name] = "bench/paired/corpus/" + name
 		}
 	}
-	keys := []string{}
-	for k := range paths {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	h := uint64(0xcbf29ce484222325)
-	feed := func(b []byte) {
-		for _, v := range b {
-			h ^= uint64(v)
-			h *= 0x100000001b3
-		}
-	}
-	for _, k := range keys {
-		b, e := os.ReadFile(paths[k])
-		if e != nil {
-			return "", e
-		}
-		feed([]byte(k))
-		feed([]byte{0})
-		feed(b)
-	}
-	return fmt.Sprintf("%016x", h), nil
+	return paths
 }
+
+// corpusIDOf is §1.6's id over named files. One hash, defined once
+// (fnvCorpusID), so the read arm's id, the plan-read board's and an ordinary
+// pass's cannot drift apart in how they are computed.
+func corpusIDOf(paths map[string]string) (string, error) {
+	return fnvCorpusID(paths, os.ReadFile)
+}
+
+// cppBuildFlags is the ONE C++ flag line: the table leg, the packet leg and
+// the read arm's straight-line anchor all compile with it, so the anchor's
+// ratio is never a flag difference.
+func cppBuildFlags(cxx, opt string) []string {
+	flags := []string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-ffp-contract=off", "-fno-rtti", "-" + opt, "-DNDEBUG", "-DBENCH_OPT=\"" + opt + "\""}
+	if version, e := capture(command{args: []string{cxx, "--version"}}); e == nil && (strings.Contains(strings.ToLower(string(version)), "gcc") || strings.Contains(strings.ToLower(string(version)), "g++")) {
+		flags = append(flags, "-Wno-class-memaccess", "-Wno-type-limits")
+	}
+	return flags
+}
+
 func generateAndBuild(langs []string) error {
 	if e := os.MkdirAll("build/paired", 0755); e != nil {
 		return e
@@ -565,7 +674,7 @@ func generateAndBuild(langs []string) error {
 		return e
 	}
 	for _, lang := range langs {
-		paired := []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}
+		paired := append([]string(nil), pairedSchemas...)
 		if lang == "elixir" {
 			// THE UNIT'S SCHEMA FILES ARE COPIED UNDER OTHER BASENAMES, and only
 			// that: a declaration whose name is its own file's basename collides
@@ -596,9 +705,10 @@ func generateAndBuild(langs []string) error {
 			return e
 		}
 		// The standalone packet unit is the packet leg's, so a table-only
-		// language does not generate it: nothing here would compile it and
-		// emitting it would imply a leg that does not exist.
-		if contains(tableOnlyLanguages, lang) {
+		// language without a read arm does not generate it; dart generates it
+		// so its read arm (--read-arm) can compile the generated packet reader
+		// into the same AOT executable when present.
+		if contains(tableOnlyLanguages, lang) && lang != "dart" {
 			continue
 		}
 		if e := run(schema, "generate", "--lang", lang, "--out", "generated/bench/"+lang, "bench/corpus/Bench.schema"); e != nil {
@@ -612,14 +722,12 @@ func generateAndBuild(langs []string) error {
 		return errors.New("BENCH_OPT_LEVEL must be O2 or O3")
 	}
 	stamp := "-DBENCH_OPT=\"" + opt + "\""
-	cppFlags := []string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-ffp-contract=off", "-fno-rtti", "-" + opt, "-DNDEBUG", stamp}
-	if version, e := capture(command{args: []string{cxx, "--version"}}); e == nil && (strings.Contains(strings.ToLower(string(version)), "gcc") || strings.Contains(strings.ToLower(string(version)), "g++")) {
-		cppFlags = append(cppFlags, "-Wno-class-memaccess", "-Wno-type-limits")
-	}
+	cppFlags := cppBuildFlags(cxx, opt)
 	cFlags := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-" + opt, "-DNDEBUG", stamp}
 	if version, e := capture(command{args: []string{cc, "--version"}}); e == nil && strings.Contains(strings.ToLower(string(version)), "gcc") {
 		cFlags = append(cFlags, "-Wno-stringop-truncation")
 	}
+	anchor := anchorBuild{Refusal: "not built: the C++ leg is not in this build"}
 	// The independent C++ bridge is the equivalence oracle even for a subset pass.
 	if !contains(langs, "cpp") {
 		if e := run(schema, "generate", "--lang", "cpp", "--out", "generated/bench/paired/cpp", "bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"); e != nil {
@@ -647,6 +755,7 @@ func generateAndBuild(langs []string) error {
 			if e := run(a...); e != nil {
 				return e
 			}
+			anchor = buildAnchor(cxx, cppFlags, ser)
 		case "c":
 			a := append([]string{cc}, cFlags...)
 			// serialize.c is a translation unit, not a header: the table leg links it
@@ -661,6 +770,15 @@ func generateAndBuild(langs []string) error {
 			a = append(a, "-Igenerated/bench/c", "-I"+serC, "bench/c/bench_main.c", filepath.Join(serC, "serialize.c"), "-o", binary("packet", lang), "-lm")
 			if e := run(a...); e != nil {
 				return e
+			}
+			// AND THE PLAN LANE'S BINARY (BENCH-STANDARD.md §1.10), when the
+			// lineage corpus is on the tree: the same runner source, against
+			// the unit generated beside the lineage's lock (table.go,
+			// buildCPlan). -mode plan-read -langs c runs this one.
+			if cPlanRefusal(fileExists) == "" {
+				if e := buildCPlan(schema, cc, cFlags, serC); e != nil {
+					return e
+				}
 			}
 		case "go":
 			if e := os.WriteFile("generated/bench/paired/go/go.mod", []byte("module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../../serialize.go\n"), 0644); e != nil {
@@ -706,34 +824,32 @@ func generateAndBuild(langs []string) error {
 					return e
 				}
 			}
+			// AND THE PLAN LANE'S ASSEMBLY (BENCH-STANDARD.md §1.10), when the
+			// lineage corpus is on the tree: the same runner source, against
+			// the unit generated beside the lineage's lock (table.go,
+			// buildCSPlan). -mode plan-read -langs cs runs this one.
+			if csPlanRefusal(fileExists) == "" {
+				if e := buildCSPlan(schema, serCs); e != nil {
+					return e
+				}
+			}
 		case "elixir":
-			// NOTHING IS LINKED AND NOTHING IS CACHED: the leg is a script that
-			// compiles the generated modules into the VM it measures in. What
-			// this stage does instead is (a) hold the generated Elixir to the
-			// SAME TWO GATES the make targets hold it to — `mix format
-			// --check-formatted`, because the emitter emits the formatter's own
-			// shape rather than being checked afterwards, and `elixirc
-			// --warnings-as-errors`, because a warning in generated code is a
-			// defect in the emitter — and (b) write the manifest that stands in
-			// for an executable in the provenance.
-			env := []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}
+			// NOTHING IS LINKED: the leg is a script that loads the generated
+			// modules into the VM it measures in. What this stage does instead
+			// is (a) hold the generated Elixir to the SAME TWO GATES the make
+			// targets hold it to — `mix format --check-formatted` (after
+			// formatting the emitted files so unformatted generator output does
+			// not break the build) and `elixirc --warnings-as-errors`, because
+			// a warning in generated code is a defect in the emitter — and (b)
+			// write the manifest that stands in for an executable in the
+			// provenance.
 			for _, wire := range []string{"table", "packet"} {
-				inputs, e := elixirInputs(wire)
-				if e != nil {
+				if e := compileElixirUnit(wire); e != nil {
 					return e
 				}
-				sources := inputs[2:] // the generated modules; [0] and [1] are the leg
-				if e := execute(command{args: append([]string{"mix", "format", "--check-formatted"}, inputs...), env: env}); e != nil {
-					return e
-				}
-				ebin := filepath.Join("build", "paired", wire+"-elixir", "ebin")
-				if e := os.MkdirAll(ebin, 0755); e != nil {
-					return e
-				}
-				if e := execute(command{args: append([]string{"elixirc", "--warnings-as-errors", "-o", ebin}, sources...), env: env}); e != nil {
-					return e
-				}
-				if _, e := elixirManifest(wire); e != nil {
+			}
+			if elixirPlanRefusal(fileExists) == "" {
+				if e := buildElixirPlan(schema); e != nil {
 					return e
 				}
 			}
@@ -768,6 +884,12 @@ func generateAndBuild(langs []string) error {
 				return e
 			}
 			if e = os.WriteFile(binary("table", lang), built, 0755); e != nil {
+				return e
+			}
+			// AND THE PLAN LANE'S BINARY (BENCH-STANDARD.md §1.10): the same
+			// runner source, against the unit generated beside the lineage's
+			// lock (table.go, buildRustPlan). -mode plan-read runs this one.
+			if e := buildRustPlan(schema, cargoEnv); e != nil {
 				return e
 			}
 		case "java":
@@ -805,6 +927,33 @@ func generateAndBuild(langs []string) error {
 			if e := execute(runner("table", lang, "--gate")); e != nil {
 				return e
 			}
+		case "dart":
+			// ONE AOT EXECUTABLE, the form that ships (bench/dart/main.dart
+			// says the same of the packet runner): the generated unit is
+			// imported by relative path and compiled into it, so nothing
+			// links at run time and the binary's hash covers the unit; a
+			// compile error anywhere in the unit fails the build. Then the
+			// gate, before any clock.
+			dart := dartExecutable()
+			if e := run(dart, "--version"); e != nil {
+				return fmt.Errorf("the Dart SDK is required for the dart leg (set DART): %w", e)
+			}
+			runnerSource := filepath.Join("bench", "tables", "dart", "table_main.dart")
+			if e := run(dart, "compile", "exe", "-o", binary("table", lang), runnerSource); e != nil {
+				return e
+			}
+			if e := execute(runner("table", lang, "--gate")); e != nil {
+				return e
+			}
+			// AND THE PLAN LANE'S BINARY (BENCH-STANDARD.md §1.10), when the
+			// lineage corpus is on the tree: the same runner source, against
+			// the unit generated beside the lineage's lock (table.go,
+			// buildDartPlan). -mode plan-read -langs dart runs this one.
+			if dartPlanRefusal(fileExists) == "" {
+				if e := buildDartPlan(schema, dart); e != nil {
+					return e
+				}
+			}
 		}
 	}
 	hostname, _ := os.Hostname()
@@ -815,13 +964,29 @@ func generateAndBuild(langs []string) error {
 			info.Runtimes[key] += "-dirty"
 		}
 	}
-	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "cargo": {cargoExecutable(), "--version"}, "rustc": {rustcExecutable(), "--version"}, "java": {javaExecutable(), "--version"}, "node": {nodeExecutable(), "--version"}} {
+	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "cargo": {cargoExecutable(), "--version"}, "rustc": {rustcExecutable(), "--version"}, "java": {javaExecutable(), "--version"}, "node": {nodeExecutable(), "--version"}, "dart": {dartExecutable(), "--version"}} {
 		if b, e := capture(command{args: args}); e == nil {
 			info.Tools[key] = strings.TrimSpace(string(b))
 		}
 	}
 	if b, e := capture(command{args: []string{"elixir", "--version"}, env: []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}}); e == nil {
 		info.Tools["elixir"] = strings.TrimSpace(string(b))
+	}
+	if contains(langs, "rust") {
+		// The plan lane's binary, its generated sources and its corpus are
+		// recorded like every other artifact, so a regeneration or a re-pin
+		// after the build refuses the sitting (verifyRecordedArtifacts).
+		modules, e := rustPlanModules()
+		if e != nil {
+			return e
+		}
+		for _, p := range append(modules, binary("plan", "rust")) {
+			h, e := hashFile(p)
+			if e != nil {
+				return e
+			}
+			info.Binaries[p] = h
+		}
 	}
 	for _, lang := range langs {
 		modules, e := generatedModules(lang)
@@ -851,7 +1016,11 @@ func generateAndBuild(langs []string) error {
 				if e != nil {
 					return e
 				}
-				for _, in := range inputs {
+				beams, e := elixirBeams(wire)
+				if e != nil {
+					return e
+				}
+				for _, in := range append(inputs, beams...) {
 					h, e := hashFile(in)
 					if e != nil {
 						return e
@@ -882,10 +1051,69 @@ func generateAndBuild(langs []string) error {
 	for _, key := range measuredEnvironment {
 		info.Environment[key] = os.Getenv(key)
 	}
+	// THE ANCHOR is recorded whether or not it built: a refusal is a fact about
+	// this tree that -mode plan-read prints, never a reason to fail the legs.
+	info.Tools["cpp_anchor"] = anchor.Refusal
+	if anchor.Refusal == "" {
+		info.Tools["cpp_anchor"] = "built: " + strings.Join(anchor.Command, " ")
+		hash, err := hashFile(anchorBinary)
+		if err != nil {
+			return err
+		}
+		info.Binaries[anchorBinary] = hash
+	}
 	info.Tools["cpp_packet_flags"] = strings.Join(cppFlags, " ") + " -DSERIALIZE_RELEASE"
 	info.Tools["cpp_table_flags"] = strings.Join(cppFlags, " ") + " -DBENCH_MATCHED"
 	info.Tools["c_packet_flags"] = strings.Join(cFlags, " ")
+	if contains(langs, "c") && cPlanRefusal(fileExists) == "" {
+		info.Tools["c_plan_flags"] = strings.Join(cFlags, " ") + " " + strings.Join(cPlanDefines, " ")
+		for _, p := range append(cPlanModules(), binary("plan", "c")) {
+			h, e := hashFile(p)
+			if e != nil {
+				return e
+			}
+			info.Binaries[p] = h
+		}
+	}
 	info.Tools["c_table_flags"] = strings.Join(cFlags, " ") + " -DBENCH_MATCHED -ffp-contract=off"
+	if contains(langs, "elixir") {
+		info.Tools["elixir_table_flags"] = "elixirc --warnings-as-errors; mix format --check-formatted"
+		if elixirPlanRefusal(fileExists) == "" {
+			info.Tools["elixir_plan_flags"] = "elixirc --warnings-as-errors; mix format --check-formatted (with " + elixirLineageDir + "/schema.lock)"
+			inputs, e := elixirInputs("plan")
+			if e != nil {
+				return e
+			}
+			beams, e := elixirBeams("plan")
+			if e != nil {
+				return e
+			}
+			for _, p := range append(append(inputs, beams...), binary("plan", "elixir")) {
+				h, e := hashFile(p)
+				if e != nil {
+					return e
+				}
+				info.Binaries[p] = h
+			}
+		}
+	}
+	if contains(langs, "cs") {
+		info.Tools["cs_table_flags"] = "dotnet build -c Release -property:UseSharedCompilation=false; DefineConstants=BENCH_MATCHED AllowUnsafeBlocks=true"
+		if b, e := capture(command{args: []string{"dotnet", "--version"}}); e == nil {
+			info.Tools["cs"] = "dotnet " + strings.TrimSpace(string(b))
+		}
+		if csPlanRefusal(fileExists) == "" {
+			info.Tools["cs_plan_flags"] = "dotnet build -c Release -property:UseSharedCompilation=false; DefineConstants=BENCH_MATCHED;BENCH_PLAN AllowUnsafeBlocks=true"
+			p := binary("plan", "cs")
+			for _, f := range append(csPlanModules(), p, strings.TrimSuffix(p, ".dll")+".deps.json", strings.TrimSuffix(p, ".dll")+".runtimeconfig.json") {
+				h, e := hashFile(f)
+				if e != nil {
+					return e
+				}
+				info.Binaries[f] = h
+			}
+		}
+	}
 	if contains(langs, "rust") {
 		// The Rust leg's "flags" are cargo settings; the level is also stamped
 		// into the binary, so a row's `opt` column and this line agree or the
@@ -906,12 +1134,50 @@ func generateAndBuild(langs []string) error {
 		// interpreter, which the tools map above already carries by version.
 		info.Tools["js_table_flags"] = "none: node runs the generated ES modules as written"
 	}
+	if contains(langs, "dart") {
+		// Dart has no optimization level to set; what decides its code is the
+		// AOT compiler, which the tools map above carries by SDK version.
+		info.Tools["dart_table_flags"] = "dart compile exe (AOT, product mode: asserts off)"
+		if dartPlanRefusal(fileExists) == "" {
+			info.Tools["dart_plan_flags"] = "dart compile exe (AOT, product mode: asserts off; paired unit generated beside " + dartLineageDir + "/schema.lock)"
+			for _, p := range append(dartPlanModules(), binary("plan", "dart")) {
+				h, e := hashFile(p)
+				if e != nil {
+					return e
+				}
+				info.Binaries[p] = h
+			}
+		}
+	}
 	hash, err := hashFile("build/paired/corpus")
 	if err != nil {
 		return err
 	}
 	info.Binaries["build/paired/corpus"] = hash
-	for _, p := range []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema", "testdata/wire/bench_mixed.bin", "bench/corpus/variants/bench_mixed.variants.bin", "bench/paired/corpus/bench_table.bin", "bench/paired/corpus/bench_table.variants.bin", "bench/paired/corpus/bench_table.lengths", "bench/paired/corpus/bench_fixed.bin", "bench/paired/corpus/bench_fixed.layout"} {
+	corpora := []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema", "testdata/wire/bench_mixed.bin", "bench/corpus/variants/bench_mixed.variants.bin", "bench/paired/corpus/bench_table.bin", "bench/paired/corpus/bench_table.variants.bin", "bench/paired/corpus/bench_table.lengths", "bench/paired/corpus/bench_fixed.bin", "bench/paired/corpus/bench_fixed.layout"}
+	if contains(langs, "rust") {
+		corpora = append(corpora, rustLineageDir+"/VOLD_bench_lineage.schema")
+		for _, name := range lineageCorpusFiles {
+			corpora = append(corpora, rustLineageDir+"/"+name)
+		}
+	}
+	if contains(langs, "c") && cPlanRefusal(fileExists) == "" {
+		// the C plan lane's lineage, lock included: a re-pin after the build
+		// refuses the sitting like any other corpus change
+		corpora = append(corpora, cLineageCorpus...)
+	}
+	if contains(langs, "elixir") && elixirPlanRefusal(fileExists) == "" {
+		corpora = append(corpora, elixirLineageCorpus...)
+	}
+	if contains(langs, "cs") && csPlanRefusal(fileExists) == "" {
+		corpora = append(corpora, csLineageCorpus...)
+	}
+	if contains(langs, "dart") && dartPlanRefusal(fileExists) == "" {
+		// the Dart plan lane's lineage, lock included: a re-pin after the build
+		// refuses the sitting like any other corpus change
+		corpora = append(corpora, dartLineageCorpus...)
+	}
+	for _, p := range corpora {
 		h, e := hashFile(p)
 		if e != nil {
 			return e
@@ -1086,11 +1352,11 @@ func expectedChecks(lang, wire string) string {
 	switch lang {
 	case "go":
 		return "always"
-	case "elixir":
-		// The generated Elixir writer takes no caller-error checks and its
-		// reader validates the wire contract in every build — there is no
-		// release mode that removes either, so the axis is `contract` on both
-		// wires (bench/elixir/runner.exs states the same).
+	case "elixir", "dart":
+		// The generated Elixir and Dart writers take no caller-error checks in
+		// release/AOT and their readers validate the wire contract in every
+		// build — there is no release mode that removes either, so the axis is
+		// `contract` on both wires (bench/elixir/runner.exs and bench/dart/main.dart state the same).
 		return "contract"
 	}
 	return "removed"
@@ -1403,7 +1669,8 @@ func renderReport(dir string, writeOutputs bool) error {
 	return nil
 }
 func main() {
-	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, run confirmation, or render")
+	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, plan-read (the read arm for C++, C, C#, Dart or Elixir; the plan-read board for Rust), run confirmation, or render")
+	readArm := flag.Bool("read-arm", false, "run the read arm (-mode plan-read)")
 	out := flag.String("out", "", "new results directory (or existing directory for render)")
 	langsFlag := flag.String("langs", "cpp,c,go,cs", "comma-separated required build/gate languages")
 	rounds := flag.Int("rounds", 7, "interleaved measured rounds")
@@ -1418,9 +1685,15 @@ func main() {
 	// Recorded, never applied: the caller pins the sitting (bench/paired/nine.sh
 	// runs the whole pass under `bench-lane <core>` so every runner inherits it)
 	// and this only carries that fact into the rendered header.
-	lane := flag.String("lane", "", "core this sitting was pinned to, recorded in the table header, table mode only")
+	lane := flag.String("lane", "", "core this sitting was pinned to, recorded in the board header, table and plan-read modes only")
 	flag.Parse()
 	fail := func(e error) { fmt.Fprintln(os.Stderr, "paired:", e); os.Exit(1) }
+	if *readArm {
+		if *mode != "gate" && *mode != "plan-read" {
+			fail(errors.New("-read-arm conflicts with -mode " + *mode))
+		}
+		*mode = "plan-read"
+	}
 	if _, e := os.Stat("bench/corpus/Bench.schema"); e != nil {
 		fail(errors.New("run from repository root"))
 	}
@@ -1449,11 +1722,11 @@ func main() {
 		}
 		return
 	}
-	if *mode != "build" && *mode != "gate" && *mode != "run" && *mode != "fast" && *mode != "table" && *mode != "table-langs" {
+	if *mode != "build" && *mode != "gate" && *mode != "run" && *mode != "fast" && *mode != "table" && *mode != "table-langs" && *mode != "plan-read" {
 		fail(errors.New("unknown mode"))
 	}
-	if *lane != "" && *mode != "table" {
-		fail(errors.New("-lane is recorded by table mode only"))
+	if *lane != "" && *mode != "table" && *mode != "plan-read" {
+		fail(errors.New("-lane is recorded by table and plan-read modes only"))
 	}
 	if *mode == "run" && strings.TrimSpace(*receipt) == "" {
 		fail(errors.New("run requires -quiet-window with the operator’s READY/START receipt or reference"))
@@ -1478,12 +1751,18 @@ func main() {
 			fail(errors.New("table mode discovers its languages from bench/tables; -langs does not apply"))
 		}
 	}
-	if *mode == "fast" || *mode == "table" {
+	if *mode == "fast" || *mode == "table" || *mode == "plan-read" {
 		if e := fast.validate(); e != nil {
 			fail(e)
 		}
 	}
-	if !*reuse && *mode != "fast" && *mode != "table" {
+	if *mode == "plan-read" && !planReadBoardSitting(langs) && strings.TrimSpace(*receipt) == "" {
+		fail(errors.New("plan-read requires -quiet-window with the operator’s READY/START receipt or reference"))
+	}
+	// plan-read measures a build, like fast and table: it never builds, so the
+	// compile can never land inside its quiet window. On the plan-read board
+	// (the Rust leg) -rounds (1..7) is its round count (§2.1's seven).
+	if !*reuse && *mode != "fast" && *mode != "table" && *mode != "plan-read" {
 		if e := generateAndBuild(langs); e != nil {
 			fail(e)
 		}
@@ -1500,6 +1779,18 @@ func main() {
 	}
 	if *mode == "table" {
 		if e := tablePass(*out, info, fast, *lane); e != nil {
+			fail(e)
+		}
+		return
+	}
+	if *mode == "plan-read" {
+		if planReadBoardSitting(langs) {
+			if e := planReadPass(langs, *out, info, fast, *rounds, *lane); e != nil {
+				fail(e)
+			}
+			return
+		}
+		if e := planReadPassOn(langs, *out, *rounds, info, *receipt, *lane); e != nil {
 			fail(e)
 		}
 		return

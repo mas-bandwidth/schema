@@ -14,8 +14,14 @@
         "tables-block-const-negative-control",
         "tables-block-fill-refuser-negative-control",
         "tables-block-race-negative-control",
+        "tables-block-zero-cost-negative-control",
+        "tables-c-accessor-negative-control",
         "tables-c-ref-ordinal-negative-control",
+        "tables-c-runtime-home-negative-control",
+        "tables-c-slot-negative-control",
         "tables-clamp-limits-negative-control",
+        "tables-cpp-names-negative-control",
+        "tables-cpp-runtime-home-negative-control",
         "tables-doctags-negative-controls",
         "tables-fixed-twin-negative-control",
         "tables-fixedform-run-copy-negative-control",
@@ -23,7 +29,9 @@
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-list-walk-negative-controls",
+        "tables-json-map-walk-negative-controls",
         "tables-json-negative-control",
+        "tables-py-packet-negative-control",
         "tables-ref-ordinal-negative-control",
         "tables-ref-ordinal-shared-negative-control",
         "tables-retain-fixed-class-negative-control",
@@ -34,6 +42,8 @@
         "tables-was-negative-control",
         "tables-wasrows-negative-control",
         "tables-zero-cost-negative-control",
+        "tables-accessor-negative-control",
+        "tables-slot-negative-control",
         "toolchain-negative-control"
       ]
     },
@@ -79,6 +89,14 @@
         "conformance-negative-control-reference-surface",
         "conformance-negative-control-lua",
         "conformance-go-rows-negative-control"
+      ]
+    },
+    {
+      "name": "base-conformance-cpp",
+      "when": "pull-request",
+      "why": "The C++ reference's emitter-side conformance control, alone: it overlay-rebuilds the compiler, regenerates the whole C++ table tree through it and rebuilds the reference driver, which is the compile weight of a complete-driver rebuild. The driver-flip control in base-conformance shares a job with the harness controls; this one is the emitter rebuild they deliberately do not carry.",
+      "targets": [
+        "conformance-negative-control-cpp"
       ]
     },
     {
@@ -233,7 +251,7 @@
     {
       "name": "base-cook",
       "when": "pull-request",
-      "why": "the cook's controls, the blob span and read hooks, and the C leg's fuzz, soak and keyed refusal: one cooked corpus, built once, that every one of them reads. Measured 34 s over 11 controls.",
+      "why": "the cook's controls, the blob span and read hooks, the C leg's fuzz, soak and keyed refusal, and the C++ soak's control beside its C twin: one cooked corpus, built once, that every one of them reads, and the same generated tables tree the C++ soak compiles. Measured 34 s over 11 controls, plus 22 s for tables-cpp-soak-negative-control on the Linux bench (hetzner2, 17 s of it the compile; it goes red on its first sample).",
       "targets": [
         "tables-blob-read-hooks-negative-control",
         "tables-blob-span-negative-control",
@@ -242,6 +260,7 @@
         "tables-c-keyed-none-refusal-negative-control",
         "tables-c-keyed-max-refusal-negative-control",
         "tables-c-soak-negative-control",
+        "tables-cpp-soak-negative-control",
         "tables-cook-fuzz-negative-control",
         "tables-cook-open-lengths-negative-control",
         "tables-cook-open-root-negative-control",
@@ -274,6 +293,7 @@
       "when": "pull-request",
       "why": "the pack golden's framing control: elide a present `?T` in the Go encoder and the byte comparison against the C++ Save has to go red. Measured 7 s off one warm build.",
       "targets": [
+        "tables-json-differential-negative-control",
         "tables-pack-negative-control"
       ]
     },
@@ -308,8 +328,9 @@
     {
       "name": "wire-fuzz",
       "when": "pull-request",
-      "why": "the tolerant-wire oracle and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
+      "why": "the tolerant-wire oracle, nested-arm trailing and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
       "targets": [
+        "tables-wire-fuzz-nested-arm-trailing-negative-control",
         "tables-wire-fuzz-node-type-negative-control",
         "tables-wire-fuzz-oracle-negative-control"
       ]
@@ -419,18 +440,60 @@
     {
       "name": "cs",
       "when": "pull-request",
-      "why": "the C# port's conformance leg and its four packet families. Measured 13 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost: it is the work up to the point the SDK is first reached. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
+      "why": "the C# port's conformance leg and its runtime counters: the conformance driver's planted defect, the allocation gate's off-pin runtime refusal, the soak allocation-count control (a short-lived managed allocation per sample, invisible to drift), and the retain control. Split three ways from one cs group when the merged stream's fourteen controls ran the job past its 5-minute timeout on the runner (the job was cancelled during the last control, about 4m40s after the controls began).",
       "targets": [
-        "cards-cs-conformance-negative-control",
         "conformance-negative-control-cs",
-        "tables-cs-retain-negative-control",
+        "tables-cs-alloc-runtime-negative-control",
+        "tables-cs-soak-negative-control",
+        "tables-cs-retain-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-tables",
+      "when": "pull-request",
+      "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout.",
+      "targets": [
         "tables-cs-pack-negative-control",
         "tables-cs-message-blob-endian-negative-control",
         "tables-cs-fixedform-arm-negative-control",
+        "tables-cs-json-differential-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-packet",
+      "when": "pull-request",
+      "why": "the C# packet families (arm defaults, defaults, UTF-8, wide), the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Split from the cs group for its 5-minute timeout.",
+      "targets": [
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",
-        "packet-wide-cs-negative-control"
+        "packet-wide-cs-negative-control",
+        "packet-clean-cs-negative-control",
+        "tables-cs-clean-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-cards",
+      "when": "pull-request",
+      "why": "the C# card driver's controls, split from the cs group when the merged stream took that job past its 5-minute timeout: one rendered byte changed (render alone must go red), the upgrade and task-hash switches (each must turn the shared-corpus run red), and the retained-unknown-field control on the Card codec. 2 s each on the author's machine, plus the SDK build.",
+      "targets": [
+        "cards-cs-conformance-negative-control",
+        "cards-cs-conformance-upgrade-negative-control",
+        "cards-cs-conformance-hash-negative-control",
+        "cards-cs-retain-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-accessor",
+      "when": "pull-request",
+      "why": "the accessor/descriptor agreement controls, scalar and pointer slot: each sabotages one emitter line (codecs.go:826 and :814) through a go build -overlay and requires the agreement gate to go red on its own message. Measured 3.2 s and 3.6 s on the runner.",
+      "targets": [
+        "tables-cs-accessor-negative-control",
+        "tables-cs-slot-negative-control"
       ],
       "dotnet": "pin"
     },
@@ -469,7 +532,7 @@
     {
       "name": "rust",
       "when": "pull-request",
-      "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 8 s over 3 controls on the author's machine.",
+      "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 8 s over 3 controls on the author's machine. The tables soak's control (one matched alloc/free pair per case per iteration through the soak crate's negative-control feature: the allocator call count must go red while the live-heap drift line stays flat) rides here too: 6 s on the Linux bench, the fixed-form corpus and the generated Rust crates already built.",
       "targets": [
         "cards-rust-conformance-negative-control",
         "cards-rust-conformance-upgrade-negative-control",
@@ -479,19 +542,21 @@
         "packet-utf8-rust-negative-control",
         "packet-wide-rust-negative-control",
         "tables-rust-names-negative-control",
-        "tables-rust-runtime-home-negative-control"
+        "tables-rust-runtime-home-negative-control",
+        "tables-rust-retain-negative-control",
+        "tables-rust-soak-negative-control"
       ],
       "rust": "stable"
     },
     {
       "name": "js",
       "when": "pull-request",
-      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them \u2014 one byte off the write template, one off an optional's present byte, and \u00a75's own \u2014 the wrong name on a file outside the lineage \u2014 for thirteen controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash) and the fixed roadmap's layout-hash-collision control (the held layout's byte comparison dropped through go test -overlay, so the second layout under a held hash must red) ride here too: 6 s over 4 controls on the author's machine.",
+      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them — one byte off the write template, one off an optional's present byte, and §5's own — the wrong name on a file outside the lineage — for thirteen controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash) and the fixed roadmap's layout-hash-collision control (the held layout's byte comparison dropped through go test -overlay, so the second layout under a held hash must red) ride here too: 6 s over 4 controls on the author's machine.",
       "targets": [
+        "cards-js-conformance-hash-negative-control",
         "cards-js-conformance-negative-control",
         "cards-js-conformance-upgrade-negative-control",
-        "cards-js-conformance-hash-negative-control",
-        "tables-js-fixed-roadmap-negative-control",
+        "conformance-negative-control-js-walk",
         "packet-arm-defaults-js-flat-negative-control",
         "packet-arm-defaults-js-runtime-negative-control",
         "packet-defaults-js-negative-control",
@@ -499,52 +564,108 @@
         "packet-wide-js-negative-control",
         "tables-js-accessor-negative-control",
         "tables-js-alloc-negative-control",
+        "tables-js-block-lead-negative-control",
         "tables-js-fixed-form-negative-control",
         "tables-js-fixed-optional-negative-control",
+        "tables-js-fixed-roadmap-negative-control",
         "tables-js-fuzz-negative-control",
+        "tables-js-message-form-negative-control",
         "tables-js-runtime-home-negative-control",
         "tables-js-slot-negative-control",
         "tables-js-fixed-slack-negative-control",
         "tables-js-union-arm-text-negative-control",
-        "tables-js-versioning-negative-control"
+        "tables-js-versioning-negative-control",
+        "tables-js-clean-negative-control",
+        "tables-js-text-differential-negative-control"
       ],
       "node": "26"
     },
     {
       "name": "dart",
       "when": "pull-request",
-      "why": "the Dart port's controls and its four packet families: eight controls, the fixed form's among them. Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of \u00a75.7. The card driver's control (one rendered byte changed, render alone must go red) rides here too: 2 s on the author's machine.",
+      "why": "the Dart port's controls and its four packet families: fifteen controls, the fixed form's among them and the accessor/descriptor agreement gate's two (each a go build and a regeneration of the block and pointers corpora, a few seconds apiece). Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of \u00a75.7.",
       "targets": [
+        "cards-dart-conformance-hash-negative-control",
         "cards-dart-conformance-negative-control",
+        "cards-dart-conformance-upgrade-negative-control",
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
         "packet-utf8-dart-negative-control",
         "packet-wide-dart-negative-control",
+        "tables-dart-alloc-negative-control",
+        "tables-dart-alloc-runtime-negative-control",
+        "tables-dart-soak-negative-control",
         "tables-dart-fixed-form-negative-control",
         "tables-dart-versioning-negative-control",
         "tables-dart-fuzz-negative-control",
+        "tables-dart-keyed-negative-control",
+        "tables-dart-order-negative-control",
+        "tables-dart-fuzz-lead-negative-control",
         "tables-dart-names-negative-control",
-        "tables-dart-standalone-negative-control"
+        "tables-dart-runtime-home-negative-control",
+        "tables-dart-standalone-negative-control",
+        "tables-dart-accessor-negative-control",
+        "tables-dart-slot-negative-control",
+        "tables-dart-float-jit-negative-control",
+        "tables-dart-float-jit-sdk-negative-control",
+        "tables-dart-float-jit-boxing-negative-control",
+        "tables-dart-text-differential-negative-control"
       ],
       "dart": "3.13.2"
     },
     {
       "name": "java",
       "when": "pull-request",
-      "why": "the Java port's controls and its four packet families: nine controls, the eighth being the FIXED FORM's (docs/SPEC-TABLES.md \u00a73.4), which writes one text length a byte too high and must red the C++ reference's byte match, and the ninth the VERSIONING gate's (\u00a75.3 of docs/FIXED-FORM-ALGORITHM.md), which answers `noLayout` for a file outside the lineage where `layoutNewer` is the whole answer, so only a suite that checks the NAME can red it. Measured 6 s over 10 controls before the previous-form table legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the versioning control adds the reference's own dump (~7 s) and one submake over both columns of every row of \u00a75.7 beside it, about twenty seconds on the author's machine. The card facade's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 6 s over 3 controls on the author's machine.",
+      "why": "the Java port's controls and its four packet families: twenty controls, the eighth being the FIXED FORM's (docs/SPEC-TABLES.md §3.4), which writes one text length a byte too high and must red the C++ reference's byte match, the ninth the VERSIONING gate's (§5.3 of docs/FIXED-FORM-ALGORITHM.md), which answers `noLayout` for a file outside the lineage where `layoutNewer` is the whole answer, so only a suite that checks the NAME can red it, the tenth the ALLOCATION gate's (docs/PORTING.md I14), which re-pins the JDK to a feature version it is not and must refuse to certify off the pin, the eleventh the RUNTIME-HOME gate's (docs/PORTING.md J2), which puts the file-order rule back and must move the byte-access runtime to the earlier-sorting file, the twelfth and thirteenth the ACCESSOR/DESCRIPTOR-AGREEMENT gate's (docs/PORTING.md J1), which move a scalar accessor four bytes and a pointer slot eight and must each turn the agreement gate red naming the row and field, and the fourteenth the BASE-ALIGNMENT gate's (docs/PORTING.md I5), which drops the residue check and must red at lead 1 naming the image, the fifteenth the KEYED ACCESSOR's (docs/SPEC-TABLES.md §2.4, docs/PORTING.md M5), which drops the upper and then the lower bound of the accessor's one unsigned compare and must red TestKeyedArrayIndexingJava on that end and only that end; the sixteenth ALLOCATION gate's localizing control (docs/PORTING.md I1) plants one allocation per row in the block walk and must red that row by name while the cook walk stays green (about 9 s: it runs every row), and the seventeenth the SOAK's (docs/PORTING.md I9), which plants a matched allocation pair per iteration for the measured loop over the blob, list and pointer corpora and must turn the per-iteration allocation COUNT red while the drift line stays green. The eighteenth is the FORMAT gate's (docs/JAVA-DIALECT.md, #547): with google-java-format pointed at nothing, tables-java-clean must FAIL naming the tool under SCHEMA_REQUIRE_CORPUS=1 and SKIP naming that variable without it; it needs no formatter. The nineteenth is the same gate's DRIFT control: the emitter writes one line of TableBytes.java a space deeper (tools/sabotage/table_java_format_drift.go) and tables-java-clean must go red naming that file; it needs the pinned google-java-format 1.37.0 on the runner, as tables-java-clean itself does under test-java. The twentieth is the TEXT-WALK control's (docs/PORTING.md I11, #517): it drops the field-key match in the Java `fromJson` (tools/sabotage/table_java_text_walk.go) and must red `java / json-read` while `json-write` and `wire` stay green. Measured 6 s over 10 controls before the previous-form table legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the versioning control adds the reference's own dump (~7 s) and one submake over both columns of every row of §5.7 beside it, about twenty seconds on the author's machine. The card facade's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 6 s over 3 controls on the author's machine. THE GROUP IS SPLIT FOUR WAYS (2026-10-22): run serially in one row the twenty-five controls took 265 s of control time on ubuntu-latest (run 39667539599) and passed the five-minute job ceiling on the next run (39778538132, cancelled in the versioning control), far past the 120 s per-row rule; so this row keeps the card facade, the conformance-harness and the packet controls, and java-tables, java-tables-more and java-versioning carry the rest, each under the rule.",
       "targets": [
         "cards-java-conformance-negative-control",
         "cards-java-conformance-upgrade-negative-control",
         "cards-java-conformance-hash-negative-control",
         "conformance-negative-control-java-block",
+        "conformance-negative-control-java-walk",
         "packet-arm-defaults-java-negative-control",
         "packet-defaults-java-negative-control",
         "packet-utf8-java-negative-control",
-        "packet-wide-java-negative-control",
+        "packet-wide-java-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-tables",
+      "when": "pull-request",
+      "why": "the Java table gates' controls, split from the java row (see its why): the accessor and slot agreement, the allocation gate's localizing and off-pin controls, the base alignment, the format gate's drift and missing-formatter controls, the cook extent and the fixed form's two. Measured 78 s of control time on ubuntu-latest inside the java row on 2026-10-21 (87 s on 2026-10-22), the java-tables build included.",
+      "targets": [
+        "tables-java-accessor-negative-control",
+        "tables-java-alloc-negative-control",
+        "tables-java-allocator-runtime-negative-control",
+        "tables-java-block-lead-negative-control",
+        "tables-java-clean-drift-negative-control",
+        "tables-java-clean-formatter-missing-negative-control",
         "tables-java-cook-extent-negative-control",
         "tables-java-fixedform-arm-negative-control",
-        "tables-java-fixedform-negative-control",
+        "tables-java-fixedform-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-tables-more",
+      "when": "pull-request",
+      "why": "the rest of the Java table gates' controls, split from the java row (see its why): the block fuzz oracle, the text differential, the keyed accessor's two bounds, the runtime home, the pointer slot and the soak count. Measured 51 s of control time on ubuntu-latest inside the java row on 2026-10-21 (56 s on 2026-10-22).",
+      "targets": [
         "tables-java-fuzz-negative-control",
+        "tables-java-json-differential-negative-control",
+        "tables-java-keyed-negative-control",
+        "tables-java-runtime-home-negative-control",
+        "tables-java-slot-negative-control",
+        "tables-java-soak-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-versioning",
+      "when": "pull-request",
+      "why": "the Java fixed-form VERSIONING control alone (§5.3 of docs/FIXED-FORM-ALGORITHM.md), split from the java row (see its why): it rebuilds through an overlay, dumps the reference and runs a submake over both columns of every row of §5.7. Measured 68 s of control time on ubuntu-latest inside the java row on 2026-10-21.",
+      "targets": [
         "tables-java-versioning-negative-control"
       ],
       "java": "21"
@@ -552,7 +673,7 @@
     {
       "name": "elixir",
       "when": "pull-request",
-      "why": "the Elixir port's controls and its three packet families. Measured 1 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (one rendered byte, one dropped retained field, extra needs in the task hash, each required to red exactly its own surface) ride here too: 16 s over 3 controls on the author's machine.",
+      "why": "the Elixir port's small controls: the card driver's three (one rendered byte, one dropped retained field, extra needs in the task hash, each required to red exactly its own surface), its three packet families, the accessor offset, the allocation audit's refusal on a pin nothing runs, the I13 text differential, the keyed accessor's two ends, the runtime pin and the slot control. 2:02 of controls on the runner, plus 54 s for the slot control. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
       "targets": [
         "cards-elixir-conformance-negative-control",
         "cards-elixir-conformance-upgrade-negative-control",
@@ -560,11 +681,76 @@
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
         "packet-wide-elixir-negative-control",
-        "tables-elixir-block-lead-negative-control",
-        "tables-elixir-fixed-form-negative-control",
-        "tables-elixir-fuzz-negative-control",
+        "tables-elixir-accessor-negative-control",
+        "tables-elixir-alloc-runtime-negative-control",
+        "tables-elixir-json-differential-negative-control",
+        "tables-elixir-keyed-max-negative-control",
+        "tables-elixir-keyed-none-negative-control",
         "tables-elixir-runtime-pin-negative-control",
-        "tables-elixir-versioning-negative-control"
+        "tables-elixir-slot-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-alloc",
+      "when": "pull-request",
+      "why": "the Elixir allocation audit's sabotaged emitter (issue #420: every load allocating sixteen refc binaries and a thousand-cell list must red the heap-word and binary-call columns of every pinned case). 173 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
+        "tables-elixir-alloc-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-offsets",
+      "when": "pull-request",
+      "why": "the Elixir composed-offset control: the block's offset_of read back as a whole word must red the forged-offset check. 95 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
+        "tables-elixir-offsets-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-block",
+      "when": "pull-request",
+      "why": "the Elixir block base-alignment control: dropping the check must red the gate. 134 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
+        "tables-elixir-block-lead-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-fuzz",
+      "when": "pull-request",
+      "why": "the Elixir wire fuzzer's planted defect, which must red the fuzz gate. 27 s on the studio; it had not finished 55 s after the block control on the runner when the wire group was cancelled. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
+        "tables-elixir-fuzz-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-form",
+      "when": "pull-request",
+      "why": "the Elixir cook's delta-read control and the raw-output format gate's control. 86 s and 59 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
+        "tables-elixir-cook-negative-control",
+        "tables-elixir-emit-format-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-versioning",
+      "when": "pull-request",
+      "why": "the Elixir fixed form's, versioning's and hostile-corpus controls. 26 s, then 75 s for the other two, on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "targets": [
+        "tables-elixir-fixed-form-negative-control",
+        "tables-elixir-versioning-negative-control",
+        "schema-elixir-runs-hostile-corpus-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
@@ -578,6 +764,14 @@
         "schema-go-generated-golangci-lint-gate-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control-ratchet",
         "tables-lua-luacheck-negative-control"
+      ]
+    },
+    {
+      "name": "dart-nightly",
+      "when": "nightly",
+      "why": "the Dart nightly fuzzer's planted reader-bound control takes its own scheduled job with the card's pinned Dart 3.13.2 toolchain and 10-minute mutation budget; it never joins the shared nightly group or per-push controls.",
+      "targets": [
+        "schema-dart-nightly-fuzz-negative-control"
       ]
     },
     {
@@ -621,9 +815,23 @@
       "targets": [
         "tables-go-view-negative-controls"
       ]
+    },
+    {
+      "name": "schema-dart-strict-analyze",
+      "when": "nightly",
+      "why": "the strict Dart analyzer lens over the generated packet trees: one control plants a raw type in a scratch copy and requires the analyzer to reject it by file and rule, and the other plants an object != 0 (the fixed emitter's old nested-message default check) and requires unrelated_type_equality_checks by name. It runs nightly because the same job's heavy half generates and analyzes the table backend corpus, which is the costlier pass; the controls themselves are ~1 s each.",
+      "targets": [
+        "schema-dart-generated-strict-analyze-gate-negative-control",
+        "schema-dart-generated-strict-analyze-nested-default-negative-control"
+      ],
+      "dart": "3.13.2"
     }
   ],
   "excluded": [
+    {
+      "target": "tables-cs-clean-negative-control-run",
+      "reason": "the body of tables-cs-clean-negative-control, which calls it only when the pinned dotnet resolves; the cs-packet group already runs the wrapper, so running the body again proves the same planted misindent twice."
+    },
     {
       "target": "packet-arm-defaults-negative-controls",
       "reason": "an alias that re-invokes make once per language for the nine packet-arm-defaults-<lang>-negative-control targets, every one of which this leg already runs in its own toolchain group. Running the alias too would need all seven SDKs on one runner to prove a second time what seven parallel jobs prove once."
@@ -646,11 +854,15 @@
     },
     {
       "target": "tables-big-endian-negative-control",
-      "reason": "the body of ci.yml's big-endian job, which runs it on every pull request already: the job cross-compiles the tables battery for s390x, runs it under qemu and then compiles it a second time for this control. Issue #684 owns moving that job, so the control is named here rather than placed in a group, and this leg does not cross-compile it a second time."
+      "reason": "the C++ byte-order control, run on every pull request by ci.yml's `big-endian` job in the `control` row as `tables-big-endian-control-only`: issue #684 sharded that job by unit so the control is its own job rather than the tail of the leg. The control cross-compiles the sabotaged tables battery for s390x and compiles it a second time; this leg does not cross-compile it a second time."
     },
     {
       "target": "tables-c-big-endian-negative-control",
-      "reason": "the C twin of tables-big-endian-negative-control: ci.yml's big-endian job runs it on every pull request already, after the C++ put16 control. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. Issue #684 owns the job's budget, so the control is named here rather than placed in a group."
+      "reason": "the C twin of tables-big-endian-negative-control, run on every pull request by ci.yml's `big-endian` job in the `c-control` row: issue #684 sharded that job by unit so the control is a job of its own. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. This leg does not cross-compile it a second time."
+    },
+    {
+      "target": "schema-shared-hostile-corpus-negative-control",
+      "reason": "the hostile-corpus card's own planted-bad-pattern control: .github/workflows/schema-shared-hostile-corpus.yml runs it on its schedule and on dispatch, beside the drift gate that job runs on every push and pull request, so this leg would run it a second time."
     },
     {
       "target": "schema-lua-fuzz-negative-control",

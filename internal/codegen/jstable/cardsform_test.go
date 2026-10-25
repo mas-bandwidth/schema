@@ -34,64 +34,20 @@ func unitWith(st *ir.Struct) *ir.Unit {
 func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 	t.Parallel()
 
-	field := func(name string, typ ir.FieldType) *ir.Field { return &ir.Field{Name: name, Type: typ} }
-
 	for _, tc := range []struct {
 		field *ir.Field
 		want  string
 	}{
 		{
-			field: &ir.Field{Name: "m", Type: ir.FieldType{Kind: ir.TMap}, MapEntry: &ir.Struct{Name: "m_entry"}},
-			want:  "a map (docs/SPEC-TABLES.md §2.8)",
-		},
-		{
-			field: field("opt", ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32, Optional: true}),
-			want:  "an optional ?T (docs/SPEC-TABLES.md §2.3)",
-		},
-		{
-			field: &ir.Field{Name: "ships", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 8}, KeyEnum: "ShipType", KeyEnumRef: &ir.Enum{Name: "ShipType", Max: 4}},
-			want:  "an enum-keyed array (docs/SPEC-TABLES.md §2.4)",
-		},
-		{
-			field: &ir.Field{Name: "arm", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Union{Name: "Pick"}}},
-			want:  "a union arm (docs/SPEC-TABLES.md §2.6)",
-		},
-		{
-			field: field("wide", ir.FieldType{Kind: ir.TInt, Signed: false, Width: 128}),
-			want:  "a uint128",
-		},
-		{
-			// a TABLE nested by value is carried (§3); a nested `type` is not
-			field: field("byval", ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "Kid"}}),
-			want:  "a nested type (docs/SPEC-TABLES.md §2)",
-		},
-		{
-			field: &ir.Field{Name: "grid", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32}, Array: ir.ArrayFixed, ArrayBound: 4},
-			want:  "a fixed-length array [N]T (docs/SPEC-TABLES.md §3)",
-		},
-		{
 			field: &ir.Field{Name: "words", Type: ir.FieldType{Kind: ir.TString, Size: 8}, Array: ir.ArrayList},
 			want:  "an array of strings or byte strings (docs/SPEC-TABLES.md §2.9)",
 		},
+		// a wstring(N) is CARRIED (docs/SPEC-TABLES.md §3, SPEC.md §4.12;
+		// widescalarstext_test.go TestFixedPointAndWideTextOnTheTableWireJavaScript),
+		// as fixed/ufixed are, so neither is a case here any more
 		{
-			field: field("perms", ir.FieldType{Kind: ir.TNamed, Ref: &ir.Flags{Name: "Perm"}}),
-			want:  "a flags (docs/SPEC-TABLES.md §16)",
-		},
-		{
-			field: field("title", ir.FieldType{Kind: ir.TWString, Size: 8}),
-			want:  "a wstring(N) (docs/SPEC-TABLES.md §16)",
-		},
-		{
-			field: field("money", ir.FieldType{Kind: ir.TFixed, Signed: true, Width: 32}),
-			want:  "a fixed/ufixed (docs/SPEC-TABLES.md §15)",
-		},
-		{
-			field: &ir.Field{Name: "gated", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32}, Guard: "mode == 1"},
-			want:  "a guarded field, an if group (docs/SPEC-TABLES.md §16.2)",
-		},
-		{
-			field: &ir.Field{Name: "squeezed", Type: ir.FieldType{Kind: ir.TFloat32}, HasFloatRange: true, FMin: 0, FMax: 1},
-			want:  "a compressed float (docs/SPEC-TABLES.md §3)",
+			field: &ir.Field{Name: "titles", Type: ir.FieldType{Kind: ir.TWString, Size: 8}, Array: ir.ArrayList},
+			want:  "an array of strings or byte strings (docs/SPEC-TABLES.md §2.9)",
 		},
 	} {
 		st := &ir.Struct{Name: "Probe", IsTable: true, Fields: []*ir.Field{tc.field}}
@@ -152,6 +108,10 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		{Name: "b", Type: ir.FieldType{Kind: ir.TBits, Width: 10}},
 		{Name: "raw", Type: ir.FieldType{Kind: ir.TBytes, Size: 6}},
 		{Name: "nums", Type: ir.FieldType{Kind: ir.TFloat64}, Array: ir.ArrayList},
+		// a fixed-length array [N]T (§3) and a nested `type` by value (§2) are
+		// carried (TestNestedTypesAndFixedArraysOnTheTableWireJavaScript)
+		{Name: "trio", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32}, Array: ir.ArrayFixed, ArrayBound: 3},
+		{Name: "grid", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "Grid"}}},
 	}}
 	if got := tableVariableRefusals(beyond); len(got) != 0 {
 		t.Errorf("the variable class beyond the card constructs must not be refused, got: %q", got)
@@ -192,7 +152,8 @@ func TestFixedUnitWithRefusedVariableConstructStillGenerates(t *testing.T) {
 		Package: "cards",
 		Tables: map[string]*ir.Struct{
 			"Probe": {Name: "Probe", IsTable: true, Fields: []*ir.Field{
-				{Name: "opt", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32, Optional: true}},
+				// an array of strings, still outside this leg's variable wire
+				{Name: "words", Type: ir.FieldType{Kind: ir.TString, Size: 8}, Array: ir.ArrayList},
 			}},
 			"Stamp": {Name: "Stamp", IsTable: true, FixedDeclared: true, Fields: []*ir.Field{
 				{Name: "id", Type: ir.FieldType{Kind: ir.TInt, Signed: true, Width: 32}},

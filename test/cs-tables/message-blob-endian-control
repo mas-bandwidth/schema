@@ -28,9 +28,9 @@ reverse_native_words()
 {
     # This expression is shared by NativeWord/NativePut and their retaining
     # clones. Only native word order changes: the message wire stays bitpacked.
-    grep -q 'BitConverter.IsLittleEndian?i:width-1-i' "$control/generated/EndianprobeRegion.cs"
+    grep -q 'BitConverter.IsLittleEndian ? i : width - 1 - i' "$control/generated/EndianprobeRegion.cs"
     for file in "$control"/generated/*.cs; do
-        sed 's/BitConverter.IsLittleEndian?i:width-1-i/width-1-i/g' "$file" > "$file.tmp"
+        sed 's/BitConverter.IsLittleEndian ? i : width - 1 - i/width - 1 - i/g' "$file" > "$file.tmp"
         mv "$file.tmp" "$file"
     done
 }

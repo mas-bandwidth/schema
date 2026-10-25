@@ -5,6 +5,91 @@
 > ([BENCH-STANDARD §5](../bench/BENCH-STANDARD.md#5-reporting-format)). The tables below
 > are kept exactly as published, in their recorded convention (C++ = 100%).
 
+## 2026-10-16: tables, the fixed form's read, Rust against C++ (#358)
+
+#358 said Rust tables read at 0.72x of C++. That number is the
+[2026-09-03 pairing check](../bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md)
+on the TOLERANT wire, a form-1 codec that the Rust backend no longer emits for a fixed table.
+Today's Rust surface is the fixed form (form 3), through `bench/tables/rust` and
+`bench/paired`'s build. On it, two interleaved sittings on amd-2 put **Rust's derived read at
+1.364x the clang build and 1.764x the g++ build, then 1.394x and 1.767x**. Per-round ranges
+are [1.347, 1.460] / [1.719, 1.794] and [1.306, 1.437] / [1.704, 1.789]. The round trip is
+1.50–1.53x and 2.19x. amd-2 is a Ryzen 7 255, pinned to core 7, with 11 rounds per sitting
+and 4,000,000 records per sample. Both windows are certified **OK** by BENCH-STANDARD §2.6's
+start and end C++ control legs: the deltas are 0.03% and 0.14%, the four controls sit within
+0.4% of each other, load1 stayed under 1.3 including the pinned leg, and no build or bench
+process ran ([raw rows, controls and verdicts](../bench/results/2026-10-16-rust-tables-read-amd-2/)).
+Earlier sittings on a shared hetzner2 (1.43x and 1.70x) carry no window verdict and are kept
+only as a diagnostic. The line-level profile is in
+[docs/notes/rust-tables-read-profile.md](notes/rust-tables-read-profile.md). The difference
+is the read-side range clamp pass. In C++ it is a scalar loop that keeps its `int32_t &`
+counter in memory, because the counter may alias the value. In Rust it is vectorized, because
+`&mut` cannot alias. In its own certified sitting, marking the C++ counters `__restrict` makes
+the clang read 1.215x faster and leaves g++ unchanged (1.019x). No Rust emitter change was
+made: there is no Rust gap to close.
+
+## 2026-10-16: the C++ read clamp runs only on a record its check fails: both identity reads beat their packet reads
+
+The identity read lost to the packet read (g++ 215 vs 148, clang 150 vs 130 ns/record)
+because of the read-side clamp pass. With the pass compiled out, the read is 69 / 76 ns.
+The compilers' reports say why: the pass stores every field back, its loops' trip counts
+are fields of the value it stores to ("number of iterations cannot be computed", g++ and
+clang), the counter is a memory reference per field on g++, and clang calls the entity
+body out of line once per element. Each type now also gets `<T>FixedInRange`: every
+clamp's count expression or'd together, with no store. The root runs the clamp body
+only on a record that check fails. A clean record is left as it was and counts nothing,
+exactly as before, and a dirty one clamps through the unchanged body.
+`bench/paired/nine.sh --read-arm`, two sittings per compiler on hetzner1 (AMD Ryzen 7
+PRO 8700GE, `-O3`, pinned `taskset -c 6`), all four windows OK, corpus
+`12224b99745dc057`, at `bdb901be5`
+([result](../bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-check/README.md)):
+
+| C++, best of 7 | identity read | packet read | beats the packet read? |
+|---|---:|---:|---|
+| g++ 13.3, sitting 1 | 104.5 ns/record | 147.9 ns/record | **yes** (PASS, 1.42x faster) |
+| g++ 13.3, sitting 2 | 104.4 ns/record | 148.4 ns/record | **yes** (PASS, 1.42x faster) |
+| clang 18.1, sitting 1 | 96.8 ns/record | 129.9 ns/record | **yes** (PASS, 1.34x faster) |
+| clang 18.1, sitting 2 | 95.4 ns/record | 129.9 ns/record | **yes** (PASS, 1.36x faster) |
+
+g++ keeps the plain counter reference and clang `__restrict` (`TABLE_CLAMP_RESTRICT`,
+as measured before), and the qualifier now only shapes the slow path. MSVC keeps the
+portable form and gets the same check. It is not measured, because there is no MSVC
+bench. On ARM (mini-m5-1, Apple clang 21, exploration only, no board) the identity read
+goes from 88.6 to 72.7 ns/record, against a packet read of 89.1. Checks differ and are
+labelled: the table read keeps its contract validation, while the packet read is the
+packet leg's `checks=removed` build. The plan lane has no lineage corpus on this tree and
+is not measured; the §3.4 anchor (`test/bench/fixedform_measure.cpp`, outside `PATHS`) does
+not compile at this revision and measures 1.86x (86.4 vs 46.5 ns/record) against the 1.5x
+bound in the scratch diagnostic with the proposed two-line fix
+([initial read-arm & anchor diagnostic](../bench/results/2026-10-16-x86_64-hetzner1-cpp-read-arm/README.md)).
+
+## 2026-10-16: the C++ read clamp's counters, `__restrict` per compiler: neither identity read beats its packet read
+
+The read-side clamp pass (`*FixedClampBody`) takes its two counters as
+`int32_t & TABLE_CLAMP_RESTRICT`. Each compiler gets its measured best of four forms:
+the plain reference, `__restrict`, a local counter stored once at the end, and both.
+The numbers come from `bench/paired/nine.sh --read-arm`, two sittings per compiler on
+hetzner1 (AMD Ryzen 7 PRO 8700GE, `-O3`, pinned `taskset -c 6`), all four windows OK,
+7 rounds each, 4,000,000 records per sample, corpus `12224b99745dc057`, at
+`8649a725d` ([result](../bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict/README.md)):
+
+| C++, best of 7 | form | identity read | packet read | beats the packet read? |
+|---|---|---:|---:|---|
+| g++ 13.3, sitting 1 | plain reference | 215.3 ns/record | 148.1 ns/record | **no** (FAIL, 1.45x slower) |
+| g++ 13.3, sitting 2 | plain reference | 215.5 ns/record | 147.7 ns/record | **no** (FAIL, 1.46x slower) |
+| clang 18.1, sitting 1 | `__restrict` | 152.3 ns/record | 130.0 ns/record | **no** (FAIL, 1.17x slower) |
+| clang 18.1, sitting 2 | `__restrict` | 149.5 ns/record | 129.9 ns/record | **no** (FAIL, 1.15x slower) |
+
+`__restrict` makes clang's identity read 1.24x faster (185.8 → 148.5 ns/record in the
+pinned four-form exploration). On g++ every alternative is slower than the plain
+reference: `__restrict` 247.9, the local counter 307.7, both 309.1, against 215.8. So g++
+and MSVC keep the portable form. On ARM (mini-m5-1, Apple clang 21, exploration only, no
+board), `__restrict` goes from 134.8 to 89.1 ns/record and ties the packet read's
+88.7–91.8, but does not beat it. Checks differ and are labelled: the table read keeps
+its contract validation, while the packet read is the packet leg's `checks=removed` build.
+The next step is a cycle profile of the clamp bodies per compiler, which needs a bench
+where `perf` is permitted. The result page names the command.
+
 ## 2026-09-07: the Studio's nine-language table, and what moved since the Air's
 
 The first table of the day on the new node pin was a sitting on the Apple M3 Ultra Studio

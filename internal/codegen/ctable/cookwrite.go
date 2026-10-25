@@ -78,7 +78,7 @@ static SCHEMA_UNUSED int64_t table_graph_cook(const TableCtx * ctx,const void * 
     void * output,uint64_t capacity,int order,TableAllocator allocator,uint64_t version,int measure)
 {
     TableNumbering n; int64_t result=-1,align=8,bytes=0,need; uint64_t i; uint8_t * raw=(uint8_t *)output;
-    if(!table_number_build(&n,ctx,root,type,allocator)) { table_number_dispose(&n); return -1; }
+    if(!table_number_walk(&n,ctx,root,type,allocator,1)) { table_number_dispose(&n); return -1; }
     need=table_cook_layout(&n,&align,&bytes); if(need<0) { goto done; }
     if(measure) { result=need; goto done; }
     if(raw==NULL || (uint64_t)need>capacity || (uint64_t)need>SIZE_MAX) { goto done; }

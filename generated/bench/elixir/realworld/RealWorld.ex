@@ -1480,10 +1480,12 @@ defmodule Realworld.RealWorld do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_real_packet decodes the first num_bits of data — the family read verdict:
-  # :error rejects the wire (bounds, ranges, wire constants, padding);
-  # hostile bytes never raise. No slack past the payload is required.
-  def read_real_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+  # read_real_packet_bits decodes the first num_bits of data and REPORTS THE BITS
+  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
+  # second object behind the first in one buffer. :error rejects the wire
+  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  # slack past the payload is required.
+  def read_real_packet_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
@@ -2028,8 +2030,6 @@ defmodule Realworld.RealWorld do
       v = rv
       bits_read = bits_read + 12
       v_f097_bits = v
-      # the final position is unobserved — the verdict and value are the surface
-      _ = bits_read
 
       value = %Realworld.RealPacket{
         f001_int: v_f001_int,
@@ -2131,9 +2131,18 @@ defmodule Realworld.RealWorld do
         f097_bits: v_f097_bits
       }
 
-      {:ok, value}
+      {:ok, value, bits_read}
     catch
       :invalid -> :error
+    end
+  end
+
+  # read_real_packet is read_real_packet_bits with the count dropped — the family read
+  # verdict, unchanged, and the entry every caller already holds.
+  def read_real_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    case read_real_packet_bits(data, num_bits) do
+      {:ok, value, _bits_read} -> {:ok, value}
+      :error -> :error
     end
   end
 

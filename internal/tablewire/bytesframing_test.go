@@ -20,14 +20,14 @@ func TestBytesFieldFramingAcrossLebWidths(t *testing.T) {
 	m := listModel(t, `package bytesdemo
  table Holder {
  blob bytes(300)
- after int32
+ past int32
  }`)
 	for _, n := range []int{0, 1, 126, 127, 128, 129, 200, 300} {
 		raw := make([]byte, n)
 		for i := range raw {
 			raw[i] = byte(i*7 + 1)
 		}
-		js := fmt.Sprintf(`{"blob":"%s","after":7}`, base64.StdEncoding.EncodeToString(raw))
+		js := fmt.Sprintf(`{"blob":"%s","past":7}`, base64.StdEncoding.EncodeToString(raw))
 		inst := place(t, m, "Holder", js)
 		wire, err := tablewire.Encode(m, inst)
 		if err != nil {
@@ -47,7 +47,7 @@ func TestBytesFieldFramingAcrossLebWidths(t *testing.T) {
 			switch back.Fields[i].Def.Name {
 			case "blob":
 				got = back.Fields[i].Cell.Str
-			case "after":
+			case "past":
 				after = back.Fields[i].Cell.I
 			}
 		}

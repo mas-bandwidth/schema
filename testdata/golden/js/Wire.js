@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xeb26c970fde3fd71
 
 import { MaxBlockSize, MaxChatLength } from "./Constants.js";
 
@@ -799,20 +799,20 @@ export const HeartbeatMaxBits = 0;
 export const HeartbeatMaxBytes = 0;
 
 // InitHeartbeat restores fresh construction values in place, preserving storage.
-export function InitHeartbeat(value) {
+export function InitHeartbeat() {
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
-export function ZeroHeartbeat(value) {
+export function ZeroHeartbeat() {
   // empty body — nothing to reset (SPEC §4.6)
 }
 
-export function WriteHeartbeat(stream, value) {
+export function WriteHeartbeat() {
   // empty body — presence is the payload (SPEC §4.6)
   return true;
 }
 
-export function ReadHeartbeat(stream, value) {
+export function ReadHeartbeat() {
   return true;
 }
 

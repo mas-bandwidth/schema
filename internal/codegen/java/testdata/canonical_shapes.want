@@ -1,0 +1,74 @@
+class T {
+    private static void add(Plan p, Object value, TableCookInfo info)
+            throws ReflectiveOperationException {
+        if (out != null) {
+            System.arraycopy(bytes, 0, out, 0, used);
+        }
+    }
+
+    private static long bits(Object source, int width) {
+        return width == 4
+                ? Float.floatToRawIntBits(((Number) source).floatValue()) & 0xffffffffL
+                : Double.doubleToRawLongBits(((Number) source).doubleValue());
+    }
+
+    private static void record(
+            Plan p, byte[] out, int order, long at, Object source, TableCookInfo info)
+            throws ReflectiveOperationException {
+        for (int i = 0; i < f.arrayBound; i++) {
+            byte[] bytes =
+                    v instanceof String
+                            ? ((String) v).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                            : (byte[]) v;
+            value(
+                    p,
+                    out,
+                    order,
+                    dest + (long) i * f.elemSize,
+                    i < length(v) ? element(v, i) : null,
+                    f);
+        }
+    }
+
+    static String wideText(java.math.BigInteger raw, int fraction, boolean signed) {
+        String text =
+                new java.math.BigDecimal(raw)
+                        .divide(
+                                new java.math.BigDecimal(
+                                        java.math.BigInteger.ONE.shiftLeft(fraction)))
+                        .stripTrailingZeros()
+                        .toPlainString();
+        java.math.BigInteger domainHi =
+                java.math.BigInteger.ONE
+                        .shiftLeft(signed ? 127 : 128)
+                        .subtract(java.math.BigInteger.ONE);
+        raw =
+                value.multiply(
+                                new java.math.BigDecimal(
+                                        java.math.BigInteger.ONE.shiftLeft(fraction)))
+                        .toBigIntegerExact();
+        java.util.TreeMap<FleetLoadoutsEntryVariable.Value, FleetLoadoutsEntryVariable.Value>
+                ordered = new java.util.TreeMap<>(FleetVariable::compare_loadouts);
+        java.util.TreeMap<
+                        FleetLoadoutsEntryValueEntryVariable.Value,
+                        FleetLoadoutsEntryValueEntryVariable.Value>
+                wider = new java.util.TreeMap<>(FleetVariable::compare_value);
+        if (n.compareTo(java.math.BigInteger.ZERO) < 0
+                || n.compareTo(
+                                java.math.BigInteger.ONE
+                                        .shiftLeft(8)
+                                        .subtract(java.math.BigInteger.ONE))
+                        > 0) {
+            raw = null;
+        }
+        return text;
+    }
+
+    static void readMapValue_roster(In in, Value v) {
+        if (in.peek() == '{') {
+            ItemVariable.jsonReadFields(in, v.value);
+        } else {
+            in.skipValue();
+        }
+    }
+}

@@ -152,7 +152,7 @@ static void build_fleet( FleetBuilder & b, bool reversed )
         const int k = reversed ? 2 - i : i;
         ShipConfig * ship = FleetShipsInsert( b.main, fleet->ships, names[k] );
         CHECK( ship != NULL );
-        memcpy( ship->name, names[k], strlen( names[k] ) );
+        memcpy( (void *) ship->name, names[k], strlen( names[k] ) );
         ship->name_length = (int32_t) strlen( names[k] );
         ship->health = health[k];
     }
@@ -164,7 +164,7 @@ static void build_fleet( FleetBuilder & b, bool reversed )
     TableRef * slot = FleetByIdInsert( b.main, fleet->by_id, 7 );
     ShipConfig * shared = ShipConfigEmplace( b.main, *slot );
     CHECK( shared != NULL );
-    memcpy( shared->name, "shared", 6 );
+    memcpy( (void *) shared->name, "shared", 6 );
     shared->name_length = 6;
     shared->health = 50;
     *FleetByIdInsert( b.main, fleet->by_id, 12 ) = *slot;
@@ -274,7 +274,7 @@ static void test_builder()
     // CONTROL: a key longer than N on insert is REFUSED. The insert's NULL
     // goes red if a control clamps instead — a truncated key is a merged entry.
     char over[64];
-    memset( over, 'k', sizeof( over ) );
+    memset( (void *) over, 'k', sizeof( over ) );
     over[40] = 0;
     CHECK( FleetShipsInsert( b.main, fleet->ships, over ) == NULL );
     CHECK_EQ( fleet->ships.count, 1 );
@@ -401,7 +401,7 @@ static void test_const_forms()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Fleet * loaded = FleetLoad( region, need, wire_full, bytes_full, &report );
+    const Fleet * loaded = FleetLoadTolerant( region, need, wire_full, bytes_full, &report );
     check_const_form( loaded, "a loaded region" );
     CHECK_EQ( report.unknown, 0 );
     CHECK_EQ( report.kind_mismatch, 0 );
@@ -417,7 +417,7 @@ static void test_const_forms()
     // LoadBuilder is the TOOL's path, and it produces EXACTLY the same report
     FleetBuilder into;
     TableReport tool;
-    CHECK( FleetLoadBuilder( into, wire_full, bytes_full, &tool ) );
+    CHECK( FleetLoadBuilderTolerant( into, wire_full, bytes_full, &tool ) );
     CHECK_EQ( tool.unknown, report.unknown );
     CHECK_EQ( tool.kind_mismatch, report.kind_mismatch );
     CHECK_EQ( tool.clamped, report.clamped );
@@ -474,7 +474,7 @@ struct RowSpec
     int32_t n;
     uint8_t element_kind; // 0: kind 13, an array of entry bodies
     int64_t declared_n;   // -1: the entry count itself
-    int32_t after;
+    int32_t past;
 };
 
 static RowSpec ascending_spec()
@@ -491,7 +491,7 @@ static RowSpec ascending_spec()
     spec.n = 3;
     spec.element_kind = 0;
     spec.declared_n = -1;
-    spec.after = 777;
+    spec.past = 777;
     return spec;
 }
 
@@ -521,7 +521,7 @@ static RowWire build_row( const RowSpec & spec )
     }
     b.close_len( map_body );
     b.field( "after", 4 );
-    b.u32( (uint32_t) spec.after );
+    b.u32( (uint32_t) spec.past );
     b.end();
     RowWire w;
     w.size = b.finish( w.bytes );
@@ -535,7 +535,7 @@ struct Verdict
     int32_t count;
     int32_t unknown, kind_mismatch, clamped, duplicate;
     bool malformed;
-    int32_t after;
+    int32_t past;
     int32_t decoded[3];
 };
 
@@ -547,11 +547,11 @@ static Verdict read_row( const RowWire & w )
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return v; }
     TableReport r;
-    const Row * row = RowLoad( region, need, w.bytes, w.size, &r );
+    const Row * row = RowLoadTolerant( region, need, w.bytes, w.size, &r );
     if ( row != NULL )
     {
         v.count = row->entries.size();
-        v.after = row->after;
+        v.past = row->past;
         int i = 0;
         for ( auto [ key, item ] : row->entries )
         {
@@ -572,7 +572,7 @@ static Verdict read_row( const RowWire & w )
     // counters be the expectation whichever path read it.
     RowBuilder into;
     TableReport t;
-    RowLoadBuilder( into, w.bytes, w.size, &t );
+    RowLoadBuilderTolerant( into, w.bytes, w.size, &t );
     CHECK_EQ( t.unknown, v.unknown );
     CHECK_EQ( t.kind_mismatch, v.kind_mismatch );
     CHECK_EQ( t.clamped, v.clamped );
@@ -587,7 +587,7 @@ static void test_reader()
     {
         const Verdict v = read_row( good_row() );
         CHECK_EQ( v.count, 3 );
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
         CHECK_EQ( v.unknown + v.kind_mismatch + v.clamped + v.duplicate + (int) v.malformed, 0 );
     }
     {
@@ -610,7 +610,7 @@ static void test_reader()
         const Verdict v = read_row( build_row( spec ) );
         CHECK( v.malformed );
         CHECK_EQ( v.count, 2 );
-        CHECK_EQ( v.after, 777 ); // the PARENT read on past the field's length
+        CHECK_EQ( v.past, 777 ); // the PARENT read on past the field's length
     }
     {
         // CONTROL: the duplicate rule is dropped, first wins or both kept. The
@@ -625,7 +625,7 @@ static void test_reader()
         CHECK_EQ( v.count, 2 );      // the map's count EXCLUDES the repeat
         CHECK_EQ( v.duplicate, 1 );
         CHECK_EQ( v.decoded[1], 0 ); // LAST WINS WHOLE
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
     }
     {
         // CONTROL: the reader CLAMPS a key instead of dropping its entry. The
@@ -639,7 +639,7 @@ static void test_reader()
         CHECK_EQ( v.clamped, 1 );     // one count per entry
         CHECK_EQ( v.decoded[0], 10 ); // `aa`
         CHECK_EQ( v.decoded[1], 12 ); // `cc`: the skipped entry neither reordered nor collided
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
     }
     {
         // CONTROL: an ELEMENT KIND that is not 13 is §4's ordinary array kind
@@ -650,7 +650,7 @@ static void test_reader()
         CHECK_EQ( v.count, 0 );
         CHECK_EQ( v.kind_mismatch, 1 );
         CHECK( !v.malformed );
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
     }
     {
         // An `N` past the int32 cap, in a row of a few dozen bytes: LoadMeasure
@@ -681,7 +681,7 @@ static void test_key_kind()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport r;
-    const WideRow * wide = WideRowLoad( region, need, w.bytes, w.size, &r );
+    const WideRow * wide = WideRowLoadTolerant( region, need, w.bytes, w.size, &r );
     CHECK( wide != NULL );
     CHECK_EQ( wide->entries.size(), 0 ); // the map RESETS TO EMPTY
     CHECK_EQ( r.kind_mismatch, 1 );      // ONE for the map, never one per entry
@@ -689,7 +689,7 @@ static void test_key_kind()
     CHECK_EQ( r.clamped, 0 );
     CHECK_EQ( r.duplicate, 0 );
     CHECK( !r.malformed );
-    CHECK_EQ( wide->after, 777 );        // the parent reads on
+    CHECK_EQ( wide->past, 777 );        // the parent reads on
     free( region );
 
     // CONTROL: the key-kind event is counted PER ENTRY instead of once for the
@@ -730,11 +730,11 @@ static void test_key_kind()
     uint8_t * region2 = (uint8_t *) MEASURED_CALLOC( need2, 0 );
     if ( region2 == NULL ) { return; }
     TableReport r2;
-    const WideRow * mixed_row = WideRowLoad( region2, need2, mixed, size, &r2 );
+    const WideRow * mixed_row = WideRowLoadTolerant( region2, need2, mixed, size, &r2 );
     CHECK( mixed_row != NULL );
     CHECK_EQ( mixed_row->entries.size(), 0 ); // a map with half its keys is not a map
     CHECK_EQ( r2.kind_mismatch, 1 );          // ONE, at the first entry that disagrees
-    CHECK_EQ( mixed_row->after, 555 ); // the parent reads on past the map's L
+    CHECK_EQ( mixed_row->past, 555 ); // the parent reads on past the map's L
     free( region2 );
 }
 
@@ -765,7 +765,7 @@ static void test_load_measure_depth()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport r;
-    const Fleet * loaded = FleetLoad( region, need, wire, n, &r );
+    const Fleet * loaded = FleetLoadTolerant( region, need, wire, n, &r );
     CHECK( loaded != NULL );
     CHECK( !r.malformed );
     CHECK_EQ( loaded->loadouts.size(), 4 );
@@ -787,7 +787,7 @@ static void test_load_measure_depth()
     // A REGION EXACTLY ONE BYTE SHORT IS REFUSED, which is what says the
     // measure is the measure and not an over-estimate with slack to spare
     TableReport short_report;
-    CHECK( FleetLoad( region, need - 1, wire, n, &short_report ) == NULL );
+    CHECK( FleetLoadTolerant( region, need - 1, wire, n, &short_report ) == NULL );
     free( region );
 }
 
@@ -862,7 +862,7 @@ static void test_measure_refusals()
         FleetBuilder b;
         TableReport report;
         report.unknown = 3;
-        CHECK( !FleetLoadBuilder( b, w.bytes, w.size, &report ) );
+        CHECK( !FleetLoadBuilderTolerant( b, w.bytes, w.size, &report ) );
         CHECK_EQ( report.unknown, 3 );
         CHECK_EQ( report.kind_mismatch, 0 );
         CHECK_EQ( report.widened, 0 );
@@ -894,7 +894,7 @@ static void test_measure_refusals()
         uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
         if ( region == NULL ) { return; }
         TableReport r;
-        const Fleet * fleet = FleetLoad( region, need, w.bytes, w.size, &r );
+        const Fleet * fleet = FleetLoadTolerant( region, need, w.bytes, w.size, &r );
         CHECK( fleet != NULL );
         report_silent( r, "the clean wire beside the refusals" );
         if ( fleet != NULL )
@@ -941,7 +941,7 @@ static void test_text()
     // and the text reads back: one instance, one text, both ways
     FleetBuilder into;
     TableReport report;
-    CHECK( FleetFromJson( into, text, written, &report ) );
+    CHECK( FleetFromJsonTolerant( into, text, written, &report ) );
     CHECK_EQ( report.unknown, 0 );
     CHECK_EQ( report.kind_mismatch, 0 );
     CHECK_EQ( report.clamped, 0 );
@@ -972,27 +972,27 @@ static void test_text()
     // range is kind_mismatch for that entry, dropped and never clamped.
     struct Row { const char * text; int32_t count; int32_t dup; int32_t clamp; int32_t mismatch; };
     const Row rows[] = {
-        { "{\"entries\":{},\"after\":5}", 0, 0, 0, 0 },
-        { "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{\"count\":2}},\"after\":5}", 1, 1, 0, 0 },
-        { "{\"entries\":{\"aaaaaaaaaaaa\":{\"count\":1}},\"after\":5}", 0, 0, 1, 0 },
+        { "{\"entries\":{},\"past\":5}", 0, 0, 0, 0 },
+        { "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{\"count\":2}},\"past\":5}", 1, 1, 0, 0 },
+        { "{\"entries\":{\"aaaaaaaaaaaa\":{\"count\":1}},\"past\":5}", 0, 0, 1, 0 },
     };
     for ( int i = 0; i < 3; i++ )
     {
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJson( rb, rows[i].text, (int64_t) strlen( rows[i].text ), &r ) );
+        CHECK( RowFromJsonTolerant( rb, rows[i].text, (int64_t) strlen( rows[i].text ), &r ) );
         CHECK_EQ( rb.GetRoot()->entries.count, rows[i].count );
         CHECK_EQ( r.duplicate, rows[i].dup );
         CHECK_EQ( r.clamped, rows[i].clamp );
         CHECK_EQ( r.kind_mismatch, rows[i].mismatch );
-        CHECK_EQ( rb.GetRoot()->after, 5 );
+        CHECK_EQ( rb.GetRoot()->past, 5 );
     }
     {
         // the duplicate's value is the LAST one, whole
         const char * t = "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( rb.GetRoot()->entries.count, 1 );
         CHECK_EQ( RowEntriesFind( rb.arena, rb.GetRoot()->entries, "aa" )->count, 0 );
     }
@@ -1003,7 +1003,7 @@ static void test_text()
         const char * t = "{\"entries\":{\"2.0\":{\"count\":7},\"1e3\":{\"count\":8},\"99999999999\":{\"count\":9}}}";
         WideRowBuilder rb;
         TableReport r;
-        CHECK( WideRowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( WideRowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( rb.GetRoot()->entries.count, 2 );
         CHECK_EQ( r.kind_mismatch, 1 );
         CHECK_EQ( r.clamped, 0 );
@@ -1015,7 +1015,7 @@ static void test_text()
         const char * t = "{\"entries\":{\"nope\":{\"count\":1}}}";
         WideRowBuilder rb;
         TableReport r;
-        CHECK( !WideRowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( !WideRowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
         CHECK( r.malformed );
     }
     {
@@ -1027,7 +1027,7 @@ static void test_text()
         const char * t = "{\"entries\":{\"a\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( rb.GetRoot()->entries.count, 2 );
         CHECK_EQ( r.duplicate, 0 );
         CHECK_EQ( r.clamped, 0 );
@@ -1038,7 +1038,7 @@ static void test_text()
         const char * t = "{\"entries\":{\"a\\u0000b\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( rb.GetRoot()->entries.count, 1 );
         CHECK_EQ( r.duplicate, 1 );
     }
@@ -1058,17 +1058,17 @@ static void test_text()
         // under either answer.
         char first[257];
         char second[257];
-        memset( first, 'a', 255 );
+        memset( (void *) first, 'a', 255 );
         first[255] = 'b';
         first[256] = 0;
-        memcpy( second, first, sizeof( first ) );
+        memcpy( (void *) second, first, sizeof( first ) );
         second[255] = 'c';
         char both[1024];
-        snprintf( both, sizeof( both ), "{\"names\":{\"%s\":{\"count\":1},\"%s\":{\"count\":2}},\"after\":5}",
+        snprintf( both, sizeof( both ), "{\"names\":{\"%s\":{\"count\":1},\"%s\":{\"count\":2}},\"past\":5}",
                   first, second );
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJson( eb, both, (int64_t) strlen( both ), &r ) );
+        CHECK( EdgeRowFromJsonTolerant( eb, both, (int64_t) strlen( both ), &r ) );
         CHECK_EQ( r.duplicate, 0 );
         for ( auto [ key, item ] : EdgeRowNamesEach( eb.arena, eb.GetRoot()->names ) )
         {
@@ -1080,7 +1080,7 @@ static void test_text()
                 failures++;
             }
         }
-        CHECK_EQ( eb.GetRoot()->after, 5 ); // and the parent read on
+        CHECK_EQ( eb.GetRoot()->past, 5 ); // and the parent read on
     }
     {
         // A uint64 KEY is read by §16.2's integer rule and by nothing else, and
@@ -1091,7 +1091,7 @@ static void test_text()
                          "\"18446744073709551615\":{\"count\":3},\"-1\":{\"count\":4},\"1e30\":{\"count\":5}}}";
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( EdgeRowFromJsonTolerant( eb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( eb.GetRoot()->ids.count, 3 );
         CHECK_EQ( r.kind_mismatch, 2 );
         CHECK_EQ( r.clamped, 0 );
@@ -1113,7 +1113,7 @@ static void test_text()
         const char * t = "{\"ids\":{\"2402\":{\"count\":7},\" 2\":{\"count\":1}}}";
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( !EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( !EdgeRowFromJsonTolerant( eb, t, (int64_t) strlen( t ), &r ) );
         CHECK( r.malformed );
         CHECK_EQ( r.duplicate, 0 );
         for ( auto [ key, item ] : EdgeRowIdsEach( eb.arena, eb.GetRoot()->ids ) )
@@ -1132,7 +1132,7 @@ static void test_text()
                          "\"9007199254740993.0\":{\"count\":2}}}";
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( EdgeRowFromJsonTolerant( eb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( eb.GetRoot()->ids.count, 2 );
         CHECK_EQ( r.duplicate, 0 );
         CHECK_EQ( r.kind_mismatch, 0 );
@@ -1151,7 +1151,7 @@ static void test_text()
                          "\"18446744073709551615.0\":{\"count\":2}}}";
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( EdgeRowFromJsonTolerant( eb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( eb.GetRoot()->ids.count, 1 );
         CHECK_EQ( r.kind_mismatch, 0 );
         CHECK_EQ( r.clamped, 0 );
@@ -1178,7 +1178,7 @@ static void test_text()
         n += snprintf( t + n, sizeof( t ) - (size_t) n, "\":{\"count\":9}}}" );
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJson( eb, t, (int64_t) n, &r ) );
+        CHECK( EdgeRowFromJsonTolerant( eb, t, (int64_t) n, &r ) );
         CHECK_EQ( eb.GetRoot()->ids.count, 1 );
         CHECK_EQ( r.kind_mismatch, 1 );
         CHECK_EQ( r.duplicate, 0 );
@@ -1284,7 +1284,7 @@ static void test_text_allocation_refusals()
     budget.refuse_from = before + 1; // the arena can carve nothing more
 
     TableReport r;
-    if ( FleetFromJson( fb, text, length, &r ) )
+    if ( FleetFromJsonTolerant( fb, text, length, &r ) )
     {
         printf( "FAIL %s:%d: the arena refused and the read still called itself clean"
                 " (clamped=%d, entries=%d)\n",
@@ -1321,7 +1321,7 @@ static void test_depth()
     d->arm.type = ForceType::Squad;
     SquadReset( d->arm.squad );
     SquadRosterInsert( b.main, d->arm.squad.roster, (uint8_t) 7 )->count = 77;
-    d->after = 9;
+    d->past = 9;
 
     const int64_t measured = DepthMeasure( b );
     static uint8_t wire[1u << 16];
@@ -1334,7 +1334,7 @@ static void test_depth()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Depth * loaded = DepthLoad( region, need, wire, n, &report );
+    const Depth * loaded = DepthLoadTolerant( region, need, wire, n, &report );
     CHECK( loaded != NULL );
     CHECK( !report.malformed );
     if ( loaded != NULL )
@@ -1358,7 +1358,7 @@ static void test_depth()
             const Item * armed = loaded->arm.squad.roster.Find( (uint8_t) 7 );
             CHECK( armed != NULL && armed->count == 77 );
         }
-        CHECK_EQ( loaded->after, 9 ); // and the parent read past all of them
+        CHECK_EQ( loaded->past, 9 ); // and the parent read past all of them
 
         // the region is EXACT: one byte short is refused, so the extent scan
         // counted every one of those four reaches and not one twice
@@ -1366,7 +1366,7 @@ static void test_depth()
         CHECK_EQ( DepthSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
         TableReport short_report;
-        CHECK( DepthLoad( region, need - 1, wire, n, &short_report ) == NULL );
+        CHECK( DepthLoadTolerant( region, need - 1, wire, n, &short_report ) == NULL );
     }
     free( region );
 
@@ -1386,7 +1386,7 @@ static void test_depth()
         const int64_t measured_past = DepthMeasure( past );
         CHECK_EQ( DepthSave( past, rides, sizeof( rides ) ), measured_past );
         CHECK_EQ( DepthCookMeasure( past ), -1 );
-        memset( rides, 0xa5, sizeof( rides ) );
+        memset( (void *) rides, 0xa5, sizeof( rides ) );
         CHECK( !DepthCook( past, rides, sizeof( rides ), TableByteOrder::Little ) );
         for ( size_t byte = 0; byte < sizeof( rides ); byte++ ) { CHECK_EQ( rides[byte], 0xa5 ); }
         CHECK( !past.Lock() );
@@ -1396,7 +1396,7 @@ static void test_depth()
     // and the TOOL's path reads the same four reaches into a builder
     DepthBuilder into;
     TableReport tool;
-    CHECK( DepthLoadBuilder( into, wire, n, &tool ) );
+    CHECK( DepthLoadBuilderTolerant( into, wire, n, &tool ) );
     CHECK_EQ( (int) tool.malformed, (int) report.malformed );
     CHECK_EQ( into.GetRoot()->one.roster.count, 1 );
     CHECK_EQ( into.GetRoot()->many_count, 2 );
@@ -1432,7 +1432,7 @@ static void test_text_values()
         CHECK( entry != NULL );
         if ( entry == NULL ) { return; }
         const size_t length = strlen( values[i] );
-        memcpy( entry->value, values[i], length );
+        memcpy( (void *) entry->value, values[i], length );
         entry->value_length = (int32_t) length;
     }
 
@@ -1458,11 +1458,11 @@ static void test_text_values()
             TextBlobsEntry * entry = TextBlobsInsert( b.main, t->blobs, keys[i] );
             CHECK( entry != NULL );
             if ( entry == NULL ) { return; }
-            memcpy( entry->value, payload[i], sizeof( payload[i] ) );
+            memcpy( (void *) entry->value, payload[i], sizeof( payload[i] ) );
             entry->value_length = (int32_t) sizeof( payload[i] );
         }
     }
-    t->after = 9;
+    t->past = 9;
 
     // the builder's Find hands back the same entry an Insert did
     const TextNamesEntry * found = TextNamesFind( b.arena, t->names, "alpha" );
@@ -1482,7 +1482,7 @@ static void test_text_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Text * loaded = TextLoad( region, need, wire, n, &report );
+    const Text * loaded = TextLoadTolerant( region, need, wire, n, &report );
     CHECK( loaded != NULL );
     CHECK( !report.malformed );
     CHECK_EQ( report.clamped, 0 );
@@ -1508,7 +1508,7 @@ static void test_text_values()
         const TextBlobsEntry * high = loaded->blobs.Find( (int32_t) 2 );
         CHECK( high != NULL && high->value_length == 4 && high->value[0] == 0x00 && high->value[3] == 0xff );
 
-        CHECK_EQ( loaded->after, 9 ); // and the parent read on past all three
+        CHECK_EQ( loaded->past, 9 ); // and the parent read on past all three
 
         // the region's VARIABLE FORM is the builder's, byte for byte
         static uint8_t again[1u << 16];
@@ -1542,7 +1542,7 @@ static void test_text_values()
     // and it reads back to the same instance, so the same wire
     TextBuilder into;
     TableReport text_report;
-    CHECK( TextFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( TextFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     CHECK_EQ( text_report.clamped, 0 );
     CHECK_EQ( text_report.kind_mismatch, 0 );
@@ -1564,7 +1564,7 @@ static void test_text_values()
         TextNamesEntry * first = TextNamesInsert( dup.main, d->names, "alpha" );
         CHECK( first != NULL );
         if ( first == NULL ) { return; }
-        memcpy( first->value, "first", 5 );
+        memcpy( (void *) first->value, "first", 5 );
         first->value_length = 5;
 
         TextNamesEntry * repeat = TextNamesInsert( dup.main, d->names, "alpha" );
@@ -1581,7 +1581,7 @@ static void test_text_values()
         CHECK_EQ( TextMeasure( dup ), reset_bytes );
         TextBuilder read_back;
         TableReport reset_report;
-        CHECK( TextLoadBuilder( read_back, reset_wire, reset_bytes, &reset_report ) );
+        CHECK( TextLoadBuilderTolerant( read_back, reset_wire, reset_bytes, &reset_report ) );
         CHECK( !reset_report.malformed );
         const TextNamesEntry * landed = TextNamesFind( read_back.arena, read_back.GetRoot()->names, "alpha" );
         CHECK( landed != NULL && landed->value_length == 0 );
@@ -1613,7 +1613,7 @@ static void test_array_values()
         if ( rows == NULL ) { return; }
         for ( int j = 0; j < 3; j++ ) { ( *rows )[j] = (int32_t) ( i * 10 + j ); }
     }
-    c->after = 7;
+    c->past = 7;
 
     const CellsRowsEntryValue * found = CellsRowsFind( b.arena, c->rows, "alpha" );
     CHECK( found != NULL && ( *found )[0] == 10 && ( *found )[2] == 12 );
@@ -1629,7 +1629,7 @@ static void test_array_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Cells * loaded = CellsLoad( region, need, wire, n, &report );
+    const Cells * loaded = CellsLoadTolerant( region, need, wire, n, &report );
     CHECK( loaded != NULL );
     CHECK( !report.malformed );
     if ( loaded != NULL )
@@ -1638,7 +1638,7 @@ static void test_array_values()
         CHECK( alpha != NULL && ( *alpha )[0] == 10 && ( *alpha )[1] == 11 && ( *alpha )[2] == 12 );
         const CellsRowsEntryValue * beta = loaded->rows.Find( "beta" );
         CHECK( beta != NULL && ( *beta )[0] == 0 && ( *beta )[2] == 2 );
-        CHECK_EQ( loaded->after, 7 ); // and the parent read on past the map
+        CHECK_EQ( loaded->past, 7 ); // and the parent read on past the map
         static uint8_t again[1u << 16];
         CHECK_EQ( CellsSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -1664,7 +1664,7 @@ static void test_array_values()
 
     CellsBuilder into;
     TableReport text_report;
-    CHECK( CellsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( CellsFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( CellsSave( into, from_text, sizeof( from_text ) ), n );
@@ -1699,7 +1699,7 @@ static void test_counted_array_values()
         entry->value_count = i + 1;
         for ( int j = 0; j <= i; j++ ) { entry->value[j].count = (int32_t) ( keys[i] * 10 + j ); }
     }
-    r->after = 3;
+    r->past = 3;
 
     const int64_t measured = RunsMeasure( b );
     static uint8_t wire[1u << 16];
@@ -1712,7 +1712,7 @@ static void test_counted_array_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Runs * loaded = RunsLoad( region, need, wire, n, &report );
+    const Runs * loaded = RunsLoadTolerant( region, need, wire, n, &report );
     CHECK( loaded != NULL );
     CHECK( !report.malformed );
     if ( loaded != NULL )
@@ -1722,7 +1722,7 @@ static void test_counted_array_values()
         CHECK( four != NULL && four->value[0].count == 40 && four->value[1].count == 41 );
         const RunsSpansEntry * nine = loaded->spans.Find( (uint16_t) 9 );
         CHECK( nine != NULL && nine->value_count == 1 && nine->value[0].count == 90 );
-        CHECK_EQ( loaded->after, 3 );
+        CHECK_EQ( loaded->past, 3 );
         static uint8_t again[1u << 16];
         CHECK_EQ( RunsSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -1747,7 +1747,7 @@ static void test_counted_array_values()
 
     RunsBuilder into;
     TableReport text_report;
-    CHECK( RunsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( RunsFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( RunsSave( into, from_text, sizeof( from_text ) ), n );
@@ -1785,7 +1785,7 @@ static void test_enum_extent_values()
         ( *seats )[Slot::Alpha] = (int32_t) ( i + 1 );
         ( *seats )[Slot::Beta] = (int32_t) ( i + 100 );
     }
-    s->after = 5;
+    s->past = 5;
 
     const int64_t measured = SlotsMeasure( b );
     static uint8_t wire[1u << 16];
@@ -1798,7 +1798,7 @@ static void test_enum_extent_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Slots * loaded = SlotsLoad( region, need, wire, n, &report );
+    const Slots * loaded = SlotsLoadTolerant( region, need, wire, n, &report );
     CHECK( loaded != NULL );
     CHECK( !report.malformed );
     if ( loaded != NULL )
@@ -1807,7 +1807,7 @@ static void test_enum_extent_values()
         CHECK( low != NULL && ( *low )[Slot::Alpha] == 2 && ( *low )[Slot::Beta] == 101 );
         const TableKeyed<int32_t, Slot> * high = loaded->seats.Find( (int32_t) 6 );
         CHECK( high != NULL && ( *high )[Slot::Alpha] == 1 && ( *high )[Slot::Beta] == 100 );
-        CHECK_EQ( loaded->after, 5 );
+        CHECK_EQ( loaded->past, 5 );
         static uint8_t again[1u << 16];
         CHECK_EQ( SlotsSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -1833,7 +1833,7 @@ static void test_enum_extent_values()
 
     SlotsBuilder into;
     TableReport text_report;
-    CHECK( SlotsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( SlotsFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( SlotsSave( into, from_text, sizeof( from_text ) ), n );
@@ -1873,7 +1873,7 @@ static void test_unbounded_values()
             item->count = (int32_t) ( keys[i] * 10 + j );
         }
     }
-    s->after = 4;
+    s->past = 4;
 
     const int64_t measured = SpansMeasure( b );
     static uint8_t wire[1u << 16];
@@ -1888,7 +1888,7 @@ static void test_unbounded_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Spans * loaded = SpansLoad( region, need, wire, n, &report );
+    const Spans * loaded = SpansLoadTolerant( region, need, wire, n, &report );
     CHECK( loaded != NULL );
     CHECK( !report.malformed );
     if ( loaded != NULL )
@@ -1911,7 +1911,7 @@ static void test_unbounded_values()
         {
             CHECK( eight->Elements()[0].count == 80 && eight->Elements()[1].count == 81 );
         }
-        CHECK_EQ( loaded->after, 4 );
+        CHECK_EQ( loaded->past, 4 );
         static uint8_t again[1u << 16];
         CHECK_EQ( SpansSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -1935,7 +1935,7 @@ static void test_unbounded_values()
 
     SpansBuilder into;
     TableReport text_report;
-    CHECK( SpansFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( SpansFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( SpansSave( into, from_text, sizeof( from_text ) ), n );
@@ -1973,7 +1973,7 @@ static void test_blob_values()
         if ( slot == NULL ) { return; }
         CHECK( TableStringEmplace( b.main, *slot, texts[i], (int64_t) strlen( texts[i] ) ) != NULL );
     }
-    d->after = 6;
+    d->past = 6;
 
     const int64_t measured = DocsMeasure( b );
     static uint8_t wire[1u << 16];
@@ -1986,7 +1986,7 @@ static void test_blob_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Docs * loaded = DocsLoad( region, need, wire, n, &report );
+    const Docs * loaded = DocsLoadTolerant( region, need, wire, n, &report );
     CHECK( loaded != NULL );
     CHECK( !report.malformed );
     if ( loaded != NULL )
@@ -1999,7 +1999,7 @@ static void test_blob_values()
         const TableStringView beta_text = TableStringViewOf( beta );
         CHECK( beta_text.length == 11 && memcmp( beta_text.data, "second page", 11 ) == 0 );
         CHECK( loaded->pages.Find( "gamma" ) == NULL );
-        CHECK_EQ( loaded->after, 6 );
+        CHECK_EQ( loaded->past, 6 );
         static uint8_t again[1u << 16];
         CHECK_EQ( DocsSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -2020,7 +2020,7 @@ static void test_blob_values()
 
     DocsBuilder into;
     TableReport text_report;
-    CHECK( DocsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( DocsFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( DocsSave( into, from_text, sizeof( from_text ) ), n );
@@ -2057,9 +2057,9 @@ static void test_byte_blob_values()
         uint8_t * bytes = TableBytesEmplace( cb.main, *slot, 4 );
         CHECK( bytes != NULL );
         if ( bytes == NULL ) { return; }
-        memcpy( bytes, payload[i], 4 );
+        memcpy( (void *) bytes, payload[i], 4 );
     }
-    c->after = 8;
+    c->past = 8;
 
     const int64_t chunk_measured = ChunksMeasure( cb );
     static uint8_t chunk_wire[1u << 16];
@@ -2072,7 +2072,7 @@ static void test_byte_blob_values()
     uint8_t * chunk_region = (uint8_t *) MEASURED_CALLOC( chunk_need, 0 );
     if ( chunk_region == NULL ) { return; }
     TableReport chunk_report;
-    const Chunks * chunks = ChunksLoad( chunk_region, chunk_need, chunk_wire, cn, &chunk_report );
+    const Chunks * chunks = ChunksLoadTolerant( chunk_region, chunk_need, chunk_wire, cn, &chunk_report );
     CHECK( chunks != NULL );
     CHECK( !chunk_report.malformed );
     if ( chunks != NULL )
@@ -2081,7 +2081,7 @@ static void test_byte_blob_values()
         CHECK( low.length == 4 && low.data != NULL && low.data[0] == 0xde && low.data[3] == 0xef );
         const TableBytesView high = TableBytesViewOf( chunks->blobs.Find( (int32_t) 2 ) );
         CHECK( high.length == 4 && high.data != NULL && high.data[0] == 0x00 && high.data[3] == 0xff );
-        CHECK_EQ( chunks->after, 8 );
+        CHECK_EQ( chunks->past, 8 );
         static uint8_t chunk_again[1u << 16];
         CHECK_EQ( ChunksSave( chunks, chunk_again, sizeof( chunk_again ) ), cn );
         CHECK( memcmp( chunk_again, chunk_wire, (size_t) cn ) == 0 );
@@ -2102,7 +2102,7 @@ static void test_byte_blob_values()
 
     ChunksBuilder chunks_into;
     TableReport chunk_text_report;
-    CHECK( ChunksFromJson( chunks_into, chunk_json, chunk_json_bytes, &chunk_text_report ) );
+    CHECK( ChunksFromJsonTolerant( chunks_into, chunk_json, chunk_json_bytes, &chunk_text_report ) );
     CHECK( !chunk_text_report.malformed );
     static uint8_t chunk_from_text[1u << 16];
     CHECK_EQ( ChunksSave( chunks_into, chunk_from_text, sizeof( chunk_from_text ) ), cn );
@@ -2139,7 +2139,7 @@ static void test_pointer_array_values()
         // key 4 names the same node twice; key 9 leaves the second slot null
         if ( keys[i] == 4 ) { ( *slots )[1] = ( *slots )[0]; }
     }
-    p->after = 5;
+    p->past = 5;
 
     PairsSlotsEntryValue * found = PairsSlotsFind( b.arena, p->slots, 4u );
     CHECK( found != NULL );
@@ -2161,7 +2161,7 @@ static void test_pointer_array_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Pairs * loaded = PairsLoad( region, need, wire, n, &report );
+    const Pairs * loaded = PairsLoadTolerant( region, need, wire, n, &report );
     CHECK( loaded != NULL );
     CHECK( !report.malformed );
     if ( loaded != NULL )
@@ -2182,7 +2182,7 @@ static void test_pointer_array_values()
             CHECK( only != NULL && only->count == 90 );
             CHECK( ItemAt( ( *nine )[1] ) == NULL ); // the null slot stayed null
         }
-        CHECK_EQ( loaded->after, 5 ); // and the parent read on past the map
+        CHECK_EQ( loaded->past, 5 ); // and the parent read on past the map
         static uint8_t again[1u << 16];
         CHECK_EQ( PairsSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -2210,7 +2210,7 @@ static void test_pointer_array_values()
 
     PairsBuilder into;
     TableReport text_report;
-    CHECK( PairsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( PairsFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( PairsSave( into, from_text, sizeof( from_text ) ), n );
@@ -2253,7 +2253,7 @@ static void test_counted_pointer_array_values()
             item->count = (int32_t) ( keys[i] * 10 + j );
         }
     }
-    c->after = 2;
+    c->past = 2;
 
     const int64_t measured = CrewsMeasure( b );
     static uint8_t wire[1u << 16];
@@ -2266,7 +2266,7 @@ static void test_counted_pointer_array_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Crews * loaded = CrewsLoad( region, need, wire, n, &report );
+    const Crews * loaded = CrewsLoadTolerant( region, need, wire, n, &report );
     CHECK( loaded != NULL );
     CHECK( !report.malformed );
     if ( loaded != NULL )
@@ -2290,7 +2290,7 @@ static void test_counted_pointer_array_values()
             const Item * only = ItemAt( nine->value[0] );
             CHECK( only != NULL && only->count == 90 );
         }
-        CHECK_EQ( loaded->after, 2 );
+        CHECK_EQ( loaded->past, 2 );
         static uint8_t again[1u << 16];
         CHECK_EQ( CrewsSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -2316,7 +2316,7 @@ static void test_counted_pointer_array_values()
 
     CrewsBuilder into;
     TableReport text_report;
-    CHECK( CrewsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( CrewsFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( CrewsSave( into, from_text, sizeof( from_text ) ), n );
@@ -2368,7 +2368,7 @@ static void test_unbounded_pointer_array_values()
             CHECK( TrailsStepsEntryValueAdd( b.main, *steps ) != NULL );
         }
     }
-    t->after = 1;
+    t->past = 1;
 
     const int64_t measured = TrailsMeasure( b );
     static uint8_t wire[1u << 16];
@@ -2383,7 +2383,7 @@ static void test_unbounded_pointer_array_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Trails * loaded = TrailsLoad( region, need, wire, n, &report );
+    const Trails * loaded = TrailsLoadTolerant( region, need, wire, n, &report );
     CHECK( loaded != NULL );
     CHECK( !report.malformed );
     if ( loaded != NULL )
@@ -2407,7 +2407,7 @@ static void test_unbounded_pointer_array_values()
             const Item * only = ( *nine )[0];
             CHECK( only != NULL && only->count == 90 );
         }
-        CHECK_EQ( loaded->after, 1 );
+        CHECK_EQ( loaded->past, 1 );
         static uint8_t again[1u << 16];
         CHECK_EQ( TrailsSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -2433,7 +2433,7 @@ static void test_unbounded_pointer_array_values()
 
     TrailsBuilder into;
     TableReport text_report;
-    CHECK( TrailsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( TrailsFromJsonTolerant( into, json, json_bytes, &text_report ) );
     CHECK( !text_report.malformed );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( TrailsSave( into, from_text, sizeof( from_text ) ), n );

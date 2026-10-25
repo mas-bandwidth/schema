@@ -10,5 +10,5 @@ package mapdemo
 table Cells
 {
     rows  map[string(8)][3]int32 // [N]T: a fixed extent, complete by construction
-    after int32
+    past int32 | was = "after"
 }

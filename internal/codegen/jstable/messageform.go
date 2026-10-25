@@ -198,6 +198,7 @@ function TableMessageOpenFramed(data) {
 function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
 function TableMessageKnownKind(k) { return k <= 33; }
 function TableMessageKindBits(k) {
+  if (k === 0 || k === 32) { return 0; }
   if (k === 1) { return 1; }
   switch (k) {
     case 2: case 6: case 20: case 25: return 8;
@@ -296,14 +297,16 @@ function TableMessageEntryRead(r) {
   }
   return [e, true];
 }
-function TableMessageShapeEqual(a, b) {
-  return a.Kind === b.Kind && a.Packing === b.Packing && a.Bits === b.Bits &&
-    a.Base[0] === b.Base[0] && a.Base[1] === b.Base[1] &&
-    a.Min === b.Min && a.Max === b.Max && a.QMin === b.QMin && a.QDelta === b.QDelta && a.QCount === b.QCount;
+function TableMessageShapeEqual(words, a, b) {
+  const len = a.Max - a.Min;
+  if (len !== b.Max - b.Min) { return false; }
+  for (let i = 0; i < len; i++) {
+    if (words[a.Min + i] !== words[b.Min + i]) { return false; }
+  }
+  return true;
 }
-function TableMessageEntryEqual(a, b) {
-  return a !== null && b !== null && a.Id === b.Id &&
-    TableMessageShapeEqual(a.Shape, b.Shape) && TableMessageShapeEqual(a.Element, b.Element);
+function TableMessageEntryEqual(words, a, b) {
+  return a !== null && b !== null && TableMessageShapeEqual(words, a.Shape, b.Shape);
 }
 export function TableMessageRefuse(report, reason) {
   report.Verdict = TableMessageOpenRefused;
@@ -363,17 +366,25 @@ function TableAnnounceRead(v, data, report) {
   let count = 0, nodeSeen = false;
   while (src.Offset < words.length) {
     if (count >= v.Entries.length) { return TableMessageRefuse(report, "vocabulary_too_large"); }
+    const began = src.Offset;
     const [e, eok] = TableMessageEntryRead(src);
     if (!eok || e.Id === TableMessageVocabularyId || e.Id === TableMessageVersionId || (e.Id === TableMessageNodeId && nodeSeen)) {
       report.Malformed = true;
       return false;
     }
     if (e.Id === TableMessageNodeId) { nodeSeen = true; }
+    e.Shape.Min = began;
+    e.Shape.Max = src.Offset;
     for (let i = 0; i < count; i++) {
-      if (TableMessageEntryEqual(v.Entries[i], e)) { report.Malformed = true; return false; }
+      if (TableMessageEntryEqual(words, v.Entries[i], e)) { report.Malformed = true; return false; }
     }
     v.Entries[count] = e;
     count++;
+  }
+  src.Offset = 0;
+  for (let i = 0; i < count; i++) {
+    const [e] = TableMessageEntryRead(src);
+    v.Entries[i] = e;
   }
   v.Count = count;
   v.RefBits = TableMessageBits(BigInt(count));

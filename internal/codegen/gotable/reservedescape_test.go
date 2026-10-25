@@ -23,30 +23,30 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// goUnitFrom checks src for the Go target only, as `schema generate --lang
-// go` does (SPEC §4.6: L's words only).
+// goUnitFrom checks src as every command does: against every supported
+// language's reserved words, the Go escape carrying Go's own (SPEC §4.6).
 func goUnitFrom(t *testing.T, src string) (*ir.Unit, []error) {
 	t.Helper()
 	f, perrs := parser.Parse("Probe.schema", []byte(src))
 	if len(perrs) > 0 {
 		t.Fatalf("parse: %v", perrs[0])
 	}
-	return check.UnitForTargets([]check.SourceFile{{
+	return check.Unit([]check.SourceFile{{
 		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
-	}}, []string{"Go"})
+	}})
 }
 
 func goUnit(t *testing.T, src string) *ir.Unit {
 	t.Helper()
 	u, errs := goUnitFrom(t, src)
 	if len(errs) > 0 {
-		t.Fatalf("check --lang go: %v", errs[0])
+		t.Fatalf("check: %v", errs[0])
 	}
 	return u
 }
 
 // reservedRoundTrip is a table whose name, fields and enum variants are Go
-// words, beside a packet type with a Go-word field: every value form the
+// words that no other supported language reserves (SPEC §4.6), beside a packet type with a Go-word field: every value form the
 // table carries round-trips under the schema's names.
 const reservedRoundTrip = `package probe
 enum Kind { go, chan }
@@ -54,17 +54,17 @@ flags Caps { go, select }
 type Pt { range int32 }
 union Shape {
  range int32
- for Pt
+ go Pt
 }
 fixed table func {
  select int32
- var string(16)
+ iota string(16)
  kind Kind
  defer ?int32
- import Pt
- byte uint8
- goto [..3]int32
- true bool
+ recover Pt
+ rune uint8
+ uintptr [..3]int32
+ fallthrough bool
  caps Caps
  shape Shape
 }
@@ -75,19 +75,19 @@ import ("bytes"; "encoding/json"; "testing")
 func fill(v *func_) {
  func_Reset(v)
  v.Select = -7
- v.VarLength = int32(copy(v.Var[:], "fallthrough"))
+ v.IotaLength = int32(copy(v.Iota[:], "fallthrough"))
  v.Kind = Kindchan
  v.DeferPresent = true; v.Defer = 3
- v.Import.Range = 11
- v.Byte = 200
- v.Goto[0], v.Goto[1] = 4, 5; v.GotoCount = 2
- v.True = true
+ v.Recover.Range = 11
+ v.Rune = 200
+ v.Uintptr[0], v.Uintptr[1] = 4, 5; v.UintptrCount = 2
+ v.Fallthrough = true
  v.Caps = Capsgo | Capsselect
  v.Shape.Type = ShapeTypeRange; v.Shape.Range = 9
 }
 func same(t *testing.T, form string, a, b *func_) {
  t.Helper()
- if a.Select != b.Select || string(a.Var[:a.VarLength]) != string(b.Var[:b.VarLength]) || a.Kind != b.Kind || a.DeferPresent != b.DeferPresent || a.Defer != b.Defer || a.Import.Range != b.Import.Range || a.Byte != b.Byte || a.GotoCount != b.GotoCount || a.Goto != b.Goto || a.True != b.True || a.Caps != b.Caps || a.Shape.Type != b.Shape.Type || a.Shape.Range != b.Shape.Range {
+ if a.Select != b.Select || string(a.Iota[:a.IotaLength]) != string(b.Iota[:b.IotaLength]) || a.Kind != b.Kind || a.DeferPresent != b.DeferPresent || a.Defer != b.Defer || a.Recover.Range != b.Recover.Range || a.Rune != b.Rune || a.UintptrCount != b.UintptrCount || a.Uintptr != b.Uintptr || a.Fallthrough != b.Fallthrough || a.Caps != b.Caps || a.Shape.Type != b.Shape.Type || a.Shape.Range != b.Shape.Range {
   t.Fatalf("%s round trip: got %+v want %+v", form, *b, *a)
  }
 }
@@ -114,7 +114,7 @@ func TestReservedRoundTrip(t *testing.T) {
  if func_ToJson(&v, js) != int64(len(js)) { t.Fatal("ToJson") }
  var flat bytes.Buffer
  if err := json.Compact(&flat, js); err != nil { t.Fatalf("JSON %s: %v", js, err) }
- for _, key := range []string{"\"select\":-7", "\"var\":\"fallthrough\"", "\"kind\":\"chan\"", "\"defer\":", "\"import\":{\"range\":11}", "\"byte\":", "\"goto\":[4,5]", "\"true\":true", "\"caps\":[\"go\",\"select\"]", "\"shape\":{\"range\":9}"} {
+ for _, key := range []string{"\"select\":-7", "\"iota\":\"fallthrough\"", "\"kind\":\"chan\"", "\"defer\":", "\"recover\":{\"range\":11}", "\"rune\":", "\"uintptr\":[4,5]", "\"fallthrough\":true", "\"caps\":[\"go\",\"select\"]", "\"shape\":{\"range\":9}"} {
   if !bytes.Contains(flat.Bytes(), []byte(key)) { t.Fatalf("JSON %s lacks %s", js, key) }
  }
  if bytes.Contains(js, []byte("func_")) || bytes.Contains(js, []byte("Select")) { t.Fatalf("JSON carries a Go spelling: %s", js) }
@@ -141,7 +141,7 @@ union Arm {
 }
 table func {
  x int32
- when timestamp
+ stamp timestamp
  need int32 | required
  scores map[int32]int32 | was = "old_scores"
  next *func

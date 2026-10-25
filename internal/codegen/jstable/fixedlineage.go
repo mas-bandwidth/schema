@@ -104,11 +104,7 @@ func fixedLayoutBase64(b []byte) string {
 // rule that EVERY declared `fixed table` is a root with its own layout, its own
 // hash and its own lineage, held to this backend's own refusal filter.
 func jsFixedUnitRoots(u *ir.Unit) []*ir.Struct {
-	var out []*ir.Struct
-	for _, f := range u.Files {
-		out = append(out, fixedRoots(u, f.Tables)...)
-	}
-	return out
+	return ir.TableFixedJSUnitRoots(u)
 }
 
 // ---------------------------------------------------------------------------

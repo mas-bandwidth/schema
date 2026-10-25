@@ -1,20 +1,9 @@
 package gotable
 
 import (
-	"fmt"
-	"maps"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"regexp"
-	"strconv"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // A blob named by two slots (docs/SPEC-TABLES.md §2.5, §16.7): written
@@ -50,19 +39,15 @@ table Root {
 
 const blobNamedTwiceSeed24Wire = "01010101021103030820dad064041e05060401000080070246080f091101030a0c0d020b06c100ff2e7d080b02d11d00382842b5078b9808512d42b5078e98089e2b42b5078d9808042f42b5078f98088be145c2cb04da4f1d3442b5079298086a3242b507919808404667b5077ac408c9e19b56195cf677ffffffffffffffffe44f1c4f47c02e2f0b00000000000000"
 
-const blobNamedTwiceBenchHead = `package probe
+// blobNamedTwiceProbeHead is the probes' head: the seed-24 wires, a
+// cache-line-aligned caller region, and the blob_shared check.
+const blobNamedTwiceProbeHead = `package probe
 import("bytes";"encoding/base64";"encoding/hex";"errors";"runtime";"testing";"unsafe")
 var _ = bytes.Equal; var _ = base64.StdEncoding; var _ = hex.DecodeString; var _ = runtime.GC; var _ = unsafe.Pointer(nil)
 const seed24 = "` + blobNamedTwiceSeed24Wire + `"
 func wires(t testing.TB)([]byte,[]byte){d,err:=hex.DecodeString(seed24);if err!=nil{t.Fatal(err)};c:=append([]byte(nil),d...);c[6]^=0x01;return d,c}
 func region(size int64)[]byte{raw:=make([]byte,size+64);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;return raw[off:off+uintptr(size)]}
 var _ = errors.Is
-`
-
-// blobNamedTwiceProbeHead is the tests' probe head: the benchmark's, plus the
-// blob_shared check (the benchmark's head names nothing the ruling adds, so
-// the same benchmark runs at BASE).
-const blobNamedTwiceProbeHead = blobNamedTwiceBenchHead + `
 func shared(t *testing.T,what string,err error){t.Helper();if !errors.Is(err,TableRefuseBlobShared)||err.Error()!="blob_shared"{t.Fatalf("%s: %v, want blob_shared",what,err)}}
 `
 
@@ -165,72 +150,6 @@ func TestAmplification(t *testing.T){
 	if testing.Verbose() {
 		t.Logf("%s", out)
 	}
-}
-
-// BenchmarkBlobNamedTwiceLoad is Load of the seed-24 CLEAN wire into a
-// caller region: the cost the ruling's read check adds to every pointer slot
-// (docs/SPEC-TABLES.md §2.5). It compiles the probe and runs its benchmark
-// once per outer iteration, reporting the probe's own ns/op, B/op and
-// allocs/op in place of the outer loop's. It gates nothing. (The shared
-// runGenerated helpers take a *testing.T, so the generation is spelled here.)
-func BenchmarkBlobNamedTwiceLoad(b *testing.B) {
-	if !slowtest.Enabled() {
-		b.Skip("SCHEMA_SLOW: this benchmark shells out to the Go toolchain; set SCHEMA_SLOW=1")
-	}
-	unit := blobNamedTwiceUnit(b)
-	files, err := golang.Generate(unit)
-	if err != nil {
-		b.Fatal(err)
-	}
-	tables, err := Generate(unit)
-	if err != nil {
-		b.Fatal(err)
-	}
-	maps.Copy(files, tables)
-	runtime := slowtest.SerializeGo(b, "../../../")
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
-	files["values_test.go"] = []byte(blobNamedTwiceBenchHead + `
-func BenchmarkLoad(b *testing.B){_,clean:=wires(b);size:=RootLoadMeasure(clean);reg:=region(size);var report TableReport;if RootLoad(reg,clean,&report)==nil||report.Err()!=nil{b.Fatal("clean load")};b.ReportAllocs();b.ResetTimer();for i:=0;i<b.N;i++{report=TableReport{};if RootLoad(reg,clean,&report)==nil{b.Fatal("load")}}}
-`)
-	dir := b.TempDir()
-	for name, data := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
-			b.Fatal(err)
-		}
-	}
-	line := regexp.MustCompile(`BenchmarkLoad\S*\s+\d+\s+([0-9.]+) ns/op\s+([0-9.]+) B/op\s+([0-9.]+) allocs/op`)
-	var ns, bytesOp, allocs float64
-	for i := 0; i < b.N; i++ {
-		cmd := exec.Command("go", "test", "-count=1", "-run=^$", "-bench=^BenchmarkLoad$", "-benchmem", ".")
-		cmd.Dir = dir
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			b.Fatalf("probe benchmark: %v\n%s", err, out)
-		}
-		m := line.FindSubmatch(out)
-		if m == nil {
-			b.Fatalf("no benchmark line in:\n%s", out)
-		}
-		ns, _ = strconv.ParseFloat(string(m[1]), 64)
-		bytesOp, _ = strconv.ParseFloat(string(m[2]), 64)
-		allocs, _ = strconv.ParseFloat(string(m[3]), 64)
-	}
-	b.ReportMetric(ns, "ns/op")
-	b.ReportMetric(bytesOp, "B/op")
-	b.ReportMetric(allocs, "allocs/op")
-}
-
-// blobNamedTwiceUnit is unitFrom's parse and check for a benchmark.
-func blobNamedTwiceUnit(b *testing.B) *ir.Unit {
-	f, perrs := parser.Parse("Probe.schema", []byte(blobNamedTwiceSeed24Unit))
-	if len(perrs) > 0 {
-		b.Fatalf("parse: %v", perrs[0])
-	}
-	u, cerrs := check.Unit([]check.SourceFile{{Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(blobNamedTwiceSeed24Unit), AST: f}})
-	if len(cerrs) > 0 {
-		b.Fatalf("check: %v", cerrs[0])
-	}
-	return u
 }
 
 // blobNamedTwiceMessageHead is the message-form probes' head: a body written

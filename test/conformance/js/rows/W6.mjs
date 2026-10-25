@@ -78,10 +78,10 @@ function testEmptyLayoutSplit() {
 // The law: a layout with ONLY unguarded entries has split at the END (split === count)
 function testUnguardedOnlyLayout() {
   const theirs = new v1Table.TableFixedLayoutView();
-  v1Table.TableFixedParseLayout(v1.CellFixedLayout, 0, v1.CellFixedLayout.length, theirs);
+  v1Table.TableFixedParseLayout(v1.CellFixedLayoutCopy(), 0, v1.CellFixedLayoutCopy().length, theirs);
   const plan = new v1Table.TableFixedPlan(1024, v1.CellFixedBodyBytes, 1024);
   const report = new v1Table.TableFixedReport();
-  const count = v1Table.TableFixedCompile(theirs, v1.CellFixedLayout, v1CellDst, plan, report);
+  const count = v1Table.TableFixedCompile(theirs, v1.CellFixedLayoutCopy(), v1CellDst, plan, report);
 
   if (count <= 0 || plan.count !== count) {
     console.log(`FAIL: CellFixedLayout failed to compile, count=${count}`);
@@ -132,10 +132,10 @@ function validatePlanPartition(plan) {
 function testPartitionWithGuardedAndUnguarded() {
   // 1. Forward direction: V1 wire compiled against V2 reader
   const theirsV1 = new v1Table.TableFixedLayoutView();
-  v1Table.TableFixedParseLayout(v1.CfgFixedLayout, 0, v1.CfgFixedLayout.length, theirsV1);
+  v1Table.TableFixedParseLayout(v1.CfgFixedLayoutCopy(), 0, v1.CfgFixedLayoutCopy().length, theirsV1);
   const planFwd = new v1Table.TableFixedPlan(1024, v2.CfgFixedBodyBytes, 1024);
   const reportFwd = new v1Table.TableFixedReport();
-  const countFwd = v1Table.TableFixedCompile(theirsV1, v2.CfgFixedLayout, v2CfgDst, planFwd, reportFwd);
+  const countFwd = v1Table.TableFixedCompile(theirsV1, v2.CfgFixedLayoutCopy(), v2CfgDst, planFwd, reportFwd);
 
   if (countFwd !== planFwd.count || countFwd <= 0) {
     console.log(`FAIL: V1->V2 compile failed (count=${countFwd})`);
@@ -178,10 +178,10 @@ function testPartitionWithGuardedAndUnguarded() {
 
   // 2. Reverse direction: V2 wire compiled against V1 reader
   const theirsV2 = new v1Table.TableFixedLayoutView();
-  v1Table.TableFixedParseLayout(v2.CfgFixedLayout, 0, v2.CfgFixedLayout.length, theirsV2);
+  v1Table.TableFixedParseLayout(v2.CfgFixedLayoutCopy(), 0, v2.CfgFixedLayoutCopy().length, theirsV2);
   const planRev = new v1Table.TableFixedPlan(1024, v1.CfgFixedBodyBytes, 1024);
   const reportRev = new v1Table.TableFixedReport();
-  const countRev = v1Table.TableFixedCompile(theirsV2, v1.CfgFixedLayout, v1CfgDst, planRev, reportRev);
+  const countRev = v1Table.TableFixedCompile(theirsV2, v1.CfgFixedLayoutCopy(), v1CfgDst, planRev, reportRev);
 
   if (countRev !== planRev.count || countRev <= 0) {
     console.log(`FAIL: V2->V1 compile failed (count=${countRev})`);
@@ -288,10 +288,10 @@ function testCoalescingWithinPartitionsAndNotAcrossSplit() {
 // Negative controls: corrupted plan partitions MUST fail validation
 function testNegativeControls() {
   const theirs = new v1Table.TableFixedLayoutView();
-  v1Table.TableFixedParseLayout(v1.CfgFixedLayout, 0, v1.CfgFixedLayout.length, theirs);
+  v1Table.TableFixedParseLayout(v1.CfgFixedLayoutCopy(), 0, v1.CfgFixedLayoutCopy().length, theirs);
   const lawfulPlan = new v1Table.TableFixedPlan(1024, v2.CfgFixedBodyBytes, 1024);
   const report = new v1Table.TableFixedReport();
-  v1Table.TableFixedCompile(theirs, v2.CfgFixedLayout, v2CfgDst, lawfulPlan, report);
+  v1Table.TableFixedCompile(theirs, v2.CfgFixedLayoutCopy(), v2CfgDst, lawfulPlan, report);
 
   if (!validatePlanPartition(lawfulPlan)) {
     console.log("FAIL: lawful plan failed partition validation");

@@ -41,6 +41,7 @@ import (
 	"strconv"
 	"strings"
 
+	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -570,12 +571,9 @@ func ByteString(b []byte) string {
 	return s.String()
 }
 
-var luaKeywords = map[string]bool{
-	"and": true, "break": true, "do": true, "else": true, "elseif": true, "end": true,
-	"false": true, "for": true, "function": true, "goto": true, "if": true, "in": true,
-	"local": true, "nil": true, "not": true, "or": true, "repeat": true, "return": true,
-	"then": true, "true": true, "until": true, "while": true,
-}
+// luaKeywords is Lua's reserved words, read from the one table (check.ReservedIn,
+// SPEC §4.6) and never copied here.
+var luaKeywords = schemacheck.ReservedIn("Lua")
 
 // IsName reports a Lua name usable after a dot: an identifier that is not a
 // reserved word.

@@ -42,7 +42,7 @@ inline void build_golden_floats_nan( tblf1::Floats & f )
     f.samples[0] = float_from_bits( kFloatSample0 );
     f.samples[1] = 1.5f; // an ordinary element beside them: nothing here is special-cased
     f.samples[2] = float_from_bits( kFloatSample2 );
-    f.after = 7; // a field AFTER the floats, so the parent can be seen to read on
+    f.past = 7; // a field AFTER the floats, so the parent can be seen to read on
 }
 
 #endif

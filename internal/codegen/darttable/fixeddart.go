@@ -140,9 +140,10 @@ func fixedIsByteList(t ir.FieldType) bool {
 // ---------------------------------------------------------------------------
 
 type fixedGen struct {
-	unit *ir.Unit
-	body strings.Builder
-	need func(cls string, extra ...string) // an import for another emitter's class
+	unit              *ir.Unit
+	body              strings.Builder
+	need              func(cls string, extra ...string) // an import for another emitter's class
+	float32WordsCache bool
 }
 
 func (g *fixedGen) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, args...) }
@@ -226,6 +227,47 @@ func fixedGetter(t ir.FieldType) (string, bool) {
 	return "g" + strings.TrimPrefix(call, "s"), endian
 }
 
+// fixedFloat32Bits and fixedFloat32Value are the runtime's two float32
+// conversions (fixedruntime.go, TableFixedLayout): every float32 cell a
+// generated store or load touches goes through them, bit-exact, NaN payloads
+// and the signalling bit included.
+const (
+	fixedFloat32Bits  = "TableFixedLayout.float32Bits"
+	fixedFloat32Value = "TableFixedLayout.float32Value"
+)
+
+// fixedIsFloat32List reports a scalar float32 element run: a Float32List,
+// whose element assignment would convert through the hardware and quiet a
+// signalling NaN, so a loop over it moves the elements' BITS through a
+// Uint32List view of the same storage instead.
+func fixedIsFloat32List(f *ir.Field) bool {
+	return f.Type.Kind == ir.TFloat32 && fixedElementClass(f.Type) == ""
+}
+
+// emitFloat32WordsCache installs one weak, identity-keyed raw-word view cache
+// in the runtime home. A view made on every fixed load/save allocates even
+// though the caller owns and reuses the Float32List. The cache keeps the view
+// with that list for its lifetime, including lists owned by packet type
+// classes whose storage is emitted by the separate Dart generator.
+func (g *fixedGen) emitFloat32WordsCache() {
+	if g.float32WordsCache {
+		return
+	}
+	g.float32WordsCache = true
+	// A float32 array may first appear while a function is being emitted.
+	// Place the helper at library scope before the already-written declarations.
+	prior := g.body.String()
+	g.body.Reset()
+	g.pf("final Expando<Uint32List> _fixedFloat32WordViews = Expando<Uint32List>();\n\n")
+	g.pf("Uint32List _fixedFloat32Words(Float32List values) {\n")
+	g.pf("  final cached = _fixedFloat32WordViews[values];\n")
+	g.pf("  if (cached != null) return cached;\n")
+	g.pf("  final words = Uint32List.sublistView(values);\n")
+	g.pf("  _fixedFloat32WordViews[values] = words;\n")
+	g.pf("  return words;\n}\n\n")
+	g.pf("%s", prior)
+}
+
 // store emits one ByteData call at a constant offset.
 func (g *fixedGen) store(ind, at string, t ir.FieldType, expr string) {
 	if fixedIs128(t) {
@@ -234,6 +276,14 @@ func (g *fixedGen) store(ind, at string, t ir.FieldType, expr string) {
 		// halves are stored as they are held.
 		g.call(ind, "", "view.setUint64", []string{at, expr + ".lo", "Endian.little"}, ";")
 		g.call(ind, "", "view.setUint64", []string{fixedOff(at, 8), expr + ".hi", "Endian.little"}, ";")
+		return
+	}
+	if t.Kind == ir.TFloat32 {
+		// A FLOAT32 CELL STORES ITS BITS, never a double through setFloat32:
+		// the hardware conversion quiets a signalling NaN, and the cell stores
+		// what the record held (docs/FIXED-FORM-ALGORITHM.md §3.1).
+		g.call(ind, "", "view.setUint32",
+			[]string{at, fixedFloat32Bits + "(" + expr + ")", "Endian.little"}, ";")
 		return
 	}
 	name, endian := fixedSetter(t)
@@ -259,6 +309,12 @@ func (g *fixedGen) load(ind, lhs, at string, t ir.FieldType) {
 		g.pf("%s  view.getUint64(%s, Endian.little),\n", ind, fixedOff(at, 8))
 		g.pf("%s  view.getUint64(%s, Endian.little),\n", ind, at)
 		g.pf("%s);\n", ind)
+		return
+	}
+	if t.Kind == ir.TFloat32 {
+		// the bits, widened by hand where the hardware would quiet a NaN
+		g.call(ind, lhs+" = ", fixedFloat32Value,
+			[]string{"view.getUint32(" + at + ", Endian.little)"}, ";")
 		return
 	}
 	name, endian := fixedGetter(t)
@@ -690,6 +746,20 @@ func (g *fixedGen) emitWriteLoop(f *ir.Field, base string, at int64, count, expr
 			[]string{fixedOff(base, at), fixedOff(base, at) + " + " + count, expr}, ";")
 		return
 	}
+	if fixedIsFloat32List(f) {
+		// THE ELEMENTS' BITS, read through a view of the Float32List's own
+		// storage: reading an element as a double would quiet a NaN. Reuse
+		// the caller-owned list's view so each write remains allocation-free.
+		g.emitFloat32WordsCache()
+		g.pf("%s{\n", ind)
+		g.call(ind+"  ", "final words = ", "_fixedFloat32Words", []string{expr}, ";")
+		g.pf("%s  for (var i = 0; i < %s; i++) {\n", ind, count)
+		g.call(ind+"    ", "", "view.setUint32",
+			[]string{fmt.Sprintf("%s + i * %d", fixedOff(base, at), elem), "words[i]", "Endian.little"}, ";")
+		g.pf("%s  }\n", ind)
+		g.pf("%s}\n", ind)
+		return
+	}
 	g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
 	g.emitWriteElement(f, fmt.Sprintf("%s + i * %d", fixedOff(base, at), elem), 0, expr+"[i]", ind+"  ")
 	g.pf("%s}\n", ind)
@@ -823,6 +893,24 @@ func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at int64, count, exp
 	if fixedElementClass(f.Type) == "" && fixedIsByteList(f.Type) && !fixedHasClamp(f) {
 		g.call(ind, "", expr+".setRange",
 			[]string{"0", count, "image", fixedOff(base, at)}, ";")
+		return
+	}
+	if fixedIsFloat32List(f) {
+		// THE ELEMENTS' BITS, written through a view of the Float32List's own
+		// storage: assigning a double element would quiet a NaN. A declared
+		// range then clamps the element as a double, which an IEEE comparison
+		// does without touching a NaN (emitClamp). Reuse the caller-owned view.
+		g.emitFloat32WordsCache()
+		g.pf("%s{\n", ind)
+		g.call(ind+"  ", "final words = ", "_fixedFloat32Words", []string{expr}, ";")
+		g.pf("%s  for (var i = 0; i < %s; i++) {\n", ind, count)
+		g.call(ind+"    ", "words[i] = ", "view.getUint32",
+			[]string{fmt.Sprintf("%s + i * %d", fixedOff(base, at), elem), "Endian.little"}, ";")
+		if fixedHasClamp(f) {
+			g.emitClamp(f, expr+"[i]", ind+"    ")
+		}
+		g.pf("%s  }\n", ind)
+		g.pf("%s}\n", ind)
 		return
 	}
 	g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
