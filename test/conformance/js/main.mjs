@@ -634,12 +634,13 @@ async function surfaceMessage(lines, outDir) {
 // corpus's SimState (scalars, tblscalars2: fixed/ufixed and 128-bit kinds),
 // the wide-text corpus's Caption and Stamp (widedemo) and the message corpus's
 // ToolMessage (messagedemo), each through its unit's
-// <Package>Variable.js. Every other
-// case is answered `<case>.absent` beside where the answer would go — a root
-// whose unit this leg does not generate (tables/lists, which the compiler
-// refuses for js whole because of its array of unions), or one its variable
-// wire does not carry (a union, a map, an optional, an enum-keyed array) —
-// which the matrix counts as the row of work that is left, never as a pass.
+// <Package>Variable.js, and the stream, list, backend, vocabulary and
+// evolution-pair units below. Every other case is answered `<case>.absent`
+// beside where the answer would go — a root whose unit this leg does not
+// generate (tblg1, an optional over a variable closure, §2.3) — which the
+// matrix counts as the row of work that is left, never as a pass. The table is
+// the manifest's instance and report pairs less that named set, and
+// TestWireRowsConformanceJavaScript (internal/codegen/jstable) holds it there.
 const wireRows = [
   ["tabledemo", "RootConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "ProfileConfig", "examples/TabledemoVariable.js"],
@@ -684,6 +685,35 @@ const wireRows = [
   // the message corpus's root on the variable wire: union arms of every
   // carried field type, wide text among them (§2.6, §3)
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
+  // the stream corpus (§2.6, §3): a union arm that is a table, the parts
+  // array and the chain, and the report rows its forged counts owe
+  ["streamdemo", "Feed", "stream/StreamdemoVariable.js"],
+  // the list corpus (§2.3, §3): arrays of tables, of unions, of maps and of
+  // scalars, nested and shared, and the evolved Save reading a widened list
+  ["listdemo", "Album", "lists/ListdemoVariable.js"],
+  ["listdemo", "Army", "lists/ListdemoVariable.js"],
+  ["listdemo", "Mixed", "lists/ListdemoVariable.js"],
+  ["listdemo", "Save", "lists/ListdemoVariable.js"],
+  ["listdemo", "Sheet", "lists/ListdemoVariable.js"],
+  ["listdemo", "Unbounded", "lists/ListdemoVariable.js"],
+  // the message roots on the file form (§3.3): the backend unit's three and
+  // the wide-vocabulary units' roots on both sides of the one-byte boundary
+  ["backenddemo", "LoginRequest", "backend/BackenddemoVariable.js"],
+  ["backenddemo", "MatchResult", "backend/BackenddemoVariable.js"],
+  ["backenddemo", "StorePurchase", "backend/BackenddemoVariable.js"],
+  ["vocabdemo", "Wide00", "vocab/VocabdemoVariable.js"],
+  ["vocabdemo", "Wide09", "vocab/VocabdemoVariable.js"],
+  ["vocab9demo", "Wide00", "vocab9/Vocab9demoVariable.js"],
+  ["vocab9demo", "Wide19", "vocab9/Vocab9demoVariable.js"],
+  // the evolution pairs (§4): a union arm moved and reshaped (A1 read as A2),
+  // a key's kind changed both ways (K1/K2), a member list grown and shrunk
+  // (M1/M2), and a chain read by a type that did not write it (P1/P3 as P2)
+  ["tblm1", "Msg", "m1/Tblm1Variable.js"],
+  ["tblm2", "Msg", "m2/Tblm2Variable.js"],
+  ["tbla2", "Root", "a2/Tbla2Variable.js"],
+  ["tblk1", "Root", "k1/Tblk1Variable.js"],
+  ["tblk2", "Root", "k2/Tblk2Variable.js"],
+  ["tblp2", "Chain", "p2/Tblp2Variable.js"],
 ];
 
 // fuzzUnits binds the roster units no wire row or text surface names
