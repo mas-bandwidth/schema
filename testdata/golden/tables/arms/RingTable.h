@@ -7718,11 +7718,13 @@ inline void RackReset( Rack & value )
 
 inline void TrayReset( Tray & value )
 {
-    for ( int32_t i = 0; i < 2; i++ ) { value.entries[0].many.value[i].value = 0; } // [..2]*Node — every slot null
-    value.entries[0].many.value_count = 0;
-    value.entries[0].plain = 0;
-    value.entries[0].type = SlotsType::None;
-    for ( int32_t i = 1; i < 2; i++ ) { value.entries[i] = value.entries[0]; }
+    for ( int32_t i = 0; i < 2; i++ )
+    {
+        for ( int32_t j = 0; j < 2; j++ ) { value.entries[i].many.value[j].value = 0; } // [..2]*Node — every slot null
+        value.entries[i].many.value_count = 0;
+        value.entries[i].plain = 0;
+        value.entries[i].type = SlotsType::None;
+    }
     value.entries_count = 0;
     value.past = 0;
 }

@@ -8656,11 +8656,15 @@ inline void SquadReset( Squad & value )
 inline void DepthReset( Depth & value )
 {
     SquadReset( value.one );
-    SquadReset( value.many[0] );
-    for ( int32_t i = 1; i < 3; i++ ) { value.many[i] = value.many[0]; }
+    for ( int32_t i = 0; i < 3; i++ )
+    {
+        SquadReset( value.many[i] );
+    }
     value.many_count = 0;
-    SquadReset( value.keyed.slots[0] );
-    for ( int32_t i = 1; i < 2; i++ ) { value.keyed.slots[i] = value.keyed.slots[0]; }
+    for ( int32_t i = 0; i < 2; i++ )
+    {
+        SquadReset( value.keyed.slots[i] );
+    }
     SquadReset( value.arm.squad );
     value.arm.plain = 0;
     value.arm.type = ForceType::None;

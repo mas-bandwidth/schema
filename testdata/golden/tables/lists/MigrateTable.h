@@ -8320,8 +8320,10 @@ inline void UnitReset( Unit & value )
 
 inline void BoundedReset( Bounded & value )
 {
-    UnitReset( value.items[0] );
-    for ( int32_t i = 1; i < 8; i++ ) { value.items[i] = value.items[0]; }
+    for ( int32_t i = 0; i < 8; i++ )
+    {
+        UnitReset( value.items[i] );
+    }
     value.items_count = 0;
     value.tag = 0;
 }

@@ -4205,8 +4205,10 @@ inline void CaptionReset( Caption & value )
     memset( value.title, 0, sizeof( value.title ) );
     value.title_length = 0;
     LineReset( value.line );
-    LineReset( value.lines[0] );
-    for ( int32_t i = 1; i < 3; i++ ) { value.lines[i] = value.lines[0]; }
+    for ( int32_t i = 0; i < 3; i++ )
+    {
+        LineReset( value.lines[i] );
+    }
     value.lines_count = 0;
     memset( value.body.wide.value, 0, sizeof( value.body.wide.value ) );
     value.body.wide.value_length = 0;

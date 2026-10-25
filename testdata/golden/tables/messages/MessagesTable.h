@@ -4473,13 +4473,15 @@ inline void InsertTextReset( InsertText & value )
     memset( value.origin.note.value, 0, sizeof( value.origin.note.value ) );
     value.origin.note.value_length = 0;
     value.origin.type = OriginType::None;
-    UserReset( value.origins[0].user );
-    ScriptReset( value.origins[0].script );
-    value.origins[0].pid = 0;
-    memset( value.origins[0].note.value, 0, sizeof( value.origins[0].note.value ) );
-    value.origins[0].note.value_length = 0;
-    value.origins[0].type = OriginType::None;
-    for ( int32_t i = 1; i < 2; i++ ) { value.origins[i] = value.origins[0]; }
+    for ( int32_t i = 0; i < 2; i++ )
+    {
+        UserReset( value.origins[i].user );
+        ScriptReset( value.origins[i].script );
+        value.origins[i].pid = 0;
+        memset( value.origins[i].note.value, 0, sizeof( value.origins[i].note.value ) );
+        value.origins[i].note.value_length = 0;
+        value.origins[i].type = OriginType::None;
+    }
     value.origins_count = 0;
     memset( value.modes, 0, sizeof( value.modes ) );
     value.modes_count = 0;
@@ -4524,23 +4526,29 @@ inline void TransactionReset( Transaction & value )
 {
     memset( value.reason, 0, sizeof( value.reason ) );
     value.reason_length = 0;
-    EditReset( value.edits[0] );
-    for ( int32_t i = 1; i < 3; i++ ) { value.edits[i] = value.edits[0]; }
+    for ( int32_t i = 0; i < 3; i++ )
+    {
+        EditReset( value.edits[i] );
+    }
     value.edits_count = 0;
-    InsertTextReset( value.pending[0].insert );
-    RemoveTextReset( value.pending[0].remove );
-    value.pending[0].tally = 0;
-    memset( value.pending[0].marks.value, 0, sizeof( value.pending[0].marks.value ) );
-    value.pending[0].marks.value_count = 0;
-    memset( value.pending[0].blob.value, 0, sizeof( value.pending[0].blob.value ) );
-    value.pending[0].blob.value_length = 0;
-    value.pending[0].mode = Mode::None;
-    value.pending[0].type = EditBodyType::None;
-    for ( int32_t i = 1; i < 2; i++ ) { value.pending[i] = value.pending[0]; }
+    for ( int32_t i = 0; i < 2; i++ )
+    {
+        InsertTextReset( value.pending[i].insert );
+        RemoveTextReset( value.pending[i].remove );
+        value.pending[i].tally = 0;
+        memset( value.pending[i].marks.value, 0, sizeof( value.pending[i].marks.value ) );
+        value.pending[i].marks.value_count = 0;
+        memset( value.pending[i].blob.value, 0, sizeof( value.pending[i].blob.value ) );
+        value.pending[i].blob.value_length = 0;
+        value.pending[i].mode = Mode::None;
+        value.pending[i].type = EditBodyType::None;
+    }
     memset( value.checkpoints, 0, sizeof( value.checkpoints ) );
     value.checkpoints_present = false;
-    SelectionReset( value.snapshots[0] );
-    for ( int32_t i = 1; i < 2; i++ ) { value.snapshots[i] = value.snapshots[0]; }
+    for ( int32_t i = 0; i < 2; i++ )
+    {
+        SelectionReset( value.snapshots[i] );
+    }
     value.snapshots_present = false;
 }
 
@@ -4560,23 +4568,27 @@ inline void ToolMessageReset( ToolMessage & value )
     value.body.origin.note.value_length = 0;
     value.body.origin.type = OriginType::None;
     value.body.type = ToolBodyType::None;
-    OpenDocumentReset( value.history[0].open );
-    SaveDocumentReset( value.history[0].save );
-    TransactionReset( value.history[0].transact );
-    PingReset( value.history[0].ping );
-    value.history[0].caps = 0;
-    memset( value.history[0].spans, 0, sizeof( value.history[0].spans ) );
-    UserReset( value.history[0].origin.user );
-    ScriptReset( value.history[0].origin.script );
-    value.history[0].origin.pid = 0;
-    memset( value.history[0].origin.note.value, 0, sizeof( value.history[0].origin.note.value ) );
-    value.history[0].origin.note.value_length = 0;
-    value.history[0].origin.type = OriginType::None;
-    value.history[0].type = ToolBodyType::None;
-    for ( int32_t i = 1; i < 2; i++ ) { value.history[i] = value.history[0]; }
+    for ( int32_t i = 0; i < 2; i++ )
+    {
+        OpenDocumentReset( value.history[i].open );
+        SaveDocumentReset( value.history[i].save );
+        TransactionReset( value.history[i].transact );
+        PingReset( value.history[i].ping );
+        value.history[i].caps = 0;
+        memset( value.history[i].spans, 0, sizeof( value.history[i].spans ) );
+        UserReset( value.history[i].origin.user );
+        ScriptReset( value.history[i].origin.script );
+        value.history[i].origin.pid = 0;
+        memset( value.history[i].origin.note.value, 0, sizeof( value.history[i].origin.note.value ) );
+        value.history[i].origin.note.value_length = 0;
+        value.history[i].origin.type = OriginType::None;
+        value.history[i].type = ToolBodyType::None;
+    }
     value.history_count = 0;
-    ScriptReset( value.trace[0] );
-    for ( int32_t i = 1; i < 3; i++ ) { value.trace[i] = value.trace[0]; }
+    for ( int32_t i = 0; i < 3; i++ )
+    {
+        ScriptReset( value.trace[i] );
+    }
     value.trace_count = 0;
     value.trace_present = false;
     memset( value.marks, 0, sizeof( value.marks ) );

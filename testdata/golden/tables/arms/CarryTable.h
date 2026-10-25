@@ -7671,10 +7671,12 @@ inline void HolderReset( Holder & value )
 
 inline void HandReset( Hand & value )
 {
-    LeafReset( value.entries[0].leaf );
-    value.entries[0].plain = 0;
-    value.entries[0].type = CarryType::None;
-    for ( int32_t i = 1; i < 2; i++ ) { value.entries[i] = value.entries[0]; }
+    for ( int32_t i = 0; i < 2; i++ )
+    {
+        LeafReset( value.entries[i].leaf );
+        value.entries[i].plain = 0;
+        value.entries[i].type = CarryType::None;
+    }
     value.entries_count = 0;
     value.past = 0;
 }

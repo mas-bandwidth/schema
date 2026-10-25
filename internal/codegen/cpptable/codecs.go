@@ -299,7 +299,7 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		// defaults, so it gets none — the same rule the fixed and counted
 		// arrays follow, and the half of #320 that keeps cl off O(bytes) in its
 		// front end. A scalar element has no initializer of its own, so the
-		// member states the zero; `<Name>Reset` fills either from one element
+		// member states the zero; `<Name>Reset` fills either with one loop
 		// (docs/SPEC-TABLES.md §8.1).
 		g.noteRef(f.KeyEnum)
 		g.pf("    TableKeyed<%s, %s> %s%s; // [%s]: one slot per named variant, keyed by the value\n",
@@ -350,9 +350,8 @@ func tableArrayInit(selfInit bool) string {
 // — 7,879,320 bytes over ~105,000 rows — each `T{}` cost ~6 s and ` = {}` on
 // the array members another ~5 s, so a translation unit with that table in
 // scope cost cl ~20 s against clang's 0.15 s, all of it in the front end
-// (c1xx 19.85 s, c2 0.03 s, zero functions generated). Giving one element the
-// defaults and copying it across the array is the same work at run time and
-// the cost of a single element at compile time.
+// (c1xx 19.85 s, c2 0.03 s, zero functions generated). Resetting each element in place in one loop is
+// the same work at run time and the cost of a single element at compile time.
 func (g *tableGen) emitTableResetDeclarations(members []*ir.Struct) {
 	g.pf("// ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----\n\n")
 	for _, st := range members {
@@ -413,7 +412,8 @@ func (g *tableGen) emitTableResetAt(expr string, f *ir.Field) {
 		case ir.ArrayNone:
 			g.pf("    %s.value = 0; // *%s — null\n", expr, pointeeName(f))
 		default:
-			g.pf("    for ( int32_t i = 0; i < %d; i++ ) { %s[i].value = 0; } // [%d]*%s — every slot null\n", f.ArrayBound, expr, f.ArrayBound, f.Type.Name)
+			index := resetIndex(expr)
+			g.pf("    for ( int32_t %s = 0; %s < %d; %s++ ) { %s[%s].value = 0; } // [%d]*%s — every slot null\n", index, index, f.ArrayBound, index, expr, index, f.ArrayBound, f.Type.Name)
 			if f.Array == ir.ArrayCounted {
 				g.pf("    %s_count = 0;\n", expr)
 			}
@@ -455,8 +455,20 @@ func (g *tableGen) emitTableResetAt(expr string, f *ir.Field) {
 	}
 }
 
-// emitTableResetArray gives ONE element the declared defaults and copies it
-// across the rest. Compiling this costs one element whatever the bound is.
+// emitTableResetArray gives every element the declared defaults in place, in
+// one loop whose body is one element's reset. Compiling this costs one element
+// whatever the bound is.
+//
+// Each element is reset in place rather than copied from element 0: the copy
+// form (`x[i] = x[0]`), once inlined into an enclosing Reset of a keyed or
+// array slot, made gcc's -Wstringop-overflow misread the copy's destination
+// and report a write past the end of the struct's first member, in every
+// translation unit that includes the header. Resetting in place writes the
+// same defaults and needs no aliasing proof.
+//
+// The loop's index is named by [resetIndex] from the element expression, so a
+// loop emitted inside another (an array of unions whose arm is itself an
+// array) never shadows the enclosing index.
 func (g *tableGen) emitTableResetArray(expr string, bound int64, typ string, selfInit bool, f *ir.Field) {
 	if bound <= 0 {
 		return
@@ -468,9 +480,33 @@ func (g *tableGen) emitTableResetArray(expr string, bound int64, typ string, sel
 		g.pf("    memset( %s, 0, sizeof( %s ) );\n", expr, expr)
 		return
 	}
-	g.emitTableResetOne(expr+"[0]", typ, f)
-	if bound > 1 {
-		g.pf("    for ( int32_t i = 1; i < %d; i++ ) { %s[i] = %s[0]; }\n", bound, expr, expr)
+	if bound == 1 {
+		g.emitTableResetOne(expr+"[0]", typ, f)
+		return
+	}
+	index := resetIndex(expr)
+	g.pf("    for ( int32_t %s = 0; %s < %d; %s++ )\n", index, index, bound, index)
+	g.pf("    {\n")
+	saved := g.indent
+	g.indent = saved + "    "
+	g.emitTableResetOne(expr+"["+index+"]", typ, f)
+	g.indent = saved
+	g.pf("    }\n")
+}
+
+// resetIndex names the index of a reset loop over expr: the first of i, j, k,
+// then i3, i4 and on, that expr does not already subscript with. A loop emitted
+// inside another loop's body indexes an expression that carries every
+// enclosing index, so the name it picks is one no enclosing loop declares.
+func resetIndex(expr string) string {
+	for depth := 0; ; depth++ {
+		name := fmt.Sprintf("i%d", depth)
+		if depth < 3 {
+			name = string(rune('i' + depth))
+		}
+		if !strings.Contains(expr, "["+name+"]") {
+			return name
+		}
 	}
 }
 
@@ -514,7 +550,8 @@ func (g *tableGen) emitTableResetArm(base string, v ir.UnionVariant) {
 		if f.Array == ir.ArrayCounted {
 			typ, selfInit := g.cppFieldType(f.Type)
 			if f.Type.Pointer {
-				g.pf("    for ( int32_t i = 0; i < %d; i++ ) { %s[i].value = 0; } // [..%d]*%s — every slot null\n", f.ArrayBound, expr, f.ArrayBound, f.Type.Name)
+				index := resetIndex(expr)
+				g.pf("    for ( int32_t %s = 0; %s < %d; %s++ ) { %s[%s].value = 0; } // [..%d]*%s — every slot null\n", index, index, f.ArrayBound, index, expr, index, f.ArrayBound, f.Type.Name)
 			} else {
 				g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
 			}
@@ -528,7 +565,8 @@ func (g *tableGen) emitTableResetArm(base string, v ir.UnionVariant) {
 	if f.Array == ir.ArrayFixed {
 		typ, selfInit := g.cppFieldType(f.Type)
 		if f.Type.Pointer {
-			g.pf("    for ( int32_t i = 0; i < %d; i++ ) { %s[i].value = 0; } // [%d]*%s — every slot null\n", f.ArrayBound, expr, f.ArrayBound, f.Type.Name)
+			index := resetIndex(expr)
+			g.pf("    for ( int32_t %s = 0; %s < %d; %s++ ) { %s[%s].value = 0; } // [%d]*%s — every slot null\n", index, index, f.ArrayBound, index, expr, index, f.ArrayBound, f.Type.Name)
 		} else {
 			g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
 		}

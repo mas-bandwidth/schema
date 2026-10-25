@@ -7314,10 +7314,14 @@ inline void LoadoutConfigReset( LoadoutConfig & value )
     memset( value.podium, 0, sizeof( value.podium ) );
     value.perks = 0;
     WeaponConfigReset( value.primary );
-    WeaponConfigReset( value.backups[0] );
-    for ( int32_t i = 1; i < 2; i++ ) { value.backups[i] = value.backups[0]; }
-    AttachmentReset( value.attachments[0] );
-    for ( int32_t i = 1; i < 8; i++ ) { value.attachments[i] = value.attachments[0]; }
+    for ( int32_t i = 0; i < 2; i++ )
+    {
+        WeaponConfigReset( value.backups[i] );
+    }
+    for ( int32_t i = 0; i < 8; i++ )
+    {
+        AttachmentReset( value.attachments[i] );
+    }
     value.attachments_count = 0;
 }
 
@@ -7344,11 +7348,15 @@ inline void RootConfigReset( RootConfig & value )
 {
     memset( value.version_note, 0, sizeof( value.version_note ) );
     value.version_note_length = 0;
-    WeaponConfigReset( value.weapons[0] );
-    for ( int32_t i = 1; i < 8; i++ ) { value.weapons[i] = value.weapons[0]; }
+    for ( int32_t i = 0; i < 8; i++ )
+    {
+        WeaponConfigReset( value.weapons[i] );
+    }
     value.weapons_count = 0;
-    ProfileConfigReset( value.profiles[0] );
-    for ( int32_t i = 1; i < 4; i++ ) { value.profiles[i] = value.profiles[0]; }
+    for ( int32_t i = 0; i < 4; i++ )
+    {
+        ProfileConfigReset( value.profiles[i] );
+    }
     value.profiles_count = 0;
 }
 

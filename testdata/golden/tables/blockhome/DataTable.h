@@ -4098,11 +4098,15 @@ inline void FiringGroupReset( FiringGroup & value )
 
 inline void GunnerSettingsReset( GunnerSettings & value )
 {
-    FiringGroupReset( value.firing_groups[0] );
-    for ( int32_t i = 1; i < 32; i++ ) { value.firing_groups[i] = value.firing_groups[0]; }
+    for ( int32_t i = 0; i < 32; i++ )
+    {
+        FiringGroupReset( value.firing_groups[i] );
+    }
     value.firing_groups_count = 0;
-    FiringGroupReset( value.missile_groups[0] );
-    for ( int32_t i = 1; i < 4; i++ ) { value.missile_groups[i] = value.missile_groups[0]; }
+    for ( int32_t i = 0; i < 4; i++ )
+    {
+        FiringGroupReset( value.missile_groups[i] );
+    }
     value.missile_groups_count = 0;
     value.reload_seconds = 0.0f;
     value.gunner_id = 0;
