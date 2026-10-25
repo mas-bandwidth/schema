@@ -114,6 +114,10 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAP
 	# variable closure, which this target refuses by name until
 	# sprint-out/java-carries-optional-over-a-variable-closure lands (SPEC-TABLES §2.3)
 	./bin/schema generate --lang java --out build/tables-generated-java/messages tables/messages
+	# the VARIABLE-ARM message unit (Makefile SCHEMAS_TABLES_MESSAGES): Feed's
+	# union carries a pointer arm and an array of pointers, so it is a region
+	# and the conformance leg's stream_* and parts_* rows ride it
+	./bin/schema generate --lang java --out build/tables-generated-java/stream tables/stream
 	./bin/schema generate --lang java --out build/tables-generated-java/wide examples-wide
 	# THE FIXED FORM's versioning pair (docs/SPEC-TABLES.md §3.4): FX1 is the
 	# old side and FX2 the new, and every edit between them lands through a
@@ -1325,6 +1329,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/maps/*.java build/tables-generated-java/arms/*.java \
 		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java \
 		build/tables-generated-java/messages/*.java build/tables-generated-java/wide/*.java \
+		build/tables-generated-java/stream/*.java build/tables-generated-java/lists/*.java \
 		build/tables-generated-java/block/*.java build/tables-generated-java/v1/*.java \
 		build/tables-generated-java/v2/*.java build/tables-generated-java/w1/*.java \
 		build/tables-generated-java/w2/*.java build/tables-generated-java/r1/*.java \

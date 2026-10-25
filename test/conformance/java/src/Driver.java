@@ -741,8 +741,6 @@ public final class Driver {
             case "scalars": return "scalardemo";
             case "widedemo": return "wide";
             case "tblscalars2": return "scalardemo2";
-            case "tblk1": return "kind1";
-            case "tblk2": return "kind2";
             default: return unit;
         }
     }
