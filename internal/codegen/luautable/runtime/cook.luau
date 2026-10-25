@@ -65,6 +65,17 @@ local function storage_width(n: number): number
 	return 8
 end
 
+-- an integer's STORAGE width (ir/blocklayout.go's elementPiece): bits(N) is
+-- a uint32 up to 32 bits and a uint64 past it, whatever narrower kind it
+-- rides the wire in; every other integer is its kind's width.
+local function int_width(e: any): number
+	if e.bits ~= nil then
+		if e.bits <= 32 then return 4 end
+		return 8
+	end
+	return e.kw or 4
+end
+
 -- one VALUE's storage (an array element or a scalar), the `elementPiece` of
 -- ir/blocklayout.go.
 value_piece = function(e: any): any
@@ -72,7 +83,7 @@ value_piece = function(e: any): any
 	if s == "ptr" or s == "sblob" or s == "bblob" then return { size = 8, align = 8 } end
 	if s == "bool" then return { size = 1, align = 1 } end
 	if s == "float" then return e.f32 and { size = 4, align = 4 } or { size = 8, align = 8 } end
-	if s == "int" then local w = e.kw or 4; return { size = w, align = w } end
+	if s == "int" then local w = int_width(e); return { size = w, align = w } end
 	if s == "enum" then local w = storage_width(#(e.vs or {})); return { size = w, align = w } end
 	if s == "tab" then
 		local l = record_layout(St.lookup(e.t))
@@ -233,9 +244,13 @@ local function used_bytes(holder: any, fd: any, x: any, slot: string?): (buffer?
 	return x, n, n
 end
 
--- the offset of one piece relative to its field's start (ir.FieldPieces).
-local function piece_at(fd: any, want: number): number
-	local at = 0
+-- the ABSOLUTE offset of one piece of a field that starts at `base`
+-- (ir.FieldPieces). Each piece aligns against the address C aligns it
+-- against, never against the field's start: a string(32) at an odd offset
+-- puts its int32 length at the next multiple of four in the record, which a
+-- field-relative walk misplaces whenever the field itself is not aligned.
+local function piece_at(fd: any, want: number, base: number): number
+	local at = base
 	local i = 0
 	for _, p in field_pieces(fd) do
 		i = i + 1
@@ -424,7 +439,11 @@ local function put_float(w: any, at: number, v: number, f32: boolean)
 			local x = { buffer.readu8(w.b, at), buffer.readu8(w.b, at + 1), buffer.readu8(w.b, at + 2), buffer.readu8(w.b, at + 3) }
 			buffer.writeu8(w.b, at, x[4]); buffer.writeu8(w.b, at + 1, x[3]); buffer.writeu8(w.b, at + 2, x[2]); buffer.writeu8(w.b, at + 3, x[1])
 		end
-	elseif w.big then
+	else
+		-- a float64 is written at all before its bytes are ordered: the
+		-- little-endian write is the value, the big-endian file reverses it
+		buffer.writef64(w.b, at, v)
+		if not w.big then return end
 		local x = {}
 		for i = 0, 7 do x[i] = buffer.readu8(w.b, at + i) end
 		for i = 0, 7 do buffer.writeu8(w.b, at + i, x[7 - i]) end
@@ -617,7 +636,7 @@ write_array = function(fd: any, holder: any, x: any, at: number, fl: any, w: any
 	if fd.array == "counted" then
 		local used = live_count(fd, holder, x)
 		if used == nil then return false end
-		put(w, at + piece_at(fd, 2), used, 4)
+		put(w, piece_at(fd, 2, at), used, 4)
 	end
 	for i = 1, n do
 		local el = x[i]
@@ -650,7 +669,7 @@ write_value = function(e: any, x: any, at: number, w: any, index: any, holder: a
 	if s == "sblob" or s == "bblob" or s == "text" then return write_ref(e, x, at, w, index) end
 	if s == "bool" then put(w, at, x and 1 or 0, 1); return true end
 	if s == "int" then
-		local kw = e.kw or 4
+		local kw = int_width(e)
 		if kw == 16 then
 			put(w, at, x or { lo = 0i, hi = 0i }, 16)
 		else
@@ -663,7 +682,7 @@ write_value = function(e: any, x: any, at: number, w: any, index: any, holder: a
 	if s == "str" or s == "bytes" then
 		local b, nbytes, count = used_bytes(holder, e, x, e.slot)
 		put_copy(w, at, b, nbytes)
-		if e.slot ~= nil and holder ~= nil then put(w, at + piece_at(e, 2), count, 4) end
+		if e.slot ~= nil and holder ~= nil then put(w, piece_at(e, 2, at), count, 4) end
 		return true
 	end
 	if s == "tab" then return write_record(St.lookup(e.t), x, at, w, index) end
