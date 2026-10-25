@@ -129,7 +129,7 @@ func resetBodies(header string) map[string]string {
 			continue
 		}
 		name := strings.TrimPrefix(line, "inline void ")
-		name = name[:strings.Index(name, "(")]
+		name, _, _ = strings.Cut(name, "(")
 		name = strings.TrimSpace(name)
 		var b strings.Builder
 		for i++; i < len(lines) && lines[i] != "}"; i++ {
