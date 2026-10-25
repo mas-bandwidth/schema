@@ -35,7 +35,6 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -351,8 +350,9 @@ func emit(m *Module) {
 // name, its type id (§3.1), whether it is variable by declaration (§2.2), and
 // its fields in declaration order. A field inside an `if` branch carries its
 // branch condition as guard = { { field = <bool field>, want = <bool> }, ... },
-// the conjunction composed through nesting (tabletext.Guards, the engine's
-// own): a field under a false guard is elided and is not an edge (§3, §3.1).
+// the conjunction composed through nesting (structGuards, re-derived here from
+// the IR as the C++ emitter composes it; an emitter never imports the engine):
+// a field under a false guard is elided and is not an edge (§3, §3.1).
 func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 	layout := ir.RecordLayout(m.Unit, st)
 	regionAlign := ir.TableRegionAlign(m.Unit)
@@ -386,7 +386,7 @@ func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 	m.Printf("  align = %d,\n", layout.Align)
 	m.Printf("  region_align = %d,\n", regionAlign)
 	m.Printf("  fields = {\n")
-	guards := tabletext.Guards(st)
+	guards := structGuards(st)
 	for i, f := range st.Fields {
 		fl := layout.FieldByName(f.Name)
 		var pieces []ir.BlockFieldPiece
@@ -427,6 +427,36 @@ func emitUnionDescriptor(m *Module, un *ir.Union) {
 	m.Printf("}\n\n")
 }
 
+// guardTerm is one conjunct of a guarded field's branch condition: a bool
+// field of the same body, and the value it must hold.
+type guardTerm struct {
+	Field string
+	Want  bool
+}
+
+// structGuards maps each guarded field's name to its branch condition,
+// composed through nesting exactly as the C++ emitter composes it. A field
+// with no entry is unguarded and always rides.
+func structGuards(st *ir.Struct) map[string][]guardTerm {
+	out := map[string][]guardTerm{}
+	var walk func(items []ir.Item, cond []guardTerm)
+	walk = func(items []ir.Item, cond []guardTerm) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if len(cond) > 0 {
+					out[item.F.Name] = append([]guardTerm(nil), cond...)
+				}
+			case *ir.Branch:
+				walk(item.Then, append(cond[:len(cond):len(cond)], guardTerm{item.Cond, !item.Neg}))
+				walk(item.Else, append(cond[:len(cond):len(cond)], guardTerm{item.Cond, item.Neg}))
+			}
+		}
+	}
+	walk(st.Items, nil)
+	return out
+}
+
 // FieldDescriptor renders one field's descriptor as a Lua table constructor.
 func FieldDescriptor(f *ir.Field, ordinal int) string {
 	return fieldDescriptor(nil, f, ordinal)
@@ -443,7 +473,7 @@ func fieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, pieces []ir.BlockFi
 // guardedFieldDescriptor is fieldDescriptor with the field's `if` branch
 // condition (docs/SPEC-TABLES.md §3: a field under a false guard is elided;
 // SPEC §4.5), nil for an unguarded field.
-func guardedFieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, guard []tabletext.GuardTerm) string {
+func guardedFieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, guard []guardTerm) string {
 	return guardedFieldDescriptorAt(u, f, ordinal, guard, nil)
 }
 
@@ -451,7 +481,7 @@ func guardedFieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, guard []tablet
 // (docs/SPEC-TABLES.md §7.4): where the field's storage begins and, for a
 // count companion, how far past that beginning it sits. pieces are the
 // contiguous storage members ir.FieldPieces names, in order.
-func guardedFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, guard []tabletext.GuardTerm, pieces []ir.BlockFieldPiece) string {
+func guardedFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, guard []guardTerm, pieces []ir.BlockFieldPiece) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "{ name = %q, key = %q, id = %s, ordinal = %d, kind = %d, ",
 		f.Name, ir.TableFieldJsonKey(f), idLit(ir.TableFieldWireId(f)), ordinal, ir.TableWireFieldKind(f))
