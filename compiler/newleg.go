@@ -104,14 +104,17 @@ func identNewLeg(lang string) error {
 }
 
 // newLegRecipe is a language's file extension and line comment. The default
-// `#` is no comment in the Lua family, so lua and luau name `--` (luau's files
-// are .luau: docs/PORT-LUAU.md, THE RUNTIME LAYOUT).
+// `#` is no comment in the Lua family or in Goose: lua and luau name `--`
+// (luau's files are .luau: docs/PORT-LUAU.md, THE RUNTIME LAYOUT), and goose
+// names `//` (its files are .goose: docs/PORT-GOOSE.md, THE RUNTIME LAYOUT).
 func newLegRecipe(lang string) (ext, comment string) {
 	switch lang {
 	case "lua":
 		return "lua", "--"
 	case "luau":
 		return "luau", "--"
+	case "goose":
+		return "goose", "//"
 	}
 	return lang, "#"
 }

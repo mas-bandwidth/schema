@@ -499,6 +499,15 @@ jobs:
       # without it (internal/codegen/luau/luaurun; make/luau.mk dist-luau).
       - name: install the Luau pin
         run: make dist-luau
+      # THE Goose PIN, when a Goose package is touched: internal/codegen/goose
+      # and internal/codegen/goosetable (the only importers of gooserun) run
+      # generated Goose under the pinned compiler and fail, never skip,
+      # without it. make/goose.mk's dist-goose installs it at the sha256 it
+      # names, into the dist/ path gooserun's default names; ci-full.yml's
+      # go-test does the same.
+      - name: install the Goose pin
+        if: contains(needs.plan.outputs.packages, '/codegen/goose') || contains(needs.plan.outputs.packages, './...')
+        run: make dist-goose
 
       - name: go test the touched packages
         env:
