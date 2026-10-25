@@ -577,6 +577,12 @@ public final class Driver {
                 // than drifting.
                 fail("the dump met a float, whose canonical cross-language spelling this gate does not fix");
                 return "";
+            case UNION:
+            case WIDE:
+                // no cook fixture holds a union or a 128-bit slot; their dump
+                // spelling is the reference walk's to fix first, not this one's
+                fail("the dump met a " + storage + " slot, whose canonical spelling this gate does not fix");
+                return "";
             case SIGNED:
                 switch (width) {
                     case 1: return Byte.toString(graphdemo.TableBytes.i8(data, at));
@@ -741,8 +747,6 @@ public final class Driver {
             case "scalars": return "scalardemo";
             case "widedemo": return "wide";
             case "tblscalars2": return "scalardemo2";
-            case "tblk1": return "kind1";
-            case "tblk2": return "kind2";
             default: return unit;
         }
     }
@@ -937,7 +941,8 @@ public final class Driver {
     // (docs/SPEC-TABLES.md §7.6), never because a lookup failed:
     //   - the root's <Root>Cook is the generated STUB (cook.go emits a class
     //     with a private constructor and no method when the root's closure
-    //     holds a construct the Java cook form does not carry, a union), or
+    //     holds a construct the Java cook form does not carry, an unbounded
+    //     array), or
     //   - the unit has no cook form in this leg at all: neither <Root>Cook nor
     //     the unit's TableCookInfo exists (the wide-kind unit gets no
     //     accelerators, and a unit off this classpath has neither).
