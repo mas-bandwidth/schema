@@ -145,11 +145,11 @@ func TestLuauTableSaveRoundTripsEveryInstance(t *testing.T) {
 			wire := rowWire(t, row)
 			saved, measure, err := saveRoot(t, g, wire, row.root)
 			if err != nil {
-				// blob_shared is the manifest's one wire whose two slots name
-				// one blob record: every writer refuses it (docs/SPEC-TABLES.md
+				// a blob_shared wire (go-refusal=blob_shared) names one blob
+				// record from two slots: every writer refuses it (docs/SPEC-TABLES.md
 				// §2.5), as Go's does, and TestLuauBlobNamedTwice holds the
 				// refusal to the oracle's own value.
-				if row.caseName == "blob_shared" {
+				if row.blobShared {
 					refusedSaves++
 					continue
 				}
