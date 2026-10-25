@@ -765,7 +765,8 @@
         "schema-go-generated-golangci-lint-gate-negative-control-ratchet",
         "luau-nightly-fuzz-negative-control"
       ],
-      "golangci": "2.12.2"
+      "golangci": "2.12.2",
+      "luau": "0.741"
     },
     {
       "name": "dart-nightly",

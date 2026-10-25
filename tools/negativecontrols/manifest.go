@@ -58,6 +58,7 @@ type Group struct {
 	Java   string `json:"java,omitempty"`
 	OTP    string `json:"otp,omitempty"`
 	Elixir string `json:"elixir,omitempty"`
+	Luau   string `json:"luau,omitempty"`
 	// Golangci is the golangci-lint release this row installs (no leading
 	// v), for the generated-Go lint controls. It is not a conformance
 	// toolchain, so it is held against make/schema-go-generated-golangci-lint-gate.mk's
@@ -79,7 +80,7 @@ type Exclusion struct {
 // install the same toolchain. `dotnet` is not among them on purpose: the .NET
 // pin lives in .github/dotnet-version and both files carry a marker instead of
 // the version, so there is no version here to hold against anything.
-var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir"}
+var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir", "luau"}
 
 // toolchain returns the version this group installs for one of the fields in
 // versionedToolchains, or the empty string when the group names none.
@@ -97,6 +98,8 @@ func (g Group) toolchain(field string) string {
 		return g.OTP
 	case "elixir":
 		return g.Elixir
+	case "luau":
+		return g.Luau
 	}
 	return ""
 }
@@ -189,6 +192,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 		Java     string `json:"java"`
 		OTP      string `json:"otp"`
 		Elixir   string `json:"elixir"`
+		Luau     string `json:"luau"`
 		Golangci string `json:"golangci"`
 	}
 	if when != whenPullRequest && when != whenNightly {
@@ -208,6 +212,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			Java:     g.Java,
 			OTP:      g.OTP,
 			Elixir:   g.Elixir,
+			Luau:     g.Luau,
 			Golangci: g.Golangci,
 		})
 	}

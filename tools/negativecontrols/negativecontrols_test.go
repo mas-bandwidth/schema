@@ -674,7 +674,8 @@ func testRoot(t *testing.T) string {
 // ran; the nightly row ran the generated-Go golangci-lint controls on a hosted
 // runner that has no golangci-lint, so the probe refused before them. A row
 // whose targets reach a tool by name has to install that tool, and the pin it
-// installs is the one the make fragment checks for.
+// installs is the one the make fragment checks for. The nightly row's Luau
+// fuzz control refused the same way once golangci-lint was installed.
 func TestAToolBoundGroupInstallsItsTool(t *testing.T) {
 	root := testRoot(t)
 	m, err := loadManifest(root)
@@ -695,16 +696,20 @@ func TestAToolBoundGroupInstallsItsTool(t *testing.T) {
 		t.Fatal("make/schema-go-generated-golangci-lint-gate.mk sets no GOLANGCI_LINT_VERSION, so there is no pin to hold a group against")
 	}
 	for _, g := range m.Groups {
-		lint, dart := false, false
+		lint, dart, luau := false, false, false
 		for _, target := range g.Targets {
 			lint = lint || strings.Contains(target, "golangci-lint")
 			dart = dart || strings.HasPrefix(target, "schema-dart-")
+			luau = luau || strings.HasPrefix(target, "luau-") || strings.HasPrefix(target, "schema-luau-")
 		}
 		if lint && g.Golangci == "" {
 			t.Errorf("group %q runs golangci-lint controls and names no `golangci`, so its job installs none and the probe refuses before the controls run", g.Name)
 		}
 		if g.Golangci != "" && g.Golangci != pin {
 			t.Errorf("group %q installs golangci-lint %s and the make fragment pins %s: bump both or neither", g.Name, g.Golangci, pin)
+		}
+		if luau && g.Luau == "" {
+			t.Errorf("group %q runs Luau controls and names no `luau`, so its job installs no Luau and the toolchain probe refuses", g.Name)
 		}
 		if dart && g.Dart == "" {
 			t.Errorf("group %q runs Dart controls and names no `dart`, so its job installs no Dart and make refuses at toolchain-dart", g.Name)

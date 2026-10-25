@@ -124,6 +124,32 @@ jobs:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
 
+      # THE LUAU, GOOSE AND LOBSTER PINS, installed exactly as make/luau.mk's
+      # dist-luau, make/goose.mk's dist-goose and make/lobster.mk's
+      # dist-lobster do: the same release archive, the same sha256 refused
+      # before it is unpacked, and the same dist/ layout each leg's driver
+      # default names. The row's field is the version (test/conformance/<lang>/ci.json),
+      # so a bump moves one file, as ci-full.yml's conformance matrix does for
+      # Luau. The Lobster release binary links libOpenGL and libGLX, which the
+      # hosted ubuntu image does not carry.
+      - name: install the Luau pin
+        if: matrix.luau != ''
+        run: make dist-luau LUAU_VERSION=${{ matrix.luau }}
+
+      - name: install the Goose pin
+        if: matrix.goose != ''
+        run: make dist-goose GOOSE_VERSION=${{ matrix.goose }}
+
+      - name: install the Lobster pin
+        if: matrix.lobster != ''
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
+          make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
+
       # The two halves split so a failing build fails the run before the
       # harness's overhead shows in the log; both run with the row's env so
       # a toolchain-on-PATH leg (java, elixir, js, dart, rust) sees the
