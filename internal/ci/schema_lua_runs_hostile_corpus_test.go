@@ -370,14 +370,6 @@ type luaHostileCarried struct {
 
 func luaHostileCarriedList(_ []luaHostileCase) map[string]luaHostileCarried {
 	out := map[string]luaHostileCarried{}
-	// The manifest says accept; SPEC-TABLES §16.3 refuses ill-formed UTF-8 at
-	// the bound. The stale verdict is the engine card's.
-	for _, name := range []string{
-		"conformance-str-illformed-at-bound", "fuzz-text-illformed_byte_at_bound",
-		"fuzz-text-illformed_bytes_in_string", "fuzz-text-invalid_utf8_tail",
-	} {
-		out[name] = luaHostileCarried{"refuse", "damaged", "schema-shared-hostile-corpus"}
-	}
 	// The message reader has no caller storage bound.
 	out["message-batch-too-large"] = luaHostileCarried{"accept", "-", "schema-lua-message-honors-storage-bound-r"}
 	// Accepted by both, but the subnormal float's canonical text differs: a
