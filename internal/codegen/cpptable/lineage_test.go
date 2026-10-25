@@ -54,7 +54,7 @@ func TestCompileLineageComesFromTheLock(t *testing.T) {
 	}
 }
 
-func TestCompileFromLockIgnoresFixturePeerConvention(t *testing.T) {
+func TestCompileFromLockIgnoresFixtureRemoteConvention(t *testing.T) {
 	dir := t.TempDir()
 	oldSrc := "package vold_gate\n\nfixed table Row\n{\n    a int32\n}\n"
 	newSrc := "package vnew_gate\n\nfixed table Row\n{\n    a int32\n    b int32\n}\n"
@@ -74,7 +74,7 @@ func TestCompileFromLockIgnoresFixturePeerConvention(t *testing.T) {
 	if loadUnitLock(u) == nil {
 		t.Fatal("VNEW_gate has a lock")
 	}
-	if n := len(fixturePeerPaths(newPath)); n == 0 {
+	if n := len(fixtureRemotePaths(newPath)); n == 0 {
 		t.Fatal("the convention names VOLD_gate as a sibling; that is the trap")
 	}
 	out, err := Generate(u)
@@ -90,7 +90,7 @@ func TestCompileFromLockIgnoresFixturePeerConvention(t *testing.T) {
 	}
 	text := string(hdr)
 	if strings.Contains(text, "vold_gate") {
-		t.Fatal("a locked unit must not append a fixture-peer entry past the identity")
+		t.Fatal("a locked unit must not append a fixture-endpoint entry past the identity")
 	}
 	if !strings.Contains(text, "RowFixedLineage[]") {
 		t.Fatal("COMPILE still emits the lineage from the lock")

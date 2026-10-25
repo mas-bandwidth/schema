@@ -621,7 +621,7 @@ func (g *fixedGen) emitCheckTextElement(f *ir.Field, base string, at int64, ind 
 // wrapper where one rides.
 //
 // A PRESENT BYTE IS A FLAG AND NOT A NUMBER: anything non-zero is present.
-// That is the same rule `bool` reads under two lines below — a peer's `true`
+// That is the same rule `bool` reads under two lines below — an endpoint's `true`
 // is allowed to be any non-zero byte, and a reader that only accepted 1 would
 // be reading a number where the wire states a flag.
 //

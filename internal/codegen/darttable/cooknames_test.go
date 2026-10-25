@@ -88,18 +88,18 @@ func TestCookLibrariesDefineEveryClassTheyName(t *testing.T) {
 						continue
 					}
 					file := filepath.Base(imp)
-					peers := declared[file]
-					if peers == nil {
+					endpoints := declared[file]
+					if endpoints == nil {
 						continue
 					}
 					if len(show) == 0 {
-						for cls := range peers {
+						for cls := range endpoints {
 							visible[cls] = true
 						}
 						continue
 					}
 					for _, cls := range show {
-						if peers[cls] {
+						if endpoints[cls] {
 							visible[cls] = true
 						}
 					}

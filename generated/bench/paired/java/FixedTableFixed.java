@@ -338,7 +338,7 @@ public final class FixedTableFixed {
             }
         }
 
-        // STEP 8: the plan this peer resolves to, and the record size FROM THE
+        // STEP 8: the plan this endpoint resolves to, and the record size FROM THE
         // LOCK. The census is the plan's own numbers, carried to the bottom.
         TableFixed.Entry[] entries = Identity.plan;
         int made = Identity.plan.length;
@@ -406,7 +406,7 @@ public final class FixedTableFixed {
             at += (int) recordSize;
         }
         // THE COMPILE CENSUS LANDS ONCE, after the loop and only on a read that
-        // RETURNS (§5.9 #6): once per peer and never per record, which is also how
+        // RETURNS (§5.9 #6): once per endpoint and never per record, which is also how
         // REFUSE stays total. On a lawful lineage it lands zero, always (§5.9 #30).
         report.unknown += censusUnknown;
         report.kindMismatch += censusKind;

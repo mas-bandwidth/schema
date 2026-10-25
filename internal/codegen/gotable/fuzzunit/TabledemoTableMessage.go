@@ -282,7 +282,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		return false
 	}
 	if v.Strict && v.BuildVersion != BuildVersion {
-		report.BuildVersionPeer = v.BuildVersion
+		report.BuildVersionRemote = v.BuildVersion
 		report.BuildVersionOwn = BuildVersion
 		return tableMessageRefuse(report, "build_version_mismatch")
 	}

@@ -32,7 +32,7 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 		name string
 		page string
 	}{
-		{"no_vocabulary", "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME."},
+		{"no_vocabulary", "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME."},
 		{"second_announcement", "NO RE-ANNOUNCEMENT, EVER. ... REFUSAL IS TERMINAL, and a refused FIRST announcement is the one the connection gets."},
 		{"vocabulary_too_large", "`vocabulary_too_large` covers both bounds, the entry count and the vocabulary's bytes."},
 		{"announcement_strict_checks", "THE ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY TWO STRICT CHECKS ... A FAILED STRICT CHECK IS MALFORMED, not a refusal."},
@@ -438,7 +438,7 @@ static class Held
         return bad == 0 ? 0 : 1;
     }
 
-    // "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
+    // "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
     // decoded, no counter moves and malformed does not fire."
     static void NoVocabulary()
     {

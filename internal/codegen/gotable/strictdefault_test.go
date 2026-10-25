@@ -63,7 +63,7 @@ fixed table Fix { n float32
 	})
 	t.Run("fixed_message_kind_mismatch", func(t *testing.T) {
 		t.Parallel()
-		// The message form's kind mismatch is a PEER's announcement (§3.3): the
+		// The message form's kind mismatch is an ENDPOINT's announcement (§3.3): the
 		// older writer sends c as a float32 to a reader that declares an int32.
 		runMessagePair(t, "package probe\nfixed table Root { a int32\n c float32 }\n", "package probe\nfixed table Root { a int32\n c int32 = 7 }\n", "\tw.A = 11\n\tw.C = 1.5", `
 	if ok || count != 0 || report.Err() != error(new.TableRefuseKindMismatch) || report.KindMismatch != 1 {

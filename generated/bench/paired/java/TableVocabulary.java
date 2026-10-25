@@ -8,7 +8,7 @@ package bench;
 
 // The announcement surface of the MESSAGE FORM (docs/SPEC-TABLES.md §3.3),
 // form byte 2. `announce` and `announceMeasure` are the unit's
-// compile-time constant and its length; `announceRead` parses a peer's
+// compile-time constant and its length; `announceRead` parses an endpoint's
 // announcement into the caller's resolved vocabulary.
 public final class TableVocabulary {
     public TableVocabulary() {}
@@ -1156,7 +1156,7 @@ public final class TableVocabulary {
         }
         // THE TWO STRICT CHECKS: the build version present exactly once, and the
         // vocabulary present exactly once. A failed check says the bytes are not
-        // an announcement rather than that this peer declined to announce (§3.3).
+        // an announcement rather than that this endpoint declined to announce (§3.3).
         if (versionCount != 1 || vocabCount != 1) {
             report.malformed = true;
             return false;

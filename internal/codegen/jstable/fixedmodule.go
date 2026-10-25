@@ -304,7 +304,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 
 	// ---- the caller's plan storage ----
 	g.pf("// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC\n")
-	g.pf("// NEVER ALLOCATES. One of these per peer; a layout whose plan does not fit is\n")
+	g.pf("// NEVER ALLOCATES. One of these per endpoint; a layout whose plan does not fit is\n")
 	g.pf("// a refusal by name.\n")
 	g.pf("export function %sFixedNewPlan(entryCapacity, remapCapacity) {\n", st.Name)
 	g.pf("  return new TableFixedPlan(entryCapacity || 4096, %sFixedBodyBytes, remapCapacity || 4096);\n}\n\n", st.Name)
@@ -407,7 +407,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      if (bytes[layoutAt + i] !== known.layout[i]) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }\n")
 	g.pf("    }\n")
 	g.pf("  }\n")
-	// STEP 8: the plan this peer resolves to — laid down at module load, never
+	// STEP 8: the plan this endpoint resolves to — laid down at module load, never
 	// here — and the record size FROM THE LOCK and never from the file.
 	// THE CALLER'S CAPACITY IS CHECKED AFTER THE SELECT, NEVER BEFORE IT (§5.3's
 	// order, §5.9 #5). A caller that handed no plan at all declared a capacity of
@@ -426,7 +426,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    // a plan that does not fit refuses BY NAME.\n")
 	g.pf("    if (lane.count > plan.capacity) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }\n")
 	g.pf("    entries = lane.entries; entryCount = lane.count; remap = lane.remap;\n")
-	g.pf("    // THE CENSUS IS ONCE PER PEER and never per record (§5.4); it lands\n")
+	g.pf("    // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4); it lands\n")
 	g.pf("    // after the loop, on a read that RETURNS — REFUSE moves no counter.\n")
 	g.pf("    censusUnknown = lane.unknown; censusKind = lane.kindMismatch;\n")
 	g.pf("  }\n")

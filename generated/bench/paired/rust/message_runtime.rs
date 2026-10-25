@@ -381,7 +381,7 @@ fn announce_read_once(
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3).
     if vocabulary.strict && vocabulary.build_version != BUILD_VERSION {
-        report.build_version_peer = vocabulary.build_version;
+        report.build_version_remote = vocabulary.build_version;
         report.build_version_own = BUILD_VERSION;
         return report.refuse(TableReason::BuildVersionMismatch);
     }
@@ -949,7 +949,7 @@ pub fn table_message_utf8_clamp(text: &[u8], n: usize) -> usize {
     n
 }
 
-/// A value the peer spelled, sign-extended from its announced kind's width.
+/// A value the endpoint spelled, sign-extended from its announced kind's width.
 pub fn table_message_signed(kind: u8, lo: u64, hi: u64) -> i128 {
     match table_message_kind_width(kind) {
         1 => lo as i8 as i128,
@@ -960,7 +960,7 @@ pub fn table_message_signed(kind: u8, lo: u64, hi: u64) -> i128 {
     }
 }
 
-/// A value the peer spelled, zero-extended from its announced kind's width.
+/// A value the endpoint spelled, zero-extended from its announced kind's width.
 pub fn table_message_unsigned(kind: u8, lo: u64, hi: u64) -> u128 {
     match table_message_kind_width(kind) {
         1 => lo as u8 as u128,
@@ -988,7 +988,7 @@ pub fn table_message_read_scalar(r: &mut TableBitReader, kind: u8, s: &TableMess
         hi = hi.wrapping_add(s.base_hi).wrapping_add(carry as u64);
     }
     if s.packing == 2 && kind == 10 {
-        // AN INDEX ABOVE THE PEER's ANNOUNCED count IS BATCH DAMAGE (§3.3,
+        // AN INDEX ABOVE THE ENDPOINT's ANNOUNCED count IS BATCH DAMAGE (§3.3,
         // SPEC.md §4.3), checked on the whole wire value before any narrowing
         // and never reconstructed and clamped: the width spells such an index
         // whenever count is not one less than a power of two (eight bits
@@ -1031,7 +1031,7 @@ pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape,
     }
 }
 
-/// A tolerant skip of one value by the PEER's shape (§3.3): what a reader does
+/// A tolerant skip of one value by the ENDPOINT's shape (§3.3): what a reader does
 /// with a field it cannot name, or one whose kind is not the declaration's.
 pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
     if depth > 128 {
@@ -1130,7 +1130,7 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
 }
 
 /// The batch's OPEN (§3.3): "the FORM BYTE is a whole byte and is read FIRST",
-/// a body from a peer that never announced is refused by name, then M - 1.
+/// a body from an endpoint that never announced is refused by name, then M - 1.
 pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut TableReport) -> Option<usize> {
     if data.is_empty() {
         report.malformed = true;

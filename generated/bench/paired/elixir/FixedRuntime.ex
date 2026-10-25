@@ -27,10 +27,10 @@ defmodule Bench.FixedRuntime do
   runtime refuses past by name (`:plan_too_large`).
 
   A COMPILED PLAN IS CACHED BY LAYOUT HASH, AND THE CACHE IS BOUNDED. A layout
-  arrives from a PEER, so an unbounded cache is a peer's lever on this node's
+  arrives from an ENDPOINT, so an unbounded cache is an endpoint's lever on this node's
   memory and on every process in the VM — see `cache/3` and
-  `plan_cache_max/0`. A service reading files from untrusted peers should hand
-  its own plan in through `plan:` and never mint one from a peer's layout.
+  `plan_cache_max/0`. A service reading files from untrusted endpoints should hand
+  its own plan in through `plan:` and never mint one from an endpoint's layout.
 
   ## What a loaded value HOLDS
 
@@ -75,7 +75,7 @@ defmodule Bench.FixedRuntime do
   @file_header_bytes 16
   @file_hash_at 8
 
-  # §3.4's RECORD CEILING, which a reader holds an UNTRUSTED PEER's layout to
+  # §3.4's RECORD CEILING, which a reader holds an UNTRUSTED ENDPOINT's layout to
   # for the same reason the compiler holds a declaration to it: a record past it
   # is one this build will not decode.
   @record_max 65536
@@ -233,7 +233,7 @@ defmodule Bench.FixedRuntime do
   The PLAN'S OWN CENSUS onto the report, ONCE, after the record loop (§5.9 #6).
 
   unknown and kind_mismatch were fixed when the plan was built — §5.4 says once
-  per peer and never per record — so they ride in the lane and land here, on a
+  per endpoint and never per record — so they ride in the lane and land here, on a
   read that RETURNS and on no other. On a LAWFUL lineage they are both zero,
   always (§5.9 #30): a newer reader names every field of every writer its lineage
   can select, so the census is the report of an UNLAWFUL or HOSTILE entry only.
@@ -460,7 +460,7 @@ defmodule Bench.FixedRuntime do
   that is the debug-assert equivalent here rather than a second safety layer.
 
   IT IS NOT A CLAMP. A reader CLAMPS a value outside ITS OWN declared range and
-  counts it (§3.4's op table), because the value came from a peer. A value
+  counts it (§3.4's op table), because the value came from an endpoint. A value
   handed to a writer came from this program, and silently bending it would hide
   the bug; worse, an unbounded integer past the field's STORAGE WIDTH is
   TRUNCATED by a BEAM binary construction without a word, which is a wrong value
@@ -478,7 +478,7 @@ defmodule Bench.FixedRuntime do
   THE SAME CONTRACT AT THE FIELD'S OWN WIDTH, for a field that declares no
   range: then the storage width IS the range. This is the half that cannot be
   left to the reader, because a value past it never reaches a reader as itself
-  — a BEAM binary construction TRUNCATES it in silence, and the peer decodes a
+  — a BEAM binary construction TRUNCATES it in silence, and the endpoint decodes a
   different number with no counter and no refusal to say so.
   """
   def fits(value, bits, false) when is_integer(value) and value >= 0 and value < 1 <<< bits do
@@ -518,7 +518,7 @@ defmodule Bench.FixedRuntime do
   # THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE
   # ---------------------------------------------------------------------------
   #
-  # A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+  # A LAYOUT ARRIVES FROM AN UNTRUSTED ENDPOINT and it is the one structure a reader
   # must parse before it knows anything at all, so every rule below runs BEFORE
   # a single record byte is touched and each refuses under its OWN NAME rather
   # than under one word for all of them.
@@ -846,11 +846,11 @@ defmodule Bench.FixedRuntime do
   defp check_composite(_kind, _size, _children, _facts), do: {:error, :layout_kind_unknown}
 
   # ---------------------------------------------------------------------------
-  # THE PLAN COMPILER — once per peer, never once per record
+  # THE PLAN COMPILER — once per endpoint, never once per record
   # ---------------------------------------------------------------------------
   #
   # The SAME LOOP runs over this plan as over the identity plan. What the
-  # compiler does, ONCE PER PEER, is what a read would otherwise do once per
+  # compiler does, ONCE PER ENDPOINT, is what a read would otherwise do once per
   # record: map the writer's ids onto this reader's fields; leave a field it
   # cannot name OUT of the plan, which is what skips it, by arithmetic that was
   # going to step past it anyway; and leave a field the writer does not carry
@@ -964,10 +964,10 @@ defmodule Bench.FixedRuntime do
 
   # match_children walks a TABLE's children on both sides, BY ID.
   #
-  # The census flag is whether THIS entry is the FIRST time the peer's field is
+  # The census flag is whether THIS entry is the FIRST time the writer's field is
   # seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-  # ONCE PER FIELD PER PEER (ALG 5.4), so only element 0 censuses. Without it a
-  # peer field dropped from a [4]Item is counted four times and the report says
+  # ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses. Without it a
+  # writer's field dropped from a [4]Item is counted four times and the report says
   # 4 where the law says 1 (the versioning tests' 5.8 row 11).
   defp match_children(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report, census) do
     their_children = children_at(theirs, ti)
@@ -1275,7 +1275,7 @@ defmodule Bench.FixedRuntime do
     acc =
       if elem(row, 3) == 1 do
         # THE BOUND IS THE WRITER'S their_n AND NOT MY OWN (§5.2 EMIT kind 14,
-        # bill §12.5): the plan carries THAT PEER'S bounds for the hostile pass,
+        # bill §12.5): the plan carries THAT ENDPOINT'S bounds for the hostile pass,
         # so a count forged past what the writer could have written clamps and
         # counts. Holding it to MY bound lets a count between their_n and my_n
         # through untouched, and every slot behind it reads as live.
@@ -1890,17 +1890,17 @@ defmodule Bench.FixedRuntime do
   defp splice([_ | rest], pos, prefill, acc), do: splice(rest, pos, prefill, acc)
 
   # ---------------------------------------------------------------------------
-  # THE PLAN CACHE: once per peer, and never once per record
+  # THE PLAN CACHE: once per endpoint, and never once per record
   # ---------------------------------------------------------------------------
 
   # THE CACHE IS BOUNDED, AND THE BOUND IS THE POINT. A plan is cached under the
-  # hash of the LAYOUT THAT MINTED IT, and a layout comes from a PEER: anyone
+  # hash of the LAYOUT THAT MINTED IT, and a layout comes from an ENDPOINT: anyone
   # who can hand this reader a file can hand it a layout it has never seen, and
   # every one of those is a :persistent_term.put/2 — which makes EVERY PROCESS
   # IN THE VM scan its heap for the old term. An unbounded cache turns "send me
   # files with fresh layouts" into "stop this node", at no cost to the sender.
   #
-  # SO THE CACHE FILLS ONCE AND THEN STOPS. Past the bound a new peer's plan is
+  # SO THE CACHE FILLS ONCE AND THEN STOPS. Past the bound a new endpoint's plan is
   # compiled per load and not cached: compiling is bounded work already held to
   # the plan capacity and it writes NOTHING, so an attacker past the bound buys
   # exactly one plan compile per file and no global scan at all.
@@ -1908,7 +1908,7 @@ defmodule Bench.FixedRuntime do
   # IT IS NOT AN LRU, deliberately. An LRU would go on writing :persistent_term
   # forever — one put and one erase per eviction — which is the cost being
   # defended against, dressed up as a policy. A service that faces untrusted
-  # peers should not be minting plans from their layouts in the first place: it
+  # endpoints should not be minting plans from their layouts in the first place: it
   # hands its own plan in through the plan: option and never reaches this.
   @plan_cache_max 64
 
@@ -1921,7 +1921,7 @@ defmodule Bench.FixedRuntime do
   time lookup that COPIES NOTHING — the term is read where it lies, so a read
   pays one lookup and no allocation, which is the only per-record cost §3.4
   allows a plan to have. A `put/2` is the expensive half: it makes every
-  process scan for the old term, which is why it happens ONCE PER PEER, why it
+  process scan for the old term, which is why it happens ONCE PER ENDPOINT, why it
   happens at most `plan_cache_max/0` times per module, and why a caller that
   would rather own the plan itself hands one in through `plan:` and never
   touches this.
@@ -1931,10 +1931,10 @@ defmodule Bench.FixedRuntime do
   @doc """
   THIS BUILD's OWN parsed layout, parsed once and held beside the plans.
 
-  The plan compiler walks the peer's layout against mine, so mine has to be a
+  The plan compiler walks the endpoint's layout against mine, so mine has to be a
   parsed layout too — and parsing it is the one thing about the slow path that
-  is the same for every peer, so it happens once for the module rather than
-  once per peer.
+  is the same for every endpoint, so it happens once for the module rather than
+  once per endpoint.
   """
   # IT NEEDS NO BOUND: the only bytes ever handed to it are THIS BUILD's own
   # layouts, one per fixed root of the unit, so the number of them is a fact
@@ -2105,7 +2105,7 @@ defmodule Bench.FixedRuntime do
   A CACHE THAT ONLY EVER FILLS NEEDS A WAY TO BE EMPTIED. It is not on the read
   path and it is not automatic: erasing is a `:persistent_term` write like any
   other, so a caller that does it per file has rebuilt the problem the bound
-  exists to prevent. It is for a node that has genuinely rolled its peers over
+  exists to prevent. It is for a node that has genuinely rolled its endpoints over
   — a deploy, a long-lived service reconfigured — and for tests.
   """
   def forget(module) do

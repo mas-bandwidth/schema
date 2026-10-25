@@ -5,7 +5,7 @@ package jstable
 // four `items` with `a = 10 + i` and `drop = 900 + i` — and the NEW build removes
 // `Item.drop`. The pair is deliberately UNLAWFUL (§5.1 refuses a removal), so the
 // lineage entry is handed in here, never read from a lock. The asserted counter is
-// `unknown`, EXACTLY 1: once per FIELD per peer, not once per element — `>= 1`
+// `unknown`, EXACTLY 1: once per FIELD per endpoint, not once per element — `>= 1`
 // would pass a wrong `4`, which is the divergence this row exists to catch.
 
 import (
@@ -44,17 +44,17 @@ for (let i = 0; i < 4; i++) {
   }
 }
 if (r.unknown !== 1) {
-  fail("unknown === 1 (once per FIELD per peer): Item.drop is one field of one peer, not " + r.unknown);
+  fail("unknown === 1 (once per FIELD per endpoint): Item.drop is one field of one endpoint, not " + r.unknown);
 }
 if (r.kindMismatch !== 0 || r.widened !== 0 || r.clamped !== 0) {
   fail("a removed field is unknown, never a moved kind: " + reason(r));
 }
 // THE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, on a read that RETURNS (§5.9
-// #6), so a SECOND read of the same peer reports unknown === 1 again.
+// #6), so a SECOND read of the same endpoint reports unknown === 1 again.
 TableFixedResetReport(report);
 const m = TLoad(back, back.length, data, data.length, plan, report);
 if (m !== 1 || r.refused !== 0 || r.malformed) {
-  fail("the second read of the same peer must also return one clean record: " + m + " " + reason(r));
+  fail("the second read of the same endpoint must also return one clean record: " + m + " " + reason(r));
 }
 if (r.unknown !== 1) {
   fail("the second read owes unknown === 1 again, not " + r.unknown);

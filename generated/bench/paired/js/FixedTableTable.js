@@ -342,7 +342,7 @@ for (const lane of FixedTableFixedLineagePlans) { if (lane !== null) { Object.fr
 Object.freeze(FixedTableFixedLineagePlans);
 
 // THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
-// NEVER ALLOCATES. One of these per peer; a layout whose plan does not fit is
+// NEVER ALLOCATES. One of these per endpoint; a layout whose plan does not fit is
 // a refusal by name.
 export function FixedTableFixedNewPlan(entryCapacity, remapCapacity) {
   return new TableFixedPlan(entryCapacity || 4096, FixedTableFixedBodyBytes, remapCapacity || 4096);
@@ -446,7 +446,7 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
     // a plan that does not fit refuses BY NAME.
     if (lane.count > plan.capacity) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }
     entries = lane.entries; entryCount = lane.count; remap = lane.remap;
-    // THE CENSUS IS ONCE PER PEER and never per record (§5.4); it lands
+    // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4); it lands
     // after the loop, on a read that RETURNS — REFUSE moves no counter.
     censusUnknown = lane.unknown; censusKind = lane.kindMismatch;
   }

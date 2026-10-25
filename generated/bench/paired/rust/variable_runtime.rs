@@ -119,7 +119,7 @@ pub struct TableReport {
     /// The message form's refusal by name and the two build versions its
     /// strict check compared (§3.3); None and zero on the variable form.
     pub reason: TableReason,
-    pub build_version_peer: u64,
+    pub build_version_remote: u64,
     pub build_version_own: u64,
 }
 

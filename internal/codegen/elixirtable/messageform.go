@@ -18,7 +18,7 @@
 // storage is the caller's, declared by capacity" is honoured the way this leg's
 // fixed form honours §3.4's own capacity rules: the entry bound and the byte
 // bound are FIELDS of the TableVocabulary the caller may state, defaulted to
-// 4096 entries and 64 KiB, and a peer past either is refused by name
+// 4096 entries and 64 KiB, and an endpoint past either is refused by name
 // `:vocabulary_too_large`.
 package elixirtable
 
@@ -43,7 +43,7 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	fmt.Fprintf(&b, "defmodule %s.%s do\n", ns, TableMessageModule)
 	b.WriteString("  @moduledoc \"\"\"\n")
 	b.WriteString("  The MESSAGE FORM's announcement (docs/SPEC-TABLES.md §3.3), form byte 2.\n\n")
-	b.WriteString("  A message is a bitpacked body under a vocabulary the peer announces once,\n")
+	b.WriteString("  A message is a bitpacked body under a vocabulary the endpoint announces once,\n")
 	b.WriteString("  before the first body and never again. The announcement is an ordinary\n")
 	b.WriteString("  form-`1` FILE whose body carries the unit's BUILD VERSION and the unit's\n")
 	b.WriteString("  whole VOCABULARY, and whose trailer is those two reserved ids. It is a\n")
@@ -51,7 +51,7 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("  are the constant and its length and not a walk.\n\n")
 	b.WriteString("  `announce_read/2` resolves the vocabulary ONCE into the caller's\n")
 	b.WriteString("  `TableMessage` struct — the `TableVocabulary` of §3.3's surface — keeping\n")
-	b.WriteString("  the peer's build version. A second announcement is `:second_announcement`,\n")
+	b.WriteString("  the endpoint's build version. A second announcement is `:second_announcement`,\n")
 	b.WriteString("  a vocabulary past either bound is `:vocabulary_too_large`, and the two\n")
 	b.WriteString("  strict checks — the build version present exactly once at kind 9 eight\n")
 	b.WriteString("  bytes wide, the vocabulary present exactly once at kind 14 element kind 6\n")

@@ -320,7 +320,7 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
 /// THE READ: ONE loop over ONE plan, then the scatter. The identity plan when
 /// the file's layout hashes to this build's own, a plan compiled once from the
 /// writer's layout otherwise — SAME LOOP either way, which is the owner's
-/// ruling that this form's cost must not move when a peer ships
+/// ruling that this form's cost must not move when an endpoint ships
 /// (docs/SPEC-TABLES.md §3.4).
 ///
 /// The PREFILL copies declared defaults into exactly the dest ranges the plan
@@ -467,7 +467,7 @@ pub fn fixed_table_fixed_load(
     }
     // THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, and only on a read
     // that RETURNS (§5.9 #6): `unknown` and `kind_mismatch` are the PLAN'S own
-    // numbers, fixed when the plan was built — once per peer, never per record
+    // numbers, fixed when the plan was built — once per endpoint, never per record
     // (§5.4) — and a refusal that came after would have moved a counter, where
     // REFUSE IS TOTAL.
     report.unknown += census.0;

@@ -1,14 +1,14 @@
 package jstable
 
-// The writer_bound_count divergence row with TWO lineage peers
+// The writer_bound_count divergence row with TWO lineage endpoints
 // (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8 row 4). The reader is
-// VNEW_array_bounded_grow ([..8]int32). It is handed TWO peers with DIFFERENT
+// VNEW_array_bounded_grow ([..8]int32). It is handed TWO endpoints with DIFFERENT
 // bounds: VOLD_array_bounded_grow ([..4]int32), which WROTE the file, and
 // VMID_array_bounded_grow ([..6]int32), the distractor, which did not. The
-// count word is forged to 7, exactly as the landed single-peer test forges it.
+// count word is forged to 7, exactly as the landed single-endpoint test forges it.
 // The number that makes this test worth having is 6: a reader that clamps to
-// its own bound lands 8, a reader that clamps to whichever peer it saw last
-// lands 6, and only a plan that carries the WRITING peer's bound lands 4.
+// its own bound lands 8, a reader that clamps to whichever endpoint it saw last
+// lands 6, and only a plan that carries the WRITING endpoint's bound lands 4.
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ import (
 	"testing"
 )
 
-func TestJSFixedVersioningWriterBoundCountTwoPeers(t *testing.T) {
+func TestJSFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
 	corpus := jsFixedCorpus(t)
 	node := jsNode(t)
 	newer := jsReadSchema(t, "VNEW_array_bounded_grow")
@@ -46,7 +46,7 @@ const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
 if (n !== 1) { fail("writer_bound_count: n is not 1: " + n + " " + reason(r)); }
 if (back[0].ValsCount !== 4) {
-  fail("vals_count is the WRITING peer's bound carried by the plan, never the distractor's 6, never the reader's 8 nor the forged 7: " + show(back[0].ValsCount));
+  fail("vals_count is the WRITING endpoint's bound carried by the plan, never the distractor's 6, never the reader's 8 nor the forged 7: " + show(back[0].ValsCount));
 }
 for (let i = 0; i < 4; i++) {
   if (back[0].Vals[i] !== 1000 + i) { fail("vals[" + i + "] did not land: " + show(back[0])); }
@@ -68,6 +68,6 @@ if (r.refused !== 0) { fail("a count inside the writer's bound is not a refusal:
 `, filepath.Join(corpus, "old_array_bounded_grow.bin"))
 	out, err := jsRunVersionProbe(t, node, newer, []string{writer, distractor}, 0, table, src)
 	if err != nil {
-		t.Fatalf("writer_bound_count, two peers: %v\n%s", err, out)
+		t.Fatalf("writer_bound_count, two endpoints: %v\n%s", err, out)
 	}
 }

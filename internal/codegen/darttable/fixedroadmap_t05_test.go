@@ -239,10 +239,10 @@ fixed table T
 		"R19 unknown counts an UNNAMED writer field, never a record")
 	// THE CENSUS LANDS ONCE, AFTER THE LOOP, and comes from the plan's own
 	// numbers: a lawful lineage's plan names every field, so it is zero.
-	t05Has(t, src, "report.unknown += censusUnknown;", "R19 the census lands once per peer")
-	t05Has(t, src, "report.kindMismatch += censusKind;", "R19 kind_mismatch lands once per peer")
+	t05Has(t, src, "report.unknown += censusUnknown;", "R19 the census lands once per endpoint")
+	t05Has(t, src, "report.kindMismatch += censusKind;", "R19 kind_mismatch lands once per endpoint")
 	if n := strings.Count(src, "report.unknown += censusUnknown;"); n != 1 {
-		t.Errorf("R19: the census lands %d times, want once per peer", n)
+		t.Errorf("R19: the census lands %d times, want once per endpoint", n)
 	}
 	// WIDENED MOVES ONLY WHERE A KIND GREW, AND CLAMPED ONLY WHERE A LENGTH OR
 	// BOUND WAS OUT OF RANGE — the ops, not the loop.
@@ -295,16 +295,16 @@ fixed table T
 // ---- dart/R16 ---------------------------------------------------------------
 
 // t05R16 holds dart/R16 to §5.4's counters, each asserted by the site that owns
-// it: the census ONCE per peer after the loop, `widened` once per entry per
+// it: the census ONCE per endpoint after the loop, `widened` once per entry per
 // record, `clamped` once per entry per record for a count and a text length,
 // and the bounds pass's count of a FORGED ORDINAL remapped to None on BOTH
 // plans. `copy` and `present` land their value and move nothing.
 func t05R16(t *testing.T) {
 	runtime := t05Runtime()
-	// unknown: once per peer at COMPILE, after the record loop, and never per
+	// unknown: once per endpoint at COMPILE, after the record loop, and never per
 	// record (§5.4, §5.9 #6).
 	t05Has(t, runtime, "if (!named && census) {\n        report.unknown++;\n      }",
-		"R16 unknown is once per field of a peer at COMPILE")
+		"R16 unknown is once per field of an endpoint at COMPILE")
 	t05Has(t, runtime, "report.kindMismatch++;", "R16 kind_mismatch is once per moved pair at COMPILE")
 	// widened: once per entry per record.
 	for _, name := range []string{"widen", "widenFloat"} {

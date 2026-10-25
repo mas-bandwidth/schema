@@ -17,7 +17,7 @@ package bench;
 //   this build's own the plan is the identity plan — one entry, the whole
 //   body — and for anybody else it is a plan compiled ONCE from the writer's
 //   own layout and cached by hash. The same loop runs either way, which is
-//   the owner's own ruling: a form whose cost moved when a peer shipped
+//   the owner's own ruling: a form whose cost moved when an endpoint shipped
 //   would be a performance cliff at the worst possible moment.
 //
 //   THE PLAN'S DESTINATION IS A RECORD IMAGE, a byte[] laid out exactly as
@@ -978,8 +978,8 @@ public final class TableFixed {
     public static final int layoutHeaderBytes = 4;
 
     /**
-     * §3.4's record bound, which a reader holds an untrusted peer's layout to for the same reason
-     * the compiler holds a declaration to it.
+     * §3.4's record bound, which a reader holds an untrusted endpoint's layout to for the same
+     * reason the compiler holds a declaration to it.
      */
     public static final int recordMaxBytes = 65536;
 
@@ -1359,7 +1359,7 @@ public final class TableFixed {
 
     /**
      * THE WHOLE OF WHAT A READER TRUSTS A LAYOUT ON (docs/SPEC-TABLES.md §3.4). A LAYOUT ARRIVES
-     * FROM AN UNTRUSTED PEER and it is the one structure a reader must parse before it knows
+     * FROM AN UNTRUSTED ENDPOINT and it is the one structure a reader must parse before it knows
      * anything at all, so every rule runs BEFORE a single record byte is touched and each refuses
      * under ITS OWN NAME. A layout that fails any of them SETS NOTHING.
      *
@@ -1411,7 +1411,7 @@ public final class TableFixed {
     // ---- THE PLAN COMPILER --------------------------------------------------
     //
     // The SAME LOOP runs over this plan as over the identity plan. What the
-    // compiler does, ONCE PER PEER, is what a read would otherwise do once per
+    // compiler does, ONCE PER ENDPOINT, is what a read would otherwise do once per
     // record: map the writer's ids onto this reader's fields; leave a field it
     // cannot name OUT of the plan, which is what skips it, by arithmetic that
     // was going to step past it anyway; and leave a field the writer does not
@@ -1654,10 +1654,10 @@ public final class TableFixed {
 
     // matchChildren walks a TABLE's children on both sides, by NAME.
     //
-    // The census flag is whether THIS entry is the FIRST time the peer's field is
+    // The census flag is whether THIS entry is the FIRST time the writer's field is
     // seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-    // ONCE PER FIELD PER PEER (5.4), so only element 0 censuses. Without it a
-    // peer field dropped from a [4]Item is counted four times and the report
+    // ONCE PER FIELD PER ENDPOINT (5.4), so only element 0 censuses. Without it a
+    // writer's field dropped from a [4]Item is counted four times and the report
     // says 4 where the law says 1.
     private static void matchChildren(
             Compiler c,
@@ -2040,7 +2040,7 @@ public final class TableFixed {
     }
 
     /**
-     * compile a plan from the writer's layout onto this reader's own, ONCE per peer. Answers the
+     * compile a plan from the writer's layout onto this reader's own, ONCE per endpoint. Answers the
      * entry count, or -1 when the plan does not fit the storage the caller declared — which is a
      * refusal by name, because this codec never allocates. dest is MY side of the layout, five
      * lanes per entry: dest, stride, aux, counted, arg. A bytes(N) row is an ARRAY's.

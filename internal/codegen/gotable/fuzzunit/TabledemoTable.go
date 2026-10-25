@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xe8122cedd2bc1d3d)
-const _ = uint64(0xe8122cedd2bc1d3d - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xae0fbcf6e7f68685)
+const _ = uint64(0xae0fbcf6e7f68685 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -620,7 +620,7 @@ type EffectRow struct {
 
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
-// announcement carries before the first body so a peer's build is knowable.
+// announcement carries before the first body so an endpoint's build is knowable.
 const BuildVersion uint64 = 0x81b9d8ee7522a549
 
 // ---- reflection (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----
@@ -1557,9 +1557,9 @@ func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 
 	return at
 }
 
-// census is whether THIS entry is the first time the peer's field is seen:
+// census is whether THIS entry is the first time the writer's field is seen:
 // an array's element subtree is compiled once per element and the unknown
-// count is ONCE PER FIELD PER PEER (§5.4), so only element 0 censuses.
+// count is ONCE PER FIELD PER ENDPOINT (§5.4), so only element 0 censuses.
 func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)

@@ -141,7 +141,7 @@ func t08ReadTokens(t *testing.T, text string) []string {
 
 // t08W6 holds W6 to the plan's partition and the record split: the emitted
 // identity plan coalesces the per-field partition to ONE `{:copy, 0, 0, body}`
-// run over the record body, the runtime compiles a peer's plan partition by
+// run over the record body, the runtime compiles an endpoint's plan partition by
 // child id (`match_children`) and coalesces it (`coalesce`), and the emitted
 // reader splits a file's records (`t_fixed_split`) on the record size.
 func t08W6(t *testing.T) {

@@ -88,32 +88,32 @@ func loadUnitLock(u *ir.Unit) *lockfile.Unit {
 	return lock
 }
 
-// loadFixturePeers returns older schema units this generate may COMPILE plans
+// loadFixtureRemotes returns older schema units this generate may COMPILE plans
 // from when the unit has no lock. Callers must pass lock == nil before
 // invoking this: a locked unit with a sibling the convention can name would
 // otherwise append a non-oldest-first entry past the identity. The VOLD_/VNEW_
 // pairs, the numbered evolution set, and fixtureLineage sit beside each other,
 // so a NEW generate reads the OLD schema and bakes its hash and layout bytes.
-func loadFixturePeers(u *ir.Unit) []*ir.Unit {
+func loadFixtureRemotes(u *ir.Unit) []*ir.Unit {
 	if u == nil || len(u.Files) == 0 || u.Files[0].Path == "" {
 		return nil
 	}
-	paths := fixturePeerPaths(u.Files[0].Path)
+	paths := fixtureRemotePaths(u.Files[0].Path)
 	if len(paths) == 0 {
 		return nil
 	}
 	var out []*ir.Unit
 	for _, p := range paths {
-		peer, err := loadPeerUnit(p)
-		if err != nil || peer == nil {
+		endpoint, err := loadRemoteUnit(p)
+		if err != nil || endpoint == nil {
 			continue
 		}
-		out = append(out, peer)
+		out = append(out, endpoint)
 	}
 	return out
 }
 
-func fixturePeerPaths(schemaPath string) []string {
+func fixtureRemotePaths(schemaPath string) []string {
 	dir := filepath.Dir(schemaPath)
 	base := strings.TrimSuffix(filepath.Base(schemaPath), ".schema")
 	seen := map[string]bool{}
@@ -211,7 +211,7 @@ func lineageRank(path string) int {
 	return 50
 }
 
-func loadPeerUnit(path string) (*ir.Unit, error) {
+func loadRemoteUnit(path string) (*ir.Unit, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -271,8 +271,8 @@ func (g *tableGen) lineageEntries(st *ir.Struct) []fixedKnown {
 		h := ir.TableFixedLayoutHash(layout, src)
 		add(h, layout, 8+ir.TableFixedTypeBytes(src), note, collectKnownRanges(g.unit, st, src))
 	}
-	for _, peer := range g.lineagePeers {
-		addFromUnit(peer, peerTable(peer, want), peer.Package)
+	for _, endpoint := range g.lineageRemotes {
+		addFromUnit(endpoint, remoteTable(endpoint, want), endpoint.Package)
 	}
 	addFromUnit(g.unit, st, "identity")
 	return out
@@ -339,7 +339,7 @@ func knownRangeField(st *ir.Struct, name string) *ir.Field {
 	return nil
 }
 
-func peerTable(u *ir.Unit, wireName string) *ir.Struct {
+func remoteTable(u *ir.Unit, wireName string) *ir.Struct {
 	if u == nil {
 		return nil
 	}

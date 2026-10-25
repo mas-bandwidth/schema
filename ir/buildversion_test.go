@@ -242,7 +242,7 @@ table Row
 // explicit. A union with a TABLE ARM is EXCLUDED WHOLE from the wire-shape
 // projection (SPEC.md §3.1): it has no packet encoding, no `type` can name it,
 // and the closure never reaches it — so an arm renamed there moves NO protocol
-// id, and two peers whose table-only vocabularies disagree now connect,
+// id, and two endpoints whose table-only vocabularies disagree now connect,
 // correctly. What still catches the edit is the BUILD VERSION: group 3's union
 // vocabulary carries every arm's name and id (§20.2), so a cook written before
 // the rename refuses to open after it. It is red if either half moves the

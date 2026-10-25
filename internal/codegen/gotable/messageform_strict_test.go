@@ -4,9 +4,9 @@ import "testing"
 
 // TestGoMessageFormStrict asserts, one subtest per clause, the OPT-IN STRICT
 // MODE the message form adds (docs/SPEC-TABLES.md §3.3): a strict announcement
-// refuses a peer whose build version differs from the unit's own, with a typed
+// refuses an endpoint whose build version differs from the unit's own, with a typed
 // error, while the default stays tolerant. One fixed table, one reader unit,
-// and a peer announcement carrying the other build version's bytes.
+// and an endpoint announcement carrying the other build version's bytes.
 func TestGoMessageFormStrict(t *testing.T) {
 	t.Parallel()
 	const schema = `package probe
@@ -35,11 +35,11 @@ fixed table Root {
 	}
 }
 
-// The shared helpers: a peer announcement is the unit's own with its build
+// The shared helpers: an endpoint announcement is the unit's own with its build
 // version word replaced, so the reader sees one fixed table announced at
 // another build version.
 const msgStrictHelpers = `
-func peer(version uint64) []byte {
+func endpoint(version uint64) []byte {
 	buf := make([]byte, AnnounceMeasure())
 	if Announce(buf) != int64(len(buf)) {
 		panic("announce")
@@ -54,7 +54,7 @@ func open() *TableVocabulary {
 }
 `
 
-// "a peer of another build version reads clean" with the default (not strict)
+// "an endpoint of another build version reads clean" with the default (not strict)
 // vocabulary (docs/SPEC-TABLES.md §3.3).
 const msgStrictDefaultProbe = `
 import (
@@ -63,13 +63,13 @@ import (
 )
 ` + msgStrictHelpers + `
 func TestDefault(t *testing.T) {
-	peerVersion := BuildVersion ^ 0xffffffffffffffff
+	remoteVersion := BuildVersion ^ 0xffffffffffffffff
 	v := open()
 	var report TableReport
-	if !AnnounceRead(v, peer(peerVersion), &report) {
-		t.Fatalf("the tolerant read refused a peer of another build version: %+v", report)
+	if !AnnounceRead(v, endpoint(remoteVersion), &report) {
+		t.Fatalf("the tolerant read refused an endpoint of another build version: %+v", report)
 	}
-	if report != (TableReport{}) || !v.Announced || v.BuildVersion != peerVersion {
+	if report != (TableReport{}) || !v.Announced || v.BuildVersion != remoteVersion {
 		t.Fatalf("tolerant read: %+v version=%#x", report, v.BuildVersion)
 	}
 }
@@ -88,7 +88,7 @@ func TestStrictSame(t *testing.T) {
 	v := open()
 	v.Strict = true
 	var report TableReport
-	if !AnnounceRead(v, peer(BuildVersion), &report) {
+	if !AnnounceRead(v, endpoint(BuildVersion), &report) {
 		t.Fatalf("the strict read refused this unit's own build version: %+v", report)
 	}
 	if report != (TableReport{}) || !v.Announced || report.Err() != nil {
@@ -99,7 +99,7 @@ func TestStrictSame(t *testing.T) {
 
 // "a strict AnnounceRead of an announcement whose build version is not the
 // unit's own is refused by the name `build_version_mismatch`, sets no
-// vocabulary, keeps the peer's build version ... A refusal moves no counter and
+// vocabulary, keeps the endpoint's build version ... A refusal moves no counter and
 // is never `malformed`." (docs/SPEC-TABLES.md §3.3).
 const msgStrictOtherProbe = `
 import (
@@ -108,12 +108,12 @@ import (
 )
 ` + msgStrictHelpers + `
 func TestStrictOther(t *testing.T) {
-	peerVersion := BuildVersion ^ 0xffffffffffffffff
+	remoteVersion := BuildVersion ^ 0xffffffffffffffff
 	v := open()
 	v.Strict = true
 	var report TableReport
-	if AnnounceRead(v, peer(peerVersion), &report) {
-		t.Fatal("the strict read accepted a peer of another build version")
+	if AnnounceRead(v, endpoint(remoteVersion), &report) {
+		t.Fatal("the strict read accepted an endpoint of another build version")
 	}
 	if report.Verdict != TableOpenRefused || report.Reason != "build_version_mismatch" || report.Malformed {
 		t.Fatalf("refusal: %+v", report)
@@ -121,8 +121,8 @@ func TestStrictOther(t *testing.T) {
 	if v.Announced || v.Count != 0 || v.RefBits != 0 {
 		t.Fatalf("the strict refusal set a vocabulary: %+v", v)
 	}
-	if v.BuildVersion != peerVersion {
-		t.Fatalf("the peer build version was not kept: %#x", v.BuildVersion)
+	if v.BuildVersion != remoteVersion {
+		t.Fatalf("the endpoint build version was not kept: %#x", v.BuildVersion)
 	}
 	if report.Widened != 0 || report.Unknown != 0 || report.KindMismatch != 0 ||
 		report.Clamped != 0 || report.Duplicate != 0 || report.Retained != 0 || report.RetainLost != 0 {
@@ -143,29 +143,29 @@ import (
 )
 ` + msgStrictHelpers + `
 func TestTypedError(t *testing.T) {
-	peerVersion := BuildVersion ^ 0xffffffffffffffff
+	remoteVersion := BuildVersion ^ 0xffffffffffffffff
 	v := open()
 	v.Strict = true
 	var report TableReport
-	if AnnounceRead(v, peer(peerVersion), &report) {
-		t.Fatal("the strict read accepted a peer of another build version")
+	if AnnounceRead(v, endpoint(remoteVersion), &report) {
+		t.Fatal("the strict read accepted an endpoint of another build version")
 	}
 	var mismatch TableBuildVersionMismatch
 	if !errors.As(report.Err(), &mismatch) {
 		t.Fatalf("errors.As did not reach the typed error: %v", report.Err())
 	}
-	if mismatch.Peer != peerVersion || mismatch.Own != BuildVersion {
-		t.Fatalf("typed error versions: peer=%#x own=%#x want peer=%#x own=%#x",
-			mismatch.Peer, mismatch.Own, peerVersion, BuildVersion)
+	if mismatch.Endpoint != remoteVersion || mismatch.Own != BuildVersion {
+		t.Fatalf("typed error versions: endpoint=%#x own=%#x want endpoint=%#x own=%#x",
+			mismatch.Endpoint, mismatch.Own, remoteVersion, BuildVersion)
 	}
 	msg := mismatch.Error()
-	if !strings.Contains(msg, fmt.Sprintf("%016x", peerVersion)) ||
+	if !strings.Contains(msg, fmt.Sprintf("%016x", remoteVersion)) ||
 		!strings.Contains(msg, fmt.Sprintf("%016x", BuildVersion)) {
 		t.Fatalf("the typed error does not name both versions in hex: %q", msg)
 	}
 	clean := open()
 	var ok TableReport
-	if !AnnounceRead(clean, peer(BuildVersion), &ok) || ok.Err() != nil {
+	if !AnnounceRead(clean, endpoint(BuildVersion), &ok) || ok.Err() != nil {
 		t.Fatalf("a clean read reported an error: %v", ok.Err())
 	}
 }
@@ -182,15 +182,15 @@ import (
 )
 ` + msgStrictHelpers + `
 func TestTerminal(t *testing.T) {
-	peerVersion := BuildVersion ^ 0xffffffffffffffff
+	remoteVersion := BuildVersion ^ 0xffffffffffffffff
 	v := open()
 	v.Strict = true
 	var first TableReport
-	if AnnounceRead(v, peer(peerVersion), &first) || first.Reason != "build_version_mismatch" {
+	if AnnounceRead(v, endpoint(remoteVersion), &first) || first.Reason != "build_version_mismatch" {
 		t.Fatalf("strict refusal: %+v", first)
 	}
 	var second TableReport
-	if AnnounceRead(v, peer(BuildVersion), &second) || second.Reason != "second_announcement" {
+	if AnnounceRead(v, endpoint(BuildVersion), &second) || second.Reason != "second_announcement" {
 		t.Fatalf("an announcement after a strict refusal is not second_announcement: %+v", second)
 	}
 	var root Root

@@ -75,7 +75,7 @@ const (
 //
 // The compiler WARNS above the first, and above the second it stops emitting
 // the fixed form for that table altogether — see [TableFixedRecordBounds] for
-// why those are different kinds of thing. A reader holds an UNTRUSTED PEER's
+// why those are different kinds of thing. A reader holds an UNTRUSTED ENDPOINT's
 // layout to the same 65536, because a record whose size the layout states is
 // past it is one this build will not decode, so the two sides agree by
 // construction.
@@ -673,7 +673,7 @@ func TableFixedLayoutHash(layout []byte, st *Struct) uint64 {
 //	     into: the IEEE-754 bits of the float64 step, u64 LE. It is a
 //	     DEFINITION and never wire — in the fixed form a compressed float
 //	     rides as the float32 itself (SPEC-TABLES §3.4) — so the hash must
-//	     move when it moves, or a reader cannot refuse a peer that COARSENED
+//	     move when it moves, or a reader cannot refuse an endpoint that COARSENED
 //	     it (bill §2: the range widens, the resolution refines, else refuse)
 //	'B'  bits(N): N as u32 LE
 //	'X'  fixed(I,F) / ufixed(I,F): I u32 LE, F u32 LE, then 1 signed or 0 unsigned
@@ -719,7 +719,7 @@ func tableFixedDigestField(f *Field, b *[]byte, seen map[string]bool) {
 		// compressed float rides as the float in the fixed form, so the step
 		// is nowhere in the layout bytes: without this row `| min = 0, max =
 		// 1, resolution = 0.01` and `resolution = 0.1` hash identically and a
-		// finer reader could not refuse a coarser peer by hash.
+		// finer reader could not refuse a coarser endpoint by hash.
 		*b = append(*b, 'Q')
 		*b = tableFixedDigestU64(*b, math.Float64bits(f.Resolution))
 	}
@@ -1387,7 +1387,7 @@ func TableFixedRoots(u *Unit) []*Struct {
 // [TableFixedRecordMaxBytes].
 //
 // THE 65536 IS THE WIRE'S CEILING AND NOT A PREFERENCE. A reader holds an
-// untrusted peer's layout to it (§3.4's `layout_record_too_large`), so a record
+// untrusted endpoint's layout to it (§3.4's `layout_record_too_large`), so a record
 // larger than it is one no conforming reader will decode — which makes emitting
 // a writer for it a way to produce bytes nobody can read.
 //
@@ -1449,8 +1449,8 @@ func TableFixedFormRoots(u *Unit) []*Struct {
 // project that wants the advisory enforced as a gate sets `--fixed-record-limit
 // 4096` and a fixed table past it does not compile. It is a project's policy
 // knob and never a wire fact, and it only ever LOWERS: it cannot raise the
-// 65536, because 65536 is the number a PEER's reader holds this build's records
-// to (`layout_record_too_large`) and a peer's build has never heard of this
+// 65536, because 65536 is the number an ENDPOINT's reader holds this build's records
+// to (`layout_record_too_large`) and an endpoint's build has never heard of this
 // project's flag.
 //
 // THE 65536 IS THE FORM'S BOUND AND NOT THE CLASS'S, so past it the table is
@@ -1923,7 +1923,7 @@ func tableFixedMergeRanges(raw []TableFixedRange) []TableFixedRange {
 // and not a compiled plan's. A plan entry per bounded field is an entry on
 // EVERY read of every record, which is the cost the identity plan exists to
 // avoid; the Elixir port measured what that does. A COMPILED plan is built
-// once per peer, but it lands values into the same storage the identity plan
+// once per endpoint, but it lands values into the same storage the identity plan
 // does, so the same pass covers it and it needs no op of its own either. That
 // is the one path: one prefill, one loop over the plan the layout hash chose,
 // then one bounds pass — the same pass, whichever plan ran.

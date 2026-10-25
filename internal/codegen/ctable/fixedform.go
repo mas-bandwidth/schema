@@ -628,7 +628,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        %s_fixed_lineage[i].guarded = guarded;\n", n)
 		g.pf("        %s_fixed_lineage[i].fill = ( fills > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;\n", n)
 		g.pf("        %s_fixed_lineage[i].fill_count = fills;\n", n)
-		g.pf("        /* THE COMPILE CENSUS, ONCE PER PEER and never per record (§5.4). */\n")
+		g.pf("        /* THE COMPILE CENSUS, ONCE PER ENDPOINT and never per record (§5.4). */\n")
 		g.pf("        %s_fixed_lineage[i].unknown = census.unknown;\n", n)
 		g.pf("        %s_fixed_lineage[i].kind_mismatch = census.kind_mismatch;\n", n)
 		g.pf("    }\n")
@@ -749,7 +749,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("         memcmp( layout, %s_fixed_known[pick].layout, (size_t) layout_bytes ) != 0 )\n", n)
 	g.pf("    { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }\n")
 	// STEP 8.
-	g.pf("    /* 8. the plan this peer resolves to, and the record size FROM THE LOCK. */\n")
+	g.pf("    /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */\n")
 	g.pf("    record_bytes = %s_fixed_known[pick].record_bytes;\n", n)
 	if older > 0 {
 		g.pf("    if ( hash != %s_fixed_hash )\n    {\n", n)
@@ -1138,13 +1138,13 @@ func (g *tableGen) fixedClampEnd(expr, test, bound, ind string) {
 }
 
 // tableFixedOnce is THE ONCE-FLAG AND ITS PUBLICATION, emitted beside the lazy
-// build of the older lineage plans and nowhere else — a unit with no older peer
+// build of the older lineage plans and nowhere else — a unit with no older endpoint
 // has no lazy build, so it carries not one line of this.
 //
 // THE BUG IT CLOSES: the flag used to be raised BEFORE the loop, which made a
-// second thread racing the first older-peer load return from the build with the
+// second thread racing the first older-endpoint load return from the build with the
 // plans still zeros. A zeroed TableFixedLineagePlan is entries NULL, count 0 and
-// reason 0 — and step 8 of §5.3 accepts that: reason 0 is "this peer planned
+// reason 0 — and step 8 of §5.3 accepts that: reason 0 is "this endpoint planned
 // fine", count 0 is "a plan with no entries", so the read would land a
 // PREFILL-ONLY record instead of refusing. The fix is the ordinary one: build
 // into the static storage first, publish the flag LAST, and make a load that
@@ -1164,7 +1164,7 @@ func (g *tableGen) fixedClampEnd(expr, test, bound, ind string) {
 // reads a zeroed plan — a thread reaches the plan only after its own build
 // returned — but the duplicate write is a data race in the abstract machine and
 // this leg owes the fix the spec already names: §5.9 #7's GENERATOR-SIDE
-// COMPILE, which lays every older peer's plan down as static const data at
+// COMPILE, which lays every older endpoint's plan down as static const data at
 // generate time and deletes the lazy build, the flag and this whole block with
 // it. Until then the build is this, and the ordering is published.
 const tableFixedOnce = `

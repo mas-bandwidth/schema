@@ -8,20 +8,20 @@ import (
 	"testing"
 )
 
-// §5.8 row 4 (writer_bound_count) with TWO lineage peers. The reader is
-// VNEW_array_bounded_grow, vals [..8]int32. It is handed two peers with
+// §5.8 row 4 (writer_bound_count) with TWO lineage endpoints. The reader is
+// VNEW_array_bounded_grow, vals [..8]int32. It is handed two endpoints with
 // DIFFERENT bounds: VOLD_array_bounded_grow ([..4]int32), which WROTE the file,
 // and VMID_array_bounded_grow ([..6]int32), the distractor, which did not. The
-// count word is forged to 7 exactly as the landed single-peer test forges it.
+// count word is forged to 7 exactly as the landed single-endpoint test forges it.
 // The number that makes this test worth having is 6: a reader that clamps to
-// its own bound lands 8, a reader that clamps to whichever peer it saw last
-// lands 6, and only a plan that carries the WRITING peer's bound lands 4.
+// its own bound lands 8, a reader that clamps to whichever endpoint it saw last
+// lands 6, and only a plan that carries the WRITING endpoint's bound lands 4.
 
-func TestFixedVersioningWriterBoundCountTwoPeers(t *testing.T) {
+func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
 	corpus := versionCorpus(t)
 
 	tests := fmt.Sprintf(`
-/// writer_bound_count with TWO lineage peers, §5.8 row 4. The reader is WIDER
+/// writer_bound_count with TWO lineage endpoints, §5.8 row 4. The reader is WIDER
 /// than the writer and the forged file carries a count BETWEEN the two bounds.
 /// VOLD_array_bounded_grow ([..4]int32) WROTE the file; VMID_array_bounded_grow
 /// ([..6]int32) is the distractor sitting LAST in the lineage. The plan is a
@@ -29,7 +29,7 @@ func TestFixedVersioningWriterBoundCountTwoPeers(t *testing.T) {
 /// never the distractor's 6, never the reader's 8, never the forged 7. The forge
 /// writes 7 as a little-endian u32 over the count word the lead's needle locates.
 #[test]
-fn v_writer_bound_count_two_peers() {
+fn v_writer_bound_count_two_remotes() {
     let mut data = std::fs::read(%q).expect("the reference's old_array_bounded_grow.bin");
     // THE FORGE'S LOCATOR: lead 0xAAAAAAAA immediately followed by the count 4,
     // both little-endian u32 — the eight-byte needle that must occur once.
@@ -96,18 +96,18 @@ fn v_writer_bound_count_two_peers() {
 
 	root := t.TempDir()
 	versionWriteCrate(t, root, serialize, versionProbe{
-		name:   "probe_writer_bound_count_two_peers",
+		name:   "probe_writer_bound_count_two_remotes",
 		reader: "VNEW_array_bounded_grow",
 		older:  []string{"VOLD_array_bounded_grow", "VMID_array_bounded_grow"},
 		src:    versionProbeSource(tests),
 	})
 
 	cmd := exec.Command("cargo", "test")
-	cmd.Dir = filepath.Join(root, "probe_writer_bound_count_two_peers")
+	cmd.Dir = filepath.Join(root, "probe_writer_bound_count_two_remotes")
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("writer_bound_count, two peers: %v\n%s", err, out)
+		t.Fatalf("writer_bound_count, two endpoints: %v\n%s", err, out)
 	}
-	versionAssert(t, string(out), "v_writer_bound_count_two_peers")
+	versionAssert(t, string(out), "v_writer_bound_count_two_remotes")
 }

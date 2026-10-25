@@ -18,7 +18,7 @@ import (
 // The message form's arm DISPATCH is the half that has to agree. A reader
 // matching on the DECLARED name's hash names nothing the writer wrote, so the
 // arm is lost at its own build's hands: the value round-trips through the
-// message form as `None` with an `unknown` counted, and a peer holding data
+// message form as `None` with an `unknown` counted, and an endpoint holding data
 // written before the rename is refused the very arm the rename was taken to
 // keep.
 const wasArmUnit = `package wasarm

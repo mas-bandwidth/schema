@@ -23,7 +23,7 @@ import (
 // (docs/SPEC-TABLES.md §3.3). The count is a ranged integer over `[1, 256]`,
 // eight bits carrying `M - 1`, and 256 is a WIRE CONSTANT of the form rather
 // than a receiver's policy, because the count's WIDTH depends on it and two
-// peers that disagreed on the width would not be reading the same wire.
+// endpoints that disagreed on the width would not be reading the same wire.
 const TableMessageBatchMax = 256
 
 // EncodeMessages is a BATCH's form-2 wire: the FORM BYTE, the BODY COUNT, and

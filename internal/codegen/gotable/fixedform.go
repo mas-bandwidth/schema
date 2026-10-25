@@ -1285,11 +1285,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tknown := &%sFixedKnown[pick]\n", st.Name)
 	g.pf("\tif int(layoutBytes) != len(known.Layout) {\n\t\treturn tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())\n\t}\n")
 	g.pf("\tfor i := range layout {\n\t\tif layout[i] != known.Layout[i] {\n\t\t\treturn tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())\n\t\t}\n\t}\n")
-	// STEP 8: the plan this peer resolves to, and the record size FROM THE LOCK.
+	// STEP 8: the plan this endpoint resolves to, and the record size FROM THE LOCK.
 	g.pf("\tentries := %sFixedPlan.Entries\n", st.Name)
 	g.pf("\tentryCount := %sFixedPlan.Count\n", st.Name)
 	g.pf("\t// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then\n")
-	g.pf("\t// a lineage plan's when a peer selects one. Nothing computes them per call.\n")
+	g.pf("\t// a lineage plan's when an endpoint selects one. Nothing computes them per call.\n")
 	g.pf("\tholes := %sFixedHoles\n", st.Name)
 	g.pf("\trecordBytes := known.Record\n")
 	g.pf("\tcensusUnknown, censusKind := int32(0), int32(0)\n")
@@ -1298,7 +1298,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tif lane.Why != \"\" {\n\t\t\treturn tableFixedRefuse(report, lane.Why)\n\t\t}\n")
 	g.pf("\t\tentries, entryCount = lane.Entries, lane.Count\n")
 	g.pf("\t\tholes = %sFixedLineageHoles[pick]\n", st.Name)
-	g.pf("\t\t// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it\n")
+	g.pf("\t\t// THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and it\n")
 	g.pf("\t\t// lands only on a read that returns: REFUSE moves no counter.\n")
 	g.pf("\t\tcensusUnknown, censusKind = lane.Unknown, lane.KindMismatch\n")
 	g.pf("\t}\n")
@@ -1478,7 +1478,7 @@ func fixedCheckNeededStruct(st *ir.Struct, seen map[string]bool) bool {
 func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
 	// Deprecated fixed slots are sourced from the declared default image, so
 	// live values cannot make the write fail. Keep this writer-only skip here;
-	// the read-side clamp pass still applies the peer-layout bounds.
+	// the read-side clamp pass still applies the endpoint-layout bounds.
 	if f.Deprecated {
 		return false
 	}

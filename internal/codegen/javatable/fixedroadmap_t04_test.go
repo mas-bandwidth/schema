@@ -227,13 +227,13 @@ fixed table T
 // ---- java/R16 --------------------------------------------------------------
 
 // t04R16 holds java/R16 to §5.4's counters, each at the site that owns it: the
-// census ONCE per peer after the loop, the widen and clamp bumps of the plan's
+// census ONCE per endpoint after the loop, the widen and clamp bumps of the plan's
 // run, the bounds pass's forged-ordinal clamp, and copy/const/present/ordinal
 // moving nothing.
 func t04R16(t *testing.T) {
 	runtime := t04Runtime()
 	for _, want := range []string{
-		// unknown: ONCE PER PEER, after the record loop (§5.9 #6).
+		// unknown: ONCE PER ENDPOINT, after the record loop (§5.9 #6).
 		"if (!named && census && c.report != null) { c.report.unknown++; }",
 		// widened: once per entry per record.
 		"report.widened++;",
@@ -256,7 +256,7 @@ fixed table T
 	if err != nil {
 		t.Fatalf("R16: Generate: %v", err)
 	}
-	t04Has(t, t04Surface(t, out), "report.unknown += censusUnknown;", "R16 unknown lands once per peer")
+	t04Has(t, t04Surface(t, out), "report.unknown += censusUnknown;", "R16 unknown lands once per endpoint")
 	// widened is EXACTLY min(their_n, my_n) (§5.9 #33). The figure is asserted
 	// two ways: the versioning fixture's array_elem_widen row declares widened ==
 	// 4 and widenedError holds the runtime to that exact number — a folded read

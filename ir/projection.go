@@ -6,8 +6,8 @@ package ir
 // WHY THIS EXISTS
 //
 // The protocol id used to hash the schema SOURCE TEXT. That was safe in the
-// only direction that matters — it can produce a spurious MISMATCH (two peers
-// refuse to talk when they actually could), never a spurious MATCH (two peers
+// only direction that matters — it can produce a spurious MISMATCH (two endpoints
+// refuse to talk when they actually could), never a spurious MATCH (two endpoints
 // agree when their bytes differ). But it moved the id for a comment, a blank
 // line, a renamed file, or a field added at zero wire cost, and each of those
 // costs a coordinated redeploy for nothing.
@@ -21,7 +21,7 @@ package ir
 //
 // WHAT IS INCLUDED, and why each one moves the wire:
 //
-//   package                  peers of different packages are different
+//   package                  endpoints of different packages are different
 //                            protocols; conservative, and can only add ids
 //   every type's fields      order IS the wire order
 //   field names              FROZEN input (see projectField) — a rename
@@ -142,7 +142,7 @@ func WireProjection(u *Unit) string {
 	// reachability rule (SPEC §3.1): a flags mask is the table wire's one
 	// POSITIONAL vocabulary, a variant's identity is its bit, and no read
 	// report can see a bit reassigned — so the protocol id is the only
-	// runtime frame that refuses two peers holding different bit
+	// runtime frame that refuses two endpoints holding different bit
 	// assignments. The other positional vocabulary a table could have had is
 	// gone rather than excepted: `[E.Max]T` is refused in a table body
 	// (docs/SPEC-TABLES.md §2.4), so an enum a table reaches rides by name.

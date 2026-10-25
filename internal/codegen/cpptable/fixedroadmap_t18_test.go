@@ -143,7 +143,7 @@ func t18OldFile(t *testing.T, olderPath string, values []byte) string {
 // t18Lock is the older side held EXPLICITLY: a lockfile.Unit whose single
 // fixed table carries one lineage entry naming the VOLD_ side's wire hash,
 // layout bytes, definitions digest and record body. A same-hash pair has no
-// distinct VOLD_ peer for the nil-lock convention to find, so the reader is
+// distinct VOLD_ endpoint for the nil-lock convention to find, so the reader is
 // compiled with this lock instead.
 func t18Lock(t *testing.T, olderPath string) *lockfile.Unit {
 	t.Helper()
@@ -461,8 +461,8 @@ func TestFixedRoadmapCppT18FieldEvolution(t *testing.T) {
 
 // cppRunVersionProbeLock is cppRunVersionProbe's sibling for a SAME-HASH pair:
 // it generates the READER's unit and hands GenerateLineage the explicit lock
-// naming the older side (t18Lock), so a reader with no distinct VOLD_ peer —
-// the deprecate row — still carries that peer's hash in its lineage. Its
+// naming the older side (t18Lock), so a reader with no distinct VOLD_ endpoint —
+// the deprecate row — still carries that endpoint's hash in its lineage. Its
 // interim guard is the lock's own: the generated header MUST name the old hash.
 // cppRunVersionProbe's signature is untouched; this is a second entry point.
 func cppRunVersionProbeLock(t *testing.T, row, olderPath, file, body, forge string) ([]byte, error) {
@@ -602,7 +602,7 @@ type cppT18Pair struct {
 
 // cppT18Generate stages VOLD_/VNEW_<row>.schema in one temp dir, generates the
 // OLD unit (the writer) and the NEW unit (the reader, whose lineage is the OLD
-// peer via the nil-lock sibling convention), and answers the two headers and
+// endpoint via the nil-lock sibling convention), and answers the two headers and
 // their namespaces.
 func cppT18Generate(t *testing.T, row string) cppT18Pair {
 	t.Helper()
@@ -852,7 +852,7 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
 `, pair.root, pair.newPkg, 1))
 
 		// unknown: Item.drop removed, read across the four-element array of tables.
-		// Once per field per peer, never per record nor per element: unknown == 1.
+		// Once per field per endpoint, never per record nor per element: unknown == 1.
 		pair = cppT18Generate(t, "unknown_census")
 		cppT18Run(t, pair, fmt.Sprintf(`
     {

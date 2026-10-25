@@ -91,7 +91,7 @@ func TestTableFixedDefinitionsDigestFloatRangeIsR(t *testing.T) {
 
 // THE RESOLUTION IS IN THE DIGEST, ALONE. A compressed float rides as the
 // float32 in the fixed form, so the step is nowhere in the layout bytes: if it
-// did not move the hash, a finer reader could not refuse a coarsened peer by
+// did not move the hash, a finer reader could not refuse a coarsened endpoint by
 // hash, which is the whole mechanism (bill §2, §13).
 func TestTableFixedDefinitionsDigestResolutionMovesTheHash(t *testing.T) {
 	layout := []byte{0x01, 0x02, 0x03, 0x04}
@@ -105,7 +105,7 @@ func TestTableFixedDefinitionsDigestResolutionMovesTheHash(t *testing.T) {
 		t.Fatal("two resolutions over the same bounds must not share a digest")
 	}
 	if TableFixedLayoutHash(layout, fine) == TableFixedLayoutHash(layout, coarse) {
-		t.Fatal("a moved resolution must move the wire hash; otherwise a coarsened peer cannot be refused")
+		t.Fatal("a moved resolution must move the wire hash; otherwise a coarsened endpoint cannot be refused")
 	}
 	d := TableFixedDefinitionsDigest(fine)
 	if n := bytes.Count(d, []byte{'Q'}); n != 1 {

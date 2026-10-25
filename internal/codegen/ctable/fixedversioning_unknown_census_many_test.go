@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-// §5.4's compile census lands once per peer AND never per record, but the
+// §5.4's compile census lands once per endpoint AND never per record, but the
 // landed one-record row reads 'old_unknown_census.bin', ONE record, where
-// "once per peer" and "once per record" are the SAME number, 1. A per-record
+// "once per endpoint" and "once per record" are the SAME number, 1. A per-record
 // Unknown++ really exists in these runtimes (the union-tag path), and only a
 // many-record file tells it apart. 'many_unknown_census.bin' carries THREE
 // Census records; the counter is asserted == 1 EXACTLY, never >= 1, because a

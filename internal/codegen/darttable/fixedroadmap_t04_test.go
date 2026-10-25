@@ -338,7 +338,7 @@ func t04R15(t *testing.T) {
 	// meta and the guard's width, and the ninth is last — so a plan compiled
 	// from a stranger's layout has nowhere to hold the writer's ends. A ranged
 	// leaf is clamped in the DECODE against the READER's own declared ends
-	// (schema#1164, statement B), not against a peer's.
+	// (schema#1164, statement B), not against an endpoint's.
 	t04Has(t, fixedRuntime, "static const int lanes = 11;", "R15 the plan carries no range lane")
 	t04Has(t, fixedRuntime, "static const int argW = 8;", "R15 the ninth lane is the guard's width")
 	ranged, _ := t04Lineage(t,
@@ -461,10 +461,10 @@ func t04R20(t *testing.T) {
 		t.Errorf("R20: the added field's bytes are % x, want 4d 00 00 00 — the declared default 77", prefill[4:8])
 	}
 	// A DEPRECATED FIELD, counted ONCE per plan: the census flag is the first
-	// time the peer's field is seen, and an array's element 0 is the only one
+	// time the writer's field is seen, and an array's element 0 is the only one
 	// that censuses.
 	t04Has(t, fixedRuntime, "if (!named && census) {", "R20 an unknown field is counted")
-	t04Has(t, fixedRuntime, "census && i == 0,", "R20 once per FIELD per peer, not per element")
+	t04Has(t, fixedRuntime, "census && i == 0,", "R20 once per FIELD per endpoint, not per element")
 	t04Has(t, text, "report.unknown += censusUnknown;", "R20 the census lands once, after the loop")
 	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
 	t04Has(t, fixedRuntime, "report.widened++;", "R20 a widen counts")
@@ -579,7 +579,7 @@ func t04R29(t *testing.T) {
 	if joined := strings.Join(warnings, "\n"); !strings.Contains(joined, "Lineage") {
 		t.Errorf("R29: the warning does not name the table: %s", joined)
 	}
-	t04Has(t, fixedRuntime, "size(0) == 0 || size(0) > TableFixedLimits.recordMaxBytes", "R29 the reader holds the peer's layout to the same ceiling")
+	t04Has(t, fixedRuntime, "size(0) == 0 || size(0) > TableFixedLimits.recordMaxBytes", "R29 the reader holds the endpoint's layout to the same ceiling")
 	t04Has(t, fixedRuntime, "plan.record != 0 && end > plan.record", "R29 an entry past the writer's declared record")
 	t04Has(t, fixedRuntime, "} else if (counted > size) {", "R29 the count clamps to the writer's bound")
 	t04Has(t, fixedRuntime, "} else if (used > cap) {", "R29 the text clamps to the writer's span")

@@ -6,16 +6,16 @@ import (
 	"testing"
 )
 
-// ---- writer_bound_count, two lineage peers (§5.8 row 4, rewritten to the refusal) -
+// ---- writer_bound_count, two lineage endpoints (§5.8 row 4, rewritten to the refusal) -
 //
 // The reader is VNEW_array_bounded_grow ([..8]int32). It is handed TWO lineage
-// peers with DIFFERENT bounds: VOLD_array_bounded_grow ([..4]int32), which WROTE
+// endpoints with DIFFERENT bounds: VOLD_array_bounded_grow ([..4]int32), which WROTE
 // the file, and VMID_array_bounded_grow ([..6]int32), the distractor, which did
-// not. The count word is forged to 7 — past the WRITING peer's bound of 4. The
+// not. The count word is forged to 7 — past the WRITING endpoint's bound of 4. The
 // OWNER RULE (2026-10-15) replaced the count clamp with a NAMED REFUSAL: the
 // forged count refuses `count_over_bound` against the WRITER's bound carried by
 // the plan, before any destination byte is written.
-func TestFixedVersioningWriterBoundCountTwoPeers(t *testing.T) {
+func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
 	corpus := fixedCorpus(t)
 	newer := readSchema(t, "VNEW_array_bounded_grow")
 	writer := readSchema(t, "VOLD_array_bounded_grow")
@@ -59,6 +59,6 @@ func TestWriterBoundCount(t *testing.T) {
 `, filepath.Join(corpus, "old_array_bounded_grow.bin"), table)
 	out, err := runVersionProbe(t, newer, []string{writer, distractor}, src)
 	if err != nil {
-		t.Fatalf("writer_bound_count, two peers: %v\n%s", err, out)
+		t.Fatalf("writer_bound_count, two endpoints: %v\n%s", err, out)
 	}
 }

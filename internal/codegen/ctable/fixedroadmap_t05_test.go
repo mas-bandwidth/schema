@@ -239,7 +239,7 @@ int main(void)
 	})
 
 	// c/R16 "§5.4's counters exactly" (docs/FIXED-FORM-ALGORITHM.md §5.4): the
-	// compile census counts unknown once per peer and lands once, after the
+	// compile census counts unknown once per endpoint and lands once, after the
 	// record loop, never per record; a widened field counts one widened per
 	// entry per record; a forged ordinal past the writer's set lands None and
 	// counts clamped on BOTH plans (the ordinal op and the unguarded None
@@ -276,7 +276,7 @@ int main(void)
 		if err != nil {
 			t.Fatalf("c/R16 int_widen: %v\n%s", err, out)
 		}
-		// the compile census: Item.drop is ONE field of ONE peer, so the NEW
+		// the compile census: Item.drop is ONE field of ONE endpoint, so the NEW
 		// reader counts it ONCE however many elements carry it
 		cnew := cReadSchema(t, "VNEW_unknown_census")
 		cold := cReadSchema(t, "VOLD_unknown_census")

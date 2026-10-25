@@ -1,13 +1,13 @@
 package elixirtable
 
-// §5.8 row 4 — writer_bound_count with TWO lineage peers. The reader is
-// VNEW_array_bounded_grow ([..8]int32). It holds TWO peers with DIFFERENT
+// §5.8 row 4 — writer_bound_count with TWO lineage endpoints. The reader is
+// VNEW_array_bounded_grow ([..8]int32). It holds TWO endpoints with DIFFERENT
 // bounds: VOLD_array_bounded_grow ([..4]int32), which WROTE the file, and
 // VMID_array_bounded_grow ([..6]int32), the distractor, which did not. The
-// count word is forged to 7 exactly as the landed single-peer test forges it.
+// count word is forged to 7 exactly as the landed single-endpoint test forges it.
 // The number that makes this test worth having is 6: a reader that clamps to
-// its own bound lands 8, a reader that clamps to whichever peer it saw last
-// lands 6, and only a plan that carries the WRITING peer's bound lands 4.
+// its own bound lands 8, a reader that clamps to whichever endpoint it saw last
+// lands 6, and only a plan that carries the WRITING endpoint's bound lands 4.
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ import (
 	"testing"
 )
 
-func TestFixedVersioningWriterBoundCountTwoPeers(t *testing.T) {
+func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 
@@ -58,6 +58,6 @@ func TestFixedVersioningWriterBoundCountTwoPeers(t *testing.T) {
 
 	out, err := runVersionProbe(t, elixirBin, "VNEW_array_bounded_grow", []string{"VOLD_array_bounded_grow", "VMID_array_bounded_grow"}, 0, forged, body)
 	if err != nil {
-		t.Fatalf("writer_bound_count, two peers: %v\n%s", err, out)
+		t.Fatalf("writer_bound_count, two endpoints: %v\n%s", err, out)
 	}
 }

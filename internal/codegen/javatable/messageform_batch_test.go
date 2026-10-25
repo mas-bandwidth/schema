@@ -191,7 +191,7 @@ func TestMessageFormBatchJava(t *testing.T) {
 
 	// 3. VERSIONING, the use case: an OLDER writer's batch read under ITS
 	// announcement by a NEWER reader (§3.3: "a reader decodes a body against
-	// the table THAT peer announced").
+	// the table THAT endpoint announced").
 	t.Run("versioning_upgrade", func(t *testing.T) {
 		t.Parallel()
 		older := unitFrom(t, messageBatchOlderSrc)
@@ -690,7 +690,7 @@ const messageBatchRefusalsMain = `
         if (RootMessage.saveMessages(oneArr, 1, wire, new TableVocabulary.Report()) != m) { fail("saveMessages"); }
 
         {
-            // "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME ... no_vocabulary"
+            // "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME ... no_vocabulary"
             final TableVocabulary fresh = new TableVocabulary();
             fresh.reset(4096);
             final TableVocabulary.Report rep = new TableVocabulary.Report();
@@ -777,7 +777,7 @@ const messageBatchRefusalsMain = `
             say("short_buffer", got == -1, "got=" + got);
         }
         {
-            // An unknown field under a slot the peer announced is skipped by its announced shape and counted unknown.
+            // An unknown field under a slot the endpoint announced is skipped by its announced shape and counted unknown.
             final RootFixed.Value[] values = new RootFixed.Value[] { new RootFixed.Value() };
             final TableVocabulary.Report rep = new TableVocabulary.Report();
             final TableVocabulary v2 = new TableVocabulary();

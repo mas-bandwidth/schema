@@ -478,7 +478,7 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 	emitRuntime := func(g *tableGen) {
 		g.needsMath = true
 		g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
-		g.pf("// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): the\n// one digest a block carries and BlockOpen compares, and the fact §3.3's\n// announcement carries before the first body so a peer's build is knowable.\nconst BuildVersion uint64 = 0x%016x\n\n", ir.BuildVersion(u))
+		g.pf("// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): the\n// one digest a block carries and BlockOpen compares, and the fact §3.3's\n// announcement carries before the first body so an endpoint's build is knowable.\nconst BuildVersion uint64 = 0x%016x\n\n", ir.BuildVersion(u))
 		// the message form's TYPES are the core's: the descriptor's message
 		// columns are typed by them, and the core declares the descriptor
 		g.pf("%s", unboundedTextRuntime(u, textListRuntime(u, tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageCoreTypes(u)+tableFixedRuntime)))
@@ -993,11 +993,11 @@ type TableReport struct {
 	// already named (docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
 	// node, never a copy per slot, and the strict read refuses blob_shared.
 	BlobShared int32
-	// BuildVersionPeer and BuildVersionOwn are the two build versions a strict
-	// announcement refusal carries (docs/SPEC-TABLES.md §3.3): the peer's
+	// BuildVersionRemote and BuildVersionOwn are the two build versions a strict
+	// announcement refusal carries (docs/SPEC-TABLES.md §3.3): the endpoint's
 	// announcement and this unit's own. They are zero on every other read.
-	BuildVersionPeer uint64
-	BuildVersionOwn  uint64
+	BuildVersionRemote uint64
+	BuildVersionOwn    uint64
 	// FixedRaised is true only on a FIXED form's refusal
 	// (docs/SPEC-TABLES.md §3.4, §6.5): a refusal that has a name answers it
 	// BY NAME (via its TableRefuseReason member), and the four form-byte

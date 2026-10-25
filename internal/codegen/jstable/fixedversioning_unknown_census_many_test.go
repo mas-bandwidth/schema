@@ -1,10 +1,10 @@
 package jstable
 
 // §5.4 row 11, `unknown_census`, NEW-READS-OLD over THREE records. The compile
-// census lands ONCE PER PEER and NEVER PER RECORD, and the landed one-record row
-// cannot close the second half of that clause: with one record "once per peer"
+// census lands ONCE PER ENDPOINT and NEVER PER RECORD, and the landed one-record row
+// cannot close the second half of that clause: with one record "once per endpoint"
 // and "once per record" are the same number, 1. `Item.drop` is ONE field of ONE
-// peer, so `unknown` is asserted EXACTLY 1 across all three records — not 3 (a
+// endpoint, so `unknown` is asserted EXACTLY 1 across all three records — not 3 (a
 // per-record census) and not `>= 1` (which a per-element census of 4 would pass).
 
 import (
@@ -45,7 +45,7 @@ for (let rec = 0; rec < 3; rec++) {
   }
 }
 if (r.unknown !== 1) {
-  fail("unknown === 1 (once per peer, NEVER per record): Item.drop is one field of one peer, and three records owe one census, not " + r.unknown);
+  fail("unknown === 1 (once per endpoint, NEVER per record): Item.drop is one field of one endpoint, and three records owe one census, not " + r.unknown);
 }
 if (r.kindMismatch !== 0 || r.widened !== 0 || r.clamped !== 0 || r.duplicate !== 0) {
   fail("a removed field is unknown, never a moved kind: " + reason(r));

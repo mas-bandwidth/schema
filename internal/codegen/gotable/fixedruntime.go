@@ -58,7 +58,7 @@ const tableFixedEntryBytes int32 = 17
 // THE LAYOUT'S OWN BOUNDS (docs/FIXED-FORM-ALGORITHM.md §1.1). The header is
 // the u32 entry count and nothing else. 65536 is the form's record body bound,
 // which a DECLARED fixed table is held to at compile time and an untrusted
-// peer's layout is held to here, so the two sides agree by construction. The
+// endpoint's layout is held to here, so the two sides agree by construction. The
 // depth is a bound on THIS READER'S WALK and not on the wire: the reference
 // states 64 and every leg states the same number.
 const tableFixedLayoutHeaderBytes int32 = 4
@@ -843,7 +843,7 @@ func tableFixedUnionArmBytes(b tableFixedLayoutView, i int32) uint32 {
 
 // ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
 //
-// A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+// A LAYOUT ARRIVES FROM AN UNTRUSTED ENDPOINT and it is the one structure a reader
 // must parse before it knows anything at all, so every rule below runs BEFORE a
 // single record byte is touched and each refuses under ITS OWN NAME rather than
 // under one word for all of them (docs/FIXED-FORM-ALGORITHM.md §1.1).
@@ -1234,9 +1234,9 @@ func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 
 	return at
 }
 
-// census is whether THIS entry is the first time the peer's field is seen:
+// census is whether THIS entry is the first time the writer's field is seen:
 // an array's element subtree is compiled once per element and the unknown
-// count is ONCE PER FIELD PER PEER (§5.4), so only element 0 censuses.
+// count is ONCE PER FIELD PER ENDPOINT (§5.4), so only element 0 censuses.
 func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
@@ -1621,7 +1621,7 @@ type TableFixedKnownLayout struct {
 
 // tableFixedLineagePlan is one older entry's plan, laid down once from the
 // LOCK'S bytes. Unknown and KindMismatch are the COMPILE census: a writer field
-// no reader field names is counted ONCE PER PEER and never per record (§5.4).
+// no reader field names is counted ONCE PER ENDPOINT and never per record (§5.4).
 type tableFixedLineagePlan struct {
 	Entries      []TableFixedEntry
 	Count        int32

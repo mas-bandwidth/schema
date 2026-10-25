@@ -121,10 +121,10 @@ func(tableTruncatedMalformed) Error() string {return TableRefuseTruncated.Error(
 func(tableTruncatedMalformed) Is(target error) bool {return target==TableRefuseTruncated||target==TableRefuseMalformed}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
-// reports (docs/SPEC-TABLES.md §3.3): the peer's build version and the
+// reports (docs/SPEC-TABLES.md §3.3): the endpoint's build version and the
 // reader's own, each a 64-bit number.
-type TableBuildVersionMismatch struct { Peer, Own uint64 }
-func(m TableBuildVersionMismatch) Error() string {const digits="0123456789abcdef";var peer,own [16]byte;p,o:=m.Peer,m.Own;for i:=15;i>=0;i-- {peer[i]=digits[p&0xf];p>>=4};for i:=15;i>=0;i-- {own[i]=digits[o&0xf];o>>=4};return "build_version_mismatch: peer 0x"+string(peer[:])+" own 0x"+string(own[:])}
+type TableBuildVersionMismatch struct { Remote, Own uint64 }
+func(m TableBuildVersionMismatch) Error() string {const digits="0123456789abcdef";var remote,own [16]byte;p,o:=m.Remote,m.Own;for i:=15;i>=0;i-- {remote[i]=digits[p&0xf];p>>=4};for i:=15;i>=0;i-- {own[i]=digits[o&0xf];o>>=4};return "build_version_mismatch: remote 0x"+string(remote[:])+" own 0x"+string(own[:])}
 // TableMissingRequired is the typed error a strict read reports for a record
 // that lacks a | required field (docs/SPEC-TABLES.md §2.3): Fields names the
 // missing fields, comma-separated in declaration order, at whatever depth of
@@ -138,7 +138,7 @@ func(m TableMissingRequired) Error() string {return "missing_required: "+m.Field
 // special values: non_finite, named in Reason) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func(r *TableReport) Err() error {
 if r==nil {return nil}
-if r.Reason=="build_version_mismatch" {return TableBuildVersionMismatch{Peer:r.BuildVersionPeer,Own:r.BuildVersionOwn}}
+if r.Reason=="build_version_mismatch" {return TableBuildVersionMismatch{Remote:r.BuildVersionRemote,Own:r.BuildVersionOwn}}
 // The fixed form's named refusals (docs/SPEC-TABLES.md §6.5, §21.3) answer as
 // their TableRefuseReason member, so errors.Is(err, TableRefuseLayoutUnknown)
 // holds for a fixed load that refused. The form-byte refusals (previous_form,

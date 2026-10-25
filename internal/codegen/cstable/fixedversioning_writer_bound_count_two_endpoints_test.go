@@ -9,19 +9,19 @@ import (
 	"testing"
 )
 
-// §5.8 row 4, writer_bound_count with TWO lineage peers: the reader's bound is
+// §5.8 row 4, writer_bound_count with TWO lineage endpoints: the reader's bound is
 // WIDER than the writer's, and a forged file carries a count BETWEEN the two.
-// The reader is handed TWO older peers with DIFFERENT bounds: VOLD (the file's
+// The reader is handed TWO older endpoints with DIFFERENT bounds: VOLD (the file's
 // writer, [..4]int32) and VMID (the distractor, [..6]int32). The number that
 // makes this test worth having is 6: a reader that clamps to its own bound lands
-// 8, a reader that clamps to whichever peer it saw last lands 6, and only a
-// plan that carries the WRITING peer's bound lands 4.
-func TestFixedVersioningWriterBoundCountTwoPeers(t *testing.T) {
+// 8, a reader that clamps to whichever endpoint it saw last lands 6, and only a
+// plan that carries the WRITING endpoint's bound lands 4.
+func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()
 
 	probe := csVersionProbe{
-		name:   "writer_bound_count_two_peers/new_reads_old",
+		name:   "writer_bound_count_two_remotes/new_reads_old",
 		reader: "VNEW_array_bounded_grow",
 		older:  []string{"VOLD_array_bounded_grow", "VMID_array_bounded_grow"},
 		file:   "old_array_bounded_grow.bin",
@@ -193,5 +193,5 @@ static class ProbeMain
 	cmd.Env = append(os.Environ(), "SCHEMA_FIXEDFORM_CORPUS="+corpus, "DOTNET_NOLOGO=1")
 	out, runErr := cmd.CombinedOutput()
 
-	csVersionAssert(t, out, runErr, "writer_bound_count_two_peers/new_reads_old")
+	csVersionAssert(t, out, runErr, "writer_bound_count_two_remotes/new_reads_old")
 }

@@ -9,14 +9,14 @@ package gotable
 // every other kind change is `kind_mismatch` and never a silent wrong value.
 // §3.3 makes closing a connection the application's act — "The library RETURNS
 // A REFUSAL and nothing more" — so this card proves the Go surface hands an
-// application everything it needs to refuse a mismatched peer and decides no
+// application everything it needs to refuse a mismatched endpoint and decides no
 // new refusal. §20's build version is the public fact that says WHICH schema a
-// peer announced, and it is compiler-settled so an application compares
+// endpoint announced, and it is compiler-settled so an application compares
 // against it with no parsing of its own.
 //
 // Every subtest generates TWO units of one fixed table — an OLDER and a NEWER
 // schema — and drives the older unit's Announce and SaveMessages into the
-// newer unit's AnnounceRead and LoadMessages, exactly as a peer pair would.
+// newer unit's AnnounceRead and LoadMessages, exactly as an endpoint pair would.
 // A fixed table carries the message form (§3.3); a plain table may not.
 
 import (
@@ -33,7 +33,7 @@ import (
 )
 
 // runMessagePair generates the WRITER unit and the READER unit into one module
-// (two directories, both declaring the schema's `package peer`, so a same-schema
+// (two directories, both declaring the schema's `package endpoint`, so a same-schema
 // pair carries ONE build version) and runs a probe that announces the writer's
 // vocabulary to the reader, saves one writer body into a batch, and loads it
 // with the reader. `setup` fills the writer's value; `asserts` holds
@@ -53,7 +53,7 @@ import (
 	new "probe/newpeer"
 )
 
-func TestPeer(t *testing.T) {
+func TestRemote(t *testing.T) {
 	var w old.Root
 	old.RootReset(&w)
 	%s
@@ -91,11 +91,11 @@ func TestPeer(t *testing.T) {
 		"version_test.go": []byte(src),
 	}
 	writeFiles(t, dir, root)
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated peer pair)")
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated endpoint pair)")
 	cmd := exec.Command("go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("message peer probe: %v\n%s", err, out)
+		t.Fatalf("message endpoint probe: %v\n%s", err, out)
 	}
 }
 
@@ -137,8 +137,8 @@ func writeFiles(t *testing.T, dir string, files map[string][]byte) {
 }
 
 // The detect-and-refuse recipe §4 and §3.3 hand the APPLICATION, spelled once
-// and copied into every probe: a peer whose announced build version is not this
-// build's, or a batch that reported any tolerance event, is a peer to refuse.
+// and copied into every probe: an endpoint whose announced build version is not this
+// build's, or a batch that reported any tolerance event, is an endpoint to refuse.
 // It is computed from the public surface alone and adds no library verb.
 const detectRecipe = `	detect := func() bool {
 		return vocab.BuildVersion != new.BuildVersion ||
@@ -147,7 +147,7 @@ const detectRecipe = `	detect := func() bool {
 			report.Duplicate != 0 || report.Malformed
 	}`
 
-const sameSchema = `package peer
+const sameSchema = `package endpoint
 
 fixed table Root
 {
@@ -156,7 +156,7 @@ fixed table Root
 }
 `
 
-const sameSchemaReader = `package peer
+const sameSchemaReader = `package endpoint
 
 fixed table Root
 {
@@ -165,7 +165,7 @@ fixed table Root
 }
 `
 
-const newerWriter = `package peer
+const newerWriter = `package endpoint
 
 fixed table Root
 {
@@ -175,7 +175,7 @@ fixed table Root
 }
 `
 
-const newerReader = `package peer
+const newerReader = `package endpoint
 
 fixed table Root
 {
@@ -184,7 +184,7 @@ fixed table Root
 }
 `
 
-const olderWriter = `package peer
+const olderWriter = `package endpoint
 
 fixed table Root
 {
@@ -193,7 +193,7 @@ fixed table Root
 }
 `
 
-const olderReader = `package peer
+const olderReader = `package endpoint
 
 fixed table Root
 {
@@ -203,7 +203,7 @@ fixed table Root
 }
 `
 
-const widenedWriter = `package peer
+const widenedWriter = `package endpoint
 
 fixed table Root
 {
@@ -213,7 +213,7 @@ fixed table Root
 }
 `
 
-const widenedReader = `package peer
+const widenedReader = `package endpoint
 
 fixed table Root
 {
@@ -227,7 +227,7 @@ func TestGoMessageFormVersioning(t *testing.T) {
 	t.Parallel()
 
 	// 2.1 §20: "The BUILD VERSION is everything cooked or blocked" and §3.3
-	// announces it once, before the first body. The peer's announced build
+	// announces it once, before the first body. The endpoint's announced build
 	// version is readable after AnnounceRead, equals the writer unit's own
 	// generated constant, and survives a refused announcement because §3.3
 	// keeps the refusal a state and not a lost parse.
@@ -248,7 +248,7 @@ func TestGoMessageFormVersioning(t *testing.T) {
 		t.Fatalf("the refusal is not by name: %+v", refused)
 	}
 	if vocab.BuildVersion != old.BuildVersion {
-		t.Fatalf("a refused announcement lost the peer's build version: %#x", vocab.BuildVersion)
+		t.Fatalf("a refused announcement lost the endpoint's build version: %#x", vocab.BuildVersion)
 	}
 `)
 	})
@@ -416,30 +416,30 @@ func TestOwnBuildVersion(t *testing.T) {
 	})
 
 	// 2.6 §4 and §3.3: the detect-and-refuse recipe is an assertion an
-	// application writes for itself, and it is FALSE for a peer whose schema is
+	// application writes for itself, and it is FALSE for an endpoint whose schema is
 	// this build's: the announced build version equals this build's own and the
 	// report is silent.
 	t.Run("same_schema_peer_is_not_refused", func(t *testing.T) {
 		t.Parallel()
 		runMessagePair(t, sameSchema, sameSchemaReader, "\tw.A = 11\n\tw.B = -5", `
 	if !ok {
-		t.Fatalf("a same-schema peer was refused: %+v", report)
+		t.Fatalf("a same-schema endpoint was refused: %+v", report)
 	}
 	if report.Unknown != 0 || report.KindMismatch != 0 || report.Widened != 0 || report.Clamped != 0 || report.Duplicate != 0 || report.Malformed {
 		t.Fatalf("a same-schema read is silent: %+v", report)
 	}
 	if decoded[0].A != 11 || decoded[0].B != -5 {
-		t.Fatalf("a same-schema peer's values did not land: %+v", decoded[0])
+		t.Fatalf("a same-schema endpoint's values did not land: %+v", decoded[0])
 	}
 `+detectRecipe+`
 	if detect() {
-		t.Fatalf("the detect-and-refuse recipe fired on a same-schema peer: %+v", report)
+		t.Fatalf("the detect-and-refuse recipe fired on a same-schema endpoint: %+v", report)
 	}
 `)
 	})
 
 	// 2.7 §4: "The wire itself is evolution-tolerant, and that tolerance is the
-	// versioning model." The tolerant read is the default: a peer of a
+	// versioning model." The tolerant read is the default: an endpoint of a
 	// different build is REPORTED, never refused by the library. The opt-in
 	// strict mode is the card schema-go-msg-strict, after this one, and nothing
 	// about it is asserted here.
@@ -447,7 +447,7 @@ func TestOwnBuildVersion(t *testing.T) {
 		t.Parallel()
 		runMessagePair(t, newerWriter, newerReader, "\tw.A = 11\n\tw.B = -5\n\tw.Extra = 99", `
 	if !ok {
-		t.Fatalf("the tolerant read refused a peer of a different build: %+v", report)
+		t.Fatalf("the tolerant read refused an endpoint of a different build: %+v", report)
 	}
 	if report.Verdict != new.TableOpenOk || report.Reason != "" {
 		t.Fatalf("the library raised a refusal where §3.3 leaves the choice to the application: %+v", report)

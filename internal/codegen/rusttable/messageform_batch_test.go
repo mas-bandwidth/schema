@@ -4,7 +4,7 @@ package rusttable
 // §3.3) to the Rust leg: "A BATCH OF BODIES IS THE UNIT THIS FORM READS AND
 // WRITES, and a single message is the batch of one". SaveMessages takes an
 // array of bodies of ONE root and writes ONE buffer, LoadMessages reads one
-// buffer into the caller's storage against the peer's announced vocabulary,
+// buffer into the caller's storage against the endpoint's announced vocabulary,
 // and MeasureMessages sizes the buffer. The announcement half landed with
 // TestMessageFormAnnounceRust (messageform_announce_test.go); this test owes
 // the batch itself.
@@ -159,7 +159,7 @@ func TestMessageFormBatchRust(t *testing.T) {
 
 	// 3. VERSIONING, the use case: an OLDER writer's batch read under ITS
 	// announcement by a NEWER reader (§3.3: "a reader decodes a body against
-	// the table THAT peer announced"). A removed field is skipped and counted
+	// the table THAT endpoint announced"). A removed field is skipped and counted
 	// unknown, a widened kind is decoded exactly and counted widened, a
 	// shrunk capacity, count bound or range clamps and counts clamped, a field
 	// the writer never had takes its declared default, and an unknown arm and
@@ -240,7 +240,7 @@ func TestMessageFormBatchRust(t *testing.T) {
 	// "`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME" (MeasureMessages
 	// and SaveMessages both, -1), "`M` ABOVE THE CALLER'S CAPACITY ON THE READ
 	// SIDE IS A REFUSAL BY NAME ... The reader sets the returned count to the
-	// wire's `M`", "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY
+	// wire's `M`", "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
 	// NAME", the form byte read FIRST and refused as `newer_form`, "DAMAGE
 	// INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`", and "BYTES AFTER THE PAD
 	// ARE MALFORMED".
@@ -633,7 +633,7 @@ const messageBatchRefusalsMain = `
     let mut wire = vec![0u8; m as usize];
     assert!(root_save_messages(&[one], &mut wire, &mut TableReport::default()) == m);
     {
-        // "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing
+        // "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing
         // is decoded, no counter moves and malformed does not fire."
         let mut fresh_storage = vec![TableMessageEntry::default(); 4096];
         let fresh = TableVocabulary::new(&mut fresh_storage);
@@ -714,8 +714,8 @@ const messageBatchRefusalsMain = `
         say("short_buffer", got == -1, format!("got={got}"));
     }
     {
-        // A field this reader cannot name, under a slot the PEER announced, is
-        // skipped by its announced shape and counted unknown (§3.3). The peer
+        // A field this reader cannot name, under a slot the ENDPOINT announced, is
+        // skipped by its announced shape and counted unknown (§3.3). The endpoint
         // here is this build with one more entry: the reader's vocabulary is
         // forged by announcing a stranger's table whose slot 1 is an id this
         // build does not declare.

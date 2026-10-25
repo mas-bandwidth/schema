@@ -149,7 +149,7 @@ func cppHeldProbe(t *testing.T, unitPath, body string) ([]byte, error) {
 	return cppHeldRun(t, loadUnit(t, unitPath), body)
 }
 
-// "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
+// "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
 // decoded, no counter moves and `malformed` does not fire." (docs/SPEC-TABLES.md §3.3).
 const cppHeldNoVocabulary = `
     LoginRequest v; LoginRequestReset( v );
@@ -163,7 +163,7 @@ const cppHeldNoVocabulary = `
     int64_t count = 1;
     TableReport r; memset( &r, 0, sizeof( r ) );
     if ( LoginRequestLoadMessages( out, &count, vocabulary, buf, n, &r ) )
-        { printf( "TableMessageReason::no_vocabulary: a body from a peer that never announced was not refused\n" ); return 1; }
+        { printf( "TableMessageReason::no_vocabulary: a body from an endpoint that never announced was not refused\n" ); return 1; }
     if ( !r.refused || r.reason != TableMessageReason::no_vocabulary || r.malformed )
         { printf( "TableMessageReason::no_vocabulary: refused=%d reason=%d malformed=%d\n", (int) r.refused, (int) r.reason, (int) r.malformed ); return 1; }
     if ( count != 0 ) { printf( "TableMessageReason::no_vocabulary moved the returned count: %lld\n", (long long) count ); return 1; }

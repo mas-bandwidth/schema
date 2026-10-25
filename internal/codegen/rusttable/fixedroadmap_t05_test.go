@@ -211,9 +211,9 @@ func t05R19(t *testing.T) {
 		t.Fatal("R19: lineage_fixed_load is not emitted")
 	}
 	t04Has(t, load, "report.unknown += census.0;",
-		"R19 the census lands once per peer and not per record")
+		"R19 the census lands once per endpoint and not per record")
 	t04Has(t, load, "report.kind_mismatch += census.1;",
-		"R19 the kind census lands once per peer and not per record")
+		"R19 the kind census lands once per endpoint and not per record")
 }
 
 // ---- rust/E9 -----------------------------------------------------------------
@@ -248,17 +248,17 @@ func t05E9(t *testing.T) {
 // ---- rust/R16 -----------------------------------------------------------------
 
 // t05R16 holds rust/R16 to docs/FIXED-FORM-ALGORITHM.md §5.4, clause by clause:
-// `unknown` once per writer field no reader field names, once per peer and
+// `unknown` once per writer field no reader field names, once per endpoint and
 // never per record; `widened` once per entry per record, and a folded element
 // run is ONE; `clamped` once per entry per record for `count` and `text`; the
 // bounds pass counts a forged ordinal remapped to None on BOTH plans; and the
 // value-landing ops move nothing.
 func t05R16(t *testing.T) {
 	runtime := string(fixedRuntimeBody)
-	// unknown: once per peer, at COMPILE, through the `census` flag, and the
+	// unknown: once per endpoint, at COMPILE, through the `census` flag, and the
 	// plan's number is carried onto the report once after the record loop.
 	t04Has(t, runtime, "if !named && census {",
-		"R16 unknown is once per peer at COMPILE")
+		"R16 unknown is once per endpoint at COMPILE")
 	load := t04Fn(t05Module(t, "package probe\n\nfixed table Lineage\n{\n    seq int32 = 0\n}\n"), "lineage_fixed_load")
 	if load == "" {
 		t.Fatal("R16: lineage_fixed_load is not emitted")

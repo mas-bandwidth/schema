@@ -569,7 +569,7 @@ fixed table Host
 
 	// AN OLDER LEGAL ENTRY, the positive control: the same table with a
 	// narrower label — a real lineage widening whose plan must still compile, so
-	// the bound refuses the overreach and not the peer.
+	// the bound refuses the overreach and not the endpoint.
 	older := unitFrom(t, `package probe
 
 fixed table Host
@@ -653,7 +653,7 @@ void main() {
       'R14: the plan is refused WHOLE, never partly compiled (${plans[0].count} entries)');
 
   // 3. THE POSITIVE CONTROL: the legal older entry still compiles, so the
-  //    bound refuses the overreach and not the peer.
+  //    bound refuses the overreach and not the endpoint.
   check(plans[1].why == t.TableFixedRefusal.none && plans[1].count > 0,
       'R14: the legal older entry compiles: '
       '${t.TableFixedRefusal.name(plans[1].why)} count=${plans[1].count}');

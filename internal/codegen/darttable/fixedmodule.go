@@ -511,7 +511,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 
 	// ---- the caller's plan storage ----
 	g.pf("/// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC\n")
-	g.pf("/// NEVER ALLOCATES. One of these per peer; a layout whose plan does not fit\n")
+	g.pf("/// NEVER ALLOCATES. One of these per endpoint; a layout whose plan does not fit\n")
 	g.pf("/// is a refusal by name.\n")
 	g.pf("TableFixedPlan %sFixedNewPlan({\n", lower)
 	g.pf("  int entryCapacity = 4096,\n")
@@ -585,7 +585,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("/// the layout's hash is this build's own, and a plan compiled once from the\n")
 	g.pf("/// writer's layout otherwise. THE SAME LOOP EITHER WAY: there is no strict\n")
 	g.pf("/// flag, no fast path and no second reader to keep honest against the first,\n")
-	g.pf("/// which is the owner's own ruling — a form whose cost moved when a peer\n")
+	g.pf("/// which is the owner's own ruling — a form whose cost moved when an endpoint\n")
 	g.pf("/// shipped would be a cliff at exactly the moment a deployment cannot afford\n")
 	g.pf("/// one.\n")
 	g.pf("///\n")
@@ -654,8 +654,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      report.refused = TableFixedRefusal.layoutMalformed;\n      return -1;\n    }\n")
 	g.pf("  }\n")
 	g.pf("  report.hash = hash; // the header's hash; digest is not on the wire\n")
-	// STEP 8: the plan this peer resolves to, and the record size FROM THE LOCK.
-	g.pf("  // THE PLAN THIS PEER RESOLVES TO, and the record size FROM THE LOCK and\n")
+	// STEP 8: the plan this endpoint resolves to, and the record size FROM THE LOCK.
+	g.pf("  // THE PLAN THIS ENDPOINT RESOLVES TO, and the record size FROM THE LOCK and\n")
 	g.pf("  // never from the file.\n")
 	g.pf("  var entries = %sFixedIdentity;\n", lower)
 	g.pf("  var entryCount = %sFixedIdentityCount;\n", lower)
@@ -670,7 +670,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  var remap = %sFixedIdentityGuards;\n", lower)
 	g.pf("  // THE COMPILE CENSUS IS THE PLAN'S OWN NUMBERS, carried onto the report\n")
 	g.pf("  // ONCE after the record loop and only on a read that returns (§5.9 #6):\n")
-	g.pf("  // once per peer, never per record, and REFUSE moves no counter at all.\n")
+	g.pf("  // once per endpoint, never per record, and REFUSE moves no counter at all.\n")
 	g.pf("  var censusUnknown = 0;\n")
 	g.pf("  var censusKind = 0;\n")
 	g.pf("  if (hash != %sFixedHash) {\n", lower)

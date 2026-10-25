@@ -1183,7 +1183,7 @@ const uint8_t kTableWireMessageForm = 2;
 
 // THE COUNT IS A RANGED INTEGER OVER [1, 256], eight bits carrying M - 1. 256
 // is a WIRE CONSTANT of this form rather than a receiver's policy, because the
-// count's WIDTH depends on it and two peers that disagreed on the width would
+// count's WIDTH depends on it and two endpoints that disagreed on the width would
 // not be reading the same wire. A batch of zero is not spellable.
 static const int64_t kTableMessageBatchMax = 256;
 
@@ -1205,8 +1205,8 @@ static const uint64_t kTableMessageListMax = 0xFFFFFFFFull;
 static const int64_t kTableMessageRefBitsHere = 7;
 
 // THIS UNIT'S OWN ENTRY COUNT, which is the CAPACITY a receiver declares for
-// its resolved vocabulary when it talks only to peers of this schema (§3.3).
-// The vocabulary is a pure function of the build version, so a peer at this
+// its resolved vocabulary when it talks only to endpoints of this schema (§3.3).
+// The vocabulary is a pure function of the build version, so an endpoint at this
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
@@ -1847,11 +1847,11 @@ inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
 // declares an array of entries wherever it wants it, static, on a heap, in an
 // arena or beside its connection, and hands it here with its CAPACITY. The
 // announcement holds for the life of the connection (§3.3), so the array does
-// too, and a peer holds TWO for a connection, the one it writes with and the
+// too, and an endpoint holds TWO for a connection, the one it writes with and the
 // one it reads with. A restart opens a fresh connection with an empty
 // vocabulary and nothing is cached across connections.
 //
-// kTableMessageEntriesHere is the capacity a receiver that talks only to peers
+// kTableMessageEntriesHere is the capacity a receiver that talks only to endpoints
 // of THIS schema declares, and a receiver meeting other builds declares more.
 struct TableVocabulary
 {
@@ -1898,7 +1898,7 @@ inline const TableMessageEntry & TableVocabularyEntryAt( const TableVocabulary &
 // A SECOND is refused by name: it does not replace it, does not amend it and
 // changes nothing. A refused announcement sets NO VOCABULARY, and the refusal
 // is TERMINAL: every announcement after it, whether or not the first set
-// anything, is second_announcement, so a peer holds no retry on the
+// anything, is second_announcement, so an endpoint holds no retry on the
 // connection and cannot buy a second resolve by having its first refused.
 inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * to );
 
@@ -2326,7 +2326,7 @@ struct TableMessageBatchReader
 };
 
 // TableMessageBatchOpen answers the batch's body count, or -1 with the refusal
-// on the report: a form byte this reader does not carry, or a body from a peer
+// on the report: a form byte this reader does not carry, or a body from an endpoint
 // that never announced.
 inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
@@ -2558,7 +2558,7 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 // unqualified, each clamp reloads the counter and the pass does not vectorize.
 // The qualifier is per compiler, each one's MEASURED best of the plain
 // reference, __restrict, a local counter stored once at the end, and both
-// (bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict):
+// (measured 2026-10-16 on x86_64 Linux):
 //   clang: __restrict, 185.8 -> 148.5 ns/record (the local counter ties it);
 //   g++:   the plain reference, 215.8; __restrict measured 247.9 and the
 //          local counter 307.7, both slower;
@@ -3139,7 +3139,7 @@ inline int32_t TableFixedFills( const TableFixedEntry * plan, int32_t count,
 constexpr int32_t kTableFixedEntryBytes = 17;
 constexpr int32_t kTableFixedLayoutHeaderBytes = 4; // the u32 entry count, and nothing else
 
-// §3.4'S RECORD BOUND, and a reader holds an untrusted peer's layout to it for
+// §3.4'S RECORD BOUND, and a reader holds an untrusted endpoint's layout to it for
 // the same reason the compiler holds a declaration to it: a record past it is
 // one this build will not decode.
 constexpr uint32_t kTableFixedRecordMaxBytes = 65536u;
@@ -3223,7 +3223,7 @@ inline uint32_t TableFixedTagBytes( const TableFixedLayoutView & b, int32_t i )
 
 // ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
 //
-// A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+// A LAYOUT ARRIVES FROM AN UNTRUSTED ENDPOINT and it is the one structure a reader
 // must parse before it knows anything at all, so every rule below runs BEFORE
 // a single record byte is touched and each refuses under its OWN NAME rather
 // than under one word for all of them (docs/SPEC-TABLES.md §3.4).
@@ -3234,7 +3234,7 @@ inline uint32_t TableFixedTagBytes( const TableFixedLayoutView & b, int32_t i )
 // set is not a newer layout of THIS form — it is a layout of a form whose byte
 // this reader never saw, and there is no version of "step over it" that is
 // honest about that. layout_kind_unknown says exactly what happened, and the
-// peer is told to speak this form or a form this reader carries.
+// endpoint is told to speak this form or a form this reader carries.
 //
 // NOR IS THERE A CYCLE RULE, because a pre-order walk cannot express a cycle:
 // an entry's children ARE THE ENTRIES THAT FOLLOW IT, so a child's index is
@@ -3452,7 +3452,7 @@ inline bool TableFixedParseLayout( const uint8_t * bytes, int64_t length, TableF
 // ---- THE PLAN COMPILER -----------------------------------------------------
 //
 // The SAME LOOP runs over this plan as over the identity plan. What the
-// compiler does, once per peer, is what a read would otherwise do once per
+// compiler does, once per endpoint, is what a read would otherwise do once per
 // record: map the writer's ids onto this reader's fields; leave a field it
 // cannot name OUT of the plan, which is what skips it, by arithmetic that was
 // going to step past it anyway; and leave a field the writer does not carry
@@ -3558,10 +3558,10 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
 
 // TableFixedMatchChildren walks a TABLE's children on both sides.
 //
-// The census flag is whether THIS entry is the FIRST time the peer's field is
+// The census flag is whether THIS entry is the FIRST time the writer's field is
 // seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-// ONCE PER FIELD PER PEER (ALG 5.4), so only element 0 censuses. Without it a
-// peer field dropped from a [4]Item is counted four times and the report says 4
+// ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses. Without it a
+// writer's field dropped from a [4]Item is counted four times and the report says 4
 // where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md 5.8 row 11).
 inline void TableFixedMatchChildren( TableFixedCompiler & c,
                                      const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
@@ -3671,7 +3671,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 14: // an array: the count, then min( their bound, my bound ) elements
         {
-            // A COUNTED LOCAL against a PEER whose array is too small to hold the
+            // A COUNTED LOCAL against an ENDPOINT whose array is too small to hold the
             // four-byte count is a mismatch the head subtraction below would
             // underflow: refuse it rather than land a count op that over-reads.
             // break, as the C twin does, so both leave the switch the same way.
@@ -3931,7 +3931,7 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     return out;
 }
 
-// ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+// ---- THE PLAN CACHE: once per endpoint, never once per record (§3.4) -----------
 //
 // THE CALLER OWNS THIS. The codec never allocates: the slots are a named
 // table of 64, the plan bytes they point at are a slab the caller hands
@@ -12122,7 +12122,7 @@ inline int64_t SlotsSaveRetain( const Slots * root, TableRetain * retain, uint8_
 // precedent and never a silent drop, and the two answers are named: a
 // caller that must carry unknowns across a rewrite writes the VARIABLE form,
 // which carries its own table and takes §6.6 unchanged, and a RELAY
-// forwards the sending peer's announcement and its batch bytes verbatim.
+// forwards the sending endpoint's announcement and its batch bytes verbatim.
 template <typename... Args>
 inline int64_t SlotsSaveRetainMessages( Args &&... )
 {

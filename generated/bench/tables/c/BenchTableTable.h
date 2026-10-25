@@ -733,9 +733,9 @@ enum { SCHEMA_TABLE_NO_VOCABULARY=3,SCHEMA_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_TA
 
    The six validation names exist because a layout is the one structure a reader
    must parse before it knows anything at all, and it arrives from an UNTRUSTED
-   PEER: each rule it is held to refuses under its own name rather than under
+   ENDPOINT: each rule it is held to refuses under its own name rather than under
    one word for all of them, and every one runs BEFORE a record byte is touched.
-   The VALUES are this leg's own; the NAMES are the reference's, so a peer is
+   The VALUES are this leg's own; the NAMES are the reference's, so an endpoint is
    refused by the same name whichever leg reads it. */
 enum
 {
@@ -758,7 +758,7 @@ enum
 
        THE VALUES ARE THIS LEG'S OWN AND THE NAMES ARE THE REFERENCE'S, which is
        the rule the ten above already state: the C enum numbers a set the C++
-       enum orders, so a leg agrees on the NAME a peer is refused by and never
+       enum orders, so a leg agrees on the NAME an endpoint is refused by and never
        on the integer. These two take 18 and 19 in the order §5.3 names them. */
     SCHEMA_TABLE_LAYOUT_NEWER = 18,
     SCHEMA_TABLE_LAYOUT_UNSUPPORTED = 19,
@@ -1272,7 +1272,7 @@ typedef struct TableFixedFill
 
 /* ONE LINEAGE ENTRY'S PLAN, laid down from THE LOCK'S BYTES and off every load
    path. unknown and kind_mismatch are THE COMPILE CENSUS — a writer field no
-   reader field names is counted ONCE PER PEER and never per record (§5.4) — and
+   reader field names is counted ONCE PER ENDPOINT and never per record (§5.4) — and
    a load carries them onto the report once, after the record loop, only on a
    read that RETURNS. reason is the name a lineage entry that could not be
    planned refuses under if a file ever selects it (§5.9 #4, #8). */
@@ -1390,7 +1390,7 @@ static SCHEMA_UNUSED int32_t table_fixed_fills( const TableFixedEntry * plan, in
 enum { kTableFixedEntryBytes = 17 };
 enum { kTableFixedLayoutHeaderBytes = 4 }; /* the u32 entry count, and nothing else */
 
-/* §3.4'S RECORD BOUND, and a reader holds an untrusted peer's layout to it for
+/* §3.4'S RECORD BOUND, and a reader holds an untrusted endpoint's layout to it for
    the same reason the compiler holds a declaration to it: a record past it is
    one this build will not decode.
 
@@ -1494,11 +1494,11 @@ static SCHEMA_UNUSED uint32_t table_fixed_tag_bytes( const TableFixedLayoutView 
 
 /* ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
 
-   A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+   A LAYOUT ARRIVES FROM AN UNTRUSTED ENDPOINT and it is the one structure a reader
    must parse before it knows anything at all, so every rule below runs BEFORE
    a single record byte is touched and each refuses under its OWN NAME rather
    than under one word for all of them (docs/SPEC-TABLES.md §3.4). Rule for
-   rule and name for name, this is the C++ reference's own: a peer must be
+   rule and name for name, this is the C++ reference's own: an endpoint must be
    refused by the same name whichever leg reads it.
 
    A KIND THIS BUILD DOES NOT KNOW IS A REFUSAL, and that is a ruling rather
@@ -1734,7 +1734,7 @@ static SCHEMA_UNUSED int table_fixed_parse_layout( const uint8_t * bytes, int64_
 /* ---- THE PLAN COMPILER -----------------------------------------------------
 
    The SAME LOOP runs over this plan as over the identity plan. What the
-   compiler does, once per peer, is what a read would otherwise do once per
+   compiler does, once per endpoint, is what a read would otherwise do once per
    record: map the writer's ids onto this reader's fields; leave a field it
    cannot name OUT of the plan, which is what skips it, by arithmetic that was
    going to step past it anyway; and leave a field the writer does not carry
@@ -1857,10 +1857,10 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
 
 /* table_fixed_match_children walks a TABLE's children on both sides.
 
-   The census flag is whether THIS entry is the FIRST time the peer's field is
+   The census flag is whether THIS entry is the FIRST time the writer's field is
    seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-   ONCE PER FIELD PER PEER (ALG 5.4), so only element 0 censuses. Without it a
-   peer field dropped from a [4]Item is counted four times and the report says 4
+   ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses. Without it a
+   writer's field dropped from a [4]Item is counted four times and the report says 4
    where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md 5.8 row 11). */
 static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
                                                       const TableFixedLayoutView * theirs, int32_t ti, uint32_t their_at,
@@ -1976,7 +1976,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             }
             case 14: /* an array: the count, then min( their bound, my bound ) elements */
             {
-                /* A COUNTED LOCAL against a PEER whose array is too small to hold
+                /* A COUNTED LOCAL against an ENDPOINT whose array is too small to hold
                    the four-byte count is a mismatch the head subtraction below
                    would underflow: refuse it rather than land a count op that
                    over-reads. break (never return) so the depth decrement runs. */
@@ -2260,7 +2260,7 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
     return out;
 }
 
-/* ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+/* ---- THE PLAN CACHE: once per endpoint, never once per record (§3.4) -----------
 
    THE CALLER OWNS THIS. The codec never allocates: the slots are a named
    table of 64, the plan bytes they point at are a slab the caller hands
@@ -9220,7 +9220,7 @@ static SCHEMA_UNUSED int64_t table_entity_fixed_load( TableEntity * values, int6
     if ( (int64_t) layout_bytes != table_entity_fixed_known[pick].layout_bytes ||
          memcmp( layout, table_entity_fixed_known[pick].layout, (size_t) layout_bytes ) != 0 )
     { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
-    /* 8. the plan this peer resolves to, and the record size FROM THE LOCK. */
+    /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = table_entity_fixed_known[pick].record_bytes;
     /* 9 and 10. the tail must be whole records, and they must fit the caller. */
     at = layout + layout_bytes;
@@ -9471,7 +9471,7 @@ static SCHEMA_UNUSED int64_t table_stat_fixed_load( TableStat * values, int64_t 
     if ( (int64_t) layout_bytes != table_stat_fixed_known[pick].layout_bytes ||
          memcmp( layout, table_stat_fixed_known[pick].layout, (size_t) layout_bytes ) != 0 )
     { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
-    /* 8. the plan this peer resolves to, and the record size FROM THE LOCK. */
+    /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = table_stat_fixed_known[pick].record_bytes;
     /* 9 and 10. the tail must be whole records, and they must fit the caller. */
     at = layout + layout_bytes;
@@ -9934,7 +9934,7 @@ static SCHEMA_UNUSED int64_t table_mixed_fixed_load( TableMixed * values, int64_
     if ( (int64_t) layout_bytes != table_mixed_fixed_known[pick].layout_bytes ||
          memcmp( layout, table_mixed_fixed_known[pick].layout, (size_t) layout_bytes ) != 0 )
     { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
-    /* 8. the plan this peer resolves to, and the record size FROM THE LOCK. */
+    /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = table_mixed_fixed_known[pick].record_bytes;
     /* 9 and 10. the tail must be whole records, and they must fit the caller. */
     at = layout + layout_bytes;

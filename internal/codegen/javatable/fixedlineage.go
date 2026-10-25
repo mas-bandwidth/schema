@@ -36,7 +36,7 @@ type FixedLineageEntry struct {
 	Retired bool
 	Reason  string
 	// Ranges are the WRITER's bounded leaves this entry carries, so the
-	// compiled lane's bounds pass can hold a peer to what IT could have
+	// compiled lane's bounds pass can hold an endpoint to what IT could have
 	// written and never to this reader's wider own (ALGORITHM §4.6: "the
 	// bounds this pass holds are the plan's — the writer's own for the lineage
 	// entry the plan was compiled for"). A fixed-point's whole-unit bounds are

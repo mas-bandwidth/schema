@@ -93,7 +93,7 @@ func t05C1(t *testing.T) {
 
 // t05C2 is C2 "count clamp v>Max": the same op's "else if v > size then v :=
 // size, COUNT clamped", against the bound THE DECLARATION CARRIES — the OLD
-// unit's `[..4]` and the NEW unit's `[..8]` — never a bound of the peer's.
+// unit's `[..4]` and the NEW unit's `[..8]` — never a bound of the endpoint's.
 func t05C2(t *testing.T) {
 	old := t05Files(t, "VOLD_array_bounded_grow.schema")
 	t05Has(t, old, "ArrayBoundedGrowFixed.java",

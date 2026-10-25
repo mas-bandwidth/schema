@@ -333,7 +333,7 @@ func TestFixedCFloatPastTheReadersOwnMaxClampsAndCounts(t *testing.T) {
 // refining `res` with the range held produced a byte-identical layout AND THE
 // SAME LAYOUT HASH: to a fixed-form reader the two generations were one
 // generation, while the lock refused the change by name and the cook digest
-// carried `step=`. Two peers could agree on a fixed hash and disagree on the
+// carried `step=`. Two endpoints could agree on a fixed hash and disagree on the
 // grid they would quantize that record onto at the message-form boundary.
 //
 // The ruling (#956, docs/FIXED-FORM-ALGORITHM.md, the digest table): the

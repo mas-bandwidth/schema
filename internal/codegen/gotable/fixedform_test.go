@@ -525,7 +525,7 @@ func TestHashCheckedLast(t *testing.T) {
 // a stranger's layout ... the recompute of the header's hash". Under §5 every
 // one of these files comes back layout_unknown, which is the new law and not a
 // regression. What is OWED is the same coverage on the lineage harness
-// (fixedversioning_test.go's runVersionProbe): the plan path with the peer's
+// (fixedversioning_test.go's runVersionProbe): the plan path with the endpoint's
 // entry handed to the reader as its lock, and §1.1's seven rules moved to the
 // LOCK's validation of what it records.
 func TestFixedFormPlanPath(t *testing.T) {
@@ -1521,7 +1521,7 @@ func TestOldArgLaneControl(t *testing.T) {
 // THE SPLIT ON THIS LEG IS READ OFF THE PLAN, not carried beside it: the plan
 // object is Entries+Count (tableFixedPlan), the run loop tests the guard per
 // entry — which item 42 allows outright — and the builders (tableFixedBuildPlan
-// for identity, tableFixedCompile for a peer's layout, both in the emitted
+// for identity, tableFixedCompile for an endpoint's layout, both in the emitted
 // runtime) stable-partition unguarded-first before they hand the plan over. So
 // the split is the index of the first guarded entry, and a plan with no
 // guarded entry has its split at the END, not at zero. The case runs in the
@@ -3027,8 +3027,8 @@ func TestDuplicateStaysZero(t *testing.T) {
 // TestFixedFormReadSlackUnspecified is W4: a fixed record's declared slack is
 // UNSPECIFIED ON READ (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md
 // §3.1): a reader validates the USED UNITS ONLY and never looks at the slack,
-// so a peer that leaves garbage past a string's stated length or an array's
-// live count is a peer this reader reads correctly. NON-ZERO SLACK IS NOT
+// so an endpoint that leaves garbage past a string's stated length or an array's
+// live count is an endpoint this reader reads correctly. NON-ZERO SLACK IS NOT
 // malformed, NOT A REFUSAL, AND MOVES NO COUNTER.
 //
 // The C++ reference's slack_case (test/tables/fixedform_main.cpp:715-777)
@@ -3068,7 +3068,7 @@ func TestReadSlackUnspecified(t *testing.T) {
 	// (4) + four int32 elements (16), then tail (4).
 	const labelSlackAt = 4 + 2              // past the stated length of 2
 	const marksSlackAt = 4 + 8 + 4 + 4      // past the live count of 1
-	// A PEER left garbage in the declared slack: a byte no clean record carries.
+	// AN ENDPOINT left garbage in the declared slack: a byte no clean record carries.
 	copy(body[labelSlackAt:], []byte{0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA})
 	for i := 0; i < 3; i++ {
 		binary.LittleEndian.PutUint32(body[marksSlackAt+4*i:], 0x5A5A5A5A)
@@ -3083,10 +3083,10 @@ func TestReadSlackUnspecified(t *testing.T) {
 	var r TableReport
 	plan := make([]TableFixedEntry, 256)
 	if n := SlackFixedLoadTolerant(got, buf, plan, &r); n != 1 {
-		t.Fatalf("a peer's garbage in the slack refused the record: n=%d %+v", n, r)
+		t.Fatalf("an endpoint's garbage in the slack refused the record: n=%d %+v", n, r)
 	}
 	if r != (TableReport{}) {
-		t.Fatalf("a peer's garbage in the slack moved a counter or named a refusal: %+v", r)
+		t.Fatalf("an endpoint's garbage in the slack moved a counter or named a refusal: %+v", r)
 	}
 	if got[0].LabelLength != 2 || got[0].Label[0] != 'h' || got[0].Label[1] != 'i' {
 		t.Fatalf("the used text did not read: %+v", got[0])

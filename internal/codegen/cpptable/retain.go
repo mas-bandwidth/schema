@@ -1964,7 +1964,7 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("// precedent and never a silent drop, and the two answers are named: a\n")
 	g.pf("// caller that must carry unknowns across a rewrite writes the VARIABLE form,\n")
 	g.pf("// which carries its own table and takes §6.6 unchanged, and a RELAY\n")
-	g.pf("// forwards the sending peer's announcement and its batch bytes verbatim.\n")
+	g.pf("// forwards the sending endpoint's announcement and its batch bytes verbatim.\n")
 	g.pf("template <typename... Args>\ninline int64_t %sSaveRetainMessages( Args &&... )\n{\n", n)
 	g.pf("    static_assert( sizeof...( Args ) == (size_t) -1,\n")
 	g.pf("        \"%s: a form 2 writer names entries through slots of a vocabulary the compiler settled, and a retained id is one this build's closure does not contain, so it has neither a slot nor an announced shape. Retention writing the MESSAGE form is refused by name (docs/SPEC-TABLES.md §3.3). Write the VARIABLE form, which carries its own table and takes §6.6 unchanged, or relay the sender's announcement and batch bytes verbatim.\" );\n", n)

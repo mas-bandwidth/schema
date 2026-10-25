@@ -289,7 +289,7 @@ func (p *parser) parseDecl(doc string, docPos ast.Pos, hasDoc bool) {
 			// contexts is refused at file scope: build contexts are not
 			// part of the language — every field of a type is identical
 			// on every side of the wire.
-			p.errf(t.Pos, "contexts are not part of the language — a type's fields are identical on every peer (SPEC §4.2)")
+			p.errf(t.Pos, "contexts are not part of the language — a type's fields are identical on every endpoint (SPEC §4.2)")
 			p.skipDecl()
 		case "union":
 			p.advance()

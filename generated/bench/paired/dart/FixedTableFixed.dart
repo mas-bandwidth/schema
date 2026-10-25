@@ -578,7 +578,7 @@ final List<TableFixedLineagePlan> fixedTableFixedLineagePlans =
     );
 
 /// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
-/// NEVER ALLOCATES. One of these per peer; a layout whose plan does not fit
+/// NEVER ALLOCATES. One of these per endpoint; a layout whose plan does not fit
 /// is a refusal by name.
 TableFixedPlan fixedTableFixedNewPlan({
   int entryCapacity = 4096,
@@ -638,7 +638,7 @@ final fixedTableFixedLoadView = TableFixedView();
 /// the layout's hash is this build's own, and a plan compiled once from the
 /// writer's layout otherwise. THE SAME LOOP EITHER WAY: there is no strict
 /// flag, no fast path and no second reader to keep honest against the first,
-/// which is the owner's own ruling — a form whose cost moved when a peer
+/// which is the owner's own ruling — a form whose cost moved when an endpoint
 /// shipped would be a cliff at exactly the moment a deployment cannot afford
 /// one.
 ///
@@ -724,7 +724,7 @@ int fixedTableFixedLoad(
     }
   }
   report.hash = hash; // the header's hash; digest is not on the wire
-  // THE PLAN THIS PEER RESOLVES TO, and the record size FROM THE LOCK and
+  // THE PLAN THIS ENDPOINT RESOLVES TO, and the record size FROM THE LOCK and
   // never from the file.
   var entries = fixedTableFixedIdentity;
   var entryCount = fixedTableFixedIdentityCount;
@@ -737,7 +737,7 @@ int fixedTableFixedLoad(
   var remap = fixedTableFixedIdentityGuards;
   // THE COMPILE CENSUS IS THE PLAN'S OWN NUMBERS, carried onto the report
   // ONCE after the record loop and only on a read that returns (§5.9 #6):
-  // once per peer, never per record, and REFUSE moves no counter at all.
+  // once per endpoint, never per record, and REFUSE moves no counter at all.
   var censusUnknown = 0;
   var censusKind = 0;
   if (hash != fixedTableFixedHash) {

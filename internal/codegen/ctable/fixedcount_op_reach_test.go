@@ -2,9 +2,9 @@ package ctable
 
 // fixedcount_op_reach — the c leg of SER-SCHEMA-05 part 2: a kTableFixedCount
 // entry reads four bytes at its source whatever its size, so a count op must be
-// bounded at src + 4 (not src + size) and a counted LOCAL against a PEER whose
+// bounded at src + 4 (not src + size) and a counted LOCAL against an ENDPOINT whose
 // array is bare (te.size < 4) must refuse the plan rather than underflow the
-// head subtraction and land a count op that over-reads the peer's record.
+// head subtraction and land a count op that over-reads the endpoint's record.
 
 import (
 	"maps"
@@ -26,10 +26,10 @@ func TestFixedCountOpReachCoversItsHeader(t *testing.T) {
 	if !strings.Contains(tableFixedRuntime, "( e.op == kTableFixedText || e.op == kTableFixedCount )") {
 		t.Error("the reach check does not bound a kTableFixedCount entry at src + 4")
 	}
-	// The kind-14 compile step refuses a counted local against a peer array too
+	// The kind-14 compile step refuses a counted local against an endpoint array too
 	// small to carry the four-byte count, before the head subtraction underflows.
 	if !strings.Contains(tableFixedRuntime, "if ( d->counted && te.size < 4u ) { c->hostile = 1; break; }") {
-		t.Error("kind-14 does not refuse a counted local field against a peer array smaller than the count")
+		t.Error("kind-14 does not refuse a counted local field against an endpoint array smaller than the count")
 	}
 	// The refusal must run before the head subtraction, not after: once
 	// (te.size - head) underflows the count has already been mis-derived.
@@ -43,13 +43,13 @@ func TestFixedCountOpReachCoversItsHeaderASan(t *testing.T) {
 	slowtest.Gate(t, "the c compiler (the leg's own toolchain)")
 
 	reader := unitFrom(t, "package probe\n\nfixed table Root\n{\n    arr [..1]uint8\n}\n")
-	peer := unitFrom(t, "package probe\n\nfixed table Root\n{\n    arr [1]uint8\n}\n")
-	peerEntry, ok := FixedLineageOf(peer, "Root")
+	endpoint := unitFrom(t, "package probe\n\nfixed table Root\n{\n    arr [1]uint8\n}\n")
+	remoteEntry, ok := FixedLineageOf(endpoint, "Root")
 	if !ok {
-		t.Fatal("no lineage entry for the bare-array peer")
+		t.Fatal("no lineage entry for the bare-array endpoint")
 	}
 	lineage := map[string][]FixedLineageEntry{
-		"Root": {{Wire: peerEntry.Wire, Layout: peerEntry.Layout, Record: peerEntry.Record}},
+		"Root": {{Wire: remoteEntry.Wire, Layout: remoteEntry.Layout, Record: remoteEntry.Record}},
 	}
 	files, err := cgen.Generate(reader)
 	if err != nil {
@@ -97,7 +97,7 @@ int main(void)
     memcpy(file + kTableFixedHeaderBytes + 4, root_fixed_known[0].layout, (size_t) root_fixed_known[0].layout_bytes);
     at = file + kTableFixedHeaderBytes + 4 + root_fixed_known[0].layout_bytes;
     table_fixed_put64(at, root_fixed_known[0].hash);
-    at[8] = 0x7F; /* the bare [1]uint8 array element: the peer's last record */
+    at[8] = 0x7F; /* the bare [1]uint8 array element: the endpoint's last record */
     len = (int64_t) (at + 9 - file);
 
     memset(&back, 0, sizeof(back));

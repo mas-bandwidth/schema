@@ -13,7 +13,7 @@
 //	own the plan is the IDENTITY PLAN, built at COMPILE TIME by a constexpr
 //	walk of this type's leaves with adjacent runs coalesced; for any other
 //	hash the SAME LOOP runs over a plan compiled once from the writer's layout
-//	and cached by hash, so the compile is paid once per peer. There is no
+//	and cached by hash, so the compile is paid once per endpoint. There is no
 //	second reader and no fast/slow cliff — the owner's own ruling, which §3.4
 //	quotes him on.
 //
@@ -1050,7 +1050,7 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	// compares and an or — no store, so nothing it reads can change under it,
 	// and its loops vectorize; the body's stores and counter adds are what
 	// made the identity read slower than the packet read (measured,
-	// bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-check).
+	// 2026-10-16 on x86_64 Linux).
 	g.pf("    if ( !%sFixedInRange( value ) ) { %sFixedClampBody( value, clamped, damaged ); }\n", st.Name, st.Name)
 	g.pf("    // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md\n")
 	g.pf("    // §4.5, fix 11): nothing is decoded, no counter moves, and the flag\n")
