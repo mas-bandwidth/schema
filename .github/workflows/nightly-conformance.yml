@@ -34,12 +34,22 @@ name: Nightly conformance
 # THE SLOT, 05:41 UTC: clear of ci-full.yml (07:10), certify.yml (09:17) and the
 # 03:00-04:17 cluster of the per-language nightlies. A schedule fires from the
 # default branch (main) only; `gh workflow run nightly-conformance.yml --ref
-# <branch>` runs it anywhere.
+# <branch>` runs it on any branch once this file is on main (GitHub refuses a
+# dispatch of a workflow the default branch does not have).
+#
+# A PULL REQUEST THAT CHANGES THIS FILE RUNS IT, and no other does: an edit to
+# the nightly is proved by the nightly before it lands, including the first one
+# (dispatch cannot reach a file main does not have yet). Only this
+# repository's own pull requests: a fork's never reaches the fleet, by the
+# guard every job carries (ci-fast.yml, "ONLY THE TABLE PUSHES").
 
 on:
   schedule:
     - cron: '41 5 * * *'
   workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/nightly-conformance.yml
 
 concurrency:
   group: nightly-conformance-${{ github.ref }}
@@ -62,6 +72,7 @@ env:
 
 jobs:
   registry:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     outputs:
@@ -86,6 +97,7 @@ jobs:
           echo "ports=$ports" >> "$GITHUB_OUTPUT"
 
   cpp-writes:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 30
     steps:
@@ -330,7 +342,7 @@ jobs:
 
   cpp-reads-ports:
     needs: [cpp-writes, port]
-    if: ${{ !cancelled() && needs.cpp-writes.result != 'skipped' }}
+    if: ${{ !cancelled() && needs.cpp-writes.result != 'skipped' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 30
     steps:
@@ -392,7 +404,7 @@ jobs:
 
   coverage:
     needs: [port, cpp-reads-ports]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 10
     steps:
