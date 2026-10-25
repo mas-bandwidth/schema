@@ -225,8 +225,8 @@ local function elem_at(val: any, i: number): any
 	return val[i]
 end
 
--- the bytes one text-list element contributes to its total (docs/SPEC-
--- TABLES.md §2.13): a plain element's buffer length, or a ?element's value
+-- the bytes one text-list element contributes to its total
+-- (docs/SPEC-TABLES.md §2.13): a plain element's buffer length, or a ?element's value
 -- when present, zero when absent.
 local function text_elem_used(e: any, x: any): number
 	if e == nil or x == nil then return 0 end

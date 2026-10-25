@@ -700,8 +700,8 @@ function F.load(d: any, fixed: Fixed, file: buffer, foreign: Fixed?): { any }
 	if foreign == nil and parsed.hash ~= fixed.hash then
 		error(refuse("layout_unknown"), 0)
 	end
-	-- THE FILE'S LAYOUT IS THE SELECTED WRITER'S BYTE FOR BYTE (docs/FIXED-
-	-- FORM-ALGORITHM.md §5.3 step 7; docs/SPEC-TABLES.md §3.4, THE LAYOUT
+	-- THE FILE'S LAYOUT IS THE SELECTED WRITER'S BYTE FOR BYTE
+	-- (docs/FIXED-FORM-ALGORITHM.md §5.3 step 7; docs/SPEC-TABLES.md §3.4, THE LAYOUT
 	-- ARRIVES FROM AN UNTRUSTED PEER): a known hash over different layout
 	-- bytes is a lie about a known version, layout_malformed, refused before
 	-- any record byte is read. A caller-supplied foreign writer is the plan

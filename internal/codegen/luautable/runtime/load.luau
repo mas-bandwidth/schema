@@ -958,8 +958,8 @@ local function put(dst: any, i: number, x: any)
 	end
 end
 
--- the bytes one text-list element contributes to its total (docs/SPEC-
--- TABLES.md §2.13): a plain element's buffer length, or a ?element's value
+-- the bytes one text-list element contributes to its total
+-- (docs/SPEC-TABLES.md §2.13): a plain element's buffer length, or a ?element's value
 -- when present, zero when absent.
 text_elem_bytes = function(e: any, x: any): number
 	if e == nil or x == nil then return 0 end

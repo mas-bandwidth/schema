@@ -33,8 +33,8 @@ func goBase64Verdict(text string) string {
 	return ""
 }
 
-// b64CanonProbe is the Luau main that pins the base64 carrier (docs/SPEC-
-// TABLES.md §16.8): it reads the canonical text, saves it back and prints the
+// b64CanonProbe is the Luau main that pins the base64 carrier
+// (docs/SPEC-TABLES.md §16.8): it reads the canonical text, saves it back and prints the
 // SaveText and wire it writes, then feeds every non-canonical or damaged text
 // and prints the refusal it names.
 func b64CanonProbe(g *generatedUnit, rootName string) string {
