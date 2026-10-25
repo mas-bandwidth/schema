@@ -379,7 +379,10 @@ the port list is `harness matrix --ports`, the registry without the reference.
 claims a case when the case's unit uses at least one construct of the
 compiler's carries registry (`compiler/carries_<target>.go`, read through
 `compiler.UnitConstructs`) and its target carries every one of them — the
-compiler would generate that unit for it, by its own registration. Under
+registration is the port naming, construct by construct, what it carries. A
+class a port lands one at a time (variable, message, wide-scalar, byte
+buffer) is not a construct there, so its cases are coverage until it is
+registered as one. Under
 `--claims` a claimed case answered `<case>.absent`, on a surface the leg
 runs, fails the night by name (the reversed witness is
 `harness/claims_test.go`); a case the port does not claim, and a whole
