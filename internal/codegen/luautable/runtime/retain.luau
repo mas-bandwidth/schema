@@ -125,11 +125,12 @@ local function o_leb(o: any, v: number)
 	o_byte(o, v)
 end
 
+-- ONE part of four bytes, never four parts: patch_len rewrites a length's
+-- placeholder as the single part at its mark, so a split placeholder would
+-- leave three stray bytes behind the patched one
 local function o_u32(o: any, v: number)
-	o_byte(o, v % 256)
-	o_byte(o, math.floor(v / 256) % 256)
-	o_byte(o, math.floor(v / 65536) % 256)
-	o_byte(o, math.floor(v / 16777216) % 256)
+	o.parts[#o.parts + 1] = string.char(v % 256, math.floor(v / 256) % 256, math.floor(v / 65536) % 256, math.floor(v / 16777216) % 256)
+	o.len = o.len + 4
 end
 
 local function o_u64(o: any, v: integer)
@@ -664,14 +665,20 @@ end
 -- value comes from load.luau's own walk; the capturing walk adds nothing to
 -- the plain read's verdict and never raises `malformed`. `capacity` is the
 -- byte ceiling the caller owns: the retained store never grows past it and a
--- whole record that does not fit counts one `retain_lost` (§6.6).
-function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number?)
+-- whole record that does not fit counts one `retain_lost` (§6.6). `idCount` is
+-- the retained-id list's capacity, a COUNT: the save numbers an id this build
+-- cannot name into that list, and a record whose ids would pass it is dropped
+-- and counts one `retain_lost` there (§6.6). It defaults to C / 8, the bound
+-- no file can beat.
+function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number?, idCount: number?)
 	if report.retained == nil then report.retained = 0 end
 	if report.retainLost == nil then report.retainLost = 0 end
 	local cap: number = capacity or 65536
 	if cap < 0 then cap = 0 end
+	local idCap: number = idCount or math.floor(cap / 8)
+	if idCap < 0 then idCap = 0 end
 	local new_store = function()
-		return { bytes = buffer.create(cap), cap = cap, used = 0, count = 0 }
+		return { bytes = buffer.create(cap), cap = cap, used = 0, count = 0, idCap = idCap }
 	end
 	local v = Load.load(root, bytes, report)
 	if v == nil then
@@ -834,6 +841,10 @@ save_parse_payload = function(r: any, kind: number, ids: { any }): any
 		return save_parse_keyed(sub, ids)
 	elseif kind == 15 then
 		return save_parse_union(r, ids)
+	elseif kind == 30 then
+		-- an enum variant REFERENCE names an id, so the emit re-interns it
+		-- into the new id table rather than copying the old index
+		return { t = "enum", ref = save_leb_read(r) }
 	end
 	local start = r.at
 	save_skip(r, kind)
@@ -850,6 +861,8 @@ save_parse_array = function(r: any, ids: { any }): any
 			elems[i] = { kind = "body", body = save_parse_body(save_reader(save_take(r, n)), ids) }
 		elseif ek == 15 then
 			elems[i] = { kind = "union", node = save_parse_union(r, ids) }
+		elseif ek == 30 then
+			elems[i] = { kind = "enum", ref = save_leb_read(r) }
 		else
 			local start = r.at
 			save_skip(r, ek)
@@ -904,9 +917,7 @@ save_parse_arm = function(r: any, kind: number, ids: { any }): any
 		local n = r.at <= #r.s and (#r.s - r.at + 1) or 0
 		return { kind = "raw", b = save_take(r, n) }
 	elseif kind == 30 then
-		local start = r.at
-		save_leb_read(r)
-		return { kind = "raw", b = string.sub(r.s, start, r.at - 1) }
+		return { kind = "enum", ref = save_leb_read(r) }
 	elseif kind == 32 then
 		return { kind = "raw", b = "" }
 	end
@@ -968,6 +979,16 @@ local function save_ref(cx: any, id: integer): number
 	if id == 0i then return 0 end
 	local r = cx.refmap[id]
 	if r ~= nil then return r end
+	-- A RETAINED ID PAST THE CAPACITY (§6.6): inside a retained record, an id
+	-- this build cannot name takes an entry of the caller's list; when the list
+	-- is full the record is lost, and emit_record unwinds what it interned
+	if cx.inRecord and cx.idCap ~= nil and not S.knownId(id) then
+		if cx.unknownUsed >= cx.idCap then
+			cx.recordLost = true
+			return 0
+		end
+		cx.unknownUsed = cx.unknownUsed + 1
+	end
 	cx.out_ids[#cx.out_ids + 1] = id
 	r = #cx.out_ids
 	cx.refmap[id] = r
@@ -1011,6 +1032,7 @@ save_res_payload = function(cx: any, c: any, kind: number): string
 		local n = res_u32(c)
 		local sub = res_sub(c, n)
 		local body = save_res_body(cx, sub)
+		if sub.bad then c.bad = true end
 		if c.bad then return "" end
 		return save_leb(#body) .. body
 	elseif kind == 14 then
@@ -1045,6 +1067,7 @@ save_res_array = function(cx: any, c: any): string
 		else
 			elem = save_res_payload(cx, sub, ek)
 		end
+		if sub.bad then c.bad = true end
 		if c.bad then return "" end
 		parts[#parts + 1] = elem
 	end
@@ -1061,6 +1084,7 @@ save_res_keyed = function(cx: any, c: any): string
 	parts[#parts + 1] = save_leb(count)
 	for _ = 1, count do
 		local key = res_u64(c)
+		local keyRef = save_ref(cx, key)
 		local n = res_u32(c)
 		local sub = res_sub(c, n)
 		local content: string
@@ -1069,8 +1093,9 @@ save_res_keyed = function(cx: any, c: any): string
 		else
 			content = save_res_payload(cx, sub, ek)
 		end
+		if sub.bad then c.bad = true end
 		if c.bad then return "" end
-		parts[#parts + 1] = save_leb(save_ref(cx, key))
+		parts[#parts + 1] = save_leb(keyRef)
 		parts[#parts + 1] = save_leb(#content)
 		parts[#parts + 1] = content
 	end
@@ -1082,15 +1107,22 @@ save_res_union = function(cx: any, c: any): string
 	if c.bad then return "" end
 	if id == 0i then return save_leb(0) end
 	if c.at >= c.e then c.bad = true; return "" end
+	local ref = save_ref(cx, id)
 	local ak = r_u8(c)
 	local arm = save_res_arm(cx, c, ak)
 	if c.bad then return "" end
-	return save_leb(save_ref(cx, id)) .. string.char(ak) .. save_leb(#arm) .. arm
+	return save_leb(ref) .. string.char(ak) .. save_leb(#arm) .. arm
 end
 
 save_res_arm = function(cx: any, c: any, kind: number): string
 	if kind == 13 then
-		return save_res_body(cx, c)
+		-- a table arm's resolved body is framed by its u32 length, as
+		-- resolve_arm writes it (§6.6's record payload)
+		local n = res_u32(c)
+		local sub = res_sub(c, n)
+		local body = save_res_body(cx, sub)
+		if sub.bad then c.bad = true; return "" end
+		return body
 	elseif kind == 14 then
 		return save_res_array(cx, c)
 	elseif kind == 16 then
@@ -1121,14 +1153,38 @@ local save_emit_array: any
 local save_emit_keyed: any
 local save_emit_union: any
 
+-- an enum variant reference, re-interned (0 is no variant)
+local function save_enum_ref(cx: any, ref: number): string
+	if ref == 0 then return save_leb(0) end
+	return save_leb(save_ref(cx, cx.ids[ref]))
+end
+
 save_emit_body = function(cx: any, body: any): string
 	local parts = {}
 	for _, f in body.fields do
 		if f.rec ~= nil then
+			-- the record's own id is interned BEFORE its payload's, in the
+			-- order the bytes are written, as the reference writer interns
+			local mark, unknownMark = #cx.out_ids, cx.unknownUsed
+			cx.inRecord, cx.recordLost = true, false
+			local ref = save_ref(cx, f.rec.id)
 			local c = { b = buffer.fromstring(f.rec.payload), at = 0, e = #f.rec.payload, bad = false }
 			local payload = save_res_payload(cx, c, f.rec.kind)
+			cx.inRecord = false
+			if cx.recordLost then
+				-- the record is not written at all, and every id it interned
+				-- is taken back, as the reference's Truncate(mark) does
+				for k = #cx.out_ids, mark + 1, -1 do
+					cx.refmap[cx.out_ids[k]] = nil
+					cx.out_ids[k] = nil
+				end
+				cx.unknownUsed = unknownMark
+				cx.recordLost = false
+				cx.dropped = cx.dropped + 1
+				continue
+			end
 			if c.bad or cx.bad then cx.bad = true; return "" end
-			parts[#parts + 1] = save_leb(save_ref(cx, f.rec.id))
+			parts[#parts + 1] = save_leb(ref)
 			parts[#parts + 1] = string.char(f.rec.kind)
 			parts[#parts + 1] = payload
 		else
@@ -1174,6 +1230,8 @@ save_emit_payload = function(cx: any, node: any, kind: number): string
 		end
 		local content = save_concat(parts)
 		return save_leb(#content) .. content
+	elseif node.t == "enum" then
+		return save_enum_ref(cx, node.ref)
 	end
 	return node.b
 end
@@ -1187,6 +1245,8 @@ save_emit_array = function(cx: any, node: any): string
 			parts[#parts + 1] = save_leb(#body) .. body
 		elseif e.kind == "union" then
 			parts[#parts + 1] = save_emit_union(cx, e.node)
+		elseif e.kind == "enum" then
+			parts[#parts + 1] = save_enum_ref(cx, e.ref)
 		else
 			parts[#parts + 1] = e.b
 		end
@@ -1197,6 +1257,7 @@ end
 save_emit_keyed = function(cx: any, node: any): string
 	local parts = { string.char(node.ek), save_leb(#node.slots) }
 	for _, s in node.slots do
+		local key = save_ref(cx, cx.ids[s.key])
 		local content: string
 		if s.kind == "body" then
 			content = save_emit_body(cx, s.body)
@@ -1206,7 +1267,7 @@ save_emit_keyed = function(cx: any, node: any): string
 			content = save_emit_payload(cx, s.node, node.ek)
 		end
 		if cx.bad then return "" end
-		parts[#parts + 1] = save_leb(s.key)
+		parts[#parts + 1] = save_leb(key)
 		parts[#parts + 1] = save_leb(#content)
 		parts[#parts + 1] = content
 	end
@@ -1215,6 +1276,7 @@ end
 
 save_emit_union = function(cx: any, node: any): string
 	if node.ref == 0 then return save_leb(0) end
+	local ref = save_ref(cx, cx.ids[node.ref])
 	local arm: string
 	if node.arm.kind == "body" then
 		arm = save_emit_body(cx, node.arm.body)
@@ -1224,11 +1286,13 @@ save_emit_union = function(cx: any, node: any): string
 		arm = save_emit_keyed(cx, node.arm.node)
 	elseif node.arm.kind == "union" then
 		arm = save_emit_union(cx, node.arm.node)
+	elseif node.arm.kind == "enum" then
+		arm = save_enum_ref(cx, node.arm.ref)
 	else
 		arm = node.arm.b
 	end
 	if cx.bad then return "" end
-	return save_leb(save_ref(cx, cx.ids[node.ref])) .. string.char(node.ak) .. save_leb(#arm) .. arm
+	return save_leb(ref) .. string.char(node.ak) .. save_leb(#arm) .. arm
 end
 
 local function save_field_of(body: any, ids: { any }, desc: any, o: number): any
@@ -1263,8 +1327,10 @@ save_locate_body = function(body: any, desc: any, steps: { any }, pos: number): 
 	elseif s == "union" then
 		return save_locate_union(fd, f.node, steps, pos)
 	elseif s == "arr" then
-		if f.node.t ~= "arr" then return nil end
 		if fd.array == "keyed" then
+			-- an enum-keyed array is kind 16 on the wire, parsed as "keyed"
+			-- slots each naming its variant (docs/SPEC-TABLES.md §3)
+			if f.node.t ~= "keyed" then return nil end
 			local kv = fd.keyvs and fd.keyvs[st.i + 1]
 			if kv == nil then return nil end
 			for _, slot in f.node.slots do
@@ -1274,6 +1340,7 @@ save_locate_body = function(body: any, desc: any, steps: { any }, pos: number): 
 			end
 			return nil
 		end
+		if f.node.t ~= "arr" then return nil end
 		local e = f.node.elems[st.i + 1]
 		if e == nil then return nil end
 		return save_locate_element(fd, e, steps, pos + 1)
@@ -1297,10 +1364,14 @@ save_locate_element = function(fd: any, e: any, steps: { any }, pos: number): an
 	return nil
 end
 
-save_locate_union = function(un: any, node: any, steps: { any }, pos: number): any
+save_locate_union = function(fd: any, node: any, steps: { any }, pos: number): any
 	if pos > #steps then return nil end
 	if node == nil or node.t ~= "union" then return nil end
 	local st = steps[pos]
+	-- fd is the FIELD line holding the union; its arms are the union
+	-- descriptor's, named by fd.t, exactly as the capturing walk reads them
+	local un = S.lookup(fd.t)
+	if un == nil then return nil end
 	local arm = nil
 	for _, a in un.arms do
 		if (a.tag or 0) == st.i then arm = a; break end
@@ -1461,9 +1532,10 @@ function R.SaveRetain(root: string, value: any, retained: any, report: any?): (b
 		at = at + total
 	end
 
-	local cx: any = { refmap = {}, out_ids = {}, ids = ids, bad = false }
+	local cx: any = { refmap = {}, out_ids = {}, ids = ids, bad = false, idCap = store.idCap, unknownUsed = 0, inRecord = false, recordLost = false, dropped = 0 }
 	local rootBytes = save_emit_body(cx, rootBody)
 	if cx.bad then return nil end
+	lost = lost + cx.dropped
 	local parts = { string.char(1), rootBytes }
 	for _, id in cx.out_ids do
 		parts[#parts + 1] = save_u64_bytes(id)
