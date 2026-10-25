@@ -39,6 +39,7 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 
 	want := map[string]string{
 		"go":  "refused",
+		"c":   "refused",
 		"cpp": oldCounters,
 	}
 	for lang, verdict := range want {
@@ -63,8 +64,8 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 			}
 		}
 	}
-	if exemptNamed["go"] {
-		t.Fatalf("%s: Go carries the rule and must not be exempted", caseName)
+	if exemptNamed["go"] || exemptNamed["c"] {
+		t.Fatalf("%s: Go and C carry the rule and must not be exempted", caseName)
 	}
 	if !exemptNamed["cpp"] {
 		t.Fatalf("%s: C++ is exempted but the harness names no exemption on its line; it must never skip the row in silence", caseName)
@@ -90,7 +91,7 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := &result{}
-		scoreAnswer(lang, "json-hostile", out, e, "", r)
+		scoreAnswer(lang, "json-hostile", out, e, Instance{}, r)
 		if len(r.failures) == 0 {
 			t.Fatalf("%s: %s answering %q scored green against %q; it must score red", caseName, lang, answer, e.want)
 		}
@@ -110,7 +111,7 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := &result{}
-		scoreAnswer(lang, "json-hostile", out, e, "", r)
+		scoreAnswer(lang, "json-hostile", out, e, Instance{}, r)
 		if len(r.failures) != 0 {
 			t.Fatalf("%s: %s answering %q scored red against %q: %v", caseName, lang, answer, e.want, r.failures)
 		}

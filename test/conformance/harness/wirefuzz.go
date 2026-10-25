@@ -102,6 +102,27 @@ const nodeDirEntryBytes = int64(16)
 // type id and its length. It bounds how many records a wire can carry.
 const nodeRecordHeaderBytes = int64(2)
 
+// amplificationCeiling is the pinned ceiling on the region a table read may be
+// made to materialize from a wire of the given size (schema#466,
+// docs/SPEC-TABLES.md §6.5, docs/SECURITY.md). A hostile record costs its type
+// id reference and its length — nodeRecordHeaderBytes, two wire bytes — and
+// commands at most the largest record this root can place plus one directory
+// entry, so a wire can command no more than the root, one record per two
+// bytes, and the largest element a list or map under the root can add. The
+// row this constant pins is the amplification ratio (region bytes over wire
+// bytes): a mutant above the ceiling is a divergence even before the leg and
+// the oracle are compared, and it is the same number the oracle's exact
+// answer takes as its upper form.
+func (r *wireRoot) amplificationCeiling(wireBytes int) int64 {
+	records := int64(wireBytes)/nodeRecordHeaderBytes + 1
+	ceiling := r.rootStorage + records*(r.maxStorage+nodeDirEntryBytes)
+	ceiling += int64(wireBytes) * (r.maxElement + 16)
+	if r.blobBytes || r.blobString {
+		ceiling += int64(wireBytes) + records*16
+	}
+	return ceiling
+}
+
 func (r *wireRoot) roundStorage(n int64) int64 { return (n + r.align - 1) & -r.align }
 
 // THE RETENTION ARM'S TWO CAPACITIES (docs/SPEC-TABLES.md §6.6), and they are
@@ -189,6 +210,12 @@ type legReply struct {
 	measure  int64
 	saved    []byte
 	saveFail bool
+	// blobShared marks a save refused BY NAME as blob_shared
+	// (docs/SPEC-TABLES.md §2.5): a leg answers the saved length -2 for it. Every writer
+	// of the standard refuses a blob two slots name; the C++ reference still
+	// writes one, so a differential against it reads this refusal as the
+	// standard's answer and not as a divergence.
+	blobShared bool
 	// RETENTION'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6). They ride beside
 	// Counts rather than inside it, because Counts is the MANIFEST's own
 	// report spelling, which every port's `report` surface prints and which
@@ -356,6 +383,47 @@ type wireLeg struct {
 	known  []bool
 }
 
+// wireClock is the timer the driver-reply deadline waits on: real time in the
+// harness, an injected one in a test. The deadline only ever waits, so the
+// interface is After alone; nothing here reads the time of day.
+type wireClock interface {
+	After(d time.Duration) <-chan time.Time
+}
+
+type realClock struct{}
+
+func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
+
+// replyDeadline turns a stalled driver into a named failure instead of a hang
+// (test/conformance/README.md, "The wire-fuzz driver"): the harness never
+// waits forever for a reply a driver will not send. A deadline alone is not
+// the fix — the stream is still a pure request/reply loop — but it backstops
+// the loop so a driver that stops answering is reported by name.
+const replyDeadline = 30 * time.Second
+
+// receiveWithDeadline reads one reply, bounded by replyDeadline against clk. A
+// driver that stops answering is reported as a stall rather than hanging the
+// run. The read runs on a goroutine so the deadline can interrupt it; when
+// the deadline fires that goroutine is left blocked on the pipe until the leg
+// is killed, which the caller always does on this path.
+func (l *wireLeg) receiveWithDeadline(clk wireClock) (legReply, error) {
+	type result struct {
+		rep legReply
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		rep, err := l.receive()
+		ch <- result{rep, err}
+	}()
+	select {
+	case r := <-ch:
+		return r.rep, r.err
+	case <-clk.After(replyDeadline):
+		return legReply{}, fmt.Errorf("the driver stalled: no reply within %s", replyDeadline)
+	}
+}
+
 func startWireLeg(command string, roots []*wireRoot) (*wireLeg, error) {
 	parts := strings.Fields(command)
 	if len(parts) == 0 {
@@ -455,6 +523,7 @@ func (l *wireLeg) receive() (legReply, error) {
 	n := int64(binary.LittleEndian.Uint64(head[39:]))
 	if n < 0 {
 		rep.saveFail = true
+		rep.blobShared = n == -2
 		return rep, nil
 	}
 	rep.saved = make([]byte, n)
@@ -484,7 +553,7 @@ func (l *wireLeg) kill() {
 
 // wireVerdict compares one leg reply with the oracle's answer and names the
 // first disagreement, or "" when there is none.
-func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
+func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int) string {
 	if root.builder {
 		if reply.loaded == ans.builderStopped {
 			return "builder completion differs from the oracle"
@@ -550,6 +619,15 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer) string {
 		if reply.measure > ans.bytes {
 			return fmt.Sprintf("LoadMeasure asks for %d region bytes; the framing can command at most %d", reply.measure, ans.bytes)
 		}
+		// THE AMPLIFICATION ROW (schema#466, docs/SPEC-TABLES.md §6.5): the
+		// pinned maximum region-over-wire ratio, independent of the oracle's
+		// per-mutant answer. A hostile record is two wire bytes and commands
+		// at most the largest record the root can place, so a mutant above
+		// this ceiling is a divergence on the bound the page states.
+		if wireBytes > 0 && reply.measure > root.amplificationCeiling(wireBytes) {
+			return fmt.Sprintf("LoadMeasure asks for %d region bytes from %d wire bytes; the amplification ceiling is %d",
+				reply.measure, wireBytes, root.amplificationCeiling(wireBytes))
+		}
 	}
 	return ""
 }
@@ -579,17 +657,14 @@ func randomPass(pool []*wireSeed, pinned int, seed uint64, n int, draw func(*wir
 	return ""
 }
 
-func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
-	if opts.builder && (opts.retain || opts.message) {
-		return fmt.Errorf("--builder is a non-retaining file arm")
-	}
-	if opts.driver == "" {
-		return fmt.Errorf("wire-fuzz needs --driver")
-	}
+// buildWireFuzzRoster builds the wire-fuzz roster: every seed and every root
+// the manifest names (docs/SPEC-TABLES.md §4.2, the wire fuzzer). It refuses
+// by name when the roster is empty — a manifest, or a --manifest/--unit
+// selection, that leaves no root with a seed — so the harness never fuzzes
+// nothing and never PANICS on an empty seed set.
+func buildWireFuzzRoster(m *Manifest, opts wireFuzzOptions) ([]*wireSeed, []*wireRoot, map[*wireSeed]int, int, error) {
 	u := newUnits(m)
 
-	// the seeds: every instance and every report case, each a (unit, root,
-	// wire) the corpus already pins
 	var seeds []*wireSeed
 	var roots []*wireRoot
 	rootIndex := map[string]int{}
@@ -614,9 +689,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		}
 		if opts.retain {
 			// THE RETENTION ARM'S ROSTER IS THE VARIABLE-CLASS FILE ROOTS AND
-			// NOTHING ELSE (docs/SPEC-TABLES.md §6.6, §3.3). A root that is not
-			// one is not an error here: it is a seed this arm has nothing to
-			// say about, and the line prints how many were left out.
+			// NOTHING ELSE (docs/SPEC-TABLES.md §6.6, §3.3).
 			if !r.variable || message {
 				rootIndex[key] = -1
 				return -1, nil
@@ -644,8 +717,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		}
 		s := &wireSeed{name: name, unit: unit, root: root, wire: wire, message: message}
 		if message {
-			// A MESSAGE SEED IS FRAMED IN BITS (docs/SPEC-TABLES.md §3.3): its
-			// references and node indices, found by the engine's own read
+			// A MESSAGE SEED IS FRAMED IN BITS (docs/SPEC-TABLES.md §3.3)
 			s.spots = tablewire.MessageSpots(roots[ri].model, roots[ri].def, wire, roots[ri].vocabulary)
 			s.entries = len(roots[ri].vocabulary.Entries())
 		} else {
@@ -660,51 +732,61 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	}
 	if opts.replay != "" {
 		if opts.unit == "" || opts.root == "" {
-			return fmt.Errorf("--replay needs --unit and --root")
+			return nil, nil, nil, 0, fmt.Errorf("--replay needs --unit and --root")
 		}
 		if err := addFormSeed(filepath.Base(opts.replay), opts.unit, opts.root, opts.replay, opts.message); err != nil {
-			return err
+			return nil, nil, nil, 0, err
 		}
 	} else {
 		for _, inst := range m.Instances {
 			if err := addSeed(inst.Name, inst.Unit, inst.Root, inst.Wire); err != nil {
-				return err
+				return nil, nil, nil, 0, err
 			}
 		}
 		for _, rc := range m.Reports {
 			if err := addSeed(rc.Name, rc.Unit, rc.Root, rc.Wire); err != nil {
-				return err
+				return nil, nil, nil, 0, err
 			}
 		}
 		// AND THE REFERENCE BOUND UNDER A CONNECTION TABLE
-		// (docs/SPEC-TABLES.md §3.3): the reference pass run with the table
-		// ANNOUNCED, so every reference is set to the entry count plus one and
-		// to the extremes the encoding can spell — which are malformed — and
-		// to the entry count itself, which is the last legal slot and must
-		// RESOLVE. A message has no trailer to mutate, so the whole of its
-		// attack surface is the body.
+		// (docs/SPEC-TABLES.md §3.3).
 		for _, msg := range m.Messages {
 			c, cerr := m.LookupConnection(msg.Connection)
 			if cerr != nil {
-				return cerr
+				return nil, nil, nil, 0, cerr
 			}
 			if err := addFormSeed(msg.Name+"_message", c.Unit, msg.Root, msg.MessageWire, true); err != nil {
-				return err
+				return nil, nil, nil, 0, err
 			}
 		}
-		// THE PINNED VECTORS, each a red this fuzzer already found. They ride
-		// last and unmutated, so a run that goes red on one names the vector
-		// rather than a mutant index.
+		// THE PINNED VECTORS ride last and unmutated.
 		vecs, err := readWireVectors(opts.vectors)
 		if err != nil {
-			return err
+			return nil, nil, nil, 0, err
 		}
 		for _, v := range vecs {
 			if err := addFormSeed(v.name, v.unit, v.root, v.file, v.message); err != nil {
-				return err
+				return nil, nil, nil, 0, err
 			}
 			seeds[len(seeds)-1].vector = true
 		}
+	}
+	if len(seeds) == 0 {
+		return nil, nil, nil, 0, fmt.Errorf("wire-fuzz: 0 seeds over %d roots: the roster is empty", len(roots))
+	}
+	return seeds, roots, seedRoot, skipped, nil
+}
+
+func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
+	if opts.builder && (opts.retain || opts.message) {
+		return fmt.Errorf("--builder is a non-retaining file arm")
+	}
+	if opts.driver == "" {
+		return fmt.Errorf("wire-fuzz needs --driver")
+	}
+	seeds, roots, seedRoot, skipped, err := buildWireFuzzRoster(m, opts)
+	if err != nil {
+		return err
 	}
 
 	leg, err := startWireLeg(opts.driver, roots)
@@ -786,7 +868,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	enumeratedCount := 0
 	for mut := range sent {
 		root := roots[seedRoot[mut.seed]]
-		reply, err := leg.receive()
+		reply, err := leg.receiveWithDeadline(realClock{})
 		if err != nil {
 			leg.kill()
 			return wireFailure(opts, mut, total, fmt.Sprintf("the leg died on the mutant (%v)", err), leg.stderr.String())
@@ -796,7 +878,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 			leg.kill()
 			return wireFailure(opts, mut, total, err.Error(), "")
 		}
-		if verdict := wireVerdict(root, reply, ans); verdict != "" {
+		if verdict := wireVerdict(root, reply, ans, len(mut.data)); verdict != "" {
 			leg.kill()
 			// THE TWO ANSWERS BESIDE THE MUTANT: a divergence in the decoded
 			// VALUE is a diff, and a diff needs both sides on disk

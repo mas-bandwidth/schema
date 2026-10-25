@@ -61,42 +61,13 @@ type squirrelExpectedHostileMismatch struct {
 	name, input, expected, actual, fixCard string
 }
 
-// The rows that remain after the wire-count-refusal, announce-newer-form and
-// announce-bounds cards landed all have one cause: the corpus manifest predates
-// §16.3. Ill-formed UTF-8 is refused by name at every string site
-// (testdata/conformance/tables/MANIFEST.txt, str-illformed-at-bound: refused),
-// so the manifest's `accept` is stale and the schema-shared card that
-// regenerates it owns the row; the Squirrel refusal is the standard's answer.
-var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{
-	{
-		name:     "conformance-str-illformed-at-bound",
-		input:    "inputs/conformance-str-illformed-at-bound.json",
-		expected: "accept -",
-		actual:   "refuse damaged",
-		fixCard:  "schema-shared-forward-merge-schema-go",
-	},
-	{
-		name:     "fuzz-text-illformed_byte_at_bound",
-		input:    "inputs/fuzz-text-illformed_byte_at_bound.txt",
-		expected: "accept -",
-		actual:   "refuse damaged",
-		fixCard:  "schema-shared-forward-merge-schema-go",
-	},
-	{
-		name:     "fuzz-text-illformed_bytes_in_string",
-		input:    "inputs/fuzz-text-illformed_bytes_in_string.txt",
-		expected: "accept -",
-		actual:   "refuse damaged",
-		fixCard:  "schema-shared-forward-merge-schema-go",
-	},
-	{
-		name:     "fuzz-text-invalid_utf8_tail",
-		input:    "inputs/fuzz-text-invalid_utf8_tail.txt",
-		expected: "accept -",
-		actual:   "refuse damaged",
-		fixCard:  "schema-shared-forward-merge-schema-go",
-	},
-}
+// The list is empty. The last rows it carried (the three ill-formed UTF-8
+// fuzz-text inputs and conformance-str-illformed-at-bound) had one cause: the
+// corpus manifest predated §16.3. The shared corpus on dev now holds the
+// engine's refusal of ill-formed UTF-8 at every string site (`refuse damaged`),
+// which is the Squirrel reader's answer, so those rows pass and the exact set
+// is none.
+var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{}
 
 func squirrelExpectedHostileMismatchNames() []string {
 	names := make([]string, 0, len(squirrelExpectedHostileMismatches))

@@ -1,8 +1,11 @@
 /* THE C TABLES SOAK (docs/SPEC-TABLES.md; Glenn's unit test -> soak -> profile
  * law).
  *
- * Read and write the whole wire corpus in a loop for as long as the caller
- * asks, with the process's own allocation counters read at both ends.
+ * Read and write the whole wire corpus in a loop for as many passes as the
+ * caller asks, with the process's own allocation counters read at both ends.
+ * ITS LENGTH IS A PASS COUNT, NOT A CLOCK: the gate is allocations per pass,
+ * so the number of passes is what matters, and a count runs the same loop on
+ * every machine.
  *
  * THE NUMBER THAT MATTERS IS THE SECOND ONE. §2's contract is that the
  * generated read path allocates NOTHING — the caller owns every buffer — so the
@@ -15,11 +18,10 @@
  * a counting shim otherwise, so the answer is the ALLOCATOR's rather than this
  * file's opinion of it.
  *
- *   ./build/schema_test_c_soak <seconds>
+ *   ./build/schema_test_c_soak <iterations>
  */
 
 #include "driver.h"
-#include <time.h>
 
 #if defined( __GLIBC__ )
 #include <malloc.h>
@@ -191,13 +193,12 @@ int main( int argc, char ** argv )
 {
     const size_t num_cases = sizeof( cases ) / sizeof( cases[0] );
     Loaded loaded[ sizeof( cases ) / sizeof( cases[0] ) ];
-    double seconds = argc > 1 ? strtod( argv[1], NULL ) : 20.0;
+    const uint64_t target = argc > 1 ? (uint64_t) strtoull( argv[1], NULL, 10 ) : 4096u;
     int64_t before = 0, after = 0, settled = 0;
     uint64_t iterations = 0;
-    time_t start;
     size_t i;
 
-    /* EVERY BUFFER IS ALLOCATED ONCE, BEFORE THE CLOCK. That is not the soak
+    /* EVERY BUFFER IS ALLOCATED ONCE, BEFORE THE LOOP. That is not the soak
        being kind to itself: it is the contract. A caller owns the wire buffer,
        the save buffer and the text buffer, and the generated code allocates
        none of them — so a soak that allocated per iteration would be measuring
@@ -238,7 +239,7 @@ int main( int argc, char ** argv )
             loaded[i].text_bytes = loaded[i].codec->to_json( value, NULL, 0 );
             loaded[i].text = loaded[i].text_bytes > 0 ? (char *) malloc( (size_t) loaded[i].text_bytes + 1 ) : NULL;
             if ( loaded[i].scratch == NULL ) { return 1; }
-            /* THE GOLDEN GATE, before the clock and before anything else: an
+            /* THE GOLDEN GATE, before the loop and before anything else: an
                EXACT case must come back BYTE FOR BYTE. That is what makes this
                binary a cross-endian gate as well as a leak gate — the tolerant
                wire is little-endian by construction (§3), so a big-endian build
@@ -257,12 +258,11 @@ int main( int argc, char ** argv )
     }
 
     before = live_bytes();
-    /* one untimed pass first, so a lazily-initialised stdio buffer or locale
+    /* one uncounted pass first, so a lazily-initialised stdio buffer or locale
        table is charged to the setup rather than to the loop */
     printf( "c tables soak: counting allocator calls over the measured loop\n" );
     fflush( stdout );
     schema_soak_counting = 1;
-    start = time( NULL );
     for ( ;; )
     {
         for ( i = 0; i < num_cases; i++ )
@@ -299,13 +299,17 @@ int main( int argc, char ** argv )
         }
         iterations++;
         if ( iterations == 1 ) { settled = live_bytes(); }
-        if ( ( iterations & 0x3ff ) == 0 && difftime( time( NULL ), start ) >= seconds ) { break; }
+        /* TWO PASSES IS THE FLOOR, whatever the count: `settled` is sampled
+           after the first pass and `after` at the end, so one pass would
+           compare a number with itself. The CROSS-ENDIAN leg
+           (`tables-c-big-endian`) asks for zero passes — the golden gate it
+           exists for has already run, above, before the loop — and gets two. */
+        if ( iterations >= 2 && iterations >= target ) { break; }
     }
     schema_soak_counting = 0;
     after = live_bytes();
 
-    printf( "c tables soak: %llu iterations over %u cases in %.0f s\n",
-            (unsigned long long) iterations, (unsigned) num_cases, difftime( time( NULL ), start ) );
+    printf( "c tables soak: %llu iterations over %u cases\n", (unsigned long long) iterations, (unsigned) num_cases );
     if ( before < 0 )
     {
         printf( "c tables soak: this platform exposes no allocator statistics — the loop ran, the number did not\n" );

@@ -86,7 +86,6 @@ public final class WideText {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
-        if (value.textLength < 0 || value.textLength > 7) throw new IllegalArgumentException("wstring length");
         v = (value.textLength) & 0x7L;
         scratch |= v << scratchBits;
         scratchBits += 3;
@@ -98,7 +97,7 @@ public final class WideText {
         }
         for (int wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
             v = value.text[wideIndex];
-            if (v == 0) throw new IllegalArgumentException("wstring null unit");
+            assert v != 0;
             scratch |= v << scratchBits;
             scratchBits += 32;
             if (scratchBits >= 64) {
@@ -228,7 +227,6 @@ public final class WideText {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
-        if (value.textLength < 0 || value.textLength > 4) throw new IllegalArgumentException("wstring length");
         v = (value.textLength) & 0x7L;
         scratch |= v << scratchBits;
         scratchBits += 3;
@@ -240,7 +238,7 @@ public final class WideText {
         }
         for (int wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
             v = value.text[wideIndex];
-            if (v == 0) throw new IllegalArgumentException("wstring null unit");
+            assert v != 0;
             scratch |= v << scratchBits;
             scratchBits += 32;
             if (scratchBits >= 64) {
@@ -397,7 +395,8 @@ public final class WideText {
         if (scratchBits != 0) {
             LONG_LE.set(data, wordIndex * 8, scratch);
         }
-        System.arraycopy(value.text, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.textLength);
+        System.arraycopy(
+                value.text, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.textLength);
         scratchBits += value.textLength * 8;
         wordIndex += scratchBits >>> 6;
         scratchBits &= 63;
@@ -465,24 +464,30 @@ public final class WideText {
         }
         System.arraycopy(data, bitsRead >>> 3, value.text, 0, value.textLength);
         bitsRead += value.textLength * 8;
-        for (int utf8Index = 0; utf8Index < value.textLength;)
-        {
+        for (int utf8Index = 0; utf8Index < value.textLength; ) {
             int utf8Lead = value.text[utf8Index++] & 0xFF;
             if (utf8Lead < 0x80) continue;
             int utf8Remaining, utf8Point;
-            if ((utf8Lead & 0xE0) == 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-            else if ((utf8Lead & 0xF0) == 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-            else if ((utf8Lead & 0xF8) == 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-            else return false; // malformed UTF-8 lead (SPEC §4.7)
+            if ((utf8Lead & 0xE0) == 0xC0) {
+                utf8Remaining = 1;
+                utf8Point = utf8Lead & 0x1F;
+            } else if ((utf8Lead & 0xF0) == 0xE0) {
+                utf8Remaining = 2;
+                utf8Point = utf8Lead & 0x0F;
+            } else if ((utf8Lead & 0xF8) == 0xF0) {
+                utf8Remaining = 3;
+                utf8Point = utf8Lead & 0x07;
+            } else return false; // malformed UTF-8 lead (SPEC §4.7)
             if (utf8Remaining > value.textLength - utf8Index) return false;
-            for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-            {
+            for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
                 int utf8Byte = value.text[utf8Index++] & 0xFF;
                 if ((utf8Byte & 0xC0) != 0x80) return false;
                 utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
             }
             if (utf8Remaining == 1 && utf8Point < 0x80) return false;
-            if (utf8Remaining == 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
+            if (utf8Remaining == 2
+                    && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF)))
+                return false;
             if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
         }
         for (int i0 = 0; i0 < value.textLength; i0++) {
@@ -548,7 +553,6 @@ public final class WideText {
         int scratchBits = 0;
         int wordIndex = 0;
         long v = 0;
-        if (value.captionLength < 0 || value.captionLength > 7) throw new IllegalArgumentException("wstring length");
         v = (value.captionLength) & 0x7L;
         scratch |= v << scratchBits;
         scratchBits += 3;
@@ -560,7 +564,7 @@ public final class WideText {
         }
         for (int wideIndex = 0; wideIndex < value.captionLength; wideIndex++) {
             v = value.caption[wideIndex];
-            if (v == 0) throw new IllegalArgumentException("wstring null unit");
+            assert v != 0;
             scratch |= v << scratchBits;
             scratchBits += 32;
             if (scratchBits >= 64) {

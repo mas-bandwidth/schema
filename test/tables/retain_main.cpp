@@ -122,14 +122,14 @@ static int64_t write_rt2( uint8_t * buffer, int64_t capacity )
 {
     tblrt2::NodeBuilder builder;
     tblrt2::Node * root = builder.GetRoot();
-    memcpy( root->name, "world", 6 );
+    memcpy( (void *) root->name, "world", 6 );
     root->name_length = 5;
     root->tier = tblrt2::Slot::Extra; // a variant RT1 cannot name
 
     root->extra = 11;
     root->inner.hits = 3;
     root->inner.future = 21;
-    memcpy( root->inner.tag, "in", 3 );
+    memcpy( (void *) root->inner.tag, "in", 3 );
     root->inner.tag_length = 2;
 
     root->items_count = 2;
@@ -299,7 +299,7 @@ static void round_trip()
     Region back;
     back.size( tblrt2::NodeLoadMeasure( out, w ) );
     tblrt2::TableReport read_report;
-    const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
+    const tblrt2::Node * reread = tblrt2::NodeLoadTolerant( back.base, back.bytes, out, w, &read_report );
     CHECK( reread != NULL );
     CHECK( !read_report.malformed );
     CHECK( reread->extra == 11 );
@@ -499,7 +499,7 @@ static void unknown_node_record()
     {
         tblrt3::NodeBuilder builder;
         tblrt3::Node * root = builder.GetRoot();
-        memcpy( root->name, "beam", 5 );
+        memcpy( (void *) root->name, "beam", 5 );
         root->name_length = 4;
         tblrt3::TableSlot<tblrt3::Beam> beam = builder.Alloc<tblrt3::Beam>();
         beam->value = 3;
@@ -601,7 +601,7 @@ static void capacities()
         Region back;
         back.size( tblrt2::NodeLoadMeasure( out, w ) );
         tblrt2::TableReport read_report;
-        const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
+        const tblrt2::Node * reread = tblrt2::NodeLoadTolerant( back.base, back.bytes, out, w, &read_report );
         CHECK( reread != NULL && !read_report.malformed );
     }
 }
@@ -650,7 +650,7 @@ static void record_lifetime()
     Region back;
     back.size( tblrt2::NodeLoadMeasure( out, w ) );
     tblrt2::TableReport read_report;
-    const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
+    const tblrt2::Node * reread = tblrt2::NodeLoadTolerant( back.base, back.bytes, out, w, &read_report );
     CHECK( reread != NULL );
     CHECK( reread->inner.hits == 2 );
     CHECK( reread->inner.future == 0 ); // and `7` was never resurrected beside it
@@ -745,7 +745,7 @@ static void disjoint_occurrences()
     Region back;
     back.size( tblrt2::NodeLoadMeasure( out, w ) );
     tblrt2::TableReport read_report;
-    const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
+    const tblrt2::Node * reread = tblrt2::NodeLoadTolerant( back.base, back.bytes, out, w, &read_report );
     CHECK( reread != NULL && !read_report.malformed );
     CHECK( reread->banks.slots[0].future == 41 );
     CHECK( reread->banks.slots[1].future == 42 );
@@ -914,12 +914,12 @@ static void walk_is_linear()
 static void fill_rt2_message( tblrt2::NodeBuilder & builder, bool full )
 {
     tblrt2::Node * root = builder.GetRoot();
-    memcpy( root->name, full ? "world" : "again", 6 );
+    memcpy( (void *) root->name, full ? "world" : "again", 6 );
     root->name_length = 5;
     root->extra = full ? 11 : 12;
     root->inner.hits = 3;
     root->inner.future = 21;
-    memcpy( root->inner.tag, "in", 3 );
+    memcpy( (void *) root->inner.tag, "in", 3 );
     root->inner.tag_length = 2;
     if ( !full ) { return; }
 
@@ -1066,7 +1066,7 @@ static void message_form()
         Region back;
         back.size( tblrt2::NodeLoadMeasure( out, w ) );
         tblrt2::TableReport read_report;
-        const tblrt2::Node * again = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
+        const tblrt2::Node * again = tblrt2::NodeLoadTolerant( back.base, back.bytes, out, w, &read_report );
         CHECK( again != NULL && !read_report.malformed );
         CHECK( again->extra == ( i == 0 ? 11 : 12 ) );
         CHECK( again->inner.future == 21 );

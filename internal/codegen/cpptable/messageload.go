@@ -706,7 +706,10 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		g.pf("%s    %s = decoded_f%s;\n%s}\n", ind, lvalue, sfx, ind)
 		return
 	}
-	signed := ir.TableKindSigned(kind)
+	// A TIMESTAMP IS A SIGNED INT64 COUNT under its own kind 36
+	// (docs/SPEC-TABLES.md §2.11, §3.3), the signedness Go's emitter takes
+	// from the declaration.
+	signed := ir.TableKindSigned(kind) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 	bytesWide := tableKindWidth(kind)
 	decoded := "decoded_v" + sfx
 	g.pf("%s{\n", ind)

@@ -485,7 +485,7 @@ func TestCorpusArmCoverage(t *testing.T) {
 		`{"sequence":1,"body":{"open":{"path":"a","cursor":{"line":1,"column":2}}}}`,
 		`{"sequence":2,"body":{"save":{"path":"b","force":true}}}`,
 		`{"sequence":3,"body":{"transact":{"reason":"r","edits":[{"revision":1,"body":{"insert":{"at":{"line":1,"column":2},"text":"t","origin":{"note":"n"}}}}]}}}`,
-		`{"sequence":4,"body":{"transact":{"reason":"r","edits":[{"revision":1,"body":{"remove":{"span":{"start":{"line":1,"column":2},"end":{"line":3,"column":4}}}}}]}}}`,
+		`{"sequence":4,"body":{"transact":{"reason":"r","edits":[{"revision":1,"body":{"remove":{"span":{"start":{"line":1,"column":2},"stop":{"line":3,"column":4}}}}}]}}}`,
 		`{"sequence":5,"body":{"transact":{"reason":"r","edits":[{"revision":1,"body":{"tally":9}}]}}}`,
 		`{"sequence":6,"body":{"transact":{"reason":"r","edits":[{"revision":1,"body":{"marks":[1,2]}}]}}}`,
 		`{"sequence":7,"body":{"transact":{"reason":"r","edits":[{"revision":1,"body":{"blob":"YWJj"}}]}}}`,
@@ -772,7 +772,7 @@ table Root
     keyed  [Key]Child
     arr    [..3]Child
     body   Body
-    after  int32
+    past  int32
 }
 `
 
@@ -782,7 +782,7 @@ table Root
 func TestMapAndKeyedCoverage(t *testing.T) {
 	t.Parallel()
 	m := covModel(t, covMapUnit)
-	src := covPlace(t, m, "Root", `{"names":{"ab":1,"cd":2},"wide":{"1":"hi"},"blobs":{"7":"YWJj"},"keyed":{"A":{"n":1},"B":{"n":2}},"arr":[{"n":3}],"body":{"note":"x"},"after":9}`)
+	src := covPlace(t, m, "Root", `{"names":{"ab":1,"cd":2},"wide":{"1":"hi"},"blobs":{"7":"YWJj"},"keyed":{"A":{"n":1},"B":{"n":2}},"arr":[{"n":3}],"body":{"note":"x"},"past":9}`)
 	root := m.Lookup("Root")
 	wire, err := Encode(m, src)
 	if err != nil {

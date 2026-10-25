@@ -11,5 +11,5 @@ package mapdemo
 table Trails
 {
     steps map[uint32][]*Item // []*T: an unbounded extent of pointer slots
-    after int32
+    past int32 | was = "after"
 }

@@ -115,7 +115,7 @@ func TestAMapKeyIsNeverTruncatedIntoAnother(t *testing.T) {
 	m := mapsModel(t)
 	first := strings.Repeat("a", 255) + "b"
 	second := strings.Repeat("a", 255) + "c"
-	text := `{"names":{"` + first + `":{"count":1},"` + second + `":{"count":2}},"after":5}`
+	text := `{"names":{"` + first + `":{"count":1},"` + second + `":{"count":2}},"past":5}`
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report
 	if !m.Read(inst, []byte(text), &r) || r.Malformed {
@@ -134,7 +134,7 @@ func TestAMapKeyIsNeverTruncatedIntoAnother(t *testing.T) {
 			t.Errorf("the map holds a key the text never spelled, %d bytes long", len(key))
 		}
 	}
-	after, ok := inst.FieldByKey("after")
+	after, ok := inst.FieldByKey("past")
 	if !ok || after.Cell.I != 5 {
 		t.Error("the parent did not read on past the map")
 	}

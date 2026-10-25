@@ -36,6 +36,7 @@ import (
 	"strconv"
 	"strings"
 
+	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -624,15 +625,6 @@ func TableKey(name string) string {
 	return name
 }
 
-// keywords is Squirrel 3.2's reserved words (squirrel/sqlexer.cpp).
-var keywords = map[string]bool{
-	"while": true, "do": true, "if": true, "else": true, "break": true,
-	"continue": true, "return": true, "null": true, "function": true,
-	"local": true, "for": true, "foreach": true, "in": true, "typeof": true,
-	"base": true, "delete": true, "try": true, "catch": true, "throw": true,
-	"clone": true, "yield": true, "resume": true, "switch": true, "case": true,
-	"default": true, "this": true, "class": true, "extends": true,
-	"constructor": true, "instanceof": true, "true": true, "false": true,
-	"static": true, "enum": true, "const": true, "__LINE__": true,
-	"__FILE__": true, "rawcall": true,
-}
+// keywords is Squirrel 3.2's reserved words (squirrel/sqlexer.cpp), read from
+// the one table (check.ReservedIn, SPEC §4.6) and never copied here.
+var keywords = schemacheck.ReservedIn("Squirrel")

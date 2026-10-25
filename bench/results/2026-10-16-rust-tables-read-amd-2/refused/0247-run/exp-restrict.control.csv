@@ -1,0 +1,5 @@
+label,bench,path,rate
+start,bench_mixed,write,6365635
+start,bench_mixed,round_trip,3049137
+end,bench_mixed,write,5865849
+end,bench_mixed,round_trip,3037264

@@ -1,5 +1,5 @@
 // A `was` on an enum variant, a union arm or a type's field (docs/SPEC-TABLES.md
-// §5) is carried by C++, C and C#; targets without the form refuse it by name.
+// §5) is carried by C++, C, C#, Go and Dart; targets without the form refuse it by name.
 package compiler
 
 import (
@@ -44,6 +44,24 @@ fixed table Cfg
 }
 `
 
+func TestDartWasRowsCarriers(t *testing.T) {
+	t.Parallel()
+	out, err := New().Generate(unitFromSource(t, wasRowsUnit), "dart", Options{})
+	if err != nil {
+		t.Fatalf("dart refused the was rows: %v", err)
+	}
+	var all strings.Builder
+	for _, b := range out {
+		all.Write(b)
+	}
+	for _, old := range []string{"Silver", "ward", "ping", "multiplier"} {
+		want := fmt.Sprintf("%d", int64(ir.TableWireId(old)))
+		if !strings.Contains(all.String(), want) {
+			t.Errorf("dart output lacks the old wire id of %q: %s", old, want)
+		}
+	}
+}
+
 func TestWasRowsCarriers(t *testing.T) {
 	u := unitFromSource(t, wasRowsUnit)
 	c := New()
@@ -59,7 +77,7 @@ func TestWasRowsCarriers(t *testing.T) {
 			}
 			continue
 		}
-		if target == "cpp" || target == "c" || target == "cs" || target == "go" {
+		if target == "cpp" || target == "c" || target == "cs" || target == "dart" || target == "go" || target == "elixir" || target == "js" || target == "rust" || target == "java" {
 			if err != nil {
 				t.Fatalf("%s carries the was rows and refused: %v", target, err)
 			}
@@ -67,10 +85,16 @@ func TestWasRowsCarriers(t *testing.T) {
 			for _, b := range out {
 				all.Write(b)
 			}
-			// every id the renamed things ride under is the OLD name's hash
+			// every id the renamed things ride under is the OLD name's hash;
+			// the spelling's case is the target's (Elixir's formatter writes
+			// hex upper case), so compare the output lower-cased.
+			emitted := strings.ToLower(all.String())
 			for _, old := range []string{"Silver", "ward", "ping", "multiplier"} {
 				want := fmt.Sprintf("0x%016x", ir.TableWireId(old))
-				if !strings.Contains(all.String(), want) {
+				if target == "dart" {
+					want = fmt.Sprintf("%d", int64(ir.TableWireId(old)))
+				}
+				if !strings.Contains(emitted, want) {
 					t.Errorf("%s output lacks the id of %q, %s", target, old, want)
 				}
 			}
@@ -82,6 +106,24 @@ func TestWasRowsCarriers(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "Buff.mult, Effect.pong, Effect.shield and Grade.Argent") || !strings.Contains(err.Error(), "--lang cpp") {
 			t.Errorf("%s refused without naming the rows and the carrier: %v", target, err)
+		}
+	}
+}
+
+func TestJavaWasRowsCarrier(t *testing.T) {
+	u := unitFromSource(t, wasRowsUnit)
+	out, err := New().Generate(u, "java", Options{})
+	if err != nil {
+		t.Fatalf("java carries the was rows and refused: %v", err)
+	}
+	var all strings.Builder
+	for _, b := range out {
+		all.Write(b)
+	}
+	for _, old := range []string{"Silver", "ward", "ping", "multiplier"} {
+		want := fmt.Sprintf("0x%016x", ir.TableWireId(old))
+		if !strings.Contains(all.String(), want) {
+			t.Errorf("java output lacks the id of %q, %s", old, want)
 		}
 	}
 }

@@ -1,0 +1,31 @@
+# THE RUST TABLES SOAK (docs/PORTING.md I9, issue #416): the twin of
+# test/c-tables/soak_main.c over the same tables units, with a counting
+# #[global_allocator] so the gate is the allocator CALL COUNT and not only drift.
+#
+# make/rust.mk copies this manifest and src/main.rs into build/rust-soak (and
+# build/rust-soak-sabotage for the negative control) and builds there, so the
+# Cargo.lock and target/ land under build/, which the tree ignores. The path
+# dependencies below resolve to the same crates from either place: test/rust-soak
+# and build/rust-soak are both two levels below the repository root.
+[package]
+name = "rust-soak"
+version = "0.0.0"
+edition = "2024"
+
+[[bin]]
+name = "rust-soak"
+path = "src/main.rs"
+
+[features]
+# THE NEGATIVE CONTROL'S CFG FLAG: one matched alloc/free pair planted per
+# iteration of the measured loop, in this binary and never in generated code.
+# `make tables-rust-soak-negative-control` builds with it on and requires the
+# CALL COUNT red while the live-heap drift line stays flat.
+negative-control = []
+
+[dependencies]
+tabledemo = { path = "../../build/tables-generated-rust/tabledemo" }
+tblv1 = { path = "../../build/tables-generated-rust/tblv1" }
+tblv2 = { path = "../../build/tables-generated-rust/tblv2" }
+tblp1 = { path = "../../build/tables-generated-rust/tblp1" }
+tblp3 = { path = "../../build/tables-generated-rust/tblp3" }

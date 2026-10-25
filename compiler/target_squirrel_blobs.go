@@ -12,12 +12,13 @@
 package compiler
 
 // The registration is by the per-target lists compiler/builtin.go keeps:
-// blobTargets for `*bytes`, registerStringCarrier for `*string` (§2.5 names
-// the card record's blob, which is both). The schema-go-target-names-what-it-
-// carries registry this card depends on does not name this construct at the
-// base, so there is no registerCarried call to make here; when it lands, it
-// replaces these two registrations and no list is appended to by hand.
+// blobTargets for `*bytes`, stringTargets for `*string` (§2.5 names the card
+// record's blob, which is both). These are the two lists registerBuiltin's
+// blobs flag appends to; the squirrel target registers with that flag off
+// (its table surface lives in these feature files), so it joins both here and
+// the two lists still agree. The carries registry (compiler/carries.go) names
+// no key for this construct, so there is no registerCarried call to make.
 func init() {
 	blobTargets = append(blobTargets, "squirrel")
-	registerStringCarrier("squirrel")
+	stringTargets = append(stringTargets, "squirrel")
 }

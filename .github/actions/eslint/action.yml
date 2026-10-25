@@ -1,0 +1,22 @@
+name: eslint 9.39.5
+description: >
+  Installs the eslint release make/js.mk's tables-js-clean gate pins
+  (TOOLCHAIN_PINS_js: NODE ESLINT) into the runner's temp directory and puts
+  its bin on PATH, so `ESLINT ?= eslint` resolves. eslint.config.mjs imports
+  no package, so eslint alone is the whole toolchain. Without it toolchain-js
+  refuses by name and every JS target behind it is not remade (issue #599).
+  Run this after actions/setup-node; npm comes with node.
+runs:
+  using: composite
+  steps:
+    - name: install eslint 9.39.5
+      shell: bash
+      env:
+        ESLINT_VERSION: '9.39.5'
+      run: |
+        set -euo pipefail
+        prefix="${RUNNER_TEMP}/eslint-${ESLINT_VERSION}"
+        npm install --no-audit --no-fund --silent --prefix "$prefix" "eslint@${ESLINT_VERSION}"
+        "$prefix/node_modules/.bin/eslint" --version | grep -qx "v${ESLINT_VERSION}" || {
+          echo "::error::eslint at $prefix is not v${ESLINT_VERSION}; refusing to use it"; exit 1; }
+        echo "$prefix/node_modules/.bin" >> "$GITHUB_PATH"

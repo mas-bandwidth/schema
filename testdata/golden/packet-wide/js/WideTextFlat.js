@@ -23,11 +23,6 @@
 // unconditionally; copy exactly-sized receive buffers into a persistent
 // MaxBytes + 8 scratch first.
 
-// The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
-// scope is safe: single threaded per realm, consumed in the same op that
-// fills it.
-const SC = new DataView(new ArrayBuffer(8));
-
 // The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):
 // bundlers statically replace NODE_ENV, so production bundles tree-shake
 // the checked writers out. Existence-guarded for browsers without process.
@@ -41,7 +36,6 @@ export const FLAT_READ_SLACK = 8;
 function writeWideSevenFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 7) return -1;
   v = (((value.TextLength) & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
@@ -53,7 +47,6 @@ function writeWideSevenFlatProduction(value, view) {
   }
   for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++) {
     v = value.Text[wideIndex];
-    if (v === 0) return -1;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -72,7 +65,9 @@ function writeWideSevenFlatProduction(value, view) {
 function writeWideSevenFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 7) return -1;
+  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 7) { // the length guards the loop; out-of-contract writes are refused
+    return -1;
+  }
   v = (((value.TextLength) & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
@@ -84,7 +79,9 @@ function writeWideSevenFlatChecked(value, view) {
   }
   for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++) {
     v = value.Text[wideIndex];
-    if (v === 0) return -1;
+    if (v === 0) { // a wide string's used units carry no interior null
+      return -1;
+    }
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -149,7 +146,6 @@ export function ReadWideSevenFlat(value, view, numBits) {
 function writeWideFourFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 4) return -1;
   v = (((value.TextLength) & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
@@ -161,7 +157,6 @@ function writeWideFourFlatProduction(value, view) {
   }
   for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++) {
     v = value.Text[wideIndex];
-    if (v === 0) return -1;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -180,7 +175,9 @@ function writeWideFourFlatProduction(value, view) {
 function writeWideFourFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 4) return -1;
+  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 4) { // the length guards the loop; out-of-contract writes are refused
+    return -1;
+  }
   v = (((value.TextLength) & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
@@ -192,7 +189,9 @@ function writeWideFourFlatChecked(value, view) {
   }
   for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++) {
     v = value.Text[wideIndex];
-    if (v === 0) return -1;
+    if (v === 0) { // a wide string's used units carry no interior null
+      return -1;
+    }
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -429,7 +428,6 @@ export function ReadNarrowFifteenFlat(value, view, numBits) {
 function writeWideInteropFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.CaptionLength) || value.CaptionLength < 0 || value.CaptionLength > 7) return -1;
   v = (((value.CaptionLength) & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
@@ -441,7 +439,6 @@ function writeWideInteropFlatProduction(value, view) {
   }
   for (let wideIndex = 0; wideIndex < value.CaptionLength; wideIndex++) {
     v = value.Caption[wideIndex];
-    if (v === 0) return -1;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -460,7 +457,9 @@ function writeWideInteropFlatProduction(value, view) {
 function writeWideInteropFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.CaptionLength) || value.CaptionLength < 0 || value.CaptionLength > 7) return -1;
+  if (!Number.isInteger(value.CaptionLength) || value.CaptionLength < 0 || value.CaptionLength > 7) { // the length guards the loop; out-of-contract writes are refused
+    return -1;
+  }
   v = (((value.CaptionLength) & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
@@ -472,7 +471,9 @@ function writeWideInteropFlatChecked(value, view) {
   }
   for (let wideIndex = 0; wideIndex < value.CaptionLength; wideIndex++) {
     v = value.Caption[wideIndex];
-    if (v === 0) return -1;
+    if (v === 0) { // a wide string's used units carry no interior null
+      return -1;
+    }
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -40,9 +41,8 @@ var blobTargets []string
 
 // stringTargets is the canonical name of every built-in target whose table
 // backend carries a STRING BUFFER — `*string` (docs/SPEC-TABLES.md §2.5);
-// refuseStrings names them. The Rust variable wire carries *string but not
-// *bytes, so rust sits here through registerStringCarrier and not in
-// blobTargets.
+// refuseStrings names them. Every built-in target that carries one buffer
+// now carries both (registerBuiltin's blobs flag), so the two lists agree.
 var stringTargets []string
 
 // registerBuiltin is what a target's file calls from its init. tables says
@@ -52,10 +52,13 @@ var stringTargets []string
 // does not refuses a unit declaring one through refuseTableArms, the same way.
 // unionArrays says whether they carry an array of unions in a table closure;
 // one that does not refuses through refuseUnionArrays. blobs says whether
-// they carry BOTH byte buffers — `*bytes` and `*string`; a target that carries
-// one and not the other registers the string blob alone through
-// registerStringCarrier.
+// they carry BOTH byte buffers — `*bytes` and `*string`.
+//
+// A target cannot register without its language's reserved words in the one
+// table (check.ReservedLanguageOf, SPEC §4.6): every name it generates must be
+// one the checker has already proven legal in it.
 func registerBuiltin(g Generator, tables, arms, unionArrays, blobs bool) {
+	requireReservedWords(g.Names()[0])
 	builtinTargets = append(builtinTargets, g)
 	if tables {
 		tableTargets = append(tableTargets, g.Names()[0])
@@ -72,13 +75,12 @@ func registerBuiltin(g Generator, tables, arms, unionArrays, blobs bool) {
 	}
 }
 
-// registerStringCarrier is what a target whose variable wire carries the
-// string blob but not the bytes blob calls from its init, beside
-// registerBuiltin: `*string` is the card record's (docs/SPEC-TABLES.md §2.5),
-// `*bytes` is not, so the target is named a string carrier without joining
-// blobTargets.
-func registerStringCarrier(name string) {
-	stringTargets = append(stringTargets, name)
+// requireReservedWords panics when target's language has no row in the one
+// reserved-word table (SPEC §4.6): a port is added by adding its words first.
+func requireReservedWords(target string) {
+	if _, ok := check.ReservedLanguageOf(target); !ok {
+		panic("compiler: target " + target + " has no reserved words in internal/check's table (SPEC §4.6); add its row before registering it")
+	}
 }
 
 // builtins is the set [New] registers, in registration order.
@@ -151,7 +153,13 @@ func refuseBlobs(u *ir.Unit, target string) error {
 	if len(names) == 0 {
 		return nil
 	}
-	carry, flags := carriers(blobTargets)
+	legacy := make([]string, 0, len(blobTargets))
+	for _, t := range blobTargets {
+		if t != "java" {
+			legacy = append(legacy, t)
+		}
+	}
+	carry, flags := carriers(legacy)
 	return fmt.Errorf("unit declares a byte buffer field (%s) — *bytes and *string are %s only today, and the %s form is a named follow-on; generate with %s, or move the table to its own unit (docs/SPEC-TABLES.md §2.5, §11)",
 		englishList(names), englishList(carry), target, englishList(flags))
 }

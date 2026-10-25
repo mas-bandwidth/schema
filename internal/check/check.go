@@ -19,7 +19,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
-	"github.com/mas-bandwidth/schema/v2/internal/version"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -91,12 +90,6 @@ type checker struct {
 	// closure reaches the union, and a refused field is still the author
 	// holding it where they held it (docs/SPEC-TABLES.md §2.6).
 	unionNamedBy map[string][]string
-
-	// reservedTargets narrows §4.6's reserved-word checks to these target
-	// languages' words (display names from targetReserved); nil checks every
-	// target. The generate command sets it from --lang; every command that
-	// names no target leaves it nil.
-	reservedTargets []string
 }
 
 type constEntry struct {
@@ -106,61 +99,27 @@ type constEntry struct {
 }
 
 func (c *checker) errf(pos ast.Pos, format string, args ...any) {
-	c.errs = append(c.errs, fmt.Errorf("%s: %s", pos, versioned(fmt.Sprintf(format, args...))))
+	c.errs = append(c.errs, fmt.Errorf("%s: %s", pos, fmt.Sprintf(format, args...)))
 }
 
-// versioned appends the build's version line to a refusal that cites a spec
-// section (#458): a section is cited as it stands in the build that printed
-// the refusal, so a message pasted into an issue from a stale binary dates
-// itself instead of contradicting the page as it reads today. A refusal
-// that cites nothing is returned as it is.
-func versioned(msg string) string {
-	if !strings.Contains(msg, "§") {
-		return msg
-	}
-	return msg + "\nschema " + version.Version()
-}
-
-// Unit checks the files against every target's reserved words and lowers them
-// to IR. Files may arrive in any order; the unit is processed in
-// sorted-basename order, so everything derived from it is deterministic.
+// Unit checks the files against every supported language's reserved words
+// (SPEC §4.6: whatever target is generated) and lowers them to IR. Files may
+// arrive in any order; the unit is processed in sorted-basename order, so
+// everything derived from it is deterministic.
 func Unit(files []SourceFile) (*ir.Unit, []error) {
-	return unitForTargets(files, nil)
-}
-
-// UnitForTargets is Unit with the §4.6 reserved-word check narrowed to the
-// named target languages' words (display names from targetReserved); nil means
-// every target, an empty slice means none. Every other check is identical.
-func UnitForTargets(files []SourceFile, targets []string) (*ir.Unit, []error) {
-	return unitForTargets(files, targets)
-}
-
-// ReservedWords returns the §4.6 reserved-word table as a copy: each word the
-// target languages reserve, mapped to the sorted list of targets that reserve
-// it (SPEC §4.6). Tests pin the table against the emitters' real behavior.
-func ReservedWords() map[string][]string {
-	out := make(map[string][]string, len(targetReserved))
-	for w, langs := range targetReserved {
-		out[w] = append([]string(nil), langs...)
-	}
-	return out
-}
-
-func unitForTargets(files []SourceFile, targets []string) (*ir.Unit, []error) {
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 
 	c := &checker{
-		files:           files,
-		reservedTargets: targets,
-		astDecls:        map[string]ast.Decl{},
-		declFile:        map[string]string{},
-		constant:        map[string]*constEntry{},
-		enums:           map[string]*ir.Enum{},
-		flagsD:          map[string]*ir.Flags{},
-		structs:         map[string]*ir.Struct{},
-		unions:          map[string]*ir.Union{},
-		tables:          map[string]*ir.Struct{},
-		mapEntriesFor:   map[string][]*ir.Struct{},
+		files:         files,
+		astDecls:      map[string]ast.Decl{},
+		declFile:      map[string]string{},
+		constant:      map[string]*constEntry{},
+		enums:         map[string]*ir.Enum{},
+		flagsD:        map[string]*ir.Flags{},
+		structs:       map[string]*ir.Struct{},
+		unions:        map[string]*ir.Union{},
+		tables:        map[string]*ir.Struct{},
+		mapEntriesFor: map[string][]*ir.Struct{},
 		unit: &ir.Unit{
 			DeclFile: map[string]string{},
 			Consts:   map[string]*ir.Const{},
@@ -187,6 +146,10 @@ func unitForTargets(files []SourceFile, targets []string) (*ir.Unit, []error) {
 	c.checkTargetNames()
 	c.assemble()
 	c.checkSizes()
+	if len(c.errs) > 0 {
+		return nil, c.errs
+	}
+	c.checkRetiredNames()
 	if len(c.errs) > 0 {
 		return nil, c.errs
 	}
@@ -335,7 +298,7 @@ func (c *checker) checkPackageName(name string, pos ast.Pos) {
 			name, listReservedLangs(langs))
 		return
 	}
-	if c.checksLang("C++") && cppNamespaceCollisions[name] {
+	if cppNamespaceCollisions[name] {
 		c.errf(pos, "package name %q collides with a C system header identifier visible at C++ namespace scope (the generated `namespace %s` cannot be declared beside sys/select.h or sys/types.h's %s) — rename the package (SPEC §4.6)",
 			name, name, name)
 		return
@@ -350,21 +313,11 @@ func (c *checker) checkPackageName(name string, pos ast.Pos) {
 	}
 }
 
-// checksLang reports whether lang is among the targets the run checks
-// reserved words for: every target when reservedTargets is nil, else the
-// named targets (SPEC §4.6).
-func (c *checker) checksLang(lang string) bool {
-	if c.reservedTargets == nil {
-		return true
-	}
-	return slices.Contains(c.reservedTargets, lang)
-}
-
 // cppNamespaceCollisions are identifiers the generated C++ cannot use as a
 // package name — declaring `namespace <name>` beside sys/select.h or
 // sys/types.h collides with the header's own declaration of the same name
 // (g++ rejects it) — even though none is a C++ keyword. They are refused only
-// at namespace scope and only when C++ is a checked target (SPEC §4.6).
+// at namespace scope, whatever target is generated (SPEC §4.6).
 var cppNamespaceCollisions = map[string]bool{
 	"select": true,
 	"ulong":  true,
@@ -2345,6 +2298,19 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 		return
 	}
 
+	// SPEC §4.6: an unsigned integer's omitted min is zero when max is
+	// declared. Normalize before the range checks and projection so both
+	// spellings carry the same bounds and symbolic expressions. uint128 is
+	// still raw-only and is refused below; fixed-point still needs both. A
+	// table field takes the one-sided rule below instead, which fills the
+	// same zero and marks the field RangeOneSided (docs/SPEC-TABLES.md §4.3).
+	if !inTable && isInt && !out.Type.Signed && hasMax && !hasMin {
+		byKey["min"] = &ast.Attr{
+			Key: "min", Pos: f.Pos,
+			Value: &ast.IntLit{Pos: f.Pos, Value: new(big.Int), Text: "0"},
+		}
+		hasMin = true
+	}
 	if hasMin != hasMax {
 		if inTable && isInt && out.Type.Width != 128 {
 			// A one-sided range on an integer table field IS the two-sided
@@ -2368,6 +2334,12 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 				side = byKey["max"]
 			}
 			switch {
+			case !inTable && hasMin && isInt && !out.Type.Signed:
+				// an unsigned max-only range was normalized above; min alone is
+				// still refused off a table (SPEC §4.6)
+				c.errf(f.Pos, "field %s: min without max is a compile error — the unsigned storage maximum is not a declared bound; declare max (SPEC §4.6)", f.Name)
+			case !inTable && hasMax && isInt && out.Type.Signed:
+				c.errf(f.Pos, "field %s: max without min is a compile error on a signed integer — declare both bounds (SPEC §4.6)", f.Name)
 			case !inTable:
 				// the sentence the SPEC has always carried — a one-sided range is
 				// a compile error on a type body or a packet field (SPEC §4.6)
@@ -2524,8 +2496,8 @@ func (c *checker) checkCycles() {
 	visit = func(name string) bool {
 		switch color[name] {
 		case grey:
-			c.errs = append(c.errs, fmt.Errorf("%s", versioned(fmt.Sprintf("type composition cycle: %s -> %s (SPEC §4.6)",
-				strings.Join(path, " -> "), name))))
+			c.errs = append(c.errs, fmt.Errorf("%s", fmt.Sprintf("type composition cycle: %s -> %s (SPEC §4.6)",
+				strings.Join(path, " -> "), name)))
 			return false
 		case black:
 			return true
@@ -3540,50 +3512,117 @@ func describeTableJsonField(f *ir.Field) string {
 
 // ---- target-name safety (SPEC §4.6) ----
 
-// targetReserved maps each reserved word of the target languages to the SORTED
-// list of targets that reserve it. A declaration or field using one is
-// rejected, rename at the source — except where the Go escape carries a Go
-// word (SPEC §4.6: fields, arms, variants and table names, which Go never
-// refuses; see reservedTargetLangsGoEscaped). The checker consults
-// it against the targets being generated (§4.6): a word reserved only in a
-// target the run does not generate is not refused.
-var targetReserved = func() map[string][]string {
-	m := map[string]map[string]bool{}
-	add := func(lang, words string) {
-		for w := range strings.FieldsSeq(words) {
-			if m[w] == nil {
-				m[w] = map[string]bool{}
-			}
-			m[w][lang] = true
-		}
-	}
-	add("C++", `alignas alignof and and_eq asm auto bitand bitor bool break case catch char
+// reservedLanguages is every supported language, by the display name the
+// diagnostics use, with the reserved words a generated identifier in it must
+// not take (SPEC §4.6): the language's keywords and literals, plus the
+// predeclared names a generated declaration would shadow (Go's universe block,
+// Dart's dart:core types and Object members, Elixir's arity-0 Kernel imports).
+// It is THE one list: the checker refuses a schema name in any of them,
+// whatever target is generated (Glenn, 2026-10-21: "generated output never
+// puts out keywords in Y"), and an emitter that tests its own mapped spellings
+// reads its language's words from here (ReservedIn), never from a copy. A
+// port is added by adding its row; one cannot register without it
+// (ReservedLanguageOf, read by the compiler's registration).
+var reservedLanguages = []struct {
+	lang    string   // the display name the diagnostics print
+	targets []string // the --lang spellings that generate it
+	words   string
+}{
+	{"C", []string{"c"}, `auto break case char const continue default do double else enum extern float for
+		goto if inline int long register restrict return short signed sizeof static struct switch
+		typedef union unsigned void volatile while _Alignas _Alignof _Atomic _Bool _Complex _Generic
+		_Imaginary _Noreturn _Static_assert _Thread_local alignas alignof bool constexpr false
+		nullptr static_assert thread_local true typeof typeof_unqual _BitInt _Decimal32 _Decimal64
+		_Decimal128`},
+	{"C++", []string{"cpp"}, `alignas alignof and and_eq asm auto bitand bitor bool break case catch char
 		char8_t char16_t char32_t class compl concept const consteval constexpr constinit
 		const_cast continue co_await co_return co_yield decltype default delete do double
 		dynamic_cast else enum explicit export extern false float for friend goto if inline
 		int long mutable namespace new noexcept not not_eq nullptr operator or or_eq out private
 		protected public register reinterpret_cast requires return short signed sizeof static
 		static_assert static_cast struct switch template this thread_local throw true try
-		typedef typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq`)
-	add("C#", `abstract as base bool break byte case catch char checked class const continue
+		typedef typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq`},
+	{"C#", []string{"cs", "csharp"}, `abstract as base bool break byte case catch char checked class const continue
 		decimal default delegate do double else enum event explicit extern false finally fixed
 		float for foreach goto if implicit in int interface internal is lock long namespace
 		new null object operator out override params private protected public readonly ref
 		return sbyte sealed short sizeof stackalloc static string struct switch this throw
-		true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while`)
-	add("Go", `break byte case chan const continue default defer else fallthrough false for func go goto
-		if import interface map package range ref return select struct switch true type unsafe var`)
-	// Go's universe block (SPEC.md §4.6): every predeclared identifier, so a
-	// schema name equal to one takes the treatment every other Go word takes
-	// (a table escapes to name_, the other declaration kinds are refused)
-	// rather than shadowing the builtin in the emitted package.
-	add("Go", `append cap clear close complex copy delete imag len make max min new panic print println real recover
+		true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while`},
+	// Go's keywords, then its universe block (SPEC.md §4.6): every predeclared
+	// identifier, so a schema name equal to one takes the treatment every
+	// other Go word takes (a table escapes to name_, a field, arm or variant
+	// is carried exported) rather than shadowing the builtin.
+	{"Go", []string{"go"}, `break byte case chan const continue default defer else fallthrough false for func go goto
+		if import interface map package range ref return select struct switch true type unsafe var
+		append cap clear close complex copy delete imag len make max min new panic print println real recover
 		any bool comparable complex64 complex128 error float32 float64 int int8 int16 int32 int64 rune string
-		uint uint8 uint16 uint32 uint64 uintptr iota nil`)
-	add("Rust", `abstract as async await become box break char const continue crate do dyn
+		uint uint8 uint16 uint32 uint64 uintptr iota nil`},
+	{"Rust", []string{"rust"}, `abstract as async await become box break char const continue crate do dyn
 		else enum extern false final fn for if impl in let loop macro match mod move mut
 		override priv pub ref return self Self static struct super trait true try type typeof
-		unsafe unsized use virtual where while yield`)
+		unsafe unsized use virtual where while yield`},
+	// Java's keywords and literals, the contextual words a simple identifier
+	// cannot safely be (var, yield, record), and the lone underscore.
+	{"Java", []string{"java"}, `abstract assert boolean break byte case catch char class const continue default
+		do double else enum extends final finally float for goto if implements import instanceof
+		int interface long native new package private protected public return short static
+		strictfp super switch synchronized this throw throws transient try void volatile while
+		true false null var yield record _`},
+	{"JavaScript", []string{"js", "javascript"}, `await break case catch class const continue debugger default delete do else
+		enum export extends false finally for function if implements import in instanceof
+		interface let new null package private protected public return static super switch
+		this throw true try typeof var void while with yield`},
+	// Dart 3's reserved words, the dart:core types generated files use
+	// unqualified (shadowing `int` would corrupt every declaration below it),
+	// and Object's members, which a static member may not share.
+	{"Dart", []string{"dart"}, `assert break case catch class const continue default do else enum extends false
+		final finally for if in is new null rethrow return super switch this throw true try var
+		void when while with
+		bool double int num String List Object Endian ByteData dynamic
+		hashCode runtimeType toString noSuchMethod`},
+	// Elixir's reserved words, and the arity-0 Kernel auto-imports a generated
+	// 0-arity function would collide with (`def node, do: ...`).
+	{"Elixir", []string{"elixir"}, `true false nil when and or not in fn do end catch rescue after else
+		node self make_ref binding`},
+	{"Lua", []string{"lua"}, `and break do else elseif end false for function goto if in local nil not or
+		repeat return then true until while`},
+	// Luau's reserved words, and its contextual keywords.
+	{"Luau", []string{"luau"}, `and break do else elseif end false for function if in local nil not or
+		repeat return then true until while continue export type typeof`},
+	// Squirrel 3.2's reserved words (squirrel/sqlexer.cpp).
+	{"Squirrel", []string{"squirrel"}, `while do if else break continue return null function local for foreach in
+		typeof base delete try catch throw clone yield resume switch case default this class
+		extends constructor instanceof true false static enum const __LINE__ __FILE__ rawcall`},
+	// Goose's reserved words (the pinned v2026.2 goose_spec.md). Its scalar
+	// type names (i8 ... f64) and std/main are namespace hazards only, which
+	// the Goose port refuses for the package name alone.
+	{"Goose", []string{"goose"}, `as block break const continue else enum export extern false fn for from guard
+		if import in inline let loop match namespace null pad recursive return reusable self
+		simd struct thread_fn true type var varint while`},
+	// Lobster's keywords (docs/language_reference.html) and the predeclared
+	// type names a declaration could shadow.
+	{"Lobster", []string{"lobster"}, `nil return class struct import int float string any void def fn is from
+		program private resource enum enum_flags typeof var let pakfile switch case default
+		out_of_range namespace not and or attribute if for while super constructor guard
+		abstract union member member_frame static static_frame operator elif else break
+		continue bool true false`},
+}
+
+// targetReserved maps each reserved word of the supported languages to the
+// SORTED list of languages that reserve it. A declaration or field using one
+// is rejected, rename at the source, whatever target is generated — except
+// where the Go escape carries a Go word (SPEC §4.6: fields, arms, variants and
+// table names, which Go never refuses; see reservedTargetLangsGoEscaped).
+var targetReserved = func() map[string][]string {
+	m := map[string]map[string]bool{}
+	for _, row := range reservedLanguages {
+		for w := range strings.FieldsSeq(row.words) {
+			if m[w] == nil {
+				m[w] = map[string]bool{}
+			}
+			m[w][row.lang] = true
+		}
+	}
 	out := map[string][]string{}
 	for w, langs := range m {
 		l := make([]string, 0, len(langs))
@@ -3596,22 +3635,62 @@ var targetReserved = func() map[string][]string {
 	return out
 }()
 
-// reservedTargetLangs returns the targets the checked run must flag `name` for:
-// every target that reserves it, narrowed to the targets being generated when
-// the checker carries a non-nil reservedTargets, and every target when it does
-// not (§4.6). A name no target reserves returns nil.
-func (c *checker) reservedTargetLangs(name string) []string {
-	langs := targetReserved[name]
-	if len(langs) == 0 || c.reservedTargets == nil {
-		return langs
-	}
-	var out []string
-	for _, l := range langs {
-		if slices.Contains(c.reservedTargets, l) {
-			out = append(out, l)
-		}
+// ReservedWords returns the §4.6 reserved-word table as a copy: each word a
+// supported language reserves, mapped to the sorted list of languages that
+// reserve it (SPEC §4.6). Tests pin the table against the emitters' real
+// behavior.
+func ReservedWords() map[string][]string {
+	out := make(map[string][]string, len(targetReserved))
+	for w, langs := range targetReserved {
+		out[w] = append([]string(nil), langs...)
 	}
 	return out
+}
+
+// ReservedLanguages returns every supported language's display name, in the
+// table's order (SPEC §4.6).
+func ReservedLanguages() []string {
+	out := make([]string, 0, len(reservedLanguages))
+	for _, row := range reservedLanguages {
+		out = append(out, row.lang)
+	}
+	return out
+}
+
+// ReservedIn returns lang's reserved words (lang is a display name: "Java",
+// "Dart", ...) as a fresh set, read from the one table. An emitter that tests
+// the spelling it maps a name to reads its words here; an unknown language
+// panics, because a port without its words is a defect, not an empty list.
+func ReservedIn(lang string) map[string]bool {
+	for _, row := range reservedLanguages {
+		if row.lang == lang {
+			out := map[string]bool{}
+			for w := range strings.FieldsSeq(row.words) {
+				out[w] = true
+			}
+			return out
+		}
+	}
+	panic("check: no reserved words for language " + lang + " (SPEC §4.6: a port adds its row to reservedLanguages)")
+}
+
+// ReservedLanguageOf returns the display name of the language a --lang
+// spelling generates, and false when the table has no row for it: the
+// compiler refuses to register such a port (SPEC §4.6).
+func ReservedLanguageOf(target string) (string, bool) {
+	for _, row := range reservedLanguages {
+		if slices.Contains(row.targets, target) {
+			return row.lang, true
+		}
+	}
+	return "", false
+}
+
+// reservedTargetLangs returns the languages the checked run must flag `name`
+// for: every supported language that reserves it, whatever target is
+// generated (§4.6). A name no language reserves returns nil.
+func (c *checker) reservedTargetLangs(name string) []string {
+	return targetReserved[name]
 }
 
 // reservedTargetLangsGoEscaped is reservedTargetLangs for a name the Go escape
@@ -3630,7 +3709,7 @@ func (c *checker) reservedTargetLangsGoEscaped(name string) []string {
 	return out
 }
 
-// listReservedLangs joins the checked targets a name collides with into one
+// listReservedLangs joins the languages a name collides with into one
 // diagnostic's target list: "C++", "C++ and C#", "C++, C#, and Go".
 func listReservedLangs(langs []string) string {
 	switch len(langs) {
@@ -4139,6 +4218,10 @@ func (c *checker) checkClaimedNames() {
 			whyRustU := fmt.Sprintf("union %s's generated functions and constants (Rust/C form)", name)
 			addRust("write_"+ir.RustSnake(name), whyRustU, d.Pos, "Write"+name)
 			addRust("read_"+ir.RustSnake(name), whyRustU, d.Pos, "Read"+name)
+			// the Elixir BITS-CONSUMED entry beside it (SPEC §5, §6.1): a union
+			// named Frame claims read_frame_bits, so a second union named
+			// FrameBits cannot take the same binding through read_frame_bits.
+			addRust("read_"+ir.RustSnake(name)+"_bits", whyRustU, d.Pos, "Read"+name)
 			addRust(ir.RustConstName(name+"MaxBits"), whyRustU, d.Pos, name+"MaxBits")
 			addRust(ir.RustConstName(name+"MaxBytes"), whyRustU, d.Pos, name+"MaxBytes")
 			whyCTag := fmt.Sprintf("union %s's generated tag constants (C form)", name)
@@ -4148,6 +4231,18 @@ func (c *checker) checkClaimedNames() {
 				addRust(ir.RustConstName(name+"Type")+"_"+ir.RustConstName(v.Name), whyCTag, v.Pos, name+"Type"+ir.GoExportName(v.Name))
 			}
 			addRust("enum_name_"+ir.RustSnake(name+"Type"), fmt.Sprintf("union %s's generated tag debug-name function (C form)", name), d.Pos)
+			// the C per-arm selectors (#449): <snake(union)>_select_<arm>,
+			// one static function per arm in the data header. The spelling is
+			// MANY-TO-ONE across legal declarations — Foo's arm select_bar and
+			// FooSelect's arm bar both become foo_select_select_bar — and an
+			// unclaimed pair was a redefinition in the C header while the
+			// schema checked clean. Spelled exactly as internal/codegen/c's
+			// emitUnionSelectors spells it; TestUnionArmSetterSetsTagAndArmC
+			// holds the two together.
+			for _, v := range d.Variants {
+				addRust(ir.RustSnake(name)+"_select_"+v.Name,
+					fmt.Sprintf("union %s's generated arm %s selector (C form)", name, v.Name), v.Pos)
+			}
 			// THE UNION TWIN (docs/SPEC-TABLES.md §7.2, §15): the blittable
 			// `<Name>Row` a union takes in the Rust table surface, and the
 			// `#[repr(C)]` overlay of its arms beside it. C++ spells the
@@ -4327,7 +4422,7 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 }
 
 // checkGoEscapeClaims claims the Go escape's spelling (SPEC §4.6, the Go
-// escape) in a run that generates Go: a table named with a Go word is the Go
+// escape), whatever target is generated: a table named with a Go word is the Go
 // type ir.GoEscape(word), and every Go name generated from it begins with that
 // spelling (the codecs are name-first: func_Reset, func_Load). Every other
 // generated name begins with its own declaration's name or with a capitalised
@@ -4335,9 +4430,6 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 // begins with the escaped spelling is the one way to collide with it, and it
 // is refused by name.
 func (c *checker) checkGoEscapeClaims(declNames []string) {
-	if !c.checksLang("Go") {
-		return
-	}
 	for _, name := range declNames {
 		if _, table := c.astDecls[name].(*ast.TableDecl); !table || !slices.Contains(targetReserved[name], "Go") {
 			continue
@@ -4464,6 +4556,9 @@ var tableGeneratedVerbs = []string{
 	// allocation per record, and the pair is claimed beside FixedHash rather
 	// than instead of it, because both spellings are emitted somewhere.
 	"FixedDecode", "FixedPrefill", "FixedIdentity", "FixedNewPlan", "FixedHashLo", "FixedHashHi",
+	// The fixed tables are module-private and frozen on the JS leg, and each
+	// is handed out by a copying accessor instead: four more per declaration.
+	"FixedDstCopy", "FixedIdentityCopy", "FixedLayoutCopy", "FixedPrefillCopy",
 	// AND §5'S THREE (docs/FIXED-FORM-ALGORITHM.md §5.2): a fixed table reads
 	// BACKWARD and never forward, so every root carries its LINEAGE as static
 	// data — the known layouts oldest first, the floor as one number, and one
@@ -4548,6 +4643,10 @@ func (c *checker) addStructSymbols(add func(name, what string, pos ast.Pos), add
 	whyRust := fmt.Sprintf("type %s's generated functions and constants (Rust/C form)", name)
 	addRust("write_"+ir.RustSnake(name), whyRust, pos, "Write"+name)
 	addRust("read_"+ir.RustSnake(name), whyRust, pos, "Read"+name)
+	// the Elixir BITS-CONSUMED entry beside it (SPEC §5, §6.1): `type Frame`
+	// claims read_frame_bits, so a `type FrameBits` cannot take the same
+	// module binding through its own read_frame_bits.
+	addRust("read_"+ir.RustSnake(name)+"_bits", whyRust, pos, "Read"+name)
 	addRust(ir.RustConstName(name+"MaxBits"), whyRust, pos, name+"MaxBits")
 	addRust(ir.RustConstName(name+"MaxBytes"), whyRust, pos, name+"MaxBytes")
 }

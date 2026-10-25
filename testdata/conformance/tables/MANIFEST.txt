@@ -168,8 +168,9 @@ instance stream_arm_pointer   streamdemo  Feed        testdata/wire/tables/strea
 instance blob_small           blobdemo    Catalog     testdata/wire/tables/blob_small.bin
 instance blob_empty           blobdemo    Catalog     testdata/wire/tables/blob_empty.bin
 instance blob_large           blobdemo    Catalog     testdata/wire/tables/blob_large.bin
-# The Go wire writer names its §2.5 refusal for this instance.
-instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_shared.bin  no-text go-refusal=blob_shared
+# The Go wire writer names its §2.5 refusal for this instance, and so does every
+# port refused-by= lists; the reference still writes the bytes (§2.5).
+instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_shared.bin  no-text go-refusal=blob_shared refused-by=js
 # THE STRING TERMINATOR, at the two lengths that can see it (§6.3): a *string
 # node carries one zero byte after its data, and the node's extent is rounded
 # to the arena's alignment like every node's. At a length that is not a
@@ -315,6 +316,16 @@ report escape_arm             messagedemo ToolMessage testdata/wire/tables/escap
 report escape_element         messagedemo ToolMessage testdata/wire/tables/escape_element.bin
 report nopayload_named_field  messagedemo ToolMessage testdata/wire/tables/nopayload_named_field.bin
 
+# BYTES INSIDE AN ENVELOPE ARE SKIPPED (§3, the append rule). A nested-union
+# arm whose L runs one byte past the whole inner union it frames: the inner
+# union decodes, the byte is stepped over with the arm, the parent reads on,
+# and every counter stays zero. Its top-level twin, the same byte after the
+# ROOT's terminator, is a stopped read and so not a report row; it rides the
+# wire fuzzer's pinned vectors (testdata/wire/tables/fuzz-vectors/INDEX.txt)
+# beside this one. The bytes are the reference leg's, pinned by
+# test/tables/main.cpp.
+report nested_arm_trailing messagedemo ToolMessage testdata/wire/tables/nested_arm_trailing.bin
+
 # THE ARM'S KIND BYTE, at the four pins §3 names. A2 declares `a` as an int64
 # arm, `b` as a float32 arm and `c` as a string(8) arm; each row puts a payload
 # of another kind under one of those arm ids. The first three are kind
@@ -431,8 +442,9 @@ cook-write blob_str16             testdata/conformance/tables/cook-write/blob_st
 #   forgery <name> block <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>
 #
 # <base> names the block line the image comes from; <extent> is the length the
-# CALLER claims (-1: the image's own); <pointer> is 0 — every block row is read
-# out of an ALIGNED base, and the column is the cook battery's.
+# CALLER claims (-1: the image's own); <pointer> is the BUFFER the caller holds —
+# 0 an aligned base, 1..63 that many bytes past one — because an unaligned base
+# is a pointer fact and not a file fact, exactly as in the cook battery below.
 # The harness applies the patch and hands a driver a path.
 # Repin with: make conformance-pin.
 forgery block_magic_foreign        block block_render block_render 0 0x0000 8 0x0                      -1 refuse a foreign magic
@@ -453,6 +465,13 @@ forgery block_offset_overflow      block block_render block_render 0 0x0020 8 0x
 # read first: the used extent is derived from them and has nothing to say until
 # they agree.
 forgery block_extent_padding       block block_render block_render 0 -1           0     0                            2815 refuse bytes that stop inside the used extent's own padding
+
+# THE BASE'S ALIGNMENT, held by the REFERENCE rather than by a port's own gate
+# (§19.2): the image is untouched and the CALLER's buffer sits one byte past an
+# aligned base, so the last clause of the read — the one that reads nothing out
+# of the block — is the only one that can refuse it. The Elixir lead gate
+# (`make tables-elixir-block-lead`) found this arm missing from the battery.
+forgery block_base_unaligned       block block_render block_render 1 -1           0     0                             -1 refuse a base one byte past an aligned one
 
 # THE COOK FORGERY BATTERY as data (docs/SPEC-TABLES.md §7, §7.4), pinned
 # from test/tables/cook_main.cpp's 111 by that binary's emit-forgeries mode:
@@ -679,9 +698,9 @@ json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conform
 # str-illformed-at-bound: the ill-formed 0xFF byte is REFUSED BY NAME at the
 # string site, before any clamp (§16.3): it does not spell a code point, so
 # there is nothing to clamp — the read answers `string_not_utf8: <root>`.
-# HELD FIRST IN GO (§16.3): Go and Squirrel carry the rule, every other port
+# HELD FIRST IN GO (§16.3): Go, C and Squirrel carry the rule, every other port
 # keeps the counters it answered before the ruling until its port.
-json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go,squirrel uncarried=0,0,0,1,0,false,read
+json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go,c,squirrel uncarried=0,0,0,1,0,false,read
 json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,0,false,read
 json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,0,false,read
 json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,0,false,read
@@ -690,13 +709,14 @@ json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conform
 # false, the report is Malformed, and Reason reads text_holds_zero:
 # <Table>.<field> for the innermost field that held it." A string the read only
 # SKIPS — the value of an unknown key — "stores nothing and is not this event".
-# Held first in Go, then carried by Squirrel: the two refusals carry the
-# standard's verdict, and every other port keeps the counters its reader gives
-# (it stores the zero as text), 0,0,0,0,0,false,read, until its port. The
-# map-key row uses the existing `mapdemo` unit's Text root, whose names field
-# is map[string(8)]string(16); tabledemo's RootConfig has no string-keyed map.
-json-hostile str-zero-escape-value        tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value         refused carried-by=go,squirrel uncarried=0,0,0,0,0,false,read
-json-hostile str-zero-escape-map-key      mapdemo Text          testdata/conformance/tables/json-hostile/str-zero-escape-map-key       refused carried-by=go uncarried=0,0,0,0,0,false,read
+# Held first in Go, carried by C and (the value row) by Squirrel: the two
+# refusals carry the standard's verdict, and every other port keeps the
+# counters its reader gives (it stores the zero as text), 0,0,0,0,0,false,read,
+# until its port. The map-key row uses the existing `mapdemo` unit's Text root,
+# whose names field is map[string(8)]string(16); tabledemo's RootConfig has no
+# string-keyed map.
+json-hostile str-zero-escape-value        tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value         refused carried-by=go,c,squirrel uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-escape-map-key      mapdemo Text          testdata/conformance/tables/json-hostile/str-zero-escape-map-key       refused carried-by=go,c uncarried=0,0,0,0,0,false,read
 # A duplicate KEY in a map is last-wins and counted (§2.8): listdemo's Army
 # root carries a roster map, so this row exercises the readMap duplicate counter.
 json-hostile list-map-dup-key              listdemo Army          testdata/conformance/tables/json-hostile/list-map-dup-key             0,0,0,0,1,false,read
@@ -959,6 +979,7 @@ refusal block_count_past_extent   bad_layout
 refusal block_count_past_maximum  bad_layout
 refusal block_offset_overflow     bad_layout
 refusal block_extent_padding      truncated
+refusal block_base_unaligned      unaligned_base
 
 # ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) ------------------------------
 #

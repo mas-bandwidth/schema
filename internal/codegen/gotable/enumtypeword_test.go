@@ -9,21 +9,21 @@ import (
 
 // TestGoEnumVariantTypeWords holds SPEC §4.1's rule that an enum variant may be
 // named a reserved word in the Go backend, through a generated unit compiled and
-// run in a t.TempDir(): a table holding an enum whose variants are text, int,
-// enum, list and bool generates, compiles, round-trips the binary wire, base64
+// run in a t.TempDir(): a table holding an enum whose variants are text, int32,
+// map, list and table generates, compiles, round-trips the binary wire, base64
 // and the JSON text, and the JSON text form carries the words as written. The
-// unit is checked for the Go target only: C# and C++ each refuse a variant they
-// cannot spell (`int`), which is SPEC §4.6's per-target reserved-word check and
-// is not this card's to relax.
+// words are schema keywords that no supported language but Go reserves (Go
+// carries them as variants, SPEC §4.6): a word another language reserves
+// (`int`, `enum`, `bool`) is refused whatever target is generated.
 func TestGoEnumVariantTypeWords(t *testing.T) {
 	t.Parallel()
 	f, perrs := parser.Parse("Probe.schema", []byte(enumTypeWordSchema))
 	if len(perrs) > 0 {
 		t.Fatalf("parse: %v", perrs[0])
 	}
-	u, cerrs := check.UnitForTargets([]check.SourceFile{{
+	u, cerrs := check.Unit([]check.SourceFile{{
 		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(enumTypeWordSchema), AST: f,
-	}}, []string{"go"})
+	}})
 	if len(cerrs) > 0 {
 		t.Fatalf("check: %v", cerrs[0])
 	}
@@ -36,10 +36,10 @@ const enumTypeWordSchema = `package probe
 
 enum FieldType {
     text
-    int
-    enum
+    int32
+    map
     list
-    bool
+    table
 }
 
 fixed table Root {
@@ -51,7 +51,7 @@ const enumTypeWordProbe = `package probe
 import("testing";"bytes";"encoding/base64")
 func TestEnumWords(t *testing.T) {
 	for _, tc := range []struct{ kind FieldType; word string }{
-		{FieldTypeint, "int"}, {FieldTypeenum, "enum"}, {FieldTypebool, "bool"},
+		{FieldTypeint32, "int32"}, {FieldTypemap, "map"}, {FieldTypetable, "table"},
 		{FieldTypetext, "text"}, {FieldTypelist, "list"},
 	} {
 		if got := EnumNameFieldType(tc.kind); got != tc.word {

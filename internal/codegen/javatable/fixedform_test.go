@@ -873,3 +873,15 @@ public final class Hostile {
     }
 }
 `
+
+// javaCarries reports whether the emitted Java carries want, whatever its
+// layout. Every generated file is in google-java-format's shape
+// (java.Canonical, docs/JAVA-DIALECT.md), so an expectation written on one
+// line still finds the same tokens broken over several; only whitespace is
+// ignored, never a token.
+func javaCarries(src, want string) bool {
+	return strings.Contains(javaTokens(src), javaTokens(want))
+}
+
+// javaTokens is s with every run of whitespace removed.
+func javaTokens(s string) string { return strings.Join(strings.Fields(s), "") }

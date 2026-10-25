@@ -143,12 +143,12 @@ and that this run did not write. With `--surface` nothing is removed; only
 ## Declarations
 
 A declaration's name and its fields' names are checked against the reserved
-words of the targets being generated (SPEC §4.6): `schema generate --lang L`
-checks L's words only, and `schema check` — and every command that names no
-target — checks every target's, one diagnostic per name listing every checked
-target it collides with. A target with no reserved-word list of its own checks
-every target's words rather than none. Go is the exception (SPEC §4.6, the Go
-escape): `generate --lang go` accepts a Go word as a field name, a variant or
+words of EVERY supported language (SPEC §4.6) — C, C++, C#, Go, Rust, Java,
+JavaScript, Dart, Elixir, Lua, Luau, Squirrel, Goose and Lobster — whatever
+target is generated, one diagnostic per name listing every language it
+collides with: a schema compiled only for C++ today must still compile for
+Elixir tomorrow. Go is the exception (SPEC §4.6, the Go
+escape): Go accepts a word only Go reserves as a field name, a variant or
 a union arm (Go emits them exported, `select` → `Select`) and as a table name,
 which it emits with one trailing underscore (`table func` → `type func_ struct`, `func_Load`, `func_Save`); the wire, the ids and the JSON keys keep
 the schema name. A declaration named `func_` beside that table is refused as a
@@ -353,6 +353,11 @@ struct ColliderShape
     };
 
     ColliderShape() : type( ColliderShapeType::None ) {}
+
+    BoxCollider & SelectBox();         // sets the tag and constructs the arm (below)
+    SphereCollider & SelectSphere();
+    CapsuleCollider & SelectCapsule();
+    HullCollider & SelectHull();
 };
 ```
 
@@ -366,16 +371,44 @@ tag beside one pre-allocated arm per variant with a payload; Elixir uses
 immutable structs with a tag and arm fields; Rust gets a real
 `enum ColliderShape { None, Box(BoxCollider), ... }`.
 
+**In C++, select an arm with its setter.** Every arm gets a generated member
+function `Select<Variant>()` on the union struct. For an arm with a payload it
+sets the tag, constructs the arm in place with its declared defaults, and
+returns a reference to the fresh arm; for a payload-free arm it returns `void`
+and sets the tag alone:
+
+```cpp
+Collider collider;
+SphereCollider & sphere = collider.shape.SelectSphere(); // tag and arm together
+sphere.radius = 2.0f;
+```
+
+The setter replaces the two-assignment form,
+`::new ( (void*) &shape.sphere ) SphereCollider{}; shape.type = ColliderShapeType::Sphere;`,
+which is still legal: forget its second line and the tag stays `None`, so the
+next write drops the payload with no assert. The generated header includes
+`<new>` for the setter.
+
 Selecting an arm with a payload initializes it with its declared defaults, just
-like a fresh value of that type. Initialize the payload before populating it
-and setting the tag; assigning the tag alone does not initialize storage.
-Use the generated constructor where available, or `Init<Type>` / `init<Type>`
-in C#, JavaScript, Java and Dart to initialize an existing payload in place.
-For C++, construct the member in place, for example
-`::new ( (void*) &shape.sphere ) SphereCollider{}`. Decoding performs the same
-initialization on every selection, even when the tag repeats, before reading
-the payload. Mutable managed targets keep their existing arm objects and
-leave unselected arms unchanged.
+like a fresh value of that type, and the C++ setter does exactly that. In the
+other targets, initialize the payload before populating it and setting the
+tag; assigning the tag alone does not initialize storage. Use the generated
+constructor where available, or `Init<Type>` / `init<Type>` in C#, JavaScript,
+Java and Dart to initialize an existing payload in place. Decoding performs
+the same initialization on every selection, even when the tag repeats, before
+reading the payload. Mutable managed targets keep their existing arm objects
+and leave unselected arms unchanged.
+
+In C, select an arm through its generated selector, `<union>_select_<arm>`: it
+sets the tag and initializes the arm together, by the rule a read uses, and
+returns the fresh arm to populate. A payload-free arm's selector sets the tag
+alone. Assigning `type` and the arm separately still works, but a forgotten
+tag leaves `None`, and the payload is then absent from the wire with no assert:
+
+```c
+SphereCollider * sphere = collider_shape_select_sphere( &collider.shape );
+/* populate *sphere; collider.shape.type is already COLLIDER_SHAPE_TYPE_SPHERE */
+```
 
 An arm is a field line: its type is any type a field's is, and an arm may
 name no type at all, which is an arm that selects and carries nothing. A
@@ -385,7 +418,8 @@ that name nothing. A union with an arm whose payload is anything else — a
 closure (SPEC-TABLES.md §2.6). Unions ride `type` bodies, arrays included.
 
 All nine targets carry payload-free arms in a `type` body. Select one by
-setting its tag alone: it has no payload to initialize. C and C++ emit no
+setting its tag alone: it has no payload to initialize. In C++ its setter,
+`Select<Variant>()` returning `void`, is that assignment. C and C++ emit no
 member for a payload-free arm, and omit the storage union entirely when no
 arm has a payload. Payload-free arms in a table closure are carried by C++, C, C#
 and Go; the other five targets refuse that table-side use (SPEC-TABLES.md §11).
@@ -553,6 +587,13 @@ so that is what it writes.
 serialize_assert( value.health >= 0 && value.health <= MaxHealth );
 write_bits( stream, uint32_t( value.health ), 10 );
 ```
+
+On `uint8`, `uint16`, `uint32` and `uint64`, an omitted `min` is 0 when
+`max` is declared: `health uint32 | max = MaxHealth` has the same range,
+projection and protocol id as `health uint32 | min = 0, max = MaxHealth`.
+`min` alone is still refused on an unsigned integer; its storage maximum is
+not a declared bound. Signed integers require both bounds when ranged.
+`uint128` remains raw only, and `fixed`/`ufixed` require both bounds.
 
 A read outside the range **fails** — see
 [Reading untrusted data](#reading-untrusted-data).
@@ -979,9 +1020,11 @@ pays for its check by storing only the live extent, as
 [FIXED-FORM-ALGORITHM.md](FIXED-FORM-ALGORITHM.md) §3.1 always said it must: a
 counted array's `count` elements and a text field's `length` bytes, onto the
 zeroed template, never all `Max` and never the slack of the caller's storage.
-The write path is benchmarked before and after (`TestGoTableWriterSpeedTable`,
-a functional test: `NOVA_WRITER_BENCH=1`) under a speed gate: a save may not
-get slower than the before-run's spread. The packet writers and the other
+The write path is measured before and after through the one sanctioned
+benchmark, the tables bench ([bench/tables](../bench/tables/README.md), the
+variable form) and the paired pass ([bench/paired](../bench/paired/README.md),
+the fixed form), under a speed gate: a save may not get slower than the
+before-run's spread. The packet writers and the other
 languages' table writers are unchanged by this paragraph.
 A variable-wire `bool` a Go table writer saves always holds `0` or `1`; a read
 that meets any other byte on the variable wire keeps the value (`true`), counts
@@ -1671,6 +1714,20 @@ is not stable before 22. The `long length` on both `open`s is the seat that
 overload takes when the floor moves — it is a named follow-on, not an oversight,
 and until it lands a cook past 2 GiB has no Java reader.
 
+**A Java blob is one OBJECT, and two slots holding the same one are refused.**
+§2.5 owns a blob by one slot, and the Java writers (`save`, the measure by
+save, `toJson`) number a `*string` or `*bytes` slot by the identity of the
+`String` or `byte[]` it holds. Two slots holding the same object are a shared
+blob, `blob_shared`, and the write answers `null`. That INCLUDES two slots set
+from one string literal, because Java interns literals: `v.note = "x";
+v.head.caption = "x";` is one `String` and is refused. Give each slot its own
+object (`new String(...)`, or a fresh `byte[]`) when two slots must hold equal
+bytes; equal contents in distinct objects are two records and save. The
+tolerant `load` of a wire whose two slots name one blob keeps the one object
+in both, so a later save of that value refuses as the oracle does
+(`TestJavaWritersRefuseASharedBlob`). Letting caller-built equal strings
+save by value is the roadmap row `java/per-value-shared-marker`.
+
 **Elixir carries the two accelerators and no table wire.** A unit that
 declares tables grows `<Base>Block.ex` and `<Base>Cook.ex` beside its packet
 modules, with `BlockRuntime.ex`, `CookRuntime.ex` and `BuildVersion.ex` once
@@ -1684,8 +1741,8 @@ marks the cells.
 **What Elixir does with the two forms it has, and it is the language rather
 than the port:** it never PRODUCES a block or a cook. A BEAM term has no layout
 a producer could write. It OPENS one another build wrote and reads every slot
-at its offset — `ExampleBlock.block_open_render_frame(bytes)` and
-`ExampleCook.cook_open_scene(bytes)` — with a row handed back as a SUB-BINARY
+at its offset — `Blockdemo.RenderBlock.block_open_render_frame(bytes)` and
+`Graphdemo.GraphCook.cook_open_scene(bytes)` — with a row handed back as a SUB-BINARY
 the runtime shares rather than copies. Both answer `{:ok, handle}` or `:error`,
 the packet emitter's own reader verdict, and refuse a forged image rather than
 raising on it (`make tables-elixir-fuzz` is that oracle over mutated corpus
@@ -3349,7 +3406,15 @@ configs/tables.baseline: ShipConfig.damage: specified default 21.0 -> 25.0 — t
 edit changes what data already written MEANS, and no reader can report it; if you
 mean it, record it: schema tables-baseline --update --reason "..." (SPEC-TABLES.md §18)
 schema: 1 error(s)
+schema <version>
 ```
+
+A refusal batch is dated once. When any diagnostic cites a spec section, a
+single `schema <version>` line follows the error count — the build that
+produced the refusals, so a message pasted from a stale binary dates itself
+instead of contradicting the page as it reads today. A batch whose diagnostics
+cite nothing prints no version line, and an individual diagnostic never
+carries one.
 
 Sometimes you mean it. The override is one command and it is never silent:
 
@@ -4219,6 +4284,16 @@ The compiler is a Go library as well as a binary. `cmd/schema` is a client of
 that library and holds nothing else — the flags, the printing, the exit codes —
 so anything the CLI does, your program can do.
 
+Pin a release tag, or between releases a promotion tag: every commit promoted
+to `main` is tagged `main-<shorthash>` (docs/VERSIONING.md), so
+
+```
+go get github.com/mas-bandwidth/schema/v2@v2.5.0             # a release
+go get github.com/mas-bandwidth/schema/v2@main-0123456789ab  # a promotion
+```
+
+names one commit either way; never pin a bare branch.
+
 ```go
 import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -4381,10 +4456,11 @@ the `#include` and `::GameVec2 p;`. A sibling that stays in `A.schema` beside
 at that one reference and rides at every other. What the refusal is of is a
 mapping that rides nowhere at all.
 
-**`cpp_native` names a GLOBAL type.** The value is an identifier and the
-emitted spelling is `::GameVec2`, so a namespaced engine type — `math::Vec2`,
-the common case — is named through a global alias you declare in your own
-header.
+**`cpp_native` names a C++ type.** The value is a type name and the emitted
+spelling is `::`-qualified: the bare `GameVec2` emits as `::GameVec2`, and a
+namespaced engine type — `math::Vec2`, the common case — is written
+`cpp_native = math::Vec2` and emits as `::math::Vec2`. No global alias in
+your own header is needed.
 
 **C#** — C# 9 / netstandard2.1-clean, so it runs on Unity-class runtimes.
 Reads scalars without boxing.
@@ -4581,6 +4657,35 @@ case Example.Types.read_ship_create(packet, byte_size(packet) * 8) do
 end
 ```
 
+The same two accelerator readers as above, reached through the names the
+emitter writes — the package namespace, the file base and the form: a block is
+`Blockdemo.RenderBlock.block_open_render_frame(bytes)`, a cook is
+`Graphdemo.GraphCook.cook_open_scene(bytes)`. This fragment is compiled and run
+against the `tables/pointers` unit by `make tables-elixir-usage`:
+
+<!-- elixir-table-usage -->
+```elixir
+# open the cook another build wrote; :error is a foreign build, a corrupt
+# file or the other byte order — fall back to the tolerant wire
+case Graphdemo.GraphCook.cook_open_scene(bytes) do
+  {:ok, cook} ->
+    walk = fn walk, at ->
+      case at do
+        :null -> :ok
+        :error -> raise "the cook's head reference leaves the region"
+        {:ok, node} ->
+          IO.puts(Graphdemo.GraphCook.list_node_node_value(cook.region, node))
+          walk.(walk, Graphdemo.GraphCook.list_node_node_next(cook.region, node))
+      end
+    end
+
+    walk.(walk, Graphdemo.GraphCook.scene_node_head(cook.region, 0))
+  :error ->
+    raise "the Scene cook did not open — fall back to the tolerant wire"
+end
+```
+<!-- /elixir-table-usage -->
+
 **Java** — Java 17 on the JVM, built to issue #156's measured directives.
 Generated code is **self-contained**: it references only `java.lang`,
 `VarHandle` little-endian word access and `java.util.Arrays`, never a runtime
@@ -4610,6 +4715,26 @@ if (!ok) {
     // malformed or hostile — drop it
 }
 ```
+
+The Java accelerators read the same two forms, as members of the generated
+`<Table>Block` and `<Root>Cook` types. This fragment is compiled and run
+against the `tables/pointers` unit by `make tables-java-usage`:
+
+<!-- java-table-usage -->
+```java
+// open the cook another build wrote; a null is a foreign build, a corrupt
+// file or the other byte order — fall back to the tolerant wire
+SceneCook cook = SceneCook.open(bytes, 0, bytes.length);
+if (cook != null) {
+    int root = cook.root();
+    int at = cook.at(SceneRow.headSlot(root), ListNodeRow.size);
+    while (at >= 0) {            // -1 is null AND a delta whose record does not fit
+        use(ListNodeRow.value(cook.data(), at));
+        at = cook.at(ListNodeRow.nextSlot(at), ListNodeRow.size);
+    }
+}
+```
+<!-- /java-table-usage -->
 
 **Rust** — no `unsafe` in the generated PACKET code, `Result`-returning read
 and write. **The generated TABLE WIRE is safe Rust too**: `<name>_measure`,
@@ -4719,8 +4844,10 @@ A cook reads the same way, with one addition: a reference is an eight-byte
 SIGNED SELF-RELATIVE delta, so `At` takes the SLOT's own offset and answers the
 target's — `null` for a null reference. A delta that leaves the region throws a
 `RangeError` naming the cook as corrupt, because a cook is trusted input and
-that is a file `schema cook-check` refuses:
+that is a file `schema cook-check` refuses. This fragment is compiled and run
+against the `tables/pointers` unit by `make tables-js-usage`:
 
+<!-- js-table-usage -->
 ```js
 import { SceneCook, SceneRow, ListNodeRow } from "./GraphCook.js";
 
@@ -4735,6 +4862,7 @@ if (cook !== null) {
   }
 }
 ```
+<!-- /js-table-usage -->
 
 The casing you meet is one rule, the packet emitter's, because a table's
 closure decodes into the classes that emitter wrote: types, functions,

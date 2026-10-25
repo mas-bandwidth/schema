@@ -269,10 +269,12 @@ static partial class Program
                 (IntPtr p,long n,Span<IntPtr> roots,ReadOnlySpan<byte> b,Blobdemo.TableReport r,out int count)=>Blobdemo.Schema.CatalogLoadMessages(p,n,roots,b,vocabulary,r,out count)==Blobdemo.Schema.TableWire.Verdict.Ok,Blobdemo.Schema.CatalogSave,Blobdemo.Schema.CatalogMeasureMessages,Blobdemo.Schema.CatalogSaveMessages);
         }
         {
-            var vocabulary=new Blobdemo.TableVocabulary(); Blobdemo.Schema.AnnounceRead(vocabulary,Blobdemo.Schema.Announce(),new Blobdemo.TableReport());
-            NativeMessageCase<Blobdemo.Catalog,Blobdemo.TableReport>("blob_shared",()=>new Blobdemo.TableReport(),r=>!r.Malformed && !r.Refused && r.Unknown==0 && r.KindMismatch==0 && r.Clamped==0 && r.Widened==0 && r.Duplicate==0,
-                Blobdemo.Schema.CatalogLoad,Blobdemo.Schema.CatalogMeasureMessages,(v,b)=>Blobdemo.Schema.CatalogSaveMessages(v,b),b=>Blobdemo.Schema.CatalogLoadMeasure(vocabulary,b),
-                (IntPtr p,long n,Span<IntPtr> roots,ReadOnlySpan<byte> b,Blobdemo.TableReport r,out int count)=>Blobdemo.Schema.CatalogLoadMessages(p,n,roots,b,vocabulary,r,out count)==Blobdemo.Schema.TableWire.Verdict.Ok,Blobdemo.Schema.CatalogSave,Blobdemo.Schema.CatalogMeasureMessages,Blobdemo.Schema.CatalogSaveMessages);
+            // a blob two slots name (docs/SPEC-TABLES.md §2.5, blob_shared): the
+            // tolerant read keeps the one node and counts the extra naming, and
+            // the message writer refuses the value by that name
+            var value=new Blobdemo.Catalog(); var report=new Blobdemo.TableReport();
+            Check(Blobdemo.Schema.CatalogLoad(value,ReadGolden("blob_shared"),report) && report.BlobShared>0,"blob_shared tolerant read counts the shared blob");
+            Check(Blobdemo.Schema.CatalogMeasureMessages(new[] { value, value })<0,"blob_shared message writer refuses the shared blob");
         }
         {
             var vocabulary=new Blobdemo.TableVocabulary(); Blobdemo.Schema.AnnounceRead(vocabulary,Blobdemo.Schema.Announce(),new Blobdemo.TableReport());

@@ -97,7 +97,7 @@ int main( int argc, char ** argv )
 
     SaveBuilder builder;
     TableReport report;
-    if ( !SaveLoadBuilder( builder, wire_bytes, wire, &report ) )
+    if ( !SaveLoadBuilderTolerant( builder, wire_bytes, wire, &report ) )
     {
         printf( "FAIL the reference refused the wire the tool wrote\n" );
         return 1;

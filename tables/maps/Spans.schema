@@ -10,5 +10,5 @@ package mapdemo
 table Spans
 {
     tracks map[uint8][]Item // []T: an unbounded extent inside the entry's own
-    after  int32
+    past  int32 | was = "after"
 }

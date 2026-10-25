@@ -159,8 +159,8 @@ table Row
     scores [Grade]int32
     fx     Effect
     label  string(8) | json = "name"
-    guard  bool
-    if guard
+    gate   bool
+    if gate
     {
         extra int32
     }
@@ -223,7 +223,7 @@ table Row
 		to   string
 	}{
 		{"a was rename", "slot   int32 | min = 0, max = 10", "position int32 | was = \"slot\", min = 0, max = 10"},
-		{"a guard removed", "    if guard\n    {\n        extra int32\n    }\n", "    extra int32\n"},
+		{"a guard removed", "    if gate\n    {\n        extra int32\n    }\n", "    extra int32\n"},
 		{"a json key changed", `json = "name"`, `json = "label"`},
 		{"a comment added", "table Row", "// a comment\ntable Row"},
 	}
