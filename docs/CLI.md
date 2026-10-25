@@ -19,6 +19,12 @@ option `runtime=standalone` embeds that machinery in the unit instead
 `runtime` value is refused by name, and the refusal names shared as the
 default.
 
+`schema testgen --lang go|luau` writes the generated round-trip and damage
+tests of every root table beside what `generate` wrote: one
+`<Base>Table_gen_test.go` for Go and one `<Base>Table_gen_test.luau` for Luau
+per schema file (SPEC-TABLES.md §16.11). A table whose `forms` leave out `wire`
+or `json` is refused by name; every other `--lang` is refused by name.
+
 `schema testgen --lang lua` writes `<Base>Table_gen_test.lua` beside the Lua
 table module `generate --lang lua` writes, in a build tagged `schema_leg_lua`
 (`make build/schema-lua`); the generated tests run under the pinned Lua 5.4.8

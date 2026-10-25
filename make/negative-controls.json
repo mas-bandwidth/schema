@@ -88,6 +88,7 @@
         "tables-go-wire-fuzz-negative-control",
         "conformance-negative-control-reference-surface",
         "conformance-negative-control-lua",
+        "conformance-negative-control-luau",
         "conformance-go-rows-negative-control"
       ]
     },
@@ -763,7 +764,8 @@
         "tables-message-form-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control-ratchet",
-        "tables-lua-luacheck-negative-control"
+        "tables-lua-luacheck-negative-control",
+        "luau-nightly-fuzz-negative-control"
       ]
     },
     {
@@ -859,6 +861,18 @@
     {
       "target": "tables-c-big-endian-negative-control",
       "reason": "the C twin of tables-big-endian-negative-control, run on every pull request by ci.yml's `big-endian` job in the `c-control` row: issue #684 sharded that job by unit so the control is a job of its own. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. This leg does not cross-compile it a second time."
+    },
+    {
+      "target": "schema-luau-generated-analyze-strict-gate-negative-control",
+      "reason": "runs in its own workflow, .github/workflows/schema-luau-generated-analyze-strict-gate.yml, on every pull request and nightly, which installs the pinned Luau (make dist-luau) that this leg's rows do not: the plan has no luau toolchain field. Measured 0.4 s over 1 control on the Linux bench."
+    },
+    {
+      "target": "schema-luau-resource-bounds-negative-control",
+      "reason": "runs in its own workflow, .github/workflows/schema-luau-resource-bounds.yml, on every pull request and nightly, which installs the pinned Luau (make dist-luau) that this leg's rows do not: the plan has no luau toolchain field."
+    },
+    {
+      "target": "schema-luau-runs-hostile-corpus-negative-control",
+      "reason": "runs in its own workflow, .github/workflows/schema-luau-runs-hostile-corpus.yml, on the nightly schedule and on dispatch, which installs the pinned Luau (make dist-luau) that this leg's rows do not: the plan has no luau toolchain field."
     },
     {
       "target": "schema-shared-hostile-corpus-negative-control",

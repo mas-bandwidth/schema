@@ -11,11 +11,10 @@ import (
 // battery to docs/SPEC-TABLES.md §16.3's zero rule: a string the read would
 // PLACE in text storage refuses the read (`text_holds_zero: <Table>.<field>`),
 // while a string it only SKIPS stores nothing and is not the event. The rule is
-// held first in Go and carried by C and Lua (Lua's reader refuses a zero placed
-// in a text value and in a map key), so the two refusals state the standard's
-// answer with `carried-by=go,c,lua` and every other port keeps its BASE
-// counters; the skipped value is the clean §4 report with the unknown key
-// counted.
+// held first in Go and carried by C, Lua and Luau, so the two refusals state
+// the standard's answer with `carried-by=go,c,lua,luau` and every other port
+// keeps its BASE counters; the skipped value is the clean §4 report with the
+// unknown key counted.
 //
 // A Go answer of the clean counters on the value row must score red, because
 // the exemption is a different expectation and never a skip.
@@ -38,8 +37,8 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		if !row.Refused || row.Verdict() != "refused" {
 			t.Fatalf("%s: the standard verdict is %q; §16.3 refuses a zero placed in text", caseName, row.Verdict())
 		}
-		if strings.Join(row.CarriedBy, ",") != "go,c,lua" {
-			t.Fatalf("%s: carried-by=%v; Go held the rule first, C and Lua carry it, and every other port keeps its behaviour", caseName, row.CarriedBy)
+		if strings.Join(row.CarriedBy, ",") != "go,c,lua,luau" {
+			t.Fatalf("%s: carried-by=%v; Go held the rule first, C, Lua and Luau carry it, and every other port keeps its behaviour", caseName, row.CarriedBy)
 		}
 		if row.Uncarried != baseCounters {
 			t.Fatalf("%s: uncarried=%q; every other port stores the zero and answers %q", caseName, row.Uncarried, baseCounters)

@@ -509,6 +509,11 @@ jobs:
               make dist-lua
               ;;
           esac
+      # THE LUAU PIN: the Luau packages and compiler's testgen gate run
+      # generated Luau under the pinned interpreter and fail, never skip,
+      # without it (internal/codegen/luau/luaurun; make/luau.mk dist-luau).
+      - name: install the Luau pin
+        run: make dist-luau
 
       - name: go test the touched packages
         env:
