@@ -27,11 +27,8 @@ import (
 // surfaces answer `<case>.absent` for, each by the reason the target refuses
 // the unit. It is pinned exactly: a pair dropping out of `wireRows` without a
 // line here fails, and a line here whose pair the table binds fails too.
-var wireRowsUncarried = map[string]string{
-	// G1 declares `optional ?Wrapped`, an optional over a variable closure,
-	// which this target refuses (docs/SPEC-TABLES.md §2.3; make/js.mk).
-	"tblg1/Guarded": "optional over a variable closure (§2.3)",
-}
+// It is empty: every pair the manifest names is bound.
+var wireRowsUncarried = map[string]string{}
 
 // TestWireRowsConformanceJavaScript holds the driver's wireRows table to the
 // manifest's instance and report pairs, less the named uncarried set.
