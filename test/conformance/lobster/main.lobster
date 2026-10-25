@@ -5,9 +5,9 @@
 //   lobster <unit dir>/conformance_main.lobster -- <repo root> <manifest> <surface> <unit>
 //
 // Lobster imports are resolved when the program is compiled, so one program
-// cannot reach every unit: the driver copies this file into each generated
-// unit directory as conformance_main.lobster, beside conformance_unit.lobster
-// (one `import .<Base>Table` per table module the unit has), and runs it there.
+// cannot reach every unit: the driver writes this file into each generated
+// unit directory as conformance_main.lobster, after one `import .<Base>Table`
+// line per table module the unit has, and runs it there.
 // A unit the target refused has no directory, and the driver answers its cases
 // `absent` without running anything.
 //
@@ -22,7 +22,6 @@
 // the driver answers every other surface ABSENT (exit 2). What the leg does not
 // carry, and why, is docs/PORT-LOBSTER.md's THE HARNESS.
 
-import .conformance_unit
 import .load
 import .schema_save
 import .strict_and_refusals

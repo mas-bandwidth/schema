@@ -356,9 +356,9 @@ as lines (lowercase hex for bytes).**
 - **The conformance driver** (`test/conformance/lobster/driver`) runs
   `test/conformance/lobster/main.lobster` under the pinned toolchain. Lobster
   resolves imports when it compiles, so the program runs once per generated
-  unit, in parallel: the driver copies it into `build/conformance-lobster/<unit>/`
-  as `conformance_main.lobster` beside `conformance_unit.lobster` (one
-  `import .<Base>Table` per table module) and runs
+  unit, in parallel: the driver writes it into `build/conformance-lobster/<unit>/`
+  as `conformance_main.lobster`, after one `import .<Base>Table` line per table
+  module (a module of imports alone does not compile), and runs
   `conformance_main.lobster -- <repo root> <manifest> <surface> <unit>`. Inputs
   are read by absolute path, because a relative `read_file` resolves against
   the program's directory. Stdout is one or more lines per case: the case name,
