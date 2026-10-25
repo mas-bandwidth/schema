@@ -104,7 +104,11 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # 128-bit kinds and an enum-keyed array (§2.4, §3); widedemo (examples-wide)
 # wstring(N) on the variable wire (§3); vocabdemo, vocab9demo and backenddemo
 # (tables/vocab, tables/vocab9, tables/backend) the message surface's three
-# connections (§3.3). The variable-class surfaces (wire,
+# connections (§3.3); streamdemo (tables/stream) a variable-length arm, a
+# pointer arm and arrays of pointers (§2.1, §2.6); tblm1/tblm2 and tbla1/tbla2
+# the union-arm evolution pairs (§4), tblk1/tblk2 the enum-kind pair,
+# tblscalars2 the second scalars version and tblrt1/tblrt2/tblrt3 the retain
+# units (§6.6). The variable-class surfaces (wire,
 # json-read, json-write, report) answer every carried instance; a construct
 # outside the class writes <case>.absent rather than a wrong answer.
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
@@ -117,9 +121,14 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema \
 	mapdemo:tables/maps messagedemo:tables/messages scalars:tables/scalars \
 	widedemo:examples-wide \
-	vocabdemo:tables/vocab vocab9demo:tables/vocab9 backenddemo:tables/backend
+	vocabdemo:tables/vocab vocab9demo:tables/vocab9 backenddemo:tables/backend \
+	streamdemo:tables/stream tblm1:test/tables/M1.schema tblm2:test/tables/M2.schema \
+	tbla1:test/tables/A1.schema tbla2:test/tables/A2.schema \
+	tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema \
+	tblscalars2:test/tables/Scalars2.schema \
+	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND)
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND)
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
