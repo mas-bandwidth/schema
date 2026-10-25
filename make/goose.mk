@@ -46,10 +46,14 @@ toolchain-goose:
 
 # test-goose runs both Goose packages: the type surface (internal/codegen/goose)
 # and the table surface (internal/codegen/goosetable), each under the pinned
-# compiler.
+# compiler, AGAINST THE C++ REFERENCE'S BYTES: the fixed form's suite
+# (internal/codegen/goosetable/fixedform_test.go) reads every fixed root of
+# build/fixedform-corpus and must save it back byte for byte, so the corpus is
+# a prerequisite, and SCHEMA_REQUIRE_CORPUS=1 makes a missing oracle a failure
+# rather than the skip a bare `go test` takes.
 .PHONY: test-goose update-goldens-goose
-test-goose: toolchain-goose
-	go test -count=1 -timeout 600s ./internal/codegen/goose/... ./internal/codegen/goosetable/...
+test-goose: toolchain-goose build/fixedform-corpus/.stamp
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goose/... ./internal/codegen/goosetable/...
 update-goldens-goose: ;
 
 # build/conformance-goose is the manifest's units generated for goose, one

@@ -240,7 +240,7 @@ Fixed now for the pro cards; never renamed.
 | `internal/codegen/goosetable/runtime/*.goose` | the table runtime by glob, one file per card: `schema_tables.goose` now (the descriptor types); `load.goose`, `save.goose`, `fixed.goose`, `message.goose`, … later | one file per card |
 | `internal/codegen/goosetable/runtime/registry/<construct>.goosereg` | THE REGISTRY's fragments: a card's dispatch registrations (an enum variant, a table row), assembled onto the end of `schema_tables.goose` when the target emits it (`goosetable/registry.go`) | one file per card; none edits another's, and none edits a registry's enum or array in a `.goose` file |
 | `internal/codegen/goose/gooserun` | THE HARNESS's helper | this card |
-| `test/conformance/goose/driver`, `ci.json`, `main.goose` | the conformance leg | this card (driver, ci.json); conformance-leg (`main.goose`) |
+| `test/conformance/goose/driver`, `ci.json`, `main.goose` | the conformance leg; `main.goose` lists a surface only once a card carries it | this card (driver, ci.json); the conformance driver (`main.goose`); each surface's card adds its arm |
 | `make/goose.mk` | the leg's build: `dist-goose`, `toolchain-goose`, `test-goose`, `build/conformance-goose` | this card; later cards add their own `make/goose-*.mk` |
 | `bench/tables/goose/leg` | the tables-bench leg, ABSENT until a codec exists | schema-goose-bench |
 
@@ -373,11 +373,21 @@ lowercase hex lines.**
   `$GOOSE build -O2 <file>.goose -o <exe>`: the bench machine's C compiler
   (gcc), never TinyCC.
 - **The conformance driver** (`test/conformance/goose/driver`) runs
-  `main.goose <surface> <manifest>` under `goose run`, and splits stdout —
-  one line per case: the case name, a space, the answer's bytes in hex, or
-  the word `absent` — into one file per case in `<outdir>` (`<case>.absent`
-  for the absent word). While `main.goose` is absent the leg answers ABSENT:
-  `list` prints nothing and every surface exits 2.
+  `goose run main.goose -- <surface> <manifest>` (the program's arguments
+  follow `--`; without it `goose run` takes them as more input files and
+  refuses "multiple input files given"), passes the program's exit status
+  through (2 is ABSENT), and splits stdout — one line per case: the case
+  name, a space, the answer's bytes in hex, or the word `absent` — into one
+  file per case in `<outdir>` (`<case>.absent` for the absent word). The
+  leg's CI row (`ci.json`) installs the pin with `make dist-goose` before the
+  harness runs. **`main.goose` answers no surface yet**, and `list` is empty:
+  every harness surface reads a form the port does not carry (the id-table
+  wire, the message form, JSON, the cook, the block form), and the one codec
+  it does carry, the fixed form, is judged against the C++ reference's byte
+  oracle by `make test-goose`, which builds `build/fixedform-corpus` and runs
+  under `SCHEMA_REQUIRE_CORPUS=1`. A card that carries a surface adds it to
+  `list` and answers it there; `compiler/carries_goose.go` claims no
+  construct, so the two agree.
 - **The wire-fuzz pipe** (one process, little-endian frames, a reply flushed
   per mutant) is a `goose build -O2` executable reading stdin with
   `read_stdin` and writing with `write_stdout` and `flush_stdout`: Goose
