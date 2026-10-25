@@ -930,29 +930,45 @@ inline void RenderFrameReset( RenderFrame & value )
     value.version = 0;
     RenderCameraReset( value.cameras[0] );
     value.cameras_count = 0;
-    RenderShipReset( value.ships[0] );
-    for ( int32_t i = 1; i < 4096; i++ ) { value.ships[i] = value.ships[0]; }
+    for ( int32_t i = 0; i < 4096; i++ )
+    {
+        RenderShipReset( value.ships[i] );
+    }
     value.ships_count = 0;
-    RenderTurretReset( value.turrets[0] );
-    for ( int32_t i = 1; i < 1024; i++ ) { value.turrets[i] = value.turrets[0]; }
+    for ( int32_t i = 0; i < 1024; i++ )
+    {
+        RenderTurretReset( value.turrets[i] );
+    }
     value.turrets_count = 0;
-    RenderMissileReset( value.missiles[0] );
-    for ( int32_t i = 1; i < 4096; i++ ) { value.missiles[i] = value.missiles[0]; }
+    for ( int32_t i = 0; i < 4096; i++ )
+    {
+        RenderMissileReset( value.missiles[i] );
+    }
     value.missiles_count = 0;
-    RenderDynamicPropReset( value.dynamic_props[0] );
-    for ( int32_t i = 1; i < 4096; i++ ) { value.dynamic_props[i] = value.dynamic_props[0]; }
+    for ( int32_t i = 0; i < 4096; i++ )
+    {
+        RenderDynamicPropReset( value.dynamic_props[i] );
+    }
     value.dynamic_props_count = 0;
-    RenderStaticPropReset( value.static_props[0] );
-    for ( int32_t i = 1; i < 20000; i++ ) { value.static_props[i] = value.static_props[0]; }
+    for ( int32_t i = 0; i < 20000; i++ )
+    {
+        RenderStaticPropReset( value.static_props[i] );
+    }
     value.static_props_count = 0;
-    RenderCosmeticPropReset( value.cosmetic_props[0] );
-    for ( int32_t i = 1; i < 8192; i++ ) { value.cosmetic_props[i] = value.cosmetic_props[0]; }
+    for ( int32_t i = 0; i < 8192; i++ )
+    {
+        RenderCosmeticPropReset( value.cosmetic_props[i] );
+    }
     value.cosmetic_props_count = 0;
-    RenderLaserReset( value.lasers[0] );
-    for ( int32_t i = 1; i < 32000; i++ ) { value.lasers[i] = value.lasers[0]; }
+    for ( int32_t i = 0; i < 32000; i++ )
+    {
+        RenderLaserReset( value.lasers[i] );
+    }
     value.lasers_count = 0;
-    RenderExplosionReset( value.explosions[0] );
-    for ( int32_t i = 1; i < 32000; i++ ) { value.explosions[i] = value.explosions[0]; }
+    for ( int32_t i = 0; i < 32000; i++ )
+    {
+        RenderExplosionReset( value.explosions[i] );
+    }
     value.explosions_count = 0;
 }
 

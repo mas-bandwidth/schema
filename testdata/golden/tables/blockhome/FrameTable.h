@@ -425,8 +425,10 @@ inline void PartRowReset( PartRow & value )
 inline void PartFrameReset( PartFrame & value )
 {
     value.version = 0;
-    PartRowReset( value.parts[0] );
-    for ( int32_t i = 1; i < 32; i++ ) { value.parts[i] = value.parts[0]; }
+    for ( int32_t i = 0; i < 32; i++ )
+    {
+        PartRowReset( value.parts[i] );
+    }
     value.parts_count = 0;
 }
 

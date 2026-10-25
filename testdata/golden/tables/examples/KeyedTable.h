@@ -660,16 +660,22 @@ inline void HullConfigReset( HullConfig & value )
 {
     value.health = 100.0f;
     value.mass = 1.0f;
-    TurretConfigReset( value.turrets.slots[0] );
-    for ( int32_t i = 1; i < 3; i++ ) { value.turrets.slots[i] = value.turrets.slots[0]; }
+    for ( int32_t i = 0; i < 3; i++ )
+    {
+        TurretConfigReset( value.turrets.slots[i] );
+    }
 }
 
 inline void KeyedConfigReset( KeyedConfig & value )
 {
-    TeamConfigReset( value.teams.slots[0] );
-    for ( int32_t i = 1; i < 3; i++ ) { value.teams.slots[i] = value.teams.slots[0]; }
-    HullConfigReset( value.hulls.slots[0] );
-    for ( int32_t i = 1; i < 3; i++ ) { value.hulls.slots[i] = value.hulls.slots[0]; }
+    for ( int32_t i = 0; i < 3; i++ )
+    {
+        TeamConfigReset( value.teams.slots[i] );
+    }
+    for ( int32_t i = 0; i < 3; i++ )
+    {
+        HullConfigReset( value.hulls.slots[i] );
+    }
     ScoreBoardReset( value.scores );
 }
 
