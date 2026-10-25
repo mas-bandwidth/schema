@@ -41,7 +41,7 @@ table Holder | inspected
 
     old int32 = 7 | deprecated
 
-    when timestamp
+    stamped timestamp
 
     ratio float32 = 1.0 | min = 0.0, max = 10.0, resolution = 0.5
 }

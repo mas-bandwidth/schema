@@ -421,7 +421,7 @@ if holder:
             print("mapentryfield " + f.t)
 print("depfield " + if hasfield("Holder", "old", true, false, false): "1" else: "0")
 print("floatrange " + if hasfield("Holder", "ratio", false, true, false): "1" else: "0")
-print("timestamp " + if hasfield("Holder", "when", false, false, true): "1" else: "0")
+print("timestamp " + if hasfield("Holder", "stamped", false, false, true): "1" else: "0")
 // J1: a fresh row through the generated accessor and the descriptor's
 // defaults, two derivations of one layout.
 let fresh = NewHolder()

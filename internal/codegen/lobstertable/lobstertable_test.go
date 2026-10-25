@@ -242,7 +242,8 @@ func prefix(paths []string) []string {
 // cycle never reaches the emitter, because the checker refuses it first,
 // docs/SPEC-TABLES.md §11, so the graph check is held directly), a schema
 // file whose module would collide with a runtime module beside it is refused
-// by name, and a package that is a Lobster keyword is refused by name.
+// by name, a package that is the runtime namespace is refused by name, and a
+// package that is a Lobster keyword is refused by name at load (SPEC §4.6).
 func TestLobsterRefusesByName(t *testing.T) {
 	t.Parallel()
 	load := func(files map[string]string) error {
@@ -280,9 +281,18 @@ func TestLobsterRefusesByName(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "collides with the Lobster runtime module schema_runtime.lobster") {
 		t.Errorf("a schema file named for the runtime: want the collision refused, got %v", err)
 	}
-	err = load(map[string]string{"K.schema": "package pakfile\ntype T\n{\n    x uint8\n}\n"})
-	if err == nil || !strings.Contains(err.Error(), "package pakfile cannot be the Lobster namespace") {
-		t.Errorf("a package named for a Lobster keyword: want it refused by name, got %v", err)
+	err = load(map[string]string{"K.schema": "package schema_rt\ntype T\n{\n    x uint8\n}\n"})
+	if err == nil || !strings.Contains(err.Error(), "package schema_rt cannot be the Lobster namespace") {
+		t.Errorf("a package named for the Lobster runtime namespace: want it refused by name, got %v", err)
+	}
+	// A package that is a Lobster keyword never reaches the emitter: the
+	// checker refuses a reserved word of every language at load (SPEC §4.6).
+	kw := filepath.Join(t.TempDir(), "K.schema")
+	if err := os.WriteFile(kw, []byte("package pakfile\ntype T\n{\n    x uint8\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := compiler.New().Load([]string{kw}); err == nil || !strings.Contains(err.Error(), `package name "pakfile" is a reserved word in Lobster`) {
+		t.Errorf("a package named for a Lobster keyword: want it refused by name at load, got %v", err)
 	}
 }
 
