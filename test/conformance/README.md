@@ -96,7 +96,10 @@ and how many it said it cannot. The distinction is the surface-level one at a
 finer grain, and the corpus needed it the day it gained VARIABLE-class
 instances: a backend with no variable class still answers the wire surface over
 every FIXED instance, and a leg that failed the whole surface for them would say
-nothing about what it does carry.
+nothing about what it does carry. A `<case>.absent` that holds a row's NAMED
+WRITER REFUSAL (the manifest's `go-refusal=`, today only `blob_shared`, which
+every writer refuses by §2.5) is that row's answer rather than an absence: the
+cell counts it apart as `+1r`, and the reference leg may give it.
 
 **THE REFERENCE LEG MAY NOT ANSWER ABSENT, AT EITHER GRAIN**, and that rule is
 what makes absence safe rather than a place to hide: an absence from the

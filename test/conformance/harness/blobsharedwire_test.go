@@ -58,8 +58,10 @@ func TestWireBlobSharedIsANamedRefusal(t *testing.T) {
 		if !report(&table, []string{"go"}, results) {
 			t.Fatalf("named refusal made the wire surface red: %s", table.String())
 		}
-		if !strings.Contains(table.String(), "pass 95/95 +1a") {
-			t.Fatalf("wire cell does not show one named absence: %s", table.String())
+		// a named refusal is the row's answer, not an absence: it prints as
+		// `r`, so nothing reading the matrix for `a` mistakes it for one
+		if !strings.Contains(table.String(), "pass 95/95 +1r") || strings.Contains(table.String(), "+1a") {
+			t.Fatalf("wire cell does not show one named refusal apart from absences: %s", table.String())
 		}
 	})
 

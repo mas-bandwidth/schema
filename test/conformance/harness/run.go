@@ -672,8 +672,8 @@ func describeDiff(name string, want, got []byte) string {
 // cannot print beside one.
 func report(w io.Writer, langs []string, results map[string]map[string]*result) bool {
 	var b strings.Builder
-	// wide enough for "pass 111/111 +4a", the widest cell the matrix can print
-	width := 18
+	// wide enough for "pass 111/111 +4a +1r", the widest cell the matrix can print
+	width := 22
 	for _, s := range surfaces {
 		if len(s)+2 > width {
 			width = len(s) + 2
@@ -703,8 +703,18 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 			case r.missing > 0:
 				// what it answered, and what it said it cannot: the cell is the
 				// completion tracker, so an absence stays visible rather than
-				// being rounded away into a smaller total
-				cell = fmt.Sprintf("pass %d/%d +%da", r.pass, r.total-r.missing, r.missing)
+				// being rounded away into a smaller total. A NAMED WRITER
+				// REFUSAL is the row's answer (§2.5), not a missing feature, so
+				// it prints as `+Nr` and never as `+Na`: a reader of the matrix,
+				// or a gate that fails on `a`, must not see the reference leg
+				// answering ABSENT when it gave the refusal the spec requires.
+				cell = fmt.Sprintf("pass %d/%d", r.pass, r.total-r.missing)
+				if absent := r.missing - r.named; absent > 0 {
+					cell += fmt.Sprintf(" +%da", absent)
+				}
+				if r.named > 0 {
+					cell += fmt.Sprintf(" +%dr", r.named)
+				}
 			default:
 				cell = fmt.Sprintf("pass %d/%d", r.pass, r.total)
 			}

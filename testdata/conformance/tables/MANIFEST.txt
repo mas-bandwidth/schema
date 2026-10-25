@@ -168,8 +168,9 @@ instance stream_arm_pointer   streamdemo  Feed        testdata/wire/tables/strea
 instance blob_small           blobdemo    Catalog     testdata/wire/tables/blob_small.bin
 instance blob_empty           blobdemo    Catalog     testdata/wire/tables/blob_empty.bin
 instance blob_large           blobdemo    Catalog     testdata/wire/tables/blob_large.bin
-# The Go wire writer names its §2.5 refusal for this instance, and so does every
-# port refused-by= lists; the reference still writes the bytes (§2.5).
+# Every wire writer refuses this instance by name (§2.5), the reference included:
+# go must answer the refusal, refused-by= lists the other ports that must, and a
+# port that still writes bytes is held to the golden. The matrix prints it +1r.
 instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_shared.bin  no-text go-refusal=blob_shared refused-by=js
 # THE STRING TERMINATOR, at the two lengths that can see it (§6.3): a *string
 # node carries one zero byte after its data, and the node's extent is rounded
