@@ -1,7 +1,8 @@
-// The COOKED FORM's read side for Elixir (docs/SPEC-TABLES.md §7): the header
-// match, the region where it lies, and the descriptors a region is read
-// through. PREVIEW, exactly as §7 says — a cook is a load-trusted-data format
-// and not a wire.
+// The COOKED FORM for Elixir (docs/SPEC-TABLES.md §7): the header match, the
+// region where it lies, and the descriptors a region is read through, plus the
+// write side cook_measure, cook_measure_reason and cook_from (§7.6) on the
+// unit's Table module. PREVIEW, exactly as §7 says — a cook is a
+// load-trusted-data format and not a wire.
 //
 // Tooling writes a region for one BUILD VERSION and that build points at it:
 // Open matches the header and returns the region. There is no walk, no fix-up
@@ -9,10 +10,8 @@
 // the region is a SUB-BINARY over the caller's own bytes, which the runtime
 // shares rather than copies.
 //
-// THE READING TIER. Elixir cannot cook: a region is a memory image of a
-// storage type, and a BEAM term has none. What it can do is open one and read
-// every slot at its offset, with a reference resolved through the eight-byte
-// SIGNED SELF-RELATIVE delta (§6.3) and a delta past the region refused.
+// THE READ AND WRITE TIER. Open matches the header and points. cook_from writes
+// the same bytes `schema cook` writes, in the order the caller names (§7.6).
 package elixirtable
 
 import (
@@ -53,8 +52,17 @@ func (g *gen) cookModule() []byte {
 	g.pf("  alias %s.CookRuntime, as: C\n\n", g.ns)
 	g.pf("  @build_version %s.BuildVersion.build_version()\n\n", g.ns)
 	g.emitCookDescriptors(roots)
+	var handles []*ir.Struct
 	for _, st := range roots {
+		if g.cookable(st.Name) {
+			handles = append(handles, st)
+		}
+	}
+	for i, st := range handles {
 		g.emitCookHandle(st)
+		if i < len(handles)-1 {
+			g.pf("\n")
+		}
 	}
 	g.pf("end\n")
 
@@ -74,8 +82,8 @@ const cookModuleBanner = `  @moduledoc """
   Open matches the header and returns the region — no walk, no fix-up, no copy.
   The region is a SUB-BINARY over the caller's own bytes.
 
-  READING ONLY. A region is a memory image of a storage type and a BEAM term
-  has none, so a cook arrives from a C++, C# or Rust build.
+  The write side is cook_measure, cook_measure_reason and cook_from on the
+  unit's Table module (docs/SPEC-TABLES.md §7.6).
   """
 
 `
@@ -106,6 +114,11 @@ const cookRuntimeSource = `  @moduledoc """
   # The value is "SCHMCOOK" read as ASCII in the byte order a little-endian
   # store produces, so a hex dump of a little-endian cook is legible.
   @magic 0x4B4F4F434D484353
+
+  # The magic as a cook of the OTHER byte order spells it: the one wrong magic
+  # the reason names foreign_order rather than not_a_cook (§7.1; the reference
+  # leg's TableRefuseForeignOrder).
+  @foreign_magic 0x5343484D434F4F4B
 
   # The order this leg reads in; a cook of the other one is refused, and the
   # fix-up path is a named obligation rather than something a consumer
@@ -141,11 +154,34 @@ const cookRuntimeSource = `  @moduledoc """
   check is then a real one rather than a skipped one, which is the whole point:
   the alternative is a leg that cannot refuse an unaligned base at all.
   """
-  def open(data, lead, root_size, root_align, build_version) when is_binary(data) do
+  def open(data, lead, root_size, root_align, build_version) do
+    case check(data, lead, root_size, root_align, build_version) do
+      {:ok, region, region_length} -> {:ok, region, region_length}
+      {:error, _reason} -> :error
+    end
+  end
+
+  @doc """
+  open_reason is Open's FIRST FAILING CLAUSE, the reason beside the refusal
+  (docs/SPEC-TABLES.md §7): :ok when the cook opens, and otherwise the
+  reference leg's TableRefuseReason value name (internal/codegen/gotable/
+  refusal.go) as an atom — :unaligned_base, :truncated, :foreign_order,
+  :not_a_cook, :wrong_build_version, :reserved_not_zero or :bad_alignment —
+  checked in the reference's order (internal/codegen/gotable/cook.go, Open).
+  nil is the null buffer, which the reference refuses as an unaligned base.
+  """
+  def open_reason(data, lead, root_size, root_align, build_version) do
+    case check(data, lead, root_size, root_align, build_version) do
+      {:ok, _region, _region_length} -> :ok
+      {:error, reason} -> reason
+    end
+  end
+
+  defp check(data, lead, root_size, root_align, build_version) when is_binary(data) do
     length = byte_size(data)
 
     if length < @header_bytes do
-      :error
+      {:error, :truncated}
     else
       # the MAGIC, bytewise and first: it is what establishes the byte order
       # every other header word is read in, so nothing else may be read before
@@ -157,27 +193,58 @@ const cookRuntimeSource = `  @moduledoc """
         reserved1::little-unsigned-64, _::binary>> = data
 
       cond do
-        magic != @magic -> :error
-        order != @byte_order -> :error
-        build != build_version -> :error
+        magic == @foreign_magic ->
+          {:error, :foreign_order}
+
+        magic != @magic ->
+          {:error, :not_a_cook}
+
+        order != @byte_order ->
+          {:error, :not_a_cook}
+
+        build != build_version ->
+          {:error, :wrong_build_version}
+
         # a non-zero RESERVED word means a writer used a form this build does
         # not understand, and Open refuses rather than ignoring it
-        reserved0 != 0 -> :error
-        reserved1 != 0 -> :error
-        true -> extent(data, length, lead, data_length, attribution_length, alignment, root_size, root_align)
+        reserved0 != 0 or reserved1 != 0 ->
+          {:error, :reserved_not_zero}
+
+        true ->
+          extent(
+            data,
+            length,
+            lead,
+            data_length,
+            attribution_length,
+            alignment,
+            root_size,
+            root_align
+          )
       end
     end
   end
 
-  def open(_data, _lead, _root_size, _root_align, _build_version), do: :error
+  # no buffer at all: the reference's null base, refused as an unaligned base
+  defp check(_data, _lead, _root_size, _root_align, _build_version),
+    do: {:error, :unaligned_base}
 
-  defp extent(data, length, lead, data_length, attribution_length, alignment, root_size, root_align) do
+  defp extent(
+         data,
+         length,
+         lead,
+         data_length,
+         attribution_length,
+         alignment,
+         root_size,
+         root_align
+       ) do
     # THE ALIGNMENT WORD IS DATA, and it is the one header field the rest of the
     # check does arithmetic WITH rather than only compares against — so it is
     # checked BEFORE anything divides by it.
-    if alignment < 8 or alignment > @max_align or (alignment &&& (alignment - 1)) != 0 or
+    if alignment < 8 or alignment > @max_align or (alignment &&& alignment - 1) != 0 or
          rem(alignment, root_align) != 0 do
-      :error
+      {:error, :bad_alignment}
     else
       region(data, length, lead, data_length, attribution_length, alignment, root_size)
     end
@@ -190,16 +257,16 @@ const cookRuntimeSource = `  @moduledoc """
     data_offset = align_up(@header_bytes, alignment)
 
     cond do
-      length < data_offset -> :error
+      length < data_offset -> {:error, :truncated}
       # the whole file is data_offset + data_length + attribution_length, and a
       # length that is not EXACTLY that refuses — truncation and trailing bytes
       # are one refusal
-      data_length > length - data_offset -> :error
-      attribution_length != length - data_offset - data_length -> :error
+      data_length > length - data_offset -> {:error, :truncated}
+      attribution_length != length - data_offset - data_length -> {:error, :truncated}
       # the ROOT sits at the region's base, so the region has to hold it
-      data_length < root_size -> :error
+      data_length < root_size -> {:error, :truncated}
       # the alignment of the BASE, which the caller states (see the doc above)
-      rem(lead + data_offset, alignment) != 0 -> :error
+      rem(lead + data_offset, alignment) != 0 -> {:error, :unaligned_base}
       true -> {:ok, binary_part(data, data_offset, data_length), data_length}
     end
   end
@@ -229,14 +296,21 @@ const cookRuntimeSource = `  @moduledoc """
   A REFERENCE, resolved: the slot holds the eight-byte SIGNED SELF-RELATIVE
   delta of §6.3, and NULL IS ZERO. A delta that resolves outside the region is
   refused — an index out of bounds is a refusal here, never an exception that
-  escapes.
+  escapes. The delta is COMPOSED from a u32 low half and an i32 high half, the
+  way the JavaScript leg composes it, so no bignum is formed before the bound
+  that refuses it runs: a high half whose magnitude is 0x08000000 or more
+  (2^59, past a BEAM immediate) is refused from the high half alone, and that
+  is the same answer exact arithmetic gives for a delta that far outside a
+  region.
   """
   def deref(region, at) do
-    delta = int(region, at, 8)
+    low = uint(region, at, 4)
+    high = int(region, at + 4, 4)
 
     cond do
-      delta == 0 -> :null
-      true -> inside(region, at + delta)
+      low == 0 and high == 0 -> :null
+      high >= 0x08000000 or high <= -0x08000000 -> :error
+      true -> inside(region, at + high * 0x100000000 + low)
     end
   end
 
@@ -314,11 +388,16 @@ func (g *gen) emitCookDescriptors(members []*ir.Struct) {
 		lo := ir.RustSnake(st.Name)
 		g.pf("  @cook_info_%s %%{\n", lo)
 		g.pf("    name: %q,\n", st.Name)
-		g.pf("    size: %d,\n", layout.Size)
-		g.pf("    align: %d,\n", layout.Align)
+		g.pf("    size: %s,\n", exInt(layout.Size))
+		g.pf("    align: %s,\n", exInt(layout.Align))
 		g.pf("    fields: [\n")
-		for _, fl := range layout.Fields {
-			g.pf("      %s,\n", g.cookFieldRow(fl))
+		for i, fl := range layout.Fields {
+			// the formatter drops a trailing comma, so the last row has none
+			comma := ","
+			if i == len(layout.Fields)-1 {
+				comma = ""
+			}
+			g.pf("      %s%s\n", g.cookFieldRow(fl), comma)
 		}
 		g.pf("    ]\n")
 		g.pf("  }\n")
@@ -369,14 +448,14 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%%{\n")
 	fmt.Fprintf(&b, "        name: %q,\n", f.Name)
-	fmt.Fprintf(&b, "        offset: %d,\n", fl.Offset)
-	fmt.Fprintf(&b, "        size: %d,\n", fl.Size)
-	fmt.Fprintf(&b, "        elem_size: %d,\n", elemSize)
+	fmt.Fprintf(&b, "        offset: %s,\n", exInt(fl.Offset))
+	fmt.Fprintf(&b, "        size: %s,\n", exInt(fl.Size))
+	fmt.Fprintf(&b, "        elem_size: %s,\n", exInt(elemSize))
 	fmt.Fprintf(&b, "        is_array: %v,\n", isArray)
-	fmt.Fprintf(&b, "        array_bound: %d,\n", arrayBound)
+	fmt.Fprintf(&b, "        array_bound: %s,\n", exInt(arrayBound))
 	fmt.Fprintf(&b, "        is_pointer: %v,\n", f.Type.Pointer)
-	fmt.Fprintf(&b, "        count_offset: %d,\n", countOffset)
-	fmt.Fprintf(&b, "        present_offset: %d,\n", presentOffset)
+	fmt.Fprintf(&b, "        count_offset: %s,\n", exInt(countOffset))
+	fmt.Fprintf(&b, "        present_offset: %s,\n", exInt(presentOffset))
 	fmt.Fprintf(&b, "        storage: %s,\n", storage)
 	fmt.Fprintf(&b, "        record: %s\n", record)
 	fmt.Fprintf(&b, "      }")
@@ -458,16 +537,16 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 	g.pf("  #\n")
 	g.pf("  # §7.1's constants, so a consumer reading this file has the facts and not\n")
 	g.pf("  # a description of them.\n")
-	g.pf("  def %s_cook_region_alignment, do: %d\n", lo, align)
-	g.pf("  def %s_cook_root_size, do: %d\n", lo, layout.Size)
-	g.pf("  def %s_cook_root_align, do: %d\n\n", lo, layout.Align)
+	g.pf("  def %s_cook_region_alignment, do: %s\n", lo, exInt(align))
+	g.pf("  def %s_cook_root_size, do: %s\n", lo, exInt(layout.Size))
+	g.pf("  def %s_cook_root_align, do: %s\n\n", lo, exInt(layout.Align))
 
-	g.pf("  def cook_open_%s(data), do: cook_open_%s(data, 0)\n\n", lo, lo)
+	g.pf("%s\n", exDefDo("  ", "def cook_open_"+lo+"(data)", "cook_open_"+lo+"(data, 0)"))
 	g.pf("  # lead is how many bytes past an aligned base the caller's buffer\n")
 	g.pf("  # begins — the one pointer fact a BEAM binary cannot carry, so the caller\n")
 	g.pf("  # states it (see CookRuntime.open/5).\n")
 	g.pf("  def cook_open_%s(data, lead) do\n", lo)
-	g.pf("    case C.open(data, lead, %d, %d, @build_version) do\n", layout.Size, layout.Align)
+	g.pf("    case C.open(data, lead, %s, %s, @build_version) do\n", exInt(layout.Size), exInt(layout.Align))
 	g.pf("      {:ok, region, region_length} ->\n")
 	g.pf("        {:ok,\n")
 	g.pf("         %%{\n")
@@ -481,48 +560,60 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 	g.pf("    end\n")
 	g.pf("  end\n\n")
 
+	g.pf("  # the reason beside the refusal: :ok, or Open's first failing clause as\n")
+	g.pf("  # the reference leg's TableRefuseReason value name (see\n")
+	g.pf("  # CookRuntime.open_reason/5; docs/SPEC-TABLES.md §7).\n")
+	g.pf("  def cook_open_reason_%s(data, lead) do\n", lo)
+	g.pf("    C.open_reason(data, lead, %s, %s, @build_version)\n", exInt(layout.Size), exInt(layout.Align))
+	g.pf("  end\n\n")
+
 	g.pf("  # the TYPED slot accessors: each field of a %s node, read at its own\n", st.Name)
 	g.pf("  # offset from the node's base within the region.\n")
+	var items []string
 	for _, fl := range ir.RecordLayout(g.unit, st).Fields {
-		g.emitCookAccessor(st, fl)
+		items = append(items, g.cookAccessors(st, fl)...)
 	}
-	g.pf("\n")
+	g.pf("%s", exBlock(items))
 }
 
-func (g *gen) emitCookAccessor(st *ir.Struct, fl ir.FieldLayout) {
+// cookAccessors renders one field's accessors, each one expression (with the
+// comment that leads it) for exBlock to separate the formatter's way.
+func (g *gen) cookAccessors(st *ir.Struct, fl ir.FieldLayout) []string {
 	f := fl.Field
 	lo := ir.RustSnake(st.Name)
 	pieces := ir.BlockFieldPieceOffsets(g.unit, f, fl.Offset, false)
 	switch {
 	case f.Type.Pointer:
-		g.pf("  # a REFERENCE: the eight-byte signed self-relative delta of §6.3, and\n")
-		g.pf("  # NULL IS ZERO. :error is a delta that resolves past the region.\n")
-		g.pf("  def %s_node_%s(region, node), do: C.deref(region, node + %d)\n", lo, f.Name, fl.Offset)
+		return []string{"  # a REFERENCE: the eight-byte signed self-relative delta of §6.3, and\n" +
+			"  # NULL IS ZERO. :error is a delta that resolves past the region.\n" +
+			exDefDo("  ", fmt.Sprintf("def %s_node_%s(region, node)", lo, f.Name),
+				fmt.Sprintf("C.deref(region, node + %s)", exInt(fl.Offset)))}
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		used := pieces[len(pieces)-1].Offset
-		if !f.Type.Optional {
-			used = pieces[1].Offset
-		}
-		g.pf("  def %s_node_%s(region, node), do: C.text(region, node + %d, C.i32(region, node + %d))\n",
-			lo, f.Name, fl.Offset, used)
+		used := pieces[1].Offset
+		return []string{exDefDo("  ", fmt.Sprintf("def %s_node_%s(region, node)", lo, f.Name),
+			fmt.Sprintf("C.text(region, node + %s, C.i32(region, node + %s))", exInt(fl.Offset), exInt(used)))}
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone:
+		var out []string
 		size := elementSizeOf(g.unit, f)
 		if f.Array == ir.ArrayCounted && f.KeyEnum == "" {
-			g.pf("  def %s_node_%s_count(region, node), do: C.i32(region, node + %d)\n",
-				lo, f.Name, pieces[1].Offset)
+			out = append(out, exDefDo("  ", fmt.Sprintf("def %s_node_%s_count(region, node)", lo, f.Name),
+				fmt.Sprintf("C.i32(region, node + %s)", exInt(pieces[1].Offset))))
 		}
-		g.pf("  def %s_node_%s(%s, node) do\n", lo, f.Name, regionParam(f))
-		g.pf("    Enum.map(0..%d//1, fn i -> %s end)\n", f.ArrayBound-1,
-			g.cookReadAt(f, fmt.Sprintf("node + %d + i * %d", fl.Offset, size), size))
-		g.pf("  end\n")
+		out = append(out, fmt.Sprintf("  def %s_node_%s(%s, node) do\n", lo, f.Name, regionParam(f))+
+			fmt.Sprintf("    Enum.map(0..%s//1, fn i -> %s end)\n", exInt(f.ArrayBound-1),
+				g.cookReadAt(f, fmt.Sprintf("node + %s + i * %s", exInt(fl.Offset), exInt(size)), size))+
+			"  end\n")
+		return out
 	default:
+		var out []string
 		size := elementSizeOf(g.unit, f)
 		if f.Type.Optional {
-			g.pf("  def %s_node_%s_present?(region, node), do: C.bool(region, node + %d)\n",
-				lo, f.Name, pieces[len(pieces)-1].Offset)
+			out = append(out, exDefDo("  ", fmt.Sprintf("def %s_node_%s_present?(region, node)", lo, f.Name),
+				fmt.Sprintf("C.bool(region, node + %s)", exInt(pieces[len(pieces)-1].Offset))))
 		}
-		g.pf("  def %s_node_%s(%s, node), do: %s\n", lo, f.Name, regionParam(f),
-			g.cookReadAt(f, fmt.Sprintf("node + %d", fl.Offset), size))
+		out = append(out, exDefDo("  ", fmt.Sprintf("def %s_node_%s(%s, node)", lo, f.Name, regionParam(f)),
+			g.cookReadAt(f, fmt.Sprintf("node + %s", exInt(fl.Offset)), size)))
+		return out
 	}
 }
 

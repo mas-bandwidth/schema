@@ -3,5 +3,5 @@ package cscollections1
 table Row
 {
     values []uint8 | min = 0, max = 0
-    after uint8
+    past uint8 | was = "after"
 }

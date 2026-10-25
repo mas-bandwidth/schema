@@ -42,6 +42,15 @@
 // --quick: 3 measured runs instead of 7 — run.sh's iteration instrument,
 // never the certification instrument. bench_mixed is the whole leg either
 // way.
+//
+// --read-only: THE READ ARM's packet comparand (BENCH-STANDARD.md §1.10 item
+// 21, bench/paired/README.md "The plan-read arm"). The invocation replaces
+// its clocked rows with ONE measured row, `bench_mixed_read` / `read`: the
+// packet wire's read of the same sixty-four logical records timed ALONE,
+// after the same golden gate. It is the identity lane's comparand
+// (bench/tables/java/TableMain.java --read-arm) and is NEVER folded into the
+// published gen / bench_mixed series: without the flag this runner's rows,
+// their iteration counts and the derived read on stderr do not move.
 
 import bench.Bench;
 
@@ -54,6 +63,7 @@ public final class Main {
 
     static boolean csv = false;
     static boolean quick = false;
+    static boolean readOnly = false;
     static int numRuns = 7;
 
     static double now() {
@@ -306,6 +316,23 @@ public final class Main {
         return now() - start;
     }
 
+    // READ, MEASURED (--read-only only): decode a variant buffer and nothing
+    // else — exactly the read half of the round trip above, the same 64
+    // rotating variants, the same reused destination. The destination is a
+    // static the JIT cannot prove unread, so every store of the decode is
+    // observable, and the verdict drains into the sink besides.
+    static double timeMixedRead(int iters) {
+        final int numBits = mixedBytes * 8;
+        final double start = now();
+        for (int i = 0; i < iters; i++) {
+            if (!Bench.readBenchMixed(mixedDecoded, mixedVariants[i & (NUM_VARIANTS - 1)], numBits)) {
+                System.exit(1);
+            }
+            sink++;
+        }
+        return now() - start;
+    }
+
     /* ----------------------------------------------------------------------
        the run scaffold: per (bench, path), 1 discarded warmup run — the C2
        warmup, tens of millions of iterations — then numRuns measured runs.
@@ -355,6 +382,7 @@ public final class Main {
             switch (args[i]) {
                 case "--csv" -> csv = true;
                 case "--quick" -> quick = true;
+                case "--read-only" -> readOnly = true;
                 case "--round" -> {
                     if (i + 1 >= args.length) {
                         System.err.println("--round takes a round number");
@@ -364,7 +392,7 @@ public final class Main {
                     numRuns = 1;
                 }
                 default -> {
-                    System.err.println("usage: Main [--csv] [--round K] [--quick]");
+                    System.err.println("usage: Main [--csv] [--round K] [--quick] [--read-only]");
                     System.exit(1);
                 }
             }
@@ -374,15 +402,20 @@ public final class Main {
         }
 
         System.err.println("schema bench (java, generated codecs"
+                + (readOnly ? ", --read-only: the packet wire's read, measured" : "")
                 + (quick ? ", --quick: iteration instrument, not certification" : "") + ")");
 
         // the measured row's golden gate runs before it is timed: a runner
         // that fails its goldens reports nothing at all (§1.5). bench_mixed is
         // the whole leg — --quick differs only in the number of measured runs.
         gateMixed();
-        benchLeg("bench_mixed", "write", MIXED_ITERS, mixedBytes, Main::timeMixedWrite);
-        benchLeg("bench_mixed", "round_trip", MIXED_ITERS, mixedBytes, Main::timeMixedRoundTrip);
-        reportDerivedRead("bench_mixed");
+        if (readOnly) {
+            benchLeg("bench_mixed_read", "read", MIXED_ITERS, mixedBytes, Main::timeMixedRead);
+        } else {
+            benchLeg("bench_mixed", "write", MIXED_ITERS, mixedBytes, Main::timeMixedWrite);
+            benchLeg("bench_mixed", "round_trip", MIXED_ITERS, mixedBytes, Main::timeMixedRoundTrip);
+            reportDerivedRead("bench_mixed");
+        }
 
         flushCsv();
         System.err.println("OK (corpus_id " + corpusId() + ")");

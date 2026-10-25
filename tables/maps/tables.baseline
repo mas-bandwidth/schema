@@ -55,31 +55,31 @@ table 816c207ba6213983.14e2eaab9cde925b
 
 table Cells
     field rows id=0xa3a7061ff10a8138 kind=14 elem=13 array=map keykind=12 keybound=8
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Chunks
     field blobs id=0x14e2eaab9cde925b kind=14 elem=13 array=map keykind=4
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Crews
     field members id=0x79d594675e391090 kind=14 elem=13 array=map keykind=8
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Depth
     field one id=0x1a08aa1921ca5caf kind=13 type=Squad
     field many id=0x1f6459a2cea1fc02 kind=14 elem=13 type=Squad array=bounded bound=3
     field keyed id=0x70551ff29550f15d kind=16 elem=13 type=Squad array=keyed bound=2 key=Slot
     field arm id=0xe756c0190570ccb5 kind=15 union=Force
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Docs
     field pages id=0xab01daa76a48769f kind=14 elem=13 array=map keykind=12 keybound=8
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table EdgeRow
     field names id=0xafb728fff268814f kind=14 elem=13 array=map keykind=12 keybound=300
     field ids id=0x2b7dea192bb7be29 kind=14 elem=13 array=map keykind=9
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Fleet
     field ships id=0x294a5c4913e1ad44 kind=14 elem=13 array=map keykind=12 keybound=32
@@ -93,15 +93,15 @@ table Item
 
 table Pairs
     field slots id=0xe68c2e6bb1ee5646 kind=14 elem=13 array=map keykind=8
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Row
     field entries id=0xc5b2a72c0845a253 kind=14 elem=13 array=map keykind=12 keybound=8
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Runs
     field spans id=0x437dfc8ab2566816 kind=14 elem=13 array=map keykind=7
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table ShipConfig
     field name id=0xc4bcadba8e631b86 kind=12 size=64
@@ -109,11 +109,11 @@ table ShipConfig
 
 table Slots
     field seats id=0x7f6548303072b061 kind=14 elem=13 array=map keykind=4
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Spans
     field tracks id=0x755332609c470fbd kind=14 elem=13 array=map keykind=6
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Squad
     field roster id=0x1c84390d304f4f42 kind=14 elem=13 array=map keykind=6
@@ -122,15 +122,15 @@ table Text
     field names id=0xafb728fff268814f kind=14 elem=13 array=map keykind=12 keybound=8
     field wide id=0xa633f1f655715cca kind=14 elem=13 array=map keykind=7
     field blobs id=0x14e2eaab9cde925b kind=14 elem=13 array=map keykind=4
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table Trails
     field steps id=0x124250ad5a5b6d14 kind=14 elem=13 array=map keykind=8
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table WideRow
     field entries id=0xc5b2a72c0845a253 kind=14 elem=13 array=map keykind=8
-    field after id=0xbf82010f6f71eae9 kind=4
+    field past id=0xbf82010f6f71eae9 kind=4 was=after
 
 table a013e119fec906fb.c5b2a72c0845a253
     field key id=0x3dc94a19365b10ec kind=12 size=8
@@ -197,3 +197,19 @@ union Force
 
 ### 2026-09-07 (UTC) — Pairs, Crews and Trails: one map per value kind whose element is a pointer (#666)
 - no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-10-21 (UTC) — schema#reserved-words: fields renamed off every supported language's reserved words (SPEC §4.6, Glenn 2026-10-21) under was =, so the wire ids hold; the JSON keys follow the new names
+- Cells.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Chunks.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Crews.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Depth.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Docs.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- EdgeRow.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Pairs.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Row.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Runs.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Slots.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Spans.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Text.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- Trails.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+- WideRow.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]

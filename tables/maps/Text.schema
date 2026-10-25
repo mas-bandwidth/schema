@@ -11,5 +11,5 @@ table Text
     names map[string(8)]string(16) // kind 12 under a string key
     wide  map[uint16]wstring(6) // kind 33, the value kind that is never a key
     blobs map[int32]bytes(10) // a byte buffer by value, under a signed key
-    after int32
+    past int32 | was = "after"
 }

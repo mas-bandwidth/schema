@@ -47,7 +47,7 @@ fixed table T
 // t06Has is a required substring of an emitted source, named by rule.
 func t06Has(t *testing.T, src, want, what string) {
 	t.Helper()
-	if !strings.Contains(src, want) {
+	if !javaCarries(src, want) {
 		t.Errorf("%s: the emitted source does not carry %q", what, want)
 	}
 }

@@ -1,25 +1,39 @@
 // Cards.cs — the C# owning facade for a typed work card (docs/SPEC-TABLES.md
-// §2). It is the C# spelling of the Go facade tables/cards/cards.go, parse.go
-// and render.go: a Record that keeps its own defensive copy of the wire,
-// checked writes that refuse before publishing, the two customer ceilings the
-// schema deliberately leaves unbounded (§2.5, §2.9), and the brief text parsed
-// once and rendered many times. The generated Card codec (Schema.CardLoad,
-// Schema.CardSave, Schema.CardFromJson, Schema.CardToJson) answers the wire
-// and text forms; this facade is the thin owning layer a customer imports.
+// §2). It is the C# spelling of the Go facade tables/cards/cards.go, parse.go,
+// render.go, upgrade.go and edit.go: a Record that keeps its own defensive
+// copy of the wire, checked writes that refuse before publishing, the two
+// customer ceilings the schema deliberately leaves unbounded (§2.5, §2.9),
+// the brief text parsed once and rendered many times, the retained upgrade
+// through the generated retaining region path (§6.6), and the task hash with
+// the atomic field edits that leave it alone. The generated Card codec
+// (Schema.CardLoad, Schema.CardSave, Schema.CardFromJson, Schema.CardToJson,
+// Schema.CardLoadRetain, Schema.CardSaveRetain) answers the wire and text
+// forms; this facade is the thin owning layer a customer imports.
 //
 // The Go facade's calls, in C#'s own spelling:
 //   Load(wire)          -> Record.Load(byte[]) (plus an out TableReport)
+//   ReadStrict(wire)    -> Record.ReadStrict(byte[])
 //   FromJSON(text)      -> Record.FromJson(byte[])
 //   ToJSON(record)      -> record.ToJson()
 //   (r *Record) Wire()  -> record.Wire()
 //   Parse(text)         -> Record.Parse(byte[])
 //   Render(record)      -> record.Render()
+//   Upgrade(wire)       -> Record.Upgrade(byte[]) (plus an out TableReport)
+//   TaskHash(record)    -> Record.TaskHash(record)
+//   SetNeeds(r, v)      -> record.SetNeeds(string[])
+//   SetPaths(r, v)      -> record.SetPaths(string[])
+//   SetTier(r, v)       -> record.SetTier(Tier)
+//   SetPriority(r, v)   -> record.SetPriority(Priority)
+//   SetColumn(r, v)     -> record.SetColumn(Column)
+//   SetHolder(r, v)     -> record.SetHolder(string)
 // A Go error is a thrown CardException here; a Go Report rides on the Record.
 
 using System;
 using System.Text;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
 namespace Cards
@@ -51,9 +65,21 @@ namespace Cards
         // tables/cards/cards.go: MaxListEntries).
         public const int MaxListEntries = 512;
 
-        private readonly byte[] _wire;
-        private readonly Card _card;
-        private readonly TableReport _report;
+        // MaxRetainBytes is the customer ceiling on the retained-record byte
+        // store; it caps extra retention memory for a card with a 64-KiB body
+        // and bounded collections, never grows on demand, and is not a promise
+        // that arbitrary wire fits (docs/SPEC-TABLES.md §6.6;
+        // tables/cards/upgrade.go: MaxRetainBytes).
+        public const int MaxRetainBytes = 1 << 20;
+
+        // MaxRetainIds is the customer ceiling on the retained-id entry store,
+        // the caller-owned id list §6.6 keeps inside TableRetain
+        // (tables/cards/upgrade.go: MaxRetainIDs).
+        public const int MaxRetainIds = 4096;
+
+        private byte[] _wire;
+        private Card _card;
+        private TableReport _report;
 
         private Record(byte[] wire, Card card, TableReport report)
         {
@@ -65,6 +91,13 @@ namespace Cards
         // Report is the tolerant read report the load filled (the generated
         // TableReport, docs/SPEC-TABLES.md §16).
         public TableReport Report => _report;
+
+        // Root is the package-private loaded card, the seam the Go facade's
+        // in-package tests reach as record.root and this leg's tests and
+        // driver reach as InternalsVisibleTo friends. No shallow copy
+        // escapes: the Card stays owned by the Record (docs/SPEC-TABLES.md
+        // §6.2).
+        internal Card Root => _card;
 
         // Wire returns a defensive copy of the record's wire bytes
         // (tables/cards/cards.go: (*Record).Wire).
@@ -98,6 +131,470 @@ namespace Cards
             var copy = new byte[wire.Length];
             Array.Copy(wire, copy, wire.Length);
             return new Record(copy, card, report);
+        }
+
+        // ReadStrict reads wire and refuses any data the current declaration
+        // cannot support: Unknown, KindMismatch, Clamped, Malformed and every
+        // load failure (docs/SPEC-TABLES.md §4: wire tolerance;
+        // tables/cards/upgrade.go: ReadStrict). A safe Widened event does not
+        // refuse. It returns no usable Record on rejection: the refusal is a
+        // thrown CardException and no bytes are published.
+        public static Record ReadStrict(byte[] wire)
+        {
+            TableReport report;
+            Record record = Load(wire, out report);
+            if (report.Unknown > 0)
+            {
+                throw new CardException("cards: strict: " + report.Unknown
+                    + " unknown field(s), unsupported data");
+            }
+            if (report.KindMismatch > 0)
+            {
+                throw new CardException("cards: strict: " + report.KindMismatch
+                    + " kind mismatch(es), unsupported data");
+            }
+            if (report.Clamped > 0)
+            {
+                throw new CardException("cards: strict: " + report.Clamped
+                    + " clamped value(s), unsupported data");
+            }
+            if (report.Malformed)
+            {
+                throw new CardException("cards: strict: malformed wire, unsupported data");
+            }
+            return record;
+        }
+
+        // ---- the retained upgrade (tables/cards/upgrade.go) ----
+
+        // Upgrade rewrites wire through the generated retaining region path so
+        // that every field the current declaration cannot name is preserved,
+        // byte for byte, at the end of its own body (docs/SPEC-TABLES.md §6.6;
+        // tables/cards/upgrade.go: Upgrade). One report accumulates across the
+        // retained load and the retained save; the known-field bounds are
+        // checked before anything is published; and it returns no output,
+        // throwing a named CardException, when any value would be lost —
+        // RetainLost, KindMismatch, Clamped or Malformed — or when the wire is
+        // refused. The input wire is never mutated and no replacement occurs
+        // on error, and the result is idempotent: upgrading an already-upgraded
+        // wire is byte-for-byte the same.
+        //
+        // The checked abstraction of this contract is tla/CardVersioning.tla:
+        // one atomic retained round trip — retained decode, the accumulated
+        // loss-report check, retained encode, then publish or refuse — holding
+        // NoFieldLost, BodyUnchanged, RefusalKeepsOriginal and
+        // ShippedUpgradeSucceeds. Loss reported by SAVE is checked before
+        // publishing too.
+        public static byte[] Upgrade(byte[] wire)
+        {
+            return UpgradeSeam(wire, MaxRetainBytes, MaxRetainIds, out _);
+        }
+
+        // Upgrade with the accumulated report, the spelling the conformance
+        // driver writes as X.report (tables/cards/upgrade.go: Upgrade).
+        public static byte[] Upgrade(byte[] wire, out TableReport report)
+        {
+            return UpgradeSeam(wire, MaxRetainBytes, MaxRetainIds, out report);
+        }
+
+        // UpgradeSeam is the package-private retention seam: Upgrade fixes the
+        // two customer capacities, and the refusal probes drive smaller
+        // caller-owned storage through the same path so a tiny capacity can be
+        // shown to name RetainLost and return no output while the input is
+        // preserved (tables/cards/upgrade.go: upgrade). The negative control's
+        // test-only switch drives it with no id storage at all, dropping every
+        // retained field.
+        internal static unsafe byte[] UpgradeSeam(byte[] wire, long retainBytes, int retainIds, out TableReport report)
+        {
+            report = new TableReport();
+            if (retainBytes < 0 || retainIds < 0)
+            {
+                throw new CardException("cards: upgrade: negative retention capacity");
+            }
+            long n = Schema.CardLoadMeasure(wire);
+            if (n < 0)
+            {
+                Schema.CardLoadMeasure(wire, out TableRefuseReason reason);
+                byte* scratch = stackalloc byte[64];
+                Schema.CardLoad((IntPtr)scratch, 64, wire, report);
+                throw new CardException("cards: upgrade: wire is not a card: " + reason);
+            }
+            if (n > int.MaxValue - 64)
+            {
+                throw new CardException("cards: upgrade: measured region " + n + " overflows the host");
+            }
+            long rounded = (n + 63) & ~63L;
+            byte* region = (byte*)NativeMemory.AlignedAlloc((nuint)rounded, 64);
+            byte* store = (byte*)NativeMemory.Alloc((nuint)Math.Max(retainBytes, 1));
+            TableRetain.Id* ids = (TableRetain.Id*)NativeMemory.Alloc((nuint)(Math.Max(retainIds, 1) * sizeof(TableRetain.Id)));
+            try
+            {
+                TableRetain retain = new TableRetain
+                {
+                    Bytes = store,
+                    Capacity = retainBytes,
+                    Ids = ids,
+                    IdCapacity = retainIds,
+                };
+                CardRow* root = Schema.CardLoadRetain((IntPtr)region, n, wire, ref retain, report);
+                if (root == null)
+                {
+                    throw new CardException("cards: upgrade: wire is malformed");
+                }
+                // checkCard, on the same known fields the Go facade checks
+                // through the region root: the customer bounds and
+                // well-formedness, enforced before anything is published
+                // (docs/SPEC-TABLES.md §2.5, §2.9; tables/cards/cards.go:
+                // checkCard). The managed reload carries the same known
+                // values this backend's owning facade reads.
+                var known = new Card();
+                Schema.CardLoad(known, wire, new TableReport());
+                CheckCard(known);
+                long size = Schema.CardMeasureRetain((IntPtr)region, ref retain);
+                if (size < 0)
+                {
+                    throw new CardException("cards: upgrade: measure refused the retained card");
+                }
+                if (size > int.MaxValue)
+                {
+                    throw new CardException("cards: upgrade: measured output " + size + " overflows the host");
+                }
+                var output = new byte[size];
+                if (Schema.CardSaveRetain((IntPtr)region, ref retain, output, report) != size)
+                {
+                    throw new CardException("cards: upgrade: save did not fill the measured wire");
+                }
+                LossErr(report);
+                return output;
+            }
+            finally
+            {
+                NativeMemory.AlignedFree(region);
+                NativeMemory.Free(store);
+                NativeMemory.Free(ids);
+            }
+        }
+
+        // LossErr names the report events that make a rewrite unsafe
+        // (docs/SPEC-TABLES.md §6.6; tables/cards/upgrade.go: lossErr): any
+        // retained field that could not be kept, any kind mismatch, any
+        // clamped value, or framing damage. Unknown, Retained and Widened
+        // alone are not loss (§4).
+        internal static void LossErr(TableReport report)
+        {
+            if (report.RetainLost > 0)
+            {
+                throw new CardException("cards: upgrade: " + report.RetainLost
+                    + " retained field(s) lost, refusing to replace");
+            }
+            if (report.KindMismatch > 0)
+            {
+                throw new CardException("cards: upgrade: " + report.KindMismatch
+                    + " kind mismatch(es), refusing to replace");
+            }
+            if (report.Clamped > 0)
+            {
+                throw new CardException("cards: upgrade: " + report.Clamped
+                    + " clamped value(s), refusing to replace");
+            }
+            if (report.Malformed)
+            {
+                throw new CardException("cards: upgrade: malformed wire, refusing to replace");
+            }
+        }
+
+        // RefuseLossy names the read events that make a record unsafe to hash
+        // or rewrite: a silent loss means the "task" the hash would cover is
+        // incomplete, and an ordinary rewrite cannot carry unknown fields —
+        // tla/CardHops.tla's reversed witness EditDropsUnknown is the fault
+        // this refusal keeps from happening (docs/SPEC-TABLES.md §4: wire
+        // tolerance; §6.6: retain-unknown; tables/cards/edit.go: refuseLossy).
+        internal static void RefuseLossy(TableReport rep)
+        {
+            if (rep.Unknown > 0 || rep.KindMismatch > 0 || rep.Clamped > 0 || rep.RetainLost > 0 || rep.Malformed)
+            {
+                throw new CardException("cards: record has loss events (unknown=" + rep.Unknown
+                    + " kindMismatch=" + rep.KindMismatch + " clamped=" + rep.Clamped
+                    + " retainLost=" + rep.RetainLost + " malformed=" + rep.Malformed
+                    + "): refused, never hashed or rewritten");
+            }
+        }
+
+        // ---- the task hash and the atomic field edits (tables/cards/edit.go) ----
+
+        // TaskHash returns the SHA-256 digest of a record's TASK, the fields a
+        // human's memory of a card is made of: body, paths, new, shared, test
+        // and done, in that order. Everything else — identity/coordination,
+        // needs/tier/priority, machine fields — is deliberately excluded, so a
+        // change to any of those leaves the digest untouched
+        // (tla/CardHops.tla: TaskHashStable). The digest is framed: each text
+        // is an unsigned 64-bit little-endian byte length followed by its
+        // exact bytes, and each list is an unsigned 64-bit little-endian entry
+        // count followed by its length-prefixed elements, so field and element
+        // boundaries cannot collide (docs/SPEC-TABLES.md §5; tables/cards/
+        // edit.go: TaskHash). A null or lossy record (unknown or mismatched
+        // fields, clamped values, retain loss, malformed) is refused with an
+        // error and never hashed into an apparently valid digest.
+        public static byte[] TaskHash(Record record)
+        {
+            return TaskHash(record, false);
+        }
+
+        // TaskHash with the negative control's seam: withNeeds folds the needs
+        // list into the frame, which the real frame excludes, so a switch that
+        // turns it on changes every digest and the taskhash surface alone goes
+        // red. It is the package-private fault the Go facade refuses by
+        // construction (tables/cards/edit.go: TaskHash's excluded fields).
+        internal static byte[] TaskHash(Record record, bool withNeeds)
+        {
+            if (record == null || record._card == null)
+            {
+                throw new CardException("cards: nil record");
+            }
+            RefuseLossy(record._report);
+            Card root = record._card;
+            using (var sha = SHA256.Create())
+            {
+                HashText(sha, root.Body != null && root.Body.Data != null ? root.Body.Data : EmptyBytes);
+                HashPathList(sha, root.Paths, root.PathsCount, "paths");
+                HashPathList(sha, root.New, root.NewCount, "_new");
+                HashPathList(sha, root.Shared, root.SharedCount, "shared");
+                HashText(sha, UsedBytes(root.Test, root.TestLength));
+                HashText(sha, root.Done != null && root.Done.Data != null ? root.Done.Data : EmptyBytes);
+                if (withNeeds)
+                {
+                    HashIdList(sha, root.Needs, root.NeedsCount);
+                }
+                sha.TransformFinalBlock(EmptyBytes, 0, 0);
+                return (byte[])sha.Hash.Clone();
+            }
+        }
+
+        private static readonly byte[] EmptyBytes = new byte[0];
+
+        // HashText frames one text: its unsigned 64-bit little-endian byte
+        // length then its exact bytes (tables/cards/edit.go: hashText).
+        private static void HashText(SHA256 sha, byte[] text)
+        {
+            byte[] len = new byte[8];
+            BitConverter.GetBytes((long)text.Length).CopyTo(len, 0);
+            sha.TransformBlock(len, 0, 8, null, 0);
+            if (text.Length > 0)
+            {
+                sha.TransformBlock(text, 0, text.Length, null, 0);
+            }
+        }
+
+        // HashPathList frames one paths-shaped list: its unsigned 64-bit
+        // little-endian entry count then each length-prefixed element
+        // (tables/cards/edit.go: hashPathList).
+        private static void HashPathList(SHA256 sha, PathText[] list, int count, string name)
+        {
+            if (count < 0)
+            {
+                throw new CardException("cards: " + name + " list is malformed");
+            }
+            byte[] len = new byte[8];
+            BitConverter.GetBytes((long)count).CopyTo(len, 0);
+            sha.TransformBlock(len, 0, 8, null, 0);
+            for (int i = 0; i < count && i < list.Length; i++)
+            {
+                HashText(sha, UsedBytes(list[i].S, list[i].SLength));
+            }
+        }
+
+        // HashIdList frames the needs list the same way
+        // (tables/cards/edit.go: hashPathList's shape over CardID rows).
+        private static void HashIdList(SHA256 sha, CardID[] list, int count)
+        {
+            if (count < 0)
+            {
+                throw new CardException("cards: needs list is malformed");
+            }
+            byte[] len = new byte[8];
+            BitConverter.GetBytes((long)count).CopyTo(len, 0);
+            sha.TransformBlock(len, 0, 8, null, 0);
+            for (int i = 0; i < count && i < list.Length; i++)
+            {
+                HashText(sha, UsedBytes(list[i].S, list[i].SLength));
+            }
+        }
+
+        // UsedBytes reads a generated string(N) buffer's used bytes
+        // (tables/cards/edit.go: rootTestBytes's length clamp).
+        internal static byte[] UsedBytes(byte[] buf, int length)
+        {
+            if (length < 0) length = 0;
+            if (length > buf.Length) length = buf.Length;
+            var outBytes = new byte[length];
+            Array.Copy(buf, outBytes, length);
+            return outBytes;
+        }
+
+        // SetNeeds replaces the record's needs list atomically (docs/
+        // SPEC-TABLES.md §2.9, §6.2; tables/cards/edit.go: SetNeeds). The
+        // incoming values are validated first — each element well formed,
+        // within its 64-byte string bound, no NUL, and the list within the
+        // shared 512-entry ceiling — and only a fully validated, independently
+        // built and successfully serialized replacement is published; on any
+        // refusal the original wire is preserved byte for byte.
+        public void SetNeeds(string[] needs)
+        {
+            ValidateStrings("needs", needs, 64);
+            if (needs.Length > MaxListEntries)
+            {
+                throw new CardException("cards: needs has " + needs.Length
+                    + " entries, past the " + MaxListEntries + "-entry ceiling (docs/SPEC-TABLES.md §2.9)");
+            }
+            Edit(root =>
+            {
+                root.Needs = new CardID[needs.Length];
+                for (int i = 0; i < needs.Length; i++)
+                {
+                    root.Needs[i] = new CardID();
+                    root.Needs[i].SLength = SetFixed(root.Needs[i].S, needs[i]);
+                }
+                root.NeedsCount = needs.Length;
+            });
+        }
+
+        // SetPaths replaces the record's paths list atomically, each element
+        // within its 192-byte bound (docs/SPEC-TABLES.md §2.9;
+        // tables/cards/edit.go: SetPaths).
+        public void SetPaths(string[] paths)
+        {
+            ValidateStrings("paths", paths, 192);
+            if (paths.Length > MaxListEntries)
+            {
+                throw new CardException("cards: paths has " + paths.Length
+                    + " entries, past the " + MaxListEntries + "-entry ceiling (docs/SPEC-TABLES.md §2.9)");
+            }
+            Edit(root =>
+            {
+                root.Paths = new PathText[paths.Length];
+                for (int i = 0; i < paths.Length; i++)
+                {
+                    root.Paths[i] = new PathText();
+                    root.Paths[i].SLength = SetFixed(root.Paths[i].S, paths[i]);
+                }
+                root.PathsCount = paths.Length;
+            });
+        }
+
+        // SetTier changes a record's tier atomically; only a declared variant
+        // is accepted — the vocabulary bounds the value (docs/SPEC-TABLES.md
+        // §8; tables/cards/edit.go: SetTier).
+        public void SetTier(Tier tier)
+        {
+            if ((byte)tier > (byte)Tier.Max)
+            {
+                throw new CardException("cards: tier " + (byte)tier
+                    + " is not a declared variant (docs/SPEC-TABLES.md §8)");
+            }
+            Edit(root => { root.Tier = tier; });
+        }
+
+        // SetPriority changes a record's priority atomically; only a declared
+        // variant is accepted (docs/SPEC-TABLES.md §8; tables/cards/edit.go:
+        // SetPriority).
+        public void SetPriority(Priority priority)
+        {
+            if ((byte)priority > (byte)Priority.Max)
+            {
+                throw new CardException("cards: priority " + (byte)priority
+                    + " is not a declared variant (docs/SPEC-TABLES.md §8)");
+            }
+            Edit(root => { root.Priority = priority; });
+        }
+
+        // SetColumn changes a record's column atomically; only a declared
+        // variant is accepted (docs/SPEC-TABLES.md §8; tables/cards/edit.go:
+        // SetColumn).
+        public void SetColumn(Column column)
+        {
+            if ((byte)column > (byte)Column.Max)
+            {
+                throw new CardException("cards: column " + (byte)column
+                    + " is not a declared variant (docs/SPEC-TABLES.md §8)");
+            }
+            Edit(root => { root.Column = column; });
+        }
+
+        // SetHolder changes a record's holder atomically; the value must be
+        // well formed and within its declared 32-byte bound (docs/
+        // SPEC-TABLES.md §6.1; tables/cards/edit.go: SetHolder).
+        public void SetHolder(string holder)
+        {
+            ValidateStrings("holder", new[] { holder }, 32);
+            Edit(root => { root.HolderLength = SetFixed(root.Holder, holder); });
+        }
+
+        // ValidateStrings applies the shared element policy: well-formed
+        // UTF-8 without NUL and within the declared string bound
+        // (docs/SPEC-TABLES.md §6.1; tables/cards/edit.go: validateStrings).
+        private static void ValidateStrings(string name, string[] values, int bound)
+        {
+            foreach (string s in values)
+            {
+                int n;
+                try
+                {
+                    n = StrictUtf8.GetByteCount(s);
+                }
+                catch (EncoderFallbackException)
+                {
+                    throw new CardException("cards: " + name
+                        + " has an element that is not well-formed UTF-8 without NUL");
+                }
+                if (n > bound)
+                {
+                    throw new CardException("cards: " + name + " element is " + n
+                        + " bytes, past its " + bound + "-byte bound");
+                }
+                if (s.IndexOf('\0') >= 0)
+                {
+                    throw new CardException("cards: " + name
+                        + " has an element that is not well-formed UTF-8 without NUL");
+                }
+            }
+        }
+
+        // Edit is the shared atomic rewrite (docs/SPEC-TABLES.md §6.2;
+        // tables/cards/edit.go: edit): check the current record is safe —
+        // RefuseLossy, the EditDropsUnknown refusal — reload the wire into a
+        // fresh independent card, apply the mutation, validate the whole
+        // rebuilt card through the checked write, measure and save it, and
+        // only on complete success swap the record's owned wire and card. Any
+        // refusal leaves the original wire untouched.
+        private void Edit(Action<Card> mutate)
+        {
+            if (_card == null)
+            {
+                throw new CardException("cards: nil record");
+            }
+            RefuseLossy(_report);
+            var rebuilt = new Card();
+            var rep = new TableReport();
+            if (!Schema.CardLoad(rebuilt, _wire, rep))
+            {
+                throw new CardException("cards: reload into builder failed");
+            }
+            RefuseLossy(rep);
+            mutate(rebuilt);
+            CheckCard(rebuilt);
+            long size = Schema.CardMeasure(rebuilt);
+            if (size < 0)
+            {
+                throw new CardException("cards: measure refused rebuilt card");
+            }
+            var wire = new byte[size];
+            if (Schema.CardSave(rebuilt, wire) != size)
+            {
+                throw new CardException("cards: save did not fill the measured wire");
+            }
+            _wire = wire;
+            _card = rebuilt;
+            _report = rep;
         }
 
         // FromJson builds a Record from JSON text through the generated text

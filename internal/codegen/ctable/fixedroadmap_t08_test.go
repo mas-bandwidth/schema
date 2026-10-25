@@ -33,6 +33,7 @@ import (
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -667,9 +668,19 @@ func cT08GuardChain(t *testing.T) {
 		edgePath += ".as.a"
 	}
 	fmt.Fprintf(&edgeSet, "    %s.x = 42;", edgePath)
-	cT08Probe(t, cT08UnionChainSchema(edge), "Root", cT08ChainProbe(edgeSet.String(),
-		"back"+strings.TrimPrefix(edgePath, "value")+".x", "back.u.type", "back.u.as.a.type", edgeLinks[0].Guard, edgeLinks[1].Guard),
-		"-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g")
+	// THE EDGE PROBE IS THE SLOW TIER. The chain above is built and checked in
+	// the IR on every run; compiling it is not cheap: the edge chain's
+	// generated header is about 17 MB, and the sanitized -O2 compile of it was
+	// 18.7 s of this row's 22 s on the studio (2026-10-22) and minutes on a
+	// two-core runner. The three-union and 31-deep probes above stay in the
+	// default run; this one runs wherever SCHEMA_SLOW=1 (ci-full's go-test
+	// lanes, the nightly and the make leg gates), so no check is lost.
+	t.Run("edge-probe", func(t *testing.T) {
+		slowtest.Gate(t, "the C compiler with ASan and UBSan (a 17 MB generated header at the chain's edge)")
+		cT08Probe(t, cT08UnionChainSchema(edge), "Root", cT08ChainProbe(edgeSet.String(),
+			"back"+strings.TrimPrefix(edgePath, "value")+".x", "back.u.type", "back.u.as.a.type", edgeLinks[0].Guard, edgeLinks[1].Guard),
+			"-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g")
+	})
 
 	past := unitFrom(t, cT08DeepUnionSchema(deepest+1))
 	if ir.TableFixedWithinDepth(past.Tables["Root"]) {

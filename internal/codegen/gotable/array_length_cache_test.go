@@ -77,13 +77,13 @@ union Choice { small [..3]Child
 fixed table Root { direct [2]Child
  choice Choice
  choices [..2]Choice
- after [3]Child }
+ past [3]Child }
 `, `package probe
 import("bytes";"testing")
 func TestNestedScratch(t *testing.T) {
  texts:=[]string{
   "{}",
-  "{\"direct\":[{\"leaves\":[{\"n\":1},{\"n\":2}]},{}],\"choice\":{\"large\":[{},{\"leaves\":[{\"n\":3}]}]},\"choices\":[{\"small\":[{\"leaves\":[{\"n\":4}]}]},{\"large\":[{},{},{\"leaves\":[{\"n\":5},{\"n\":6}]}]}],\"after\":[{},{\"leaves\":[{\"n\":7}]},{}]}",
+  "{\"direct\":[{\"leaves\":[{\"n\":1},{\"n\":2}]},{}],\"choice\":{\"large\":[{},{\"leaves\":[{\"n\":3}]}]},\"choices\":[{\"small\":[{\"leaves\":[{\"n\":4}]}]},{\"large\":[{},{},{\"leaves\":[{\"n\":5},{\"n\":6}]}]}],\"past\":[{},{\"leaves\":[{\"n\":7}]},{}]}",
   "{\"choice\":{\"small\":[]},\"choices\":[{\"large\":[]},{\"small\":[{},{}]}]}",
  }
  var loaded Root

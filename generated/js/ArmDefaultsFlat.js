@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0xeb26c970fde3fd71
 //
 // THE FLAT TIER — the shipped JavaScript wire path: a single-word 32-bit
 // bitpacker inlined at every field (byte-identical wire to serialize.js),
@@ -22,11 +22,6 @@
 // FLAT_READ_SLACK = 8 bytes past the payload — 64-bit windows load
 // unconditionally; copy exactly-sized receive buffers into a persistent
 // MaxBytes + 8 scratch first.
-
-// The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
-// scope is safe: single threaded per realm, consumed in the same op that
-// fills it.
-const SC = new DataView(new ArrayBuffer(8));
 
 // The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):
 // bundlers statically replace NODE_ENV, so production bundles tree-shake

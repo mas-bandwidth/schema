@@ -50,7 +50,7 @@ func TestRepeatedCountedUnionTailCooks(t *testing.T) {
 					t.Fatal("stale counted union tail")
 				}
 			}
-			want := place(t, m, "Hand", `{"after":2}`)
+			want := place(t, m, "Hand", `{"past":2}`)
 			for _, big := range []bool{false, true} {
 				got, err := tablecook.Cook(m, inst, tablecook.Options{Big: big})
 				if err != nil {

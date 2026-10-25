@@ -47,6 +47,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -82,9 +83,20 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 }
 
 // unitNeeds128 reports whether any field of the unit stores as the emulated
-// 128-bit pair (int128/uint128, or fixed point of storage width 128).
+// 128-bit pair (int128/uint128, or fixed point of storage width 128). It
+// scans the unit's TABLES as well as its structs: a table-only unit's fixed
+// form (internal/codegen/darttable) spells int128/uint128 with the same
+// Int128/UInt128 pair, so the support library must be emitted beside it even
+// when no plain struct carries a 128-bit field.
 func unitNeeds128(u *ir.Unit) bool {
 	for _, st := range u.Structs {
+		for _, f := range st.Fields {
+			if is128(f.Type) {
+				return true
+			}
+		}
+	}
+	for _, st := range u.Tables {
 		for _, f := range st.Fields {
 			if is128(f.Type) {
 				return true
@@ -98,23 +110,9 @@ func is128(t ir.FieldType) bool {
 	return (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Width == 128
 }
 
-// dartReserved is every spelling a generated Dart identifier must not take:
-// the reserved words of Dart 3, plus the dart:core type names generated
-// files use unqualified — shadowing `int` with a top-level constant would
-// corrupt every declaration below it.
-var dartReserved = map[string]bool{
-	"assert": true, "break": true, "case": true, "catch": true,
-	"class": true, "const": true, "continue": true, "default": true,
-	"do": true, "else": true, "enum": true, "extends": true, "false": true,
-	"final": true, "finally": true, "for": true, "if": true, "in": true,
-	"is": true, "new": true, "null": true, "rethrow": true, "return": true,
-	"super": true, "switch": true, "this": true, "throw": true, "true": true,
-	"try": true, "var": true, "void": true, "when": true, "while": true,
-	"with": true,
-	"bool": true, "double": true, "int": true, "num": true, "String": true,
-	"List": true, "Object": true, "Endian": true, "ByteData": true,
-	"dynamic": true,
-}
+// dartReserved is Dart's reserved words, read from the one table (check.ReservedIn,
+// SPEC §4.6) and never copied here.
+var dartReserved = schemacheck.ReservedIn("Dart")
 
 // dartName maps an exported member/constant/variant name into Dart's
 // lowerCamelCase: the first-letter-lowered form of ir.GoExportName. The two
@@ -250,7 +248,7 @@ type gen struct {
 
 	// per-file helper needs
 	needFround   bool // _fround
-	needF32Conv  bool // _float32BitsFromDouble / _doubleFromFloat32Bits
+	needF32Conv  bool // the _u32/_f64/_u64 views an inline float32 conversion uses (issue 404)
 	needF64Conv  bool // _float64BitsFromDouble / _doubleFromFloat64Bits
 	needULess    bool // _unsignedLessThan
 	needHex      bool // _hex64 (flagNames high-bit rendering)
@@ -400,40 +398,6 @@ func (g *gen) emitHelpers(h *strings.Builder) {
 		h.WriteString("@pragma('vm:prefer-inline')\n")
 		h.WriteString("double _fround(double value) {\n")
 		h.WriteString("  _f32[0] = value;\n")
-		h.WriteString("  return _f32[0];\n")
-		h.WriteString("}\n\n")
-	}
-	if g.needF32Conv {
-		h.WriteString("// The 32 bits of the IEEE-754 single representation of value. Non-NaN goes\n")
-		h.WriteString("// through the hardware conversion; a NaN narrows in software — sign kept,\n")
-		h.WriteString("// top 23 mantissa bits kept, the quiet bit forced only for the all-low-\n")
-		h.WriteString("// payload case — so every pattern the read half produces round trips.\n")
-		h.WriteString("@pragma('vm:prefer-inline')\n")
-		h.WriteString("int _float32BitsFromDouble(double value) {\n")
-		h.WriteString("  if (!value.isNaN) {\n")
-		h.WriteString("    _f32[0] = value;\n")
-		h.WriteString("    return _u32[0];\n")
-		h.WriteString("  }\n")
-		h.WriteString("  _f64[0] = value;\n")
-		h.WriteString("  final bits64 = _u64[0];\n")
-		h.WriteString("  final sign = (bits64 >>> 63) << 31;\n")
-		h.WriteString("  var mantissa = (bits64 >>> 29) & 0x7fffff;\n")
-		h.WriteString("  if (mantissa == 0) {\n")
-		h.WriteString("    mantissa = 0x400000;\n")
-		h.WriteString("  }\n")
-		h.WriteString("  return sign | 0x7f800000 | mantissa;\n")
-		h.WriteString("}\n\n")
-		h.WriteString("// The double whose IEEE-754 single representation is bits. NaN patterns\n")
-		h.WriteString("// widen in software (the hardware conversion quiets a signaling NaN); the\n")
-		h.WriteString("// reader reproduces the transmitted pattern exactly.\n")
-		h.WriteString("@pragma('vm:prefer-inline')\n")
-		h.WriteString("double _doubleFromFloat32Bits(int bits) {\n")
-		h.WriteString("  if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {\n")
-		h.WriteString("    _u64[0] =\n")
-		h.WriteString("        ((bits >>> 31) << 63) | 0x7ff0000000000000 | ((bits & 0x7fffff) << 29);\n")
-		h.WriteString("    return _f64[0];\n")
-		h.WriteString("  }\n")
-		h.WriteString("  _u32[0] = bits;\n")
 		h.WriteString("  return _f32[0];\n")
 		h.WriteString("}\n\n")
 	}

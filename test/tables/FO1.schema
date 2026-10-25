@@ -5,7 +5,7 @@
 // every place a present byte can ride.
 //
 //   opt    ?Leaf    an optional NESTED TYPE at the root
-//   num    ?int32   an optional SCALAR
+//   number ?int32   an optional SCALAR
 //   mark   ?Grade   an optional ENUM, whose ordinal remaps under a plan
 //   wrap.leaf       an optional UNDER A NESTED TYPE — the present byte rides
 //                   inside the nested body, at the nested body's own offsets,
@@ -57,7 +57,7 @@ fixed table OptRoot
     name   string(12)
     plain  int32 = 5 | min = 0, max = 1000
     opt    ?Leaf
-    num    ?int32
+    number    ?int32 | was = "num"
     mark   ?Grade
     wrap   Wrap
     effect Effect

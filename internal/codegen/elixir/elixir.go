@@ -57,6 +57,8 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixirtable/fixedclosure"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -76,16 +78,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return out, nil
 }
 
-// elixirReserved is every spelling a generated Elixir identifier must not
-// take: the reserved words of Elixir, plus the arity-0 Kernel auto-imports a
-// generated 0-arity function would collide with — `def node, do: ...` is a
-// compile error against Kernel.node/0.
-var elixirReserved = map[string]bool{
-	"true": true, "false": true, "nil": true, "when": true, "and": true,
-	"or": true, "not": true, "in": true, "fn": true, "do": true, "end": true,
-	"catch": true, "rescue": true, "after": true, "else": true,
-	"node": true, "self": true, "make_ref": true, "binding": true,
-}
+// elixirReserved is Elixir's reserved words, read from the one table (check.ReservedIn,
+// SPEC §4.6) and never copied here.
+var elixirReserved = schemacheck.ReservedIn("Elixir")
 
 // elixirName maps an exported member/constant/variant name into Elixir's
 // snake_case: ir.RustSnake over ir.GoExportName. The spellings are a
@@ -110,36 +105,28 @@ func checkNames(u *ir.Unit) error {
 		}
 		return nil
 	}
-	bases := map[string]string{}
-	for _, f := range u.Files {
-		bases[ir.GoExportName(f.Base)] = f.Base
-	}
-	for decl := range u.DeclFile {
-		if _, isConst := u.Consts[decl]; isConst {
-			continue // consts are file-module functions, not modules
-		}
-		if _, isFlags := u.Flags[decl]; isFlags {
-			continue // flags are file-module functions, not modules
-		}
-		if _, isTable := u.Tables[decl]; isTable {
-			// Tables are deliberately absent from the packet wire (ir.go:
-			// Tables) and lower to modules in the TABLE backend, under that
-			// backend's own suffix rules (docs/SPEC-TABLES.md §11); a table
-			// named after its schema file is that backend's collision to
-			// refuse, not this one's.
-			continue
-		}
-		if base, taken := bases[decl]; taken {
-			return fmt.Errorf("declaration %s collides with the module the Elixir emitter writes for schema file %s.schema; rename one", decl, base)
-		}
-	}
+	// The module names under <Ns> (moduleNamesUnderNs). A file whose <Base>
+	// is taken by one of them STEPS ASIDE to <Base>File; a declaration or tag
+	// module name the stepped-aside file module would take is still refused,
+	// by name.
+	taken := moduleNamesUnderNs(u)
 	for _, un := range u.Unions {
-		// the union's tag module <Name>Type must be free too
-		if base, taken := bases[un.Name+"Type"]; taken {
-			return fmt.Errorf("union %s needs the tag module %sType, which collides with schema file %s.schema; rename one", un.Name, un.Name, base)
-		}
-		if _, taken := u.DeclFile[un.Name+"Type"]; taken {
+		// the union's tag module <Name>Type colliding with a declaration of
+		// that name is a declaration-vs-declaration collision — the file
+		// module's step-aside cannot resolve it, so the refusal stands.
+		if _, isDecl := u.DeclFile[un.Name+"Type"]; isDecl {
 			return fmt.Errorf("union %s needs the tag module %sType, which collides with the declaration of that name; rename one", un.Name, un.Name)
+		}
+	}
+	ns := ir.GoExportName(u.Package)
+	for _, f := range u.Files {
+		base := ir.GoExportName(f.Base)
+		fileMod := base
+		if taken[base] {
+			fileMod = base + "File"
+		}
+		if taken[fileMod] {
+			return fmt.Errorf("declaration %s collides with the module the Elixir emitter writes for schema file %s.schema (%s.%s); rename one", fileMod, f.Base, ns, fileMod)
 		}
 	}
 	for _, c := range u.Consts {
@@ -286,6 +273,74 @@ func (g *gen) bpf(format string, args ...any) {
 // mod is the namespaced module of a declaration or file base.
 func (g *gen) mod(name string) string { return g.ns + "." + name }
 
+// fileModuleName is the file-scope module's name for file f: <Ns>.<Base>,
+// or <Ns>.<Base>File when a declaration (type, enum, union or union tag
+// module) of the unit already takes <Ns>.<Base>. The colliding case was
+// refused before this card, so no existing generated name changes; only the
+// refused case gains the renamed file module.
+func fileModuleName(u *ir.Unit, f *ir.File) string {
+	base := ir.GoExportName(f.Base)
+	if fileModuleStepsAside(u, base) {
+		return ir.GoExportName(u.Package) + "." + base + "File"
+	}
+	return ir.GoExportName(u.Package) + "." + base
+}
+
+// fileModuleStepsAside reports whether a declaration, union tag module or
+// fixed table value module of the unit takes the module name <Ns>.<base>,
+// forcing the file module for a file whose base is `base` to step aside to
+// <Ns>.<base>File. It reads the same set checkNames refuses against.
+func fileModuleStepsAside(u *ir.Unit, base string) bool {
+	return moduleNamesUnderNs(u)[base]
+}
+
+// moduleNamesUnderNs is THE ONE SKIP LIST: every module name under <Ns> that is
+// not a file module, which checkNames refuses against and fileModuleStepsAside
+// steps aside for. A declaration lowers to <Ns>.<Name> except a const or a
+// flags (file-module functions, not modules) and a table (absent from the
+// packet wire, ir.go Tables); a union adds its tag module <Name>Type; and a
+// FIXED table adds the value module <Ns>.<Name> the table backend emits for it
+// (docs/SPEC-TABLES.md §3.4, fixedTableModuleNames).
+func moduleNamesUnderNs(u *ir.Unit) map[string]bool {
+	taken := map[string]bool{}
+	for decl := range u.DeclFile {
+		if _, isConst := u.Consts[decl]; isConst {
+			continue // consts are file-module functions, not modules
+		}
+		if _, isFlags := u.Flags[decl]; isFlags {
+			continue // flags are file-module functions, not modules
+		}
+		if _, isTable := u.Tables[decl]; isTable {
+			continue // a fixed table's value module is added below, by the backend's own closure
+		}
+		taken[decl] = true
+	}
+	for _, un := range u.Unions {
+		taken[un.Name+"Type"] = true
+	}
+	for n := range fixedTableModuleNames(u) {
+		taken[n] = true
+	}
+	return taken
+}
+
+// fixedTableModuleNames is the set of table names whose FIXED FORM value module
+// (<Ns>.<Name>) the table backend emits (elixirtable/fixedelixir.go structModule)
+// beside the file module. A fixed table named after a schema file takes the
+// module name <Ns>.<Base>, so the packet emitter's file module must step aside
+// to <Base>File rather than merge two unrelated modules. The roots and closure
+// are the fixed backend's own (fixedclosure.Roots and fixedclosure.Closure,
+// which elixirtable's fixedRoots and fixedClosure are), never a copy of them.
+func fixedTableModuleNames(u *ir.Unit) map[string]bool {
+	names := map[string]bool{}
+	for _, st := range fixedclosure.Closure(fixedclosure.Roots(u)) {
+		if st.IsTable {
+			names[st.Name] = true
+		}
+	}
+	return names
+}
+
 func (g *gen) assemble() []byte {
 	var h strings.Builder
 	// the basename, not the invocation-relative path: output is deterministic
@@ -384,7 +439,41 @@ func (g *gen) emitFile() {
 			g.emitUnionModules(d)
 		}
 	}
+	for _, d := range tableUnionsOrder(g.file) {
+		g.emitUnionModules(d)
+	}
 	g.emitFileModule(order)
+}
+
+func tableUnionsOrder(f *ir.File) []*ir.Union {
+	if len(f.TableUnions) <= 1 {
+		return f.TableUnions
+	}
+	byName := make(map[string]*ir.Union, len(f.TableUnions))
+	for _, u := range f.TableUnions {
+		byName[u.Name] = u
+	}
+	seen := make(map[string]bool, len(f.TableUnions))
+	var out []*ir.Union
+	var visit func(u *ir.Union)
+	visit = func(u *ir.Union) {
+		if seen[u.Name] {
+			return
+		}
+		seen[u.Name] = true
+		for _, v := range u.Variants {
+			if v.F != nil && v.F.Type.Kind == ir.TNamed {
+				if dep := byName[v.F.Type.Name]; dep != nil {
+					visit(dep)
+				}
+			}
+		}
+		out = append(out, u)
+	}
+	for _, u := range f.TableUnions {
+		visit(u)
+	}
+	return out
 }
 
 // emitEnumModule emits an integer-constant namespace — the Elixir translation
@@ -446,7 +535,7 @@ func (g *gen) emitUnionModules(d *ir.Union) {
 		if v.Void() {
 			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
 		}
-		fields = append(fields, fmt.Sprintf("%s: %%%s{}", elixirName(v.Name), g.mod(v.Type)))
+		fields = append(fields, fmt.Sprintf("%s: %s", elixirName(v.Name), g.storageDefault(v.F)))
 	}
 	g.bpf("defmodule %s do\n", g.mod(d.Name))
 	g.emitModuleDoc(d.Doc)
@@ -469,7 +558,49 @@ func (g *gen) emitStructModule(d *ir.Struct) {
 		g.emitFieldComments(d)
 		g.emitDefstruct(fields)
 	}
+	EmitKeyedAccessors(&g.body, d)
 	g.bpf("end\n\n")
+}
+
+// EmitKeyedAccessors emits the 1-based keyed array accessor pair (<field>_at/2,
+// put_<field>_at/3) and the key-element iterator (<field>_entries/1) on a
+// struct's module for every enum-keyed array field [E]T (SPEC §4.3, §4.6,
+// docs/PORTING.md M5). Key 0 (None), keys past E.Max, negative keys, and
+// non-integer keys raise ArgumentError naming the field, the key, and the bound.
+func EmitKeyedAccessors(b *strings.Builder, st *ir.Struct) {
+	for _, f := range st.Fields {
+		if f.KeyEnum == "" || f.KeyEnumRef == nil || f.KeyEnumRef.Max <= 0 {
+			continue
+		}
+		fn := elixirName(f.Name)
+		if st.IsTable {
+			fn = f.Name
+		}
+		enumName := f.KeyEnum
+		maxLit := intLit64(f.KeyEnumRef.Max)
+		maxPlain := strconv.FormatInt(f.KeyEnumRef.Max, 10)
+		b.WriteString("\n  # [" + enumName + "] — 1-based keyed access (1.." + maxPlain + "); 0 (None) and > " + enumName + ".max raise ArgumentError (SPEC §4.3).\n")
+		b.WriteString("  def " + fn + "_at(s, key) when is_integer(key) and key >= 1 and key <= " + maxLit + " do\n")
+		b.WriteString("    Enum.at(s." + fn + ", key - 1)\n")
+		b.WriteString("  end\n\n")
+		b.WriteString("  def " + fn + "_at(_s, key), do: refuse_" + fn + "_key(key)\n\n")
+		b.WriteString("  def put_" + fn + "_at(s, key, v) when is_integer(key) and key >= 1 and key <= " + maxLit + " do\n")
+		b.WriteString("    %{s | " + fn + ": List.replace_at(s." + fn + ", key - 1, v)}\n")
+		b.WriteString("  end\n\n")
+		b.WriteString("  def put_" + fn + "_at(_s, key, _v), do: refuse_" + fn + "_key(key)\n\n")
+		b.WriteString("  def " + fn + "_entries(s) do\n")
+		b.WriteString("    Enum.with_index(s." + fn + ", 1) |> Enum.map(fn {v, k} -> {k, v} end)\n")
+		b.WriteString("  end\n\n")
+		b.WriteString("  defp refuse_" + fn + "_key(0) do\n")
+		b.WriteString("    raise ArgumentError, \"" + fn + ": key 0 is None and names no slot\"\n")
+		b.WriteString("  end\n\n")
+		b.WriteString("  defp refuse_" + fn + "_key(key) when is_integer(key) and key > " + maxLit + " do\n")
+		b.WriteString("    raise ArgumentError, \"" + fn + ": key #{key} is past " + enumName + ".max (" + maxPlain + ")\"\n")
+		b.WriteString("  end\n\n")
+		b.WriteString("  defp refuse_" + fn + "_key(key) do\n")
+		b.WriteString("    raise ArgumentError, \"" + fn + ": key #{inspect(key)} is not a variant of " + enumName + "\"\n")
+		b.WriteString("  end\n")
+	}
 }
 
 // emitFieldComments writes one comment block above defstruct carrying the
@@ -554,7 +685,18 @@ const formatWidth = 98
 // defstruct defaults evaluate at compile time, where a symbolic reference
 // would impose a module-compile ordering the runtime surface never has.
 func (g *gen) storageDefault(f *ir.Field) string {
+	if f.Type.Optional || f.Type.Pointer {
+		return "nil"
+	}
+	if f.IsMap() {
+		return "%{}"
+	}
+	if f.KeyEnum != "" {
+		return fmt.Sprintf("List.duplicate(%s, %s)", g.scalarDefault(f), intLit64(f.KeyEnumRef.Max))
+	}
 	switch f.Array {
+	case ir.ArrayList:
+		return "[]"
 	case ir.ArrayCounted:
 		// a [A..B] count is born at A, the one wire-legal count a fresh
 		// value can carry (SPEC §4.6), so the list is born holding A
@@ -615,7 +757,12 @@ func (g *gen) scalarDefault(f *ir.Field) string {
 				return intLit(f.DefInt)
 			}
 			return "0"
-		case *ir.Struct, *ir.Union:
+		case *ir.Struct:
+			if ref.IsTable {
+				return "nil"
+			}
+			return fmt.Sprintf("%%%s{}", g.mod(t.Name))
+		case *ir.Union:
 			return fmt.Sprintf("%%%s{}", g.mod(t.Name))
 		}
 	}
@@ -641,7 +788,7 @@ func enumVariantValue(e *ir.Enum, variant string) int {
 func (g *gen) emitFileModule(order []ir.Decl) {
 	g.bpf("# The file-scope surface: constants, flags masks, name helpers and the\n")
 	g.bpf("# wire functions of every declaration in %s.schema.\n", g.file.Base)
-	g.bpf("defmodule %s do\n", g.mod(ir.GoExportName(g.file.Base)))
+	g.bpf("defmodule %s do\n", fileModuleName(g.unit, g.file))
 
 	var b strings.Builder
 	saved := g.body
@@ -873,7 +1020,7 @@ func (g *gen) constRef(name string) string {
 	if base == g.file.Base {
 		return elixirName(name) + "()"
 	}
-	return g.mod(ir.GoExportName(base)) + "." + elixirName(name) + "()"
+	return fileModuleName(g.unit, &ir.File{Base: base}) + "." + elixirName(name) + "()"
 }
 
 func formatFloat(v float64) string {

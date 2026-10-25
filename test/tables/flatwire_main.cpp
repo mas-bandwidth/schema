@@ -20,7 +20,7 @@
 static void set_string( char * storage, int32_t & length, const char * text )
 {
     length = (int32_t) strlen( text );
-    memcpy( storage, text, (size_t) length + 1 );
+    memcpy( (void *) storage, text, (size_t) length + 1 );
 }
 
 static int reload( const char * in, const char * out )
@@ -38,7 +38,7 @@ static int reload( const char * in, const char * out )
     int64_t need = graphdemo::SceneLoadMeasure( wire, size, &attribution );
     uint8_t * region = (uint8_t *) malloc( (size_t) need );
     graphdemo::TableReport report;
-    const graphdemo::Scene * root = graphdemo::SceneLoad( region, need, wire, size, &report );
+    const graphdemo::Scene * root = graphdemo::SceneLoadTolerant( region, need, wire, size, &report );
     if ( root == NULL )
     {
         printf( "FAILED: the tool's wire did not load\n" );

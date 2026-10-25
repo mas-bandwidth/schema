@@ -357,9 +357,9 @@ static void reflective_walk( const RenderFrameBlock & block, const RenderFrameCo
         const uint8_t * base = (const uint8_t *) block.projection;
         uint64_t offset_of = 0;
         uint32_t count = 0, stride = 0;
-        memcpy( &offset_of, base + f.offset_of_offset, 8 );
-        memcpy( &count, base + f.count_offset, 4 );
-        memcpy( &stride, base + f.stride_offset, 4 );
+        memcpy( (void *) &offset_of, base + f.offset_of_offset, 8 );
+        memcpy( (void *) &count, base + f.count_offset, 4 );
+        memcpy( (void *) &stride, base + f.stride_offset, 4 );
         check( (int32_t) count == expected_counts[out_of_line], "the descriptor's count is the count the producer wrote" );
         check( stride == f.stride, "the instance's pitch is this build's own, in a block this build laid out" );
         check( f.element != NULL && f.element() != NULL, "an out-of-line array's descriptor names its element's descriptor" );
@@ -389,7 +389,7 @@ static void reflective_walk( const RenderFrameBlock & block, const RenderFrameCo
                 for ( uint32_t r = 0; r < count; r++ )
                 {
                     uint32_t reflected = 0;
-                    memcpy( &reflected, rows + (size_t) r * stride + object_id->offset, 4 );
+                    memcpy( (void *) &reflected, rows + (size_t) r * stride + object_id->offset, 4 );
                     if ( reflected != RenderFrameShips( block )[r].object_id ) { mismatches++; }
                 }
                 check( mismatches == 0, "the reflective read lands the same values as the generated accessor (§19.2's two ways)" );
@@ -398,7 +398,7 @@ static void reflective_walk( const RenderFrameBlock & block, const RenderFrameCo
                 const TableBlockInfo * vec = position->element();
                 check( vec != NULL && strcmp( vec->name, "RenderVector3" ) == 0, "a nested record's descriptor is reached through the same column" );
                 double x = 0.0;
-                memcpy( &x, rows + position->offset + vec->fields[0].offset, 8 );
+                memcpy( (void *) &x, rows + position->offset + vec->fields[0].offset, 8 );
                 check( x == RenderFrameShips( block )[0].position.x, "and its fields read at their own offsets" );
             }
         }
@@ -431,7 +431,7 @@ int main( int argc, char ** argv )
     // A caller that needs a byte-stable artifact zeroes the storage once
     // (§19.1) — the form does not, because zeroing megabytes per frame is
     // exactly the cost it exists to avoid. This leg pins bytes, so it zeroes.
-    memset( storage.base, 0, (size_t) RenderFrameBlockMaxBytes );
+    memset( (void *) storage.base, 0, (size_t) RenderFrameBlockMaxBytes );
 
     // The fill path is measured SERIALLY, on purpose: the parallelism lives in
     // the caller's loop and std::thread allocates on its own account, so a
@@ -483,7 +483,7 @@ int main( int argc, char ** argv )
     {
         RenderFrameBlockStorage wide_storage;
         check( wide_storage.Create( counting_allocator() ), "the wide fill's storage allocates" );
-        memset( wide_storage.base, 0, (size_t) RenderFrameBlockMaxBytes );
+        memset( (void *) wide_storage.base, 0, (size_t) RenderFrameBlockMaxBytes );
         RenderFrameBlock wide;
         check( RenderFrameBlockBegin( wide, wide_storage, counts ), "Begin lays the wide fill's block out identically" );
         wide.projection->version = RenderVersion;
@@ -777,7 +777,7 @@ int main( int argc, char ** argv )
         {
             uint8_t * raw = (uint8_t *) malloc( (size_t) bytes + 128 );
             uint8_t * lead = (uint8_t *) ( ( (uintptr_t) raw + 63 ) & ~(uintptr_t) 63 ) + 1;
-            memcpy( lead, storage.base, (size_t) bytes );
+            memcpy( (void *) lead, storage.base, (size_t) bytes );
             reason = ok;
             check( !RenderFrameBlockOpen( opened, lead, bytes, &reason ) && reason == unaligned_base,
                    "BlockOpen refuses an unaligned base, LAST, because it is the one clause that reads nothing out of the block" );
@@ -823,7 +823,7 @@ int main( int argc, char ** argv )
     {
         RenderFrameBlockStorage golden_storage;
         check( golden_storage.Create( counting_allocator() ), "the golden's storage allocates" );
-        memset( golden_storage.base, 0, (size_t) RenderFrameBlockMaxBytes );
+        memset( (void *) golden_storage.base, 0, (size_t) RenderFrameBlockMaxBytes );
         RenderFrameBlock golden;
         const RenderFrameCounts small = golden_counts();
         check( RenderFrameBlockBegin( golden, golden_storage, small ), "Begin lays the golden frame out" );
@@ -849,14 +849,14 @@ int main( int argc, char ** argv )
     {
         PaddedFrameBlockStorage padded_storage;
         check( padded_storage.Create( counting_allocator() ), "the padded frame's storage allocates" );
-        memset( padded_storage.base, 0, (size_t) PaddedFrameBlockMaxBytes );
+        memset( (void *) padded_storage.base, 0, (size_t) PaddedFrameBlockMaxBytes );
         PaddedFrameCounts padded_counts = {};
         padded_counts.rows = 4;
         PaddedFrameBlock padded;
         check( PaddedFrameBlockBegin( padded, padded_storage, padded_counts ), "Begin lays the padded frame out" );
         padded.projection->marker = 7;
         padded.projection->stamp = 0x0123456789abcdefull;
-        memcpy( padded.projection->blob, "twelve bytes", 12 );
+        memcpy( (void *) padded.projection->blob, "twelve bytes", 12 );
         padded.projection->blob_length = 12;
         PaddedRow * rows = PaddedFrameRows( padded );
         for ( int i = 0; i < padded_counts.rows; i++ )

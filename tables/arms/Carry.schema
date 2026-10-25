@@ -27,7 +27,7 @@ table Holder
 table Hand
 {
     entries [..2]Carry
-    after   int32
+    past   int32 | was = "after"
 }
 
 // the same arm, one element of a LIST of unions: the elements' arms are
@@ -36,5 +36,5 @@ table Hand
 table Chain
 {
     links []Carry
-    after int32
+    past int32 | was = "after"
 }

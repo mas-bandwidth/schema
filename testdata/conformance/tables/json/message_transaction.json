@@ -31,7 +31,7 @@
                   "line": 1,
                   "column": 0
                 },
-                "end": {
+                "stop": {
                   "line": 2,
                   "column": 2
                 }

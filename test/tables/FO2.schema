@@ -53,7 +53,7 @@ fixed table OptRoot
     name   string(12)
     plain2 int32 = 5 | min = 0, max = 1000, was = "plain"
     opt    ?Leaf
-    num    ?int32
+    number    ?int32 | was = "num"
     mark   ?Grade
     added  int32 = 77 | min = 0, max = 1000
     wrap   Wrap

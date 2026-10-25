@@ -188,16 +188,16 @@ fixed table Root
 	if strings.Contains(src, "TableFixedOpClamp") {
 		t.Error("the plan grew a clamp op; the bounds pass is the decode")
 	}
-	sawLoad, sawDecodeCall, sawIdentityDoor := false, false, false
+	sawLoad, sawDecodeCall := false, false
 	for _, b := range files {
 		s := string(b)
 		if strings.Contains(s, "function RootFixedLoad(") {
 			sawLoad = true
 			load := jsFn(s, "RootFixedLoad")
-			if strings.Contains(load, "if (identity)") {
-				sawIdentityDoor = true
-			}
-			if strings.Contains(load, "RootFixedDecode(values[k], imageView, 0, report)") {
+			// ONE SECOND READER IS ALLOWED, AND ONLY WHILE THE SPEC LISTS IT:
+			// §3.4's in-place identity read, of exactly its shape.
+			jsIdentityDoor(t, load, "Root")
+			if strings.Contains(load, "RootFixedDecode(values[k], imageView, 0, stage)") {
 				sawDecodeCall = true
 			}
 		}
@@ -205,11 +205,8 @@ fixed table Root
 	if !sawLoad {
 		t.Error("no RootFixedLoad in the generated unit")
 	}
-	if sawIdentityDoor {
-		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
-	}
 	if !sawDecodeCall {
-		t.Error("FixedLoad must project through RootFixedDecode after the run, both paths")
+		t.Error("FixedLoad must project through RootFixedDecode after the run, for every compiled plan")
 	}
 }
 
@@ -299,14 +296,13 @@ fixed table Config {
 	if strings.Contains(load, "image.set(ConfigFixedPrefill)") {
 		t.Error("the load still prefills the whole image; holes are the bytes the plan does not write")
 	}
-	i := strings.Index(load, "for (let k = 0; k < n; k++)")
-	if i < 0 {
+	found := strings.Contains(load, "for (let k = 0; k < n; k++)")
+	if !found {
 		t.Fatal("the load has no record loop")
 	}
-	loop := load[i:]
-	if strings.Contains(loop, "identity") {
-		t.Error("the load loop still branches on identity; an empty hole list is what skips work")
-	}
+	// an empty hole list is what skips the prefill; the only identity branch in
+	// the loop is §3.4's listed in-place door, held to its shape
+	jsIdentityDoor(t, load, "Config")
 	if !strings.Contains(src, "function TableFixedHoles(") && !strings.Contains(src, "TableFixedHoles") {
 		t.Error("the generated unit never names TableFixedHoles")
 	}
@@ -348,8 +344,17 @@ func TestFixedGuardComparedAtArgW(t *testing.T) {
 	if !strings.Contains(src, "TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW])") {
 		t.Error("the run loop does not compare the guard at ArgW")
 	}
-	if strings.Contains(src, "if (identity)") {
-		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
+	{
+		load := ""
+		for _, b := range guardProbeFiles(t) {
+			if f := jsFn(string(b), "RootFixedLoad"); f != "" {
+				load = f
+			}
+		}
+		if load == "" {
+			t.Error("no RootFixedLoad in the generated unit")
+		}
+		jsIdentityDoor(t, load, "Root")
 	}
 	if !strings.Contains(src, "plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;") {
 		t.Error("the compiler does not stamp ArgW from the writer's tag width")
@@ -373,14 +378,7 @@ func TestFixedIdentityPlanIsElevenLanes(t *testing.T) {
 // shared runtime and the table's fixed surface.
 func guardProbeSource(t *testing.T) string {
 	t.Helper()
-	u := unitFrom(t, `package probe
-table Root { n int32 }
-`)
-	files, err := Generate(u)
-	if err != nil {
-		t.Fatalf("generate: %v", err)
-	}
-	for _, b := range files {
+	for _, b := range guardProbeFiles(t) {
 		s := string(b)
 		if strings.Contains(s, "function TableFixedRun(") {
 			return s
@@ -388,6 +386,21 @@ table Root { n int32 }
 	}
 	t.Fatal("no TableFixedRun in the generated unit")
 	return ""
+}
+
+// guardProbeFiles generates that one-field fixed root and answers every file
+// of the unit: the runtime module guardProbeSource picks out, and the table
+// module that carries RootFixedLoad.
+func guardProbeFiles(t *testing.T) map[string][]byte {
+	t.Helper()
+	u := unitFrom(t, `package probe
+table Root { n int32 }
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	return files
 }
 
 func unitFrom(t *testing.T, src string) *ir.Unit {
@@ -521,7 +534,7 @@ func TestFixedOptionalRowsMatchReference(t *testing.T) {
 		// name(4+12) + plain(4) = 20
 		{"opt ?", 20, "opt"},
 		// + present(1) + Leaf(4 + 4+8) = 37
-		{"num ?", 37, "num"},
+		{"number ?", 37, "number"},
 		// + present(1) + int32(4) = 42
 		{"mark ?", 42, "mark"},
 		// THE NESTED BODY'S OWN OFFSETS, not the root's: `wrap` starts at 44
@@ -729,7 +742,7 @@ type Item
 table Bag
 {
     entries map[uint32]Item
-    after   int32
+    past   int32
 }
 `)
 	if roots := jsFixedUnitRoots(refused); len(roots) != 0 {

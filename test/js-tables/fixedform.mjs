@@ -202,11 +202,14 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     ["entities count", AT_ENTITIES, 9999, 8, (v) => v.EntitiesCount],
     ["entities count, negative", AT_ENTITIES, -1, 0, (v) => v.EntitiesCount],
     ["stats count", AT_STATS, 0x7fffffff, 80, (v) => v.StatsCount],
-    ["player_name length", AT_NAME, 9999, 15, (v) => v.PlayerNameLength],
+    ["player_name length", AT_NAME, 9999, 15, (v) => v.PlayerNameLength, (bytes) => {
+      bytes.fill(0x41, BODY + AT_NAME + 4, BODY + AT_NAME + 4 + 15);
+    }],
     ["payload length", AT_PAYLOAD, 9999, 16, (v) => v.PayloadLength],
   ];
-  for (const [what, at, plant, bound, get] of forged) {
+  for (const [what, at, plant, bound, get, prep] of forged) {
     const bytes = oneRecord();
+    if (prep) { prep(bytes); }
     new DataView(bytes.buffer).setInt32(BODY + at, plant, true);
     // A text field clamped to its bound reads that many UNITS as content, and a zero
     // byte there is damage (the runtime refuses text_ill_formed): fill the bound so the
@@ -219,6 +222,21 @@ function forgedCounts(check, bench, fixed, corpusDir) {
       `IDENTITY CLAMP: a forged ${what} of ${plant} reaches the consumer as this reader's bound ${bound} (got ${get(r.v)})`);
     check(r.report.clamped === 1,
       `IDENTITY CLAMP: a forged ${what} moves clamped exactly once (got ${r.report.clamped})`);
+  }
+
+  // §4.5 fix 11 and §5.3: a forged player_name length over the writer's zero
+  // bytes clamps to 15 and then fails the content check over those 15 used
+  // units; REFUSE is total, so no counter moves and PlayerNameLength stays 0.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setInt32(BODY + AT_NAME, 9999, true);
+    const r = read(bytes);
+    check(r.n === -1 && r.report.refused === bench.TableFixedRefusal.TextIllFormed && !r.report.malformed,
+      `IDENTITY REFUSE: a forged player_name length over the writer's zero bytes refuses with TextIllFormed (n=${r.n} refused=${r.report.refused} malformed=${r.report.malformed})`);
+    check(r.report.clamped === 0 && r.report.widened === 0,
+      `IDENTITY REFUSE: REFUSE is total — clamped and widened stay 0 on player_name length over the writer's zero bytes (clamped=${r.report.clamped} widened=${r.report.widened})`);
+    check(r.v.PlayerNameLength === 0,
+      `IDENTITY REFUSE: REFUSE is total — destination PlayerNameLength stays 0 on player_name length over the writer's zero bytes (got ${r.v.PlayerNameLength})`);
   }
 
   // A COUNT ALREADY IN BOUNDS IS NOT TOUCHED, and the counter does not move
@@ -455,7 +473,7 @@ async function pairedCorpus(check, bench, fixed, corpusDir) {
   // the hash the same number and the record positional against the same layout.
   let blockSame = true;
   for (let i = 0; i < blockBytes; i++) {
-    if (corpus[LAYOUT_AT + i] !== fixed.FixedTableFixedLayout[i]) { blockSame = false; break; }
+    if (corpus[LAYOUT_AT + i] !== fixed.FixedTableFixedLayoutCopy()[i]) { blockSame = false; break; }
   }
   check(blockSame, "fixed form: the layout is byte-identical to the C++ reference's");
 
@@ -580,8 +598,8 @@ function f64bits(x) { CONV.setFloat64(0, x, true); return CONV.getBigUint64(0, t
 // TableFixedRun, the same loop identity and compiled both take.
 // ---------------------------------------------------------------------------
 function guardComparedAtArgW(check, home) {
-  check(home.TableFixedLanes === 9,
-    `ArgW: a plan entry is nine int32 lanes, got ${home.TableFixedLanes}`);
+  check(home.TableFixedLanes === 11,
+    `ArgW: a plan entry is eleven int32 lanes, got ${home.TableFixedLanes}`);
 
   const run = (lanes, srcBytes) => {
     const src = new Uint8Array(srcBytes);
@@ -590,20 +608,21 @@ function guardComparedAtArgW(check, home) {
     const dstView = new DataView(dst.buffer);
     const r = new home.TableFixedReport();
     // op=COPY src=2 dst=0 size=1 aux=0 guard=0 arg=1 meta=0 argw=lanes[8]
+    // guards=0 guardCount=0: one tag, so the guard lane is the whole chain (§4.1)
     home.TableFixedRun(new Int32Array(lanes), 1, src, srcView, 0, dst, dstView, null, r);
     return dst[0];
   };
   // COPY of the payload at byte 2, guarded at 0, answering to arm 1, width 2
-  const twoByte = [0, 2, 0, 1, 0, 0, 1, 0, 2];
+  const twoByte = [0, 2, 0, 1, 0, 0, 1, 0, 2, 0, 0];
   check(run(twoByte, [0x01, 0x01, 0xAA]) === 0,
     "ArgW: a two-byte tag 0x0101 whose low byte is 1 does NOT run arm 1");
   check(run(twoByte, [0x01, 0x00, 0xAA]) === 0xAA,
     "ArgW: a two-byte tag 0x0001 DOES run arm 1");
   // ArgW 0 means 1, as C++: only the first byte is the tag
-  const zeroMeansOne = [0, 2, 0, 1, 0, 0, 1, 0, 0];
+  const zeroMeansOne = [0, 2, 0, 1, 0, 0, 1, 0, 0, 0, 0];
   check(run(zeroMeansOne, [0x01, 0x01, 0xAA]) === 0xAA,
     "ArgW: zero is read as one, so a 0x0101 prefix matches arm 1 at width 0");
-  const fourByte = [0, 4, 0, 1, 0, 0, 1, 0, 4];
+  const fourByte = [0, 4, 0, 1, 0, 0, 1, 0, 4, 0, 0];
   check(run(fourByte, [0x01, 0x01, 0x00, 0x00, 0xBB]) === 0,
     "ArgW: a four-byte tag 0x00000101 whose low byte is 1 does NOT run arm 1");
   check(run(fourByte, [0x01, 0x00, 0x00, 0x00, 0xBB]) === 0xBB,
@@ -635,10 +654,10 @@ function guardComparedAtArgW(check, home) {
 // THE DESTINATION ROWS ARE NOT THE ASSERTION. `dst` carries the reader's landing
 // offsets, which place bytes and never choose a half; the partition is a fact of
 // the GUARD lane and `split` alone, so the rows are zero here. A plan entry is
-// nine int32 lanes (TableFixedLanes) and the guard is lane 5; TableFixedNoGuard
-// is -1 (Tblut1Table.js, `TableFixedLanes`/`TableFixedNoGuard`).
+// eleven int32 lanes (TableFixedLanes: nine, and the guard chain's
+// offset+count, §4.1) and the guard is lane 5; TableFixedNoGuard is -1 (Tblut1Table.js, `TableFixedLanes`/`TableFixedNoGuard`).
 function partitionIsHeld(check, home, layout, bodyBytes, who) {
-  const LANES = 9, GUARD = 5, OP = 0, SRC = 1, DST = 2, SIZE = 3, ARG = 6, ARGW = 8;
+  const LANES = 11, GUARD = 5, OP = 0, SRC = 1, DST = 2, SIZE = 3, ARG = 6, ARGW = 8;
   const NO_GUARD = -1, COPY = 0;
 
   const theirs = new home.TableFixedLayoutView();
@@ -687,7 +706,7 @@ function partitionIsHeld(check, home, layout, bodyBytes, who) {
 export function planPartition(check, ut1, ut1home, fx1, fx1home) {
   // A PLAN WITH BOTH HALVES: UT1 carries a union, so its arms' entries are
   // guarded and the scalars around them are not.
-  const u = partitionIsHeld(check, ut1home, ut1.UtRootFixedLayout, ut1.UtRootFixedBodyBytes, "UT1 plan");
+  const u = partitionIsHeld(check, ut1home, ut1.UtRootFixedLayoutCopy(), ut1.UtRootFixedBodyBytes, "UT1 plan");
   if (u !== null) {
     check(u.split > 0 && u.split < u.count,
       `W6: UT1's plan really has BOTH halves, so the case is not vacuous (split ${u.split} of ${u.count})`);
@@ -696,7 +715,7 @@ export function planPartition(check, ut1, ut1home, fx1, fx1home) {
   // A PLAN WITH NO GUARDED ENTRY AT ALL: the split is then the whole plan, and
   // `split` being a count of UNGUARDED entries rather than of guarded ones is
   // what makes that come out right.
-  const f = partitionIsHeld(check, fx1home, fx1.FxRootFixedLayout, fx1.FxRootFixedBodyBytes, "FX1 plan");
+  const f = partitionIsHeld(check, fx1home, fx1.FxRootFixedLayoutCopy(), fx1.FxRootFixedBodyBytes, "FX1 plan");
   if (f !== null) {
     check(f.split === f.count,
       `W6: a plan with no guarded entry has its split at the END, not at zero (split ${f.split} of ${f.count})`);
@@ -728,13 +747,13 @@ export function planPartition(check, ut1, ut1home, fx1, fx1home) {
 // driver that read them out of the code under test would agree with
 // whatever that code happened to say.
 export function wideTextCodeUnits(check, home) {
-  check(home.TableFixedLanes === 9,
-    `C5: a plan entry is nine int32 lanes, got ${home.TableFixedLanes}`);
+  check(home.TableFixedLanes === 11,
+    `C5: a plan entry is eleven int32 lanes, got ${home.TableFixedLanes}`);
 
   // op=TEXT src=0 dst=0 size=16 aux=4 guard=NONE(-1) arg=0 meta=WIDE(2)
-  // argw=1 — a wstring(8): the length word at the record's head, 2N = 16
+  // argw=1 guards=0 guardCount=0 — a wstring(8): the length word at the record's head, 2N = 16
   // bytes of span behind it, and the same twenty bytes in the image.
-  const plan = [2, 0, 0, 16, 4, -1, 0, 2, 1];
+  const plan = [2, 0, 0, 16, 4, -1, 0, 2, 1, 0, 0];
 
   const run = (length, units) => {
     const src = new Uint8Array(20);
@@ -797,8 +816,8 @@ export function wideTextCodeUnits(check, home) {
 // width-8 read is two u32 lanes and whose `hi !== 0` arm is the whole fact.
 // ---------------------------------------------------------------------------
 export function ordinalWidth8ReadWhole(check, home) {
-  // THE PLAN ENTRY IS NINE int32 LANES, in the order this loop reads them:
-  //   [op, src, dst, size, aux, guard, arg, meta, argw]
+  // THE PLAN ENTRY IS ELEVEN int32 LANES, in the order this loop reads them:
+  //   [op, src, dst, size, aux, guard, arg, meta, argw, guards, guardCount]
   // op 3 is TableFixedOpOrdinal (fixedruntime.go:98); guard -1 is
   // TableFixedNoGuard (fixedruntime.go:107), an unguarded top-level entry;
   // meta's low byte is the ordinal's DESTINATION width, 8 here; size is the
@@ -814,7 +833,7 @@ export function ordinalWidth8ReadWhole(check, home) {
     // the table's slot 0 is its length (one entry), slot 1 is variant 1's own
     // ordinal — the same shape as the reference's uint16 map { 1, 1 }
     const remap = new Int32Array([1, 1]);
-    const lanes = [3, 0, 0, 8, 0, -1, 0, 8, 1];
+    const lanes = [3, 0, 0, 8, 0, -1, 0, 8, 1, 0, 0];
     home.TableFixedRun(new Int32Array(lanes), 1, src, srcView, 0, dst, dstView, remap, r);
     return { landed: dstView.getBigUint64(0, true), clamped: r.clamped };
   };
@@ -2220,8 +2239,8 @@ function fo1Values(home) {
   v[0].OptPresent = true;
   v[0].Opt.V = 11;
   v[0].Opt.TagLength = setText(v[0].Opt.Tag, "op");
-  v[0].NumPresent = true;
-  v[0].Num = 12;
+  v[0].NumberPresent = true;
+  v[0].Number = 12;
   v[0].MarkPresent = true;
   v[0].Mark = 2; // Gold — the ordinal is the variant's POSITION IN THE BLOCK, from 1
   v[0].Wrap.N = 13;
@@ -2249,8 +2268,8 @@ function fo1Values(home) {
   v[2].NameLength = setText(v[2].Name, "mix");
   v[2].Plain = 301;
   v[2].OptPresent = false;
-  v[2].NumPresent = true;
-  v[2].Num = -302;
+  v[2].NumberPresent = true;
+  v[2].Number = -302;
   v[2].MarkPresent = true;
   v[2].Mark = 1; // Bronze
   v[2].Wrap.N = 303;
@@ -2265,7 +2284,7 @@ function fo1Values(home) {
   v[3].OptPresent = true;
   v[3].Opt.V = 402;
   v[3].Opt.TagLength = setText(v[3].Opt.Tag, "r");
-  v[3].NumPresent = false;
+  v[3].NumberPresent = false;
   v[3].MarkPresent = false;
   v[3].Wrap.N = 403;
   v[3].Wrap.LeafPresent = false;
@@ -2320,7 +2339,7 @@ function optionalBytes(check, o, dir) {
     check(back[0].OptPresent && back[0].Opt.V === 11 && back[0].Opt.TagLength === 2 &&
       back[0].Opt.Tag[0] === 0x6f && back[0].Opt.Tag[1] === 0x70,
       "optionals: a PRESENT nested type lands its whole payload");
-    check(back[0].NumPresent && back[0].Num === 12, "optionals: a PRESENT scalar lands");
+    check(back[0].NumberPresent && back[0].Number === 12, "optionals: a PRESENT scalar lands");
     check(back[0].MarkPresent && back[0].Mark === 2, "optionals: a PRESENT enum lands its ordinal");
     check(back[0].Wrap.N === 13 && back[0].Wrap.LeafPresent && back[0].Wrap.Leaf.V === 14,
       "optionals: a present flag INSIDE A NESTED TABLE lands at the nested body's own offset");
@@ -2331,20 +2350,20 @@ function optionalBytes(check, o, dir) {
     // flag: `Leaf.v = 7` and `Wrap.leaf`'s the same
     check(!back[1].OptPresent && back[1].Opt.V === 7 && back[1].Opt.TagLength === 0,
       "optionals: an ABSENT nested type reads absent, at its declared defaults");
-    check(!back[1].NumPresent && back[1].Num === 0, "optionals: an ABSENT scalar reads absent");
+    check(!back[1].NumberPresent && back[1].Number === 0, "optionals: an ABSENT scalar reads absent");
     check(!back[1].MarkPresent && back[1].Mark === 0, "optionals: an ABSENT enum reads absent, at None");
     check(back[1].Wrap.N === 202 && !back[1].Wrap.LeafPresent && back[1].Wrap.Leaf.V === 7,
       "optionals: an ABSENT flag inside a nested table reads absent");
     check(back[1].Effect.Type === 2 && back[1].Effect.Ward.Charge === 0.5 && back[1].Tail === 203,
       "optionals: the fields behind four absent optionals still land");
 
-    check(!back[2].OptPresent && back[2].NumPresent && back[2].Num === -302 &&
+    check(!back[2].OptPresent && back[2].NumberPresent && back[2].Number === -302 &&
       back[2].MarkPresent && back[2].Mark === 1 &&
       back[2].Wrap.LeafPresent && back[2].Wrap.Leaf.V === -304 && back[2].Wrap.Leaf.TagLength === 4,
       "optionals: root ABSENT and nested PRESENT, in the same record");
     check(back[2].Effect.Type === 0 && back[2].Tail === 305,
       "optionals: a union at None beside the mixed optionals");
-    check(back[3].OptPresent && back[3].Opt.V === 402 && !back[3].NumPresent && !back[3].MarkPresent &&
+    check(back[3].OptPresent && back[3].Opt.V === 402 && !back[3].NumberPresent && !back[3].MarkPresent &&
       !back[3].Wrap.LeafPresent && back[3].Wrap.N === 403 && back[3].Tail === 404,
       "optionals: root PRESENT and nested ABSENT, the other way round");
   }
@@ -2417,13 +2436,13 @@ function optionalVersioning(check, o, dir) {
     check(back[0].Added === 77, "compiled plan: the inserted field takes its declared default");
     check(back[0].OptPresent && back[0].Opt.V === 11 && back[0].Opt.TagLength === 2,
       "compiled plan: a PRESENT optional's flag AND payload land");
-    check(back[0].NumPresent && back[0].Num === 12 && back[0].MarkPresent && back[0].Mark === 2,
+    check(back[0].NumberPresent && back[0].Number === 12 && back[0].MarkPresent && back[0].Mark === 2,
       "compiled plan: an optional scalar and an optional enum land");
     check(back[0].Wrap.N === 13 && back[0].Wrap.LeafPresent && back[0].Wrap.Leaf.V === 14,
       "compiled plan: a present flag inside a nested table lands past the inserted field");
     check(back[0].Effect.Type === 1 && back[0].Effect.Boost.Power === 15 && back[0].Tail === 16,
       "compiled plan: the fields behind the optionals land");
-    check(!back[1].OptPresent && back[1].Opt.V === 7 && !back[1].NumPresent && !back[1].MarkPresent &&
+    check(!back[1].OptPresent && back[1].Opt.V === 7 && !back[1].NumberPresent && !back[1].MarkPresent &&
       !back[1].Wrap.LeafPresent && back[1].Wrap.Leaf.V === 7,
       "compiled plan: an ABSENT optional lands absent, at its declared default");
     check(back[1].Tail === 203 && back[1].Effect.Type === 2 && back[1].Effect.Ward.Charge === 0.5,
@@ -2445,8 +2464,8 @@ function optionalVersioning(check, o, dir) {
     two[0].Added = 910;
     two[0].OptPresent = true;
     two[0].Opt.V = 911;
-    two[0].NumPresent = true;
-    two[0].Num = 912;
+    two[0].NumberPresent = true;
+    two[0].Number = 912;
     two[0].Wrap.N = 913;
     two[0].Wrap.LeafPresent = true;
     two[0].Wrap.Leaf.V = 914;
@@ -2459,7 +2478,7 @@ function optionalVersioning(check, o, dir) {
     check(fo1.OptRootFixedLoad(back, 1, w, w.length, fo1.OptRootFixedNewPlan(), r) === 1,
       "newer writer: one record");
     check(back[0].Plain === 909, "newer writer: the renamed field reads the other way too");
-    check(back[0].OptPresent && back[0].Opt.V === 911 && back[0].NumPresent && back[0].Num === 912,
+    check(back[0].OptPresent && back[0].Opt.V === 911 && back[0].NumberPresent && back[0].Number === 912,
       "newer writer: the optionals land past the unknown field");
     check(back[0].Wrap.N === 913 && back[0].Wrap.LeafPresent && back[0].Wrap.Leaf.V === 914 &&
       back[0].Tail === 915,
@@ -2619,7 +2638,7 @@ function optionalControls(check, o, dir) {
       `NEGATIVE CONTROL: a present byte of 7 reads as PRESENT and projects the payload (got ${v.OptPresent}, ${v.Opt.V})`);
     check(v.Wrap.LeafPresent && v.Wrap.Leaf.V === 42,
       "NEGATIVE CONTROL: 0xff inside a nested table reads as present too");
-    check(v.NumPresent && v.MarkPresent,
+    check(v.NumberPresent && v.MarkPresent,
       "NEGATIVE CONTROL: every present byte is a flag, at every kind an optional wraps");
     check(r.clamped === 0 && !r.malformed && r.refused === 0,
       "NEGATIVE CONTROL: a non-canonical present byte is not damage and moves no counter");
@@ -2635,14 +2654,14 @@ function optionalControls(check, o, dir) {
     bad[b + OPT_V] = 0xff; bad[b + OPT_V + 1] = 0xff; bad[b + OPT_V + 2] = 0xff;
     bad[b + OPT_V + 3] = 0x7f;                        // 2147483647 behind a zero flag
     bad[b + WRAP_LEAF_V] = 0x99;
-    bad[b + NUM_PRESENT + 1] = 0x7b;                  // num's payload, flag still zero
+    bad[b + NUM_PRESENT + 1] = 0x7b;                  // number's payload, flag still zero
     bad[b + MARK_PRESENT + 1] = 0x09;                 // an ordinal naming no variant
     const { n, v, r } = load(bad);
     check(n === 1 && !v.OptPresent && v.Opt.V === 7,
       `NEGATIVE CONTROL: an ABSENT payload is ignored on read; the field is its declared default (got ${v.Opt.V})`);
     check(!v.Wrap.LeafPresent && v.Wrap.Leaf.V === 7,
       "NEGATIVE CONTROL: an absent payload inside a nested table is ignored too");
-    check(!v.NumPresent && v.Num === 0 && !v.MarkPresent && v.Mark === 0,
+    check(!v.NumberPresent && v.Number === 0 && !v.MarkPresent && v.Mark === 0,
       "NEGATIVE CONTROL: an absent scalar and an absent enum ignore their payloads");
     check(!r.malformed && r.refused === 0 && r.kindMismatch === 0,
       "NEGATIVE CONTROL: ignoring an absent payload is not an event; nothing is counted");

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <new>
 
 #include "serialize.h"
 
@@ -316,9 +317,9 @@ inline const char * EnumName( MixedEventType value )
 
 // union MixedEvent — at most one of the arms; the tag says which. Construction is
 // None: the tag alone is initialized; an arm is freshly constructed with its defaults
-// when selected, by ReadMixedEvent before decoding (SPEC §4.8), or by application code.
-// Application code must include <new> before constructing an arm in place:
-// ::new ( (void*) &value.hit ) MixedHitEvent{}; value.type = MixedEventType::Hit;
+// when selected, by ReadMixedEvent before decoding (SPEC §4.8), or by its setter.
+// Select an arm through its setter, which sets the tag and constructs the arm
+// together (SPEC §4.8, the arm setter): MixedHitEvent & arm = value.SelectHit();
 // Bytes of unselected arms are indeterminate.
 struct MixedEvent
 {
@@ -332,6 +333,27 @@ struct MixedEvent
     };
 
     MixedEvent() : type( MixedEventType::None ) {} // the tag only — arms are freshly constructed at selection
+
+    MixedHitEvent & SelectHit() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &hit ) MixedHitEvent{};
+        type = MixedEventType::Hit;
+        return hit;
+    }
+
+    MixedChatEvent & SelectChat() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &chat ) MixedChatEvent{};
+        type = MixedEventType::Chat;
+        return chat;
+    }
+
+    MixedPickupEvent & SelectPickup() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
+    {
+        ::new ( (void*) &pickup ) MixedPickupEvent{};
+        type = MixedEventType::Pickup;
+        return pickup;
+    }
 };
 
 inline constexpr int64_t MixedEventMaxBits = 30; // tag + the largest arm; None costs the tag only (SPEC §4.8)

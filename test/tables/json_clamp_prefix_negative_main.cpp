@@ -39,7 +39,7 @@ int main()
     // twelve ASCII bytes, a three-byte code point that fits at 15, one that
     // does not fit at 18, and a single byte that would fit at 16
     const char * text = "{ \"version_note\": \"123456789012\xe2\x9c\x93\xe2\x9c\x93X\" }";
-    if ( !tabledemo::RootConfigFromJson( value, text, (int64_t) strlen( text ), &report ) )
+    if ( !tabledemo::RootConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) )
     {
         printf( "FAIL clamp prefix negative control: the walker would not read this text at\n"
                 "      all, so the clamp was never reached and the stored bytes say nothing.\n"
