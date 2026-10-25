@@ -104,8 +104,8 @@ end
 // AQAAAAAAAAAAAB== (nonzero pad bits) and a line break are non-canonical; an
 // inner '=', a space and a byte outside the alphabet are damaged; and a cut
 // length is damaged. For every instance row the canonical SaveText reads back
-// clean and SaveText re-encodes to the same canonical text, except the
-// blob_shared row, whose canonical wire the strict read refuses by name
+// clean and SaveText re-encodes to the same canonical text, except a
+// blob_shared row (go-refusal=blob_shared), whose canonical wire the strict read refuses by name
 // (docs/SPEC-TABLES.md §2.5, §6.5).
 func TestLuauLoadTextRefusesNonCanonicalBase64(t *testing.T) {
 	t.Parallel()
@@ -177,7 +177,7 @@ func TestLuauLoadTextRefusesNonCanonicalBase64(t *testing.T) {
 			if fields[0] != "canonical" {
 				t.Fatalf("instance %s (%s/%s): first line %q", row.caseName, key, row.root, lines[0])
 			}
-			if row.caseName == "blob_shared" {
+			if row.blobShared {
 				// LoadText IS the strict read (§6.5), and one blob named from
 				// two slots is refused by name (docs/SPEC-TABLES.md §2.5): the
 				// canonical text is a readable wire whose strict read refuses

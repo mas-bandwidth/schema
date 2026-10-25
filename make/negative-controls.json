@@ -87,6 +87,7 @@
         "conformance-negative-control-go-walk",
         "tables-go-wire-fuzz-negative-control",
         "conformance-negative-control-reference-surface",
+        "conformance-negative-control-lua",
         "conformance-negative-control-luau",
         "conformance-go-rows-negative-control"
       ]
@@ -758,11 +759,12 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120, and the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control). The message form's four blades run on the pull request, so what moves nightly is those passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
+      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120, and the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control). The Lua generated-luacheck plant is here because its checker is fleet software and its corpus build is the one part of that lens that spends seconds; the lens itself runs on the card's own push workflow. The message form's four blades run on the pull request, so what moves nightly is those passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
       "targets": [
         "tables-message-form-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control-ratchet",
+        "tables-lua-luacheck-negative-control",
         "luau-nightly-fuzz-negative-control"
       ]
     },
@@ -875,6 +877,18 @@
     {
       "target": "schema-shared-hostile-corpus-negative-control",
       "reason": "the hostile-corpus card's own planted-bad-pattern control: .github/workflows/schema-shared-hostile-corpus.yml runs it on its schedule and on dispatch, beside the drift gate that job runs on every push and pull request, so this leg would run it a second time."
+    },
+    {
+      "target": "schema-lua-fuzz-negative-control",
+      "reason": "the planted-bad-pattern control for the Lua port's nightly fuzz lane. It runs on the lane's own fast job (push and pull request) in .github/workflows/schema-lua-nightly-fuzz.yml (make schema-lua-fuzz-negative-control), and that job builds the port's pinned Lua 5.4.8 with make dist-lua from www.lua.org at the sha256 make/lua.mk names; the shared negative-control leg has no Lua toolchain to run it. The friction target's oracle needs the generated Lua readers and the seeded mutation run, so it stays on the lane's own bench rather than the base row."
+    },
+    {
+      "target": "schema-lua-version-differential-negative-control",
+      "reason": "the card's own workflow (.github/workflows/schema-lua-version-differential.yml) runs the four-interpreter differential on the nightly schedule and on workflow_dispatch, and its negative-control job runs this plant there. The shared leg carries no Lua toolchain; running it here too would need the four interpreters on a runner and prove the same gate a second time."
+    },
+    {
+      "target": "schema-lua-resource-bounds-negative-control",
+      "reason": "the Lua port's own workflow (.github/workflows/schema-lua-resource-bounds.yml) runs this planted-pattern control on its fast job on push and pull request (path-filtered to the lane's make file, test file and workflow), and that job builds the pinned Lua 5.4.8 with make dist-lua; the shared negative-control leg has no Lua toolchain to run it."
     }
   ]
 }
