@@ -432,7 +432,7 @@ if holder:
     if length(fresh.Entries) == 0: agree++
     if fresh.Retired == holder.fields[3].def_int.lo: agree++
     if fresh.Old == holder.fields[4].def_int.lo: agree++
-    if fresh.When == holder.fields[5].def_int.lo: agree++
+    if fresh.Stamped == holder.fields[5].def_int.lo: agree++
     if schema_rt.f64bits(fresh.Ratio) == schema_rt.f64bits(holder.fields[6].def_float): agree++
 print("agreement {agree}")
 probe("Holder", "w0")
