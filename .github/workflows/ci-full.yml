@@ -851,6 +851,18 @@ jobs:
         if: matrix.luau != ''
         run: make dist-luau LUAU_VERSION=${{ matrix.luau }}
 
+      # THE LOBSTER PIN, installed exactly as make/lobster.mk's dist-lobster
+      # does: the same release archive, the same sha256 refused before it is
+      # unpacked, and the same dist/lobster-<version>/ layout the leg's LOBSTER
+      # default names. The release binary links libOpenGL and libGLX, which the
+      # hosted ubuntu image does not carry.
+      - name: install the Lobster pin
+        if: matrix.lobster != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
+
       # One step per toolchain, each keyed on the row's field for it. The
       # version is the leg's to name, and it is the same pin the leg's
       # make/<lang>.mk documents for the repo-local dist/.

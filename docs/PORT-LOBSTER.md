@@ -354,13 +354,26 @@ as lines (lowercase hex for bytes).**
   aardappel/lobster at the pin's commit (its `dev/` tree, as the project's own
   `LOBSTER_TOCPP` build does), and the row names which build it measured.
 - **The conformance driver** (`test/conformance/lobster/driver`) runs
-  `main.lobster -- <manifest> <surface>` under the pinned toolchain and splits
-  stdout — one line per case: the case name, a space, the answer's bytes in
-  hex, or the word `absent` — into one file per case in `<outdir>`
-  (`<case>.absent` for the absent word). While `main.lobster` is absent the
-  leg answers ABSENT: `list` prints nothing and every surface exits 2.
-  `make build/conformance-lobster` generates every manifest unit for lobster
-  and records each refusal by name.
+  `test/conformance/lobster/main.lobster` under the pinned toolchain. Lobster
+  resolves imports when it compiles, so the program runs once per generated
+  unit, in parallel: the driver copies it into `build/conformance-lobster/<unit>/`
+  as `conformance_main.lobster` beside `conformance_unit.lobster` (one
+  `import .<Base>Table` per table module) and runs
+  `conformance_main.lobster -- <repo root> <manifest> <surface> <unit>`. Inputs
+  are read by absolute path, because a relative `read_file` resolves against
+  the program's directory. Stdout is one or more lines per case: the case name,
+  a space, the answer's bytes in hex (a long answer continues under the same
+  name), or the word `absent`. The driver writes one file per case in
+  `<outdir>` (`<case>.absent` for the absent word) and refuses any other line,
+  so a compiler warning fails the leg. `make build/conformance-lobster`
+  generates every manifest unit for lobster and records each refusal by name
+  as `<unit>.refused`; the driver answers that unit's cases `absent` without
+  running anything. **The leg answers** `wire` (`load_tolerant` then `save`),
+  `report`, `block`, `block-foreign` and `block-dump`. Every other surface is
+  ABSENT (exit 2). The JSON text form, the cook, the message form and retention
+  are later cards. `forgery` and `block-reason` wait on the block reader's
+  extent, alignment and pitch checks: `block_read` checks only the magic, the
+  build version and the byte order.
 - **The wire-fuzz pipe** (test/conformance/README.md, one process on a pipe)
   is spoken by a Lobster program that reads its stdin; whether the pinned
   console build exposes a blocking stdin read is the fuzz-differential card's
