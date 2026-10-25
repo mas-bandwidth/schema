@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -26,8 +25,10 @@ import (
 //	           through nesting, as [member, want] pairs of the same body's
 //	           bools; the write drops the field while any pair does not hold
 //	           (§16.2, a guarded group's untaken side has no text to carry),
-//	           the composition internal/tabletext's [tabletext.Guards] makes
-//	           and Go's tableJsonGuardHolds evaluates
+//	           the composition the Go engine's guard walk makes (re-derived
+//	           here from the IR by [jsonGuards], since an emitter never
+//	           imports the engine, the oracle it is checked against) and
+//	           Go's tableJsonGuardHolds evaluates
 //
 // Each fact is set on the field descriptor, its element descriptor and every
 // union arm's payload descriptor that has one; no other key is touched.
@@ -39,7 +40,7 @@ func jsonTable(m *Module, st *ir.Struct) {
 	if st.JsonArray {
 		m.Printf("_M.%sDescriptor.jsonArray <- true;\n", st.Name)
 	}
-	guards := tabletext.Guards(st)
+	guards := jsonGuards(st)
 	for i, f := range st.Fields {
 		target := "_M." + st.Name + "Descriptor.fields[" + fmt.Sprint(i) + "]"
 		jsonFacts(m, f, target)
@@ -49,11 +50,41 @@ func jsonTable(m *Module, st *ir.Struct) {
 	}
 }
 
+// jsonGuardTerm is one conjunct of a guarded field's branch condition: a bool
+// field of the same body, and the value it must hold.
+type jsonGuardTerm struct {
+	Field string
+	Want  bool
+}
+
+// jsonGuards maps each guarded field's name to its branch condition, composed
+// through nesting (outermost first) from the IR's branch tree. A field with no
+// entry is unguarded and always rides.
+func jsonGuards(st *ir.Struct) map[string][]jsonGuardTerm {
+	out := map[string][]jsonGuardTerm{}
+	var walk func(items []ir.Item, cond []jsonGuardTerm)
+	walk = func(items []ir.Item, cond []jsonGuardTerm) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if len(cond) > 0 {
+					out[item.F.Name] = append([]jsonGuardTerm(nil), cond...)
+				}
+			case *ir.Branch:
+				walk(item.Then, append(cond[:len(cond):len(cond)], jsonGuardTerm{item.Cond, !item.Neg}))
+				walk(item.Else, append(cond[:len(cond):len(cond)], jsonGuardTerm{item.Cond, item.Neg}))
+			}
+		}
+	}
+	walk(st.Items, nil)
+	return out
+}
+
 // jsonGuard emits one guarded field's condition (§16.2) as [member, want]
 // pairs, outermost first. A term names a bool of the same body (SPEC §4.5),
 // which the checked unit guarantees; a term the body does not declare is
 // emitted as a null member, and runtime/json.nut holds such a pair false.
-func jsonGuard(m *Module, st *ir.Struct, terms []tabletext.GuardTerm, target string) {
+func jsonGuard(m *Module, st *ir.Struct, terms []jsonGuardTerm, target string) {
 	pairs := make([]string, len(terms))
 	for i, term := range terms {
 		member := "null"
