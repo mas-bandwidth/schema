@@ -1610,7 +1610,7 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, tabs int, pass
 			// THE CHECK WALKS A COUNTED ARRAY DOWN (docs/FIXED-FORM-ALGORITHM.md
 			// §3.1): every live element is checked either way, and ending on
 			// the FIRST elements leaves them in cache for the store, which
-			// walks up (measured by TestGoTableWriterSpeedTable).
+			// walks up (measured by the paired bench, bench/paired).
 			g.pf("%sfor i := %s - 1; i >= 0; i-- {\n", ind, count)
 		} else {
 			g.pf("%sfor i := range %s {\n", ind, count)

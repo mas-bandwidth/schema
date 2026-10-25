@@ -10,5 +10,5 @@ package mapdemo
 table Docs
 {
     pages map[string(8)]*string // *string: a text buffer at its used size
-    after int32
+    past int32 | was = "after"
 }

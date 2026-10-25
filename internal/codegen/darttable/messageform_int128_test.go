@@ -41,7 +41,11 @@ fixed table M {
 	root := int128FindRoot(t, u, "M")
 
 	idVal, _ := new(big.Int).SetString("0x0123456789abcdef0123456789abcdef", 0)
-	valVal, _ := new(big.Int).SetString("-0x123456789abcdef0123456789abcdef", 0)
+	// val sits INSIDE its declared range (±2^100) and past 64 bits, so the
+	// high half carries: a value outside the range is clamped by a conforming
+	// reader (docs/SPEC-TABLES.md §4, the 128-bit read), and a resave of the
+	// clamped value is not the oracle's bytes.
+	valVal, _ := new(big.Int).SetString("-0x123456789abcdef0123456", 0)
 	rndVal, _ := new(big.Int).SetString("0x123456789abcdef0", 0)
 	if idVal == nil || valVal == nil || rndVal == nil {
 		t.Fatal("bad test value")

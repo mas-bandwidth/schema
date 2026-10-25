@@ -64,7 +64,7 @@ int main()
         if ( src == NULL || dst == NULL ) { std::printf( "FAILED: out of memory\n" ); return 1; }
 
         for ( uint32_t i = 0; i < n; ++i ) { src[i] = (uint8_t) ( 0x41u + ( ( i * 7u ) & 0x3fu ) ); }
-        std::memset( dst, 0xAA, (size_t) n );
+        std::memset( (void *) dst, 0xAA, (size_t) n );
 
         copy_run( dst, src, n );
 

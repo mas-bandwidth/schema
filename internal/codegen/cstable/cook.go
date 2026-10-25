@@ -546,10 +546,10 @@ func (g *cookGen) emitRecordCheck(name string) {
 	spelled := name + "Row"
 	g.rf("        {\n")
 	g.rf("            %s probe = default;\n", spelled)
-	g.rf("            byte* at = (byte*) &probe;\n")
+	g.rf("            byte* at = (byte*)&probe;\n")
 	g.rf("            Size(\"%s\", Unsafe.SizeOf<%s>(), %d);\n", spelled, spelled, ml.Size)
 	for _, fl := range ml.Fields {
-		g.rf("            Offset(\"%s.%s\", (byte*) %s - at, %d);\n", spelled, ir.GoExportName(fl.Field.Name),
+		g.rf("            Offset(\"%s.%s\", (byte*)%s - at, %d);\n", spelled, ir.GoExportName(fl.Field.Name),
 			g.cookFieldAddress(fl.Field), fl.Offset)
 	}
 	g.rf("        }\n")
@@ -607,8 +607,8 @@ func (g *cookGen) emitCookHandle(st *ir.Struct) {
 	g.hf("    // which is what a `ref` cannot carry across a field access.\n")
 	g.hf("    public byte* Region { get { return region; } }\n")
 	g.hf("    public long RegionLength { get { return regionLength; } }\n")
-	g.hf("    public %sRow* RootPointer { get { return (%sRow*) region; } }\n", name, name)
-	g.hf("    public ref readonly %sRow Root { get { return ref *(%sRow*) region; } }\n\n", name, name)
+	g.hf("    public %sRow* RootPointer { get { return (%sRow*)region; } }\n", name, name)
+	g.hf("    public ref readonly %sRow Root { get { return ref *(%sRow*)region; } }\n\n", name, name)
 	g.emitOpen(st, ml, align)
 	g.emitAt(st)
 	g.emitAccessors(st, ml)
@@ -641,8 +641,8 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.hf("        cook = default; reason = TableRefuseReason.ok;\n")
 	g.hf("        TableCookLayout.Verify();\n")
 	g.hf("        if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }\n        if (length < %d) { reason = TableRefuseReason.truncated; return false; }\n", cookHeaderBytes)
-	g.hf("        byte* at = (byte*) pointer;\n")
-	g.hf("        ulong bytes = (ulong) length;\n\n")
+	g.hf("        byte* at = (byte*)pointer;\n")
+	g.hf("        ulong bytes = (ulong)length;\n\n")
 	g.hf("        // THE MAGIC, read BYTEWISE before anything else: it is what establishes\n")
 	g.hf("        // the byte order every other header word is written in. A cook of the\n")
 	g.hf("        // other order reads back this constant byte-reversed and refuses HERE,\n")
@@ -673,7 +673,7 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.hf("        // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader\n")
 	g.hf("        // computes is a fact two writers cannot disagree about, and it is 64 for\n")
 	g.hf("        // every unit this language can declare.\n")
-	g.hf("        ulong dataOffset = ((ulong) %d + alignment - 1) & ~(alignment - 1);\n\n", cookHeaderBytes)
+	g.hf("        ulong dataOffset = ((ulong)%d + alignment - 1) & ~(alignment - 1);\n\n", cookHeaderBytes)
 	g.hf("        // THE TWO PART LENGTHS against the length the caller passed. The whole\n")
 	g.hf("        // file is dataOffset + data + attribution, and a size that is not exactly\n")
 	g.hf("        // that refuses: a truncated file and a file with trailing bytes are the\n")
@@ -695,8 +695,8 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.hf("        // aligned; one that is not is a caller's buffer this form cannot be read\n")
 	g.hf("        // out of. The alignment divides 64, so the derived data offset carries\n")
 	g.hf("        // the property from the file's base to the region's.\n")
-	g.hf("        if ((((ulong) at) %% alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }\n\n")
-	g.hf("        cook = new %sCook(at + dataOffset, (long) dataLength);\n", name)
+	g.hf("        if ((((ulong)at) %% alignment) != 0) { reason = TableRefuseReason.unaligned_base; return false; }\n\n")
+	g.hf("        cook = new %sCook(at + dataOffset, (long)dataLength);\n", name)
 	g.hf("        return true;\n    }\n\n")
 	g.hf("    // The same open over a SPAN, which is how a consumer that already has the\n")
 	g.hf("    // bytes in hand spells it. The contract is the pointer form's and is not\n")
@@ -710,7 +710,7 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.hf("    // past that ceiling is opened through the pointer form, never through this.\n")
 	g.hf("    public static bool Open(out %sCook cook, ReadOnlySpan<byte> bytes)\n    {\n", name)
 	g.hf("        fixed (byte* p = bytes)\n        {\n")
-	g.hf("            return Open(out cook, (IntPtr) p, bytes.Length);\n")
+	g.hf("            return Open(out cook, (IntPtr)p, bytes.Length);\n")
 	g.hf("        }\n    }\n\n")
 }
 
@@ -728,7 +728,7 @@ func (g *cookGen) emitAt(st *ir.Struct) {
 	g.hf("    public static %sRow* At(long* slot)\n    {\n", name)
 	g.hf("        long delta = *slot;\n")
 	g.hf("        if (delta == 0) { return null; }\n")
-	g.hf("        return (%sRow*) ((byte*) slot + delta);\n", name)
+	g.hf("        return (%sRow*)((byte*)slot + delta);\n", name)
 	g.hf("    }\n\n")
 }
 
@@ -832,7 +832,7 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 		return
 	}
 	g.hf("    private static readonly TableCookInfo %s = new TableCookInfo\n    {\n", cookInfoSymbol(record))
-	g.hf("        Name = %q, Size = %d, Align = %d, NumFields = %d,\n", record, ml.Size, ml.Align, len(ml.Fields))
+	g.hf("        Name = %q,\n        Size = %d,\n        Align = %d,\n        NumFields = %d,\n", record, ml.Size, ml.Align, len(ml.Fields))
 	g.hf("        Fields = new TableCookFieldInfo[]\n        {\n")
 	for _, fl := range ml.Fields {
 		f := fl.Field

@@ -553,53 +553,45 @@ static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
 }
 static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
-    uint64_t count, i, j; int64_t span; TableReader tail;
+    uint64_t count, i; int64_t span; TableReader tail;
     if ( bytes < 1 || buffer == NULL ) { report->malformed = 1; return 0; }
     if ( buffer[0] != 1 ) { report->refused = 1; report->reason = buffer[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE : SCHEMA_TABLE_NEWER_FORM; return 0; }
     if ( bytes < 9 ) { report->malformed = 1; return 0; }
     tail = table_reader_make( buffer + bytes - 8, 8, report ); count = table_reader_get64( &tail );
     if ( count > (uint64_t) ((bytes - 9) / 8) ) { report->malformed = 1; return 0; }
+    /* THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that claims
+       more than 4096 entries is malformed for the whole wire, even where the
+       buffer would hold them, so the distinctness walk below stays bounded no
+       matter how large the file is. */
+    if ( count > 4096 ) { report->malformed = 1; return 0; }
     span = (int64_t) count * 8 + 8;
     *r = table_reader_make( buffer + 1, bytes - span - 1, report );
     r->ids = buffer + bytes - span; r->id_count = count; r->nested = 0;
     /* THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
-       for the whole wire (docs/SPEC-TABLES.md §3). Count is attacker-controlled
-       up to (bytes-9)/8; an unbounded stack table is a stack-overflow primitive.
-       The open-addressed path therefore runs only at count<=256 with 512 slots.
-       A slot occupied by a different id is not a duplicate: compare the stored
-       id, not the hash. Probe length is capped at the slot count so a colliding
-       attacker-chosen set cannot walk forever. Exhausted probes and counts
-       above the bound keep the pairwise walk, which is the same verdict. The
-       mix is table_writer_id's. */
+       for the whole wire (docs/SPEC-TABLES.md §3). The walk is one open-addressed
+       probe over a fixed 8192-slot stack table, and there is no pairwise arm
+       left to fall back to: the count cap above guarantees the probe completes,
+       so a hostile file cannot steer a reader into an O(n^2) scan. A slot
+       occupied by a different id is not a duplicate: compare the stored id, not
+       the hash. The mix is table_writer_id's. */
     if ( count > 1 )
     {
-        int pairwise = count > 256;
-        if ( !pairwise )
+        uint64_t seen[8192];
+        uint8_t used[8192];
+        memset( used, 0, sizeof( used ) );
+        for ( i = 0; i < count; i++ )
         {
-            uint64_t seen[512];
-            uint8_t used[512];
-            memset( used, 0, sizeof( used ) );
-            for ( i = 0; i < count; i++ )
+            uint64_t id = table_reader_id_at( r, i + 1 );
+            uint64_t hash = id;
+            uint32_t slot;
+            hash ^= hash >> 33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash >> 33;
+            slot = (uint32_t) hash & 8191u;
+            for ( ;; )
             {
-                uint64_t id = table_reader_id_at( r, i + 1 );
-                uint64_t hash = id;
-                uint32_t slot, probes;
-                hash ^= hash >> 33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash >> 33;
-                slot = (uint32_t) hash & 511u;
-                for ( probes = 0; probes < 512; probes++ )
-                {
-                    if ( !used[slot] ) { used[slot] = 1; seen[slot] = id; break; }
-                    if ( seen[slot] == id ) { report->malformed = 1; return 0; }
-                    slot = (slot + 1) & 511u;
-                }
-                if ( probes == 512 ) { pairwise = 1; break; }
+                if ( !used[slot] ) { used[slot] = 1; seen[slot] = id; break; }
+                if ( seen[slot] == id ) { report->malformed = 1; return 0; }
+                slot = (slot + 1) & 8191u;
             }
-        }
-        if ( pairwise )
-        {
-            for ( i = 1; i < count; i++ ) { for ( j = 0; j < i; j++ ) {
-                if ( table_reader_id_at( r, i+1 ) == table_reader_id_at( r, j+1 ) ) { report->malformed = 1; return 0; }
-            } }
         }
     }
     /* Root slack invalidates the whole file before any overlay. A stopped
@@ -2986,8 +2978,13 @@ static SCHEMA_UNUSED void table_number_dispose( TableNumbering * n )
     memset(n,0,sizeof(*n));
 }
 
-static SCHEMA_UNUSED int table_number_build( TableNumbering * n, const TableCtx * ctx,
-                                            const void * root, const TableNodeType * type, TableAllocator allocator )
+/* table_number_walk numbers a graph. keep_shared_blobs is the one switch:
+   every WRITER refuses a blob a second slot names (blob_shared, §2.5), and
+   Lock and Cook pack the graph as they find it, the one node numbered once
+   (§2.5, §7.6), so a tolerant read's value still cooks. */
+static SCHEMA_UNUSED int table_number_walk( TableNumbering * n, const TableCtx * ctx,
+                                           const void * root, const TableNodeType * type, TableAllocator allocator,
+                                           int keep_shared_blobs )
 {
     memset(n,0,sizeof(*n)); n->ctx = ctx; n->allocator=allocator;
     if ( root == NULL || !table_number_edge(n,root,type) ) { return 0; }
@@ -3004,7 +3001,7 @@ static SCHEMA_UNUSED int table_number_build( TableNumbering * n, const TableCtx 
             /* A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): every
                writer refuses a blob another slot already named, by name
                blob_shared. Other shared nodes are numbered once. */
-            if ( visit.type->blob ) { return 0; }
+            if ( visit.type->blob && !keep_shared_blobs ) { return 0; }
             continue;
         }
         if ( n->slot_capacity == 0 || n->count >= n->slot_capacity/2 )
@@ -3041,6 +3038,12 @@ static SCHEMA_UNUSED int table_number_build( TableNumbering * n, const TableCtx 
     }
     table_release(n->allocator,n->work); n->work = NULL; n->work_capacity = 0;
     return 1;
+}
+
+static SCHEMA_UNUSED int table_number_build( TableNumbering * n, const TableCtx * ctx,
+                                            const void * root, const TableNodeType * type, TableAllocator allocator )
+{
+    return table_number_walk(n,ctx,root,type,allocator,0);
 }
 
 
@@ -3129,7 +3132,7 @@ static SCHEMA_UNUSED uint8_t * table_graph_pack( const TableCtx * ctx, const voi
     int64_t total=0;
     uint8_t * packed=NULL;
     *bytes=0;
-    if ( !table_number_build(&n,ctx,root,type,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator()) ) { table_number_dispose(&n); return NULL; }
+    if ( !table_number_walk(&n,ctx,root,type,ctx!=NULL && ctx->arena!=NULL ? ctx->arena->allocator : table_default_allocator(),1) ) { table_number_dispose(&n); return NULL; }
     for ( i=0; i<n.count; i++ )
     {
         int64_t size=table_node_storage(&n,n.entries[i].type,n.entries[i].value);
@@ -4052,7 +4055,7 @@ static SCHEMA_UNUSED int64_t table_graph_cook(const TableCtx * ctx,const void * 
     void * output,uint64_t capacity,int order,TableAllocator allocator,uint64_t version,int measure)
 {
     TableNumbering n; int64_t result=-1,align=8,bytes=0,need; uint64_t i; uint8_t * raw=(uint8_t *)output;
-    if(!table_number_build(&n,ctx,root,type,allocator)) { table_number_dispose(&n); return -1; }
+    if(!table_number_walk(&n,ctx,root,type,allocator,1)) { table_number_dispose(&n); return -1; }
     need=table_cook_layout(&n,&align,&bytes); if(need<0) { goto done; }
     if(measure) { result=need; goto done; }
     if(raw==NULL || (uint64_t)need>capacity || (uint64_t)need>SIZE_MAX) { goto done; }

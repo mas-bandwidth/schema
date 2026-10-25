@@ -88,6 +88,10 @@ int main( int argc, char ** argv )
             if(cook) { if(!codec->cook(value,saved,(uint64_t)length,big)) { length=-1; } }
             else { length = codec->save( value, saved, length ); }
         }
+        /* §2.5: a save refused because one blob is named from two slots is a
+           NAMED refusal, answered as the length -2 (the tolerant load counted
+           it); every other failed save is -1. */
+        if ( !cook && length < 0 && report.blob_shared > 0 ) { length = -2; }
         /* Fixed storage always exists; load's bool is the body verdict. */
         if ( !loaded && !report.refused ) { report.malformed = 1; }
         reply:

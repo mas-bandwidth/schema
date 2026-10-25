@@ -2,9 +2,10 @@
     THE JAVA TABLES LEG, under test (docs/SPEC-TABLES.md).
 
     Three gates the conformance harness does not hold, because none of them is a
-    case — each is a SEARCH or a FORGERY. (The tolerant wire's allocation gate and
-    soak once stood beside them; they went with the wire's previous form, which
-    this port no longer emits — schema#517 brings the id-table form.)
+    case — each is a SEARCH or a FORGERY — and the allocation gate, which is a
+    MEASUREMENT: `allocator` refuses off the pinned JDK here and runs the rows
+    in AllocPaths.java (the block and cook walks, and the id-table variable
+    form's loadMeasure, load and save; schema#517).
 
       fuzz  <block> <cook>     the READERS' oracle. Mutants of a block image and
                                a cooked file are handed to the generated Open,
@@ -24,6 +25,7 @@
 */
 
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -324,6 +326,63 @@ public final class Main {
         for (int i = 0; i < 8; i++) { data[slot + i] = (byte) (delta >>> (8 * i)); }
     }
 
+    // ---- the allocation gate (docs/PORTING.md I1, M1, I14)
+    //
+    // Reads the JDK's feature version and the JVM's per-thread allocation
+    // counter, and refuses to certify on any JDK other than the pin — or with
+    // no counter at all — without measuring. The escape hatch reports and does
+    // not certify. What it measures is AllocPaths: the block and cook walks,
+    // the variable form's loadMeasure, load and save, over committed files.
+    private static int modeAllocator(String blockFile, String cookFile, String[] wires) throws IOException {
+        int found = Runtime.version().feature();
+        int pin = 21;
+        String pinEnv = System.getenv("SCHEMA_JAVA_ALLOC_PINNED_FEATURE");
+        if (pinEnv != null && !pinEnv.isEmpty()) {
+            try {
+                pin = Integer.parseInt(pinEnv);
+            } catch (NumberFormatException ignored) {
+                pin = 21;
+            }
+        }
+        boolean anyJdk = "1".equals(System.getenv("SCHEMA_JAVA_ALLOC_ANY_JDK"));
+
+        java.lang.management.ThreadMXBean base = ManagementFactory.getThreadMXBean();
+        com.sun.management.ThreadMXBean bean = null;
+        boolean counterPresent = false;
+        if (base instanceof com.sun.management.ThreadMXBean b
+                && b.isThreadAllocatedMemorySupported()
+                && b.isThreadAllocatedMemoryEnabled()) {
+            bean = b;
+            counterPresent = true;
+        }
+
+        if (anyJdk) {
+            System.err.println("NOT CERTIFIED: allocation observations on JDK " + Runtime.version()
+                    + (counterPresent ? "" : " (no per-thread allocation counter)")
+                    + "; reporting, not certifying");
+        } else if (found != pin) {
+            fail("allocation certification requires JDK " + pin + ", running " + Runtime.version());
+        } else if (!counterPresent) {
+            fail("the JVM exposes no per-thread allocation counter, so the allocation gate "
+                    + "cannot certify a floor it cannot measure");
+        }
+
+        // THE ROWS (AllocPaths.java): the real read and write paths over the
+        // committed corpus, each against its ceiling. The refusals above run
+        // first and measure nothing.
+        describe("allocation measurement on JDK " + Runtime.version());
+        int code = AllocPaths.run(bean, !anyJdk, blockFile, cookFile, wires);
+        if (code != 0) {
+            fail("the allocation gate is red on JDK " + Runtime.version() + " (the rows above say which)");
+        }
+        if (!anyJdk) {
+            System.out.println("the java allocation gate certified on JDK " + pin);
+        } else {
+            System.out.println("NOT CERTIFIED: observations on JDK " + Runtime.version() + ", pin is " + pin);
+        }
+        return 0;
+    }
+
     // ---- the byte-order leg
     //
     // Java reads a block and a cook EXPLICITLY LITTLE-ENDIAN, so this reader's
@@ -347,7 +406,7 @@ public final class Main {
 
     public static void main(String[] args) throws IOException {
         if (args.length < 1) {
-            System.err.println("usage: Main fuzz <block> <cook> | order <le> <be> | extent <cook>");
+            System.err.println("usage: Main fuzz <block> <cook> | order <le> <be> | extent <cook> | allocator <block> <cook> <wire>...");
             System.exit(1);
         }
         String mode = args[0];
@@ -371,6 +430,14 @@ public final class Main {
                 break;
             case "extent":
                 System.exit(modeExtent(args[1]));
+                break;
+            case "allocator":
+                if (args.length < 4) {
+                    System.err.println("usage: Main allocator <block> <cook> <wire>...");
+                    System.exit(1);
+                }
+                System.exit(modeAllocator(args[1], args[2],
+                        java.util.Arrays.copyOfRange(args, 3, args.length)));
                 break;
             default:
                 System.err.println("FAILED: unknown mode " + mode);

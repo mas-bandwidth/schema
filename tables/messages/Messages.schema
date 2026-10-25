@@ -69,7 +69,7 @@ union Origin
 fixed table Selection
 {
     start Cursor
-    end   Cursor
+    stop  Cursor | was = "end"
 }
 
 fixed table InsertText

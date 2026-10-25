@@ -293,6 +293,15 @@ func (g *tableGen) emitCookWriteField(st *ir.Struct, f *ir.Field, offset int64) 
 // in a member of the record (docs/SPEC-TABLES.md §2.6), and its pieces sit at
 // the arms' shared offset.
 func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64, name, base, sfx string) {
+	if f.IsMap() && f.Type.Optional {
+		// `?map[K]V`'s PRESENCE COMPANION is a piece the other side reads
+		// (docs/SPEC-TABLES.md §2.8, §20.2): it rides at the field's last piece,
+		// beside the sixteen-byte map slot the extent writer fills. The oracle is
+		// internal/codegen/gotable/mappresence_test.go TestGoMapPresence.
+		pieces := ir.FieldPieces(g.unit, f, offset)
+		p := pieces[len(pieces)-1]
+		g.pf("    table_cook_put( %s + %d, (uint64_t) ( %s_present ? 1 : 0 ), 1, order ); // ?map's presence companion\n", base, p.Offset, name)
+	}
 	if f.IsMap() || f.IsList() {
 		// THE SLOT IS THE EXTENT WRITER'S (docs/SPEC-TABLES.md §2.8, §2.9): the
 		// reference is a delta to an array this record's own extent holds, and

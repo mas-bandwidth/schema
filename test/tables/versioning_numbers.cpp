@@ -126,11 +126,10 @@ std::vector<uint8_t> one( const T & v, Measure measure, Save save, const char * 
 // THE REASON NAMES THE BILL ADDS AND THE EMITTER DOES NOT CARRY (#895, bill §4,
 // §6b). One -D each the day they land, and every red below becomes the real
 // comparison it already reads as.
-#ifdef SCHEMA_HAS_LAYOUT_NEWER
-#define IS_LAYOUT_NEWER( ns, r ) ( (r) == ns::layout_newer )
-#else
-#define IS_LAYOUT_NEWER( ns, r ) ( (void) (r), false )
-#endif
+// A hash outside this reader's lineage is layout_unknown (docs/SPEC-TABLES.md
+// §21.3, algorithm §5.3 step 5): nothing on the wire PROVES a hash newer, so
+// layout_newer is reserved and never emitted, as in the Go oracle.
+#define IS_LAYOUT_UNKNOWN( ns, r ) ( (r) == ns::layout_unknown )
 #ifdef SCHEMA_HAS_LAYOUT_UNSUPPORTED
 #define IS_LAYOUT_UNSUPPORTED( ns, r ) ( (r) == ns::layout_unsupported )
 #else
@@ -138,7 +137,7 @@ std::vector<uint8_t> one( const T & v, Measure measure, Save save, const char * 
 #endif
 
 // OLD-REFUSES-NEW, one shape for every row: the OLD build's reader, the NEW
-// build's bytes. `layout_newer` before any record, no counter, nothing decoded.
+// build's bytes. `layout_unknown` before any record, no counter, nothing decoded.
 //
 // WHAT THIS SHAPE DOES NOT YET CHECK, and what it will. The refusal above says
 // only "newer"; it does not say WHICH layout the file carries. Bill §12.4 puts
@@ -153,14 +152,14 @@ std::vector<uint8_t> one( const T & v, Measure measure, Save save, const char * 
         OLDNS::TBL fresh; std::memset( (void *) &fresh, 0, sizeof( fresh ) ); OLDNS::TBL##Reset( fresh );         \
         OLDNS::TableReport r;                                                                            \
         std::vector<OLDNS::TableFixedEntry> plan( 4096 );                                                 \
-        const int64_t n = OLDNS::TBL##FixedLoad( &back, 1, (newbytes).data(), (int64_t) (newbytes).size(),\
+        const int64_t n = OLDNS::TBL##FixedLoadTolerant( &back, 1, (newbytes).data(), (int64_t) (newbytes).size(),\
                                                  plan.data(), 4096, NULL, &r );                          \
         const uint64_t file_hash = OLDNS::TableFixedGet64( (newbytes).data() + OLDNS::kTableFixedHashAt ); \
-        check( n < 0 && r.refused && IS_LAYOUT_NEWER( OLDNS, r.reason ) &&                               \
+        check( n < 0 && r.refused && IS_LAYOUT_UNKNOWN( OLDNS, r.reason ) &&                               \
              r.layout_hash == file_hash &&                                                               \
              r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed &&\
              std::memcmp( &back, &fresh, sizeof( back ) ) == 0,                                          \
-             ROW "/OLD-REFUSES-NEW: layout_newer before any record, no counter, nothing decoded" );      \
+             ROW "/OLD-REFUSES-NEW: layout_unknown before any record, no counter, nothing decoded" );      \
     } while ( 0 )
 
 // The row must CHANGE THE LAYOUT HASH, or "older or equal" has nothing to
@@ -191,7 +190,7 @@ void array_bounded_grow_case()
         vnew_array_bounded_grow::ArrayBoundedGrowReset( back );
         vnew_array_bounded_grow::TableReport r;
         std::vector<vnew_array_bounded_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_array_bounded_grow::ArrayBoundedGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_array_bounded_grow::ArrayBoundedGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                                    plan.data(), 4096, NULL, &r ) == 1,
                "array_bounded_grow/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -217,8 +216,10 @@ void array_bounded_grow_case()
 }
 
 // A forged count of 7 in the OLD file (writer declared [..4]), read by the
-// NEW reader ([..8]). The plan carries the WRITER's bound (bill §12.5): clamp
-// to 4, COUNT clamped, never land a count the old writer could not have written.
+// NEW reader ([..8]). The plan carries the WRITER's bound (bill §12.5), and a
+// count past it is the NAMED REFUSAL count_over_bound before any destination
+// byte (docs/SPEC-TABLES.md §3.4; the Go oracle's fixedguard_test.go): never
+// land a count the old writer could not have written.
 void array_bounded_grow_hostile_case()
 {
     vold_array_bounded_grow::ArrayBoundedGrow old;
@@ -234,17 +235,19 @@ void array_bounded_grow_hostile_case()
     vold_array_bounded_grow::TableFixedPut32( ob.data() + rec + 8 + 4, 7u );
     {
         vnew_array_bounded_grow::ArrayBoundedGrow back;
-        vnew_array_bounded_grow::ArrayBoundedGrowReset( back );
+        std::memset( (void *) &back, 0, sizeof( back ) ); vnew_array_bounded_grow::ArrayBoundedGrowReset( back );
         vnew_array_bounded_grow::TableReport r;
         std::vector<vnew_array_bounded_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_array_bounded_grow::ArrayBoundedGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
-                                                                   plan.data(), 4096, NULL, &r ) == 1,
-               "array_bounded_grow_hostile: the forged file reads" );
-        check( back.vals_count == 4,
-               "array_bounded_grow_hostile: a count of 7 clamps to the WRITER's [..4], not the reader's [..8]" );
-        check( r.clamped >= 1, "array_bounded_grow_hostile: COUNT clamped" );
-        check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
-               "array_bounded_grow_hostile: lead and trail stand" );
+        vnew_array_bounded_grow::ArrayBoundedGrow fresh;
+        std::memset( (void *) &fresh, 0, sizeof( fresh ) ); vnew_array_bounded_grow::ArrayBoundedGrowReset( fresh );
+        check( vnew_array_bounded_grow::ArrayBoundedGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+                                                                   plan.data(), 4096, NULL, &r ) == -1,
+               "array_bounded_grow_hostile: the forged file is REFUSED, even by the tolerant read" );
+        check( r.refused && r.reason == vnew_array_bounded_grow::count_over_bound,
+               "array_bounded_grow_hostile: a count of 7 past the WRITER's [..4] (not the reader's [..8]) is count_over_bound" );
+        check( r.clamped == 0 && !r.malformed, "array_bounded_grow_hostile: no clamp is counted" );
+        check( std::memcmp( (const void *) &back, (const void *) &fresh, sizeof( back ) ) == 0,
+               "array_bounded_grow_hostile: no destination byte is written" );
     }
 }
 
@@ -280,7 +283,7 @@ void array_fixed_grow_case()
         std::memset( (void *) &back, 0x5A, sizeof( back ) );
         vnew_array_fixed_grow::TableReport r;
         std::vector<vnew_array_fixed_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_array_fixed_grow::ArrayFixedGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_array_fixed_grow::ArrayFixedGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                                plan.data(), 4096, NULL, &r ) == 1,
                "array_fixed_grow/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -335,7 +338,7 @@ void array_elem_widen_case()
         vnew_array_elem_widen::ArrayElemWidenReset( back );
         vnew_array_elem_widen::TableReport r;
         std::vector<vnew_array_elem_widen::TableFixedEntry> plan( 4096 );
-        check( vnew_array_elem_widen::ArrayElemWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_array_elem_widen::ArrayElemWidenFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                                plan.data(), 4096, NULL, &r ) == 1,
                "array_elem_widen/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -379,7 +382,7 @@ void constant_grow_case()
         vnew_constant_grow::ConstantGrowReset( back );
         vnew_constant_grow::TableReport r;
         std::vector<vnew_constant_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_constant_grow::ConstantGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_constant_grow::ConstantGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                           plan.data(), 4096, NULL, &r ) == 1,
                "constant_grow/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -424,7 +427,7 @@ void string_grow_case()
         vnew_string_grow::StringGrowReset( back );
         vnew_string_grow::TableReport r;
         std::vector<vnew_string_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_string_grow::StringGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_string_grow::StringGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                       plan.data(), 4096, NULL, &r ) == 1,
                "string_grow/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -458,7 +461,7 @@ void wstring_grow_case()
     vold_wstring_grow::WstringGrow old;
     vold_wstring_grow::WstringGrowReset( old );
     old.lead = 0xAAAAAAAAu;
-    std::memcpy( old.text, src, sizeof( src ) );
+    std::memcpy( (void *) old.text, src, sizeof( src ) );
     old.text_length = 8; // EIGHT CODE UNITS, a surrogate pair counting two
     old.trail = 0xBBBBBBBBu;
     std::vector<uint8_t> ob = one( old, vold_wstring_grow::WstringGrowFixedMeasure,
@@ -468,7 +471,7 @@ void wstring_grow_case()
         vnew_wstring_grow::WstringGrowReset( back );
         vnew_wstring_grow::TableReport r;
         std::vector<vnew_wstring_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_wstring_grow::WstringGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_wstring_grow::WstringGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                         plan.data(), 4096, NULL, &r ) == 1,
                "wstring_grow/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -512,7 +515,7 @@ void bytes_grow_case()
         vnew_bytes_grow::BytesGrowReset( back );
         vnew_bytes_grow::TableReport r;
         std::vector<vnew_bytes_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_bytes_grow::BytesGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_bytes_grow::BytesGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                     plan.data(), 4096, NULL, &r ) == 1,
                "bytes_grow/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -562,7 +565,7 @@ void int_widen_case()
         vnew_int_widen::IntWidenReset( back );
         vnew_int_widen::TableReport r;
         std::vector<vnew_int_widen::TableFixedEntry> plan( 4096 );
-        check( vnew_int_widen::IntWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_int_widen::IntWidenFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                   plan.data(), 4096, NULL, &r ) == 1,
                "int_widen/NEW-READS-OLD: one record" );
         check( back.v == (int32_t) values[k], names[k] );
@@ -601,7 +604,7 @@ void uint_widen_case()
         vnew_uint_widen::UintWidenReset( back );
         vnew_uint_widen::TableReport r;
         std::vector<vnew_uint_widen::TableFixedEntry> plan( 4096 );
-        check( vnew_uint_widen::UintWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_uint_widen::UintWidenFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                     plan.data(), 4096, NULL, &r ) == 1,
                "uint_widen/NEW-READS-OLD: one record" );
         check( back.v == 0xFFFFu, "uint_widen/NEW-READS-OLD: 0xFFFF ZERO-extends, it does not sign-extend" );
@@ -629,8 +632,8 @@ void uint_widen_case()
 // the 22 payload bits BELOW THE QUIET BIT ride exactly — the half no ruling can
 // change — so the day the quiet bit is ruled on, one line moves.
 
-uint64_t bits64( double d ) { uint64_t b; std::memcpy( &b, &d, 8 ); return b; }
-float f_from( uint32_t b ) { float f; std::memcpy( &f, &b, 4 ); return f; }
+uint64_t bits64( double d ) { uint64_t b; std::memcpy( (void *) &b, &d, 8 ); return b; }
+float f_from( uint32_t b ) { float f; std::memcpy( (void *) &f, &b, 4 ); return f; }
 
 void float_widen_case()
 {
@@ -651,7 +654,7 @@ void float_widen_case()
         vnew_float_widen::FloatWidenReset( back );
         vnew_float_widen::TableReport r;
         std::vector<vnew_float_widen::TableFixedEntry> plan( 4096 );
-        check( vnew_float_widen::FloatWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_float_widen::FloatWidenFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                       plan.data(), 4096, NULL, &r ) == 1,
                "float_widen/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -716,7 +719,7 @@ void range_widen_case()
         vnew_range_widen::RangeWidenReset( back );
         vnew_range_widen::TableReport r;
         std::vector<vnew_range_widen::TableFixedEntry> plan( 4096 );
-        check( vnew_range_widen::RangeWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_range_widen::RangeWidenFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                       plan.data(), 4096, NULL, &r ) == 1,
                "range_widen/NEW-READS-OLD: one record" );
         check( back.v == 100, "range_widen/NEW-READS-OLD: 100 lands" );
@@ -758,7 +761,7 @@ void range_widen_hostile_case()
         vnew_range_widen::RangeWidenReset( back );
         vnew_range_widen::TableReport r;
         std::vector<vnew_range_widen::TableFixedEntry> plan( 4096 );
-        check( vnew_range_widen::RangeWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_range_widen::RangeWidenFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                       plan.data(), 4096, NULL, &r ) == 1,
                "range_widen_hostile: the forged file reads" );
         check( back.v == 100, "range_widen_hostile: 150 clamps to the WRITER's max 100, not the reader's 200" );
@@ -788,7 +791,7 @@ void bits_grow_case()
         vnew_bits_grow::BitsGrowReset( back );
         vnew_bits_grow::TableReport r;
         std::vector<vnew_bits_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_bits_grow::BitsGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_bits_grow::BitsGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                   plan.data(), 4096, NULL, &r ) == 1,
                "bits_grow/NEW-READS-OLD: one record" );
         check( back.v == 0xFFu, "bits_grow/NEW-READS-OLD: every bit of bits(8) lands in bits(12), exact" );
@@ -826,7 +829,7 @@ void fixed_I_grow_case()
         vnew_fixed_i_grow::FixedIGrowReset( back );
         vnew_fixed_i_grow::TableReport r;
         std::vector<vnew_fixed_i_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_fixed_i_grow::FixedIGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_fixed_i_grow::FixedIGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                        plan.data(), 4096, NULL, &r ) == 1,
                "fixed_I_grow/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -874,7 +877,7 @@ void fixed_I_grow_element_case()
         vnew_fixed_i_grow_element::FixedIGrowElementReset( back );
         vnew_fixed_i_grow_element::TableReport r;
         std::vector<vnew_fixed_i_grow_element::TableFixedEntry> plan( 4096 );
-        check( vnew_fixed_i_grow_element::FixedIGrowElementFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_fixed_i_grow_element::FixedIGrowElementFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                                       plan.data(), 4096, NULL, &r ) == 1,
                "fixed_I_grow_element/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -918,7 +921,7 @@ void optional_add_case()
         vnew_optional_add::OptionalAddReset( back );
         vnew_optional_add::TableReport r;
         std::vector<vnew_optional_add::TableFixedEntry> plan( 4096 );
-        check( vnew_optional_add::OptionalAddFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_optional_add::OptionalAddFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                                         plan.data(), 4096, NULL, &r ) == 1,
                "optional_add/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -1003,7 +1006,7 @@ void floor_cases()
         vnew_floor::FlooredReset( back );
         vnew_floor::TableReport r;
         std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
-        const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, b1.data(), (int64_t) b1.size(),
+        const int64_t n = vnew_floor::FlooredFixedLoadTolerant( &back, 1, b1.data(), (int64_t) b1.size(),
                                                         plan.data(), 4096, NULL, &r );
         check( n == 1 && back.a == 11 && back.b == 22 && back.c == 3,
                "floor_at: a file AT the floor reads, and the reader's tail is the default" );
@@ -1021,7 +1024,7 @@ void floor_cases()
         vnew_floor::Floored fresh; std::memset( (void *) &fresh, 0, sizeof( fresh ) ); vnew_floor::FlooredReset( fresh );
         vnew_floor::TableReport r;
         std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
-        const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, b0.data(), (int64_t) b0.size(),
+        const int64_t n = vnew_floor::FlooredFixedLoadTolerant( &back, 1, b0.data(), (int64_t) b0.size(),
                                                         plan.data(), 4096, NULL, &r );
         check( n < 0 && r.refused && IS_LAYOUT_UNSUPPORTED( vnew_floor, r.reason ) &&
              r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed &&
@@ -1036,14 +1039,14 @@ void floor_cases()
         vnew_floor::FlooredReset( back );
         vnew_floor::TableReport before;
         std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
-        const int64_t read_yesterday = vnew_floor::FlooredFixedLoad( &back, 1, b1.data(), (int64_t) b1.size(),
+        const int64_t read_yesterday = vnew_floor::FlooredFixedLoadTolerant( &back, 1, b1.data(), (int64_t) b1.size(),
                                                                      plan.data(), 4096, NULL, &before );
         check( read_yesterday == 1, "floor_raise_live: the file read before the floor moved" );
 // the floor must exist AND this build must be one that may move it
 #if defined( SCHEMA_HAS_FLOOR ) && defined( SCHEMA_FIXED_FLOOR_TEST_HOOKS )
         vnew_floor::FlooredFixedSetFloorForTest( 2 );
         vnew_floor::TableReport after;
-        const int64_t today = vnew_floor::FlooredFixedLoad( &back, 1, b1.data(), (int64_t) b1.size(),
+        const int64_t today = vnew_floor::FlooredFixedLoadTolerant( &back, 1, b1.data(), (int64_t) b1.size(),
                                                             plan.data(), 4096, NULL, &after );
         check( today < 0 && after.refused && IS_LAYOUT_UNSUPPORTED( vnew_floor, after.reason ),
                "floor_raise_live: the same file refuses after the floor is raised by one" );
@@ -1075,7 +1078,7 @@ void hash_cases()
         vnew_floor::Floored back;
         vnew_floor::FlooredReset( back );
         vnew_floor::TableReport r;
-        check( vnew_floor::FlooredFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_floor::FlooredFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
                                              plan.data(), 4096, &cache, &r ) == 1, "hash_identity: the own-hash load" );
         check( back.a == 1 && back.b == 2 && back.c == 3, "hash_identity: the identity plan lands every field" );
         check( cache.compiles == 0, "hash_identity: the reader's own hash compiles NOTHING" );
@@ -1083,7 +1086,7 @@ void hash_cases()
                "hash_identity: the identity read moves no counter" );
     }
 
-    // hash_unknown — A HASH IN NO LINEAGE REFUSES layout_newer. The bytes below
+    // hash_unknown — A HASH IN NO LINEAGE REFUSES layout_unknown (SPEC-TABLES §21.3). The bytes below
     // are a well-formed form-3 file of a DIFFERENT table, so the hash is one
     // this reader's lineage has never held and the layout is not its own.
     {
@@ -1096,11 +1099,11 @@ void hash_cases()
         vnew_floor::Floored fresh; std::memset( (void *) &fresh, 0, sizeof( fresh ) ); vnew_floor::FlooredReset( fresh );
         vnew_floor::TableReport r;
         std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
-        const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, sb.data(), (int64_t) sb.size(),
+        const int64_t n = vnew_floor::FlooredFixedLoadTolerant( &back, 1, sb.data(), (int64_t) sb.size(),
                                                         plan.data(), 4096, NULL, &r );
-        check( n < 0 && r.refused && IS_LAYOUT_NEWER( vnew_floor, r.reason ) &&
+        check( n < 0 && r.refused && IS_LAYOUT_UNKNOWN( vnew_floor, r.reason ) &&
              std::memcmp( &back, &fresh, sizeof( back ) ) == 0,
-             "hash_unknown: a hash in NO lineage refuses layout_newer, nothing decoded" );
+             "hash_unknown: a hash in NO lineage refuses layout_unknown, nothing decoded" );
     }
 
     // hash_known_bytes_differ — A KNOWN HASH WHOSE LAYOUT BYTES DIFFER FROM THE
@@ -1152,10 +1155,10 @@ void hash_cases()
             // Distinct from reset defaults: even an accidental prefill must be visible.
             vnew_floor::Floored back; std::memset( (void *) &back, 0xA5, sizeof( back ) );
             back.a = 101; back.b = 202; back.c = 303;
-            vnew_floor::Floored fresh; std::memcpy( &fresh, &back, sizeof( fresh ) );
+            vnew_floor::Floored fresh; std::memcpy( (void *) &fresh, &back, sizeof( fresh ) );
             vnew_floor::TableReport r;
             std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
-            const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, f.data(), (int64_t) f.size(),
+            const int64_t n = vnew_floor::FlooredFixedLoadTolerant( &back, 1, f.data(), (int64_t) f.size(),
                                                             plan.data(), 4096, NULL, &r );
             char what[256];
             std::snprintf( what, sizeof( what ),
@@ -1202,7 +1205,7 @@ void lineage_merge_case()
         vnew_lineage_merge::MergedReset( back );
         vnew_lineage_merge::TableReport r;
         std::vector<vnew_lineage_merge::TableFixedEntry> plan( 4096 );
-        check( vnew_lineage_merge::MergedFixedLoad( &back, 1, ab.data(), (int64_t) ab.size(),
+        check( vnew_lineage_merge::MergedFixedLoadTolerant( &back, 1, ab.data(), (int64_t) ab.size(),
                                                     plan.data(), 4096, NULL, &r ) == 1,
                "lineage_merge: the merged build reads branch A's file" );
         check( back.anchor == 100 && back.from_a == 111,
@@ -1216,7 +1219,7 @@ void lineage_merge_case()
         vnew_lineage_merge::MergedReset( back );
         vnew_lineage_merge::TableReport r;
         std::vector<vnew_lineage_merge::TableFixedEntry> plan( 4096 );
-        const int64_t n = vnew_lineage_merge::MergedFixedLoad( &back, 1, bb.data(), (int64_t) bb.size(),
+        const int64_t n = vnew_lineage_merge::MergedFixedLoadTolerant( &back, 1, bb.data(), (int64_t) bb.size(),
                                                                plan.data(), 4096, NULL, &r );
         check( n == 1, "lineage_merge: the merged build reads branch B's file" );
         // THE POSITION TRAP: `from_b` is entry 1 on the wire and field 2 here.

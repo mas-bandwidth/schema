@@ -34,6 +34,7 @@ typedef struct ConformanceReport
 {
     int unknown, kind_mismatch, clamped, duplicate;
     int malformed, refused, widened, retained, retain_lost;
+    int blob_shared; /* §2.5: extra namings of one blob, which every writer refuses */
 } ConformanceReport;
 
 /* One row per (unit, root) the corpus names. Every row is the SAME six

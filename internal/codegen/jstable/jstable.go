@@ -1,16 +1,17 @@
 // Package jstable emits a unit's JavaScript table accelerators
-// (docs/SPEC-TABLES.md): the two ACCELERATORS in <Base>Block.js (§19) and
-// <Base>Cook.js (§7). One file per unit file, emitted only when the unit
-// declares tables — plus the unit's ONE RUNTIME HOME per surface,
-// <Package>Block.js / <Package>Cook.js, where everything shared lands
-// (runtimeHome, below). Table wire codecs are deferred to #516.
+// (docs/SPEC-TABLES.md): the block form (§19, built and read) and the cook
+// form (§7, written and read), plus the fixed-form wire (form 3 only,
+// schema#516) and the variable-form wire. One file per unit file, emitted
+// only when the unit declares tables — plus the unit's ONE RUNTIME HOME per
+// surface, where everything shared lands (runtimeHome, below).
 //
-// THE READING TIER. JavaScript has no struct layout of its own — no offsetof,
-// no sizeof, no way to place a field — so this backend reads the two
-// accelerators and never produces them: a block and a cook are opened over
-// bytes another language wrote, and every field is read at the offset the
-// compiler settled, through a DataView with an explicit little-endian flag at
-// every call.
+// JavaScript has no struct layout of its own — no offsetof, no sizeof — so
+// every field is placed at the offset the compiler settled, through a
+// DataView with an explicit endian flag at every call. The block builder
+// writes §19.1's prologue and triples, and a block is read over bytes with a
+// DataView at explicit little-endian offsets. The cook writer measures before
+// it writes (§7.6), the cook is read over bytes another language wrote, and
+// the header words are §19.1's.
 package jstable
 
 import (
@@ -115,13 +116,7 @@ func tableScalarKind(f *ir.Field) int {
 // runtime is DEFINED once and imported everywhere else — and the module that
 // defines it wants a name that does not move.
 func runtimeHome(u *ir.Unit) string {
-	home := capitalize(u.Package)
-	for _, f := range u.Files {
-		if strings.EqualFold(f.Base, home) {
-			return f.Base
-		}
-	}
-	return home
+	return ir.TableJSRuntimeHome(u)
 }
 
 func capitalize(s string) string {
@@ -167,6 +162,12 @@ func refuseFileCollisions(u *ir.Unit) error {
 		bases[f.Base] = true
 	}
 	bases[runtimeHome(u)] = true
+	// the VIEW module (docs/SPEC-TABLES.md §8.5) is the runtime home's, so a
+	// schema file of that basename would be a second writer of it
+	if bases[viewBase(u)] {
+		return fmt.Errorf("schema file %s collides — the JS table emitter writes %s.js as the unit's view (docs/SPEC-TABLES.md §8.5); rename the file (docs/SPEC-TABLES.md §11)",
+			viewBase(u), viewBase(u))
+	}
 	for base := range bases {
 		for _, suffix := range []string{"Table", "Block", "Cook"} {
 			if bases[base+suffix] {
@@ -268,5 +269,72 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	if len(wide) > 0 && len(fixed) == 0 {
 		return nil, scope.Refusal
 	}
+	// THE VIEW (docs/SPEC-TABLES.md §8.2, §8.3, §8.5): every table and every
+	// type described, and the unit registry, in one module on the side.
+	maps.Copy(out, generateViewFile(u))
 	return out, nil
+}
+
+// liveImports keeps, of the symbols a module was about to import from one
+// sibling, only those its body names: an import nothing reads is an unused
+// binding (eslint no-unused-vars) and says nothing to a reader. The scan is
+// over identifier tokens, so a name that appears only in a comment is kept
+// rather than dropped: a miss here is a lint finding, never a broken module.
+func liveImports(syms []string, used map[string]bool) []string {
+	live := syms[:0:0]
+	for _, s := range syms {
+		if used[s] {
+			live = append(live, s)
+		}
+	}
+	return live
+}
+
+// jsIdentifiers is the set of identifier tokens in a module body's code, the
+// lookup liveImports keeps an import by. Comments and string literals are
+// skipped, so a type named only in a string (a codec's "Envelope") or a
+// comment does not keep an import alive. A misread here can only drop an
+// import the code names, which the lint's no-undef then names.
+func jsIdentifiers(body string) map[string]bool {
+	set := map[string]bool{}
+	isWord := func(c byte, first bool) bool {
+		return c == '_' || c == '$' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (!first && c >= '0' && c <= '9')
+	}
+	for i := 0; i < len(body); {
+		c := body[i]
+		switch {
+		case c == '/' && i+1 < len(body) && body[i+1] == '/':
+			for i < len(body) && body[i] != '\n' {
+				i++
+			}
+		case c == '/' && i+1 < len(body) && body[i+1] == '*':
+			end := strings.Index(body[i+2:], "*/")
+			if end < 0 {
+				return set
+			}
+			i += end + 4
+		case c == '"' || c == '\'' || c == '`':
+			i++
+			for i < len(body) && body[i] != c {
+				if body[i] == '\\' {
+					i++
+				}
+				i++
+			}
+			i++
+		case isWord(c, true):
+			start := i
+			for i < len(body) && isWord(body[i], false) {
+				i++
+			}
+			set[body[start:i]] = true
+		case c >= '0' && c <= '9':
+			for i < len(body) && isWord(body[i], false) {
+				i++
+			}
+		default:
+			i++
+		}
+	}
+	return set
 }

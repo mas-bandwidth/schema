@@ -47,11 +47,11 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 func (g *tableGen) unionArmsValue(un *ir.Union) string {
 	var b strings.Builder
 	pkg := capitalize(g.unit.Package)
-	fmt.Fprintf(&b, "new TableUnionInfo { GetTag = delegate(object o) { return (ulong)((global::%s.%s)o).Type; }", pkg, un.Name)
+	fmt.Fprintf(&b, "new TableUnionInfo { GetTag = delegate (object o) { return (ulong)((global::%s.%s)o).Type; }", pkg, un.Name)
 	fmt.Fprintf(&b, ", Create = delegate { return new global::%s.%s(); }", pkg, un.Name)
 	_, _, tagSize, armOffset := ir.UnionLayout(g.unit, un)
 	fmt.Fprintf(&b, ", NativeTagSize = %d, NativeArmOffset = %d", tagSize, armOffset)
-	fmt.Fprintf(&b, ", SetTag = delegate(object o, ulong t) { ((global::%s.%s)o).Type = unchecked((global::%s.%sType)t); }", pkg, un.Name, pkg, un.Name)
+	fmt.Fprintf(&b, ", SetTag = delegate (object o, ulong t) { ((global::%s.%s)o).Type = unchecked((global::%s.%sType)t); }", pkg, un.Name, pkg, un.Name)
 	b.WriteString(", Arms = new TableUnionArmInfo[] { new TableUnionArmInfo()")
 	for _, v := range un.Variants {
 		b.WriteString(", new TableUnionArmInfo { ")
@@ -62,7 +62,7 @@ func (g *tableGen) unionArmsValue(un *ir.Union) string {
 			field := strings.TrimSuffix(strings.TrimSpace(row.schema.String()), ",")
 			fmt.Fprintf(&b, "Field = %s", field)
 			if v.Body() {
-				fmt.Fprintf(&b, ", TableRef = delegate { return %sTableType(); }, Payload = delegate(object o) { return ((global::%s.%s)o).%s; }", v.Type, pkg, un.Name, ir.GoExportName(v.Name))
+				fmt.Fprintf(&b, ", TableRef = delegate { return %sTableType(); }, Payload = delegate (object o) { return ((global::%s.%s)o).%s; }", v.Type, pkg, un.Name, ir.GoExportName(v.Name))
 			}
 		}
 		b.WriteString(" }")
@@ -76,5 +76,14 @@ func armTags(tags []string) string {
 	for i, tag := range tags {
 		quoted[i] = strconv.Quote(tag)
 	}
-	return "new string[] { " + strings.Join(quoted, ", ") + " }"
+	return "new string[] " + csList(quoted, ", ")
+}
+
+// csList spells a C# collection initializer body the way dotnet format
+// writes it: "{ a, b }", and "{ }" when it is empty.
+func csList(items []string, sep string) string {
+	if len(items) == 0 {
+		return "{ }"
+	}
+	return "{ " + strings.Join(items, sep) + " }"
 }

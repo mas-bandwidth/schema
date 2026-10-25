@@ -14,9 +14,9 @@ import "fmt"
 func cookRuntimeSource(buildVersion uint64, withBuildVersion bool) string {
 	s := ""
 	if withBuildVersion {
-		s = fmt.Sprintf(cookBuildVersionTemplate, buildVersion)
+		s = fmt.Sprintf(cookBuildVersionTemplate, buildVersion) + dartRefuseReasonSource
 	}
-	return s + cookRuntimeCore
+	return s + cookRuntimeCore + dartCookWriteReport
 }
 
 const cookBuildVersionTemplate = `
@@ -50,6 +50,17 @@ int tableCookRead64(ByteData view, int at) {
     value = (value << 8) | view.getUint8(at + i);
   }
   return value;
+}
+
+// A wide kind's RAW integer (§3, §15) read at its storage width. The cooked
+// form is little-endian, and a fixed or 128-bit value is sixteen bytes at its
+// own alignment in a record.
+BigInt tableCookGetWide(ByteData view, int at, int width, bool signed) {
+  var x = BigInt.zero;
+  for (var i = width - 1; i >= 0; i--) {
+    x = (x << 8) | BigInt.from(view.getUint8(at + i));
+  }
+  return signed ? x.toSigned(width * 8) : x;
 }
 
 // What a deref answers when it is not an offset (§6.3). NULL IS A DELTA OF

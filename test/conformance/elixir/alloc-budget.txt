@@ -1,0 +1,91 @@
+# THE ALLOCATION BUDGET of the Elixir table leg (docs/PORTING.md I1, I14),
+# pinned by `make tables-elixir-alloc-pin` on OTP 29.0.5 with Elixir 1.20.4
+# and read by `make tables-elixir-alloc-audit`. Re-pinning is deliberate, as a
+# wire golden is. Written by test/elixir-alloc/main.exs; do not hand-edit.
+#
+# <case> <heap words> <binary calls> <reductions>, all per iteration
+#
+# One iteration is one wire load, one wire save, one text read and one text
+# write of the instance through its <Unit>.Table codec (the wire half alone
+# for a no-text instance), averaged over 200; each figure is the largest of
+# five measurements. Heap words: per process, from :erlang.trace/3 on
+# :garbage_collection, gated at 64 + 1/10000 of the figure. Binary calls:
+# binary_alloc's VM-wide call counter, gated at + 8. Reductions: printed and
+# pinned, not gated. The floor is not zero and is not claimed to be.
+root_full 39121 29 18387
+root_default 1389 0 842
+profile_elide 16074 2 8614
+loadout_full 17726 18 8378
+wide_blob 14773073 19 6037586
+archive 40179 29 19355
+keyed_config 32364 61 15238
+keyed_default 21955 37 10730
+v1_cfg 23158 20 10647
+v1_seams 21698 21 10858
+v2_cfg 26096 16 11692
+v2_seams 24133 21 11803
+chain_value 2569 5 1325
+chain_value_empty 1544 0 965
+chain_optional 2569 5 1328
+chain_optional_empty 1794 0 1086
+graph_tree 15185 11 7952
+graph_shared 14053 11 7391
+graph_empty 4355 1 2626
+graph_deep 198658 2 263769
+message_open 5448 6 2703
+message_transaction 22342 9 11923
+message_ping 2768 1 1532
+message_save 2936 1 1674
+message_empty 1396 0 956
+message_batch 13403 9 6872
+message_trace 20490 8 10743
+message_arms 5333 3 2496
+message_arm_edits 11204 9 5664
+message_ack 2247 1 1233
+blob_small 9159 16 4695
+blob_empty 3255 6 1660
+blob_large 618809 9 340464
+blob_shared 1170 2 560
+blob_str8 3528 8 1759
+blob_str16 3697 8 1789
+login_full 3332 6 1560
+login_default 1879 2 993
+match_full 20013 3 9936
+match_default 15093 1 8005
+store_full 3786 4 1702
+store_default 2163 1 1165
+vocab_wide 9468 5 4086
+vocab_low 6278 1 3010
+peer_a 3786 4 1702
+peer_b 6486 1 3103
+vocab9_wide 6500 1 3104
+vocab9_low 6278 1 3008
+w1_fleet 12970 19 6724
+w1_fleet_default 3927 4 2304
+w2_fleet 12970 19 6722
+r1_cfg 7525 15 3349
+r1_ping 6542 10 2899
+r2_cfg 7467 15 3355
+list_tables 9761 5 4890
+list_scalars 2214 1 1204
+list_empty 4269 1 2386
+list_erased 8144 3 4541
+list_mixed 7591 5 3576
+list_shared 3884 3 1988
+list_before_pointer 4833 3 2489
+list_nested 12442 3 6966
+list_of_maps 10539 3 6220
+list_migrates 3598 3 2001
+map_cells 4992 5 2702
+map_chunks 4467 9 2487
+map_crews 6837 3 3879
+map_depth 16966 5 10041
+map_docs 4593 7 2376
+map_empty 2538 1 1925
+map_full 21872 15 12331
+map_pairs 6746 3 3835
+map_slots 6052 3 3018
+map_spans 7594 3 4359
+map_text 8618 17 4990
+map_trails 6706 3 3756
+map_runs 6077 3 3524
