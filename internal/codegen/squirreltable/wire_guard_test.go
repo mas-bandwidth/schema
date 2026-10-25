@@ -17,9 +17,10 @@ import (
 )
 
 // TestSquirrelWireGuardedGroupsElide pins the variable wire's guarded-group
-// elision (docs/SPEC-TABLES.md §4.5 and §16.2): a field whose composed guard
-// is false has no field id or payload on the wire. Patrol covers nested and
-// negated conditions; TypeRoot covers a guarded field inside a by-value type.
+// elision (docs/SPEC.md §4.4, the `if` group, and docs/SPEC-TABLES.md §16.2):
+// a field whose composed guard is false has no field id or payload on the
+// wire. Patrol covers nested and negated conditions; TypeRoot covers a
+// guarded field inside a by-value type.
 // Each case holds Squirrel Save and Load to tablewire byte for byte.
 func TestSquirrelWireGuardedGroupsElide(t *testing.T) {
 	t.Parallel()
