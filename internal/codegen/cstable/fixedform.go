@@ -1960,7 +1960,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		name, name, name, name)
 
 	// THE WRITER'S OWN BOUNDED LEAVES, per entry (ALGORITHM §4.6, bill §12.5):
-	// the compiled lane's bounds pass holds the PEER's declaration and never
+	// the compiled lane's bounds pass holds the ENDPOINT's declaration and never
 	// this reader's wider own, so each entry's ranged leaves ride as one clamp
 	// function over this reader's value. Only entries that carry them; the
 	// identity entry (last) has none, its writer being this reader.
@@ -2068,7 +2068,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if (layout_bytes != (uint)known.Layout.Length || !layout.SequenceEqual(known.Layout))\n    {\n")
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
-	// STEP 8: the plan this peer resolves to, and the record size FROM THE LOCK.
+	// STEP 8: the plan this endpoint resolves to, and the record size FROM THE LOCK.
 	g.pf("    ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);\n")
 	g.pf("    int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;\n")
 	g.pf("    ReadOnlySpan<TableFixedEntry> entries = %sFixedPlan;\n", name)
@@ -2081,7 +2081,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    int census_unknown = 0;\n")
 	g.pf("    int census_kind = 0;\n")
 	if hasWriterBounds {
-		g.pf("    // THE WRITER'S OWN BOUNDS for the peer this file selected (ALGORITHM\n")
+		g.pf("    // THE WRITER'S OWN BOUNDS for the endpoint this file selected (ALGORITHM\n")
 		g.pf("    // §4.6, bill §12.5): held after the plan run, before this reader's own\n")
 		g.pf("    // pass, so a value forged past what the writer could have written lands\n")
 		g.pf("    // the writer's bound and counts, never this reader's wider own.\n")
@@ -2105,7 +2105,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);\n")
 	g.pf("        planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);\n")
 	g.pf("        // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from\n")
-	g.pf("        // the plan this peer selected. It reads no layout and compiles\n")
+	g.pf("        // the plan this endpoint selected. It reads no layout and compiles\n")
 	g.pf("        // nothing, so it is not what §5.8 row 3 retires from the load\n")
 	g.pf("        // path; the PLAN is, and the plan is the build's.\n")
 	g.pf("        int slotN = %sFixedSlots.Length;\n", name)
@@ -2114,7 +2114,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            fillBuf = new TableFixedFill[slotN];\n")
 	g.pf("            fillCount = TableFixedWire.Fills(entries, %sFixedCover, landed, fillBuf);\n", name)
 	g.pf("        }\n")
-	g.pf("        // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and\n")
+	g.pf("        // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and\n")
 	g.pf("        // it lands only on a read that RETURNS: REFUSE moves no counter.\n")
 	g.pf("        census_unknown = lane.Unknown;\n")
 	g.pf("        census_kind = lane.KindMismatch;\n")
@@ -2170,7 +2170,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if (report != null) { report.Clamped += forgedOrdinal; }\n")
 	g.pf("        at = at.Slice((int)record_bytes);\n    }\n")
 	// THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, on a read that
-	// returns n (§5.9 #6). Not inside the loop — §5.4 says once per peer — and
+	// returns n (§5.9 #6). Not inside the loop — §5.4 says once per endpoint — and
 	// not before it, because a refusal that came after would have moved a
 	// counter and REFUSE IS TOTAL.
 	g.pf("    if (report != null)\n    {\n")

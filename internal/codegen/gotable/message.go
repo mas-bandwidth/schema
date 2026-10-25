@@ -1,6 +1,6 @@
 package gotable
 
-// Message form is a separate bit codec. Its framing comes from the peer's
+// Message form is a separate bit codec. Its framing comes from the endpoint's
 // announcement; it shares the file codec's value clamps, never its headers.
 import (
 	"fmt"
@@ -147,7 +147,7 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  case 0xfffffffffffffffd:if kind!=14{report.Malformed=true;return false};sub,ok:=r.Body();if !ok||!sub.Has(1)||sub.Get8()!=6{report.Malformed=true;return false};n,ok:=sub.Leb();if !ok||n>uint64(len(sub.Buffer))||int64(n)!=int64(len(sub.Buffer))-sub.Offset{report.Malformed=true;return false};limit:=v.MaxBytes;if limit==0{limit=64*1024};if int64(n)>limit{return tableMessageRefuse(report,"vocabulary_too_large")};words=sub.Buffer[sub.Offset:];wordsCount++
  default:report.Unknown++;if !r.Skip(kind){report.Malformed=true;return false}}
  };if versionCount!=1||wordsCount!=1{report.Malformed=true;return false}
- if v.Strict&&v.BuildVersion!=BuildVersion {report.BuildVersionPeer=v.BuildVersion;report.BuildVersionOwn=BuildVersion;return tableMessageRefuse(report,"build_version_mismatch")}
+ if v.Strict&&v.BuildVersion!=BuildVersion {report.BuildVersionRemote=v.BuildVersion;report.BuildVersionOwn=BuildVersion;return tableMessageRefuse(report,"build_version_mismatch")}
  src:=TableReader{Buffer:words,Report:report};count:=int64(0);nodeSeen:=false
  for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){return tableMessageRefuse(report,"vocabulary_too_large")};began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok||e.Id==0xfffffffffffffffd||e.Id==0xfffffffffffffffe||e.Id==0xffffffffffffffff&&nodeSeen{report.Malformed=true;return false};if e.Id==0xffffffffffffffff{nodeSeen=true};for i := range count {o:=v.Entries[i].Shape;if o.Max-o.Min==src.Offset-began&&o.Min>=0&&o.Max<=int64(len(words)) {same:=true;for j:=o.Min;j<o.Max;j++ {if words[j]!=words[began+j-o.Min]{same=false;break}};if same{report.Malformed=true;return false}}};e.Shape.Min=began;e.Shape.Max=src.Offset;v.Entries[count]=e;count++}
  src.Offset=0;for i := range count {e,ok:=tableMessageEntryRead(&src);if !ok{report.Malformed=true;return false};v.Entries[i]=e}

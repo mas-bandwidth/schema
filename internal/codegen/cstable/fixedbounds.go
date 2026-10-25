@@ -246,7 +246,7 @@ type fixedWriterBound struct {
 
 // fixedWriterBounds resolves every lineage entry's ranged leaves against this
 // reader's own fields BY NAME — the match the reference's collectKnownRanges
-// makes — so the compiled lane's bounds pass holds a peer to what IT declared
+// makes — so the compiled lane's bounds pass holds an endpoint to what IT declared
 // and never to this reader's wider own (§4.6, bill §12.5). The identity entry
 // needs none: its writer IS this reader, and the reader's own pass holds it. A
 // field this reader cannot name bounds nothing. The answer is nil when no
@@ -295,12 +295,12 @@ func fixedWriterBoundsOfField(f *ir.Field, lo, hi int64) []fixedWriterBound {
 }
 
 // emitFixedWriterClamp writes ONE lineage entry's writer-bounds pass: a
-// straight-line clamp over this reader's value, to the peer's raw bounds —
+// straight-line clamp over this reader's value, to the endpoint's raw bounds —
 // the same shape as the reader's own §4.6 pass, but to the WRITER's numbers.
 func (g *tableGen) emitFixedWriterClamp(name string, idx int, rows []fixedWriterBound) {
-	g.pf("// LINEAGE ENTRY %d's writer bounds (§4.6, bill §12.5): the peer's own\n", idx)
+	g.pf("// LINEAGE ENTRY %d's writer bounds (§4.6, bill §12.5): the endpoint's own\n", idx)
 	g.pf("// ranged leaves, raw scale, at this reader's value — what the compiled\n")
-	g.pf("// lane's bounds pass holds this peer to. The reader's range is the wider\n")
+	g.pf("// lane's bounds pass holds this endpoint to. The reader's range is the wider\n")
 	g.pf("// one, so clamping to it would land a value the old writer could not have\n")
 	g.pf("// written.\n")
 	g.pf("public static void %sFixedClampKnown%d(%s value, TableReport report)\n{\n", name, idx, name)

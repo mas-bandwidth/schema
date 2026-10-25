@@ -46,7 +46,7 @@ func MessageCount(data []byte, v *Vocabulary) (int, error) {
 // reference against the announced vocabulary (docs/SPEC-TABLES.md §3.3), and
 // answers HOW MANY BODIES IT DELIVERED.
 //
-// A BATCH IS OF ONE ROOT, and which root it is, is the APPLICATION's: a peer
+// A BATCH IS OF ONE ROOT, and which root it is, is the APPLICATION's: an endpoint
 // that mixes roots puts a discriminator in front of the bytes or wraps its
 // message set in one root holding a union of them. The error is a REFUSAL, a
 // wire this reader will not decode at all, and it is returned rather than
@@ -84,7 +84,7 @@ func decodeMessagesWith(m *tabletext.Model, insts []*tabletext.Instance, data []
 		report.Refused = true
 		return 0, false, &MessageRefusal{Reason: ReasonNewerForm}
 	}
-	// A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
+	// A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
 	// decoded, no counter moves and `malformed` does not fire.
 	if v == nil || !v.announced {
 		report.Refused = true

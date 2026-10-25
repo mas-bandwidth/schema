@@ -498,7 +498,7 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 	// a debug-only `schema_assert` on a writer's contract; the BEAM has no
 	// compile-out assert, so this port raises, which is exactly what its own
 	// packet codec does for the same field. Without it a value past the
-	// DECLARED range rides and the peer clamps it — and a value past the
+	// DECLARED range rides and the endpoint clamps it — and a value past the
 	// STORAGE WIDTH is truncated by the binary construction in silence.
 	//
 	// A DECLARED RANGE RIDES AS A NAMED CONSTANT and the storage domain as the
@@ -1876,7 +1876,7 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("            {value, R.damaged(R.clamped(report, c), m)}\n")
 	g.pf("          end)\n\n")
 	g.pf("        # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that\n")
-	g.pf("        # RETURNS (§5.9 #6): §5.4 says once per peer and never per record, and a\n")
+	g.pf("        # RETURNS (§5.9 #6): §5.4 says once per endpoint and never per record, and a\n")
 	g.pf("        # refusal that came after would have moved a counter.\n")
 	g.pf("        {:ok, values, R.census(report, census_u, census_k)}\n")
 	g.pf("      else\n")

@@ -425,7 +425,7 @@ fn signed_kind(kind: u8) -> bool {
 // A READ IS THE HOLES OF THIS PLAN, THIS LOOP, AND NOTHING ELSE. Which plan it
 // was handed is the only thing that differs between reading this build's own
 // record and reading anybody else's, which is the owner's ruling that this
-// form's cost must not move when a peer ships. The prefill copies defaults into
+// form's cost must not move when an endpoint ships. The prefill copies defaults into
 // exactly the dest ranges the plan does not write; identity's list is empty.
 //
 // EVERY REACH INTO ` + "`src`" + ` IS CHECKED, because ` + "`src`" + ` is framed by a stranger's
@@ -1000,7 +1000,7 @@ impl<'a> TableFixedBlock<'a> {
 // ---- THE PLAN COMPILER ------------------------------------------------------
 //
 // The SAME LOOP runs over this plan as over the identity plan. What the
-// compiler does, ONCE PER PEER, is what a read would otherwise do once per
+// compiler does, ONCE PER ENDPOINT, is what a read would otherwise do once per
 // record: map the writer's ids onto this reader's fields; leave a field it
 // cannot name OUT of the plan, which is what skips it, by arithmetic that was
 // going to step past it anyway; and leave a field the writer does not carry out
@@ -1225,10 +1225,10 @@ pub fn table_fixed_compile(
 
 /// Walks a TABLE's children on both sides, matching by id.
 //
-// The census flag is whether THIS entry is the FIRST time the peer's field is
+// The census flag is whether THIS entry is the FIRST time the writer's field is
 // seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-// ONCE PER FIELD PER PEER (ALG 5.4), so only element 0 censuses. Without it a
-// peer field dropped from a [4]Item is counted four times and the report says
+// ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses. Without it a
+// writer's field dropped from a [4]Item is counted four times and the report says
 // 4 where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md 5.8 row 11).
 fn match_children(
     c: &mut Compiler,
@@ -1400,7 +1400,7 @@ fn compile_entry(
             if head != 0 {
                 // THE COUNT'S BOUND IS THE WRITER'S, carried by the plan (bill
                 // §12.5, §5.2's EMIT at kind 14): a count forged past what THAT
-                // PEER could have written clamps and counts, and a count the
+                // ENDPOINT could have written clamps and counts, and a count the
                 // reader merely grew room for does not. The min is not the
                 // rule — it is the floor under a lock that is not monotone,
                 // which is a build bug and never a wire event.

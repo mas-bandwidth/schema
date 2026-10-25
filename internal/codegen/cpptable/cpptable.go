@@ -132,12 +132,12 @@ type tableGen struct {
 	idOrdinal map[uint64]int
 	// lock is the unit's schema.lock when it has one (algorithm §5.2 COMPILE).
 	// Lineage and Floor come from it; a unit that was never locked falls back
-	// to fixture peers.
+	// to fixture endpoints.
 	lock *lockfile.Unit
-	// lineagePeers are older schema units whose matching fixed tables this
+	// lineageRemotes are older schema units whose matching fixed tables this
 	// generate COMPILEs known hashes and layout bytes from when the unit has
 	// no lock — the test-only fixture map (VOLD_/VNEW_, numbered pairs).
-	lineagePeers []*ir.Unit
+	lineageRemotes []*ir.Unit
 	// msgDepth is the message codec's nesting depth while it emits: every
 	// loop variable and local a nested payload declares carries the depth as
 	// a suffix, so an element's decode inside an element's decode shadows
@@ -1588,7 +1588,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 //
 // IT TAKES THE LOCK AND NOT §5.9 #1'S ENTRIES, and that is the interim showing:
 // this backend's lineage entries also carry the RANGES of an older declaration
-// (collectKnownRanges, read off a peer schema UNIT, not off the lock) and its
+// (collectKnownRanges, read off an endpoint schema UNIT, not off the lock) and its
 // floor falls back to a test-only map keyed by package. Those two have no
 // spelling in lockfile.LineageEntry, so nothing in the shared path can supply
 // them yet. What moved is the READ; the interpretation moves with the
@@ -1634,16 +1634,16 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 	// can name, and the index it takes in the ascending set TableIds's
 	// capacity counts.
 	idOrdinal := wireIdOrdinals(u)
-	var peers []*ir.Unit
+	var endpoints []*ir.Unit
 	if lock == nil {
 		// Fixture siblings (VOLD_/numbered) are TEST-ONLY. A locked unit
 		// compiles from the lock; a sibling the convention can name must
 		// not append a non-oldest-first entry past the identity.
-		peers = loadFixturePeers(u)
+		endpoints = loadFixtureRemotes(u)
 	}
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots, idOrdinal: idOrdinal, lock: lock, lineagePeers: peers}
+			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots, idOrdinal: idOrdinal, lock: lock, lineageRemotes: endpoints}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
 		for _, d := range f.Decls {

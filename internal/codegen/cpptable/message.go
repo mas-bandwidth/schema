@@ -40,7 +40,7 @@ const uint8_t kTableWireMessageForm = 2;
 
 // THE COUNT IS A RANGED INTEGER OVER [1, 256], eight bits carrying M - 1. 256
 // is a WIRE CONSTANT of this form rather than a receiver's policy, because the
-// count's WIDTH depends on it and two peers that disagreed on the width would
+// count's WIDTH depends on it and two endpoints that disagreed on the width would
 // not be reading the same wire. A batch of zero is not spellable.
 static const int64_t kTableMessageBatchMax = 256;
 
@@ -62,8 +62,8 @@ static const uint64_t kTableMessageListMax = 0xFFFFFFFFull;
 static const int64_t kTableMessageRefBitsHere = %d;
 
 // THIS UNIT'S OWN ENTRY COUNT, which is the CAPACITY a receiver declares for
-// its resolved vocabulary when it talks only to peers of this schema (§3.3).
-// The vocabulary is a pure function of the build version, so a peer at this
+// its resolved vocabulary when it talks only to endpoints of this schema (§3.3).
+// The vocabulary is a pure function of the build version, so an endpoint at this
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
@@ -673,11 +673,11 @@ const cppMessageAnnounce = `// TableVocabulary is ONE DIRECTION's announced voca
 // declares an array of entries wherever it wants it, static, on a heap, in an
 // arena or beside its connection, and hands it here with its CAPACITY. The
 // announcement holds for the life of the connection (§3.3), so the array does
-// too, and a peer holds TWO for a connection, the one it writes with and the
+// too, and an endpoint holds TWO for a connection, the one it writes with and the
 // one it reads with. A restart opens a fresh connection with an empty
 // vocabulary and nothing is cached across connections.
 //
-// kTableMessageEntriesHere is the capacity a receiver that talks only to peers
+// kTableMessageEntriesHere is the capacity a receiver that talks only to endpoints
 // of THIS schema declares, and a receiver meeting other builds declares more.
 struct TableVocabulary
 {
@@ -724,7 +724,7 @@ inline const TableMessageEntry & TableVocabularyEntryAt( const TableVocabulary &
 // A SECOND is refused by name: it does not replace it, does not amend it and
 // changes nothing. A refused announcement sets NO VOCABULARY, and the refusal
 // is TERMINAL: every announcement after it, whether or not the first set
-// anything, is second_announcement, so a peer holds no retry on the
+// anything, is second_announcement, so an endpoint holds no retry on the
 // connection and cannot buy a second resolve by having its first refused.
 inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * to );
 
@@ -1152,7 +1152,7 @@ struct TableMessageBatchReader
 };
 
 // TableMessageBatchOpen answers the batch's body count, or -1 with the refusal
-// on the report: a form byte this reader does not carry, or a body from a peer
+// on the report: a form byte this reader does not carry, or a body from an endpoint
 // that never announced.
 inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {

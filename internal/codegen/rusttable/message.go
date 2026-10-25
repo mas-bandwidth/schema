@@ -370,7 +370,7 @@ fn announce_read_once(
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3).
     if vocabulary.strict && vocabulary.build_version != BUILD_VERSION {
-        report.build_version_peer = vocabulary.build_version;
+        report.build_version_remote = vocabulary.build_version;
         report.build_version_own = BUILD_VERSION;
         return report.refuse(TableReason::BuildVersionMismatch);
     }
@@ -868,7 +868,7 @@ pub struct TableReport {
     /// The message form's refusal by name and the two build versions its
     /// strict check compared (§3.3); None and zero on the variable form.
     pub reason: TableReason,
-    pub build_version_peer: u64,
+    pub build_version_remote: u64,
     pub build_version_own: u64,
 }
 

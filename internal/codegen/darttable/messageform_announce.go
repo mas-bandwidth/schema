@@ -136,7 +136,7 @@ class TableReport {
   int widened = 0;
   int clamped = 0;
   int duplicate = 0;
-  int buildVersionPeer = 0;
+  int buildVersionRemote = 0;
   int buildVersionOwn = 0;
   String reason = '';
 
@@ -297,7 +297,7 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
     return false;
   }
   if (vocabulary.strict && vocabulary.buildVersion != tableBuildVersion) {
-    report.buildVersionPeer = vocabulary.buildVersion;
+    report.buildVersionRemote = vocabulary.buildVersion;
     report.buildVersionOwn = tableBuildVersion;
     return report.Refuse('build_version_mismatch');
   }

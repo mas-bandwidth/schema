@@ -135,7 +135,7 @@ func openFixedLineage(u *ir.Unit) (*FixedLineage, error) {
 		// (gotable, ctable, rusttable all spell it that way), so passing the
 		// lock's number through shipped a LOCKED unit's OLDER entries eight
 		// bytes short — and step 9 divides the file's tail by that number, so
-		// every record an older peer wrote is misread or refused as ragged. It
+		// every record an older endpoint wrote is misread or refused as ragged. It
 		// was invisible only because no harness fixture carries a lock and the
 		// leg's own entry wins for the current layout.
 		//

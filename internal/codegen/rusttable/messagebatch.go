@@ -10,8 +10,8 @@
 // messageread.go), which reproduces the C++ reference's: a body is a run of
 // (reference, value) pairs closed by the zero reference, a field at its
 // declared default does not ride, every value is spelled by the shape the
-// vocabulary entry names, and a reader decodes against the table THE PEER
-// announced, skipping by the peer's shape what it cannot name.
+// vocabulary entry names, and a reader decodes against the table THE ENDPOINT
+// announced, skipping by the endpoint's shape what it cannot name.
 //
 // The Rust spelling of the Go oracle's names is snake_case (SPEC.md §6.1):
 // MeasureMessages, SaveMessages and LoadMessages land as
@@ -372,7 +372,7 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 
 func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	snake := ir.RustSnake(st.Name)
-	m.pf("/// One %s body against the PEER's vocabulary (§3.3): a field this build\n/// cannot name is skipped by the peer's shape and counted unknown, a kind the\n/// declaration widened is decoded exactly and counted widened, and any other\n/// kind is a kind mismatch, skipped.\n", st.Name)
+	m.pf("/// One %s body against the ENDPOINT's vocabulary (§3.3): a field this build\n/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the\n/// declaration widened is decoded exactly and counted widened, and any other\n/// kind is a kind mismatch, skipped.\n", st.Name)
 	m.pf("pub fn %s_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut %sRow) -> bool {\n", snake, st.Name)
 	m.pf("    *value = %s_message_default();\n", snake)
 	m.pf("    loop {\n")
@@ -403,8 +403,8 @@ func wireWidenable(kind int) bool {
 	return kind >= 3 && kind <= 5 || kind >= 7 && kind <= 9 || kind == 11 || kind == 18 || kind == 19
 }
 
-// compat is gotable's emitMessageCompatibility: the peer's kind is the field's,
-// or one the field widens (§4), or a kind mismatch skipped by the peer's shape.
+// compat is gotable's emitMessageCompatibility: the endpoint's kind is the field's,
+// or one the field widens (§4), or a kind mismatch skipped by the endpoint's shape.
 func (m *msgGen) compat(f *ir.Field, mine ir.TableVocabularyEntry, entry, reset, label, ind string) {
 	compat := ""
 	if f != nil && wireWidenable(int(mine.Kind)) {
@@ -441,7 +441,7 @@ func rustBig(v *big.Int, signed bool) string {
 	return v.String() + "u128"
 }
 
-// readValue is one value decoded by the PEER's entry (gotable
+// readValue is one value decoded by the ENDPOINT's entry (gotable
 // emitMessageReadValue); entry names a TableMessageEntry in scope.
 func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 	switch {
@@ -535,7 +535,7 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 	}
 }
 
-// convertScalar is the file form's exact clamps applied to a value the peer
+// convertScalar is the file form's exact clamps applied to a value the endpoint
 // spelled at its announced width (gotable emitReadScalar).
 func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 	switch f.Type.Kind {
@@ -680,11 +680,11 @@ pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut Tab
     2 + (w.bits / 8) as i64
 }
 
-/// LoadMessages (§3.3): one batch into the caller's storage against the PEER's
+/// LoadMessages (§3.3): one batch into the caller's storage against the ENDPOINT's
 /// announced vocabulary. The count of bodies delivered and whether the batch
 /// read whole. "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1"; "M ABOVE THE
 /// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", with the count set
-/// to the wire's M; "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY
+/// to the wire's M; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
 /// NAME"; and "BYTES AFTER THE PAD ARE MALFORMED".
 pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
     let Some(count) = table_message_batch_open(vocabulary, data, report) else {
@@ -894,7 +894,7 @@ pub fn table_message_utf8_clamp(text: &[u8], n: usize) -> usize {
     n
 }
 
-/// A value the peer spelled, sign-extended from its announced kind's width.
+/// A value the endpoint spelled, sign-extended from its announced kind's width.
 pub fn table_message_signed(kind: u8, lo: u64, hi: u64) -> i128 {
     match table_message_kind_width(kind) {
         1 => lo as i8 as i128,
@@ -905,7 +905,7 @@ pub fn table_message_signed(kind: u8, lo: u64, hi: u64) -> i128 {
     }
 }
 
-/// A value the peer spelled, zero-extended from its announced kind's width.
+/// A value the endpoint spelled, zero-extended from its announced kind's width.
 pub fn table_message_unsigned(kind: u8, lo: u64, hi: u64) -> u128 {
     match table_message_kind_width(kind) {
         1 => lo as u8 as u128,
@@ -933,7 +933,7 @@ pub fn table_message_read_scalar(r: &mut TableBitReader, kind: u8, s: &TableMess
         hi = hi.wrapping_add(s.base_hi).wrapping_add(carry as u64);
     }
     if s.packing == 2 && kind == 10 {
-        // AN INDEX ABOVE THE PEER's ANNOUNCED count IS BATCH DAMAGE (§3.3,
+        // AN INDEX ABOVE THE ENDPOINT's ANNOUNCED count IS BATCH DAMAGE (§3.3,
         // SPEC.md §4.3), checked on the whole wire value before any narrowing
         // and never reconstructed and clamped: the width spells such an index
         // whenever count is not one less than a power of two (eight bits
@@ -976,7 +976,7 @@ pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape,
     }
 }
 
-/// A tolerant skip of one value by the PEER's shape (§3.3): what a reader does
+/// A tolerant skip of one value by the ENDPOINT's shape (§3.3): what a reader does
 /// with a field it cannot name, or one whose kind is not the declaration's.
 pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
     if depth > 128 {
@@ -1075,7 +1075,7 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
 }
 
 /// The batch's OPEN (§3.3): "the FORM BYTE is a whole byte and is read FIRST",
-/// a body from a peer that never announced is refused by name, then M - 1.
+/// a body from an endpoint that never announced is refused by name, then M - 1.
 pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut TableReport) -> Option<usize> {
     if data.is_empty() {
         report.malformed = true;

@@ -319,7 +319,7 @@ func (g *fixedGen) load(ind, lhs, at string, t ir.FieldType) {
 	}
 	name, endian := fixedGetter(t)
 	if t.Kind == ir.TBool {
-		// A BOOL LANDS AS `byte != 0` (docs/SPEC-TABLES.md §3.4): a peer that
+		// A BOOL LANDS AS `byte != 0` (docs/SPEC-TABLES.md §3.4): an endpoint that
 		// wrote 2 wrote true, and this reader says so rather than refusing.
 		g.call(ind, lhs+" = ", "view.getUint8", []string{at}, " != 0;")
 		return
@@ -634,13 +634,13 @@ func (g *fixedGen) emitTextDefaultCascade(f *ir.Field, ind string, n int64) {
 // on the wire. Slack stays the template's zeros (SPEC §3.4). A string,
 // wstring, or bytes writes its live length and zeroes slack (SPEC §3.4);
 // decode copies the whole declared span from the image, so that slack is
-// the peer's.
+// the endpoint's.
 //
 // AN ABSENT OPTIONAL'S PAYLOAD IS THE ONE EXCEPTION, and it is §3.4's own:
 // under a present flag of `0` the payload is SLACK, and slack is ZERO ON
 // WRITE. So the payload's stores stand under the flag and the template's
 // zeros ride when it is clear. Byte identity is unmoved over CONFORMING
-// input — a conforming peer wrote zeros there, and this reader read them —
+// input — a conforming endpoint wrote zeros there, and this reader read them —
 // and over input that put meaning under a clear flag it was never owed.
 func (g *fixedGen) emitWriteBody(st *ir.Struct) {
 	g.pf("/// %s's stores. Every offset is a constant of the type and nothing is\n", st.Name)

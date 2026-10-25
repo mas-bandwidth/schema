@@ -561,7 +561,7 @@ func init() {
 		Name{Name: "TableFixedLineagePlan", What: "the fixed form: one lineage entry's plan, built from the lock's bytes off every load path (§5.2)"},
 		Name{Name: "table_fixed_select", What: "the fixed form: the header's hash selects a known layout, or refuses (§5.3)"},
 		Name{Name: "table_fixed_refuse_hash", What: "the fixed form: a refusal that carries THE FILE'S hash — layout_newer and layout_unsupported (§5.3)"},
-		Name{Name: "TableFixedPlanCache", What: "the plan cache BY HASH, so a compile is paid once per peer and never once per record"},
+		Name{Name: "TableFixedPlanCache", What: "the plan cache BY HASH, so a compile is paid once per endpoint and never once per record"},
 		Name{Name: "TableFixedPlanCacheSlot", What: "one cached compiled plan: hash, plan pointer, count, record_bytes"},
 		Name{Name: "kTableFixedPlanCacheCapacity", What: "the plan cache's named bound: 64, overflow is a miss"},
 		Name{Name: "table_fixed_plan_cache_init", What: "bind caller-owned slot storage to a plan cache"},

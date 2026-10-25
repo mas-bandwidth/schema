@@ -358,7 +358,7 @@ function TableAnnounceRead(v, data, report) {
   }
   if (versionCount !== 1 || wordsCount !== 1) { report.Malformed = true; return false; }
   if (v.Strict && v.BuildVersion !== v.BuildVersionOwn) {
-    report.BuildVersionPeer = v.BuildVersion;
+    report.BuildVersionRemote = v.BuildVersion;
     report.BuildVersionOwn = v.BuildVersionOwn;
     return TableMessageRefuse(report, "build_version_mismatch");
   }

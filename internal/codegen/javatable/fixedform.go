@@ -1379,7 +1379,7 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	w := fixedStorageBytes(f.Type)
 	switch f.Type.Kind {
 	case ir.TBool:
-		// A BOOL LANDS AS `byte != 0`: a peer's 2 is true and never damage.
+		// A BOOL LANDS AS `byte != 0`: an endpoint's 2 is true and never damage.
 		g.pf("%s%s = %s[%s + %d] != 0;\n", ind, expr, buf, at, off)
 		return
 	case ir.TFloat32:
@@ -1428,7 +1428,7 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	// A RANGED SCALAR CLAMPS ON LOAD AND COUNTS, straight-line code after the
 	// plan run over STORAGE (ALGORITHM §4.6's bounds pass, which is what
 	// makes one pass cover both plans): this is the READER's own half, and
-	// the lineage entry's writer bounds hold the compiled lane to the PEER's
+	// the lineage entry's writer bounds hold the compiled lane to the ENDPOINT's
 	// own declaration beside it. A FIXED-POINT'S BOUNDS ARE IN VALUE UNITS
 	// and its storage is raw, so both ends shift by F first
 	// (ir.TableRawRange); a bits(N) clamps to 2^N − 1 below, its declared
@@ -1749,7 +1749,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("            if (data[head.layoutAt + i] != known_.layout[i]) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }\n")
 	g.pf("        }\n")
 	g.pf("\n")
-	g.pf("        // STEP 8: the plan this peer resolves to, and the record size FROM THE\n")
+	g.pf("        // STEP 8: the plan this endpoint resolves to, and the record size FROM THE\n")
 	g.pf("        // LOCK. The census is the plan's own numbers, carried to the bottom.\n")
 	g.pf("        TableFixed.Entry[] entries = Identity.plan;\n")
 	g.pf("        int made = Identity.plan.length;\n")
@@ -1757,7 +1757,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        int censusUnknown = 0;\n")
 	g.pf("        int censusKind = 0;\n")
 	if entryBounds != nil {
-		g.pf("        // THE WRITER'S OWN BOUNDS for the peer this file selected (ALGORITHM\n")
+		g.pf("        // THE WRITER'S OWN BOUNDS for the endpoint this file selected (ALGORITHM\n")
 		g.pf("        // §4.6, bill §12.5): held after the plan run and before the scatter,\n")
 		g.pf("        // so a forged value past what the writer could have written lands\n")
 		g.pf("        // the writer's bound and counts, never this reader's wider own.\n")
@@ -1816,7 +1816,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("            at += (int) recordSize;\n")
 	g.pf("        }\n")
 	g.pf("        // THE COMPILE CENSUS LANDS ONCE, after the loop and only on a read that\n")
-	g.pf("        // RETURNS (§5.9 #6): once per peer and never per record, which is also how\n")
+	g.pf("        // RETURNS (§5.9 #6): once per endpoint and never per record, which is also how\n")
 	g.pf("        // REFUSE stays total. On a lawful lineage it lands zero, always (§5.9 #30).\n")
 	g.pf("        report.unknown += censusUnknown;\n")
 	g.pf("        report.kindMismatch += censusKind;\n")
@@ -1869,7 +1869,7 @@ func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, entrie
 	g.pf("     *  stays in the lineage forever: the floor is an index cut. */\n")
 	g.pf("    public static final int floor = %d;\n\n", floor)
 	// THE WRITER'S OWN BOUNDED LEAVES, per entry (ALGORITHM §4.6, bill §12.5):
-	// the bounds pass on a compiled lane holds the PEER's declaration and never
+	// the bounds pass on a compiled lane holds the ENDPOINT's declaration and never
 	// this reader's wider own, so each entry's ranged leaves ride as data —
 	// a flat {dst, width, signed, lo, hi} per leaf, at this reader's image
 	// offsets, in the writer's raw bounds. Only entries that carry them.
@@ -1880,9 +1880,9 @@ func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, entrie
 			if len(rows) == 0 {
 				continue
 			}
-			g.pf("    /** LINEAGE ENTRY %d's writer bounds: the peer's own ranged leaves,\n", i)
+			g.pf("    /** LINEAGE ENTRY %d's writer bounds: the endpoint's own ranged leaves,\n", i)
 			g.pf("     *  raw scale, at this reader's image offsets — what the compiled\n")
-			g.pf("     *  lane's bounds pass holds this peer to (ALGORITHM §4.6). */\n")
+			g.pf("     *  lane's bounds pass holds this endpoint to (ALGORITHM §4.6). */\n")
 			g.pf("    private static final long[] known%dWriterBounds = {\n", i)
 			for _, r := range rows {
 				sgn := int64(0)
@@ -1929,7 +1929,7 @@ type fixedWriterBound struct {
 
 // fixedWriterBounds resolves every entry's ranged leaves against this reader's
 // own fields BY NAME — the match the reference's collectKnownRanges makes — so
-// the compiled lane's bounds pass can hold a peer to what IT declared and
+// the compiled lane's bounds pass can hold an endpoint to what IT declared and
 // never to this reader's wider own (ALGORITHM §4.6, bill §12.5). The
 // identity entry needs none: its writer IS this reader, and the scatter's own
 // pass holds it. A field this reader cannot name bounds nothing, and a FIXED

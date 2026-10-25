@@ -6004,7 +6004,7 @@ func RangedSignedFixedLoadTolerant(values []RangedSigned, data []byte, plan []Ta
 	entries := RangedSignedFixedPlan.Entries
 	entryCount := RangedSignedFixedPlan.Count
 	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
-	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
 	holes := RangedSignedFixedHoles
 	recordBytes := known.Record
 	censusUnknown, censusKind := int32(0), int32(0)
@@ -6015,7 +6015,7 @@ func RangedSignedFixedLoadTolerant(values []RangedSigned, data []byte, plan []Ta
 		}
 		entries, entryCount = lane.Entries, lane.Count
 		holes = RangedSignedFixedLineageHoles[pick]
-		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
+		// THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
@@ -6327,7 +6327,7 @@ func RangedUnsignedFixedLoadTolerant(values []RangedUnsigned, data []byte, plan 
 	entries := RangedUnsignedFixedPlan.Entries
 	entryCount := RangedUnsignedFixedPlan.Count
 	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
-	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
 	holes := RangedUnsignedFixedHoles
 	recordBytes := known.Record
 	censusUnknown, censusKind := int32(0), int32(0)
@@ -6338,7 +6338,7 @@ func RangedUnsignedFixedLoadTolerant(values []RangedUnsigned, data []byte, plan 
 		}
 		entries, entryCount = lane.Entries, lane.Count
 		holes = RangedUnsignedFixedLineageHoles[pick]
-		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
+		// THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
@@ -6612,7 +6612,7 @@ func RangedWidthsFixedLoadTolerant(values []RangedWidths, data []byte, plan []Ta
 	entries := RangedWidthsFixedPlan.Entries
 	entryCount := RangedWidthsFixedPlan.Count
 	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
-	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
 	holes := RangedWidthsFixedHoles
 	recordBytes := known.Record
 	censusUnknown, censusKind := int32(0), int32(0)
@@ -6623,7 +6623,7 @@ func RangedWidthsFixedLoadTolerant(values []RangedWidths, data []byte, plan []Ta
 		}
 		entries, entryCount = lane.Entries, lane.Count
 		holes = RangedWidthsFixedLineageHoles[pick]
-		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
+		// THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
 	}
