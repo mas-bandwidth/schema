@@ -1,0 +1,128 @@
+{
+  "host": "b1",
+  "os": "linux",
+  "arch": "amd64",
+  "cpu": "AMD Ryzen 7 255 w/ Radeon 780M Graphics",
+  "cpp_compiler": "Dart SDK version: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on \"linux_x64\"",
+  "cpp_table_flags": "dart compile exe (AOT, product mode: asserts off; paired unit generated beside bench/tables/dart/lineage/schema.lock)",
+  "revision": "e1d63663ed5b6d93b7bb9dd13820d856e1d59b04",
+  "serialize_revision": "none (generated AOT)",
+  "dirty_paths": null,
+  "rounds": 7,
+  "iterations_per_sample": 4000000,
+  "anchor_repetitions": 100000,
+  "corpus_id_identity": "0930f96c8320a75d",
+  "plan_lane_refusal": "",
+  "window": "OK",
+  "control_delta_pct": 1.0147220414852276,
+  "load1_range": "0.71–1.10",
+  "receipt": "ps -A: quiet window on amd-1 (b1); pinned to CPU 6; Dart read-arm sitting 1 of 2",
+  "fixed_bytes_per_record": 1264.296875,
+  "packet_bytes_per_record": 438,
+  "identity_read": {
+    "best_ns_per_record": 544.4680683089639,
+    "median_ns_per_record": 547.5332804416184,
+    "worst_ns_per_record": 549.2218076207821,
+    "spread_pct": 0.8704136559180268,
+    "samples_ns_per_record": [
+      544.9549703707983,
+      548.6537956143908,
+      549.2218076207821,
+      544.4680683089639,
+      546.9792251820484,
+      547.7450159311638,
+      547.5332804416184
+    ]
+  },
+  "packet_read": {
+    "best_ns_per_record": 247.54025437731622,
+    "median_ns_per_record": 248.166730321433,
+    "worst_ns_per_record": 250.0909705905523,
+    "spread_pct": 1.0224965622703615,
+    "samples_ns_per_record": [
+      250.010000400016,
+      247.5414799069343,
+      248.166730321433,
+      250.0909705905523,
+      247.60522417310378,
+      247.54025437731622,
+      249.91021975355355
+    ]
+  },
+  "gate_identity": "FAIL",
+  "gate_plan": "FAIL",
+  "anchor": {
+    "refusal": "none for this leg",
+    "identity": {
+      "best_ns_per_record": 0,
+      "median_ns_per_record": 0,
+      "worst_ns_per_record": 0,
+      "spread_pct": 0,
+      "samples_ns_per_record": null
+    },
+    "straight_line": {
+      "best_ns_per_record": 0,
+      "median_ns_per_record": 0,
+      "worst_ns_per_record": 0,
+      "spread_pct": 0,
+      "samples_ns_per_record": null
+    },
+    "ratio_best_over_best": 0,
+    "round_ratios": null,
+    "verdict": "— (refused)",
+    "samples": null
+  },
+  "other_legs": [
+    {
+      "language": "cpp",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "c",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "go",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "rust",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "cs",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "js",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "java",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    },
+    {
+      "language": "elixir",
+      "reason": "runner present, but it has no read arm yet (BENCH-STANDARD §1.10 work list items 9–15)"
+    }
+  ],
+  "leg": "dart",
+  "lane": "6",
+  "plan_read": {
+    "best_ns_per_record": 1673.5701435086398,
+    "median_ns_per_record": 1679.1680729699278,
+    "worst_ns_per_record": 1687.9403414365722,
+    "spread_pct": 0.8541927987197979,
+    "samples_ns_per_record": [
+      1676.977281988761,
+      1673.5701435086398,
+      1676.8591756895664,
+      1683.739788118185,
+      1687.9403414365722,
+      1684.250239163534,
+      1679.1680729699278
+    ]
+  },
+  "plan_bytes_per_record": 995.4375,
+  "plan_widened": "its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's"
+}

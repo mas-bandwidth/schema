@@ -333,7 +333,7 @@ static void test_writer()
         uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
         if ( region == NULL ) { return; }
         TableReport report;
-        const Mixed * loaded = MixedLoad( region, need, wire, n, &report );
+        const Mixed * loaded = MixedLoadTolerant( region, need, wire, n, &report );
         CHECK( loaded != NULL );
         report_silent( report, "list_mixed" );
         if ( loaded != NULL )
@@ -475,7 +475,7 @@ static void test_const_forms()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Save * loaded = SaveLoad( region, need, wire_tables, bytes_tables, &report );
+    const Save * loaded = SaveLoadTolerant( region, need, wire_tables, bytes_tables, &report );
     check_const_form( loaded, "a loaded region" );
     report_silent( report, "a loaded region" );
     const int64_t back = SaveSave( loaded, again, sizeof( again ) );
@@ -485,7 +485,7 @@ static void test_const_forms()
     // LoadBuilder is the TOOL's path, and it produces EXACTLY the same report
     SaveBuilder into;
     TableReport tool;
-    CHECK( SaveLoadBuilder( into, wire_tables, bytes_tables, &tool ) );
+    CHECK( SaveLoadBuilderTolerant( into, wire_tables, bytes_tables, &tool ) );
     reports_agree( tool, report );
     CHECK_EQ( into.GetRoot()->placements.count, 3 );
     CHECK_EQ( into.GetRoot()->log.count, 3 );
@@ -514,7 +514,7 @@ static void test_const_forms()
     // the region is EXACT: one byte short is refused. Load zeroes the region
     // it is handed before it refuses, so this probe is the block's last act.
     TableReport short_report;
-    CHECK( SaveLoad( region, need - 1, wire_tables, bytes_tables, &short_report ) == NULL );
+    CHECK( SaveLoadTolerant( region, need - 1, wire_tables, bytes_tables, &short_report ) == NULL );
     free( region );
 }
 
@@ -528,7 +528,7 @@ struct IntsSpec
     int64_t declared_n;   // -1: n itself
     uint8_t element_kind; // 0: int32's own kind
     int64_t body_len;     // -1: the body's own length; else a FORGED array body length
-    int32_t after;
+    int32_t past;
 };
 
 static IntsSpec ints_spec()
@@ -562,7 +562,7 @@ static Wire build_ints( const IntsSpec & spec )
         for ( int64_t i = 0; i < spec.body_len; i++ ) { b.u8( i == 0 ? 4 : 0 ); }
     }
     b.field( "after", 4 );
-    b.u32( (uint32_t) spec.after );
+    b.u32( (uint32_t) spec.past );
     b.end();
     Wire w;
     w.size = b.finish( w.bytes );
@@ -573,7 +573,7 @@ struct Verdict
 {
     int32_t count;
     TableReport report;
-    int32_t after;
+    int32_t past;
     int32_t decoded[3];
 };
 
@@ -584,11 +584,11 @@ static Verdict read_ints( const Wire & w )
     if ( need < 0 ) { v.count = -2; return v; } // the measure REFUSED the framing
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return v; }
-    const Ints * ints = IntsLoad( region, need, w.bytes, w.size, &v.report );
+    const Ints * ints = IntsLoadTolerant( region, need, w.bytes, w.size, &v.report );
     if ( ints != NULL )
     {
         v.count = ints->values.size();
-        v.after = ints->after;
+        v.past = ints->past;
         for ( int32_t i = 0; i < v.count && i < 3; i++ ) { v.decoded[i] = ints->values[i]; }
     }
     free( region );
@@ -597,7 +597,7 @@ static Verdict read_ints( const Wire & w )
     // wire either of them decodes
     IntsBuilder into;
     TableReport t;
-    IntsLoadBuilder( into, w.bytes, w.size, &t );
+    IntsLoadBuilderTolerant( into, w.bytes, w.size, &t );
     reports_agree( t, v.report );
     CHECK_EQ( into.GetRoot()->values.count, v.count < 0 ? 0 : v.count );
     return v;
@@ -609,7 +609,7 @@ static void test_reader()
         const Verdict v = read_ints( build_ints( ints_spec() ) );
         CHECK_EQ( v.count, 3 );
         CHECK_EQ( v.decoded[2], 30 );
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
         report_silent( v.report, "a good Ints wire" );
     }
     {
@@ -622,12 +622,12 @@ static void test_reader()
         uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
         if ( region == NULL ) { return; }
         TableReport r;
-        const Floats * floats = FloatsLoad( region, need, w.bytes, w.size, &r );
+        const Floats * floats = FloatsLoadTolerant( region, need, w.bytes, w.size, &r );
         CHECK( floats != NULL );
         if ( floats != NULL )
         {
             CHECK_EQ( floats->values.size(), 0 );
-            CHECK_EQ( floats->after, 777 );
+            CHECK_EQ( floats->past, 777 );
         }
         CHECK_EQ( r.kind_mismatch, 1 );
         CHECK_EQ( r.unknown + r.clamped + r.duplicate + (int) r.malformed, 0 );
@@ -639,7 +639,7 @@ static void test_reader()
         CHECK_EQ( v.count, 0 );
         CHECK_EQ( v.report.kind_mismatch, 1 );
         CHECK( !v.report.malformed );
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
     }
     {
         // A COUNT THE BODY CANNOT COVER (§2.9): into a REGION, LoadMeasure
@@ -654,11 +654,11 @@ static void test_reader()
         CHECK( reason == count_over_length );
         IntsBuilder into;
         TableReport t;
-        CHECK( IntsLoadBuilder( into, w.bytes, w.size, &t ) );
+        CHECK( IntsLoadBuilderTolerant( into, w.bytes, w.size, &t ) );
         CHECK( t.malformed );
         CHECK_EQ( t.kind_mismatch + t.clamped + t.unknown + t.duplicate, 0 );
         CHECK_EQ( into.GetRoot()->values.count, 3 ); // the prefix the body covers
-        CHECK_EQ( into.GetRoot()->after, 777 );
+        CHECK_EQ( into.GetRoot()->past, 777 );
     }
     {
         // A BODY TOO SHORT TO CARRY ITS OWN HEADER IS INERT (§4): no element,
@@ -668,7 +668,7 @@ static void test_reader()
         const Verdict v = read_ints( build_ints( spec ) );
         CHECK_EQ( v.count, 0 );
         report_silent( v.report, "an inert list body" );
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
     }
     {
         // an EMPTY list on the wire: a header and a zero count
@@ -677,7 +677,7 @@ static void test_reader()
         const Verdict v = read_ints( build_ints( spec ) );
         CHECK_EQ( v.count, 0 );
         report_silent( v.report, "an empty list body" );
-        CHECK_EQ( v.after, 777 );
+        CHECK_EQ( v.past, 777 );
     }
     {
         // A DAMAGED ELEMENT inside a good count: a list of TABLES whose third
@@ -708,7 +708,7 @@ static void test_reader()
         uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
         if ( region == NULL ) { return; }
         TableReport r;
-        const Row * row = RowLoad( region, need, w.bytes, w.size, &r );
+        const Row * row = RowLoadTolerant( region, need, w.bytes, w.size, &r );
         CHECK( row != NULL );
         CHECK( r.malformed );
         if ( row != NULL )
@@ -719,7 +719,7 @@ static void test_reader()
         }
         RowBuilder into;
         TableReport t;
-        RowLoadBuilder( into, w.bytes, w.size, &t );
+        RowLoadBuilderTolerant( into, w.bytes, w.size, &t );
         reports_agree( t, r );
         CHECK_EQ( into.GetRoot()->items.count, 2 );
         free( region );
@@ -743,7 +743,7 @@ static void test_clamp_control()
         if ( e == NULL ) { printf( "FAIL: Add answered NULL at %d\n", i ); failures++; return; }
         *e = (uint8_t) ( i & 0xff );
     }
-    bytes->after = 4242;
+    bytes->past = 4242;
     CHECK_EQ( bytes->data.count, kElements );
     const int64_t measured = BytesMeasure( b );
     uint8_t * wire = (uint8_t *) MEASURED_CALLOC( measured, 0 );
@@ -756,7 +756,7 @@ static void test_clamp_control()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { free( wire ); return; }
     TableReport r;
-    const Bytes * loaded = BytesLoad( region, need, wire, n, &r );
+    const Bytes * loaded = BytesLoadTolerant( region, need, wire, n, &r );
     CHECK( loaded != NULL );
     report_silent( r, "the clamp control" );
     if ( loaded != NULL )
@@ -766,11 +766,11 @@ static void test_clamp_control()
         bool intact = loaded->data.size() == kElements;
         for ( int32_t i = 0; intact && i < kElements; i++ ) { if ( loaded->data[i] != (uint8_t) ( i & 0xff ) ) { intact = false; } }
         CHECK( intact );
-        CHECK_EQ( loaded->after, 4242 );
+        CHECK_EQ( loaded->past, 4242 );
     }
     BytesBuilder into;
     TableReport t;
-    CHECK( BytesLoadBuilder( into, wire, n, &t ) );
+    CHECK( BytesLoadBuilderTolerant( into, wire, n, &t ) );
     reports_agree( t, r );
     CHECK_EQ( into.GetRoot()->data.count, kElements );
     free( region );
@@ -882,7 +882,7 @@ static void test_measure_refusals()
         // the report holding what it held when the count was met: nothing
         IntsBuilder into;
         TableReport t;
-        CHECK( !IntsLoadBuilder( into, w.bytes, w.size, &t ) );
+        CHECK( !IntsLoadBuilderTolerant( into, w.bytes, w.size, &t ) );
         report_silent( t, "the over-cap refusal into a builder" );
     }
     // a count the field's L cannot carry, at the ROOT
@@ -902,7 +902,7 @@ static void test_measure_refusals()
         CHECK( reason == count_over_extent_cap );
         SheetBuilder into;
         TableReport t;
-        CHECK( !SheetLoadBuilder( into, w.bytes, w.size, &t ) );
+        CHECK( !SheetLoadBuilderTolerant( into, w.bytes, w.size, &t ) );
         report_silent( t, "the over-cap refusal at depth into a builder" );
     }
     {
@@ -935,7 +935,7 @@ static void test_measure_refusals()
         uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
         if ( region == NULL ) { return; }
         TableReport r;
-        const Army * army = ArmyLoad( region, need, w.bytes, w.size, &r );
+        const Army * army = ArmyLoadTolerant( region, need, w.bytes, w.size, &r );
         CHECK( army != NULL );
         report_silent( r, "the clean map-holding wire beside the refusals" );
         if ( army != NULL && army->squads.size() == 1 )
@@ -955,7 +955,7 @@ static void test_measure_refusals()
         uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
         if ( region == NULL ) { return; }
         TableReport r;
-        const Sheet * sheet = SheetLoad( region, need, w.bytes, w.size, &r );
+        const Sheet * sheet = SheetLoadTolerant( region, need, w.bytes, w.size, &r );
         CHECK( sheet != NULL );
         report_silent( r, "the clean wire beside the refusals" );
         if ( sheet != NULL )
@@ -993,7 +993,7 @@ static void test_shared()
         uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
         if ( region == NULL ) { return; }
         TableReport r;
-        const Album * loaded = AlbumLoad( region, need, wire, n, &r );
+        const Album * loaded = AlbumLoadTolerant( region, need, wire, n, &r );
         CHECK( loaded != NULL );
         report_silent( r, "list_shared" );
         if ( loaded != NULL )
@@ -1021,7 +1021,7 @@ static void test_shared()
         CHECK( strstr( text, "null" ) != NULL );
         AlbumBuilder into;
         TableReport t;
-        CHECK( AlbumFromJson( into, text, text_bytes, &t ) );
+        CHECK( AlbumFromJsonTolerant( into, text, text_bytes, &t ) );
         report_silent( t, "list_shared from text" );
         static uint8_t from_text[1u << 16];
         CHECK_EQ( AlbumSave( into, from_text, sizeof( from_text ) ), n );
@@ -1051,7 +1051,7 @@ static void test_shared()
         uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
         if ( region == NULL ) { return; }
         TableReport r;
-        const Album * loaded = AlbumLoad( region, need, wire, n, &r );
+        const Album * loaded = AlbumLoadTolerant( region, need, wire, n, &r );
         CHECK( loaded != NULL );
         report_silent( r, "list_before_pointer" );
         if ( loaded != NULL )
@@ -1094,7 +1094,7 @@ static void test_nested()
         uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
         if ( region == NULL ) { return; }
         TableReport r;
-        const Sheet * loaded = SheetLoad( region, need, wire, n, &r );
+        const Sheet * loaded = SheetLoadTolerant( region, need, wire, n, &r );
         CHECK( loaded != NULL );
         report_silent( r, "list_nested" );
         if ( loaded != NULL )
@@ -1157,7 +1157,7 @@ static void test_nested()
                 {
                     uint8_t * forged = (uint8_t *) cooked;
                     const int64_t delta = cook_bytes; // past every byte the file has
-                    memcpy( forged + 64, &delta, sizeof( delta ) );
+                    memcpy( (void *) ( forged + 64 ), &delta, sizeof( delta ) );
                     save_cook( "sheet-forged", forged, cook_bytes );
                 }
                 free( cooked );
@@ -1166,7 +1166,7 @@ static void test_nested()
         // and the TOOL's path reads every depth into a builder
         SheetBuilder into;
         TableReport t;
-        CHECK( SheetLoadBuilder( into, wire, n, &t ) );
+        CHECK( SheetLoadBuilderTolerant( into, wire, n, &t ) );
         reports_agree( t, r );
         CHECK_EQ( into.GetRoot()->rows.count, 3 );
         static uint8_t relocked[1u << 16];
@@ -1176,7 +1176,7 @@ static void test_nested()
         // counted every depth and every node and none twice. Load zeroes the
         // region before it refuses, so this is the block's last act.
         TableReport short_report;
-        CHECK( SheetLoad( region, need - 1, wire, n, &short_report ) == NULL );
+        CHECK( SheetLoadTolerant( region, need - 1, wire, n, &short_report ) == NULL );
         free( region );
     }
     {
@@ -1192,7 +1192,7 @@ static void test_nested()
             SquadRosterInsert( b.main, squad->roster, (uint8_t) ( 9 - i ) )->count = 90 + i;
             SquadRosterInsert( b.main, squad->roster, (uint8_t) ( 2 + i ) )->count = 20 + i;
         }
-        army->after = 8;
+        army->past = 8;
         static uint8_t wire[1u << 16];
         const int64_t n = ArmySave( b, wire, sizeof( wire ) );
         CHECK_EQ( ArmyMeasure( b ), n );
@@ -1202,7 +1202,7 @@ static void test_nested()
         uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
         if ( region == NULL ) { return; }
         TableReport r;
-        const Army * loaded = ArmyLoad( region, need, wire, n, &r );
+        const Army * loaded = ArmyLoadTolerant( region, need, wire, n, &r );
         CHECK( loaded != NULL );
         report_silent( r, "list_of_maps" );
         if ( loaded != NULL )
@@ -1217,7 +1217,7 @@ static void test_nested()
                 CHECK( low != NULL && low->count == 20 + i );
                 if ( squad.roster.size() == 2 ) { CHECK_EQ( squad.roster.begin().at->key, 2 + i ); } // sorted
             }
-            CHECK_EQ( loaded->after, 8 );
+            CHECK_EQ( loaded->past, 8 );
             static uint8_t again[1u << 16];
             CHECK_EQ( ArmySave( loaded, again, sizeof( again ) ), n );
             CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -1243,13 +1243,13 @@ static void test_nested()
         }
         ArmyBuilder into;
         TableReport t;
-        CHECK( ArmyLoadBuilder( into, wire, n, &t ) );
+        CHECK( ArmyLoadBuilderTolerant( into, wire, n, &t ) );
         reports_agree( t, r );
         static uint8_t relocked[1u << 16];
         CHECK_EQ( ArmySave( into, relocked, sizeof( relocked ) ), n );
         CHECK( memcmp( relocked, wire, (size_t) n ) == 0 );
         TableReport short_report; // one byte short is refused; last, because Load zeroes the region first
-        CHECK( ArmyLoad( region, need - 1, wire, n, &short_report ) == NULL );
+        CHECK( ArmyLoadTolerant( region, need - 1, wire, n, &short_report ) == NULL );
         free( region );
     }
 
@@ -1307,7 +1307,7 @@ static void test_migrates()
     {
         Bounded back;
         TableReport r;
-        CHECK( BoundedLoad( back, unbounded_wire, unbounded_bytes, &r ) );
+        CHECK( BoundedLoadTolerant( back, unbounded_wire, unbounded_bytes, &r ) );
         report_silent( r, "the bounded reader over the unbounded wire" );
         CHECK_EQ( back.items_count, 3 );
         CHECK_EQ( back.items[2].v, 21 );
@@ -1319,7 +1319,7 @@ static void test_migrates()
         uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
         if ( region == NULL ) { return; }
         TableReport r;
-        const Unbounded * back = UnboundedLoad( region, need, bounded_wire, bounded_bytes, &r );
+        const Unbounded * back = UnboundedLoadTolerant( region, need, bounded_wire, bounded_bytes, &r );
         CHECK( back != NULL );
         report_silent( r, "the unbounded reader over the bounded wire" );
         if ( back != NULL )
@@ -1360,7 +1360,7 @@ static void test_text()
     // and the text reads back: one instance, one text, both ways
     SaveBuilder into;
     TableReport report;
-    CHECK( SaveFromJson( into, text, written, &report ) );
+    CHECK( SaveFromJsonTolerant( into, text, written, &report ) );
     report_silent( report, "list_tables from text" );
     CHECK_EQ( into.GetRoot()->placements.count, 3 );
     CHECK_EQ( into.GetRoot()->log.count, 3 );
@@ -1381,22 +1381,22 @@ static void test_text()
     // `[]` is an empty list, null is kind_mismatch, a wrong-shaped element
     // counts and keeps its slot at defaults, and EVERY element the text
     // carries is read, because there is no bound to drop a tail against
-    struct TextRow { const char * text; int32_t count; int32_t mismatch; int32_t after; };
+    struct TextRow { const char * text; int32_t count; int32_t mismatch; int32_t past; };
     const TextRow rows[] = {
-        { "{\"values\":[],\"after\":5}", 0, 0, 5 },
-        { "{\"values\":null,\"after\":5}", 0, 1, 5 },
-        { "{\"values\":[1,\"x\",3],\"after\":5}", 3, 1, 5 },
-        { "{\"values\":[1,2],\"values\":[9],\"after\":5}", 1, 0, 5 }, // LAST WINS, whole
+        { "{\"values\":[],\"past\":5}", 0, 0, 5 },
+        { "{\"values\":null,\"past\":5}", 0, 1, 5 },
+        { "{\"values\":[1,\"x\",3],\"past\":5}", 3, 1, 5 },
+        { "{\"values\":[1,2],\"values\":[9],\"past\":5}", 1, 0, 5 }, // LAST WINS, whole
     };
     for ( int i = 0; i < 4; i++ )
     {
         IntsBuilder rb;
         TableReport r;
-        CHECK( IntsFromJson( rb, rows[i].text, (int64_t) strlen( rows[i].text ), &r ) );
+        CHECK( IntsFromJsonTolerant( rb, rows[i].text, (int64_t) strlen( rows[i].text ), &r ) );
         CHECK_EQ( rb.GetRoot()->values.count, rows[i].count );
         CHECK_EQ( r.kind_mismatch, rows[i].mismatch );
         CHECK_EQ( r.clamped, 0 );
-        CHECK_EQ( rb.GetRoot()->after, rows[i].after );
+        CHECK_EQ( rb.GetRoot()->past, rows[i].past );
     }
     {
         static char many[8192];
@@ -1405,7 +1405,7 @@ static void test_text()
         snprintf( many + at, sizeof( many ) - (size_t) at, "]}" );
         IntsBuilder rb;
         TableReport r;
-        CHECK( IntsFromJson( rb, many, (int64_t) strlen( many ), &r ) );
+        CHECK( IntsFromJsonTolerant( rb, many, (int64_t) strlen( many ), &r ) );
         report_silent( r, "300 elements from text" );
         CHECK_EQ( rb.GetRoot()->values.count, 300 );
         int32_t i = 0;
@@ -1423,7 +1423,7 @@ static void test_allocation_audit()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport r;
-    const Save * loaded = SaveLoad( region, need, wire_tables, bytes_tables, &r );
+    const Save * loaded = SaveLoadTolerant( region, need, wire_tables, bytes_tables, &r );
     CHECK( loaded != NULL );
     long long sum = 0;
     if ( loaded != NULL )

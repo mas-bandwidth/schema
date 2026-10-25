@@ -1,4 +1,5 @@
-// The COOKED FORM (docs/SPEC-TABLES.md §7): the Dart READ half.
+// The COOKED FORM (docs/SPEC-TABLES.md §7): the Dart read half and the write
+// half (§7.6, cookwrite.go): a fixed root's writer and a variable graph's.
 //
 // A cook is a region another build wrote, opened by a header match and then
 // POINTED AT — nothing per node, ever, which is what makes Open O(1) in the
@@ -30,6 +31,7 @@ package darttable
 
 import (
 	"fmt"
+	"math/bits"
 	"sort"
 	"strings"
 
@@ -65,6 +67,14 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	c := &cookUnit{members: map[string]*ir.MemberLayout{}, skipped: map[string]string{}}
 	for _, name := range sortedKeys(u.Tables) {
 		st := u.Tables[name]
+		// A map's generated ENTRY (docs/SPEC-TABLES.md §2.8) is never a root or
+		// a row: it is an extent inside its holder's node, reached through the
+		// holder's map slot, exactly as the block form treats it (§19). A cook
+		// for it would name a value class that lives only in the variable form's
+		// <Base>Wire.dart, which a cook library does not import.
+		if st.MapEntryOf != "" {
+			continue
+		}
 		if why := cookableClosure(u, st); why != "" {
 			c.skipped[name] = why
 			continue
@@ -75,6 +85,29 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 		cookWalk(u, st.Name, func(name string, ml *ir.MemberLayout) {
 			c.members[name] = ml
 		})
+	}
+	// THE ENTRY CURSOR of every map a member holds (§2.8, §7.2): an entry is no
+	// root, but the holder's <field>At and <field>Find move an <Entry>Row over
+	// the entry array, so the entry record, and every record it reaches, is a
+	// member whose cursor this unit emits. Repeated until no map adds one, since
+	// an entry's value may hold a map of its own.
+	for grew := true; grew; {
+		grew = false
+		for _, name := range sortedKeys(c.members) {
+			st := cookMember(u, name)
+			if st == nil {
+				continue
+			}
+			for _, f := range st.Fields {
+				if !f.IsMap() || c.members[f.MapEntry.Name] != nil {
+					continue
+				}
+				cookWalk(u, f.MapEntry.Name, func(n string, ml *ir.MemberLayout) {
+					c.members[n] = ml
+				})
+				grew = true
+			}
+		}
 	}
 	aligns := make([]int64, 0, len(c.members))
 	for name := range c.members {
@@ -107,8 +140,21 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
-			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Struct:
 				walk(ref.Name)
+			case *ir.Union:
+				// a union's SET arm rides in its holder's node: the arm's
+				// by-value table body and its pointer target are members of
+				// the same region (§3.1, §7.6)
+				for _, arm := range ref.Variants {
+					if arm.Void() {
+						continue
+					}
+					if t := tableRef(arm.F); t != nil {
+						walk(t.Name)
+					}
+				}
 			}
 		}
 	}
@@ -120,6 +166,25 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 	seen := map[string]bool{}
 	var walk func(string) string
+	var walkUnion func(*ir.Union) string
+	walkUnion = func(un *ir.Union) string {
+		for _, arm := range un.Variants {
+			if arm.Void() {
+				continue
+			}
+			switch ref := arm.F.Type.Ref.(type) {
+			case *ir.Union:
+				if why := walkUnion(ref); why != "" {
+					return why
+				}
+			case *ir.Struct:
+				if why := walk(ref.Name); why != "" {
+					return why
+				}
+			}
+		}
+		return ""
+	}
 	walk = func(name string) string {
 		if seen[name] {
 			return ""
@@ -135,7 +200,9 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 			}
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Union:
-				return name + "." + f.Name + " is a union, and §7.2's storage kinds name no arm, so the cook descriptors cannot describe it"
+				if why := walkUnion(ref); why != "" {
+					return why
+				}
 			case *ir.Struct:
 				if why := walk(ref.Name); why != "" {
 					return why
@@ -166,6 +233,16 @@ type cookGen struct {
 	needData  bool
 	needHome  bool
 	needBlock bool
+	// needConvert asks for dart:convert: the variable cook writer encodes a
+	// Dart String as the UTF-8 bytes §7.2's storage holds
+	needConvert bool
+	// prefixed names a library imported under a prefix: the variable cook
+	// writer's value classes live in <Home>Wire.dart and share their names
+	// with the fixed class's storage in <Home>Fixed.dart (§7.6)
+	prefixed map[string]string
+	// form1 is set while a fixed root's FORM-1 cook writer is emitted
+	// (cookwrite_form1.go): the variable walk over the wire library's class
+	form1 bool
 	// the records some field column names, so only those need the edge method
 	cookNamed map[string]bool
 }
@@ -200,7 +277,7 @@ func generateCookFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, err
 		// already written: one record, one cursor, whichever accelerator
 		// reaches it first
 		for _, record := range cook.order {
-			if u.DeclFile[record] != f.Base || blocks.Layout(record) != nil {
+			if cookDeclFile(u, record) != f.Base || blocks.Layout(record) != nil {
 				continue
 			}
 			g.emitRecordCursor(record, cook.members[record])
@@ -214,6 +291,9 @@ func generateCookFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, err
 				g.pf("// table %s has NO cook reader here: %s.\n", t.Name, why)
 				g.pf("// Its wire (§3) is unaffected, and schema cook-check still reads the\n")
 				g.pf("// file — only this reader is absent, and it is absent by construction.\n\n")
+				// the WRITE half has no descriptors to describe, so a union
+				// closure does not stop it (§7.6, cookwrite_form1.go)
+				g.emitCookWriteForm1(t)
 			}
 		}
 		if g.body.Len() > 0 {
@@ -239,17 +319,20 @@ func (g *cookGen) assemble() []byte {
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
-	fmt.Fprintf(&h, "// package %s — the COOKED FORM (docs/SPEC-TABLES.md §7): the READ half.\n", g.unit.Package)
+	fmt.Fprintf(&h, "// package %s — the COOKED FORM (docs/SPEC-TABLES.md §7): read and carried write surfaces.\n", g.unit.Package)
 	h.WriteString("//\n")
 	h.WriteString("// Open checks the header and POINTS — nothing per node, ever, which is what\n")
-	h.WriteString("// makes it O(1) in the file's size. Import this library only if you read a\n")
+	h.WriteString("// makes it O(1) in the file's size. Import this library if you read or write a\n")
 	h.WriteString("// cook; the unit's <Base>Table.dart carries not one symbol of it.\n")
 	h.WriteString("//\n")
 	h.WriteString("// A reference resolves to an OFFSET in the region and the deref is BOUNDED:\n")
 	h.WriteString("// in Dart the read after an escaping delta would be a RangeError, and a\n")
 	h.WriteString("// reader that throws on hostile bytes is not one that refuses them.\n")
 	h.WriteString("\n")
-	if g.needData || g.home {
+	if g.needConvert {
+		h.WriteString("import 'dart:convert';\n")
+	}
+	if g.needData || g.home || g.needConvert {
 		h.WriteString("import 'dart:typed_data';\n\n")
 	}
 	if !g.home && g.needHome {
@@ -258,8 +341,19 @@ func (g *cookGen) assemble() []byte {
 	if g.needBlock {
 		g.imports[g.homeBase+"Block.dart"] = nil
 	}
+	for base := range g.prefixed {
+		if _, ok := g.imports[base]; !ok {
+			g.imports[base] = nil
+		}
+	}
 	for _, base := range sortedKeys(g.imports) {
 		syms := g.imports[base]
+		if prefix := g.prefixed[base]; prefix != "" {
+			fmt.Fprintf(&h, "import '%s' as %s;\n", base, prefix)
+			if syms == nil {
+				continue
+			}
+		}
 		if syms == nil {
 			fmt.Fprintf(&h, "import '%s';\n", base)
 			continue
@@ -268,6 +362,11 @@ func (g *cookGen) assemble() []byte {
 		one := fmt.Sprintf("import '%s' show %s;", base, strings.Join(names, ", "))
 		if len(one) <= 80 {
 			h.WriteString(one + "\n")
+			continue
+		}
+		two := fmt.Sprintf("    show %s;", strings.Join(names, ", "))
+		if len(two) <= 80 {
+			fmt.Fprintf(&h, "import '%s'\n%s\n", base, two)
 			continue
 		}
 		fmt.Fprintf(&h, "import '%s'\n    show\n", base)
@@ -355,11 +454,13 @@ func (g *cookGen) emitCook(st *ir.Struct, ml *ir.MemberLayout) {
 	g.emitCookOpen(st, ml)
 	g.emitCookAt(st)
 	g.emitCookDescriptors(st)
+	g.emitCookWriteFixed(st)
 	g.pf("}\n\n")
+	g.emitCookWriteForm1(st)
 }
 
 func (g *cookGen) needRow(record string) {
-	base := g.unit.DeclFile[record]
+	base := cookDeclFile(g.unit, record)
 	if base == "" {
 		return
 	}
@@ -372,6 +473,10 @@ func (g *cookGen) needRow(record string) {
 	}
 	g.need(base+"Cook.dart", record+"Row")
 }
+
+// dartCookMagic is the cook's magic (docs/SPEC-TABLES.md §7.1), the value the
+// runtime's tableCookMagic spells.
+const dartCookMagic = uint64(0x4B4F4F434D484353)
 
 func (g *cookGen) emitCookOpen(st *ir.Struct, ml *ir.MemberLayout) {
 	name := st.Name
@@ -392,64 +497,87 @@ func (g *cookGen) emitCookOpen(st *ir.Struct, ml *ir.MemberLayout) {
 	g.pf("  // wide, so a forged word near 2^63 arrives NEGATIVE — and every term is\n")
 	g.pf("  // bounded BEFORE it is added, so nothing here wraps past the top of the\n")
 	g.pf("  // type and lands back inside the buffer.\n")
+	g.pf("  //\n")
+	g.pf("  // open is openWithReason without the reason: the same checks in the same\n")
+	g.pf("  // order, so the verdict and the reason never disagree.\n")
 	g.pf("  static %sCook? open(Uint8List? bytes, int at, int length) {\n", name)
-	g.pf("    if (bytes == null || at < 0 || length < %d) {\n      return null;\n    }\n", cookHeaderBytes)
+	g.pf("    return openWithReason(bytes, at, length).$1;\n  }\n\n")
+	g.pf("  // openWithReason answers the cook and the FIRST failing clause beside the\n")
+	g.pf("  // null, as the reference leg names it (docs/SPEC-TABLES.md §7, the clauses in\n")
+	g.pf("  // the order internal/codegen/gotable/cook.go's Open checks them): no buffer\n")
+	g.pf("  // is an unaligned base, a claim under the header or past the caller's bytes\n")
+	g.pf("  // is truncated, the magic is not_a_cook or, read byte-reversed,\n")
+	g.pf("  // foreign_order, then the order word, the build version, the reserved words,\n")
+	g.pf("  // the alignment word, the two part lengths and the root inside the data\n")
+	g.pf("  // part, and last the base's own alignment.\n")
+	g.pf("  static (%sCook?, TableRefuseReason) openWithReason(\n", name)
+	g.pf("    Uint8List? bytes,\n    int at,\n    int length,\n  ) {\n")
+	g.pf("    if (bytes == null || at < 0) {\n      return (null, TableRefuseReason.unalignedBase);\n    }\n")
+	g.pf("    if (length < %d) {\n      return (null, TableRefuseReason.truncated);\n    }\n", cookHeaderBytes)
 	g.pf("    if (length > bytes.length - at) {\n")
-	g.pf("      return null; // the claim runs past the bytes the caller owns\n    }\n")
+	g.pf("      // the claim runs past the bytes the caller owns\n")
+	g.pf("      return (null, TableRefuseReason.truncated);\n    }\n")
 	g.pf("    final view = ByteData.view(\n")
 	g.pf("      bytes.buffer,\n      bytes.offsetInBytes,\n      bytes.lengthInBytes,\n    );\n\n")
 	g.pf("    // THE MAGIC, read BYTEWISE before anything else: it is what establishes\n")
 	g.pf("    // the byte order every other header word is written in. A cook of the\n")
 	g.pf("    // other order reads back this constant byte-reversed and refuses HERE,\n")
 	g.pf("    // rather than reaching a fix-up pass this design does not have.\n")
-	g.pf("    if (tableCookRead64(view, at) != tableCookMagic) {\n      return null;\n    }\n")
+	g.pf("    final magic = tableCookRead64(view, at);\n")
+	g.pf("    if (magic != tableCookMagic) {\n")
+	// the magic as a cook of the OTHER byte order reads back through the same
+	// bytewise read: what tells foreign_order from not_a_cook (§7.1)
+	g.pf("      return (\n        null,\n        magic == 0x%016x\n", bits.ReverseBytes64(dartCookMagic))
+	g.pf("            ? TableRefuseReason.foreignOrder\n            : TableRefuseReason.notACook,\n      );\n    }\n")
 	g.pf("    // and the ORDER WORD does the other job: it RECORDS which order wrote the\n")
 	g.pf("    // file, so a refusal names the order rather than inferring it.\n")
-	g.pf("    if (tableCookRead64(view, at + 16) != tableCookByteOrder) {\n      return null;\n    }\n")
+	g.pf("    if (tableCookRead64(view, at + 16) != tableCookByteOrder) {\n      return (null, TableRefuseReason.notACook);\n    }\n")
 	g.pf("    // THE BUILD VERSION: under the match-and-point rule a matching id means\n")
 	g.pf("    // open checks nothing further, so it is the sole guard between this\n")
 	g.pf("    // runtime and a foreign region (§20).\n")
-	g.pf("    if (tableCookRead64(view, at + 8) != tableBuildVersion) {\n      return null;\n    }\n")
+	g.pf("    if (tableCookRead64(view, at + 8) != tableBuildVersion) {\n      return (null, TableRefuseReason.wrongBuildVersion);\n    }\n")
 	g.pf("    // THE RESERVED WORDS: a non-zero one means a writer used a form this\n")
 	g.pf("    // build does not understand, and open refuses rather than ignoring it.\n")
-	g.pf("    if (tableCookRead64(view, at + 48) != 0) {\n      return null;\n    }\n")
-	g.pf("    if (tableCookRead64(view, at + 56) != 0) {\n      return null;\n    }\n\n")
+	g.pf("    if (tableCookRead64(view, at + 48) != 0 ||\n        tableCookRead64(view, at + 56) != 0) {\n")
+	g.pf("      return (null, TableRefuseReason.reservedNotZero);\n    }\n\n")
 	g.pf("    // THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than\n")
 	g.pf("    // only compares against — the data part begins at align_up(64, alignment)\n")
-	g.pf("    // — so a word that is not an alignment rounds nothing and aligns nothing.\n")
+	g.pf("    // — so a word that is not an alignment rounds nothing and aligns nothing:\n")
+	g.pf("    // at least the floor, at most the ceiling, a power of two, and a multiple\n")
+	g.pf("    // of the ROOT's own alignof.\n")
 	g.pf("    final alignment = tableCookRead64(view, at + 40);\n")
-	g.pf("    if (alignment < %d || alignment > %d) {\n      return null;\n    }\n",
-		ir.RegionAlignFloor, cookMaxAlign)
-	g.pf("    if (alignment & (alignment - 1) != 0) {\n")
-	g.pf("      return null; // a power of two\n    }\n")
-	g.pf("    if (alignment %% %d != 0) {\n", ml.Align)
-	g.pf("      return null; // and a multiple of the ROOT's own alignof\n    }\n\n")
+	g.pf("    if (alignment < %d ||\n        alignment > %d ||\n        alignment & (alignment - 1) != 0 ||\n        alignment %% %d != 0) {\n",
+		ir.RegionAlignFloor, cookMaxAlign, ml.Align)
+	g.pf("      return (null, TableRefuseReason.badAlignment);\n    }\n\n")
 	g.pf("    // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader\n")
 	g.pf("    // computes is a fact two writers cannot disagree about.\n")
 	g.pf("    final dataOffset = (%d + alignment - 1) & ~(alignment - 1);\n\n", cookHeaderBytes)
 	g.pf("    // THE TWO PART LENGTHS against the length the caller passed. The whole\n")
 	g.pf("    // file is dataOffset + data + attribution, and a size that is not exactly\n")
 	g.pf("    // that refuses: a truncated file and a file with trailing bytes are the\n")
-	g.pf("    // same refusal.\n")
-	g.pf("    final dataLength = tableCookRead64(view, at + 24);\n")
-	g.pf("    final attribution = tableCookRead64(view, at + 32);\n")
-	g.pf("    if (dataLength < 0 || attribution < 0) {\n")
-	g.pf("      return null; // a length past 2^63 is not a length\n    }\n")
-	g.pf("    if (dataLength > length || attribution > length - dataLength) {\n")
-	g.pf("      return null;\n    }\n")
-	g.pf("    if (dataOffset > length - dataLength - attribution) {\n      return null;\n    }\n")
-	g.pf("    if (dataOffset + dataLength + attribution != length) {\n      return null;\n    }\n\n")
+	g.pf("    // same refusal. A length past 2^63 arrives negative and is not a length.\n")
+	g.pf("    //\n")
 	g.pf("    // THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they\n")
 	g.pf("    // do not say the region is at least sizeof(root). Without this a forged\n")
 	g.pf("    // short data part describes a root partly outside the file, and a\n")
 	g.pf("    // match-and-point reader would hand back storage the caller never gave\n")
 	g.pf("    // it — the one way this design could read past the length it was passed.\n")
-	g.pf("    if (dataLength < %d) {\n      return null;\n    }\n\n", ml.Size)
+	g.pf("    final dataLength = tableCookRead64(view, at + 24);\n")
+	g.pf("    final attribution = tableCookRead64(view, at + 32);\n")
+	g.pf("    if (dataLength < 0 ||\n        attribution < 0 ||\n")
+	g.pf("        dataOffset > length ||\n        dataLength > length - dataOffset ||\n")
+	g.pf("        attribution != length - dataOffset - dataLength ||\n        dataLength < %d) {\n", ml.Size)
+	g.pf("      return (null, TableRefuseReason.truncated);\n    }\n\n")
 	g.pf("    // THE ALIGNMENT OF THE BASE, on the offset the caller placed the file at —\n")
 	g.pf("    // the only base a Dart consumer holds (§19.1's rule, in this language's\n")
 	g.pf("    // currency).\n")
-	g.pf("    if (at %% alignment != 0) {\n      return null;\n    }\n\n")
-	g.pf("    return %sCook(bytes, view, at + dataOffset, dataLength);\n  }\n\n", name)
+	g.pf("    if (at %% alignment != 0) {\n      return (null, TableRefuseReason.unalignedBase);\n    }\n\n")
+	// split unless it fits the formatter's 80 columns (tables-dart-clean)
+	ret := fmt.Sprintf("    return (%sCook(bytes, view, at + dataOffset, dataLength), TableRefuseReason.ok);", name)
+	if len(ret) > 80 {
+		ret = fmt.Sprintf("    return (\n      %sCook(bytes, view, at + dataOffset, dataLength),\n      TableRefuseReason.ok,\n    );", name)
+	}
+	g.pf("%s\n  }\n\n", ret)
 }
 
 func (g *cookGen) emitCookAt(st *ir.Struct) {
@@ -459,18 +587,23 @@ func (g *cookGen) emitCookAt(st *ir.Struct) {
 	g.pf("  // NULL IS A DELTA OF ZERO.\n")
 	g.pf("  //\n")
 	g.pf("  // It takes the SLOT's offset and not its value, because a self-relative\n")
-	g.pf("  // delta means nothing without the position it is relative to. It answers\n")
+	g.pf("  // delta means nothing without the position it is relative to. The size is\n")
+	g.pf("  // the pointee record's full extent, bounded before any target addition.\n")
+	g.pf("  // The slot itself must hold eight bytes inside the region. It answers\n")
 	g.pf("  // the TARGET's offset, TableCookRef.none for a null, and\n")
-	g.pf("  // TableCookRef.outside for a delta that leaves the region — which C++ does\n")
-	g.pf("  // not have to check and Dart does, because the read after it would be an\n")
+	g.pf("  // TableCookRef.outside for a slot or target record outside the region — C++\n")
+	g.pf("  // need not check and Dart does, because the read after it would be an\n")
 	g.pf("  // escaping RangeError rather than a refusal.\n")
-	g.pf("  int at(int slot) {\n")
+	g.pf("  int at(int slot, int size) {\n")
+	g.pf("    if (size < 0 || length < 8 || slot < region || slot - region > length - 8) {\n")
+	g.pf("      return TableCookRef.outside;\n    }\n")
 	g.pf("    final delta = view.getInt64(slot, Endian.little);\n")
 	g.pf("    if (delta == 0) {\n      return TableCookRef.none;\n    }\n")
-	g.pf("    final target = slot + delta;\n")
-	g.pf("    if (target < region || target >= region + length) {\n")
+	g.pf("    final relative = slot - region;\n")
+	g.pf("    // Bound the delta before addition: the entire record must fit (§7).\n")
+	g.pf("    if (delta < -relative || delta > length - size - relative) {\n")
 	g.pf("      return TableCookRef.outside;\n    }\n")
-	g.pf("    return target;\n  }\n\n")
+	g.pf("    return slot + delta;\n  }\n\n")
 }
 
 // emitCookDescriptors is the cook's reflective half: one record's layout as
@@ -655,4 +788,149 @@ func (g *cookGen) trimBlank() {
 	g.body.Reset()
 	g.body.WriteString(text)
 	g.body.WriteString("\n")
+}
+
+// emitCookMapAccessors writes a cooked record's MAP field as its ENTRIES, the
+// way the Go cook exposes them (docs/SPEC-TABLES.md §2.8, §7.2): the slot is an
+// int64 SELF-RELATIVE delta to the entry array and an int32 count, and the
+// entries are by-value records in ASCENDING KEY ORDER inside the holder's node
+// extent. So the field is three accessors and no scalar:
+//
+//   - `<f>Count`, the live count — 0 for an ABSENT map (a null delta) and for
+//     an EMPTY one, and 0 for a forged slot whose array would leave the view,
+//     because a reader that throws on hostile bytes is not one that refuses
+//     them (the cook's own rule, above);
+//   - `<f>At(index, into)`, entry `index` of [0, count) moved onto the lent
+//     `<Entry>Row` cursor, in the order Go's `<F>.At(i)` answers;
+//   - `<f>Find(key, into)`, §2.8's `Find`: a binary search over the entries
+//     where they lie, `floor(log2 n) + 1` key compares, no allocation, null
+//     for a key the map does not hold. Dart has no pointer to hand back to a
+//     scalar value, so the handle is the ENTRY cursor in every case and the
+//     value is read through it — §7's per-backend spelling (the Dart column).
+//
+// A KEY is an integer or a bounded string (§2.8; an enum key is refused by
+// name). An integer key is the Dart `int`, compared at its signedness — a
+// uint64 by flipping the sign bit, since Dart's int is signed; a string key is
+// its UTF-8 bytes (`List<int>`), ordered bytewise over the used length with the
+// shorter first, which is the order the cook was written in.
+func (g *blockGen) emitCookMapAccessors(f *ir.Field, offset int64, ind, origin string) {
+	name := dartName(f.Name)
+	entry := f.MapEntry.Name + "Row"
+	el := ir.RecordLayout(g.unit, f.MapEntry)
+	key := ir.MapKeyField(f)
+	keyOffset := el.Fields[0].Offset
+	g.needRow(f.MapEntry.Name)
+	g.pf("%s// a MAP: the slot is a self-relative delta to the ENTRY ARRAY and its\n", ind)
+	g.pf("%s// count, the entries in ascending key order (docs/SPEC-TABLES.md §2.8,\n", ind)
+	g.pf("%s// §7.2). The count is 0 for an absent or an empty map, and for an array\n", ind)
+	g.pf("%s// that would leave the view.\n", ind)
+	g.pf("%sint get %sCount {\n", ind, name)
+	g.pf("%s  final slot = %s + %d;\n", ind, origin, offset)
+	g.pf("%s  final delta = view.getInt64(slot, Endian.little);\n", ind)
+	g.pf("%s  final count = view.getInt32(slot + 8, Endian.little);\n", ind)
+	g.pf("%s  if (count <= 0 || delta == 0 || slot + delta < 0) {\n", ind)
+	g.pf("%s    return 0;\n%s  }\n", ind, ind)
+	g.arrowBlock(ind+"  ", fmt.Sprintf("return count > (view.lengthInBytes - slot - delta) ~/ %d", el.Size), "? 0", ": count;")
+	g.pf("%s}\n\n", ind)
+
+	g.pf("%sint get _%sEntries {\n", ind, name)
+	g.pf("%s  final slot = %s + %d;\n", ind, origin, offset)
+	g.pf("%s  return slot + view.getInt64(slot, Endian.little);\n%s}\n\n", ind, ind)
+
+	g.pf("%s/// One entry, moved onto the cursor the caller lends; `index` runs over\n", ind)
+	g.pf("%s/// [0, count) in ascending key order.\n", ind)
+	g.signature(ind, entry, name+"At", "int index", entry+" into")
+	g.pf("%s  into.at = _%sEntries + index * %d;\n", ind, name, el.Size)
+	g.pf("%s  return into;\n%s}\n\n", ind, ind)
+
+	keyType := "int"
+	if key.Type.Kind == ir.TString {
+		keyType = "List<int>"
+	}
+	g.pf("%s/// `Find` (§2.8): a binary search over the entries where they lie, no\n", ind)
+	g.pf("%s/// allocation; the entry moved onto `into`, or null for a key it lacks.\n", ind)
+	g.signature(ind, entry+"?", name+"Find", keyType+" key", entry+" into")
+	g.pf("%s  final count = %sCount;\n", ind, name)
+	g.pf("%s  final first = _%sEntries;\n", ind, name)
+	g.pf("%s  var lo = 0;\n%s  var hi = count;\n", ind, ind)
+	g.pf("%s  while (lo < hi) {\n", ind)
+	g.pf("%s    final mid = lo + ((hi - lo) >> 1);\n", ind)
+	g.pf("%s    if (_%sOrder(first + mid * %d, key) < 0) {\n", ind, name, el.Size)
+	g.pf("%s      lo = mid + 1;\n%s    } else {\n%s      hi = mid;\n%s    }\n%s  }\n", ind, ind, ind, ind, ind)
+	g.pf("%s  if (lo == count || _%sOrder(first + lo * %d, key) != 0) {\n", ind, name, el.Size)
+	g.pf("%s    return null;\n%s  }\n", ind, ind)
+	g.pf("%s  into.at = first + lo * %d;\n", ind, el.Size)
+	g.pf("%s  return into;\n%s}\n\n", ind, ind)
+
+	// the KEY ORDER the cook was written in (§2.8): an entry's key against the
+	// probe, negative when the entry's sorts first
+	g.pf("%sint _%sOrder(int entry, %s key) {\n", ind, name, keyType)
+	if key.Type.Kind == ir.TString {
+		pieces := ir.FieldPieces(g.unit, key, keyOffset)
+		g.pf("%s  var used = view.getInt32(entry + %d, Endian.little);\n", ind, pieces[1].Offset)
+		g.pf("%s  if (used < 0 || used > %d) {\n%s    used = 0;\n%s  }\n", ind, key.Type.Size, ind, ind)
+		g.pf("%s  for (var i = 0; i < used && i < key.length; i++) {\n", ind)
+		g.pf("%s    final order = view.getUint8(entry + %d + i) - key[i];\n", ind, keyOffset)
+		g.pf("%s    if (order != 0) {\n%s      return order;\n%s    }\n%s  }\n", ind, ind, ind, ind)
+		g.pf("%s  return used - key.length;\n", ind)
+	} else {
+		g.pf("%s  final stored = %s;\n", ind, g.readAt(key, fmt.Sprintf("entry + %d", keyOffset)))
+		if !key.Type.Signed && key.Type.Width == 64 {
+			// Dart's int is signed: a uint64 orders by its bits with the sign flipped
+			g.pf("%s  return (stored ^ (1 << 63)).compareTo(key ^ (1 << 63));\n", ind)
+		} else {
+			g.pf("%s  return stored.compareTo(key);\n", ind)
+		}
+	}
+	g.pf("%s}\n\n", ind)
+}
+
+// signature writes one method head the way `dart format` does: on one line when
+// it fits in 80 columns, otherwise one parameter per line with a trailing comma,
+// and the result type on a line of its own when even the head does not fit.
+func (g *blockGen) signature(ind, result, name string, params ...string) {
+	one := fmt.Sprintf("%s%s %s(%s) {", ind, result, name, strings.Join(params, ", "))
+	if len(one) <= 80 {
+		g.pf("%s\n", one)
+		return
+	}
+	if len(ind)+len(result)+len(name)+2 > 80 {
+		// the head alone does not fit: the result type takes its own line
+		g.pf("%s%s\n%s%s(\n", ind, result, ind, name)
+	} else {
+		g.pf("%s%s %s(\n", ind, result, name)
+	}
+	for _, p := range params {
+		g.pf("%s  %s,\n", ind, p)
+	}
+	g.pf("%s) {\n", ind)
+}
+
+// arrowBlock writes `head then : else` as one statement, broken where `dart
+// format` breaks a conditional that does not fit in 80 columns.
+func (g *blockGen) arrowBlock(ind, head, then, otherwise string) {
+	one := fmt.Sprintf("%s%s %s %s", ind, head, then, otherwise)
+	if len(one) <= 80 {
+		g.pf("%s\n", one)
+		return
+	}
+	g.pf("%s%s\n%s    %s\n%s    %s\n", ind, head, ind, then, ind, otherwise)
+}
+
+// cookDeclFile is the file a cooked record's cursor is emitted in. A map's
+// generated ENTRY is declared where its holder is (§2.8): the checker records
+// no file for the entry of a map that is itself a map's value, so it is read
+// off the holder, up the MapEntryOf chain ("Holder.field").
+func cookDeclFile(u *ir.Unit, record string) string {
+	for range 64 {
+		if base := u.DeclFile[record]; base != "" {
+			return base
+		}
+		st := cookMember(u, record)
+		if st == nil || st.MapEntryOf == "" {
+			return ""
+		}
+		record, _, _ = strings.Cut(st.MapEntryOf, ".")
+	}
+	return ""
 }

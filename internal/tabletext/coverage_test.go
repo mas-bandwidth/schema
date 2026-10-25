@@ -86,7 +86,7 @@ func TestUncoveredPaths(t *testing.T) {
 			"wide": { "10": "ten", "2": "two" },
 			"blobs": { "9007199254740993": "AA==", "1e3": "AQ==", "2.0": "Ag==",
 			           "-0": "Aw==", "2.5": "BA==", "999999999999999999999999999999": "BQ==" },
-			"after": 7
+			"past": 7
 		}`
 		if !m.Read(inst, []byte(text), &r) {
 			t.Fatalf("map text refused: %+v", r)
@@ -300,7 +300,7 @@ func TestUncoveredPaths(t *testing.T) {
 			"many": [ { "roster": {} } ],
 			"keyed": { "Alpha": { "roster": {} }, "Beta": { "roster": { "2": { "count": 2 } } } },
 			"arm": { "plain": 42 },
-			"after": 9
+			"past": 9
 		}`
 		if !m.Read(inst, []byte(text), &r) || r.Malformed {
 			t.Fatalf("union arm text refused: %+v", r)

@@ -20,8 +20,14 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `dart-ludicrous/` | Dart int128 tests | `make test-dart` | `make test-dart` |
 | `dart-tables/` | Dart table tests | `make test-dart` | `make test-dart` |
 | `elixir/` | Elixir packet tests | `make test-elixir` | `make test-elixir` |
+| `elixir-alloc/` | Elixir allocation tests | `make test-elixir` | `make test-elixir` |
+| `elixir-filemodule/` | Elixir file-module tests | `make test-elixir` | `make test-elixir` |
 | `elixir-fixedform/` | Elixir fixed-form tests | `make test-elixir` | `make test-elixir` |
+| `elixir-hostile/` | Elixir hostile-corpus runner | `make schema-elixir-runs-hostile-corpus` | `make schema-elixir-runs-hostile-corpus` |
 | `elixir-ludicrous/` | Elixir int128 tests | `make test-elixir` | `make test-elixir` |
+| `elixir-tables/` | Elixir table tests | `make test-elixir` | `make test-elixir` |
+| `elixir-view/` | Elixir view tests | `make test-elixir` | `make test-elixir` |
+| `elixir-warning-control/` | Elixir warning-control tests | `make test-elixir` | `make test-elixir` |
 | `generated-tree/` | committed generated/ verify | `test/generated-tree/verify` | `make generated-current` |
 | `go/` | Go packet tests | `make test-go` | `make test-go` |
 | `go-ludicrous/` | Go int128 tests | `make test-go` | `make test-go` |
@@ -31,17 +37,22 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `java-fixedform/` | Java fixed-form tests | `make test-java` | `make test-java` |
 | `java-ludicrous/` | Java int128 tests | `make test-java` | `make test-java` |
 | `java-tables/` | Java table tests | `make test-java` | `make test-java` |
+| `java-view/` | Java unit-view listing | `make tables-java-view` | `make tables-java-view` |
 | `js/` | JS packet tests | `make test-js` | `make test-js` |
 | `js-ludicrous/` | JS int128 tests | `make test-js` | `make test-js` |
 | `js-tables/` | JS table tests | `make test-js` | `make test-js` |
+| `js-view/` | JS view listing program | `make tables-js-view` | `make tables-js-view` |
 | `packet-defaults/` | packet default-value gates | `make test` | `make test` |
 | `packet-text/` | packet UTF-8 gates | `make test` | `make test` |
 | `packet-void/` | packet void-arm gates | `make test` | `make test` |
 | `packet-wide/` | packet wide-text gates | `make test` | `make test` |
+| `py-packet/` | python packet rows | `make tables-py-packet` | `make tables-py-packet` |
 | `rust/` | Rust packet tests | `make test-rust` | `make test-rust` |
 | `rust-fixedform/` | Rust fixed-form tests | `make test-rust` | `make test-rust` |
 | `rust-fuzz/` | Rust fuzz driver | `make test-rust` | `make test-rust` |
 | `rust-ludicrous/` | Rust int128 tests | `make test-rust` | `make test-rust` |
+| `rust-soak/` | Rust tables soak, allocator call count | `make tables-rust-soak` | `make tables-rust-soak` |
+| `rust-view/` | Rust unit-view listing driver | `make tables-rust-view` | `make tables-rust-view` |
 | `slowgate/` | SCHEMA_SLOW proof wrapper | `make slow-gate-scan` | `make slow-gate-scan` |
 | `table-base64/` | table base64 gates | `make test` | `make test` |
 | `tables/` | C++ table tests | `make test` | `./build/schema_test_tables` |

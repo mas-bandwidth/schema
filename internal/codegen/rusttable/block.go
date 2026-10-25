@@ -269,7 +269,75 @@ func (b *blockGen) emitBlock(bl *ir.BlockLayout) {
 	}
 	b.emitBlockTypeInfo(bl)
 	b.pf("}\n\n")
+	b.emitBlockBuild(bl)
 	b.emitRecordInfos(bl)
+}
+
+// emitBlockBuild is the block form's producer side (docs/SPEC-TABLES.md
+// §19.1): the counts struct, and a Begin that writes only the prologue and the
+// triples — never rows or padding — checking storage, every count against its
+// declared bound, and the whole extent against the capacity, all BEFORE any
+// byte of the extent changes. It is the Rust spelling of
+// gotable/blockbuild.go's <T>BlockBegin, pin for pin.
+func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
+	n := bl.Table.Name
+	b.pf("// ---- the fill path (docs/SPEC-TABLES.md §19.1) ----\n")
+	b.pf("// %sCounts is gathered before Begin; clamping is the caller's policy.\n", n)
+	b.pf("#[derive(Clone, Copy)]\npub struct %sCounts {\n", n)
+	for _, a := range bl.Arrays {
+		b.pf("    pub %s: i32,\n", a.Field.Name)
+	}
+	b.pf("}\n")
+	b.pf("impl Default for %sCounts {\n    fn default() -> Self {\n", n)
+	b.pf("        unsafe { core::mem::zeroed() }\n    }\n}\n")
+	b.pf("// %s writes only the prologue and the triples (docs/SPEC-TABLES.md\n", fn(n, "block_begin"))
+	b.pf("// §19.1), the Rust spelling of gotable/blockbuild.go's %sBlockBegin:\n", n)
+	b.pf("// storage, every count and the whole extent are checked before any byte\n")
+	b.pf("// of the extent changes, and it returns the used extent, rounded to 64.\n")
+	b.pf("pub unsafe fn %s(buf: *mut u8, capacity: i64, counts: &%sCounts) -> Option<i64> {\n", fn(n, "block_begin"), n)
+	b.pf("    if buf.is_null() {\n        return None;\n    }\n")
+	b.pf("    let _ = counts;\n")
+	for _, a := range bl.Arrays {
+		f := a.Field.Name
+		b.pf("    if counts.%s < 0 || counts.%s as i64 > %d {\n        return None;\n    }\n", f, f, a.Max)
+	}
+	b.pf("    let mut off: i64 = %d;\n", bl.Projection.Size)
+	for _, a := range bl.Arrays {
+		align := int64(ir.BlockAlign)
+		if a.ElemAlign() > align {
+			align = a.ElemAlign()
+		}
+		b.pf("    off = (off + %d - 1) / %d * %d;\n", align, align, align)
+		b.pf("    off += counts.%s as i64 * %d;\n", a.Field.Name, a.Stride)
+	}
+	b.pf("    let used = (off + 63) / 64 * 64;\n")
+	b.pf("    if used > capacity {\n        return None;\n    }\n")
+	// THE MEASURE PASS ABOVE WALKED `off` TO THE END OF THE EXTENT; THE WRITE
+	// PASS LAYS THE TRIPLES FROM THE PROJECTION'S END AGAIN, exactly as
+	// gotable/blockbuild.go:50-55 walks one `offset` from Projection.Size and
+	// assigns each triple in the same step (§19.1). Without this the second
+	// array's offset_of is the first array's END, and a reader that trusts the
+	// triples walks past every array body.
+	b.pf("    off = %d;\n", bl.Projection.Size)
+	b.pf("    unsafe {\n")
+	b.pf("        core::ptr::write_unaligned(buf.cast::<u64>(), TABLE_BLOCK_MAGIC);\n")
+	b.pf("        core::ptr::write_unaligned(buf.add(8).cast::<u64>(), BUILD_VERSION);\n")
+	b.pf("        core::ptr::write_unaligned(buf.add(16).cast::<u64>(), TABLE_BLOCK_BYTE_ORDER);\n")
+	for _, a := range bl.Arrays {
+		align := int64(ir.BlockAlign)
+		if a.ElemAlign() > align {
+			align = a.ElemAlign()
+		}
+		f := a.Field.Name
+		b.pf("        off = (off + %d - 1) / %d * %d;\n", align, align, align)
+		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u64>(), off as u64);\n", a.TripleOffset)
+		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u32>(), counts.%s as u32);\n", a.TripleOffset+8, f)
+		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u32>(), %d);\n", a.TripleOffset+12, a.Stride)
+		b.pf("        off += counts.%s as i64 * %d;\n", f, a.Stride)
+	}
+	b.pf("    }\n")
+	b.pf("    let _ = off;\n")
+	b.pf("    Some(used)\n}\n")
 }
 
 // emitBlockTypeInfo is the block's own descriptor: the PROJECTION as data
@@ -395,6 +463,13 @@ func (b *blockGen) blockFieldRow(bl *ir.BlockLayout, fl ir.FieldLayout, projecti
 		if len(pieces) > 1 {
 			countOffset = fmt.Sprint(pieces[1].Offset)
 		}
+	case f.Type.Kind == ir.TWString:
+		// wide text's block slot (docs/SPEC-TABLES.md §7.2, §19.3): N + 1 code
+		// units of two bytes each, the used length in code units beside them
+		counted, arrayBound, elemSize = true, f.Type.Size, 2
+		if len(pieces) > 1 {
+			countOffset = fmt.Sprint(pieces[1].Offset)
+		}
 	case f.Type.Kind == ir.TBytes:
 		isArray, counted, arrayBound, elemSize = true, true, f.Type.Size, 1
 		if len(pieces) > 1 {
@@ -463,7 +538,7 @@ func (b *blockGen) projectionMembers(bl *ir.BlockLayout, f *ir.Field) []string {
 	var names []string
 	names = append(names, f.Name)
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
 		names = append(names, f.Name+"_count")
@@ -484,6 +559,13 @@ func (b *blockGen) emitProjectionField(bl *ir.BlockLayout, fl ir.FieldLayout) {
 	switch {
 	case f.Type.Kind == ir.TString:
 		b.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
+			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
+		b.pf("    pub %s_length: i32,\n", f.Name)
+	case f.Type.Kind == ir.TWString:
+		// WIDE TEXT in a projection is its cooked storage (docs/SPEC-TABLES.md
+		// §7.2, §19.3): char16_t[N + 1] at two, then the int32 used length in
+		// CODE UNITS, as the cook row lays it out (cook.go emitCookRowField)
+		b.pf("    pub %s: [u16; %d], // wstring(%s): UTF-16 code units, used length beside it\n",
 			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
 		b.pf("    pub %s_length: i32,\n", f.Name)
 	case f.Type.Kind == ir.TBytes:
@@ -576,6 +658,41 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("            if padding > bytes - used {\n                return None;\n            }\n")
 	b.pf("            let used = used + padding;\n")
 	b.pf("            Some(%sBlock {\n                base,\n                bytes: used,\n            })\n", name)
+	b.pf("        }\n    }\n")
+	// The conformance refusal surface names the first failed open clause using
+	// gotable/refusal.go's spellings (SPEC-TABLES §19.2). The ordinary open is
+	// kept as the fast path; classification only runs after it refuses.
+	b.pf("    /// Name the first failed open clause (§19.2).\n")
+	b.pf("    ///\n    /// # Safety\n    /// `base` must point at `bytes` readable bytes.\n")
+	b.pf("    pub unsafe fn open_reason(base: *const u8, bytes: i64) -> &'static str {\n")
+	b.pf("        unsafe {\n")
+	b.pf("            if Self::open(base, bytes).is_some() { return \"ok\"; }\n")
+	b.pf("            if base.is_null() { return \"unaligned_base\"; }\n")
+	b.pf("            if bytes < %d { return \"truncated\"; }\n", bl.Projection.Size)
+	b.pf("            if !(base as usize).is_multiple_of(%d) { return \"unaligned_base\"; }\n", ir.BlockAlign)
+	b.pf("            let magic = table_block_read64(base);\n")
+	b.pf("            if magic != TABLE_BLOCK_MAGIC { return if table_block_byteswap64(magic) == TABLE_BLOCK_MAGIC { \"foreign_order\" } else { \"not_a_cook\" }; }\n")
+	b.pf("            if table_block_read64(base.add(8)) != BUILD_VERSION { return \"wrong_build_version\"; }\n")
+	b.pf("            if table_block_read64(base.add(16)) != TABLE_BLOCK_BYTE_ORDER { return \"not_a_cook\"; }\n")
+	if len(bl.Arrays) > 0 {
+		b.pf("            let projection = &*(base as *const %sBlockProjection);\n", name)
+	}
+	b.pf("            let mut used: i64 = %d;\n", bl.Projection.Size)
+	for _, a := range bl.Arrays {
+		b.pf("            {\n")
+		b.pf("                let offset_of = projection.%s.offset_of;\n", a.Field.Name)
+		b.pf("                let count = projection.%s.count as u64;\n", a.Field.Name)
+		b.pf("                let stride = projection.%s.stride as u64;\n", a.Field.Name)
+		b.pf("                if stride != core::mem::size_of::<%sRow>() as u64 || count > Self::%s_MAX as u64 { return \"bad_layout\"; }\n", a.ElemName, ir.RustConstName(a.Field.Name))
+		b.pf("                if offset_of < %d || !offset_of.is_multiple_of(%d) || offset_of > bytes as u64 { return \"bad_layout\"; }\n", bl.Projection.Size, ir.BlockAlign)
+		b.pf("                let rows = count * stride;\n")
+		b.pf("                if rows > bytes as u64 - offset_of { return \"bad_layout\"; }\n")
+		b.pf("                used = used.max((offset_of + rows) as i64);\n")
+		b.pf("            }\n")
+	}
+	b.pf("            let padding = (%d - (used %% %d)) %% %d;\n", ir.BlockAlign, ir.BlockAlign, ir.BlockAlign)
+	b.pf("            if padding > bytes - used { return \"truncated\"; }\n")
+	b.pf("            \"bad_layout\"\n")
 	b.pf("        }\n    }\n")
 }
 

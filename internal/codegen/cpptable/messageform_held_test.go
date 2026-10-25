@@ -7,10 +7,10 @@ package cpptable
 // compiles a probe against it, and runs the probe, which asserts the clause or
 // the row on the generated verbs and reports the red line by name.
 //
-// The clauses are the page's own: no_vocabulary, second_announcement and its
-// terminality, vocabulary_too_large on both bounds, the two strict announcement
-// checks, batch_too_large on both sides, damage inside body k delivering k-1,
-// bytes after the pad, and newer_form with message_form_as_file.
+// The clauses are the page's own: TableMessageReason::no_vocabulary, TableMessageReason::second_announcement and its
+// terminality, TableMessageReason::vocabulary_too_large on both bounds, the two strict announcement
+// checks, TableMessageReason::batch_too_large on both sides, damage inside body k delivering k-1,
+// bytes after the pad, and TableMessageReason::newer_form with TableMessageReason::message_form_as_file.
 //
 // The rows are the manifest's own, read here rather than copied: every
 // `connection` row's announcement is byte-identical to the reference file and
@@ -156,60 +156,60 @@ const cppHeldNoVocabulary = `
     uint8_t buf[512];
     TableReport save; memset( &save, 0, sizeof( save ) );
     int64_t n = LoginRequestSaveMessages( &v, 1, buf, (int64_t) sizeof( buf ), &save );
-    if ( n < 1 ) { printf( "no_vocabulary: the save failed: n=%lld\n", (long long) n ); return 1; }
+    if ( n < 1 ) { printf( "TableMessageReason::no_vocabulary: the save failed: n=%lld\n", (long long) n ); return 1; }
     TableMessageEntry entries[kTableMessageEntriesHere];
     TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
     LoginRequest out[1];
     int64_t count = 1;
     TableReport r; memset( &r, 0, sizeof( r ) );
     if ( LoginRequestLoadMessages( out, &count, vocabulary, buf, n, &r ) )
-        { printf( "no_vocabulary: a body from a peer that never announced was not refused\n" ); return 1; }
-    if ( !r.refused || r.reason != no_vocabulary || r.malformed )
-        { printf( "no_vocabulary: refused=%d reason=%d malformed=%d\n", (int) r.refused, (int) r.reason, (int) r.malformed ); return 1; }
-    if ( count != 0 ) { printf( "no_vocabulary moved the returned count: %lld\n", (long long) count ); return 1; }
+        { printf( "TableMessageReason::no_vocabulary: a body from a peer that never announced was not refused\n" ); return 1; }
+    if ( !r.refused || r.reason != TableMessageReason::no_vocabulary || r.malformed )
+        { printf( "TableMessageReason::no_vocabulary: refused=%d reason=%d malformed=%d\n", (int) r.refused, (int) r.reason, (int) r.malformed ); return 1; }
+    if ( count != 0 ) { printf( "TableMessageReason::no_vocabulary moved the returned count: %lld\n", (long long) count ); return 1; }
 `
 
 // "NO RE-ANNOUNCEMENT, EVER ... A second is refused by name and does not
 // replace or amend anything." and "REFUSAL IS TERMINAL, and a refused FIRST
 // announcement is the one the connection gets ... every announcement after it
-// is refused as `second_announcement` ... every body after it is refused for
+// is refused as `TableMessageReason::second_announcement` ... every body after it is refused for
 // want of one." (docs/SPEC-TABLES.md §3.3).
 const cppHeldSecondAnnouncement = `
     uint8_t ann[1 << 16];
     if ( Announce( ann, (int64_t) sizeof( ann ) ) != AnnounceMeasure() )
-        { printf( "second_announcement: the announcement did not write its own measure\n" ); return 1; }
+        { printf( "TableMessageReason::second_announcement: the announcement did not write its own measure\n" ); return 1; }
     TableMessageEntry entries[kTableMessageEntriesHere];
     TableVocabulary v( entries, kTableMessageEntriesHere );
     TableReport first; memset( &first, 0, sizeof( first ) );
     if ( !AnnounceRead( v, ann, AnnounceMeasure(), &first ) || v.count != kTableMessageEntriesHere )
-        { printf( "second_announcement: the first announcement was not accepted: refused=%d reason=%d\n", (int) first.refused, (int) first.reason ); return 1; }
+        { printf( "TableMessageReason::second_announcement: the first announcement was not accepted: refused=%d reason=%d\n", (int) first.refused, (int) first.reason ); return 1; }
     const int64_t before = v.count;
     TableReport second; memset( &second, 0, sizeof( second ) );
-    if ( AnnounceRead( v, ann, AnnounceMeasure(), &second ) || !second.refused || second.reason != second_announcement || second.malformed )
-        { printf( "second_announcement: a second announcement was not refused by name: refused=%d reason=%d malformed=%d\n", (int) second.refused, (int) second.reason, (int) second.malformed ); return 1; }
-    if ( v.count != before ) { printf( "second_announcement: a second announcement replaced the vocabulary\n" ); return 1; }
+    if ( AnnounceRead( v, ann, AnnounceMeasure(), &second ) || !second.refused || second.reason != TableMessageReason::second_announcement || second.malformed )
+        { printf( "TableMessageReason::second_announcement: a second announcement was not refused by name: refused=%d reason=%d malformed=%d\n", (int) second.refused, (int) second.reason, (int) second.malformed ); return 1; }
+    if ( v.count != before ) { printf( "TableMessageReason::second_announcement: a second announcement replaced the vocabulary\n" ); return 1; }
     TableMessageEntry wentries[kTableMessageEntriesHere];
     TableVocabulary w( wentries, kTableMessageEntriesHere );
     const uint8_t junk[3] = { 9, 9, 9 };
     TableReport rejected; memset( &rejected, 0, sizeof( rejected ) );
-    if ( AnnounceRead( w, junk, 3, &rejected ) || !rejected.refused || rejected.reason != newer_form || w.announced )
-        { printf( "second_announcement: a refused first announcement was not refused by name: refused=%d reason=%d announced=%d\n", (int) rejected.refused, (int) rejected.reason, (int) w.announced ); return 1; }
+    if ( AnnounceRead( w, junk, 3, &rejected ) || !rejected.refused || rejected.reason != TableMessageReason::newer_form || w.announced )
+        { printf( "TableMessageReason::second_announcement: a refused first announcement was not refused by name: refused=%d reason=%d announced=%d\n", (int) rejected.refused, (int) rejected.reason, (int) w.announced ); return 1; }
     TableReport later; memset( &later, 0, sizeof( later ) );
-    if ( AnnounceRead( w, ann, AnnounceMeasure(), &later ) || later.reason != second_announcement || w.announced )
-        { printf( "second_announcement: an announcement after a refused first is not second_announcement: reason=%d announced=%d\n", (int) later.reason, (int) w.announced ); return 1; }
+    if ( AnnounceRead( w, ann, AnnounceMeasure(), &later ) || later.reason != TableMessageReason::second_announcement || w.announced )
+        { printf( "TableMessageReason::second_announcement: an announcement after a refused first is not TableMessageReason::second_announcement: reason=%d announced=%d\n", (int) later.reason, (int) w.announced ); return 1; }
     LoginRequest root; LoginRequestReset( root );
     uint8_t buf[512];
     TableReport wrote; memset( &wrote, 0, sizeof( wrote ) );
     int64_t n = LoginRequestSaveMessages( &root, 1, buf, (int64_t) sizeof( buf ), &wrote );
-    if ( n < 1 ) { printf( "second_announcement: the save failed\n" ); return 1; }
+    if ( n < 1 ) { printf( "TableMessageReason::second_announcement: the save failed\n" ); return 1; }
     LoginRequest storage[1];
     int64_t count = 1;
     TableReport body; memset( &body, 0, sizeof( body ) );
-    if ( LoginRequestLoadMessages( storage, &count, w, buf, n, &body ) || count != 0 || body.reason != no_vocabulary )
-        { printf( "second_announcement: a batch on the refused connection: refused=%d count=%lld reason=%d\n", (int) body.refused, (long long) count, (int) body.reason ); return 1; }
+    if ( LoginRequestLoadMessages( storage, &count, w, buf, n, &body ) || count != 0 || body.reason != TableMessageReason::no_vocabulary )
+        { printf( "TableMessageReason::second_announcement: a batch on the refused connection: refused=%d count=%lld reason=%d\n", (int) body.refused, (long long) count, (int) body.reason ); return 1; }
 `
 
-// "`vocabulary_too_large` covers both bounds, the entry count and the
+// "`TableMessageReason::vocabulary_too_large` covers both bounds, the entry count and the
 // vocabulary's bytes." (docs/SPEC-TABLES.md §3.3).
 const cppHeldVocabularyTooLarge = `
     uint8_t ann[1 << 16];
@@ -217,14 +217,14 @@ const cppHeldVocabularyTooLarge = `
     TableMessageEntry one[1];
     TableVocabulary entries( one, 1 );
     TableReport entryReport; memset( &entryReport, 0, sizeof( entryReport ) );
-    if ( AnnounceRead( entries, ann, AnnounceMeasure(), &entryReport ) || !entryReport.refused || entryReport.reason != vocabulary_too_large || entryReport.malformed || entries.announced )
-        { printf( "vocabulary_too_large entry bound: refused=%d reason=%d malformed=%d announced=%d\n", (int) entryReport.refused, (int) entryReport.reason, (int) entryReport.malformed, (int) entries.announced ); return 1; }
+    if ( AnnounceRead( entries, ann, AnnounceMeasure(), &entryReport ) || !entryReport.refused || entryReport.reason != TableMessageReason::vocabulary_too_large || entryReport.malformed || entries.announced )
+        { printf( "TableMessageReason::vocabulary_too_large entry bound: refused=%d reason=%d malformed=%d announced=%d\n", (int) entryReport.refused, (int) entryReport.reason, (int) entryReport.malformed, (int) entries.announced ); return 1; }
     TableMessageEntry all[kTableMessageEntriesHere];
     TableVocabulary bytes( all, kTableMessageEntriesHere );
     bytes.max_bytes = 4;
     TableReport byteReport; memset( &byteReport, 0, sizeof( byteReport ) );
-    if ( AnnounceRead( bytes, ann, AnnounceMeasure(), &byteReport ) || !byteReport.refused || byteReport.reason != vocabulary_too_large || byteReport.malformed || bytes.announced )
-        { printf( "vocabulary_too_large byte bound: refused=%d reason=%d malformed=%d announced=%d\n", (int) byteReport.refused, (int) byteReport.reason, (int) byteReport.malformed, (int) bytes.announced ); return 1; }
+    if ( AnnounceRead( bytes, ann, AnnounceMeasure(), &byteReport ) || !byteReport.refused || byteReport.reason != TableMessageReason::vocabulary_too_large || byteReport.malformed || bytes.announced )
+        { printf( "TableMessageReason::vocabulary_too_large byte bound: refused=%d reason=%d malformed=%d announced=%d\n", (int) byteReport.refused, (int) byteReport.reason, (int) byteReport.malformed, (int) bytes.announced ); return 1; }
 `
 
 // "THE ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY TWO STRICT CHECKS: the build
@@ -315,29 +315,29 @@ const cppHeldBatchTooLarge = `
     LoginRequest huge[kTableMessageBatchMax + 1];
     for ( int64_t i = 0; i < kTableMessageBatchMax + 1; ++i ) LoginRequestReset( huge[i] );
     TableReport measure; memset( &measure, 0, sizeof( measure ) );
-    if ( LoginRequestMeasureMessages( huge, kTableMessageBatchMax + 1, &measure ) != -1 || !measure.refused || measure.reason != batch_too_large )
-        { printf( "batch_too_large write measure: n!= -1 or no refusal: refused=%d reason=%d\n", (int) measure.refused, (int) measure.reason ); return 1; }
+    if ( LoginRequestMeasureMessages( huge, kTableMessageBatchMax + 1, &measure ) != -1 || !measure.refused || measure.reason != TableMessageReason::batch_too_large )
+        { printf( "TableMessageReason::batch_too_large write measure: n!= -1 or no refusal: refused=%d reason=%d\n", (int) measure.refused, (int) measure.reason ); return 1; }
     uint8_t out[64];
     TableReport save; memset( &save, 0, sizeof( save ) );
-    if ( LoginRequestSaveMessages( huge, kTableMessageBatchMax + 1, out, (int64_t) sizeof( out ), &save ) != -1 || !save.refused || save.reason != batch_too_large )
-        { printf( "batch_too_large write save: no refusal by name: refused=%d reason=%d\n", (int) save.refused, (int) save.reason ); return 1; }
+    if ( LoginRequestSaveMessages( huge, kTableMessageBatchMax + 1, out, (int64_t) sizeof( out ), &save ) != -1 || !save.refused || save.reason != TableMessageReason::batch_too_large )
+        { printf( "TableMessageReason::batch_too_large write save: no refusal by name: refused=%d reason=%d\n", (int) save.refused, (int) save.reason ); return 1; }
     // the read side: two bodies into storage for one
     TableMessageEntry entries[kTableMessageEntriesHere];
     TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
     uint8_t ann[1 << 16];
     Announce( ann, (int64_t) sizeof( ann ) );
     TableReport announced; memset( &announced, 0, sizeof( announced ) );
-    if ( !AnnounceRead( vocabulary, ann, AnnounceMeasure(), &announced ) ) { printf( "batch_too_large: the announcement failed\n" ); return 1; }
+    if ( !AnnounceRead( vocabulary, ann, AnnounceMeasure(), &announced ) ) { printf( "TableMessageReason::batch_too_large: the announcement failed\n" ); return 1; }
     LoginRequest pair[2]; LoginRequestReset( pair[0] ); LoginRequestReset( pair[1] );
     uint8_t buf[512];
     TableReport wrote; memset( &wrote, 0, sizeof( wrote ) );
     int64_t n = LoginRequestSaveMessages( pair, 2, buf, (int64_t) sizeof( buf ), &wrote );
-    if ( n < 1 ) { printf( "batch_too_large: the two-body save failed\n" ); return 1; }
+    if ( n < 1 ) { printf( "TableMessageReason::batch_too_large: the two-body save failed\n" ); return 1; }
     LoginRequest storage[1];
     int64_t count = 1;
     TableReport r; memset( &r, 0, sizeof( r ) );
-    if ( LoginRequestLoadMessages( storage, &count, vocabulary, buf, n, &r ) || count != 2 || !r.refused || r.reason != batch_too_large || r.malformed )
-        { printf( "batch_too_large read: refused=%d count=%lld reason=%d malformed=%d\n", (int) r.refused, (long long) count, (int) r.reason, (int) r.malformed ); return 1; }
+    if ( LoginRequestLoadMessages( storage, &count, vocabulary, buf, n, &r ) || count != 2 || !r.refused || r.reason != TableMessageReason::batch_too_large || r.malformed )
+        { printf( "TableMessageReason::batch_too_large read: refused=%d count=%lld reason=%d malformed=%d\n", (int) r.refused, (long long) count, (int) r.reason, (int) r.malformed ); return 1; }
 `
 
 // "DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`. The returned count
@@ -397,7 +397,7 @@ const cppHeldFormByte = `
         const uint8_t wire[1] = { form };
         int64_t count = 1;
         TableReport r; memset( &r, 0, sizeof( r ) );
-        if ( LoginRequestLoadMessages( storage, &count, vocabulary, wire, 1, &r ) || count != 0 || !r.refused || r.reason != newer_form )
+        if ( LoginRequestLoadMessages( storage, &count, vocabulary, wire, 1, &r ) || count != 0 || !r.refused || r.reason != TableMessageReason::newer_form )
             { printf( "form byte %u: refused=%d reason=%d count=%lld\n", form, (int) r.refused, (int) r.reason, (long long) count ); return 1; }
     }
     {
@@ -405,8 +405,8 @@ const cppHeldFormByte = `
         TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
         const uint8_t batch[4] = { 2, 0, 0, 0 };
         TableReport r; memset( &r, 0, sizeof( r ) );
-        if ( AnnounceRead( vocabulary, batch, 4, &r ) || !r.refused || r.reason != message_form_as_file )
-            { printf( "message_form_as_file: refused=%d reason=%d\n", (int) r.refused, (int) r.reason ); return 1; }
+        if ( AnnounceRead( vocabulary, batch, 4, &r ) || !r.refused || r.reason != TableMessageReason::message_form_as_file )
+            { printf( "TableMessageReason::message_form_as_file: refused=%d reason=%d\n", (int) r.refused, (int) r.reason ); return 1; }
     }
 `
 
@@ -648,11 +648,11 @@ func TestMessageFormHeldCPP(t *testing.T) {
 		name string
 		body string
 	}{
-		{"no_vocabulary", cppHeldNoVocabulary},
-		{"second_announcement", cppHeldSecondAnnouncement},
-		{"vocabulary_too_large", cppHeldVocabularyTooLarge},
+		{"TableMessageReason::no_vocabulary", cppHeldNoVocabulary},
+		{"TableMessageReason::second_announcement", cppHeldSecondAnnouncement},
+		{"TableMessageReason::vocabulary_too_large", cppHeldVocabularyTooLarge},
 		{"announcement_strict_checks", cppHeldStrictChecks},
-		{"batch_too_large", cppHeldBatchTooLarge},
+		{"TableMessageReason::batch_too_large", cppHeldBatchTooLarge},
 		{"damage_inside_body", cppHeldDamageInsideBody},
 		{"bytes_after_pad", cppHeldBytesAfterPad},
 		{"form_byte", cppHeldFormByte},

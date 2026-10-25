@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 )
@@ -114,7 +113,6 @@ func goBenchFirstDiff(committed, emitted []byte) string {
 
 func TestGoBenchTreesAreCurrent(t *testing.T) {
 	t.Parallel()
-	start := time.Now()
 	root := repoRoot(t)
 	for _, rule := range goBenchRules {
 		tree := strings.TrimSuffix(rule, "/.stamp")
@@ -188,5 +186,5 @@ func TestGoBenchTreesAreCurrent(t *testing.T) {
 			t.Fatalf("%s: %v", tree, err)
 		}
 	}
-	t.Logf("three Go bench trees compared with the in-process compiler in %s", time.Since(start))
+	t.Logf("three Go bench trees compared with the in-process compiler")
 }

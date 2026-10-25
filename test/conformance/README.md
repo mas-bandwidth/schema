@@ -26,11 +26,14 @@ goes red everywhere localises nothing:
 | control | what it breaks | what must go red | what must stay green |
 |---|---|---|---|
 | `conformance-negative-control` | one byte of a C++ dump | `cpp / json-write` | `wire` |
+| `conformance-negative-control-cpp` | the C++ walk's field offset, in the emitter | `cpp / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-block-dump` | one byte INSIDE A ROW of the block image | `block-dump` | `block`, `forgery` |
 | `conformance-negative-control-cs` | the C# walker, in the emitter | `cs / json-read` | `json-write` |
 | `conformance-negative-control-go` | the Go leg, in the emitter | its own surface | the rest |
 | `conformance-negative-control-go-walk` | the Go walk's field offset | `go / json-read` | `json-write` |
+| `conformance-negative-control-js-walk` | the bool arm of the generated JavaScript text reader | `js / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-java-block` | the array PITCH CHECK in the Java `open` | `java / forgery` | `block`, `block-dump` |
+| `conformance-negative-control-java-walk` | the field-key match in the Java `fromJson` | `java / json-read` | `json-write`, `wire` |
 
 Two of those rows are the reason two surfaces exist at all. The row-dump one is
 why `block-dump` is separate from `block`: `Open` reads the prologue and the
@@ -41,11 +44,13 @@ which no valid image can show you.
 
 **A PER-BACKEND WALK CONTROL, one per port with a text form**, because a
 walker's break is the backend's and not the data's:
-`conformance-negative-control-go-walk` breaks the Go walk's offset arithmetic.
-It has the same second half as every control here, and it is the point:
-`json-read` goes red and `json-write` stays green, which is what says the
-break is the READER's. (Elixir emits no text form and has no walk control;
-schema#515 brings its wire.)
+`conformance-negative-control-go-walk` breaks the Go walk's offset arithmetic,
+`conformance-negative-control-c` breaks the C walk's field index, and
+`conformance-negative-control-java-walk` breaks the Java `fromJson`'s field-key
+match. Each has the same second half as every control here, and it is the
+point: `json-read` goes red and `json-write` stays green, which is what says
+the break is the READER's. (Elixir's text form covers the variable class now;
+its walk control still arrives with the full conformance battery.)
 
 ## The shape
 

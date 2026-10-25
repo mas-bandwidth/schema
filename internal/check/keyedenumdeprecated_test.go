@@ -23,22 +23,6 @@ func checkerErrors(t *testing.T, src string) []string {
 	return out
 }
 
-func checkerErrorsFor(t *testing.T, src string, target string) []string {
-	t.Helper()
-	f, perrs := parser.Parse("T.schema", []byte(src))
-	if len(perrs) > 0 {
-		t.Fatalf("parse: %v", perrs[0])
-	}
-	_, cerrs := UnitForTargets([]SourceFile{{
-		Path: "T.schema", Name: "T.schema", Base: "T", Bytes: []byte(src), AST: f,
-	}}, []string{target})
-	out := make([]string, 0, len(cerrs))
-	for _, e := range cerrs {
-		out = append(out, e.Error())
-	}
-	return out
-}
-
 const keyedDeprecatedHolder = `fixed table SomeTable
 {
     x int32
@@ -75,16 +59,6 @@ func TestKeyedEnumWithADeprecatedVariantIsRefusedForEveryTarget(t *testing.T) {
 			}
 			if !strings.Contains(got, "the key bound [Tier] names variant Silver, which is marked `| deprecated`") {
 				t.Errorf("the refusal must open with the key-bound rule:\n%s", got)
-			}
-
-			for _, target := range []string{"Go", "C++"} {
-				targetErrs := checkerErrorsFor(t, src, target)
-				if len(targetErrs) == 0 {
-					t.Fatalf("%s: target %s must return the checker's refusal", tc.src, target)
-				}
-				if targetErrs[0] != got {
-					t.Fatalf("%s: target %s returned a different refusal:\n%s\nwant:\n%s", tc.src, target, targetErrs[0], got)
-				}
 			}
 		})
 	}

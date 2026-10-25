@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -12,8 +11,8 @@ import (
 // battery to docs/SPEC-TABLES.md §16.3's zero rule: a string the read would
 // PLACE in text storage refuses the read (`text_holds_zero: <Table>.<field>`),
 // while a string it only SKIPS stores nothing and is not the event. The rule is
-// held first in Go (and carried by Luau), so the two refusals state the
-// standard's answer with `carried-by=go,luau` and every other port keeps its
+// held first in Go and carried by C and Luau, so the two refusals state the
+// standard's answer with `carried-by=go,c,luau` and every other port keeps its
 // BASE counters; the skipped
 // value is the clean §4 report with the unknown key counted.
 //
@@ -38,14 +37,17 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		if !row.Refused || row.Verdict() != "refused" {
 			t.Fatalf("%s: the standard verdict is %q; §16.3 refuses a zero placed in text", caseName, row.Verdict())
 		}
-		if !slices.Contains(row.CarriedBy, "go") || slices.Contains(row.CarriedBy, "cpp") {
-			t.Fatalf("%s: carried-by=%v; Go holds the rule first (Luau carries it too) and every other port keeps its behaviour", caseName, row.CarriedBy)
+		if strings.Join(row.CarriedBy, ",") != "go,c,luau" {
+			t.Fatalf("%s: carried-by=%v; Go held the rule first, C and Luau carry it, and every other port keeps its behaviour", caseName, row.CarriedBy)
 		}
 		if row.Uncarried != baseCounters {
 			t.Fatalf("%s: uncarried=%q; every other port stores the zero and answers %q", caseName, row.Uncarried, baseCounters)
 		}
 		if got := row.VerdictFor("go"); got != "refused" {
 			t.Fatalf("%s: Go owes %q, got %q", caseName, "refused", got)
+		}
+		if got := row.VerdictFor("c"); got != "refused" {
+			t.Fatalf("%s: C owes %q, got %q", caseName, "refused", got)
 		}
 		if got := row.VerdictFor("cpp"); got != baseCounters {
 			t.Fatalf("%s: cpp owes %q, got %q", caseName, baseCounters, got)
@@ -115,7 +117,7 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := &result{}
-	scoreAnswer("go", "json-hostile", dir, valueWant, "", r)
+	scoreAnswer("go", "json-hostile", dir, valueWant, Instance{}, r)
 	if len(r.failures) == 0 {
 		t.Fatalf("%s: Go answering %q scored green against %q; it must score red", value.Name, baseCounters, valueWant.want)
 	}

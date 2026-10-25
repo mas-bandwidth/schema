@@ -1,4 +1,4 @@
-// THE COOKED FORM in Java (docs/SPEC-TABLES.md §7): the READ side, emitted ON THE
+// THE COOKED FORM in Java (docs/SPEC-TABLES.md §7): reader and writer, emitted ON THE
 // SIDE into <Table>Cook.java.
 //
 // A cook is a LOAD-TRUSTED-DATA-FROM-TOOLS format, not a wire. Tooling writes a
@@ -187,14 +187,14 @@ const tableCookStorageSource = `// What a cooked SLOT holds, which is not always
 // (docs/SPEC-TABLES.md §7.2), where the wire rides the variant-name hash. A walker
 // reads a slot with the width elemSize gives and the signedness this names.
 public enum TableCookStorage {
-    RECORD,    // a nested record, or an array of them: descend through it
+    RECORD, // a nested record, or an array of them: descend through it
     REFERENCE, // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
     BOOL,
     SIGNED,
-    UNSIGNED,  // an unsigned integer, an enum ordinal, a bits(N), a flags mask
+    UNSIGNED, // an unsigned integer, an enum ordinal, a bits(N), a flags mask
     FLOAT,
-    STRING,    // char[N + 1] with an int32 used length beside it
-    BYTES,     // uint8[N] with an int32 used length beside it
+    STRING, // char[N + 1] with an int32 used length beside it
+    BYTES, // uint8[N] with an int32 used length beside it
 }
 `
 
@@ -231,6 +231,7 @@ public final class TableCookInfo {
     public static final long maxAlign = ` + fmt.Sprintf("%dL", cookMaxAlign) + `;
 
     public String name;
+    public long typeId; // attribution entry's table id (§7.6)
     public int size;
     public int align;
     public int numFields;
@@ -243,31 +244,48 @@ const tableCookFieldInfoSource = `// One cooked field's reflection descriptor: t
 // where it sits, how big it is, whether it is a POINTER EDGE, the bound its
 // COUNT COMPANION is checked against, and the record it names.
 public final class TableCookFieldInfo {
-    /** the record this field NAMES, behind a supplier so the table stays
-     *  constructible in any order. null when the field is a scalar. Following it
-     *  is how a walker DESCENDS — a pointer's target, a by-value nesting, and an
-     *  array's element are all reached through this one column. */
-    public interface InfoRef { TableCookInfo get(); }
+    /**
+     * the record this field NAMES, behind a supplier so the table stays constructible in any order.
+     * null when the field is a scalar. Following it is how a walker DESCENDS — a pointer's target,
+     * a by-value nesting, and an array's element are all reached through this one column.
+     */
+    public interface InfoRef {
+        TableCookInfo get();
+    }
 
     public String name;
-    public int offset;        // the field's offset in the record this descriptor describes
-    public int size;          // its whole storage there, companions included
-    public int elemSize;      // one element's size, for an array; the field's own otherwise
+    public String sourceName; // generated Java Value member (§7.6)
+    public int offset; // the field's offset in the record this descriptor describes
+    public int size; // its whole storage there, companions included
+    public int elemSize; // one element's size, for an array; the field's own otherwise
     public boolean isArray;
-    public int arrayBound;    // the DECLARED bound: a counted array's N, a string's or bytes' length
+    public int arrayBound; // the DECLARED bound: a counted array's N, a string's or bytes' length
     public boolean isPointer; // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
-    public int countOffset;   // the count companion's offset, or -1 when the field has none
+    public int countOffset; // the count companion's offset, or -1 when the field has none
     public int presentOffset; // an optional's presence bool, or -1
     public TableCookStorage storage; // what one slot HOLDS, at elemSize bytes
     public InfoRef recordRef;
 
-    public TableCookInfo record() { return recordRef == null ? null : recordRef.get(); }
+    public TableCookInfo record() {
+        return recordRef == null ? null : recordRef.get();
+    }
 
-    public static TableCookFieldInfo of(String name, int offset, int size, int elemSize, boolean isArray,
-                                        int arrayBound, boolean isPointer, int countOffset,
-                                        int presentOffset, TableCookStorage storage, InfoRef record) {
+    public static TableCookFieldInfo of(
+            String name,
+            String sourceName,
+            int offset,
+            int size,
+            int elemSize,
+            boolean isArray,
+            int arrayBound,
+            boolean isPointer,
+            int countOffset,
+            int presentOffset,
+            TableCookStorage storage,
+            InfoRef record) {
         TableCookFieldInfo f = new TableCookFieldInfo();
         f.name = name;
+        f.sourceName = sourceName;
         f.offset = offset;
         f.size = size;
         f.elemSize = elemSize;
@@ -292,6 +310,7 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 		return out, nil
 	}
 	maps.Copy(out, cookRuntimeFiles(u))
+	out["TableCookWrite.java"] = javaFile(u, "the cook writer's measured region and target-order stores (docs/SPEC-TABLES.md §7.6).", tableCookWriteSource(u, ck))
 	names := make([]string, 0, len(u.Tables))
 	for name := range u.Tables {
 		names = append(names, name)
@@ -306,12 +325,12 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 			b.WriteString("// reaching for open gets a missing name from its own compiler, beside this\n")
 			b.WriteString("// file, which says why.\n")
 			fmt.Fprintf(&b, "public final class %sCook {\n    private %sCook() {}\n}\n", name, name)
-			out[name+"Cook.java"] = javaFile(u, "the COOKED FORM's read half (docs/SPEC-TABLES.md §7).", b.String())
+			out[name+"Cook.java"] = javaFile(u, "the COOKED FORM's reader and writer (docs/SPEC-TABLES.md §7).", b.String())
 			continue
 		}
 		g := &cookGen{unit: u, cook: ck, table: u.Tables[name]}
 		g.emit()
-		out[name+"Cook.java"] = javaFile(u, "the COOKED FORM's read half (docs/SPEC-TABLES.md §7).", g.b.String())
+		out[name+"Cook.java"] = javaFile(u, "the COOKED FORM's reader and writer (docs/SPEC-TABLES.md §7).", g.b.String())
 	}
 	return out, nil
 }
@@ -352,7 +371,8 @@ func (g *cookGen) emit() {
 	g.f("        this.data = data;\n        this.region = region;\n        this.regionLength = regionLength;\n    }\n\n")
 	g.f("    // §7.1's constants, so a consumer reading this file has the facts and not a\n")
 	g.f("    // description of them.\n")
-	g.f("    public static final long regionAlignment = %dL; // the greatest alignof in the region, floor eight\n", align)
+	g.f("    // the greatest alignof in the region, floor eight\n")
+	g.f("    public static final long regionAlignment = %dL;\n", align)
 	g.f("    public static final long rootSize = %dL;\n", ml.Size)
 	g.f("    public static final long rootAlign = %dL;\n\n", ml.Align)
 	g.f("    public byte[] data() { return data; }\n")
@@ -362,12 +382,31 @@ func (g *cookGen) emit() {
 	g.f("     *  %sRow's accessors. */\n", name)
 	g.f("    public int root() { return region; }\n\n")
 	g.emitOpen(ml, align)
+	g.emitWrite()
 	g.emitAt()
 	g.f("    /** this root's cook descriptors: constant data, so a reflective walk costs a\n")
 	g.f("     *  lookup and not a parse. Every record the region can hold hangs off the\n")
 	g.f("     *  field column, so a walker reaches the whole graph from the root. */\n")
 	g.f("    public static TableCookInfo type() { return %sRow.cookInfo(); }\n", name)
 	g.f("}\n")
+}
+
+// emitWrite is §7.6's Java spelling of <T>CookMeasure,
+// <T>CookMeasureReason and <T>CookFrom. The shared writer plans and validates
+// the complete region before its first store.
+func (g *cookGen) emitWrite() {
+	g.f("    public static long cookMeasure(Object value) {\n")
+	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type());\n")
+	g.f("        return p == null ? -1 : p.total;\n    }\n\n")
+	g.f("    public record MeasureReason(long bytes, String reason) {}\n\n")
+	g.f("    public static MeasureReason cookMeasureReason(Object value) {\n")
+	g.f("        long bytes = cookMeasure(value);\n")
+	g.f("        return new MeasureReason(bytes, bytes < 0 ? \"invalid_value\" : \"ok\");\n    }\n\n")
+	g.f("    public static boolean cookFrom(Object value, byte[] buffer, int order) {\n")
+	g.f("        if (order != TableCookWrite.LITTLE && order != TableCookWrite.BIG) { return false; }\n")
+	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type());\n")
+	g.f("        if (p == null || buffer == null || buffer.length < p.total) { return false; }\n")
+	g.f("        return TableCookWrite.write(p, buffer, order);\n    }\n\n")
 }
 
 func (g *cookGen) emitOpen(ml *ir.MemberLayout, align int64) {
@@ -401,37 +440,48 @@ func (g *cookGen) emitOpen(ml *ir.MemberLayout, align int64) {
 	g.f("    // at --release 17. A catalog past 2 GiB — which §7 is explicitly built\n")
 	g.f("    // for — has no Java reader until then, and that is a named follow-on\n")
 	g.f("    // rather than a silence.\n")
-	g.f("    public static %sCook open(byte[] data, int offset, long length) {\n", name)
-	g.f("        TableCookLayout.verify();\n")
-	g.f("        if (data == null || offset < 0 || length < %d) { return null; }\n", cookHeaderBytes)
+	g.f("    //\n")
+	g.f("    // THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §6.5, §7): openCheck runs\n")
+	g.f("    // §7's clauses in the reference's order (Go CookOpen,\n")
+	g.f("    // internal/codegen/gotable/cook.go; the JavaScript leg's openCheck) and\n")
+	g.f("    // answers the data offset, or the FIRST failing clause as the negated\n")
+	g.f("    // TableRefuseReason ordinal of internal/codegen/gotable/refusal.go. The\n")
+	g.f("    // base's alignment is checked LAST, as the reference checks it; a\n")
+	g.f("    // missing array or a negative offset is the reference's null base.\n")
+	g.f("    private static long openCheck(byte[] data, int offset, long length) {\n")
+	g.f("        if (data == null || offset < 0) { return -7; } // unaligned_base\n")
+	g.f("        if (length < %d) { return -6; } // truncated\n", cookHeaderBytes)
 	g.f("        // the caller's CLAIM must be storage the caller actually has\n")
-	g.f("        if (length > data.length - offset) { return null; }\n")
+	g.f("        if (length > data.length - offset) { return -6; } // truncated\n")
 	g.f("        long bytes = length;\n\n")
 	g.f("        // THE MAGIC, read before anything else: it is what establishes the byte\n")
 	g.f("        // order every other header word is written in. A cook of the other order\n")
 	g.f("        // reads back this constant byte-reversed and refuses HERE, rather than\n")
 	g.f("        // reaching a fix-up pass this design does not have.\n")
-	g.f("        if (TableBytes.i64(data, offset) != TableCookInfo.magic) { return null; }\n")
+	g.f("        long magic = TableBytes.i64(data, offset);\n")
+	g.f("        if (magic != TableCookInfo.magic) {\n")
+	g.f("            return magic == Long.reverseBytes(TableCookInfo.magic) ? -2 : -1; // foreign_order : not_a_cook\n")
+	g.f("        }\n")
 	g.f("        // and the ORDER WORD does the other job: it RECORDS which order wrote the\n")
 	g.f("        // file, so a refusal names the order rather than inferring it.\n")
-	g.f("        if (TableBytes.i64(data, offset + 16) != TableCookInfo.byteOrder) { return null; }\n")
+	g.f("        if (TableBytes.i64(data, offset + 16) != TableCookInfo.byteOrder) { return -1; } // not_a_cook\n")
 	g.f("        // THE BUILD VERSION: under the match-and-point rule a matching id means\n")
 	g.f("        // Open checks nothing further, so it is the sole guard between this\n")
 	g.f("        // runtime and a foreign region (§20).\n")
-	g.f("        if (TableBytes.i64(data, offset + 8) != BuildVersion.value) { return null; }\n")
+	g.f("        if (TableBytes.i64(data, offset + 8) != BuildVersion.value) { return -3; } // wrong_build_version\n")
 	g.f("        // THE RESERVED WORDS: a non-zero one means a writer used a form this\n")
 	g.f("        // build does not understand, and Open refuses rather than ignoring it.\n")
-	g.f("        if (TableBytes.i64(data, offset + 48) != 0) { return null; }\n")
-	g.f("        if (TableBytes.i64(data, offset + 56) != 0) { return null; }\n\n")
+	g.f("        if (TableBytes.i64(data, offset + 48) != 0) { return -4; } // reserved_not_zero\n")
+	g.f("        if (TableBytes.i64(data, offset + 56) != 0) { return -4; }\n\n")
 	g.f("        // THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than\n")
 	g.f("        // only compares against — the data part begins at align_up(64, alignment)\n")
 	g.f("        // and the base is measured against it — so a word that is not an\n")
 	g.f("        // alignment rounds nothing and aligns nothing.\n")
 	g.f("        long alignment = TableBytes.i64(data, offset + 40);\n")
-	g.f("        if (Long.compareUnsigned(alignment, %d) < 0 || Long.compareUnsigned(alignment, %d) > 0) { return null; }\n",
+	g.f("        if (Long.compareUnsigned(alignment, %d) < 0 || Long.compareUnsigned(alignment, %d) > 0) { return -5; } // bad_alignment\n",
 		ir.RegionAlignFloor, cookMaxAlign)
-	g.f("        if ((alignment & (alignment - 1)) != 0) { return null; } // a power of two\n")
-	g.f("        if ((alignment %% rootAlign) != 0) { return null; }      // and a multiple of the ROOT's own alignof\n\n")
+	g.f("        if ((alignment & (alignment - 1)) != 0) { return -5; } // a power of two\n")
+	g.f("        if ((alignment %% rootAlign) != 0) { return -5; } // and a multiple of the ROOT's own alignof\n\n")
 	g.f("        // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader\n")
 	g.f("        // computes is a fact two writers cannot disagree about, and it is 64 for\n")
 	g.f("        // every unit this language can declare.\n")
@@ -442,18 +492,39 @@ func (g *cookGen) emitOpen(ml *ir.MemberLayout, align int64) {
 	g.f("        // same refusal.\n")
 	g.f("        long dataLength = TableBytes.i64(data, offset + 24);\n")
 	g.f("        long attribution = TableBytes.i64(data, offset + 32);\n")
-	g.f("        if (Long.compareUnsigned(dataLength, bytes) > 0) { return null; }\n")
-	g.f("        if (Long.compareUnsigned(attribution, bytes - dataLength) > 0) { return null; }\n")
-	g.f("        if (Long.compareUnsigned(dataOffset, bytes - dataLength - attribution) > 0) { return null; }\n")
-	g.f("        if (dataOffset + dataLength + attribution != bytes) { return null; }\n\n")
+	g.f("        if (Long.compareUnsigned(dataLength, bytes) > 0) { return -6; }\n")
+	g.f("        if (Long.compareUnsigned(attribution, bytes - dataLength) > 0) { return -6; }\n")
+	g.f("        if (Long.compareUnsigned(dataOffset, bytes - dataLength - attribution) > 0) { return -6; }\n")
+	g.f("        if (dataOffset + dataLength + attribution != bytes) { return -6; }\n\n")
 	g.f("        // THE DATA PART MUST HOLD THE ROOT. The part lengths frame the FILE; they\n")
 	g.f("        // do not say the region is at least sizeof(root). Without this a forged\n")
 	g.f("        // short data part describes a root partly outside the file, and a\n")
 	g.f("        // match-and-point reader would hand back storage the caller never gave it.\n")
-	g.f("        if (Long.compareUnsigned(dataLength, rootSize) < 0) { return null; }\n\n")
+	g.f("        if (Long.compareUnsigned(dataLength, rootSize) < 0) { return -6; }\n\n")
 	g.f("        // THE ALIGNMENT OF THE BASE.\n")
-	g.f("        if ((offset %% alignment) != 0) { return null; }\n\n")
-	g.f("        return new %sCook(data, offset + (int) dataOffset, dataLength);\n    }\n\n", name)
+	g.f("        if ((offset %% alignment) != 0) { return -7; } // unaligned_base, last as in the reference\n\n")
+	g.f("        return dataOffset;\n    }\n\n")
+	g.f("    public static %sCook open(byte[] data, int offset, long length) {\n", name)
+	g.f("        TableCookLayout.verify();\n")
+	g.f("        long dataOffset = openCheck(data, offset, length);\n")
+	g.f("        if (dataOffset < 0) { return null; }\n")
+	g.f("        return new %sCook(data, offset + (int) dataOffset, TableBytes.i64(data, offset + 24));\n    }\n\n", name)
+	g.f("    /** openReason answers open's check as the TableRefuseReason value name\n")
+	g.f("     *  (internal/codegen/gotable/refusal.go), \"ok\" for a cook that opens:\n")
+	g.f("     *  the cook-reason surface (test/conformance/README.md). */\n")
+	g.f("    public static String openReason(byte[] data, int offset, long length) {\n")
+	g.f("        TableCookLayout.verify();\n")
+	g.f("        long check = openCheck(data, offset, length);\n")
+	g.f("        if (check >= 0) { return \"ok\"; }\n")
+	g.f("        switch ((int) -check) {\n")
+	g.f("            case 1: return \"not_a_cook\";\n")
+	g.f("            case 2: return \"foreign_order\";\n")
+	g.f("            case 3: return \"wrong_build_version\";\n")
+	g.f("            case 4: return \"reserved_not_zero\";\n")
+	g.f("            case 5: return \"bad_alignment\";\n")
+	g.f("            case 6: return \"truncated\";\n")
+	g.f("            default: return \"unaligned_base\";\n")
+	g.f("        }\n    }\n\n")
 	g.f("    /** the whole array as the file, which is how a consumer that read one spells\n")
 	g.f("     *  it. */\n")
 	g.f("    public static %sCook open(byte[] data) { return open(data, 0, data == null ? 0 : data.length); }\n\n", name)
@@ -539,9 +610,14 @@ func emitCookLayoutFile(u *ir.Unit, ck *cookUnit, set *records, withBlock bool) 
     private static void number(String what, int accessors, int descriptors) {
         if (accessors != descriptors) {
             throw new IllegalStateException(
-                    "schema cook layout: " + what + " is " + accessors + " through the accessors and " +
-                    descriptors + " through the descriptors — the two halves of one generated layout " +
-                    "disagree about the bytes (docs/SPEC-TABLES.md §20.3)");
+                    "schema cook layout: "
+                            + what
+                            + " is "
+                            + accessors
+                            + " through the accessors and "
+                            + descriptors
+                            + " through the descriptors — the two halves of one generated layout "
+                            + "disagree about the bytes (docs/SPEC-TABLES.md §20.3)");
         }
     }
 }

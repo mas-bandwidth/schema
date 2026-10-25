@@ -118,15 +118,19 @@ func dumpFn(t *testing.T, src, fn string) string {
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
-	var all string
+	// The function is sliced out of the ONE file that holds it: a unit that
+	// also gets a form-1 Wire.dart must not let the slice run on into another
+	// file, whose order in the map is not fixed.
+	var all, body string
 	for _, b := range files {
 		all += string(b)
+		if i := strings.Index(string(b), fn); i >= 0 {
+			body = string(b)[i:]
+		}
 	}
-	i := strings.Index(all, fn)
-	if i < 0 {
+	if body == "" {
 		t.Fatalf("no %s in generated unit:\n%s", fn, all)
 	}
-	body := all[i:]
 	if j := strings.Index(body[1:], "\nvoid "); j >= 0 {
 		body = body[:j+1]
 	}

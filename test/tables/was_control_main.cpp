@@ -21,7 +21,7 @@ int main()
     if ( need < 0 ) { printf( "load measure refused\n" ); return 2; }
     uint8_t * region = (uint8_t *) malloc( (size_t) need );
     tblw2::TableReport report;
-    const tblw2::Fleet * root = tblw2::FleetLoad( region, need, wire, n, &report );
+    const tblw2::Fleet * root = tblw2::FleetLoadTolerant( region, need, wire, n, &report );
     if ( root == NULL ) { printf( "load refused\n" ); return 2; }
     const tblw2::Ship * flagship = tblw2::ShipAt( root->flagship );
     printf( "unknown=%d kind_mismatch=%d malformed=%d flagship=%s escorts=%d home_name=%s\n",

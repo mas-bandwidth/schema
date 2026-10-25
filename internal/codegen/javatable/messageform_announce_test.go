@@ -120,7 +120,16 @@ func runMessageJava(t *testing.T, u *ir.Unit, main string) string {
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
-	return string(out)
+	// The JVM prints a `Picked up JAVA_TOOL_OPTIONS: ...` banner on stderr
+	// when the variable is set; it is not part of the driver's output.
+	var lines []string
+	for l := range strings.SplitSeq(string(out), "\n") {
+		if strings.HasPrefix(l, "Picked up JAVA_TOOL_OPTIONS") {
+			continue
+		}
+		lines = append(lines, l)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // driverPrologue is shared by every driver: the class header and helpers.

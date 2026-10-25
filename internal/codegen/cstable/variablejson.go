@@ -65,28 +65,20 @@ const tableVariableJsonSource = `
         f.SetChild(owner, index, null);
         if (f.BlobKind == 12)
         {
-            In probe=input;
-            if(!ScanText(text,ref probe,Span<byte>.Empty,Span<char>.Empty,false,false,out int size,true)) { input=probe; return false; }
-            byte[] data=new byte[size];
+            In probe = input;
+            if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true)) { input = probe; return false; }
+            byte[] data = new byte[size];
             if (!ScanString(text, ref input, data, true, out _)) { return false; }
             f.SetChild(owner, index, new TableBlob(data)); return true;
         }
-        if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
-        input.Pos++;
-        int mark = input.Pos;
+        if (!Base64Body(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
         int symbols = 0;
         int pad = 0;
         bool malformed = false;
-        for (;;)
+        foreach (byte c in body)
         {
-            if (input.Pos >= text.Length) { input.Bad = true; return false; }
-            byte c = text[input.Pos++];
-            if (c == '"') { break; }
-            if (malformed) { continue; }
             if (c == '=') { pad++; continue; }
-            if (pad > 0) { malformed = true; continue; }
-            int at = Base64Decode[c];
-            if (at < 0) { malformed = true; continue; }
+            if (pad > 0 || Base64Decode[c] < 0) { malformed = true; break; }
             symbols++;
         }
         if (!malformed)
@@ -104,10 +96,9 @@ const tableVariableJsonSource = `
         byte[] bytes = new byte[symbols * 6 / 8];
         int count = 0, held = 0;
         uint accumulator = 0;
-        for (int at = mark; ; at++)
+        foreach (byte c in body)
         {
-            byte c = text[at];
-            if (c == '"' || c == '=') { break; }
+            if (c == '=') { break; }
             int symbol = Base64Decode[c];
             accumulator = (accumulator << 6) | (uint)symbol;
             held += 6;

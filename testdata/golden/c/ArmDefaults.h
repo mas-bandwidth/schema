@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0x8656ae68c06b97a7 */
+   package example — protocol id 0xeb26c970fde3fd71 */
 
 #ifndef SCHEMA_EXAMPLE_ARM_DEFAULTS_H
 #define SCHEMA_EXAMPLE_ARM_DEFAULTS_H
@@ -84,6 +84,23 @@ typedef struct DefaultChoice {
 #define DEFAULT_CHOICE_MAX_BITS 79   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
 #define DEFAULT_CHOICE_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
 
+/* Selectors for DefaultChoice: each sets the tag and initializes the arm together,
+   the arm with its declared defaults as a read does (SPEC §4.8), and returns
+   the fresh arm to populate; a payload-free arm's selector sets the tag alone. */
+static SCHEMA_UNUSED DefaultArm * default_choice_select_first( DefaultChoice * value )
+{
+    value->type = DEFAULT_CHOICE_TYPE_FIRST;
+    value->as.first = new_default_arm();
+    return &value->as.first;
+}
+
+static SCHEMA_UNUSED DefaultArm * default_choice_select_second( DefaultChoice * value )
+{
+    value->type = DEFAULT_CHOICE_TYPE_SECOND;
+    value->as.second = new_default_arm();
+    return &value->as.second;
+}
+
 
 /* type DefaultChoicePacket */
 typedef struct DefaultChoicePacket {
@@ -147,6 +164,23 @@ typedef struct DefaultBulkChoice {
 
 #define DEFAULT_BULK_CHOICE_MAX_BITS 104   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
 #define DEFAULT_BULK_CHOICE_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+
+/* Selectors for DefaultBulkChoice: each sets the tag and initializes the arm together,
+   the arm with its declared defaults as a read does (SPEC §4.8), and returns
+   the fresh arm to populate; a payload-free arm's selector sets the tag alone. */
+static SCHEMA_UNUSED DefaultBulkArm * default_bulk_choice_select_first( DefaultBulkChoice * value )
+{
+    value->type = DEFAULT_BULK_CHOICE_TYPE_FIRST;
+    value->as.first = new_default_bulk_arm();
+    return &value->as.first;
+}
+
+static SCHEMA_UNUSED DefaultBulkArm * default_bulk_choice_select_second( DefaultBulkChoice * value )
+{
+    value->type = DEFAULT_BULK_CHOICE_TYPE_SECOND;
+    value->as.second = new_default_bulk_arm();
+    return &value->as.second;
+}
 
 #ifdef __cplusplus
 }

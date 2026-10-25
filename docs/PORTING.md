@@ -110,16 +110,25 @@ Dart, JavaScript), the limit is the technique in its stated form.
 
 **Reference.** `internal/codegen/cpptable/cpptable.go:524-538` (the reader is
 `buffer/size/offset`); the stack sub-reader at
-`internal/codegen/cpptable/codecs.go:1113`. The limit form:
-`internal/codegen/jstable/jstable.go:960` (Java's, the first, went with its
-previous-form wire; schema#517 brings it back with the id-table form).
+`internal/codegen/cpptable/codecs.go:1113`. The limit form was
+`internal/codegen/jstable/jstable.go` in JavaScript's previous-form wire, which
+#760 removed (Java's, the first, went with its previous-form wire too;
+schema#517 brings it back with the id-table form).
 
 **Proven in.** C++; the limit form in Java, then JavaScript and Dart.
 
 **Measured effect.** Exact zero on Load, Measure and Save in Go
-(`testing.AllocsPerRun`), Java (`getCurrentThreadAllocatedBytes`), JavaScript
-(0.0 bytes per iteration on KeyedConfig Load/Measure/Save at 300k iterations)
-and Dart (0 scavenges over 20,000 × 8 records under AOT). The instrument is
+(`testing.AllocsPerRun`); Java (`getCurrentThreadAllocatedBytes`,
+`tables-java-allocator`): the block row walk and the cook read are exactly one
+32-byte handle per open and 0 per row and per node, loadMeasure through a
+kept Measure is exact 0 per call and per node (128 bytes for the one-argument
+handle, 0 per node), save through a kept Saver allocates the output byte[]
+alone (0 per node), and load is held at its measured floor because it answers
+a fresh Value tree;
+JavaScript
+(0.0 bytes per iteration on KeyedConfig Load/Measure/Save at 300k iterations,
+on the previous-form wire #760 removed; the rebuilt leg's gate measures no
+Load path) and Dart (0 scavenges over 20,000 × 8 records under AOT). The instrument is
 M1's second half, section I1.
 
 **Negative control.** I1's: a planted allocation per record turns the gate
@@ -129,7 +138,7 @@ red on the one row it was planted in.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:178-187` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ❌ #517 | ❌ #516 | ❌ #514 | — a decoded BEAM term is an allocation and no buffer is caller-owned (docs/SPEC-TABLES.md); the leg that pinned a per-case count went with the table wire (#515) | ❌ #381 — card schema-luau-table-wire-load (docs/PORT-LUAU.md, THE CARD MAP); the reader is a cursor over a caller's buffer, its limit an integer |
+| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:178-187` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ❌ #517 — the block row walk and the cook read are 0 beyond one handle per open (`tables-java-allocator` rows 1 and 2, localized by `tables-java-alloc-negative-control`), loadMeasure through a kept Measure is exact 0 per call and per node (row 3, and 128 bytes for the one-argument Measure/Report/Reader handle, 0 per node), and save through a kept Saver allocates only the returned byte[] (row 4, 0 per node); what remains for M1 on the variable wire is load, which answers a fresh Value tree until a caller-owned-storage form exists | ❌ #516 (`tables-js-alloc` measures only the block row walk and the cook deref: no row reads a table-wire Load, Measure or Save, and the id-table `<T>Load` builds the value it returns) | ❌ #514 | — a decoded BEAM term is an allocation and no buffer is caller-owned (docs/SPEC-TABLES.md); the leg that pinned a per-case count went with the table wire (#515) | ❌ #381 — card schema-luau-table-wire-load (docs/PORT-LUAU.md, THE CARD MAP); the reader is a cursor over a caller's buffer, its limit an integer |
 
 ### M2 — 64-bit values without boxing
 
@@ -150,15 +159,26 @@ reads, the reason at `:375-382`) and `internal/codegen/jstable/cook.go:513-517`
 
 **Measured effect.** JavaScript's `Scene head deref` row went from a BigInt
 per edge to 0.7 bytes per iteration (ceiling 8) once the delta was composed.
+On Elixir (`TestOffsetsComposeFromHalvesElixir`, OTP 29, heap words per
+call from a garbage-collection trace in a fresh process): every corpus block
+open, every row of its arrays and every reference slot of three corpus cooks
+allocate exactly what a same-shaped immediate-value control allocates, and a
+forced-boxing control that passes the composition through a bignum allocates
+more (18 words per open), so the meter is shown to see one.
 
 **Negative control.** The JavaScript allocation gate's row for the path: a
-`getBigUint64` on it reads as bytes per iteration.
+`getBigUint64` on it reads as bytes per iteration. The Elixir control
+(`tables-elixir-offsets-negative-control`) sabotages the block's composed read
+back to the whole-word read; the forged-offset assertion must go red. The
+cook control (`tables-elixir-cook-negative-control`) does the same to the
+cook's delta read; the forged-delta assertion must go red. Both count minor
+collections over 50000 refusals against an immediate-high-half twin.
 
 **Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:513` | ✅ `internal/codegen/ctable/ctable.go:514-518` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:152` | ✅ `internal/codegen/cstable/cstable.go:986-991` | ❌ #517 | — the accelerator paths compose (`internal/codegen/jstable/block.go:384`, `cook.go:513`); a 64-bit wire FIELD's value is a BigInt or loses precision, so those rows read one under a stated ceiling (`test/js-tables/main.mjs`, the RootConfig rows) | — an `int` is a 64-bit machine word and nothing boxes (`internal/codegen/darttable/block.go:213`) | ❌ #403 | ❌ #381 — card schema-luau-type-wire-read (docs/PORT-LUAU.md, THE CARD MAP); expected moot: a 64-bit value is the pinned Luau's primitive `integer`, and the allocation instrument (I1) has to say so |
+| ✅ `internal/codegen/cpptable/cpptable.go:513` | ✅ `internal/codegen/ctable/ctable.go:514-518` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go:152` | ✅ `internal/codegen/cstable/cstable.go:986-991` | ❌ #517 | — the accelerator paths compose (`internal/codegen/jstable/block.go:384`, `cook.go:513`); a 64-bit wire FIELD's value is a BigInt or loses precision, so those rows read one under a stated ceiling (`test/js-tables/main.mjs`, the RootConfig rows) | — an `int` is a 64-bit machine word and nothing boxes (`internal/codegen/darttable/block.go:213`) | ✅ `tables-elixir-offsets` `tables-elixir-offsets-negative-control` `tables-elixir-cook-negative-control` `TestOffsetsComposeFromHalvesElixir` (the block's `offset_of` and the cook's delta compose from 32-bit halves, refused from the high half before any bignum forms; every corpus open, row and cook slot allocates no more than an immediate-value control, against a forced-boxing control that does; a 64-bit FIELD value of 2^59 or more is a bignum on the BEAM whatever a reader does) | ❌ #381 — card schema-luau-type-wire-read (docs/PORT-LUAU.md, THE CARD MAP); expected moot: a 64-bit value is the pinned Luau's primitive `integer`, and the allocation instrument (I1) has to say so |
 
 ### M3 — A float never crosses a call
 
@@ -167,16 +187,40 @@ inline; only integers cross into the reader and writer. There is no `getF32`
 primitive, because a double crossing a call boundary on a JIT threshold boxes,
 and a generated codec must not depend on the compiler's inlining budget.
 
+A port may take a per-language allowance from this where performance needs it
+in an extreme case (Glenn, 2026-10-15), and JavaScript takes one: the block
+form's and the record objects' float32 accessors read the 32 bits in place as
+an integer and hand them to the unit's ONE module-level conversion
+(`TableBlockReadF32`, `internal/codegen/jstable/record.go` jsF32ReaderSource),
+whose double comes back out of the call. The allowance is held by its
+instruments, not by trust: `make tables-js-alloc` reads the block walk at zero
+bytes per iteration, and `test/js-tables/main.mjs`'s float32 oracle check
+proves the conversion moved no bit (M21).
+
 **Reference.** `internal/codegen/cpptable/cpptable.go:572-573`
 (`table_bits_to_float` and its three siblings, `inline` free functions over
 `get32`/`get64`); elevated to a cross-port rule at docs/SPEC-TABLES.md's
 JavaScript allocation paragraph.
 
-**Proven in.** C++; measured in JavaScript.
+**Proven in.** C++; measured in JavaScript and Dart.
 
 **Measured effect.** On one node major a float crossing a helper was steady at
 sixteen bytes a call, and invisible on another — which is why the gate is
-pinned to one (I14).
+pinned to one (I14). Dart (issue 404), under the JIT on the pinned SDK 3.13.2
+(linux x64), `make tables-dart-float-jit`: a steady loop writing and reading
+five float32 fields (`Input`) and three float64 fields (`Vec3`) through the
+generated packet codec scavenged 76 times per 2,000,000 passes with the
+float32 conversion in `@pragma('vm:prefer-inline')` helpers, 76 with the
+codec called from two different callers, and 0 with the conversion
+hand-inlined; the float64 helpers alone scavenged 0 (the pragma held for
+them, not for the float32 helpers with their NaN branch). With the conversion
+emitted at each assignment all three shapes read 0. The count is taken only
+between the steady window's two markers, at 2,000,000 and at 4,000,000 passes
+(76 and 152 with the helpers), and only off a run proven whole: the target
+refuses, by name, a Dart exit other than 0, a missing completion line, a
+missing main-isolate GC trace (an absent or unsupported `--verbose_gc` is not
+a zero) and a missing window marker, and before it measures it requires a
+planted run that exits 3 and an untraced run to be refused.
 
 **Negative control.** The allocation gate's wire rows: a helper put back
 reads as bytes per iteration on the pinned runtime.
@@ -185,7 +229,7 @@ reads as bytes per iteration on the pinned runtime.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:572-573` | ✅ `internal/codegen/ctable/ctable.go:565-568` | ❌ #518 | ✅ `internal/codegen/gotable/read.go` (`emitReadScalar`) | ✅ `TestCsFloatBitCastIsAtTheAssignment` (`BitConverter` at the store; helpers `[MethodImpl(AggressiveInlining)]`) | ❌ #517 | ❌ #516 | ❌ #404 | — a BEAM float is a boxed term whatever the call shape; `R.f32_bits` costs what the term costs | — a Luau number is an unboxed double in every value slot, so a float crossing a call allocates nothing; `buffer.readf32` / `readf64` read the bits in place |
+| ✅ `internal/codegen/cpptable/cpptable.go:572-573` | ✅ `internal/codegen/ctable/ctable.go:565-568` | ❌ #518 | ✅ `internal/codegen/gotable/read.go` (`emitReadScalar`) | ✅ `TestCsFloatBitCastIsAtTheAssignment` (`BitConverter` at the store; helpers `[MethodImpl(AggressiveInlining)]`) | ❌ #517 | ❌ #516 (the form-3 decode inlines the bits, but a block row's float32 widens through an arrow called per read, `internal/codegen/jstable/record.go:42`, which `tables-js-alloc` reads at 246 bytes per iteration, and the variable form's float crosses TableVariableWidenF32) | ✅ `TestDartFloatBitsAreAtTheAssignment` (the float32 conversion inline at each assignment in the packet, block and message emitters; no helper in the output), `make tables-dart-float-jit` (0 steady JIT scavenges, 3.13.2) and `tables-dart-float-jit-negative-control` | — a BEAM float is a boxed term whatever the call shape; `R.f32_bits` costs what the term costs | — a Luau number is an unboxed double in every value slot, so a float crossing a call allocates nothing; `buffer.readf32` / `readf64` read the bits in place |
 
 ### M4 — The codec is shaped for the optimizer
 
@@ -217,7 +261,7 @@ from a fixed one, is red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:358-364` `TestPointerSurfaceEmitted` | ✅ `internal/codegen/ctable/ctable.go:275-283` `TestCForceInlineStopsAtTheVariableClass` | ❌ #518 | ❌ #362 | ❌ #405 | — the JIT takes no inlining directive and no aliasing qualifier; M4b is the shape | — no inlining directive and no aliasing qualifier for V8; M4b is the shape | — no inlining directive and no aliasing qualifier for the AOT compiler; M4b is the shape | — no inlining directive and no aliasing qualifier for the BEAM; M4b is the shape | — no inlining directive and no aliasing qualifier in Luau (its compiler inlines local functions at -O2 on its own judgment); M4b is the shape |
+| ✅ `internal/codegen/cpptable/cpptable.go:358-364` `TestPointerSurfaceEmitted` | ✅ `internal/codegen/ctable/ctable.go:275-283` `TestCForceInlineStopsAtTheVariableClass` | ❌ #518 | ❌ #362 | ✅ (primitives only) `internal/codegen/cstable/wire.go:463-659` `TestCsInliningStopsAtTheVariableClass` (`bench/results/cs-inlining-405.md`: Fixed-class body attribute reverted after measurement) | — the JIT takes no inlining directive and no aliasing qualifier; M4b is the shape | — no inlining directive and no aliasing qualifier for V8; M4b is the shape | — no inlining directive and no aliasing qualifier for the AOT compiler; M4b is the shape | — no inlining directive and no aliasing qualifier for the BEAM; M4b is the shape | — no inlining directive and no aliasing qualifier in Luau (its compiler inlines local functions at -O2 on its own judgment); M4b is the shape |
 
 ### M4b — The codec is self-contained
 
@@ -276,7 +320,7 @@ enum answered `undefined` before the guard was made symmetric.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-ndebug` `tables-c-keyed-max-refusal-ndebug` | ❌ #518 | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `TestCsKeyedAccessorCoversBothEnds` (`RefuseKey`, both ends) | ❌ #407 (refuses both ends; no test holds it) | ❌ #516 | ❌ #407 (refuses both ends; no test holds it) | ❌ #407 (guards refuse both ends; no test holds it) | ❌ #381 — card schema-luau-table-wire-load (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-ndebug` `tables-c-keyed-max-refusal-ndebug` | ❌ #518 | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `TestCsKeyedAccessorCoversBothEnds` (`RefuseKey`, both ends) | ✅ `TestKeyedArrayIndexingJava` `tables-java-keyed` `tables-java-keyed-negative-control` (`v.ships(key)` / `v.ships(key, value)`, `FleetRow.shipsByKey(data, at, key)`, `FleetRow.shipsAtKey(at, key)`; `int` key, `Integer.compareUnsigned`) | ❌ #516 (a keyed array is a plain Array indexed from slot 0: no accessor takes the key, so the caller does the shift and the slot past Max answers undefined) | ✅ `TestDartKeyedArraysAreHeldAtBothEnds` `tables-dart-keyed-negative-control` (Dart indexes by slot: key k rides at slot k-1, and the language's own RangeError — the typed list's bound — is the refusal) | ✅ `TestKeyedAccessorCoversBothEndsElixir` `tables-elixir-keyed` `tables-elixir-keyed-none-negative-control` `tables-elixir-keyed-max-negative-control` | ❌ #381 — card schema-luau-table-wire-load (docs/PORT-LUAU.md, THE CARD MAP) |
 
 ### M6 — The variable class on the wire: a flat node table and an identity map
 
@@ -309,7 +353,7 @@ in post-order in the emitter and requires the lock red;
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` | ✅ `tables-cs-leg` `tables-cs-region-fuzz` (flat native and managed graphs) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #381 — card schema-luau-table-wire-save (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `tables-flat-wire` `tables-flat-wire-negative-control` | ✅ `TestCTableWireGraphIdentity` `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` | ✅ `tables-cs-leg` `tables-cs-region-fuzz` (flat native and managed graphs) | ❌ #349 the flat pointer wire round-trips (`TestVariableClassBeyondCardConstructsJava`) and the Java identity map writes a shared node once, but a cycle is not refused (its open-guard checks only un-indexed nodes and so is unreachable) and no named Java test pins either property | ✅ `tables-js-variable-class` `tables-js-variable-arms` `TestVariableClassBeyondCardConstructsJavaScript` `TestMapsAndUnionArmsOnTheTableWireJavaScript` (`internal/codegen/jstable/variableruntime.go:185`: pre-order at first visit over an identity `Map`, a cycle refused at an OPEN entry, the node table under `TableNodeTableId` at kind 12, pointers at kind 17) | ❌ #349 | ✅ `tables-elixir-variable-class` | ❌ #381 — card schema-luau-table-wire-save (docs/PORT-LUAU.md, THE CARD MAP) |
 
 ### M7 — A block row is reached by stride, with no per-row object
 
@@ -339,7 +383,7 @@ table and 0.0 bytes per iteration in JavaScript's (`RenderFrame ships walk`).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/block.go:120` | ✅ `internal/codegen/ctable/block.go:109-125` | ✅ `internal/codegen/rusttable/block.go:583-598` (a slice over the region) | ✅ `internal/codegen/gotable/block.go:243-256` | ✅ `internal/codegen/cstable/block.go:781-790` | ✅ `internal/codegen/javatable/block.go:420-432` | ✅ `internal/codegen/jstable/block.go:382-386` | ✅ `internal/codegen/darttable/block.go:217-247` | ❌ #409 (an eager list of `count` sub-binaries per call) | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the block accelerator |
+| ✅ `internal/codegen/cpptable/block.go:120` | ✅ `internal/codegen/ctable/block.go:109-125` | ✅ `internal/codegen/rusttable/block.go:583-598` (a slice over the region) | ✅ `internal/codegen/gotable/block.go:243-256` | ✅ `internal/codegen/cstable/block.go:781-790` | ✅ `internal/codegen/javatable/block.go:420-432` | ✅ `internal/codegen/jstable/block.go:382-386` | ✅ `internal/codegen/darttable/block.go:217-247` | ✅ `internal/codegen/elixirtable/block.go:173` (`<F>_count`/`<F>_at`, and a lazy `Stream` walk) `TestElixirBlockRowsAreReachedWithoutAllocatingTheArray` | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the block accelerator |
 
 ### M8 — The cook opens in O(1)
 
@@ -392,7 +436,7 @@ offset arithmetic and requires red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-json-walk` `tables-json-graph-walk` | ✅ `tables-c-json-walk` | ❌ #518 | ✅ `tables-go-json-walk` | ✅ `tables-cs-json-walk` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 | ❌ #381 — card schema-luau-json-text-form (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `tables-json-walk` `tables-json-graph-walk` | ✅ `tables-c-json-walk` | ❌ #518 | ✅ `tables-go-json-walk` | ✅ `tables-cs-json-walk` | ❌ #517 | ❌ #516 (the text walk is one runtime, byte-identical in every generated `<Package>Variable.js`, but no json-walk target compares the units) | ❌ #514 | ❌ #515 | ❌ #381 — card schema-luau-json-text-form (docs/PORT-LUAU.md, THE CARD MAP) |
 
 ### M10 — Hooks and the allocator contract
 
@@ -518,7 +562,7 @@ plain-cache line.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ❌ #518 | ✅ `internal/codegen/gotable/codecs.go` (`emitTableDescriptor`) | ❌ #411 (the plain-cache idiom) | ✅ `TestJavaDescriptorsAreSafelyPublished` | ❌ #516 | ❌ #514 | ❌ #515 | ✅ `internal/codegen/luautable/runtime/schema_tables.luau` (every descriptor and field entry frozen at registration; `TestLuauTableDescriptorsLoad` asserts `table.isfrozen`) |
+| ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ❌ #518 | ✅ `internal/codegen/gotable/codecs.go` (`emitTableDescriptor`) | ✅ `TestCsDescriptorsAreSafelyPublished` | ✅ `TestJavaDescriptorsAreSafelyPublished` | ❌ #516 (block and cook descriptors are `Object.freeze`d, but the variable codec descriptors are mutable objects TableVariableLink fills at module load, and no test holds either constant) | ❌ #514 | ❌ #515 | ✅ `internal/codegen/luautable/runtime/schema_tables.luau` (every descriptor and field entry frozen at registration; `TestLuauTableDescriptorsLoad` asserts `table.isfrozen`) |
 
 **C# Table Serialization Contract.** In C#, generated typed `<Name>Save` entry points read fields directly and use compile-time ordinal indexing: scalar leaves and child scalar arrays are typed; everything else is descriptor-driven. For those direct-read paths (scalar leaves and child scalar arrays), typed `<Name>Save` does not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors (such as getter swapping, custom defaults, guard overrides, or field id alterations). Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations across all fields.
 
@@ -542,7 +586,7 @@ adapters; `tables-json-graph-walk`.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-json-graph-walk` | ✅ `TestCTableWireGraphIdentity` `TestCTableWireBlobIdentity` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-json-walk` | ✅ `tables-cs-leg` (shared graph labels and forward references) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #381 — card schema-luau-json-text-form (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `tables-json-graph-walk` | ✅ `TestCTableWireGraphIdentity` `TestCTableWireBlobIdentity` | ❌ #349 | ✅ `TestRegionGraphs` `tables-go-json-walk` | ✅ `tables-cs-leg` (shared graph labels and forward references) | ❌ #349 no named Java test pins the &node label (`TestVariableClassBeyondCardConstructsJava` round-trips the text against golden but does not assert the shared-node label) | ✅ `tables-js-variable-class` `TestVariableClassBeyondCardConstructsJavaScript` `TestMapsAndUnionArmsOnTheTableWireJavaScript` (`internal/codegen/jstable/variableruntime.go:1080` writes `&node` at the first appearance and the label after; `graph_shared` and `maps_pointers` read back to the oracle wire, and a label inside its own definition is refused) | ❌ #349 | ❌ #349 | ❌ #381 — card schema-luau-json-text-form (docs/PORT-LUAU.md, THE CARD MAP) |
 
 ### M15 — One walk for the numbering, the pack measure and the pack
 
@@ -566,7 +610,14 @@ shared by `emitNumber`, `emitPackMeasure` and `emitPack`; the tool's walk is
 `internal/tablewire/nodes.go:112` (`visitEdges`).
 
 **Proven in.** C++ (#433 — found by #429's wire fuzzer at the `stream_parts`
-seed's id pass, where dropping one field separated the two orders).
+seed's id pass, where dropping one field separated the two orders). **An
+OPTIONAL over a variable-length value is the same walk's presence gate**
+(schema#526): the walk skips a field whose presence companion is false before
+it descends, so an absent optional's table is not an edge and a pointer left in
+its slots costs no record. `test/tables/G1.schema`'s `optional_absent_no_edge`
+and `optional_present_edge` are the corpus and the tool-written pins; the C
+port's `internal/codegen/ctable/graph.go` `emitGraphEdge` gates the same way.
+The remaining ports' walker row is schema#366.
 
 **Measured effect.** Structural: on `stream_arm_first`, the corpus value whose
 numbering differs between the two orders, the numbering, the region layout and
@@ -583,7 +634,7 @@ post-order numbering the same way.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ✅ `internal/codegen/ctable/graph.go:24` `TestCTableCookCanonical` `tables-c-wire-fuzz` | ❌ #349 | ✅ `internal/codegen/gotable/regions.go` (`tableRegionEdges`, `tableNumber`) `TestAllocatorOwnershipAndStandaloneWriters` `tables-go-builders` | ✅ `tables-cs-pack-negative-control` `tables-cs-leg` (root and node extent equality) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #381 — card schema-luau-table-wire-save (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ✅ `internal/codegen/ctable/graph.go:24` `TestCTableCookCanonical` `tables-c-wire-fuzz` | ❌ #349 | ✅ `internal/codegen/gotable/regions.go` (`tableRegionEdges`, `tableNumber`) `TestAllocatorOwnershipAndStandaloneWriters` `tables-go-builders` | ✅ `tables-cs-pack-negative-control` `tables-cs-leg` (root and node extent equality) | ❌ #349 Java has only the numbering walk (`buildGraph` in `internal/codegen/javatable/variableform.go`); it has no pack-measure or pack walk to share it with (`loadMeasure`, `variableform.go:1689`, measures a load region, not a pack), so no Java test can hold numbering, pack measure and pack to one declaration-order DFS; `TestVariableClassBeyondCardConstructsJava` round-trips the wire and text only | ✅ `internal/codegen/jstable/variableruntime.go:141` `TestMapsAndUnionArmsOnTheTableWireJavaScript` `TestVariableClassBeyondCardConstructsJavaScript` (ONE edge walk in declaration order, by-value edges and set arms descended in place, numbers the nodes; `Measure` is the save's length, and the save and the cook lay nodes in that walk's list; `arms_ptr`, `maps_pointers` and `list_before_pointer` go red under the grouped walk) | ❌ #349 | ❌ #349 | ❌ #381 — card schema-luau-table-wire-save (docs/PORT-LUAU.md, THE CARD MAP) |
 
 ### M16 — The presence companion rides beside the array walks
 
@@ -624,7 +675,7 @@ on the corpus rows that carry it.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go:588` `test/tables/main.cpp:6814` `TestReportRowsDecodeThroughTheEngine` | ✅ `TestCTableWireDefaultRecovery` `tables-c-wire-fuzz` | ❌ #392 | ✅ `TestDefaultsAndOptionalArrays` `conformance` | ✅ `tables-cs-leg` (optional arrays across file, message and cook walks) | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #381 — card schema-luau-table-wire-save (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `internal/codegen/cpptable/codecs.go:588` `test/tables/main.cpp:6814` `TestReportRowsDecodeThroughTheEngine` | ✅ `TestCTableWireDefaultRecovery` `tables-c-wire-fuzz` | ❌ #392 | ✅ `TestDefaultsAndOptionalArrays` `conformance` | ✅ `tables-cs-leg` (optional arrays across file, message and cook walks) | ❌ #392 | ✅ `tables-js-variable-arms` `TestMapsAndUnionArmsOnTheTableWireJavaScript` `TestNestedTypesAndFixedArraysOnTheTableWireJavaScript` (`internal/codegen/jstable/variablearms.go:248`: absent writes nothing and a present `?[..N]T` or `?[N]T` rides at count zero or all-zero elements, `opt_present` and `opt_trio_zero` against the oracle; a foreign element kind returns before presence is set) | ❌ #392 | ❌ #392 | ❌ #381 — card schema-luau-table-wire-save (docs/PORT-LUAU.md, THE CARD MAP) |
 ### M17 — A node larger than a slab takes a span of the address space
 
 **Method.** An arena hands out nodes by bumping inside a fixed-size slab, and a
@@ -660,7 +711,7 @@ reads it back after the nodes allocated behind it and the bytes are gone.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-blob-span-negative-control` | ✅ `internal/codegen/ctable/arena.go:312` `TestCTableWireBlobIdentity` | ❌ #259 | ✅ `TestBlobSpanHoldsAfterLaterAllocations` `tables-go-blob-span-negative-control` | ✅ `tables-cs-leg` (large spans, descending addresses and failed blob allocation) | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #259 | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); a Luau buffer is one allocation at most 1 GiB, so the span has to be designed |
+| ✅ `tables-blob-span-negative-control` | ✅ `internal/codegen/ctable/arena.go:312` `TestCTableWireBlobIdentity` | ❌ #259 | ✅ `TestBlobSpanHoldsAfterLaterAllocations` `tables-go-blob-span-negative-control` | ✅ `tables-cs-leg` (large spans, descending addresses and failed blob allocation) | ❌ #259 | — no arena and no slab: every blob is its own `Uint8Array` or string at exactly its length, so there is no slab for a large blob to outgrow; the property holds by the platform, and `blob_large`'s 66,000-byte `*bytes`, past the reference's 64 KB slab, round-trips the oracle bytes in `TestVariableClassBeyondCardConstructsJavaScript` | ❌ #259 | — the BEAM owns all memory; a blob lives in a managed binary and there is no caller-visible arena or address-space span (docs/SPEC-TABLES.md) | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); a Luau buffer is one allocation at most 1 GiB, so the span has to be designed |
 
 
 ### M18 — A union arm is a field line
@@ -714,7 +765,7 @@ payload's last byte, decodes a body that ends inside its own length.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/arms.go` `tables-wire-fuzz-arm-width-negative-control` `tables-wire-fuzz-arm-terminator-negative-control` | ✅ `tables-c-collections-fuzz` `tables-c-wire-fuzz` | ❌ #392 | ✅ `TestRegionUnionAndBlobValues` `TestUnionPointerArrayReaders` `tables-go-measure-negative-controls` `tables-go-wire-fuzz` | ✅ `tables-cs-leg` `conformance-negative-control-cs` (all field-shaped arms) | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #392 | ❌ #381 — card schema-luau-table-wire-load (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `internal/codegen/cpptable/arms.go` `tables-wire-fuzz-arm-width-negative-control` `tables-wire-fuzz-arm-terminator-negative-control` | ✅ `tables-c-collections-fuzz` `tables-c-wire-fuzz` | ❌ #392 | ✅ `TestRegionUnionAndBlobValues` `TestUnionPointerArrayReaders` `tables-go-measure-negative-controls` `tables-go-wire-fuzz` | ✅ `tables-cs-leg` `conformance-negative-control-cs` (all field-shaped arms) | ❌ #392 | ✅ `tables-js-variable-arms` `TestMapsAndUnionArmsOnTheTableWireJavaScript` `TestNestedTypesAndFixedArraysOnTheTableWireJavaScript` (an arm is the field line's own descriptor under a field header, and reads through the field's array and body readers; its scalar payloads are `internal/codegen/jstable/variablearms.go:391`, the port of the tool's `encodeArm`; every arm kind in the probes, flags, `[N]T` and nested-type arms included, rides byte for byte; still refused by name: an optional arm, a pointer to a union, `wstring(N)` and string/bytes arrays) | ❌ #392 | ❌ #392 | ❌ #381 — card schema-luau-table-wire-load (docs/PORT-LUAU.md, THE CARD MAP) |
 
 C# carries the same field-shaped arm descriptors through file, message, JSON,
 native region and cook walks. `tables-cs-leg` and the three ordinary read
@@ -788,7 +839,7 @@ shared control.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` `tables-maps-cook-check-negative-control`, and the TOOL's wire and text halves and its cook-check clause (`TestTheToolWritesTheReferencesMapBytes`, `TestCookCheckMapSlot`) | ✅ `TestCTableWireMaps` `TestCTableMapWideningCount` `tables-c-collections-fuzz` | ❌ #502 | ✅ `tables-go-containers` `tables-go-containers-negative-controls` `tables-go-wire-fuzz` | ✅ `tables-cs-leg` `tables-cs-wire-fuzz` `tables-cs-builder-fuzz` (stable sorted entries and native holder extents) | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #502 | ❌ #381 — card schema-luau-table-wire-save (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` `tables-maps-cook-check-negative-control`, and the TOOL's wire and text halves and its cook-check clause (`TestTheToolWritesTheReferencesMapBytes`, `TestCookCheckMapSlot`) | ✅ `TestCTableWireMaps` `TestCTableMapWideningCount` `tables-c-collections-fuzz` | ❌ #502 | ✅ `tables-go-containers` `tables-go-containers-negative-controls` `tables-go-wire-fuzz` | ✅ `tables-cs-leg` `tables-cs-wire-fuzz` `tables-cs-builder-fuzz` (stable sorted entries and native holder extents) | ❌ #502 | ❌ #502 (the ascending entry array, `[N]T` map values in `map_cells` and `map_pairs` included, rides byte for byte against the oracle, but no test pins the writer's sort: dropping it from the entry walk leaves every map case green, because a loaded Map is already in key order; and a map is a JavaScript Map, with no sixteen-byte holder and no node extent; still refused by name: a key other than `string(N)` or an integer up to 64 bits, and a map value holding `wstring(N)` or a string/bytes array) | ❌ #502 | ❌ #502 | ❌ #381 — card schema-luau-table-wire-save (docs/PORT-LUAU.md, THE CARD MAP) |
 
 ### M20 — The id-table wire
 
@@ -869,7 +920,7 @@ through `go build -overlay` and each turning the fuzzer red on its own verdict.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ file and message forms: `tables-c-wire-fuzz`, `tables-c-wire-fuzz-negative-control`, `tables-c-message-negative-control` | ❌ #518 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-retain-wire-fuzz` (fixed and variable file/message forms) | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 | ❌ #381 — card schema-luau-table-wire-load (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ file and message forms: `tables-c-wire-fuzz`, `tables-c-wire-fuzz-negative-control`, `tables-c-message-negative-control` | ❌ #518 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-retain-wire-fuzz` (fixed and variable file/message forms) | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #517 | ✅ `cards-js-wire-fuzz` `cards-js-retain-fuzz` `tables-js-variable-class` `tables-js-variable-arms` `tables-js-variable-fixed-class` (the file form, byte for byte against the Go oracle) and `TestMessageFormBatchJavaScript` `TestMessageFormConformanceJavaScript` (the message form) | ❌ #514 | ❌ #515 | ❌ #381 — card schema-luau-table-wire-load (docs/PORT-LUAU.md, THE CARD MAP) |
 
 C# carries the complete id-table file and message surface, native regions,
 mutable builders and retaining reads. Its storage choices and allocator
@@ -927,7 +978,7 @@ read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-float-nan` `tables-float-nan-negative-control`, and the TOOL's two engines (`TestOracleCarriesTheFloatBitPattern`, `TestOracleWidensTheFloatBitPattern`, `TestACookCarriesAFloatBitPattern`) | ✅ `TestCTableWireWidening` `tables-c-wire-fuzz` | ❌ #366 | ✅ `internal/codegen/gotable/wire.go` (`tableWidenFloat`), `TestWireSignalingNaNWideningAndLEBOverflow`; hardware-conversion and tenth-byte-guard overlays both fail the regression | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #381 — card schema-luau-table-wire-load (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `tables-float-nan` `tables-float-nan-negative-control`, and the TOOL's two engines (`TestOracleCarriesTheFloatBitPattern`, `TestOracleWidensTheFloatBitPattern`, `TestACookCarriesAFloatBitPattern`) | ✅ `TestCTableWireWidening` `tables-c-wire-fuzz` | ❌ #366 | ✅ `internal/codegen/gotable/wire.go` (`tableWidenFloat`), `TestWireSignalingNaNWideningAndLEBOverflow`; hardware-conversion and tenth-byte-guard overlays both fail the regression | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ✅ `TestJsFloat32CellsAreBitTransparent` (the block accessor, the form-3 decode and write, and the f32-to-f64 rung; its node half runs under SCHEMA_SLOW=1) | ❌ #366 | ❌ #366 | ❌ #381 — card schema-luau-table-wire-load (docs/PORT-LUAU.md, THE CARD MAP) |
 
 ### M22 — Typed table serialization fast path
 
@@ -945,14 +996,15 @@ read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go` | ✅ `internal/codegen/ctable/wire.go` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go` | ✅ `internal/codegen/cstable/wire.go` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 | ❌ #381 — card schema-luau-fixed-form (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `internal/codegen/cpptable/codecs.go` | ✅ `internal/codegen/ctable/wire.go` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go` | ✅ `internal/codegen/cstable/wire.go` | ❌ #517 | ❌ #516 (every id-table `<T>Save` is the descriptor walk TableVariableSave; only the form-3 `<T>FixedWriteBody` is typed) | ❌ #514 | ❌ #515 | ❌ #381 — card schema-luau-fixed-form (docs/PORT-LUAU.md, THE CARD MAP) |
 
 ### I1 — The independent allocation gate
 
 **Method.** The read path's "allocates nothing" is MEASURED, with an
 instrument the emitter cannot influence: the runtime's own allocation counter
 (Go `AllocsPerRun`, Java `getCurrentThreadAllocatedBytes`, a Rust counting
-global allocator, C's interposed `malloc`), or where the platform has no
+global allocator, C++ and C interposed `operator new`/`malloc`), or where the
+platform has no
 per-thread counter, its garbage collector observed over a steady phase against
 an idle loop of the same shape (JavaScript's sampled heap at a calibrated
 interval, warmed until the rate settles; Dart's scavenge count under
@@ -963,29 +1015,37 @@ gated under AOT, printed under the JIT. A row reported without a ceiling
 cites why.
 
 **Reference.** `test/go-tables/alloc_test.go:1-13` (why a grep proves
-nothing); `test/java-tables/src/Main.java:209-223`;
+nothing); `test/java-tables/src/AllocPaths.java` (settle, floor, rows);
 `test/js-tables/main.mjs:1124-1153` (settle); `test/dart-tables/gcgate.dart`
-and `DART_GC_FLAGS` in the Makefile.
+and `DART_GC_FLAGS` in the Makefile; C++'s counting `operator new` and
+`test_allocation_audit` in `test/tables/main.cpp` (with `tables-cpp-alloc`).
 
-**Proven in.** Go; the managed forms in Java, JavaScript and Dart.
+**Proven in.** Go and C++; the managed forms in Java, JavaScript and Dart.
 
-**Measured effect.** Go: exact 0 on six paths. Java: wire read/save exactly
-0, block row walk and cook read exactly 0, open one handle per file. JavaScript:
+**Measured effect.** Go: exact 0 on six paths. Java (Temurin 21.0.12.1): block row walk
+and cook read 0 per row and per node beyond one 32-byte handle per open; over
+six committed variable wires, loadMeasure through a kept Measure is exact 0
+bytes a call (128 bytes a call for the one-argument handle, 0 per node), save
+through a kept Saver is the output byte[] alone (104 to 3336 bytes a call, 0
+per node), and load is 536 to 46400 bytes a call (the fresh Value tree). JavaScript:
 0.0 bytes per iteration on the KeyedConfig rows, 67 on RootConfig Load (a
 stated ceiling of 512). Dart: 0/0/0/0/0 scavenges under AOT over 20,000 × 8
-records.
+records. C++: 0 allocations over Load, the indexed and iterated reads,
+Measure and Save on the root.
 
 **Negative control.** One planted allocation per record, and LOCALIZATION:
 the row it was planted in goes red and the row beside it stays green
-(Java's `tables-java-alloc-negative-control` required wire-read red and
-wire-save green until it went with the previous-form wire; Go's
-`TestAllocationGateCanGoRed` plants two escapes and must see both).
+(Java's `tables-java-alloc-negative-control` plants one allocation per row in
+the block walk and requires that row red and the cook walk green; Go's
+`TestAllocationGateCanGoRed` plants two escapes and must see both; C++'s
+`test_allocation_audit_can_go_red` requires the counting `operator new` to see
+a planted allocation).
 
 **Targets:** alloc, alloc-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #412 (the cook WRITE is counted under `tables-cook-write`; the read path is a static scan) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ❌ #412 | ❌ #517 | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ❌ #514 | ❌ #515 | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the allocation instrument |
+| ✅ `tables-cpp-alloc` (a counting global `operator new` over Load, the indexed/iterated reads, Measure and Save on the root; #562's `tables-lists` and #615/#679's `tables-retain` hold the list and retain paths, and the cook WRITE is under `tables-cook-write`) | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #518 | ✅ `TestLoadAllocatesNothing` `TestRoundTripAllocatesNothing` `TestAllocationGateCanGoRed` | ✅ `tables-cs-alloc` | ✅ `tables-java-allocator` `tables-java-alloc-negative-control` (`test/java-tables/src/AllocPaths.java`: block walk and cook read 0 per row and per node beyond one handle; variable loadMeasure exact 0 per call and per node through a kept Measure, save the output byte[] alone with 0 per node through a kept Saver, and load at its measured Value-tree floor under #517) | ✅ `tables-js-alloc` `tables-js-alloc-negative-control` | ✅ `tables-dart-alloc` `tables-dart-alloc-negative-control` | ✅ `tables-elixir-alloc-audit` `tables-elixir-alloc-negative-control` — a PINNED BUDGET per case, not a zero floor (a decoded BEAM term is an allocation): 23 `instance` cases of the variable wire, one iteration a wire load, save, text read and text write, averaged over 200; the ceiling is the pinned heap words + 64 + 1/10000 (per process, `:erlang.trace/3` on `:garbage_collection`) and the pinned refc binary calls + 8 (VM-wide `binary_alloc`), over `test/conformance/elixir/alloc-budget.txt`; the control's sixteen refc binaries and thousand-cell list per load red both columns of every case | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the allocation instrument |
 
 ### I2 — Emitter sabotage through `go build -overlay`
 
@@ -1043,7 +1103,7 @@ walk finding (or under ASan as a `heap-buffer-overflow` in C).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-c-fuzz` `tables-c-fuzz-negative-control` | ❌ #413 (the oracle and both-bounds sabotage exist in `tables-rust-fuzz`; nothing runs it) | ✅ `tables-go-fuzz` `tables-go-fuzz-extent-negative-control` | ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-java-fuzz` `tables-java-fuzz-negative-control` | ✅ `tables-js-fuzz` `tables-js-fuzz-negative-control` | ❌ #413 (the oracle runs; the control removes one bound) | ✅ `tables-elixir-fuzz` `tables-elixir-fuzz-negative-control` | ❌ #381 — card schema-luau-fuzz-differential (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-c-fuzz` `tables-c-fuzz-negative-control` | ❌ #413 (the oracle and both-bounds sabotage exist in `tables-rust-fuzz`; nothing runs it) | ✅ `tables-go-fuzz` `tables-go-fuzz-extent-negative-control` | ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-java-fuzz` `tables-java-fuzz-negative-control` | ✅ `tables-js-fuzz` `tables-js-fuzz-negative-control` | ✅ `tables-dart-fuzz` `tables-dart-fuzz-negative-control` | ✅ `tables-elixir-fuzz` `tables-elixir-fuzz-negative-control` | ❌ #381 — card schema-luau-fuzz-differential (docs/PORT-LUAU.md, THE CARD MAP) |
 
 ### I4 — Per-case absent
 
@@ -1080,13 +1140,16 @@ name — a base-alignment check that is never exercised is dead code as far as
 any gate is concerned, and unaligned reads succeed on every host this repo
 builds on, so the fuzz oracle alone cannot see the check go missing. The cook's
 lead is held for every port by the harness's `cook_lead_1..63` forgery rows;
-the block's is not (#387), so a port holds it itself.
+the block's is held by `block_base_unaligned` (#387), one image one byte past an
+aligned base, so the reference holds the check and a port still holds it itself.
 
-**Reference.** `test/conformance/elixir/driver_impl.ex:740-741`
+**Reference.** `testdata/conformance/tables/MANIFEST.txt`
+(`block_base_unaligned`); `test/conformance/cpp/main.cpp` (the pointer column
+of the block forgery battery); `test/conformance/elixir/driver_impl.ex:740-741`
 (`BlockLead.run/1`: every image × every lead); the enumerated pass in the
 reference fuzzer at `test/tables/block_fuzz_main.cpp:940`.
 
-**Proven in.** Elixir (#369).
+**Proven in.** Elixir (#369), JavaScript (`test/conformance/js/main.mjs` `block-lead`); the reference row in every leg (#387).
 
 **Measured effect.** 2 block images × 65 leads — 0 and 64 open, 1..63 refuse.
 
@@ -1094,11 +1157,11 @@ reference fuzzer at `test/tables/block_fuzz_main.cpp:940`.
 the residue check to `lead < 0` in the emitter and requires "block_render at
 lead 1 answered open, wanted refuse".
 
-**Targets:** block-lead
+**Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-block-fuzz` (the enumerated 1..63 pass, `test/tables/block_fuzz_main.cpp:939`) | ✅ `tables-c-fuzz` (the enumerated 1..63 pass, `test/c-tables/fuzz_main.c:165`) | ❌ #387 (enumerated in the unreached `tables-rust-fuzz`) | ✅ `tables-go-fuzz` (the enumerated 1..63 pass, `test/go-tables/fuzz_test.go:205`) | ✅ `tables-block-fuzz` (`test/cs-block/src/Fuzz.cs:749-753`) | ❌ #387 (every `open` in the leg passes offset 0) | ❌ #387 (the block battery's pointer column is 0) | ❌ #387 (same) | ✅ `tables-elixir-block-lead` `tables-elixir-block-lead-negative-control` | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the block lead gate |
+| ✅ `block_base_unaligned` (`testdata/conformance/tables/MANIFEST.txt`) and `tables-block-fuzz` (the enumerated 1..63 pass, `test/tables/block_fuzz_main.cpp:939`) | ✅ `block_base_unaligned` and `tables-c-fuzz` (the enumerated 1..63 pass, `test/c-tables/fuzz_main.c:165`) | ✅ `block_base_unaligned` (`test/conformance/rust/src/main.rs`) | ✅ `block_base_unaligned` and `tables-go-fuzz` (the enumerated 1..63 pass, `test/go-tables/fuzz_test.go:205`) | ✅ `block_base_unaligned` (`test/conformance/cs/src/Program.cs`) and `tables-block-fuzz` (`test/cs-block/src/Fuzz.cs:749-753`) | ✅ `block_base_unaligned` (`test/conformance/java/src/Driver.java`, `openBlock` takes the lead) and `tables-java-block-lead` `tables-java-block-lead-negative-control` | ✅ `block_base_unaligned` (`test/conformance/js/main.mjs`, `openBlock` takes the lead) and `tables-js-block-lead` `tables-js-block-lead-negative-control` | ✅ `block_base_unaligned` (`test/conformance/dart/main.dart`) and `tables-dart-fuzz` (the enumerated 1..63 pass, `test/dart-tables/fuzz.dart`) `tables-dart-fuzz-lead-negative-control` | ✅ `tables-elixir-block-lead` `tables-elixir-block-lead-negative-control` | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the block lead gate |
 
 ### I6 — Claimed names, both ways, with a control
 
@@ -1129,7 +1192,7 @@ the claim loop emptied.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #414 (the scan, no control) | ❌ #414 (the scan, no control) | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ❌ #414 (the scan, no control) | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` | ❌ #381 — card schema-luau-refusals-by-name (docs/PORT-LUAU.md, THE CARD MAP) |
+| ❌ #414 (the positive scan; the control already exists — `TestCppRuntimeNameScanGoesRed`, `compiler/tablescpp_test.go:62`) | ✅ `TestCTableRuntimeNameScanGoesRed` | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ✅ `TestCsRuntimeNameScanGoesRed` | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` | ❌ #381 — card schema-luau-refusals-by-name (docs/PORT-LUAU.md, THE CARD MAP) |
 
 ### I7 — Cross-endian refusal as a named gate
 
@@ -1159,7 +1222,7 @@ both foreign rows red with `cook` and `block` green.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-big-endian` | ✅ `tables-c-big-endian` `conformance-negative-control-c-foreign` | ✅ `tables-rust-big-endian` (a `cargo check` for s390x; skips cleanly without the target) | ✅ `conformance-big-endian` (the Go driver under qemu-s390x) | ✅ `tables-cook-open-cs` (the refuse half; the native big-endian half is stated unproven until a big-endian .NET exists) | ✅ `tables-java-order` | ✅ `tables-js-leg` | ❌ #415 (reads `Endian.little`; the order word is untested and no sentence says why) | — the host's order is never consulted and no platform query exists for a gate to catch; the two foreign surfaces hold it (docs/SPEC-TABLES.md) | ❌ #381 — card schema-luau-table-wire-load (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `tables-big-endian-tables` `tables-big-endian-collections` | ✅ `tables-c-big-endian` `conformance-negative-control-c-foreign` | ✅ `tables-rust-big-endian` (a `cargo check` for s390x; skips cleanly without the target) | ✅ `conformance-big-endian` (the Go driver under qemu-s390x) | ✅ `tables-cook-open-cs` (the refuse half; the native big-endian half is stated unproven until a big-endian .NET exists) | ✅ `tables-java-order` | ✅ `tables-js-leg` | ✅ `tables-dart-order` `tables-dart-order-negative-control` (Dart's typed data is read at an explicit endianness everywhere (blockruntime.go:34), so the order word is the whole of the byte-order check) | — the host's order is never consulted and no platform query exists for a gate to catch; the two foreign surfaces hold it (docs/SPEC-TABLES.md) | ❌ #381 — card schema-luau-table-wire-load (docs/PORT-LUAU.md, THE CARD MAP) |
 
 ### I8 — A bench row is labeled a pairing check
 
@@ -1190,12 +1253,21 @@ allocates and frees the same bytes every iteration: it reads +0 forever. The
 soak gates on the allocation COUNT re-measured every sample (or the rate
 before and after in the same process, or the live-heap and binary-memory
 FLOORS, which a carrier cannot move), with drift kept beside it as the weaker
-instrument that sees retention. Two seconds ride `make test`; the hour is the
-release act.
+instrument that sees retention. **The soak's length is a PASS COUNT, never a
+clock** (`TABLES_<LANG>_SOAK_ITERATIONS`): the count is what the gate reads
+across, a count runs the same loop on every machine, and `make shape-gate`
+refuses a timing primitive outside the sanctioned bench. A short count rides
+`make test`; the default count, about an hour, is the release act.
 
-**Reference.** `test/c-tables/soak_main.c:262-334` (allocator calls counted
-over the measured loop); `test/go-tables/soak_test.go:216-264` (`Mallocs`
-with site classification); `test/js-tables/main.mjs:1457` (the rate before and after).
+**Reference.** `test/c-tables/soak_main.c:263-309` (allocator calls counted
+over the measured loop); `test/tables/soak_main.cpp` (the counting global
+`operator new`, and the C allocator's entry points on glibc, read at every
+sample); `test/go-tables/soak_test.go:187-260` (`Mallocs`
+with site classification); `test/cs-tables/src/SoakChecks.cs` (`GC.GetAllocatedBytesForCurrentThread`
+re-sampled over the measured loop); `test/js-tables/main.mjs` carried the rate before
+and after until #760 removed its soak with the previous-form wire;
+`test/java-tables/src/Soak.java` (the per-iteration allocation count,
+re-measured every sample, with heap drift beside it).
 
 **Proven in.** C.
 
@@ -1203,14 +1275,17 @@ with site classification); `test/js-tables/main.mjs:1457` (the rate before and a
 the Rust one is what made the audit's count exact.
 
 **Negative control.** A matched `malloc`/`free` pair per iteration
-(`tables-c-soak-negative-control`): the drift gate stays silent and the count
+(`tables-c-soak-negative-control`), a matched `new`/`delete` pair in
+C++ (`tables-cpp-soak-negative-control`, a `-DSCHEMA_SOAK_PLANT_PAIR` build),
+or a short-lived managed allocation per sample in C#
+(`tables-cs-soak-negative-control`): the drift gate stays silent and the count
 goes red.
 
 **Targets:** soak
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #416 | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ❌ #416 (`tables-rust-soak` gates on the count; nothing runs it) | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ❌ #416 | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the soak |
+| ✅ `tables-cpp-soak` `tables-cpp-soak-negative-control` | ✅ `tables-c-soak` `tables-c-soak-negative-control` | ✅ `tables-rust-soak` `tables-rust-soak-negative-control` | ✅ `TestSoak` `TestSoakIdentifierCanGoRed` | ✅ `tables-cs-soak` `tables-cs-soak-negative-control` | ✅ `tables-java-soak` (524288 passes from `test-java`, 2^27 — about an hour — the release act, a count and never a clock, over the blob, list and pointer corpora) `tables-java-soak-negative-control` | ❌ #516 (the soak went with the previous-form wire in #760: `test/js-tables/main.mjs` has no soak mode and no target runs one) | ✅ `tables-dart-soak` `tables-dart-soak-negative-control` | ❌ #515 | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the soak |
 
 ### I10 — The zero-cost gate
 
@@ -1257,7 +1332,7 @@ table of controls.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #417 (`conformance-negative-control` sabotages a copy of the driver) | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 | ❌ #381 — card schema-luau-conformance-leg (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `conformance-negative-control-cpp` | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ✅ `conformance-negative-control-java-walk` | ✅ `conformance-negative-control-js-walk` | ❌ #514 | ❌ #515 | ❌ #381 — card schema-luau-conformance-leg (docs/PORT-LUAU.md, THE CARD MAP) |
 
 ### I12 — The documented surface compiles and runs
 
@@ -1280,7 +1355,7 @@ found a module name the packet emitter refuses — the drift a gate catches.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ❌ #418 | ❌ #418 | ❌ #514 | ❌ #418 | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the documented surface |
+| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ✅ `tables-java-usage` | ✅ `tables-js-usage` | ❌ #514 | ✅ `tables-elixir-usage` | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the documented surface |
 
 ### I13 — The text differential against a third implementation
 
@@ -1304,7 +1379,7 @@ a float32 at `-266744.625` rendering as an eight-digit tie.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #419 | ❌ #516 | ❌ #419 | ❌ #419 | ❌ #381 — card schema-luau-json-text-form (docs/PORT-LUAU.md, THE CARD MAP) |
+| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ✅ `tables-cs-json-differential` `tables-cs-json-differential-negative-control` `TestCsTextDifferential` (`internal/codegen/cstable/textdifferential_test.go`; its first run found float64 written at fifteen digits, fixed in `internal/codegen/cstable/json.go`) | ✅ `tables-java-json-differential` (`TestTextDifferentialJava`, `TestTextDifferentialJavaNegativeControl`) | ✅ `tables-js-text-differential` | ✅ `tables-dart-text-differential`, control `tables-dart-text-differential-negative-control` (variable and fixed roots; first run: 6 of 200 on the Go seed, ties `toStringAsFixed` broke away from even) | ✅ `tables-elixir-json-differential`, `tables-elixir-json-differential-negative-control` (`TestTextDifferentialElixir`) | ❌ #381 — card schema-luau-json-text-form (docs/PORT-LUAU.md, THE CARD MAP) |
 
 ### I14 — The allocation gate refuses to certify off the pinned runtime
 
@@ -1327,12 +1402,15 @@ one V8 major and steady at sixteen bytes a call on another.
 **Negative control.** Running the gate on another major must refuse. Go uses
 `tables-go-allocator-runtime-negative-control`; `SCHEMA_GO_ALLOC_ANY_GO=1`
 prints observations without certification. The default requires Go 1.26.0.
+Java uses `tables-java-allocator-runtime-negative-control` (the pin overridden
+to 17: it must refuse naming both majors and print no row);
+`SCHEMA_JAVA_ALLOC_ANY_JDK=1` prints NOT CERTIFIED. The default requires JDK 21.
 
 **Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ❌ #420 | ❌ #420 (pinned JDK; the gate SKIPS rather than refuses without the counter) | ✅ `test/js-tables/main.mjs:1412` | ❌ #420 (pinned SDK; nothing refuses off it) | ❌ #420 (pinned OTP; the audit does not read it) | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the allocation instrument it guards |
+| — a native codec's allocations are in its source; the counting allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the interposed allocator sees the same calls under any compiler | — a native codec's allocations are in its source; the counting global allocator sees the same calls under any toolchain | ✅ `tables-go-allocator` `tables-go-allocator-runtime-negative-control` (Go 1.26.0) | ✅ `tables-cs-alloc` `tables-cs-alloc-runtime-negative-control` (.NET 10, `.github/dotnet-version`; `SCHEMA_CS_ALLOC_ANY_RUNTIME=1` observes, never certifies) | ✅ `tables-java-allocator` `tables-java-allocator-runtime-negative-control` (JDK 21; refuses before measuring off the pin and with no counter; `SCHEMA_JAVA_ALLOC_ANY_JDK=1` prints NOT CERTIFIED) | ✅ `test/js-tables/main.mjs:903` | ✅ `tables-dart-alloc` `tables-dart-alloc-runtime-negative-control` (Dart 3.13.2) | ✅ `tables-elixir-alloc-audit` `tables-elixir-alloc-runtime-negative-control` (OTP 29.0.5 with Elixir 1.20.4: the audit's first act is `test/elixir/runtime_pin.exs`, so on any other runtime it prints FAILED and measures nothing; SCHEMA_ELIXIR_ANY_OTP=1 prints the 23 cases' figures under NOT CERTIFIED, and the pin target refuses to write a budget under it) | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the allocation instrument it guards |
 
 ### I15 — The tolerant wire's differential fuzzer with an independent oracle
 
@@ -1379,7 +1457,7 @@ offset is seen without a pinned dump that happens to cover the field.
 **Reference.** `test/js-tables/main.mjs` (the leg's two-way read);
 `tables-js-accessor-negative-control` and `tables-js-slot-negative-control`.
 
-**Proven in.** JavaScript.
+**Proven in.** JavaScript and Dart.
 
 **Measured effect.** Structural.
 
@@ -1387,11 +1465,28 @@ offset is seen without a pinned dump that happens to cover the field.
 `internal/codegen/jstable/record.go`, and a pointer slot's offset moved eight,
 each through `go build -overlay`; each must turn the leg red.
 
+**Dart.** `test/dart-tables/agree.dart` (`tables-dart-agree`, reached from
+`test-dart`) reads every row of `block_render.bin` and `block_padded.bin`, every
+node of the five `build/cook-fuzz` images (each reference also resolved from the
+descriptor's own slot offset), and every record type either descriptor graph
+reaches over seeded noise, through the generated accessor and through the
+descriptor's offset, kind, width and signedness, and prints the counts it read.
+`tables-dart-accessor-negative-control` moves `RenderCamera.camera_id` four bytes
+in `darttable/block.go` and `tables-dart-slot-negative-control` moves
+`TreeNode.left`'s descriptor offset eight in `darttable/cook.go`, each through
+`go build -overlay`; each must turn the gate red on that field and on nothing
+else. Its first run found two real disagreements, both in `block.go`'s one
+scalar emitter: a `flags` field is a `uint64` slot in every target
+(`ir/blocklayout.go`) and the accessor read one byte of it (`RenderShip.flags`),
+and a pointer slot is an eight-byte delta that the row getter also reads one
+byte of, which the gate pins as the low byte of the delta until the getter is
+settled.
+
 **Targets:** accessor-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #421 | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ❌ #421 | ❌ #421 | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); accessor and descriptor agreement |
+| ✅ `tables-accessor-descriptor-agreement` `tables-accessor-negative-control` `tables-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ✅ `tables-cs-accessor-descriptor-agreement` `tables-cs-accessor-negative-control` `tables-cs-slot-negative-control` | ✅ `tables-java-accessor-agreement` `tables-java-accessor-negative-control` `tables-java-slot-negative-control` | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ✅ `tables-dart-agree` `tables-dart-accessor-negative-control` `tables-dart-slot-negative-control` | ✅ `tables-elixir-accessor-descriptor-agreement` `tables-elixir-accessor-negative-control` `tables-elixir-slot-negative-control` (plain scalar block-record fields and pointer cook slots (make/elixir.mk:279)) | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); accessor and descriptor agreement |
 
 ### J2 — The runtime home, with a file-order control
 
@@ -1405,7 +1500,7 @@ puts the file-order rule back and requires them to move (#347).
 **Reference.** `tables-runtime-home` and `tables-runtime-home-negative-control`
 in the Makefile; `tables-js-runtime-home` and its control.
 
-**Proven in.** C#.
+**Proven in.** C#; the Dart leg.
 
 **Measured effect.** Adding a file that sorted earlier relocated ~2,000
 lines of correct output into a diff nobody could read (#347).
@@ -1416,7 +1511,7 @@ lines of correct output into a diff nobody could read (#347).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ❌ #422 | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ❌ #422 | ❌ #422 | ❌ #381 — card schema-luau-conformance-leg (docs/PORT-LUAU.md, THE CARD MAP); the runtime is emitted once beside the modules, with no file-order control yet |
+| ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ✅ `tables-java-runtime-home` `tables-java-runtime-home-negative-control` | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ✅ `tables-dart-runtime-home` `tables-dart-runtime-home-negative-control` | ❌ #422 | ❌ #381 — card schema-luau-conformance-leg (docs/PORT-LUAU.md, THE CARD MAP); the runtime is emitted once beside the modules, with no file-order control yet |
 
 ### J3 — The release tier
 
@@ -1442,19 +1537,26 @@ so and passes.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #423 | ❌ #423 | ❌ #423 | ✅ `tables-go-release` | ❌ #423 | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the release tier |
+| ❌ #423 | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the release tier |
 
 ### J4 — Emitted text is analyzer-clean and format-canonical
 
 **Method.** Every generated table unit is held to what the language's
 analyzer or linter accepts and what its formatter writes, as a gate — so an
 emitter that drifts from the language's own conventions goes red on the
-diff rather than on a reviewer.
+diff rather than on a reviewer. Each leg runs its own authority over the
+generated table tree: `clang-format` for C++ and C, `gofmt` and `go vet` for
+Go, `dotnet format` for C#, `google-java-format` for Java, `eslint` for
+JavaScript, `dart format` and the analyzer for Dart, `cargo clippy` for Rust,
+and `mix format` for Elixir.
+The Java leg's formatter pin, style, lint flags and gates are on
+[docs/JAVA-DIALECT.md](JAVA-DIALECT.md).
 
 **Reference.** `tables-dart-clean` (analyzer and `dart format
 --set-exit-if-changed`); `tables-rust-clippy`.
 
-**Proven in.** Dart.
+**Proven in.** Dart; carried to every other leg by the targets in the row
+below.
 
 **Measured effect.** Structural.
 
@@ -1464,7 +1566,7 @@ diff rather than on a reviewer.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #424 | ❌ #424 | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ❌ #424 | ❌ #424 | ❌ #424 | ✅ `tables-dart-clean` | ❌ #424 (the packet units are format-checked; the table units are not) | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); analyzer-clean is held by `luau-analyze` in TestLuauTypesConstructAtTheirDefaults and TestLuauTableDescriptorsLoad; no formatter is pinned |
+| ❌ #424 | ✅ `tables-c-clean` (`clang-format`) | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ✅ `tables-cs-clean` (`dotnet format` and the SDK analyzers over the table units, required by `test-cs`; 152,044 WHITESPACE findings in 295 units fixed in the emitters, #547; `tables-cs-clean-negative-control`; the packet units are held by `packet-clean-cs`) | ✅ `tables-java-clean` (google-java-format 1.37.0 `--aosp`, every table and packet file, at least 585, required by `test-java`); `tables-java-compile-all` (`--release 17 -Xlint:all -Werror`, all 25 units, from `tables-java-release`); its two negative controls are on [JAVA-DIALECT.md](JAVA-DIALECT.md) | ✅ `tables-js-clean` (`eslint`, over the table and packet units) | ✅ `tables-dart-clean` | ✅ `tables-elixir-clean` (`mix format`) | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); analyzer-clean is held by `luau-analyze` in TestLuauTypesConstructAtTheirDefaults and TestLuauTableDescriptorsLoad; no formatter is pinned |
 
 ### J5 — The bench leg's golden gate runs before the clock
 
@@ -1475,7 +1577,8 @@ reproduce the corpus refuses to time it rather than posting a number.
 **Reference.** `tables-go-bench-gate` in the Makefile. Elixir proved the
 technique in and lost the leg with its table wire (#515).
 
-**Proven in.** Elixir, before its wire was cut; Go.
+**Proven in.** C++, C, C# and Go; Elixir proved the technique in before it lost
+the leg with its table wire (#515).
 
 **Measured effect.** Structural.
 
@@ -1485,4 +1588,39 @@ technique in and lost the leg with its table wire (#515).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #425 | ❌ #425 | — no table-wire bench | ✅ `tables-go-bench-gate` | ❌ #425 | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the tables bench leg |
+| ❌ #425 | ✅ `tables-c-bench-gate` | — no table-wire bench | ✅ `tables-go-bench-gate` | ✅ `tables-cs-bench-gate` | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the tables bench leg |
+
+### J6 — The card conformance check
+
+**Method.** Every language leg that carries `tables/cards` drives the
+43-case shared corpus in `tables/cards/conformance/MANIFEST.txt` (`./build/conformance-harness cards`
+in `test/conformance/harness/cards.go`, with `SCHEMA_CARDS_SURFACES` and
+`SCHEMA_REQUIRE_CARDS_CORPUS=1`) across all nine surfaces (`load` 4/4,
+`save` 4/4, `render` 4/4, `parse` 2/2, `bounds` 12/12, `upgrade` 5/5,
+`edit` 8/8, `taskhash` 3/3, `view` 1/1), comparing every byte and refusal
+verdict against the Go reference answers (`tla/CardVersioning.tla`,
+`tla/CardHops.tla`). `make cards-conformance-all` runs the Go leg and all
+eight non-Go legs with all nine surfaces required.
+
+**Reference.** `test/conformance/harness/cards.go`, `tables/cards/cmd/cards-driver/main.go`,
+and `make cards-conformance-all` in `make/go.mk`.
+
+**Proven in.** Go, C, C++, C#, Rust, Java, JavaScript, Dart, Elixir.
+
+**Measured effect.** Structural: every leg's card codec, facade bounds, brief
+parser/renderer, `v1` to `v2` upgrader, field editors, task hash, and
+descriptor view agree byte for byte on the 43-case corpus.
+
+**Negative control.** `cards-conformance-negative-control`,
+`cards-c-conformance-negative-control`, `cards-cpp-conformance-negative-control`,
+`cards-cs-conformance-negative-control`, `cards-rust-conformance-negative-control`,
+`cards-java-conformance-negative-control`, `cards-js-conformance-negative-control`,
+`cards-dart-conformance-negative-control`, `cards-elixir-conformance-negative-control`.
+
+**Targets:** none
+
+| cpp | c | rust | go | cs | java | js | dart | elixir | luau |
+|---|---|---|---|---|---|---|---|---|---|
+| ✅ `cards-cpp-conformance` (`tables/cards/cpp/driver.cpp`) | ✅ `cards-c-conformance` (`tables/cards/c/driver.c`) | ✅ `cards-rust-conformance` (`tables/cards/rust/src/bin/cards-driver.rs`) | ✅ `cards-conformance-go` (`tables/cards/cmd/cards-driver/main.go`) | ✅ `cards-cs-conformance` (`tables/cards/cs/Driver/Program.cs`) | ✅ `cards-java-conformance` (`tables/cards/java/src/cards/Driver.java`) | ✅ `cards-js-conformance` (`tables/cards/js/driver.mjs`) | ✅ `cards-dart-conformance` (`tables/cards/dart/bin/driver.dart`) | ✅ `cards-elixir-conformance` (`tables/cards/elixir/driver.exs`) | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); `tables/cards` has no Luau driver |
+
+

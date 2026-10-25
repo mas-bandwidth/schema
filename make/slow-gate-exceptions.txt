@@ -41,6 +41,8 @@ tables-dart-names-negative-control	./compiler	TestDartTableRuntimeNamesAreClaime
 fuzz-tables-go	./internal/fuzz	FuzzTableFrontEnd reaches no slowtest.Gate, and `-run '^$'` selects no test (measured at this head: plain `go test -count=1 -timeout 600s -v -run '^$' ./internal/fuzz` -> 0 gate skips, no tests to run)
 schema-go-generated-golangci-lint-gate-probe	./...	the line is `cd $(1) && go test -race ./...` inside the GENERATED module directories, not the schema module; `./...` there is the generated package, which has no tests and no slowtest.Gate (measured at this head: plain `go test -race -count=1 -timeout 600s -v ./...` in build/schema-go-generated-golangci-lint-gate/example and .../ludicrous -> 0 gate skips, `[no test files]`)
 
+# --- sprint/schema-shared (2026-10-19): this stream's own check, measured at head
+# (cards-test and tables-java-cards-refusal-bites are excused once, below).
+schema-engine-is-the-oracle	./internal/ci	the schema-engine-is-the-oracle check runs TestSchemaEngineIsTheOracle*, which reaches no slowtest.Gate (measured 2026-10-19: 0 gate skips, 3 top-level PASS under a plain go test); it verifies the Go engine is an independent oracle and shares no gated path
 
 cards-test	./internal/ci	the card gate runs the fast half of internal/ci; its one gated test, TestSerializeFetchTriesTheMirrorFirst, runs make and git (a functional test) and is run with SCHEMA_SLOW=1 by the ci-full.yml go-test lane (measured 2026-10-14: 1 gate skip, nothing else skipped)
-tables-java-cards-refusal-bites	./internal/codegen/javatable	a negative control that runs one named test, TestOtherVariableConstructsAreRefusedByName, which reaches no slowtest.Gate (measured 2026-10-14: 0 gate skips, PASS 0.00s under a plain go test); it must go red under the overlay

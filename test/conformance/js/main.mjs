@@ -3,9 +3,11 @@
 // The twin of test/conformance/cpp/main.cpp and test/conformance/cs's Program,
 // and it is deliberately the same shape: one process per surface, every
 // expectation in the data, nothing literal here. It answers every surface this
-// backend has — the block form's open and its row dump, the cook's node dump,
-// both forgery batteries, the message form, and the variable form's wire,
-// report and text surfaces for the roots its variable wire carries.
+// backend has — the block form's open and its row dump, the cook's node dump
+// and its writer (§7.6), both forgery batteries and the reason beside each
+// refusal (§6.5), the message form, and the
+// variable form's wire, report and text surfaces for the roots its variable
+// wire carries.
 //
 //   node main.mjs <manifest> list
 //   node main.mjs <manifest> <surface> <outdir>
@@ -21,7 +23,7 @@
 // bytes into a fresh ArrayBuffer, and its residue modulo the form's alignment
 // is exactly the residue the C++ and C# legs place by hand.
 
-import { readFileSync, writeFileSync, readSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, readSync, writeSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -34,16 +36,12 @@ import { pathToFileURL } from "node:url";
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const load = (path) => import(pathToFileURL(resolve(generated, path)).href);
 
-// The WIRE-FUZZ arm (docs/SPEC-TABLES.md §4.2) answers before the surface
-// modules load: it needs only the cards unit, never the block or cook trees.
-if (process.argv[2] === "wire-fuzz") {
-  await wireFuzz();
-  process.exit(0);
+let renderBlock, paddedBlock, graphCook;
+if (process.argv[2] !== "wire-fuzz") {
+  renderBlock = await load("block/RenderBlock.js");
+  paddedBlock = await load("block/PaddedBlock.js");
+  graphCook = await load("pointers/GraphCook.js");
 }
-
-const renderBlock = await load("block/RenderBlock.js");
-const paddedBlock = await load("block/PaddedBlock.js");
-const graphCook = await load("pointers/GraphCook.js");
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -80,7 +78,7 @@ function place(source, claim, lead) {
   return bytes;
 }
 
-const blocks = {
+const blocks = process.argv[2] === "wire-fuzz" ? {} : {
   block_render: renderBlock.RenderFrameBlock,
   block_padded: paddedBlock.PaddedFrameBlock,
 };
@@ -112,24 +110,77 @@ function opens(open, bytes) {
   }
 }
 
-function openBlock(name, source, extent) {
+function openBlock(name, source, extent, lead) {
   // A CLAIM SHORTER THAN THE IMAGE IS A TRUNCATION: `place` copies what fits
-  // and zeroes the rest, so the buffer is the claim in that direction too.
+  // and zeroes the rest, so the buffer is the claim in that direction too. And
+  // `lead` is the POINTER column: 0 an aligned base, 1..63 that many bytes past
+  // one, because an unaligned base is a pointer fact and not a file fact.
   const claim = extent < 0 ? source.length : extent;
   const block = blockNamed(name);
-  return opens((b) => block.Open(b), place(source, claim, 0)) ? "open\n" : "refuse\n";
+  return opens((b) => block.Open(b), place(source, claim, lead)) ? "open\n" : "refuse\n";
 }
 
 function surfaceBlock(lines, outDir) {
   for (const f of kind(lines, "block")) {
-    writeFileSync(join(outDir, f[1]), openBlock(f[1], new Uint8Array(readFileSync(f[3])), -1));
+    writeFileSync(join(outDir, f[1]), openBlock(f[1], new Uint8Array(readFileSync(f[3])), -1, 0));
   }
+}
+
+// ---- THE BASE-ALIGNMENT GATE (docs/SPEC-TABLES.md §19.1, docs/PORTING.md I5)
+//
+// Every committed block image at every lead 0..64, through the generated Open:
+// 0 and 64 open, 1..63 refuse. NOT a listed surface (the harness would run a
+// listed name as one); `<driver> <manifest> block-lead`, the way Elixir's is.
+// A REFUSAL HERE IS ONE THING: the RangeError whose message names the
+// multiple-of-64 rule. A null (bytes that are not this build's), an open
+// handle at a nonzero residue, or any other throw is a failure of the gate,
+// because a base-alignment check that is never required to fire is dead code
+// to every gate and an unaligned read succeeds on the hosts this builds on.
+function blockLead(lines) {
+  const align = 64;
+  let missed = 0;
+  let images = 0;
+  let totalOpened = 0;
+  let totalRefused = 0;
+  for (const f of kind(lines, "block")) {
+    const source = new Uint8Array(readFileSync(f[3]));
+    const block = blockNamed(f[1]);
+    images++;
+    let opened = 0;
+    let refused = 0;
+    for (let lead = 0; lead <= align; lead++) {
+      const bytes = place(source, source.length, lead);
+      let verdict;
+      try {
+        const handle = block.Open(bytes);
+        verdict = handle === null ? "null" : "open";
+      } catch (e) {
+        verdict = (e instanceof RangeError && /multiple of 64/.test(e.message)) ? "refuse" : "other throw: " + e;
+      }
+      const want = lead % align === 0 ? "open" : "refuse";
+      if (verdict === want) {
+        if (want === "open") { opened++; } else { refused++; }
+      } else {
+        missed++;
+        process.stderr.write(f[1] + " lead " + lead + " " + (verdict === "open" ? "opened" : verdict) +
+          ", wanted " + want + "\n");
+      }
+    }
+    process.stdout.write(f[1] + ": " + (align + 1) + " leads, " + opened + " opened (0 and 64), " +
+      refused + " refused (1..63)\n");
+    totalOpened += opened;
+    totalRefused += refused;
+  }
+  if (images === 0) { fail("block-lead: the manifest names no block image"); }
+  if (missed > 0) { fail("block-lead: " + missed + " lead(s) missed the rule"); }
+  process.stdout.write(images + " images x " + (align + 1) + " leads: " + totalOpened + " opened (0 and 64), " +
+    totalRefused + " refused (1..63)\n");
 }
 
 function surfaceForgery(lines, outDir) {
   for (const f of kind(lines, "forgery")) {
     if (f[2] !== "block") { continue; } // the cook's battery is its own
-    writeFileSync(join(outDir, f[1]), openBlock(f[3], new Uint8Array(readFileSync(f[4])), Number(f[5])));
+    writeFileSync(join(outDir, f[1]), openBlock(f[3], new Uint8Array(readFileSync(f[4])), Number(f[5]), f[6] === "null" ? 0 : Number(f[6])));
   }
 }
 
@@ -152,7 +203,7 @@ function foreign(source) {
 
 function surfaceBlockForeign(lines, outDir) {
   for (const f of kind(lines, "block")) {
-    writeFileSync(join(outDir, f[1]), openBlock(f[1], foreign(new Uint8Array(readFileSync(f[3]))), -1));
+    writeFileSync(join(outDir, f[1]), openBlock(f[1], foreign(new Uint8Array(readFileSync(f[3]))), -1, 0));
   }
 }
 
@@ -288,7 +339,7 @@ function surfaceBlockDump(lines, outDir) {
 // inside one, and the walk descends through it to reach the pointer slots
 // inside.
 
-const cooks = {
+const cooks = process.argv[2] === "wire-fuzz" ? {} : {
   Scene: graphCook.SceneCook,
   Depot: graphCook.DepotCook,
   Album: graphCook.AlbumCook,
@@ -457,6 +508,30 @@ function surfaceCookForgery(lines, outDir) {
   }
 }
 
+// ---- THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §6.5, §7, §19.2) ----
+//
+// cook-reason and block-reason (test/conformance/README.md): each forgery of
+// the kind, placed exactly as its line asks — the claim, the lead, or no buffer
+// at all — and the generated OpenReason's answer, the TableRefuseReason value
+// name of the FIRST failing clause or `ok`. The harness compares the rows the
+// manifest's `refusal` lines name. The reason is the generated reader's own:
+// this driver places bytes and prints what it is told, and judges nothing.
+function forgedPlacement(f) {
+  const source = new Uint8Array(readFileSync(f[4]));
+  const extent = Number(f[5]);
+  const claim = extent < 0 ? source.length : extent;
+  if (f[6] === "null") { return null; }
+  return place(source, claim, Number(f[6]));
+}
+
+function surfaceReason(kindName, lines, outDir) {
+  for (const f of kind(lines, "forgery")) {
+    if (f[2] !== kindName) { continue; }
+    const reader = kindName === "cook" ? cookNamed(f[3]) : blockNamed(f[3]);
+    writeFileSync(join(outDir, f[1]), reader.OpenReason(forgedPlacement(f)) + "\n");
+  }
+}
+
 // ---- the MESSAGE surface (docs/SPEC-TABLES.md §3.3) ----------------------
 //
 // `message` is the one surface that reads TWO files (test/conformance/
@@ -553,28 +628,206 @@ async function surfaceMessage(lines, outDir) {
 // ---- the WIRE-CARRYING surfaces (docs/SPEC-TABLES.md §3, §3.1, §4, §16, §16.7)
 //
 // The variable form, form byte 1, over the roots this leg's variable wire
-// carries: the pointer corpus's Scene (graphdemo) and the byte-buffer corpus's
-// Catalog (blobdemo), each through its unit's <Package>Variable.js. Every other
+// carries: the pointer corpus's Scene (graphdemo), the byte-buffer corpus's
+// Catalog (blobdemo), every root of the map corpus (mapdemo: Cells and Pairs
+// hold fixed-length arrays [N]T as map values, Text a wstring(N)), the scalar
+// corpus's SimState (scalars, tblscalars2: fixed/ufixed and 128-bit kinds),
+// the wide-text corpus's Caption and Stamp (widedemo) and the message corpus's
+// ToolMessage (messagedemo), each through its unit's
+// <Package>Variable.js. Every other
 // case is answered `<case>.absent` beside where the answer would go — a root
 // whose unit this leg does not generate (tables/lists, which the compiler
 // refuses for js whole because of its array of unions), or one its variable
 // wire does not carry (a union, a map, an optional, an enum-keyed array) —
 // which the matrix counts as the row of work that is left, never as a pass.
 const wireRows = [
+  ["tabledemo", "RootConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "ProfileConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "LoadoutConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "WideBlob", "examples/TabledemoVariable.js"],
+  ["tabledemo", "ArchiveConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "KeyedConfig", "examples/TabledemoVariable.js"],
+  ["tblv1", "Cfg", "v1/Tblv1Variable.js"],
+  ["tblv2", "Cfg", "v2/Tblv2Variable.js"],
+  ["tblw1", "Fleet", "w1/Tblw1Variable.js"],
+  ["tblw2", "Fleet", "w2/Tblw2Variable.js"],
+  ["tblr1", "Cfg", "r1/Tblr1Variable.js"],
+  ["tblr2", "Cfg", "r2/Tblr2Variable.js"],
+  ["tblp1", "Chain", "p1/Tblp1Variable.js"],
+  ["tblp3", "Chain", "p3/Tblp3Variable.js"],
   ["graphdemo", "Scene", "pointers/GraphdemoVariable.js"],
   ["blobdemo", "Catalog", "blobs/BlobdemoVariable.js"],
+  // a map whose value is a fixed-length array [N]T (§2.8, §3)
+  ["mapdemo", "Cells", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Pairs", "maps/MapdemoVariable.js"],
+  // a map whose value is a wstring(N), kind 33 (§2.8, §3)
+  ["mapdemo", "Text", "maps/MapdemoVariable.js"],
+  // the rest of the map corpus (§2.8): string(N) and integer keys, values of
+  // every carried field line, maps of maps and of pointers
+  ["mapdemo", "Chunks", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Crews", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Depth", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Docs", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Fleet", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Runs", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Slots", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Spans", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Trails", "maps/MapdemoVariable.js"],
+  // fixed(W, F) / ufixed(W, F) and int128 / uint128 as the raw integer at the
+  // declared width (§3, §15), and the evolved type reading them (§4)
+  ["scalars", "SimState", "scalars/ScalardemoVariable.js"],
+  ["tblscalars2", "SimState", "scalars2/Scalardemo2Variable.js"],
+  // wstring(N) as a field, in a type, in an array of that type and as an arm
+  // (§3; SPEC.md §4.12)
+  ["widedemo", "Caption", "wide/WideVariable.js"],
+  ["widedemo", "Stamp", "wide/WideVariable.js"],
+  // the message corpus's root on the variable wire: union arms of every
+  // carried field type, wide text among them (§2.6, §3)
+  ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
 ];
+
+// fuzzUnits binds the roster units no wire row or text surface names
+// (tbla2, tblk1, tblk2, tblp2): the wire-fuzz arm alone reads it, so the text
+// and wire-read arms, which need ToJson and FromJson, stay as they are. tblg1
+// is not bound: G1 declares an optional over a variable closure, which this
+// target refuses until its turn (docs/SPEC-TABLES.md §2.3), so its roots
+// answer absent and make/js.mk's pinned absent count names them.
+const fuzzUnits = {
+  tbla2: "a2/Tbla2Variable.js",
+  tblk1: "k1/Tblk1Variable.js", tblk2: "k2/Tblk2Variable.js",
+  tblp2: "p2/Tblp2Variable.js",
+};
+
+// retainUnits binds the units the manifest's retain rows name
+// (docs/SPEC-TABLES.md §6.6): the RT reader and the two newer builds it is retained
+// across. The table retains the root's LoadRetain, MeasureRetain and
+// SaveRetain, which are absent on a unit this leg names no module for.
+const retainUnits = {
+  tblrt1: "rt1/Tblrt1Variable.js",
+  tblrt2: "rt2/Tblrt2Variable.js",
+  tblrt3: "rt3/Tblrt3Variable.js",
+};
+
+// retainCodec binds one retain row's unit and root: the retaining pair beside
+// the ordinary Measure, which the row measures before it loads. A unit this leg
+// names no module for answers null, and the surface writes its `<case>.absent`.
+async function retainCodec(unit, root) {
+  const path = retainUnits[unit];
+  if (path === undefined || !existsSync(resolve(generated, path))) { return null; }
+  const m = await load(path);
+  for (const f of ["LoadMeasure", "LoadRetain", "MeasureRetain", "SaveRetain"]) {
+    if (typeof m[root + f] !== "function") { return null; }
+  }
+  return {
+    m,
+    loadMeasure: m[root + "LoadMeasure"],
+    loadRetain: m[root + "LoadRetain"],
+    measureRetain: m[root + "MeasureRetain"],
+    saveRetain: m[root + "SaveRetain"],
+  };
+}
+
+function retainAbsent(outDir, name, reason) {
+  writeFileSync(join(outDir, name + ".absent"), reason + "\n");
+}
+
+// wireFuzzCodec binds one root the harness's default roster names
+// (testdata/conformance/tables/MANIFEST.txt, docs/SPEC-TABLES.md §4.2) to this
+// leg's variable wire, the twin of the Go leg's findCodec
+// (test/conformance/go/wire_fuzz.go): the unit's module is the wire row's, or
+// else the unit's <Package>Variable.js (textUnits below), and the root is bound
+// when that module exports its Load, LoadMeasure and Save. A unit this leg names
+// no module for answers known=0, which the harness counts as absent, and
+// tables-js-wire-fuzz-all pins that absent count (make/js.mk). A unit it DOES
+// name is a root it claims to open, so a missing module, or one without the
+// root's Load, LoadMeasure or Save, fails by name as codecOf does, rather than
+// dropping the root to absent where nothing would say so (§4.2: a roster root
+// the leg cannot open is a named failure, never a quiet skip).
+async function wireFuzzCodec(unit, root) {
+  const row = wireRows.find((r) => r[0] === unit && r[1] === root);
+  // cards is bound here alone: it is no conformance-manifest unit, so it
+  // stays out of wireRows and textUnits, which the run surfaces read.
+  const path = row !== undefined ? row[2] : unit === "cards" ? "cards/CardsVariable.js" : textUnits[unit] ?? fuzzUnits[unit];
+  if (path === undefined) { return null; }
+  if (!existsSync(resolve(generated, path))) {
+    fail(unit + "." + root + ": the wire-fuzz module is missing: " + resolve(generated, path));
+  }
+  const m = await load(path);
+  for (const f of ["Load", "LoadMeasure", "Save"]) {
+    if (typeof m[root + f] !== "function") {
+      fail(unit + "." + root + ": the variable wire surface " + root + f + " is missing from " + path);
+    }
+  }
+  return {
+    load: m[root + "Load"], loadMeasure: m[root + "LoadMeasure"], save: m[root + "Save"],
+    loadRetain: m[root + "LoadRetain"], saveRetain: m[root + "SaveRetain"],
+    report: () => new m.TableVariableReport(),
+    retainStore: () => new m.TableVariableRetain(new Uint8Array(1 << 20), new Array((1 << 20) / 8)),
+  };
+}
 
 async function wireCodec(unit, root) {
   const row = wireRows.find((r) => r[0] === unit && r[1] === root);
   if (row === undefined) { return null; }
-  const m = await load(row[2]);
+  return codecOf(unit, root, row[2]);
+}
+
+async function codecOf(unit, root, path) {
+  const m = await load(path);
   const codec = {
     load: m[root + "Load"], save: m[root + "Save"], toJson: m[root + "ToJson"], fromJson: m[root + "FromJson"],
+    measureReason: m[root + "MeasureReason"],
     report: () => new m.TableVariableReport(),
   };
-  if (Object.values(codec).some((f) => typeof f !== "function")) { fail(unit + "." + root + ": the variable surface is missing from " + row[2]); }
+  if (Object.values(codec).some((f) => typeof f !== "function")) { fail(unit + "." + root + ": the variable surface is missing from " + path); }
   return codec;
+}
+
+// ---- THE TEXT FORM FOR EVERY TABLE (docs/SPEC-TABLES.md §16, §16.7)
+//
+// json-read, json-write and json-hostile answer EVERY instance whose unit this
+// leg generates, not only the wire rows above: the unit's <Package>Variable.js
+// is found by package, and a root it carries is one it exports a
+// ToJson/FromJson pair for. A root the unit's module does not carry (refused
+// by name at generation, §11) and a unit this leg does not generate at all
+// answer `<case>.absent`, which the matrix counts as the row of work that is
+// left, never as a pass.
+const textUnits = {
+  tabledemo: "examples/TabledemoVariable.js",
+  graphdemo: "pointers/GraphdemoVariable.js",
+  blobdemo: "blobs/BlobdemoVariable.js",
+  mapdemo: "maps/MapdemoVariable.js",
+  blockdemo: "block/BlockdemoVariable.js",
+  blockhome: "blockhome/BlockhomeVariable.js",
+  messagedemo: "messages/MessagedemoVariable.js",
+  streamdemo: "stream/StreamdemoVariable.js",
+  scalars: "scalars/ScalardemoVariable.js",
+  backenddemo: "backend/BackenddemoVariable.js",
+  vocabdemo: "vocab/VocabdemoVariable.js",
+  vocab9demo: "vocab9/Vocab9demoVariable.js",
+  tblv1: "v1/Tblv1Variable.js", tblv2: "v2/Tblv2Variable.js",
+  tblw1: "w1/Tblw1Variable.js", tblw2: "w2/Tblw2Variable.js",
+  tblr1: "r1/Tblr1Variable.js", tblr2: "r2/Tblr2Variable.js",
+  tblp1: "p1/Tblp1Variable.js", tblp3: "p3/Tblp3Variable.js",
+  tblm1: "m1/Tblm1Variable.js", tblm2: "m2/Tblm2Variable.js",
+  widedemo: "wide/WideVariable.js",
+  listdemo: "lists/ListdemoVariable.js",
+};
+
+async function textCodec(unit, root) {
+  const path = textUnits[unit];
+  if (path === undefined || !existsSync(resolve(generated, path))) { return null; }
+  const m = await load(path);
+  if (typeof m[root + "ToJson"] !== "function") { return null; }
+  return codecOf(unit, root, path);
+}
+
+// The WIRE-FUZZ arm (docs/SPEC-TABLES.md §4.2) answers here, after wireRows
+// and textUnits, so wireFuzzCodec can bind every root of the harness's default
+// roster; it needs none of the block or cook modules, which it skips above.
+if (process.argv[2] === "wire-fuzz") {
+  await wireFuzz();
+  process.exit(0);
 }
 
 function wireAbsent(outDir, name) {
@@ -590,7 +843,16 @@ async function surfaceWire(lines, outDir) {
     const v = codec.load(new Uint8Array(readFileSync(f[4])), codec.report());
     if (v === null) { fail(f[1] + ": load refused " + f[4]); }
     const saved = codec.save(v);
-    if (saved === null) { fail(f[1] + ": save refused the value"); }
+    if (saved === null) {
+      // THE NAMED WRITER REFUSAL (docs/SPEC-TABLES.md §2.5): a blob two slots
+      // name is refused by every writer, and the leg answers it by its own
+      // reason, as the Go driver answers from its encode's error. The harness
+      // holds the reason to the manifest's; any other refusal is a red here.
+      const reason = codec.measureReason(v)[1];
+      if (reason !== "blob_shared") { fail(f[1] + ": save refused the value (" + reason + ")"); }
+      writeFileSync(join(outDir, f[1] + ".absent"), reason);
+      continue;
+    }
     writeFileSync(join(outDir, f[1]), saved);
   }
 }
@@ -610,7 +872,7 @@ async function surfaceReport(lines, outDir) {
 async function surfaceJsonRead(lines, outDir) {
   for (const f of kind(lines, "instance")) {
     if (noText(f)) { continue; }
-    const codec = await wireCodec(f[2], f[3]);
+    const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
     const r = codec.report();
     const v = codec.fromJson(readFileSync(join("testdata/conformance/tables/json", f[1] + ".json"), "utf8"), r);
@@ -624,13 +886,170 @@ async function surfaceJsonRead(lines, outDir) {
 async function surfaceJsonWrite(lines, outDir) {
   for (const f of kind(lines, "instance")) {
     if (noText(f)) { continue; }
-    const codec = await wireCodec(f[2], f[3]);
+    const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1] + ".json"); continue; }
     const v = codec.load(new Uint8Array(readFileSync(f[4])), codec.report());
     if (v === null) { fail(f[1] + ": load refused " + f[4]); }
     const text = codec.toJson(v);
     if (text === null) { fail(f[1] + ": ToJson refused the value"); }
     writeFileSync(join(outDir, f[1] + ".json"), text);
+  }
+}
+
+// json-hostile: one tree per rule the text form states (docs/SPEC-TABLES.md
+// §16.2, §16.3, §17.5), the text at <tree>/<root>.json as `schema pack` reads
+// it. The answer is the REPORT the read produces, or `refused`.
+async function surfaceJsonHostile(lines, outDir) {
+  for (const f of kind(lines, "json-hostile")) {
+    const codec = await textCodec(f[2], f[3]);
+    if (codec === null) { wireAbsent(outDir, f[1]); continue; }
+    const r = codec.report();
+    const v = codec.fromJson(readFileSync(join(f[4], f[3] + ".json"), "utf8"), r);
+    const verdict = v === null || v === undefined || r.malformed || r.refused
+      ? "refused"
+      : [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, false, "read"].join(",");
+    writeFileSync(join(outDir, f[1]), verdict + "\n");
+  }
+}
+
+// ---- the COOK WRITE surface (docs/SPEC-TABLES.md §7.6, §19.1)
+//
+// Measure, refuse a short buffer without writing, then cook both byte orders.
+// Every cook-write row in the manifest loads through its unit's
+// <Package>Variable.js and writes through its CookMeasure / CookFrom verbs.
+const cookWriteRows = [
+  ["tabledemo", "RootConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "ProfileConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "LoadoutConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "WideBlob", "examples/TabledemoVariable.js"],
+  ["tabledemo", "ArchiveConfig", "examples/TabledemoVariable.js"],
+  ["tabledemo", "KeyedConfig", "examples/TabledemoVariable.js"],
+  ["tblv1", "Cfg", "v1/Tblv1Variable.js"],
+  ["tblv2", "Cfg", "v2/Tblv2Variable.js"],
+  ["tblp1", "Chain", "p1/Tblp1Variable.js"],
+  ["tblp3", "Chain", "p3/Tblp3Variable.js"],
+  ["graphdemo", "Scene", "pointers/GraphdemoVariable.js"],
+  ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
+  ["tblm1", "Msg", "m1/Tblm1Variable.js"],
+  ["tblm2", "Msg", "m2/Tblm2Variable.js"],
+  ["streamdemo", "Feed", "stream/StreamdemoVariable.js"],
+  ["blobdemo", "Catalog", "blobs/BlobdemoVariable.js"],
+  ["scalars", "SimState", "scalars/ScalardemoVariable.js"],
+];
+
+function cookWriteAbsent(outDir, name) {
+  writeFileSync(join(outDir, name + ".absent"),
+    "not answered on this leg (docs/SPEC-TABLES.md §7.6)\n");
+}
+
+async function surfaceCookWrite(lines, outDir) {
+  const instances = kind(lines, "instance");
+  for (const f of kind(lines, "cook-write")) {
+    const inst = instances.find((c) => c[1] === f[1]);
+    if (inst === undefined) { fail("cook-write " + f[1] + " names no instance"); }
+    const row = cookWriteRows.find((r) => r[0] === inst[2] && r[1] === inst[3]);
+    if (row === undefined) {
+      cookWriteAbsent(outDir, f[1]);
+      cookWriteAbsent(outDir, f[1] + "-be");
+      continue;
+    }
+    let m;
+    try {
+      m = await load(row[2]);
+    } catch (e) {
+      fail(f[1] + ": " + row[2] + " did not load: " + e);
+    }
+    const loadValue = m[inst[3] + "Load"];
+    const measure = m[inst[3] + "CookMeasure"];
+    const from = m[inst[3] + "CookFrom"];
+    if (typeof loadValue !== "function" || typeof measure !== "function" || typeof from !== "function") {
+      fail(f[1] + ": cook write surface missing from " + row[2]);
+    }
+    const value = loadValue(new Uint8Array(readFileSync(inst[4])), new m.TableVariableReport());
+    if (value === null) { fail(f[1] + ": cook input did not load"); }
+    const size = measure(value);
+    if (typeof size !== "number" || size < 1) { fail(f[1] + ": cook measure refused"); }
+    for (const order of [1, 2]) {
+      const name = order === 2 ? f[1] + "-be" : f[1];
+      const backing = new Uint8Array(size);
+      backing.fill(0xa5);
+      const short = backing.subarray(0, size - 1);
+      if (from(value, short, order) !== false || backing.some((b) => b !== 0xa5)) {
+        fail(name + ": short capacity wrote bytes");
+      }
+      const buffer = new Uint8Array(size);
+      if (from(value, buffer, order) !== true) { fail(name + ": cook write refused"); }
+      writeFileSync(join(outDir, name), buffer);
+    }
+  }
+}
+
+// ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) -----------------------------
+//
+// THE TWO RETAIN SURFACES ARE ONE ROUND TRIP AND TWO SHAPES
+// (test/conformance/README.md): `retain` prints the two load counters beside
+// the `unknown` retention never moves and the save's own `retain_lost`;
+// `retain-save` writes the bytes the pair saved. A row's capacity is a RULE:
+// `short` is ONE BYTE SHORT OF THE LAST RECORD, so the driver loads once at a
+// roomy capacity, reads what its own buffer used, and loads again one byte
+// under that. The id list's capacity is a COUNT and travels as one.
+async function surfaceRetain(lines, outDir, saves) {
+  const capacityBytes = 1 << 20;
+  const fullIds = 1 << 17;
+  for (const f of lines) {
+    if (f[0] !== "retain" && f[0] !== "retain-message") { continue; }
+    if (f[0] === "retain-message") {
+      // A retain-message row's root is a plain `table` (RT1's Node), which
+      // carries no message verbs: a form-2 SaveRetain refuses by name (§3.3),
+      // so the row is absent here and the reason names the clause.
+      retainAbsent(outDir, f[1], "plain table: docs/SPEC-TABLES.md §3.3");
+      continue;
+    }
+    // retain <case> <unit> <root> <wire> <capacity> <ids>
+    const codec = await retainCodec(f[2], f[3]);
+    if (codec === null) {
+      retainAbsent(outDir, f[1], "retention is not carried for " + f[2] + ": docs/SPEC-TABLES.md §6.6");
+      continue;
+    }
+    const wire = new Uint8Array(readFileSync(f[4]));
+    if (codec.loadMeasure(wire) < 0) { fail(f[1] + ": load measure refused " + f[4]); }
+    let ids = fullIds;
+    if (f[6] !== "full") { ids = Number(f[6]); }
+    let capacity = capacityBytes;
+    const newStore = (bytes, idCount) => new codec.m.TableVariableRetain(new Uint8Array(bytes), new Array(idCount));
+    let store = newStore(capacity, ids);
+    let report = new codec.m.TableVariableReport();
+    if (f[5] === "short") {
+      // ONE BYTE SHORT OF THE LAST RECORD this port wrote: the record's own
+      // byte cost is the port's, so the probe measures it and the row travels
+      // as the rule rather than as a number.
+      if (codec.loadRetain(wire, store, report) === null) { fail(f[1] + ": capacity probe refused"); }
+      capacity = Math.max(0, store.used - 1);
+      store = newStore(capacity, ids);
+      report = new codec.m.TableVariableReport();
+    }
+    const root = codec.loadRetain(wire, store, report);
+    if (root === null || report.malformed) { fail(f[1] + ": retained load refused " + JSON.stringify(report)); }
+    const retained = report.retained, lost = report.retainLost, unknown = report.unknown;
+    const size = codec.measureRetain(root, store);
+    if (size < 0) { fail(f[1] + ": retaining measure refused"); }
+    const out = codec.saveRetain(root, store, report);
+    if (out === null) { fail(f[1] + ": retaining save refused " + JSON.stringify(report)); }
+    const saveLost = report.retainLost - lost;
+    // THE SAVE IS REPEATABLE: a second walk with a fresh report writes the same
+    // bytes and answers the same save-side loss, exactly as the reference's pair
+    // is held to (test/conformance/go/retain.go).
+    const second = new codec.m.TableVariableReport();
+    const again = codec.saveRetain(root, store, second);
+    if (again === null || again.length !== out.length || second.retainLost !== saveLost ||
+        again.some((b, i) => b !== out[i])) {
+      fail(f[1] + ": save is not repeatable");
+    }
+    if (!saves) {
+      writeFileSync(join(outDir, f[1]), retained + "," + lost + "," + unknown + " " + saveLost + "\n");
+    } else {
+      writeFileSync(join(outDir, f[1]), out);
+    }
   }
 }
 
@@ -644,16 +1063,6 @@ const args = process.argv.slice(2);
 // region measure and the saved bytes. The protocol is the twin of the Go and C
 // legs (test/conformance/go/wire_fuzz.go, test/c-tables/wire_fuzz_main.c).
 async function wireFuzz() {
-  const cards = await load("cards/CardsVariable.js");
-  const CardLoad = cards.CardLoad;
-  const CardLoadMeasure = cards.CardLoadMeasure;
-  const CardSave = cards.CardSave;
-  const CardLoadRetain = cards.CardLoadRetain;
-  const CardSaveRetain = cards.CardSaveRetain;
-  const TableVariableReport = cards.TableVariableReport;
-  const TableVariableRetain = cards.TableVariableRetain;
-  const retainBytes = 1 << 20;
-
   const readExact = (n) => {
     const buf = Buffer.alloc(n);
     let off = 0;
@@ -679,14 +1088,19 @@ async function wireFuzz() {
     const root = rLen === null ? "" : readExact(rLen).toString("utf8");
     const form = readU8();
     const retain = readU8();
-    if (unit === "cards" && root === "Card" && form === 1) {
-      roster[i] = { CardLoad, CardLoadMeasure, CardSave, CardLoadRetain, CardSaveRetain, TableVariableReport, TableVariableRetain, retain: retain === 1 };
-      known[i] = 1;
-    } else {
-      known[i] = 0;
+    known[i] = 0;
+    if (form === 1) {
+      // A --retain roster binds only a root whose retaining pair exists, as
+      // the Go leg's findRetentionCodec does; it never falls back to Load.
+      const codec = await wireFuzzCodec(unit, root);
+      const retaining = codec !== null && typeof codec.loadRetain === "function" && typeof codec.saveRetain === "function";
+      if (codec !== null && (retain !== 1 || retaining)) {
+        roster[i] = { ...codec, retain: retain === 1 };
+        known[i] = 1;
+      }
     }
   }
-  process.stdout.write(known);
+  writeSync(1, known);
 
   for (;;) {
     const head = readExact(8);
@@ -699,23 +1113,23 @@ async function wireFuzz() {
     const codec = roster[index];
 
     let loaded = false, measure = -1, saved = null;
-    const report = { unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0, retained: 0, retainLost: 0 };
+    const report = { reason: "", unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0, retained: 0, retainLost: 0 };
     if (codec !== null) {
-      measure = codec.CardLoadMeasure(wire);
+      measure = codec.loadMeasure(wire);
       if (measure >= 0) {
-        const rep = new codec.TableVariableReport();
+        const rep = codec.report();
         let card = null;
         if (codec.retain) {
-          const retainStore = new codec.TableVariableRetain(new Uint8Array(retainBytes), new Array(retainBytes / 8));
-          card = codec.CardLoadRetain(wire, retainStore, rep);
+          const retainStore = codec.retainStore();
+          card = codec.loadRetain(wire, retainStore, rep);
           loaded = card !== null;
           if (loaded) {
-            saved = codec.CardSaveRetain(card, retainStore, rep);
+            saved = codec.saveRetain(card, retainStore, rep);
           }
         } else {
-          card = codec.CardLoad(wire, rep);
+          card = codec.load(wire, rep);
           loaded = card !== null;
-          if (loaded) { saved = codec.CardSave(card); }
+          if (loaded) { saved = codec.save(card); }
         }
         report.unknown = rep.unknown;
         report.kindMismatch = rep.kindMismatch;
@@ -726,9 +1140,17 @@ async function wireFuzz() {
         report.refused = rep.refused;
         report.retained = rep.retained;
         report.retainLost = rep.retainLost;
+        report.reason = rep.reason;
       }
     }
 
+    // EVERY REPLY IS FLUSHED BEFORE THE NEXT MUTANT IS READ
+    // (test/conformance/README.md). The next read below blocks in readSync,
+    // which never yields to the event loop, so an asynchronous
+    // process.stdout.write could sit unflushed while this leg waits for the
+    // next mutant — and the harness bounds in-flight mutants, so the two would
+    // deadlock. Write synchronously so each reply is on the pipe before the
+    // next blocking read.
     const header = Buffer.alloc(47);
     header[0] = loaded ? 1 : 0;
     header.writeInt32LE(report.unknown | 0, 1);
@@ -743,11 +1165,11 @@ async function wireFuzz() {
     header.writeInt32LE(report.retainLost | 0, 35);
     if (saved === null) {
       header.writeBigInt64LE(-1n, 39);
-      process.stdout.write(header);
+      writeSync(1, header);
     } else {
       header.writeBigInt64LE(BigInt(saved.length), 39);
-      process.stdout.write(header);
-      process.stdout.write(Buffer.from(saved));
+      writeSync(1, header);
+      writeSync(1, Buffer.from(saved));
     }
   }
   process.exit(0);
@@ -766,8 +1188,13 @@ if (surface === "list") {
   // one. `message` answers a row at a time too — form 2 is this backend's
   // (§3.3). A row a surface cannot reach is `<case>.absent`, which the matrix
   // counts rather than reading as a feature the leg lacks. The retain surfaces
-  // are absent whole: retention beyond the card constructs is its own row.
-  process.stdout.write("wire\nreport\njson-read\njson-write\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nmessage\n");
+  // answer every row whose unit this leg generates, and name the reason beside
+  // a row it cannot reach.
+  process.stdout.write("wire\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
+  process.exit(0);
+}
+if (surface === "block-lead") {
+  blockLead(lines);
   process.exit(0);
 }
 if (args.length < 3) {
@@ -778,15 +1205,21 @@ const outDir = args[2];
 switch (surface) {
   case "wire": await surfaceWire(lines, outDir); break;
   case "report": await surfaceReport(lines, outDir); break;
+  case "retain": await surfaceRetain(lines, outDir, false); break;
+  case "retain-save": await surfaceRetain(lines, outDir, true); break;
   case "json-read": await surfaceJsonRead(lines, outDir); break;
   case "json-write": await surfaceJsonWrite(lines, outDir); break;
+  case "json-hostile": await surfaceJsonHostile(lines, outDir); break;
   case "message": await surfaceMessage(lines, outDir); break;
   case "cook": surfaceCook(lines, outDir); break;
+  case "cook-write": await surfaceCookWrite(lines, outDir); break;
   case "cook-foreign": surfaceCookForeign(lines, outDir); break;
   case "block": surfaceBlock(lines, outDir); break;
   case "block-foreign": surfaceBlockForeign(lines, outDir); break;
   case "block-dump": surfaceBlockDump(lines, outDir); break;
   case "forgery": surfaceForgery(lines, outDir); break;
   case "cook-forgery": surfaceCookForgery(lines, outDir); break;
+  case "cook-reason": surfaceReason("cook", lines, outDir); break;
+  case "block-reason": surfaceReason("block", lines, outDir); break;
   default: process.exit(2);
 }
