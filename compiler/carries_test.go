@@ -10,14 +10,18 @@ import (
 // nonGoCarriers lists the constructs the non-Go targets carry: C, C#, C++ and
 // Dart carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3);
 // C++ also carries the timestamp kind (§2.11), the JSON array root (§16.10),
-// the one-sided integer range (§4.3) and ?map[K]V (§2.8); the tagged Squirrel
-// target carries the constructs its compiler/target_squirrel_*.go files
-// register; every other target carries none at this stage.
+// the one-sided integer range (§4.3) and ?map[K]V (§2.8); Luau carries every
+// construct but integrity (§2.14); the tagged Squirrel target carries the
+// constructs its compiler/target_squirrel_*.go files register; every other
+// target carries none at this stage.
 var nonGoCarriers = map[string][]string{
-	"c":        {carryOptionalVariableClosure},
-	"cs":       {carryOptionalVariableClosure},
-	"cpp":      {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
-	"dart":     {carryOptionalVariableClosure},
+	"c":    {carryOptionalVariableClosure},
+	"cs":   {carryOptionalVariableClosure},
+	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
+	"dart": {carryOptionalVariableClosure},
+	// luau is registered under -tags schema_leg_luau (carries_luau.go)
+	"luau": {carryTimestamp, carryRequired, carryForms, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
+	// squirrel is registered under -tags schema_leg_squirrel (carries_squirrel.go)
 	"squirrel": {carryTimestamp, carryTextList, carryArrayRoot, carryOptionalVariableClosure, carryRequired, carryOptionalMap, carryForms, carryIntegrity, carryOneSidedRange, carryUnboundedText}, // docs/SPEC-TABLES.md §2.3, §2.8, §2.11, §2.12, §2.13, §2.13.1, §2.14, §4.3, §16.2, §16.10
 }
 

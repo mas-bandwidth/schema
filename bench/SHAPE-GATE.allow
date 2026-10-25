@@ -197,3 +197,6 @@ paths test/bench/fixedform_wires.cpp 1 the same file: its path names a benchmark
 # Generated-tree exclusion uses wall-clock deadlines, not schema measurements.
 timing tools/treelock/main.go 2 Bounded lock-owner diagnostic retry; no benchmark or schema-shape timing.
 timing tools/treelock/treelock_test.go 7 Bounded subprocess readiness/release and contention controls; no benchmark measurement.
+
+# The Luau nightly fuzz host times one input against its hang ceiling, not a schema shape.
+timing tools/luaufuzzhost/main.cpp 4 the hang watchdog: one input's wall time against LUAUFUZZ_HANG_SECONDS in the interpreter interrupt; no rate reported and no schema shape measured
