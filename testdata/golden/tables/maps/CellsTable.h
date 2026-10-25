@@ -5809,7 +5809,7 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
         case 1: case 2: case 6: case 20: case 25: // the fixed-width kinds, by width
         case 3: case 7: case 21: case 26:
         case 4: case 8: case 10: case 22: case 27:
-        case 5: case 9: case 11: case 23: case 28:
+        case 5: case 9: case 11: case 23: case 28: case 36:
         case 18: case 19: case 24: case 29:
         {
             int64_t width = 1;
@@ -5817,7 +5817,7 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             {
                 case 3: case 7: case 21: case 26: width = 2; break;
                 case 4: case 8: case 10: case 22: case 27: width = 4; break;
-                case 5: case 9: case 11: case 23: case 28: width = 8; break;
+                case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break; // 36 is the timestamp, the i64's eight bytes (§2.11, §3)
                 case 18: case 19: case 24: case 29: width = 16; break;
                 default: width = 1; break;
             }
@@ -6185,7 +6185,7 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
         case 1: case 2: case 6: case 20: case 25:
         case 3: case 7: case 21: case 26:
         case 4: case 8: case 10: case 22: case 27:
-        case 5: case 9: case 11: case 23: case 28:
+        case 5: case 9: case 11: case 23: case 28: case 36:
         case 18: case 19: case 24: case 29:
         {
             int64_t width = 1;
@@ -6193,7 +6193,7 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             {
                 case 3: case 7: case 21: case 26: width = 2; break;
                 case 4: case 8: case 10: case 22: case 27: width = 4; break;
-                case 5: case 9: case 11: case 23: case 28: width = 8; break;
+                case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break; // 36 is the timestamp, the i64's eight bytes (§2.11, §3)
                 case 18: case 19: case 24: case 29: width = 16; break;
                 default: width = 1; break;
             }
@@ -6478,7 +6478,7 @@ inline int64_t TableMessageRetainWidth( uint8_t kind )
         case 1: case 2: case 6: case 20: case 25: return 1;
         case 3: case 7: case 21: case 26: return 2;
         case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: return 8;
+        case 5: case 9: case 11: case 23: case 28: case 36: return 8; // 36 is the timestamp (§2.11)
         case 18: case 19: case 24: case 29: return 16;
         default: return -1;
     }
