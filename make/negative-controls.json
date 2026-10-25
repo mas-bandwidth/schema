@@ -766,7 +766,9 @@
         "schema-go-generated-golangci-lint-gate-negative-control-ratchet",
         "tables-lua-luacheck-negative-control",
         "luau-nightly-fuzz-negative-control"
-      ]
+      ],
+      "golangci": "2.12.2",
+      "luau": "0.741"
     },
     {
       "name": "dart-nightly",
@@ -774,7 +776,8 @@
       "why": "the Dart nightly fuzzer's planted reader-bound control takes its own scheduled job with the card's pinned Dart 3.13.2 toolchain and 10-minute mutation budget; it never joins the shared nightly group or per-push controls.",
       "targets": [
         "schema-dart-nightly-fuzz-negative-control"
-      ]
+      ],
+      "dart": "3.13.2"
     },
     {
       "name": "go-containers",

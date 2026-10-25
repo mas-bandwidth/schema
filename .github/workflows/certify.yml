@@ -170,6 +170,24 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      # THE Luau, Goose and Lobster PINS (make/luau.mk, make/goose.mk,
+      # make/lobster.mk), installed the way ci-full.yml's go-test does: each
+      # dist-* target refuses an archive whose sha256 is not the pin before it
+      # unpacks it into the dist/ path the leg's default names. The Lobster
+      # release binary links libOpenGL and libGLX, which the hosted ubuntu
+      # image does not carry. All three pins are Linux x86-64 releases and
+      # there is no macOS build of any of them, so the macOS rows name those
+      # three skips ON PURPOSE (the Makefile's SCHEMA_SKIP_LEGS, issue #599):
+      # each leg is certified on the ubuntu row of the same job, and every
+      # other leg still runs on both OSes.
+      - name: install the Luau, Goose and Lobster pins
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          make dist-luau dist-goose dist-lobster
+
       # No SERIALIZE* overrides: the Makefile defaults already point at the
       # sibling layout cloned above. RUSTUP_BIN defaults to a homebrew keg on
       # the author's machine; on CI cargo is on PATH, so point it somewhere
@@ -177,7 +195,7 @@ jobs:
       # repo-local dist/ toolchains; on CI setup-dart, setup-java, setup-node and
       # setup-beam put the pinned versions on PATH.
       - name: make test
-        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
+        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node ${{ runner.os == 'macOS' && 'SCHEMA_SKIP_LEGS=goose,lobster,luau' || '' }}
 
       # The committed generated/ tree is what this repo treats as ground
       # truth — findings are receipted against its line numbers. `make test`
@@ -419,12 +437,30 @@ jobs:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
 
+      # THE Luau, Goose and Lobster PINS (make/luau.mk, make/goose.mk,
+      # make/lobster.mk), installed the way ci-full.yml's go-test does: each
+      # dist-* target refuses an archive whose sha256 is not the pin before it
+      # unpacks it into the dist/ path the leg's default names. The Lobster
+      # release binary links libOpenGL and libGLX, which the hosted ubuntu
+      # image does not carry. All three pins are Linux x86-64 releases and
+      # there is no macOS build of any of them, so the macOS rows name those
+      # three skips ON PURPOSE (the Makefile's SCHEMA_SKIP_LEGS, issue #599):
+      # each leg is certified on the ubuntu row of the same job, and every
+      # other leg still runs on both OSes.
+      - name: install the Luau, Goose and Lobster pins
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          make dist-luau dist-goose dist-lobster
+
       # The same preconditions the gates had when they ran after `make test`
       # in one job: bin/schema, the generated trees, and the bench units all
       # built — cheap enough to repeat per leg rather than invent a narrower
       # target with different semantics.
       - name: make test
-        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
+        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node ${{ runner.os == 'macOS' && 'SCHEMA_SKIP_LEGS=goose,lobster,luau' || '' }}
 
       - name: inline gate — adversarial selftest
         run: bench/tools/inline-gate.sh selftest
@@ -585,6 +621,23 @@ jobs:
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
+
+      # The generated-Go golangci-lint controls probe for the pinned binary
+      # (make/schema-go-generated-golangci-lint-gate.mk GOLANGCI_LINT_VERSION);
+      # a hosted runner has none, so the row that runs them installs exactly
+      # that release, the same action and SHA ci-full.yml's lint job uses.
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        if: matrix.golangci != ''
+        with:
+          version: v${{ matrix.golangci }}
+          install-only: true
+
+      # The Luau pin, as make/luau.mk's dist-luau installs it (sha256 refused
+      # before unpacking, into the dist/ path LUAU defaults to), for the Luau
+      # nightly fuzz control.
+      - name: install the Luau pin
+        if: matrix.luau != ''
+        run: make dist-luau LUAU_VERSION=${{ matrix.luau }}
 
       - name: build bin/schema and the generated tree once
         run: make -j"$(nproc)" bin/schema build/tables-generated/.stamp
