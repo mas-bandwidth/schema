@@ -2515,6 +2515,9 @@ function J.SetFlags(f: any)
 end
 
 local function flag_names(owner: any, fd: any): { string }?
+  -- the descriptor carries a flags field's variant names (luautable.go's
+  -- valueDesc); SetFlags is the override a caller may still hand in
+  if fd ~= nil and fd.flags ~= nil and ProvidedFlags == nil then return fd.flags end
   local g = ProvidedFlags
   if g == nil or owner == nil then return nil end
   return g[owner.name .. "." .. (fd.name or fd.slot or "")]
