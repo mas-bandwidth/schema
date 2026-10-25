@@ -474,7 +474,7 @@ namespace Benchtable
 
     // TableFixedLineagePlan is ONE older entry's plan, laid down once from THE
     // LOCK'S bytes. Unknown and KindMismatch are the COMPILE CENSUS: a writer field
-    // no reader field names is counted ONCE PER PEER and never per record (§5.4),
+    // no reader field names is counted ONCE PER ENDPOINT and never per record (§5.4),
     // and LOAD carries them onto the report after the record loop, on a read that
     // returns (§5.9 #6). Why is the name a load refuses by when the entry itself
     // could not be compiled — a bug in the lock, which at BUILD time fails the
@@ -5768,10 +5768,10 @@ namespace Benchtable
                 }
             }
 
-            // 'census' is whether THIS entry is the FIRST time the peer's field is
+            // 'census' is whether THIS entry is the FIRST time the writer's field is
             // seen. An array compiles its element ONCE PER SLOT, and the unknown count
-            // is ONCE PER FIELD PER PEER (ALG §5.4), so only element 0 censuses.
-            // Without it a peer field dropped from a [4]Item is counted FOUR times and
+            // is ONCE PER FIELD PER ENDPOINT (ALG §5.4), so only element 0 censuses.
+            // Without it a writer's field dropped from a [4]Item is counted FOUR times and
             // the report says 4 where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md
             // §5.8 row 11). rust #1162 and cpp #1163 carry the same flag for the same
             // reason; this leg had no row 11 at all, so nothing here ever said so.
@@ -6203,7 +6203,7 @@ namespace Benchtable
             // layout_malformed and the loop continues; a plan that outgrows the cap
             // sets plan_too_large and the loop continues; no array is indexed out of
             // its own length and no input is trusted for a size. The refusal a bad
-            // entry earns is read at LOAD time, by the one peer that selects it
+            // entry earns is read at LOAD time, by the one endpoint that selects it
             // (§5.9 #8) — which is also why a lock bug here costs exactly the
             // version it broke rather than the type.
             public static TableFixedLineagePlan[] LineagePlans(
@@ -8984,7 +8984,7 @@ namespace Benchtable
                 entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
                 planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
                 // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
-                // the plan this peer selected. It reads no layout and compiles
+                // the plan this endpoint selected. It reads no layout and compiles
                 // nothing, so it is not what §5.8 row 3 retires from the load
                 // path; the PLAN is, and the plan is the build's.
                 int slotN = TableEntityFixedSlots.Length;
@@ -8994,7 +8994,7 @@ namespace Benchtable
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, TableEntityFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
+                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindMismatch;
@@ -9516,7 +9516,7 @@ namespace Benchtable
                 entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
                 planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
                 // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
-                // the plan this peer selected. It reads no layout and compiles
+                // the plan this endpoint selected. It reads no layout and compiles
                 // nothing, so it is not what §5.8 row 3 retires from the load
                 // path; the PLAN is, and the plan is the build's.
                 int slotN = TableStatFixedSlots.Length;
@@ -9526,7 +9526,7 @@ namespace Benchtable
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, TableStatFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
+                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindMismatch;
@@ -11509,7 +11509,7 @@ namespace Benchtable
                 entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
                 planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
                 // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
-                // the plan this peer selected. It reads no layout and compiles
+                // the plan this endpoint selected. It reads no layout and compiles
                 // nothing, so it is not what §5.8 row 3 retires from the load
                 // path; the PLAN is, and the plan is the build's.
                 int slotN = TableMixedFixedSlots.Length;
@@ -11519,7 +11519,7 @@ namespace Benchtable
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, TableMixedFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
+                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindMismatch;

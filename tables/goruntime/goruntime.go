@@ -2167,4 +2167,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xe8122cedd2bc1d3d
+const Version uint64 = 0xae0fbcf6e7f68685

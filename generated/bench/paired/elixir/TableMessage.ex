@@ -8,7 +8,7 @@ defmodule Bench.TableMessage do
   @moduledoc """
   The MESSAGE FORM's announcement (docs/SPEC-TABLES.md §3.3), form byte 2.
 
-  A message is a bitpacked body under a vocabulary the peer announces once,
+  A message is a bitpacked body under a vocabulary the endpoint announces once,
   before the first body and never again. The announcement is an ordinary
   form-`1` FILE whose body carries the unit's BUILD VERSION and the unit's
   whole VOCABULARY, and whose trailer is those two reserved ids. It is a
@@ -17,7 +17,7 @@ defmodule Bench.TableMessage do
 
   `announce_read/2` resolves the vocabulary ONCE into the caller's
   `TableMessage` struct — the `TableVocabulary` of §3.3's surface — keeping
-  the peer's build version. A second announcement is `:second_announcement`,
+  the endpoint's build version. A second announcement is `:second_announcement`,
   a vocabulary past either bound is `:vocabulary_too_large`, and the two
   strict checks — the build version present exactly once at kind 9 eight
   bytes wide, the vocabulary present exactly once at kind 14 element kind 6

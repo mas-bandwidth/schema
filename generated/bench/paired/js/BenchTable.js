@@ -60,7 +60,7 @@ export const TableFixedEntryBytes = 17;
 // the layout's own framing: the u32 entry count, and nothing else
 export const TableFixedLayoutHeaderBytes = 4;
 
-// §3.4'S RECORD BOUND, and a reader holds an untrusted peer's layout to it for
+// §3.4'S RECORD BOUND, and a reader holds an untrusted endpoint's layout to it for
 // the same reason the compiler holds a declaration to it: a record past it is
 // one this build will not decode.
 export const TableFixedRecordMaxBytes = 65536;
@@ -208,7 +208,7 @@ export function TableFixedResetReport(report) {
 }
 
 // THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
-// NEVER ALLOCATES. A caller makes one of these per peer and hands it in; a
+// NEVER ALLOCATES. A caller makes one of these per endpoint and hands it in; a
 // layout whose plan does not fit is a refusal by name, never a growth.
 export class TableFixedPlan {
   constructor(entryCapacity, imageBytes, remapCapacity) {
@@ -257,7 +257,7 @@ export class TableFixedPlan {
   }
 }
 
-// A CACHE BY HASH: "the cost of the compile is paid once per peer rather than
+// A CACHE BY HASH: "the cost of the compile is paid once per endpoint rather than
 // once per record". The caller owns this too.
 //
 // THE CACHE IS RETAINED AND IGNORED (§5.9 #16): every older plan is static now
@@ -384,7 +384,7 @@ export function TableFixedTextOk(flavour, view, at, len) {
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
 // is the only thing that differs between reading this build's own record and
 // reading anybody else's — the owner's ruling, which §3.4 quotes him on: a
-// form whose cost moved when a peer shipped would be a performance cliff at
+// form whose cost moved when an endpoint shipped would be a performance cliff at
 // exactly the moment a deployment cannot afford one.
 export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstView, remap, report) {
   const e = plan;
@@ -690,7 +690,7 @@ function TableFixedTagBytes(b, i) { return TableFixedSize(b, i) - TableFixedUnio
 
 // ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
 //
-// A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+// A LAYOUT ARRIVES FROM AN UNTRUSTED ENDPOINT and it is the one structure a reader
 // must parse before it knows anything at all, so every rule below runs BEFORE
 // a single record byte is touched and each refuses under its OWN NAME rather
 // than under one word for all of them (docs/SPEC-TABLES.md §3.4,
@@ -702,7 +702,7 @@ function TableFixedTagBytes(b, i) { return TableFixedSize(b, i) - TableFixedUnio
 // set is not a newer layout of THIS form — it is a layout of a form whose byte
 // this reader never saw, and there is no version of "step over it" that is
 // honest about that. layout_kind_unknown says exactly what happened, and the
-// peer is told to speak this form or a form this reader carries.
+// endpoint is told to speak this form or a form this reader carries.
 //
 // NOR IS THERE A CYCLE RULE, because a pre-order walk cannot express a cycle:
 // an entry's children ARE THE ENTRIES THAT FOLLOW IT, so a child's index is
@@ -918,7 +918,7 @@ export function TableFixedParseLayout(bytes, at, length, out) {
 // ---- THE PLAN COMPILER -----------------------------------------------------
 //
 // The SAME LOOP runs over this plan as over the identity plan. What the
-// compiler does, ONCE PER PEER, is what a read would otherwise do once per
+// compiler does, ONCE PER ENDPOINT, is what a read would otherwise do once per
 // record: map the writer's ids onto this reader's fields; leave a field it
 // cannot name OUT of the plan, which is what skips it, by arithmetic that was
 // going to step past it anyway; and leave a field the writer does not carry
@@ -1038,7 +1038,7 @@ function TableFixedRemapRoom(n) {
 }
 
 // THE ONE DEAD REPORT. The census — unknown and kindMismatch — is once per
-// field PER PEER and never per array element or per keyed slot (§5.4, §5.8 row
+// field PER ENDPOINT and never per array element or per keyed slot (§5.4, §5.8 row
 // 11, §5.9 #43). The entries still have to be laid down for every element, so
 // the repeats walk the same pairs into a report NOBODY READS. It is module-level
 // because the compile must not allocate per element, and it is never reset
@@ -1139,7 +1139,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       const myN = myElem ? ((mySize - head) / myElem) | 0 : 0;
       if (dst[row + TableFixedDstCounted]) {
         // THE BOUND IS THE WRITER'S their_n AND NOT THE READER'S (§5.2 EMIT,
-        // bill §12.5): a count forged past what THAT peer could have written
+        // bill §12.5): a count forged past what THAT endpoint could have written
         // clamps and counts, and a reader whose own bound merely grew does not
         // let the forgery through. The reader's storage has room by §5.1.
         TableFixedPush(plan, TableFixedOpCount, theirAt, auxAt, theirN, 0, guard, arg, 0);
@@ -1164,7 +1164,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       const theirElemSize = TableFixedSize(theirs, theirElemAt);
       // THE FIRST MATCHED SLOT CARRIES THE CENSUS, and every slot after it is
       // quiet: a keyed array's slots are one field's storage repeated, so an
-      // unknown inside the element is ONE unknown for the peer (§5.4).
+      // unknown inside the element is ONE unknown for the endpoint (§5.4).
       let keyedCounted = false;
       for (let k = 0; k < myKeyChildren; k++) {
         for (let j = 0; j < theirKeyChildren; j++) {
@@ -1453,7 +1453,7 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   // (docs/FIXED-FORM-ALGORITHM.md §5.2 PLAN, fix 3).
   plan.record = TableFixedSize(theirs, 0);
   // PASS 1, UNGUARDED, COUNTING THE CENSUS. PASS 2, GUARDED, COUNTING NOTHING
-  // (§5.2 PLAN): the census is once per peer, so a second walk of the same pairs
+  // (§5.2 PLAN): the census is once per endpoint, so a second walk of the same pairs
   // must not count them twice.
   plan.pass = 0;
   TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, report);
@@ -1785,7 +1785,7 @@ function TableAnnounceRead(v, data, report) {
   }
   if (versionCount !== 1 || wordsCount !== 1) { report.Malformed = true; return false; }
   if (v.Strict && v.BuildVersion !== v.BuildVersionOwn) {
-    report.BuildVersionPeer = v.BuildVersion;
+    report.BuildVersionRemote = v.BuildVersion;
     report.BuildVersionOwn = v.BuildVersionOwn;
     return TableMessageRefuse(report, "build_version_mismatch");
   }

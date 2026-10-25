@@ -138,7 +138,7 @@ abstract final class TableFixedLimits {
   // the u32 entry count, and nothing else
   static const int layoutHeaderBytes = 4;
 
-  /// §3.4's RECORD CEILING, and a reader holds an untrusted peer's layout to
+  /// §3.4's RECORD CEILING, and a reader holds an untrusted endpoint's layout to
   /// it for the reason the compiler holds a declaration to it: a record past
   /// it is one this build will not decode.
   static const int recordMaxBytes = 65536;
@@ -247,7 +247,7 @@ final class TableFixedReport {
   int widened = 0;
   int duplicate = 0;
 
-  /// the layout hash the record carried, so an application can ask a peer for
+  /// the layout hash the record carried, so an application can ask an endpoint for
   /// the layout a 'no_layout' refusal names
   int hash = 0;
 
@@ -677,7 +677,7 @@ final class TableFixedLayout {
   }
 
   /// THE WHOLE OF WHAT A READER TRUSTS A LAYOUT ON. A LAYOUT ARRIVES FROM AN
-  /// UNTRUSTED PEER and it is the one structure a reader must parse before it
+  /// UNTRUSTED ENDPOINT and it is the one structure a reader must parse before it
   /// knows anything at all, so every rule runs BEFORE a single record byte is
   /// touched and each refuses under its OWN NAME. A layout that fails any of
   /// them SETS NOTHING: no plan is compiled, no counter moves, 'malformed'
@@ -738,7 +738,7 @@ final class TableFixedLayout {
 }
 
 /// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
-/// NEVER ALLOCATES. A caller makes one of these per peer and hands it in; a
+/// NEVER ALLOCATES. A caller makes one of these per endpoint and hands it in; a
 /// layout whose plan does not fit is a refusal by name, never a growth.
 final class TableFixedPlan {
   TableFixedPlan(int entryCapacity, int imageBytes, int remapCapacity)
@@ -826,7 +826,7 @@ final class TableFixedPlan {
   final ByteData conv = ByteData(16);
 }
 
-/// A CACHE BY HASH: "the cost of the compile is paid once per peer rather than
+/// A CACHE BY HASH: "the cost of the compile is paid once per endpoint rather than
 /// once per record". The caller owns this too — and under §5 THERE IS NOTHING
 /// LEFT TO CACHE: every plan is laid down by the build from the lock's bytes,
 /// so no load compiles and no load can miss. The type stays because §5.6
@@ -1043,7 +1043,7 @@ int tableFixedTagAt(Uint8List source, int at, int argw) {
 /// THE ONE READ LOOP. A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE.
 /// Which plan it is handed is the only thing that differs between reading this
 /// build's own record and reading anybody else's — the owner's ruling, which
-/// §3.4 quotes him on: a form whose cost moved when a peer shipped would be a
+/// §3.4 quotes him on: a form whose cost moved when an endpoint shipped would be a
 /// performance cliff at exactly the moment a deployment cannot afford one.
 ///
 /// A RUN IS A SMALL, KNOWN NUMBER OF BYTES. The C++ reference writes the copy
@@ -1352,7 +1352,7 @@ void tableFixedFillRun(
 }
 
 /// THE PLAN COMPILER. The SAME LOOP runs over this plan as over the identity
-/// plan. What the compiler does, ONCE PER PEER, is what a read would otherwise
+/// plan. What the compiler does, ONCE PER ENDPOINT, is what a read would otherwise
 /// do once per record: map the writer's ids onto this reader's fields; leave a
 /// field it cannot name OUT of the plan, which is what skips it, by arithmetic
 /// that was going to step past it anyway; and leave a field the writer does
@@ -1686,7 +1686,7 @@ abstract final class TableFixedCompiler {
         final myN = myElem != 0 ? (mySize - head) ~/ myElem : 0;
         if (dst[row + TableFixedLane.dstCounted] != 0) {
           // THE COUNT'S BOUND IS THE WRITER'S, CARRIED BY THE PLAN (§5.2's
-          // EMIT, bill §12.5): a count forged past what THIS PEER could have
+          // EMIT, bill §12.5): a count forged past what THIS ENDPOINT could have
           // written clamps and counts, and a count the reader merely has more
           // room for does not. A monotone lineage only ever grows a bound, so
           // the writer's is never the looser of the two.
@@ -1705,8 +1705,8 @@ abstract final class TableFixedCompiler {
         final theirBase = theirAt + head;
         final elems = theirN < myN ? theirN : myN;
         for (var i = 0; i < elems; i++) {
-          // THE CENSUS IS ONCE PER FIELD PER PEER (§5.4), never once per
-          // ELEMENT: the four elements of an array are ONE field of ONE peer,
+          // THE CENSUS IS ONCE PER FIELD PER ENDPOINT (§5.4), never once per
+          // ELEMENT: the four elements of an array are ONE field of ONE endpoint,
           // so only element 0 carries the census into the walk. A leg that
           // censuses every element lands the element count (§5.8 row 11).
           compileEntry(
@@ -2072,7 +2072,7 @@ abstract final class TableFixedCompiler {
   }
 
   /// compile builds the plan for ANOTHER writer's layout against my own and
-  /// answers how many entries it wrote, or -1 when it did not fit. The peer's
+  /// answers how many entries it wrote, or -1 when it did not fit. The endpoint's
   /// layout must already have passed TableFixedLayout.parse. THE PREFILL'S
   /// RANGES are worked out here, once: the type's value bytes minus everything
   /// this plan lands.
@@ -2101,7 +2101,7 @@ abstract final class TableFixedCompiler {
     plan.fillCount = 0;
     plan.argw = 1;
     // PASS 1, UNGUARDED, COUNTING THE CENSUS. PASS 2, GUARDED, COUNTING
-    // NOTHING (§5.2 PLAN, §5.9 #42): the census is once per peer, so a second
+    // NOTHING (§5.2 PLAN, §5.9 #42): the census is once per endpoint, so a second
     // walk of the same pairs must not count them twice — the second report is
     // quiet and thrown away.
     plan.pass = 0;
@@ -2210,7 +2210,7 @@ class TableReport {
   int widened = 0;
   int clamped = 0;
   int duplicate = 0;
-  int buildVersionPeer = 0;
+  int buildVersionRemote = 0;
   int buildVersionOwn = 0;
   String reason = '';
 
@@ -2371,7 +2371,7 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
     return false;
   }
   if (vocabulary.strict && vocabulary.buildVersion != tableBuildVersion) {
-    report.buildVersionPeer = vocabulary.buildVersion;
+    report.buildVersionRemote = vocabulary.buildVersion;
     report.buildVersionOwn = tableBuildVersion;
     return report.Refuse('build_version_mismatch');
   }

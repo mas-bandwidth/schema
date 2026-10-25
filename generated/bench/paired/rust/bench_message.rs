@@ -146,8 +146,8 @@ pub fn mixed_entity_save_message_body(w: &mut TableBitWriter, value: &MixedEntit
     !w.overflow
 }
 
-/// One MixedEntity body against the PEER's vocabulary (§3.3): a field this build
-/// cannot name is skipped by the peer's shape and counted unknown, a kind the
+/// One MixedEntity body against the ENDPOINT's vocabulary (§3.3): a field this build
+/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedEntityRow) -> bool {
@@ -495,8 +495,8 @@ pub fn mixed_stat_save_message_body(w: &mut TableBitWriter, value: &MixedStatRow
     !w.overflow
 }
 
-/// One MixedStat body against the PEER's vocabulary (§3.3): a field this build
-/// cannot name is skipped by the peer's shape and counted unknown, a kind the
+/// One MixedStat body against the ENDPOINT's vocabulary (§3.3): a field this build
+/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedStatRow) -> bool {
@@ -597,8 +597,8 @@ pub fn mixed_hit_event_save_message_body(w: &mut TableBitWriter, value: &MixedHi
     !w.overflow
 }
 
-/// One MixedHitEvent body against the PEER's vocabulary (§3.3): a field this build
-/// cannot name is skipped by the peer's shape and counted unknown, a kind the
+/// One MixedHitEvent body against the ENDPOINT's vocabulary (§3.3): a field this build
+/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedHitEventRow) -> bool {
@@ -727,8 +727,8 @@ pub fn mixed_chat_event_save_message_body(w: &mut TableBitWriter, value: &MixedC
     !w.overflow
 }
 
-/// One MixedChatEvent body against the PEER's vocabulary (§3.3): a field this build
-/// cannot name is skipped by the peer's shape and counted unknown, a kind the
+/// One MixedChatEvent body against the ENDPOINT's vocabulary (§3.3): a field this build
+/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedChatEventRow) -> bool {
@@ -821,8 +821,8 @@ pub fn mixed_pickup_event_save_message_body(w: &mut TableBitWriter, value: &Mixe
     !w.overflow
 }
 
-/// One MixedPickupEvent body against the PEER's vocabulary (§3.3): a field this build
-/// cannot name is skipped by the peer's shape and counted unknown, a kind the
+/// One MixedPickupEvent body against the ENDPOINT's vocabulary (§3.3): a field this build
+/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedPickupEventRow) -> bool {
@@ -1179,8 +1179,8 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
     !w.overflow
 }
 
-/// One BenchMixed body against the PEER's vocabulary (§3.3): a field this build
-/// cannot name is skipped by the peer's shape and counted unknown, a kind the
+/// One BenchMixed body against the ENDPOINT's vocabulary (§3.3): a field this build
+/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut BenchMixedRow) -> bool {

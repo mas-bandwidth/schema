@@ -126,8 +126,8 @@ pub fn fixed_table_save_message_body(w: &mut TableBitWriter, value: &FixedTableR
     !w.overflow
 }
 
-/// One FixedTable body against the PEER's vocabulary (§3.3): a field this build
-/// cannot name is skipped by the peer's shape and counted unknown, a kind the
+/// One FixedTable body against the ENDPOINT's vocabulary (§3.3): a field this build
+/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the
 /// declaration widened is decoded exactly and counted widened, and any other
 /// kind is a kind mismatch, skipped.
 pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut FixedTableRow) -> bool {
@@ -204,11 +204,11 @@ pub fn fixed_table_save_messages(values: &[FixedTableRow], buffer: &mut [u8], re
     2 + (w.bits / 8) as i64
 }
 
-/// LoadMessages (§3.3): one batch into the caller's storage against the PEER's
+/// LoadMessages (§3.3): one batch into the caller's storage against the ENDPOINT's
 /// announced vocabulary. The count of bodies delivered and whether the batch
 /// read whole. "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1"; "M ABOVE THE
 /// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", with the count set
-/// to the wire's M; "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY
+/// to the wire's M; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
 /// NAME"; and "BYTES AFTER THE PAD ARE MALFORMED".
 pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
     let Some(count) = table_message_batch_open(vocabulary, data, report) else {
