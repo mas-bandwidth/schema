@@ -997,7 +997,7 @@ type TableReport struct {
 	// announcement refusal carries (docs/SPEC-TABLES.md §3.3): the endpoint's
 	// announcement and this unit's own. They are zero on every other read.
 	BuildVersionRemote uint64
-	BuildVersionOwn  uint64
+	BuildVersionOwn    uint64
 	// FixedRaised is true only on a FIXED form's refusal
 	// (docs/SPEC-TABLES.md §3.4, §6.5): a refusal that has a name answers it
 	// BY NAME (via its TableRefuseReason member), and the four form-byte

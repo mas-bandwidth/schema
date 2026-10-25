@@ -687,8 +687,8 @@ var csHeldMsgs = []csHeldMsg{
 	{"store_default", "backenddemo", "StorePurchase", "backend_conn.bin", "store_default.bin", "store_default_message.bin"},
 	{"vocab_wide", "vocabdemo", "Wide09", "vocab_conn.bin", "vocab_wide.bin", "vocab_wide_message.bin"},
 	{"vocab_low", "vocabdemo", "Wide00", "vocab_conn.bin", "vocab_low.bin", "vocab_low_message.bin"},
-	{" remote_a ", "backenddemo", "StorePurchase", "backend_conn.bin", " remote_a .bin", " remote_a _message.bin"},
-	{" remote_b ", "vocabdemo", "Wide00", "vocab_conn.bin", " remote_b .bin", " remote_b _message.bin"},
+	{"peer_a", "backenddemo", "StorePurchase", "backend_conn.bin", "peer_a.bin", "peer_a_message.bin"},
+	{"peer_b", "vocabdemo", "Wide00", "vocab_conn.bin", "peer_b.bin", "peer_b_message.bin"},
 	{"vocab9_wide", "vocab9demo", "Wide19", "vocab9_conn.bin", "vocab9_wide.bin", "vocab9_wide_message.bin"},
 	{"vocab9_low", "vocab9demo", "Wide00", "vocab9_conn.bin", "vocab9_low.bin", "vocab9_low_message.bin"},
 }
