@@ -49,6 +49,9 @@ export type FieldDescriptor = {
 	ibits: number?,
 	fbits: number?,
 	timestamp: boolean?,
+	-- flags is a flags set's variant names in bit order (docs/SPEC-TABLES.md
+	-- §16.2): the value is the integer mask, the text form its names
+	flags: { string }?,
 	lo: any,
 	hi: any,
 	def: any,
@@ -127,6 +130,23 @@ function S.union(d: UnionDescriptor): UnionDescriptor
 	table.freeze(d :: any)
 	register(d.name, d)
 	return d
+end
+
+-- wireIds registers a unit's wire ids, the ids this build names
+-- (ir.TableWireIds; docs/SPEC-TABLES.md §6.6): every table module of the unit
+-- registers the same list, so the set is the union of identical lists.
+local known: { [integer]: boolean } = {}
+function S.wireIds(ids: { integer })
+	for _, id in ids do
+		known[id] = true
+	end
+end
+
+-- knownId says whether this build names the id: the retaining save numbers
+-- such an id through the ordinary id table, and only an id it cannot name
+-- takes an entry of the caller's retained-id list (§6.6).
+function S.knownId(id: integer): boolean
+	return known[id] == true
 end
 
 -- lookup is the descriptor a field's t names: every module a descriptor

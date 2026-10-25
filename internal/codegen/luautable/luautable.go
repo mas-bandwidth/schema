@@ -962,7 +962,10 @@ func valueDesc(g *luau.Gen, f *ir.Field, def bool, wire bool) string {
 			}
 			return s
 		case *ir.Flags:
-			return intDesc(g, f, def)
+			// the variant names in bit order ride beside the integer shape:
+			// the text form spells a mask as their array (docs/SPEC-TABLES.md
+			// §16.2, the flags row), and the descriptor is its only source
+			return intDesc(g, f, def) + ", flags = " + flagNames(r)
 		case *ir.Union:
 			requireHome(g, r.Name)
 			return fmt.Sprintf("s = \"union\", t = %q", r.Name)
@@ -972,6 +975,15 @@ func valueDesc(g *luau.Gen, f *ir.Field, def bool, wire bool) string {
 		}
 	}
 	return intDesc(g, f, def)
+}
+
+// flagNames is a flags set's variant names in bit order, as a Luau array.
+func flagNames(fl *ir.Flags) string {
+	parts := make([]string, len(fl.Variants))
+	for i, v := range fl.Variants {
+		parts[i] = fmt.Sprintf("%q", v)
+	}
+	return "{ " + strings.Join(parts, ", ") + " }"
 }
 
 // enumVariants is an enum's variants as { name, wire id, deprecated } triples:
