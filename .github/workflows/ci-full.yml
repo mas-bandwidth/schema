@@ -325,6 +325,13 @@ jobs:
       - name: install the Luau pin
         if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest'
         run: make dist-luau
+      # THE Goose PIN for the test steps below: internal/codegen/goose and
+      # internal/codegen/goosetable run generated Goose under the pinned compiler
+      # and fail, never skip, without it. make/goose.mk's dist-goose installs it
+      # at the sha256 it names, into the dist/ path the leg's default names.
+      - name: install the Goose pin
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest'
+        run: make dist-goose
 
       # THE Squirrel PIN for the test steps below: internal/codegen/squirrel and
       # internal/codegen/squirreltable run generated Squirrel under the pinned interpreter
@@ -686,6 +693,10 @@ jobs:
       # under the pinned interpreter (internal/codegen/luau/luaurun)
       - name: install the Luau pin
         run: make dist-luau
+      # update-goldens ends in `go test ./...`, which runs the Goose packages
+      # under the pinned compiler (make/goose.mk's dist-goose)
+      - name: install the Goose pin
+        run: make dist-goose
 
       # and the Squirrel packages under theirs (make/squirrel.mk's dist-squirrel)
       - name: install the Squirrel pin
