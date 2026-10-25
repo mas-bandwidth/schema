@@ -101,8 +101,9 @@ func TestLuauUndeclaredUnitKeepsTableAndRuntime(t *testing.T) {
 // change can alter; a table with no declaration must generate exactly what it
 // generated before (docs/SPEC-TABLES.md §2.12). Runtime modules are pinned
 // separately, by byte-equality to their sources, so a runtime fix never edits
-// this constant.
-const wantUndeclaredSchemaDigest = "348f447fa2d7d18049bf255c3e2a130227add52b8e41df6f81e7aea7ad56fa6e"
+// this constant. Moved when every table module began registering the unit's wire
+// ids (retainids.go, docs/SPEC-TABLES.md §6.6).
+const wantUndeclaredSchemaDigest = "f3c3da92dd3d7f17cc21f5972bfb09cf4e59b545663c1f4dbe536692e1304624"
 
 // schemaModuleDigest hashes the named schema-dependent modules of a unit —
 // name then bytes, in sorted name order — so an edit to either is pinned
