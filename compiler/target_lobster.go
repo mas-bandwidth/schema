@@ -12,6 +12,7 @@ package compiler
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
@@ -24,36 +25,28 @@ func (lobsterTarget) Names() []string { return []string{"lobster"} }
 
 // Generate is the type surface (one module per schema file) and, for a unit
 // that declares tables, the table surface (one <Base>Table.lobster per file
-// with tables) — the descriptors and constructors, no codec yet
+// with tables): the descriptors, constructors and the runtime the forms walk
 // (docs/PORT-LOBSTER.md, THE CARD MAP). The constructs the lobster leg does
 // not carry are refused centrally, by name (compiler/carries_lobster.go); a
 // construct the table surface does not describe is refused by lobstertable.
 func (lobsterTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	// THE LEG HAS NO WIRE CODEC YET (docs/PORT-LOBSTER.md, THE CARD MAP), so
-	// it carries none of the constructs the shared refusals hold back from a
-	// port that has not met them: a string, bytes or flags default, a was row,
-	// a union with table arms or a payload-free table arm, an array of
-	// unions, a byte blob, an optional array, a map and an unbounded list —
-	// each refused here by name, as every non-carrier refuses it. The
-	// descriptor surface itself describes them all
-	// (TestLobsterTableDescriptorsLoad generates every manifest unit through
-	// lobster and lobstertable directly).
-	refusals := []func(*ir.Unit, string) error{refuseUnported, refuseOptionalArrays}
-	// A text list and an unbounded map key ARE the unbounded list and the map
-	// this target otherwise refuses; carries_lobster_text_lists.go registers
-	// them, so a unit whose lists are ALL text lists and whose maps ALL have
-	// unbounded text keys is theirs to emit. Every other list or map is still
-	// refused by name.
-	if lobsterListRefusalApplies(u) {
-		refusals = append(refusals, refuseLists)
-	}
-	if lobsterMapRefusalApplies(u) {
-		refusals = append(refusals, refuseMaps)
-	}
-	for _, refuse := range refusals {
-		if err := refuse(u, "lobster"); err != nil {
-			return nil, err
-		}
+	// THE LEG CARRIES THE VARIABLE WIRE (docs/PORT-LOBSTER.md, THE LOAD): its
+	// load and save walk the descriptors for every construct the shared
+	// refusals hold back from a port that has not met them — a string, bytes
+	// or flags default, a was row, a union with table arms or a payload-free
+	// arm, an array of unions, a byte blob, an optional array, a map and an
+	// unbounded list — so it applies none of them, as the Luau leg applies
+	// none. The conformance leg holds every manifest unit to the reference
+	// (test/conformance/lobster/driver), and TestLobsterTableLoadMatchesTheReports
+	// and TestLobsterTableSaveRoundTripsEveryInstance hold them to the Go
+	// engine. The constructs of compiler/carries.go stay refused centrally
+	// unless carries_lobster*.go registers them.
+	//
+	// A PACKET type's string, bytes or flags default is still refused by
+	// name: the type surface has no type-wire read path yet, so nothing
+	// proves those defaults (docs/PORT-LOBSTER.md, THE CARD MAP).
+	if err := lobsterRefusePacketDefaults(u); err != nil {
+		return nil, err
 	}
 	files, err := lobster.Generate(u)
 	if err != nil {
@@ -70,6 +63,26 @@ func (lobsterTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) 
 		files[name] = data
 	}
 	return files, nil
+}
+
+// lobsterRefusePacketDefaults is refuseValueDefaults' packet half (SPEC §4.2):
+// a string, bytes or flags default on a declaration no table closure reaches.
+// The table half is carried by the table runtime and is not refused.
+func lobsterRefusePacketDefaults(u *ir.Unit) error {
+	full := ir.TableClosure(u)
+	var names []string
+	for _, name := range ir.ValueDefaultFields(u) {
+		owner, _, _ := strings.Cut(name, ".") // ValueDefaultFields returns Decl.field
+		if !full[owner] {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	carry, flags := carriers(packetValueDefaultTargets)
+	return fmt.Errorf("unit declares a string, bytes or flags default (%s): packet-wire defaults are %s only today, and the lobster form is a named follow-on; generate with %s, or drop the default (SPEC §4.2)",
+		englishList(names), englishList(carry), englishList(flags))
 }
 
 func init() {

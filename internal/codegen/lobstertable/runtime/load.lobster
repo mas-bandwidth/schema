@@ -39,6 +39,7 @@ class LoadReport:
 
 class Record
 class Slot
+class Node
 
 // A Value is one storage cell (Go's tabletext.Cell): only the member the
 // field's shape names is read. ABSENT, PRESENT-EMPTY AND PRESENT
@@ -69,6 +70,11 @@ class Value:
     node:Record? = nil
     // blob: a *bytes / *string referent, nil for null (§2.5)
     blob:string? = nil
+    // blob_node: the ONE node a tolerant read decoded the blob from. Two
+    // slots naming one blob name one node (§2.5), so the save meets the
+    // second naming and refuses the graph by name, never writing a copy
+    // per slot. nil for a blob the caller set.
+    blob_node:Node? = nil
 
 // A Slot is one field's storage (Go's tabletext.Field): the value, the
 // counted extent and the presence companion beside it.
@@ -722,6 +728,7 @@ let enum_shape = register_shape(EnumShape { key: "enum" })
 def resolve_cell(r:Reader, cell:Value, fd:FieldDescriptor, index:int):
     cell.node = nil
     cell.blob = nil
+    cell.blob_node = nil
     let st = r.st
     let rep = st.report
     if not st.variable or not st.good:
@@ -746,6 +753,7 @@ def resolve_cell(r:Reader, cell:Value, fd:FieldDescriptor, index:int):
                 rep.kind_mismatch++
                 return
             cell.blob = node.blob
+            cell.blob_node = node
             var seen = false
             for(st.named) x:
                 if x == index:

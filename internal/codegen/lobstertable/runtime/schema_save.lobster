@@ -107,6 +107,10 @@ class SaveGraph:
     cells:[Value] = []
     cell_index:[int] = []
     cycle:bool = false
+    // blob_nodes are the loaded blob nodes the walk has met; a second slot
+    // naming one of them sets blob_shared (§2.5)
+    blob_nodes:[Node] = []
+    blob_shared:bool = false
 
 def sg_rec_index(g:SaveGraph, rec:Record) -> int:
     for(g.recs) r, i:
@@ -138,6 +142,12 @@ def sg_add_blob(g:SaveGraph, cell:Value, kind:int) -> int:
     let at = sg_blob_index(g, cell)
     if at != 0:
         return at
+    let bn = cell.blob_node
+    if bn:
+        for(g.blob_nodes) x:
+            if x == bn:
+                g.blob_shared = true
+        push(g.blob_nodes, bn)
     let idx = length(g.nodes) + 1
     push(g.nodes, SaveNode { kind: kind, blob: cell.blob, cell: cell, tid: if kind == 2: string_blob_id else: bytes_blob_id })
     push(g.cells, cell)
@@ -732,8 +742,15 @@ def encode_node_table(e:SaveEncoder, w:SaveOut, g:SaveGraph) -> void:
 
 // save writes a form-1 wire from a Record (docs/SPEC-TABLES.md §3): the FORM
 // BYTE, the ROOT BODY, the ID TABLE, in that order. A data cycle is refused
-// as the reference refuses it (§3.1), and the empty string is the refusal.
+// as the reference refuses it (§3.1), and so is one blob named from two slots
+// (§2.5: every writer refuses that graph rather than write a copy per slot);
+// the empty string is the refusal, and save_reasoned names it.
 def save(rec:Record) -> string:
+    return save_reasoned(rec)
+
+// save_reasoned is save with the refusal's name beside the bytes: "cycle",
+// "blob_shared" (Go's TableRefuseReason spelling), or "" when it wrote.
+def save_reasoned(rec:Record) -> string, string:
     let g = SaveGraph {}
     push(g.nodes, SaveNode { kind: 1, rec: rec, tid: rec.d.id, open: true })
     push(g.recs, rec)
@@ -741,7 +758,9 @@ def save(rec:Record) -> string:
     sg_visit_edges(g, rec)
     g.nodes[0].open = false
     if g.cycle:
-        return ""
+        return "", "cycle"
+    if g.blob_shared:
+        return "", "blob_shared"
     let e = SaveEncoder { ids: SaveIds {}, g: g }
     let fields = SaveOut {}
     encode_body_fields(e, fields, rec)
@@ -754,4 +773,4 @@ def save(rec:Record) -> string:
     for(e.ids.ids) id:
         so_u64(out, id)
     so_u64(out, length(e.ids.ids))
-    return so_take(out)
+    return so_take(out), ""

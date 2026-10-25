@@ -84,13 +84,20 @@ def fixture(path:string) -> string:
 
 // the WIRE surface: Load a form-1 wire through the TOLERANT read, as the
 // reference leg's driver reads (§6.5), and Save it (§3). An instance line is
-// `instance <name> <unit> <root> <wire> [no-text]`.
+// `instance <name> <unit> <root> <wire> [no-text]`. A graph that names one
+// blob from two slots is refused by every writer (§2.5), so that case is a
+// named absence, as the C and C# legs answer it; any other refusal fails.
 def surface_wire(text:string):
     for(rows(text, "instance")) f:
         let rep = schema_rt.LoadReport {}
         let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
         assert rec
-        say(f[1], schema_rt.save(rec))
+        let out, why = schema_rt.save_reasoned(rec)
+        if why == "blob_shared":
+            print(f[1] + " absent")
+        else:
+            assert why == ""
+            say(f[1], out)
 
 // the REPORT surface: the six counters and the verdict (§4), as
 // `u,k,w,c,d,m,verdict`. A report line is `report <case> <unit> <root> <wire>`.

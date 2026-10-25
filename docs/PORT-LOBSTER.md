@@ -235,14 +235,18 @@ imported into one program would define `schema_rt` twice, so a program that
 uses several units generates them into one directory.
 `TestLobsterImportsResolveInsideTheUnitOnly` holds the import rule.
 
-**What the target refuses today.** The leg has no wire codec, so the target
-gives the shared, by-name refusals every non-carrier gives (a string, bytes or
-flags default; a `was` row; a union in a table closure; an array of unions; a
-byte blob; an optional array; a map; an unbounded list), and the central
-refusals of `compiler.Generate` hold back every construct of
-`compiler/carries.go` (lobster carries none yet). The descriptor surface
-itself describes every manifest unit: `TestLobsterTableDescriptorsLoad` runs
-`lobster.Generate` and `lobstertable.Generate` directly over all 33.
+**What the target refuses today.** The table runtime's load and save walk
+every construct the shared refusals name (a string, bytes or flags default in
+a table closure, a `was` row, a union in a table closure, an array of unions, a
+byte blob, an optional array, a map, an unbounded list), so the target applies
+none of them, and every unit of the tables manifest generates
+(`TestLobsterGeneratesEveryManifestUnit`, whose witness is that the shared
+refusals still refuse units of that manifest). A PACKET type's string, bytes
+or flags default is still refused by name, because the type surface has no
+type-wire read path yet. The constructs of `compiler/carries.go` are held back
+centrally unless a `carries_lobster*.go` file registers them; lobster carries
+the timestamp, the one-sided range, text lists, their total, unbounded text
+and `?T` over a variable closure.
 
 ## THE LOAD
 
@@ -368,7 +372,9 @@ as lines (lowercase hex for bytes).**
   so a compiler warning fails the leg. `make build/conformance-lobster`
   generates every manifest unit for lobster and records each refusal by name
   as `<unit>.refused`; the driver answers that unit's cases `absent` without
-  running anything. **The leg answers** `wire` (`load_tolerant` then `save`),
+  running anything. **The leg answers** `wire` (`load_tolerant` then
+  `save_reasoned`; a graph naming one blob from two slots is refused by name,
+  `blob_shared`, as §2.5 requires of every writer, and answered `absent`),
   `report`, `block`, `block-foreign` and `block-dump`. Every other surface is
   ABSENT (exit 2). The JSON text form, the cook, the message form and retention
   are later cards. `forgery` and `block-reason` wait on the block reader's
