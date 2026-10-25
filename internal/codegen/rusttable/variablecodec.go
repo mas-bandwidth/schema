@@ -52,6 +52,9 @@ func (g *gen) variableCodecModule() []byte {
 			syms = append(syms, n, fn(n, "number"), fn(n, "save_body"), fn(n, "load_body"), fn(n, "json_count"), fn(n, "json_write"), fn(n, "json_read"), fn(n, "json_fields"), fn(n, "json_ptr"))
 		}
 		fmt.Fprintf(&b, "#[allow(unused_imports)]\nuse super::%s_table::{%s};\n", strings.ToLower(other.Base), strings.Join(syms, ", "))
+		if cooked := cookWriteImports(g.unit, g.vc, otherNames); len(cooked) > 0 {
+			fmt.Fprintf(&b, "#[cfg(feature = \"cook\")]\n#[allow(unused_imports)]\nuse super::%s_table::{%s};\n", strings.ToLower(other.Base), strings.Join(cooked, ", "))
+		}
 	}
 	b.WriteString("\n")
 	g.emitVariableEnums(&b, names)
@@ -86,6 +89,7 @@ func (g *gen) variableCodecModule() []byte {
 		}
 	}
 	g.emitVariableText(&b)
+	g.emitCookWriteFromStorage(&b, names)
 	return []byte(b.String())
 }
 

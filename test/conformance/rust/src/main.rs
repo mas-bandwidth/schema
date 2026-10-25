@@ -1272,20 +1272,62 @@ fn surface_json_hostile(manifest: &Manifest, out: &str) {
     }
 }
 
-// COOK WRITE (docs/SPEC-TABLES.md §7.6) is answered ABSENT for every row today.
-// The emitted cook runtime has <T>_cook_measure / <T>_cook_measure_reason /
-// <T>_cook_from (internal/codegen/rusttable/cook.go), and since
-// vt/fixed-class/rust a FIXED table has its form-1 reader too
-// (<name>_load, internal/codegen/rusttable/variablecodec.go), so the value the
-// reference leg's driver loads before it measures and writes now exists here.
-// What is left is the bridge from that loaded value to the cook row and the
-// driving of <T>_cook_from per row, which is vt/cook-write/rust's work and not
-// this surface's; until it lands every row stays `.absent`, counted as work
-// left and never as a pass.
+// COOK WRITE (docs/SPEC-TABLES.md §7.6): load the instance's wire with the
+// root's form-1 reader, then cook the VALUE that load produced in each byte
+// order with the root's generated <t>_cook_write — the region writer over the
+// storage structs (internal/codegen/rusttable/cookwrite.go), which lays the
+// numbering's nodes out by the compiler's C ABI model exactly as `schema cook`
+// does. The expectation is the tool's two files. A root this leg's writer does
+// not reach answers `<case>.absent` for both orders, counted as work left.
+macro_rules! with_cook_root {
+    ($unit:expr, $root:expr, |$load:ident, $cook:ident| $body:expr) => {{
+        match ($unit, $root) {
+            ("tabledemo", "RootConfig") => { use tabledemo::{root_config_load as $load, root_config_cook_write as $cook}; Some($body) }
+            ("tabledemo", "ProfileConfig") => { use tabledemo::{profile_config_load as $load, profile_config_cook_write as $cook}; Some($body) }
+            ("tabledemo", "LoadoutConfig") => { use tabledemo::{loadout_config_load as $load, loadout_config_cook_write as $cook}; Some($body) }
+            ("tabledemo", "ArchiveConfig") => { use tabledemo::{archive_config_load as $load, archive_config_cook_write as $cook}; Some($body) }
+            ("tabledemo", "KeyedConfig") => { use tabledemo::{keyed_config_load as $load, keyed_config_cook_write as $cook}; Some($body) }
+            ("tabledemo", "WideBlob") => { use tabledemo::{wide_blob_load as $load, wide_blob_cook_write as $cook}; Some($body) }
+            ("tblv1", "Cfg") => { use tblv1::{cfg_load as $load, cfg_cook_write as $cook}; Some($body) }
+            ("tblv2", "Cfg") => { use tblv2::{cfg_load as $load, cfg_cook_write as $cook}; Some($body) }
+            ("tblp1", "Chain") => { use tblp1::{chain_load as $load, chain_cook_write as $cook}; Some($body) }
+            ("tblp3", "Chain") => { use tblp3::{chain_load as $load, chain_cook_write as $cook}; Some($body) }
+            ("tblm1", "Msg") => { use tblm1::{msg_load as $load, msg_cook_write as $cook}; Some($body) }
+            ("tblm2", "Msg") => { use tblm2::{msg_load as $load, msg_cook_write as $cook}; Some($body) }
+            ("graphdemo", "Scene") => { use graphdemo::{scene_load as $load, scene_cook_write as $cook}; Some($body) }
+            ("blobdemo", "Catalog") => { use blobdemo::{catalog_load as $load, catalog_cook_write as $cook}; Some($body) }
+            ("streamdemo", "Feed") => { use streamdemo::{feed_load as $load, feed_cook_write as $cook}; Some($body) }
+            ("messagedemo", "ToolMessage") => { use messagedemo::{tool_message_load as $load, tool_message_cook_write as $cook}; Some($body) }
+            _ => None,
+        }
+    }};
+}
+
 fn surface_cook_write(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("cook-write") {
-        spill_absent(out, &f[1]);
-        spill_absent(out, &format!("{}-be", f[1]));
+        let Some(inst) = manifest.of_kind("instance").find(|i| i[1] == f[1]) else {
+            fail(&format!("cook-write {} names no instance", f[1]));
+        };
+        let data = slurp(&inst[4]);
+        let answer = with_cook_root!(inst[2].as_str(), inst[3].as_str(), |load, cook| {
+            let mut report = Default::default();
+            let Some(v) = load(&data, &mut report) else {
+                fail(&format!("{}: load refused {}", f[1], inst[4]));
+            };
+            let little = cook(&v, 1).unwrap_or_else(|why| fail(&format!("{}: the cook refused: {why}", f[1])));
+            let big = cook(&v, 2).unwrap_or_else(|why| fail(&format!("{}: the big-endian cook refused: {why}", f[1])));
+            (little, big)
+        });
+        match answer {
+            Some((little, big)) => {
+                spill(out, &f[1], &little);
+                spill(out, &format!("{}-be", f[1]), &big);
+            }
+            None => {
+                spill_absent(out, &f[1]);
+                spill_absent(out, &format!("{}-be", f[1]));
+            }
+        }
     }
 }
 

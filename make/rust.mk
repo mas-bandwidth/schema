@@ -678,6 +678,20 @@ tables-rust-variable-fixed-class:
 
 test-rust: tables-rust-variable-fixed-class
 
+# THE COOK WRITE SIDE on the Rust leg (docs/SPEC-TABLES.md §7.6): every
+# manifest cook-write row the Rust writer reaches, loaded through the root's
+# form-1 reader and cooked in both byte orders by the generated
+# <t>_cook_write, byte for byte against the engine `schema cook` runs; the
+# reversed witnesses plant each layout rule's wrong answer into the oracle and
+# hold that the bytes this leg wrote tell it apart. SCHEMA_REQUIRE_CORPUS=1
+# turns the rustc skip into a failure, so the target never passes on a SKIP.
+.PHONY: tables-rust-cook-write
+tables-rust-cook-write:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestCookWriteRust|TestCookWriteStandsDownOnTheExtent' -v
+	@echo 'tables Rust cook write: the storage value cooks to the bytes schema cook writes, in both byte orders'
+
+test-rust: tables-rust-cook-write
+
 # THE MESSAGE FORM's BATCH on the Rust leg (docs/SPEC-TABLES.md §3.3):
 # MeasureMessages, SaveMessages and LoadMessages, byte for byte against the
 # manifest's message rows and the Go codec, beside the announcement.
