@@ -196,9 +196,17 @@ func TestLuaCookOpenAndCheck(t *testing.T) {
 	})
 }
 
-// runCookProbe writes one cook as the probe's input and runs cook.Open under
-// the pinned interpreter in a t.TempDir(), answering "open" or the reason.
+// runCookProbe writes one cook as the probe's input and runs cook.Check —
+// Open's clauses and then cook-check's two passes (§7.4) — under the pinned
+// interpreter in a t.TempDir(), answering "open" or the reason.
 func runCookProbe(t *testing.T, u *ir.Unit, root string, cooked []byte) string {
+	t.Helper()
+	return runCookVerb(t, u, cooked, "cook.Check(T, \""+root+"\", inputs.cook)")
+}
+
+// runCookVerb runs one cook call (a Lua expression over T, cook and inputs)
+// and answers "open" or the reason it refused.
+func runCookVerb(t *testing.T, u *ir.Unit, cooked []byte, call string) string {
 	t.Helper()
 	files, err := Generate(u)
 	if err != nil {
@@ -209,7 +217,7 @@ func runCookProbe(t *testing.T, u *ir.Unit, root string, cooked []byte) string {
 	probe := `local T = require("` + ModuleName(u) + `")
 local cook = require("cook")
 local inputs = require("inputs")
-local h, reason = cook.Open(T, "` + root + `", inputs.cook)
+local h, reason = ` + call + `
 if h ~= nil then print("open") else print(reason) end
 `
 	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {

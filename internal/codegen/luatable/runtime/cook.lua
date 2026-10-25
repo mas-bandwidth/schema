@@ -3,17 +3,18 @@
 -- <Package>Tables.lua by internal/codegen/luatable, which embeds runtime/*.lua
 -- by glob.
 --
--- A cook is a region image of a load, opened in place after the check: the
--- header's magic, order, build version, reserved words, alignment and part
--- lengths (§7.1), then §7.4's two passes over the attribution and the region.
+-- A cook is a region image of a load, opened in place: the header's magic,
+-- order, build version, reserved words, alignment and part lengths (§7.1) and
+-- the base's alignment. §7.4's two passes over the attribution and the region
+-- are cook-check's, C.Check below.
 -- Every refusal answers its TableRefuseReason name: not_a_cook, foreign_order,
 -- wrong_build_version, reserved_not_zero, bad_alignment, truncated,
 -- unaligned_base, bad_layout.
 --
--- Open answers a handle or nil plus the reason name. The handle carries the
--- bytes, the data part and the node directory; it decodes no payload and
--- follows no reference while checking, exactly the scan internal/tablecook's
--- Check runs (§7.4).
+-- Open answers a handle or nil plus the reason name, from the header and the
+-- base alone (§7.1). Check runs Open and then §7.4's two passes over the
+-- attribution and the region, the scan internal/tablecook's Check runs: it
+-- decodes no payload and follows no reference while checking.
 local C = {}
 
 local MAGIC = 0x4B4F4F434D484353
@@ -511,10 +512,41 @@ local function scan(h, dir)
   return nil
 end
 
--- C.Open runs §7.4's check in its order and answers a handle, or nil and the
--- TableRefuseReason name (§7).
-function C.Open(T, name, bytes)
+-- C.Open is the runtime's MATCH AND POINT (§7, §7.1): the header's clauses in
+-- their order, then the alignment of the BASE, and it answers a handle or nil
+-- and the TableRefuseReason name. It reads nothing past the header, so it is
+-- O(1) whatever the cook holds: the attribution part and the region are
+-- cook-check's to bound (§7.4: "`schema cook-check`'s refusals are the
+-- tool's, not the runtime's"), and C.Check below runs them.
+--
+-- A Lua string has no address a caller can observe or place, so the BASE's
+-- placement is an argument, as the Elixir leg's `lead` is (§7, the reading
+-- tier): base_offset is how many bytes past an aligned base the caller's
+-- buffer begins, nil or 0 for an aligned one. No buffer at all is the
+-- reference's null base, unaligned_base, which open_header answers first.
+function C.Open(T, name, bytes, base_offset)
   local h, why = open_header(T, name, bytes)
+  if h == nil then
+    return nil, why
+  end
+  -- THE ALIGNMENT OF THE BASE: the header pads the data part to the region's
+  -- alignment, and the alignment divides 64, so the derived data offset
+  -- carries the property from the file's base to the region's. A base that is
+  -- not aligned is the CALLER's placement, not the file's.
+  if (base_offset or 0) % h.alignment ~= 0 then
+    return nil, "unaligned_base"
+  end
+  h.root = T.Tables[name]
+  return h
+end
+
+-- C.Check is `schema cook-check`'s scan (§7.4) on the Lua leg: Open's clauses,
+-- then pass one over the directory and pass two over the region, in their
+-- order, answering a handle or nil and the TableRefuseReason name. It is the
+-- offline check a caller runs once over a cook it did not write; Open never
+-- runs it.
+function C.Check(T, name, bytes, base_offset)
+  local h, why = C.Open(T, name, bytes, base_offset)
   if h == nil then
     return nil, why
   end
@@ -531,7 +563,6 @@ function C.Open(T, name, bytes)
     return nil, sw
   end
   h.dir = dir
-  h.root = T.Tables[name]
   return h
 end
 

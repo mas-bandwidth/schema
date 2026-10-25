@@ -240,8 +240,18 @@ the carry-across record (the sprint retired per-technique issues).
 | schema-lua-conformance-leg | `make conformance` and CI: `test/conformance/lua/main.lua`, the CI step keyed on `ci.json`'s `lua` field | `test/conformance/lua/main.lua`, `make/checks/lua-conformance.mk` |
 | schema-lua-fuzz-differential | the wire fuzzer drives the Lua load against the Go engine | `test/conformance/lua/wirefuzz.lua`, `make/checks/lua-fuzz.mk` |
 
-Owed and named, not carried by any card yet: the block and cooked
-accelerators, the allocation gate (`collectgarbage("count")` is the
+The conformance driver answers all eighteen surfaces. The block and cooked
+accelerators are read on the reading tier's terms (docs/SPEC-TABLES.md §7,
+§19): a Lua string has no address, so `BlockOpen` and the cook's `Open` take
+the base's placement as an argument (`base_offset`, the Elixir leg's `lead`),
+the cook's `Open` is the header and the base alone (O(1)) and `Check` runs
+`cook-check`'s two passes, and `Cook` writes either byte order (`order` 1 or
+2). One row is named and left: a `retain-message` batch another build wrote,
+because `announceRead` counts the announced entries but resolves the
+receiver's own vocabulary rather than the sender's (§3.3).
+
+Owed and named, not carried by any card yet: the cross-build announcement
+read above, the allocation gate (`collectgarbage("count")` is the
 instrument), the bench leg, the release tier and the analyzer-clean gate
 (`luac -p`). `make test` now probes the `lua` toolchain: a CI job that runs it
 needs `make dist-lua` or `LUA=lua` with a 5.4 interpreter, which is the

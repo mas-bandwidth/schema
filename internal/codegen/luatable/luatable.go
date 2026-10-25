@@ -219,8 +219,8 @@ func gateDeclaredFormsRuntime(name string, data []byte) []byte {
 		)
 	case "cook.lua":
 		replaceOnce(
-			"function C.Open(T, name, bytes)\n",
-			"function C.Open(T, name, bytes)\n  local cd = T.Tables[name]\n  if cd ~= nil and cd.forms ~= nil and cd.forms.cook ~= true then\n    error(\"cook: table \" .. tostring(name) .. \" does not carry cook (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
+			"function C.Open(T, name, bytes, base_offset)\n",
+			"function C.Open(T, name, bytes, base_offset)\n  local cd = T.Tables[name]\n  if cd ~= nil and cd.forms ~= nil and cd.forms.cook ~= true then\n    error(\"cook: table \" .. tostring(name) .. \" does not carry cook (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
 		)
 	case "cookwrite.lua":
 		replaceOnce(
@@ -228,8 +228,8 @@ func gateDeclaredFormsRuntime(name string, data []byte) []byte {
 			"function C.CookMeasure(T, name, v)\n  local cd = T.Tables[name]\n  if cd ~= nil and cd.forms ~= nil and cd.forms.cook ~= true then\n    error(\"cook: table \" .. tostring(name) .. \" does not carry cook (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
 		)
 		replaceOnce(
-			"function C.Cook(T, name, v, capacity)\n",
-			"function C.Cook(T, name, v, capacity)\n  local cd = T.Tables[name]\n  if cd ~= nil and cd.forms ~= nil and cd.forms.cook ~= true then\n    error(\"cook: table \" .. tostring(name) .. \" does not carry cook (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
+			"function C.Cook(T, name, v, capacity, order)\n",
+			"function C.Cook(T, name, v, capacity, order)\n  local cd = T.Tables[name]\n  if cd ~= nil and cd.forms ~= nil and cd.forms.cook ~= true then\n    error(\"cook: table \" .. tostring(name) .. \" does not carry cook (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
 		)
 	}
 	return []byte(s)
@@ -316,6 +316,15 @@ func emit(m *Module) {
 	m.Printf("_M.BuildVersion = %s\n", idLit(ir.BuildVersion(u)))
 	m.Printf("_M.BytesBlobTypeId = %s\n", idLit(ir.BytesTypeId))
 	m.Printf("_M.StringBlobTypeId = %s\n\n", idLit(ir.StringTypeId))
+	// every id this build can name (ir.TableWireIds): a retaining save tells a
+	// nameable id from a retained one by it, and only a retained one takes an
+	// entry of the caller's id list (docs/SPEC-TABLES.md §6.6, THE RETAINED IDS)
+	m.Printf("-- every id this build can name (docs/SPEC-TABLES.md §6.6, THE RETAINED IDS)\n")
+	m.Printf("_M.WireIds = {\n")
+	for _, id := range ir.TableWireIds(u) {
+		m.Printf("  [%s] = true,\n", idLit(id))
+	}
+	m.Printf("}\n\n")
 	if unitDeprecatesVariant(u) {
 		// the writers' §2.15 walk runs only where a variant is retired
 		m.Printf("-- an enum variant is retired in place (docs/SPEC-TABLES.md §2.15)\n")

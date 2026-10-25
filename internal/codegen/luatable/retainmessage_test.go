@@ -39,18 +39,23 @@ fixed table Child { n int32
 fixed table Rec { a int32 }
 union Pick { alpha int32
  ping }
+fixed table Item { n int32
+  y int32 }
 table Msg { c Child
   x int32
   extra string(8)
   neg int16
   nums [..4]int32
   rec Rec
-  pick Pick }
+  pick Pick
+  items [..2]Item }
 `
 	older := `package probe
 fixed table Child { n int32 }
+fixed table Item { n int32 }
 table Msg { c Child
-  x int32 }
+  x int32
+  items [..2]Item }
 `
 	cases := []struct {
 		name, lua, goSetup string
@@ -61,6 +66,11 @@ table Msg { c Child
 		{"rec", `v.rec.a = 9`, `v.Rec.A = 9`},
 		{"pick", `v.pick = { tag = 1, alpha = -7 }`, `v.Pick.Type = PickTypeAlpha; v.Pick.Alpha().Value = -7`},
 		{"nested", `v.c.k = 11`, `v.C.K = 11`},
+		// an unknown field inside an ELEMENT of an array of tables: the
+		// element is addressed by the array's (ordinal, index) step alone, as
+		// retain.lua's capture and save address it (§6.6), so the record lands
+		// back inside its own element
+		{"element", `local it = Tn.NewItem(); it.n = 1; it.y = 5; v.items = { it }`, `v.ItemsCount = 1; v.Items[0].N = 1; v.Items[0].Y = 5`},
 	}
 
 	dir := t.TempDir()

@@ -16,6 +16,8 @@
 -- at the slot's delta (§7.2).
 local U = {}
 
+local cook = require("cook")
+
 local function u8(ctx, at)
   return string.byte(ctx.data, at + 1) or 0
 end
@@ -354,8 +356,17 @@ end
 -- U.Read reads an OPENED cook's region into the root value. h is the handle
 -- Cook.Open answered; the directory names every node, so each table node is
 -- built once and a reference to it reads the same Lua value wherever it is
--- named (docs/SPEC-TABLES.md §7.2, §3.1).
+-- named (docs/SPEC-TABLES.md §7.2, §3.1). Open reads only the header (§7.1),
+-- so a read of every node first runs cook-check's two passes (§7.4) over a
+-- handle no Check has proved: the walk below follows the directory and every
+-- reference, and it is O(n) already, so the scan costs it nothing in order.
+-- A cook the scan refuses reads nil and the reason.
 function U.Read(T, h)
+  if h.dir == nil then
+    local checked, why = cook.Check(T, h.name, h.bytes)
+    if checked == nil then return nil, why end
+    h.dir = checked.dir
+  end
   local data = string.sub(h.bytes, h.data_offset + 1, h.data_offset + h.data_length)
   local by_id = {}
   for _, d in pairs(T.Tables) do by_id[d.type_id] = d end
