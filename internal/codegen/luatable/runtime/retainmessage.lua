@@ -442,7 +442,12 @@ local function decode_scalar(R, d)
   return 0, false
 end
 
-decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store, report)
+-- A BODY PATH STEP BELONGS TO THE HOLDER (§6.6, retain.lua's capture and
+-- save): a declared field's table adds its own (ordinal, 0) step, but an
+-- array's element and a union's arm are already addressed by the step the
+-- array or the union added, (ordinal, index) or (ordinal, tag), so `inner` is
+-- true for them and `ord` carries the holding field's ordinal to an arm.
+decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store, report, ord, inner)
   local s = f.shape
   if s == "pointer" or s == "string_blob" or s == "bytes_blob" then
     local index, ok = reader:get(indexBits)
@@ -495,9 +500,10 @@ decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store
     for i, arm in ipairs(un.arms) do
       if arm.id == e.id then
         local uv = { tag = i }
-        local p = path_step(path, f.ordinal - 1, arm.tag)
+        local o = ord or (f.ordinal - 1)
+        local p = path_step(path, o, arm.tag)
         if arm.field ~= nil then
-          if not decode_value(T, vocab, reader, indexBits, arm.field, uv, arm.name, p, store, report) then return false end
+          if not decode_value(T, vocab, reader, indexBits, arm.field, uv, arm.name, p, store, report, o, true) then return false end
         end
         holder[key] = uv
         return true
@@ -508,7 +514,8 @@ decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store
   elseif s == "table" then
     local nv
     if holder[key] == nil then nv = T["New" .. f.target]() else nv = holder[key] end
-    local p = path_step(path, f.ordinal - 1, 0)
+    local p = path
+    if not inner then p = path_step(path, f.ordinal - 1, 0) end
     if not decode_body(T, vocab, reader, indexBits, T.Tables[f.target], nv, p, store, report) then return false end
     holder[key] = nv
     return true
@@ -545,9 +552,9 @@ decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store
         local p = path_step(path, f.ordinal - 1, (kidx or 1) - 1)
         local ev = {}
         if d.elem.shape == "table" or d.elem.shape == "union" then
-          if not decode_value(T, vocab, reader, indexBits, d.elem, ev, "v", p, store, report) then return false end
+          if not decode_value(T, vocab, reader, indexBits, d.elem, ev, "v", p, store, report, f.ordinal - 1, true) then return false end
         else
-          if not decode_value(T, vocab, reader, indexBits, d.elem, ev, "v", path, store, report) then return false end
+          if not decode_value(T, vocab, reader, indexBits, d.elem, ev, "v", path, store, report, f.ordinal - 1, true) then return false end
         end
         if kidx ~= nil then out[kidx] = ev.v end
       end
@@ -555,7 +562,7 @@ decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store
       for i = 1, n do
         local p = path_step(path, f.ordinal - 1, i - 1)
         local ev = {}
-        if not decode_value(T, vocab, reader, indexBits, d.elem, ev, "v", p, store, report) then return false end
+        if not decode_value(T, vocab, reader, indexBits, d.elem, ev, "v", p, store, report, f.ordinal - 1, true) then return false end
         out[i] = ev.v
       end
     end

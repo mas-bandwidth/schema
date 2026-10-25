@@ -319,10 +319,35 @@ local function id_ref(ids, id)
   return #ids.list
 end
 
+-- THE RETAINED IDS' STORAGE IS THE CALLER'S, DECLARED BY CAPACITY (§6.6, THE
+-- RETAINED IDS). An id a retained record names takes its trailer slot like
+-- any other, but an id this build cannot name (ids.known, the unit's
+-- T.WireIds) also takes one entry of the caller's id list, retain.idCapacity
+-- of them, and a repeat takes none. Past the capacity the answer is nil: the
+-- record that needed the id is dropped and counted, and the save goes on.
+-- A store that declares no capacity is unbounded.
+local function id_ref_record(ids, id)
+  for i, v in ipairs(ids.list) do if v == id then return i end end
+  if ids.known ~= nil and not ids.known[id] then
+    if ids.idCapacity ~= nil and ids.retained >= ids.idCapacity then return nil end
+    ids.retained = ids.retained + 1
+    ids.flag[#ids.list + 1] = true
+  end
+  ids.list[#ids.list + 1] = id
+  return #ids.list
+end
+
 -- AN ENUM-KEYED ELEMENT (§2.4, §3.2): its payload is bare — the key's L
 -- frames it — and a zero element does not ride, so the pair is absent.
 local function id_rollback(ids, keep)
-  for i = #ids.list, keep + 1, -1 do ids.list[i] = nil end
+  for i = #ids.list, keep + 1, -1 do
+    ids.list[i] = nil
+    -- a rolled-back retained id gives its entry of the caller's list back
+    if ids.flag ~= nil and ids.flag[i] then
+      ids.flag[i] = nil
+      ids.retained = ids.retained - 1
+    end
+  end
 end
 
 local function write_keyed_one(T, ids, nodes, e, val, w, path, ord, retain, report)
@@ -732,7 +757,9 @@ local function out_ref(o)
   local id = record_u64(o.r.b, o.r.at)
   o.r.at = o.r.at + 8
   if id == 0 then out_leb(o.w, 0); return 0 end
-  out_leb(o.w, id_ref(o.ids, id))
+  local ref = id_ref_record(o.ids, id)
+  if ref == nil then return nil end
+  out_leb(o.w, ref)
   return id
 end
 local function out_raw(o, n)
@@ -825,15 +852,18 @@ local function emit_tail(ids, w, path, retain, report)
     if rec.key == key then
       local mark = #ids.list
       local probe = W()
-      local ref = id_ref(ids, rec.id)
-      w_leb(probe, ref)
-      w_u8(probe, rec.kind)
+      local ref = id_ref_record(ids, rec.id)
       local o = { r = tr_reader(rec.payload, 0, #rec.payload), w = probe, ids = ids }
       -- THE WALK REACHED IT, whatever came of the emit (Go's tail marks placed
-      -- before it looks at the emit): a record reached but unwritable counts
-      -- one retain_lost here and is not counted again by count_lost.
+      -- before it looks at the emit): a record reached but unwritable, or one
+      -- whose id the caller's full id list has no entry for, counts one
+      -- retain_lost here and is not counted again by count_lost.
       rec.placed = true
-      if out_payload(o, rec.kind, 0) and o.r.at == o.r.lim then
+      if ref ~= nil then
+        w_leb(probe, ref)
+        w_u8(probe, rec.kind)
+      end
+      if ref ~= nil and out_payload(o, rec.kind, 0) and o.r.at == o.r.lim then
         w_raw(w, table.concat(probe.parts))
       else
         id_rollback(ids, mark)
@@ -1197,7 +1227,8 @@ local function save_retain(T, name, v, retain, report)
   local nodes = number_nodes(T, desc, v)
   if nodes == nil then return nil end
   local idx = W()
-  local ids = { list = {} }
+  local ids = { list = {}, known = T.WireIds, flag = {}, retained = 0 }
+  if retain ~= nil then ids.idCapacity = retain.idCapacity end
   w_u8(idx, 1)
   local root = path_root()
   for _, fd in ipairs(desc.fields) do
