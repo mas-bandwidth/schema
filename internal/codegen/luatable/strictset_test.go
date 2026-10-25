@@ -335,7 +335,7 @@ func TestLuaStrictReadRefusesWhatGoRefuses(t *testing.T) {
 	floatDir := t.TempDir()
 	floatUnit := strictWriteSchema(t, floatDir, "strictfloat", "table Root { f float64 }\n")
 	dupDir := t.TempDir()
-	dupUnit := strictWriteSchema(t, dupDir, "strictdup", "table Root { entries map[int32]int32\n after int32 }\n")
+	dupUnit := strictWriteSchema(t, dupDir, "strictdup", "table Root { entries map[int32]int32\n past int32 }\n")
 	groups["strictfloat"] = &strictGroup{name: "strictfloat", unit: floatUnit, cases: strictForgeFloat(t, floatUnit)}
 	groups["strictdup"] = &strictGroup{name: "strictdup", unit: dupUnit, cases: strictForgeDuplicate(t, dupUnit)}
 

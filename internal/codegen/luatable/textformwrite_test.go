@@ -11,14 +11,14 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 )
 
-// TestLuaHandEditableTextWrite is the Lua textform write gate (docs/SPEC-
-// TABLES.md §16.9.3): a read answers a document that retains the source bytes,
-// so a fresh document writes back byte for byte, and an edit of one existing
-// scalar changes only that value's token span. The oracle is the generated Go
-// writer's bytes: test/conformance/textform's .rewrite.sexp (SaveTextForm of a
-// fresh document) and .edited.sexp (EditTextForm of the same document), which
-// the Go leg (gotable's TestDocumentVectors and TestDocumentEdits) pins as its
-// own Save and Edit output.
+// TestLuaHandEditableTextWrite is the Lua textform write gate
+// (docs/SPEC-TABLES.md §16.9.3): a read answers a document that retains the
+// source bytes, so a fresh document writes back byte for byte, and an edit of
+// one existing scalar changes only that value's token span. The oracle is the
+// generated Go writer's bytes: test/conformance/textform's .rewrite.sexp
+// (SaveTextForm of a fresh document) and .edited.sexp (EditTextForm of the same
+// document), which the Go leg (gotable's TestDocumentVectors and
+// TestDocumentEdits) pins as its own Save and Edit output.
 func TestLuaHandEditableTextWrite(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")

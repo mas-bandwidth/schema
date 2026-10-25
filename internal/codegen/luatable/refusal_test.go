@@ -118,7 +118,7 @@ print("strict-` + name + `-ok")
 table Root
 {
     entries map[int32]int32
-    after   int32
+    past    int32
 }
 `
 		if err := os.WriteFile(schema, []byte(src), 0o644); err != nil {

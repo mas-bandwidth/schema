@@ -292,7 +292,7 @@ table Holder
     note  *string
     buf   *bytes
     reach Reach
-    after int32
+    past  int32
 }
 `
 
@@ -315,7 +315,7 @@ func TestLuaTableSaveBlobArms(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := []struct{ name, text string }{
-		{"text_arm_and_blobs", `{ "note": "ab", "buf": "AQID", "reach": { "text": "hi" }, "after": 4 }`},
+		{"text_arm_and_blobs", `{ "note": "ab", "buf": "AQID", "reach": { "text": "hi" }, "past": 4 }`},
 		{"text_arm_alone", `{ "reach": { "text": "" } }`},
 		{"pointer_arm", `{ "note": "z", "reach": { "only": { "w": 7 } } }`},
 	}
