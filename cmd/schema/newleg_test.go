@@ -176,7 +176,7 @@ func TestNewLegLuaYieldsABuildingTestingSkeleton(t *testing.T) {
 	// tables/goruntime is the shared Go runtime the generated fuzz unit under
 	// internal/ imports (docs/SPEC-TABLES.md §8.4), so it comes along, and so
 	// does every file beside the sources, which a port's package may embed
-	// (runtime/*.lua, runtime/*.luau, serialize/*.nut, ...).
+	// (runtime/*.lua, runtime/*.luau, runtime/*.goose, serialize/*.nut, ...).
 	for _, dir := range []string{"cmd", "compiler", "internal", "ir", filepath.Join("tables", "goruntime")} {
 		copyScaffoldTree(t, filepath.Join(root, dir), filepath.Join(tree, dir), func(rel string) bool {
 			return !strings.HasSuffix(rel, "_test.go")

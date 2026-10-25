@@ -104,9 +104,10 @@ func identNewLeg(lang string) error {
 }
 
 // newLegRecipe is a language's file extension and line comment. The default
-// `#` is no comment in the Lua family or Lobster: lua and luau name `--`
-// (luau's files are .luau: docs/PORT-LUAU.md, THE RUNTIME LAYOUT), and lobster
-// names `//` (docs/PORT-LOBSTER.md, THE RUNTIME LAYOUT).
+// `#` is no comment in the Lua family, Lobster or Goose: lua and luau name
+// `--` (luau's files are .luau: docs/PORT-LUAU.md, THE RUNTIME LAYOUT), and
+// lobster and goose name `//` (docs/PORT-LOBSTER.md and docs/PORT-GOOSE.md,
+// THE RUNTIME LAYOUT; goose's files are .goose).
 func newLegRecipe(lang string) (ext, comment string) {
 	switch lang {
 	case "lua":
@@ -115,6 +116,8 @@ func newLegRecipe(lang string) (ext, comment string) {
 		return "lobster", "//"
 	case "luau":
 		return "luau", "--"
+	case "goose":
+		return "goose", "//"
 	}
 	return lang, "#"
 }

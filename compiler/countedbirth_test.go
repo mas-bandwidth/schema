@@ -42,15 +42,16 @@ type T
 // countName is the count's spelling in each target's storage. It is the
 // identifier every claim below is made about.
 var countName = map[string]string{
-	"lobster": "WindowCount",
 	"c":       "window_count",
 	"cpp":     "window_count",
 	"cs":      "WindowCount",
 	"dart":    "windowCount",
 	"elixir":  "window", // the list IS the count: length(value.window)
 	"go":      "WindowCount",
+	"goose":   "WindowCount",
 	"java":    "windowCount",
 	"js":      "WindowCount",
+	"lobster": "WindowCount",
 	"rust":    "window_count",
 }
 
@@ -59,15 +60,16 @@ var countName = map[string]string{
 // here: it is all-zero by rule in every target, and a specified default does
 // not reach it either.
 var bornAtMinimum = map[string]string{
-	"lobster": "WindowCount: 2",
 	"c":       "value.window_count = 2;",
 	"cpp":     "int32_t window_count = 2;",
 	"cs":      "public int WindowCount = 2;",
 	"dart":    "int windowCount = 2;",
 	"elixir":  "defstruct window: List.duplicate(0, 2)",
 	"go":      "value.WindowCount = 2",
+	"goose":   "WindowCount: i32 = 2,", // the struct field's own default (docs/PORT-GOOSE.md, THE TYPE MAPPING)
 	"java":    "public int windowCount = 2;",
 	"js":      "this.WindowCount = 2;",
+	"lobster": "WindowCount: 2",
 	"rust":    "value.window_count = 2;",
 }
 
@@ -95,6 +97,32 @@ var assertsInDebug = map[string][]string{
 	// js is not here: its debug-only idiom is not an assert statement but the
 	// PRODUCTION/checked fork of the flat writer, checked separately below.
 	"rust": {`debug_assert!(value.window_count >= 2 && value.window_count <= 8, "window_count out of range [2, 8]");`},
+}
+
+// packetWriterOwed is each target whose type surface is emitted but whose
+// packet WRITER has not landed: it has no write path for a write-side claim to
+// be made about, so the claim is owed, by the card named here, rather than
+// waived. The gate holds the debt honest: an owed target that starts emitting
+// a writer (a Goose `fn Write...`) turns the gate red until that card moves
+// the target out of this map and into assertsInDebug or refusesEveryBuild,
+// and into the tag maps of uniontagwrite_test.go (docs/PORT-GOOSE.md, THE
+// CARD MAP).
+var packetWriterOwed = map[string]string{
+	"goose": "schema-goose-type-wire-write",
+}
+
+// writerStillOwed reports whether target's write-side claim is owed, and
+// fails the test when the owed target already emits a writer.
+func writerStillOwed(t *testing.T, target, text string) bool {
+	t.Helper()
+	card, owed := packetWriterOwed[target]
+	if !owed {
+		return false
+	}
+	if strings.Contains(text, "fn Write") {
+		t.Errorf("%s: a packet writer is emitted while its write-side claim is still owed to %s; move %s out of packetWriterOwed and give it its claim", target, card, target)
+	}
+	return true
 }
 
 // goneFromRelease is the every-build refusal each assert target used to carry.
@@ -199,6 +227,10 @@ func TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 	for _, target := range New().Targets() {
 		text := generatedText(t, countedAboveZero, target)
 		if codeclessLeg(t, target, text) {
+			continue
+		}
+
+		if writerStillOwed(t, target, text) {
 			continue
 		}
 
