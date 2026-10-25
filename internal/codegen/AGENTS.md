@@ -23,6 +23,8 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../../AGENTS.md
 | `javatable/` | Java table emitter | `go test ./internal/codegen/javatable` | `go test ./internal/codegen/javatable` |
 | `js/` | JS packet emitter | `go test ./internal/codegen/js` | `go test ./internal/codegen/js` |
 | `jstable/` | JS table emitter | `go test ./internal/codegen/jstable` | `go test ./internal/codegen/jstable` |
+| `lobster/` | Lobster type emitter (docs/PORT-LOBSTER.md) | `go test ./internal/codegen/lobster` | `go test ./internal/codegen/lobster/...` |
+| `lobstertable/` | Lobster table emitter (docs/PORT-LOBSTER.md) | `go test ./internal/codegen/lobstertable` | `go test ./internal/codegen/lobstertable` |
 | `luau/` | Luau type emitter (docs/PORT-LUAU.md) | `go test ./internal/codegen/luau` | `go test ./internal/codegen/luau/...` |
 | `luautable/` | Luau table emitter (docs/PORT-LUAU.md) | `go test ./internal/codegen/luautable` | `go test ./internal/codegen/luautable` |
 | `rust/` | Rust packet emitter | `go test ./internal/codegen/rust` | `go test ./internal/codegen/rust` |

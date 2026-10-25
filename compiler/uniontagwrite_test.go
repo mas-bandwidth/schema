@@ -74,6 +74,7 @@ var tagGoneFromRelease = map[string][]string{
 var tagRefusesEveryBuild = map[string][]string{
 	"elixir":   {`raise ArgumentError, "value.type is above the wire maximum"`},
 	"go":       {"if tagValue < 0 || tagValue > 2 {"},
+	"lobster":  {"if v.Type < 0 or v.Type > 2: return false"},
 	"squirrel": {`if (typeof v.Type != "integer" || v.Type < 0 || v.Type > 2) return false;`},
 }
 
@@ -84,6 +85,9 @@ var tagRefusesEveryBuild = map[string][]string{
 func TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 	for _, target := range New().Targets() {
 		text := generatedText(t, unionTagUnit, target)
+		if codeclessLeg(t, target, text) {
+			continue
+		}
 
 		switch {
 		case writerStillOwed(t, target, text):

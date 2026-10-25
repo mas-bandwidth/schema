@@ -50,6 +50,7 @@ type A
 // It is the text the guard is pasted in front of.
 var guardComment = map[string]string{
 	"c":        "", // C emits no branch storage comment
+	"lobster":  "", // Lobster emits no branch storage comment (docs/PORT-LOBSTER.md)
 	"cpp":      " — wire branch",
 	"cs":       " — wire branch",
 	"dart":     " — wire branch",

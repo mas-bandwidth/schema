@@ -104,13 +104,16 @@ func identNewLeg(lang string) error {
 }
 
 // newLegRecipe is a language's file extension and line comment. The default
-// `#` is no comment in the Lua family or in Goose: lua and luau name `--`
-// (luau's files are .luau: docs/PORT-LUAU.md, THE RUNTIME LAYOUT), and goose
-// names `//` (its files are .goose: docs/PORT-GOOSE.md, THE RUNTIME LAYOUT).
+// `#` is no comment in the Lua family, Lobster or Goose: lua and luau name
+// `--` (luau's files are .luau: docs/PORT-LUAU.md, THE RUNTIME LAYOUT), and
+// lobster and goose name `//` (docs/PORT-LOBSTER.md and docs/PORT-GOOSE.md,
+// THE RUNTIME LAYOUT; goose's files are .goose).
 func newLegRecipe(lang string) (ext, comment string) {
 	switch lang {
 	case "lua":
 		return "lua", "--"
+	case "lobster":
+		return "lobster", "//"
 	case "luau":
 		return "luau", "--"
 	case "goose":
@@ -237,6 +240,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			fmt.Fprintf(&b, "  protocol_id = %q,\n", fmt.Sprintf("0x%016x", u.ProtocolId))
 			fmt.Fprintf(&b, "  file = %q,\n", f.Base)
 			fmt.Fprintf(&b, "}\n")
+		} else if ext == "lobster" {
+			fmt.Fprintf(&b, "let schema_package = %q\n", u.Package)
+			fmt.Fprintf(&b, "let schema_protocol_id = 0x%016x\n", u.ProtocolId)
+			fmt.Fprintf(&b, "let schema_file = %q\n", f.Base)
 		} else {
 			fmt.Fprintf(&b, "package: %s\n", u.Package)
 			fmt.Fprintf(&b, "protocol_id: 0x%016x\n", u.ProtocolId)
