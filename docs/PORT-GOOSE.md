@@ -273,7 +273,8 @@ change: `schema_tables.goose` is then emitted byte for byte as written
 and `<Base>Table.goose` for a file with tables or with a packet type a table
 reaches. Every module opens `namespace <package>;` and imports what it
 names: `import .schema_rt;` (and `import .schema_tables;`), and `import .<Other>;` for each module it references. The leading dot resolves the
-import RELATIVE TO THE IMPORTING FILE (goose_spec.md §11.1), so the runtime
+import RELATIVE TO THE IMPORTING FILE (§11.1 of the pinned v2026.2 release's
+goose_spec.md, which is not a page of this tree), so the runtime
 is emitted beside the modules and nothing is searched for: a generated
 module never spells an undotted import (which resolves against the root
 file's directory, then declared packages, then the standard library) and

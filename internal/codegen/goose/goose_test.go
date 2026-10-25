@@ -226,13 +226,16 @@ func irDefault(ns string, f *ir.Field) string {
 }
 
 // TestGooseRefusesByName holds the unit refusals of docs/PORT-GOOSE.md, THE
-// RUNTIME LAYOUT: a package that is a Goose keyword (the namespace every
-// module declares into) and a name declared twice in that namespace (an
-// enum variant Count beside the enum's own Count) are refused by name.
+// RUNTIME LAYOUT: a package that is a Goose scalar type name (the namespace
+// every module declares into) and a name declared twice in that namespace (an
+// enum variant Count beside the enum's own Count) are refused by name. A
+// package that is a Goose keyword never reaches the port: the checker's one
+// reserved-word table refuses it first (SPEC §4.6), so the port's own refusal
+// is held on the names that table leaves to it, the scalar types, std and main.
 func TestGooseRefusesByName(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct{ src, want string }{
-		{"package guard\n\ntype T\n{\n    x uint8\n}\n", `package "guard" is reserved in Goose`},
+		{"package u8\n\ntype T\n{\n    x uint8\n}\n", `package "u8" is reserved in Goose`},
 		{"package p\n\nenum E\n{\n    Count\n    Other\n}\n", "declares ECount in namespace p, which E already declares"},
 	} {
 		dir := t.TempDir()
