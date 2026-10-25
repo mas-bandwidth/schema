@@ -7380,11 +7380,15 @@ inline void PackConfigReset( PackConfig & value )
 {
     value.version = 1;
     GlobalSettingsReset( value.global );
-    ShipEntryReset( value.ships.slots[0] );
-    for ( int32_t i = 1; i < 3; i++ ) { value.ships.slots[i] = value.ships.slots[0]; }
+    for ( int32_t i = 0; i < 3; i++ )
+    {
+        ShipEntryReset( value.ships.slots[i] );
+    }
     memset( value.thresholds.slots, 0, sizeof( value.thresholds.slots ) );
-    ShipEntryReset( value.reserves[0] );
-    for ( int32_t i = 1; i < 3; i++ ) { value.reserves[i] = value.reserves[0]; }
+    for ( int32_t i = 0; i < 3; i++ )
+    {
+        ShipEntryReset( value.reserves[i] );
+    }
     value.reserves_count = 0;
 }
 

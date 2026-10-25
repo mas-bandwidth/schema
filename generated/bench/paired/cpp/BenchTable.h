@@ -4336,11 +4336,15 @@ inline void BenchMixedReset( BenchMixed & value )
     value.world_time = 0;
     value.frame_tick = 0;
     value.server_time = 0;
-    MixedEntityReset( value.entities[0] );
-    for ( int32_t i = 1; i < 8; i++ ) { value.entities[i] = value.entities[0]; }
+    for ( int32_t i = 0; i < 8; i++ )
+    {
+        MixedEntityReset( value.entities[i] );
+    }
     value.entities_count = 0;
-    MixedStatReset( value.stats[0] );
-    for ( int32_t i = 1; i < 80; i++ ) { value.stats[i] = value.stats[0]; }
+    for ( int32_t i = 0; i < 80; i++ )
+    {
+        MixedStatReset( value.stats[i] );
+    }
     value.stats_count = 0;
     MixedHitEventReset( value.game_event.hit );
     MixedChatEventReset( value.game_event.chat );

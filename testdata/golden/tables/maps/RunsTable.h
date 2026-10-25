@@ -8522,8 +8522,10 @@ inline void RunsReset( Runs & value );
 inline void RunsSpansEntryReset( RunsSpansEntry & value )
 {
     value.key = 0;
-    ItemReset( value.value[0] );
-    for ( int32_t i = 1; i < 4; i++ ) { value.value[i] = value.value[0]; }
+    for ( int32_t i = 0; i < 4; i++ )
+    {
+        ItemReset( value.value[i] );
+    }
     value.value_count = 0;
 }
 
@@ -8658,8 +8660,10 @@ struct RunsSpansEntryEach { uint16_t key; decltype( TableEntryValue( (RunsSpansE
 inline RunsSpansEntryEach TableEntryEach( RunsSpansEntry * entry ) { return RunsSpansEntryEach{ TableEntryKey( *entry ), TableEntryValue( entry ) }; }
 inline void TableResetMapValue( RunsSpansEntry & value )
 {
-    ItemReset( value.value[0] );
-    for ( int32_t i = 1; i < 4; i++ ) { value.value[i] = value.value[0]; }
+    for ( int32_t i = 0; i < 4; i++ )
+    {
+        ItemReset( value.value[i] );
+    }
     value.value_count = 0;
 }
 

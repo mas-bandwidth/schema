@@ -4368,8 +4368,10 @@ inline void PaddedFrameReset( PaddedFrame & value )
 {
     value.marker = 0;
     value.stamp = 0;
-    PaddedRowReset( value.rows[0] );
-    for ( int32_t i = 1; i < 64; i++ ) { value.rows[i] = value.rows[0]; }
+    for ( int32_t i = 0; i < 64; i++ )
+    {
+        PaddedRowReset( value.rows[i] );
+    }
     value.rows_count = 0;
     memset( value.blob, 0, sizeof( value.blob ) );
     value.blob_length = 0;

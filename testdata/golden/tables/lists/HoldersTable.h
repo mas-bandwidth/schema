@@ -8402,8 +8402,10 @@ inline void ArmyReset( Army & value )
 
 inline void DeckReset( Deck & value )
 {
-    RowReset( value.hands[0] );
-    for ( int32_t i = 1; i < 3; i++ ) { value.hands[i] = value.hands[0]; }
+    for ( int32_t i = 0; i < 3; i++ )
+    {
+        RowReset( value.hands[i] );
+    }
     value.hands_count = 0;
     value.past = 0;
 }

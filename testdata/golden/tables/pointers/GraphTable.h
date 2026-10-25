@@ -7205,8 +7205,10 @@ inline void SceneReset( Scene & value )
     value.settings.value = 0; // *Settings — null
     value.alias.value = 0; // *ListNode — null
     LayerReset( value.ground );
-    LayerReset( value.layers[0] );
-    for ( int32_t i = 1; i < 4; i++ ) { value.layers[i] = value.layers[0]; }
+    for ( int32_t i = 0; i < 4; i++ )
+    {
+        LayerReset( value.layers[i] );
+    }
     value.layers_count = 0;
     MetaReset( value.meta );
 }
@@ -7215,8 +7217,10 @@ inline void DepotReset( Depot & value )
 {
     memset( value.name, 0, sizeof( value.name ) );
     value.name_length = 0;
-    LayerReset( value.banks.slots[0] );
-    for ( int32_t i = 1; i < 2; i++ ) { value.banks.slots[i] = value.banks.slots[0]; }
+    for ( int32_t i = 0; i < 2; i++ )
+    {
+        LayerReset( value.banks.slots[i] );
+    }
     MetaReset( value.spare );
     value.spare_present = false;
     value.head.value = 0; // *ListNode — null
