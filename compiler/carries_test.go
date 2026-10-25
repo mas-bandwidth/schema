@@ -11,14 +11,17 @@ import (
 // Dart carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3);
 // C++ also carries the timestamp kind (§2.11), the JSON array root (§16.10),
 // the one-sided integer range (§4.3) and ?map[K]V (§2.8); Lobster carries the
-// timestamp kind and the one-sided integer range (docs/PORT-LOBSTER.md); every
-// other target carries none at this stage.
+// timestamp kind and the one-sided integer range (docs/PORT-LOBSTER.md); Luau
+// carries every construct but integrity (§2.14); every other target carries
+// none at this stage.
 var nonGoCarriers = map[string][]string{
 	"c":       {carryOptionalVariableClosure},
 	"cs":      {carryOptionalVariableClosure},
 	"cpp":     {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
 	"dart":    {carryOptionalVariableClosure},
 	"lobster": {carryTimestamp, carryOneSidedRange},
+	// luau is registered under -tags schema_leg_luau (carries_luau.go)
+	"luau": {carryTimestamp, carryRequired, carryForms, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
 }
 
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {

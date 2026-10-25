@@ -494,6 +494,12 @@ jobs:
             exit 1
           fi
 
+      # THE LUAU PIN: the Luau packages and compiler's testgen gate run
+      # generated Luau under the pinned interpreter and fail, never skip,
+      # without it (internal/codegen/luau/luaurun; make/luau.mk dist-luau).
+      - name: install the Luau pin
+        run: make dist-luau
+
       # THE Lobster PIN, when the diff touches a Lobster package (or is broad):
       # internal/codegen/lobster and internal/codegen/lobstertable run generated
       # Lobster under the pinned compiler and fail, never skip, without it, as

@@ -47,8 +47,9 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	}
 	// A real `schema new-leg` leg in the tree (make/<lang>.mk beside a
 	// compiler/target_<lang>.go behind its schema_leg_<lang> tag, such as
-	// lobster, docs/PORT-LOBSTER.md) is a skeleton here too: its marker file
-	// is carried into the fixture, so the gate skips it by the same rule.
+	// lobster, docs/PORT-LOBSTER.md, or luau, docs/PORT-LUAU.md) is a skeleton
+	// here too: its marker file is carried into the fixture, so the gate skips it
+	// by the same rule.
 	skeletons := 1 // the planted lua
 	tagged, err := filepath.Glob(filepath.Join(root, "compiler", "target_*.go"))
 	if err != nil {
@@ -104,6 +105,8 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A hyphenated make/<leg>-<surface>.mk is a companion fragment of a leg
+	// (make/luau-serialize.mk, docs/PORT-LUAU.md), not a port.
 	var legs []string
 	for _, mk := range mkFiles {
 		stem := strings.TrimSuffix(filepath.Base(mk), ".mk")

@@ -54,7 +54,7 @@ func TestVariableClassBeyondCardConstructsElixir(t *testing.T) {
 		},
 		{
 			name:   "listdemo",
-			schema: []string{filepath.Join("tables", "lists", "Save.schema")},
+			schema: []string{filepath.Join("tables", "lists", "SaveGame.schema")},
 			root:   "Save",
 			wire:   "list_scalars.bin",
 			json:   "list_scalars.json",
