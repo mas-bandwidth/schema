@@ -24,7 +24,7 @@ func TestWideningReasonsElixir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u := loadUnit(t, filepath.Join(root, "tables", "lists", "Save.schema"))
+	u := loadUnit(t, filepath.Join(root, "tables", "lists", "SaveGame.schema"))
 	dir := t.TempDir()
 	names := writeModuleDir(t, dir, generateElixir(t, u))
 	wire := filepath.Join(root, "testdata", "wire", "tables", "fuzz-vectors", "list_scalar_widen.bin")

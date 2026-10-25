@@ -78,7 +78,7 @@
 #include "SpansTable.h"
 #include "TextTable.h"
 #include "TrailsTable.h"
-#include "SaveTable.h"
+#include "SaveGameTable.h"
 #include "HoldersTable.h"
 #include "SharedTable.h"
 #include "MigrateTable.h"
