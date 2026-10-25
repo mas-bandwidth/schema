@@ -32,6 +32,14 @@ func TestListsAreRefusedByNonCarriers(t *testing.T) {
 	u := unitFromSource(t, listSrc)
 	c := New()
 	for _, target := range c.Targets() {
+		if target == "lobster" {
+			// the Lobster table runtime carries the construct; the target
+			// applies no shared refusal (compiler/target_lobster.go)
+			if _, err := c.Generate(u, target, Options{}); err != nil {
+				t.Errorf("--lang lobster refused a construct its runtime carries: %v", err)
+			}
+			continue
+		}
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
 			if slices.Contains(listTargets, target) {

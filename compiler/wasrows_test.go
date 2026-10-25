@@ -66,6 +66,14 @@ func TestWasRowsCarriers(t *testing.T) {
 	u := unitFromSource(t, wasRowsUnit)
 	c := New()
 	for _, target := range c.Targets() {
+		if target == "lobster" {
+			// the Lobster table runtime carries the construct; the target
+			// applies no shared refusal (compiler/target_lobster.go)
+			if _, err := c.Generate(u, target, Options{}); err != nil {
+				t.Errorf("--lang lobster refused a construct its runtime carries: %v", err)
+			}
+			continue
+		}
 		out, err := c.Generate(u, target, Options{})
 		if target == "cpp" || target == "c" || target == "cs" || target == "dart" || target == "go" || target == "elixir" || target == "js" || target == "rust" || target == "java" {
 			if err != nil {
