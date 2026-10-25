@@ -6,11 +6,11 @@ package elixirtable
 // pair is deliberately UNLAWFUL — §5.1 refuses a removal — so the lineage entry
 // is HANDED IN by the probe and never read from a lock.
 //
-// `unknown` is asserted EXACTLY == 1: `Item.drop` is ONE field of ONE peer
+// `unknown` is asserted EXACTLY == 1: `Item.drop` is ONE field of ONE endpoint
 // however many of the four elements carry it. A leg that counts once per ELEMENT
 // lands 4, and that 4 is the whole reason this row exists. The census lands ONCE,
 // after the record loop, on a read that RETURNS (§5.9 #6) — so a SECOND read of
-// the same peer owes the same number again.
+// the same endpoint owes the same number again.
 import (
 	"fmt"
 	"path/filepath"
@@ -30,7 +30,7 @@ func TestFixedVersioningUnknownCensus(t *testing.T) {
   check(Enum.map(v.items, & &1.a) == [10, 11, 12, 13],
     "the four a values did not land: #{inspect(Enum.map(v.items, & &1.a))}")
   check(report.unknown == 1,
-    "unknown == #{report.unknown}, want 1: Item.drop is ONE field of ONE peer, not one per element")
+    "unknown == #{report.unknown}, want 1: Item.drop is ONE field of ONE endpoint, not one per element")
   check(report.kind_mismatch == 0 and report.widened == 0 and report.clamped == 0,
     "a counter that must not move did: #{why(report)}")
   check(report.malformed == false,

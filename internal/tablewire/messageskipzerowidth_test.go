@@ -10,7 +10,7 @@ import (
 )
 
 // A RUN OF ZERO-WIDTH ELEMENTS IS NOT A LOOP (docs/SPEC-TABLES.md §3.3). A
-// peer's announcement is untrusted, and one unknown entry announcing an array
+// endpoint's announcement is untrusted, and one unknown entry announcing an array
 // with `min = max = 0xFFFFFFFF` over an element that rides no bits used to buy
 // about 2^32 iterations of the skip walk for a few bytes of wire: kind 0 and
 // kind 32 elements because the arithmetic run did not take them, and a nested

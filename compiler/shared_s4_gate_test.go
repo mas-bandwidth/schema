@@ -147,14 +147,14 @@ func TestSharedS4Gate(t *testing.T) {
 		// lock were absent.  The VNEW_ unit is LOCKED, so the convention must
 		// never fire: the VOLD_ layout hash must not appear in the output.
 		dir := t.TempDir()
-		voldContent := "package s4conv\n\nfixed table Peer\n{\n    a int32\n}\n"
+		voldContent := "package s4conv\n\nfixed table Endpoint\n{\n    a int32\n}\n"
 		voldPath := filepath.Join(dir, "VOLD_Peer.schema")
 		if err := os.WriteFile(voldPath, []byte(voldContent), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		voldHash := hashFromSchemaFile(t, voldPath, "Peer")
+		voldHash := hashFromSchemaFile(t, voldPath, "Endpoint")
 
-		vnewContent := "package s4conv\n\nfixed table Peer\n{\n    a int32\n    b int32\n}\n"
+		vnewContent := "package s4conv\n\nfixed table Endpoint\n{\n    a int32\n    b int32\n}\n"
 		vnewPath := filepath.Join(dir, "VNEW_Peer.schema")
 		if err := os.WriteFile(vnewPath, []byte(vnewContent), 0o600); err != nil {
 			t.Fatal(err)

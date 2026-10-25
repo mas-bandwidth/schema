@@ -376,8 +376,8 @@ func cT04R20(t *testing.T) {
 	cT04Has(t, text, "memset( (void *) &defaults, 0, sizeof( defaults ) );", "R20 the reader's slack is the template's zeros")
 	// A DEPRECATED FIELD, counted ONCE per plan: an array's element 0 is the only
 	// one that censuses.
-	cT04Has(t, runtime, "if ( !named && census && c->report != NULL ) { c->report->unknown++; }", "R20 an unknown field is counted once per FIELD per peer")
-	cT04Has(t, runtime, "census && i == 0", "R20 once per FIELD per peer, not per element")
+	cT04Has(t, runtime, "if ( !named && census && c->report != NULL ) { c->report->unknown++; }", "R20 an unknown field is counted once per FIELD per endpoint")
+	cT04Has(t, runtime, "census && i == 0", "R20 once per FIELD per endpoint, not per element")
 	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
 	cT04Has(t, runtime, "(*widened)++;", "R20 a widen counts")
 	// AN OLDER ENUM: the ordinal is remapped through the plan's own table, whose
@@ -443,7 +443,7 @@ func cT04R29(t *testing.T) {
 		t.Errorf("R29: the warning does not name the table: %s", joined)
 	}
 	runtime := string(tableFixedRuntime)
-	cT04Has(t, runtime, "kTableFixedRecordMaxBytes = 65536", "R29 the reader holds the peer's layout to the same ceiling")
+	cT04Has(t, runtime, "kTableFixedRecordMaxBytes = 65536", "R29 the reader holds the endpoint's layout to the same ceiling")
 	cT04Has(t, runtime, "if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes )", "R29 a layout root past the ceiling")
 	cT04Has(t, runtime, "if ( e.size > kTableFixedRecordMaxBytes )", "R29 an entry past the writer's declared record")
 	cT04Has(t, runtime, "else if ( v > (int32_t) p->size )", "R29 the count clamps to the writer's bound")

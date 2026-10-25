@@ -37,7 +37,7 @@ fixed table Root {
 	}
 }
 
-// "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
+// "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
 // decoded, no counter moves and `malformed` does not fire." (docs/SPEC-TABLES.md §3.3).
 const msgNoVocabularyProbe = `
 import "testing"
@@ -56,7 +56,7 @@ func TestNoVocabulary(t *testing.T) {
 	var report TableReport
 	count, ok := RootLoadMessages(storage, &vocab, buf, &report)
 	if ok || count != 0 {
-		t.Fatalf("a body from a peer that never announced was not refused: count=%d ok=%v %+v", count, ok, report)
+		t.Fatalf("a body from an endpoint that never announced was not refused: count=%d ok=%v %+v", count, ok, report)
 	}
 	if report != (TableReport{Verdict: TableOpenRefused, Reason: "no_vocabulary"}) {
 		t.Fatalf("no_vocabulary: %+v", report)

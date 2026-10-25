@@ -59,7 +59,7 @@ func retainReplacedListWire(k, n2 int) []byte {
 	return b.finish()
 }
 
-// retainReplacedListSenderUnit is the peer's own declaration: `Inner` carries a
+// retainReplacedListSenderUnit is the endpoint's own declaration: `Inner` carries a
 // field the reader below cannot name, so the arm at index `k` of the first
 // `items` occurrence retains a record the reader's own build never sees. The
 // message form has no byte-framed length to damage, so the first occurrence is

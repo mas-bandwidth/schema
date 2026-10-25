@@ -11,7 +11,7 @@ import (
 // The forged bytes are the C++ reference's own — one record, four `items`,
 // `a` = 10..13 and `drop` = 900..903 — the divergence is in the COUNTING, not
 // damaged data. `r.Unknown` is asserted EXACTLY `== 1` because `Item.drop` is
-// one field of one peer, and a leg that counts once per element lands `4` and
+// one field of one endpoint, and a leg that counts once per element lands `4` and
 // passes `>= 1`; that `4` is the whole reason this row exists.
 func TestFixedVersioningUnknownCensus(t *testing.T) {
 	corpus := fixedCorpus(t)
@@ -41,7 +41,7 @@ func TestUnknownCensus(t *testing.T) {
 		t.Fatalf("counters that must not move did: %%+v", r)
 	}
 	if r.Unknown != 1 {
-		t.Fatalf("unknown == %%d, want 1: Item.drop is ONE field of ONE peer, not one per element", r.Unknown)
+		t.Fatalf("unknown == %%d, want 1: Item.drop is ONE field of ONE endpoint, not one per element", r.Unknown)
 	}
 	if back[0].Lead != 1 || back[0].Trail != 2 {
 		t.Fatalf("the bracketing fields moved: %%+v", back[0])

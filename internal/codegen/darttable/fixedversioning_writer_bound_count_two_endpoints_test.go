@@ -8,16 +8,16 @@ import (
 	"testing"
 )
 
-// writer_bound_count, two lineage peers (§5.8 row 4). The reader is
-// VNEW_array_bounded_grow ([..8]int32); it is handed TWO peers with DIFFERENT
+// writer_bound_count, two lineage endpoints (§5.8 row 4). The reader is
+// VNEW_array_bounded_grow ([..8]int32); it is handed TWO endpoints with DIFFERENT
 // bounds — VOLD_array_bounded_grow ([..4]int32), which WROTE the file, and
 // VMID_array_bounded_grow ([..6]int32), the distractor, which did not. The
-// count word is forged to 7 exactly as the single-peer test forges it. The
+// count word is forged to 7 exactly as the single-endpoint test forges it. The
 // number that makes this test worth having is 6: a reader that clamps to its
-// own bound lands 8, one that clamps to whichever peer it saw last lands 6, and
-// only a plan that carries the WRITING peer's bound lands 4.
+// own bound lands 8, one that clamps to whichever endpoint it saw last lands 6, and
+// only a plan that carries the WRITING endpoint's bound lands 4.
 
-func TestFixedVersioningWriterBoundCountTwoPeers(t *testing.T) {
+func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
 	corpus := fixedCorpus(t)
 	dartBin := dartBinary(t)
 
@@ -69,6 +69,6 @@ func TestFixedVersioningWriterBoundCountTwoPeers(t *testing.T) {
 	out, err := runVersionProbe(t, dartBin, "VNEW_array_bounded_grow",
 		[]string{"VOLD_array_bounded_grow", "VMID_array_bounded_grow"}, 0, forged, body)
 	if err != nil {
-		t.Fatalf("writer_bound_count, two peers: %v\n%s", err, out)
+		t.Fatalf("writer_bound_count, two endpoints: %v\n%s", err, out)
 	}
 }

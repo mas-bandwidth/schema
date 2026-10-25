@@ -587,10 +587,10 @@ fixed table T
 	t03Has(t, hdr, "Reset( defaults );", "R20 the prefill source is the reader's declared defaults")
 	t03Has(t, hdr, "TableFixedFillRun( fill, fill_count,", "R20 the prefill lands the declared defaults under the plan")
 	// A DEPRECATED FIELD IS DROPPED AND COUNTED ONCE UNDER UNKNOWN PER PLAN:
-	// each peer field the reader cannot name adds one unknown, and only the
+	// each writer's field the reader cannot name adds one unknown, and only the
 	// FIRST time it is seen (the census flag is false for later elements).
 	t03Has(t, runtime, "if ( !named && census && c.report != NULL ) { c.report->unknown++; }", "R20 a field the reader cannot name is counted once")
-	t03Has(t, runtime, "// ONCE PER FIELD PER PEER (ALG 5.4), so only element 0 censuses.", "R20 the census is once per field per plan")
+	t03Has(t, runtime, "// ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses.", "R20 the census is once per field per plan")
 	t03Has(t, runtime, "census && i == 0", "R20 only an array's element 0 censuses")
 	t03Has(t, runtime, "census && k == 0", "R20 only a keyed array's element 0 censuses")
 	// A NARROWER INTEGER OR FLOAT IS WIDENED EXACTLY and widened counts: the

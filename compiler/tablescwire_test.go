@@ -386,7 +386,7 @@ table Node {
 table Root {
  first *Node
  slots [..3]*Node
- peers [2]*Node
+ endpoints [2]*Node
 }
 `)
 	model := tabletext.NewModel(u)
@@ -421,7 +421,7 @@ int main(void) {
  ctx.arena=&builder.arena; sink.region=NULL; sink.worker=&builder.main;
  first=node_emplace(&sink,&root->first); CHECK(first!=NULL);first->value=7;
  second=node_emplace(&sink,&first->next); CHECK(second!=NULL);second->value=9;
- root->slots_count=3;root->slots[0]=first->next;root->slots[2]=root->first;root->peers[0]=first->next;
+ root->slots_count=3;root->slots[0]=first->next;root->slots[2]=root->first;root->endpoints[0]=first->next;
  CHECK(root_measure(&ctx,root)==(int64_t)sizeof(expected));
  CHECK(root_save(&ctx,root,saved,sizeof(saved))==(int64_t)sizeof(expected));
  CHECK(!memcmp(saved,expected,sizeof(saved)));
@@ -430,7 +430,7 @@ int main(void) {
  second->next.value=0;
  CHECK(root_builder_lock(&builder));locked=(const Root *)(const void *)builder.region;
  CHECK(node_at(NULL,&locked->slots[2])==node_at(NULL,&locked->first));
- CHECK(node_at(NULL,&locked->slots[0])==node_at(NULL,&locked->peers[0]));
+ CHECK(node_at(NULL,&locked->slots[0])==node_at(NULL,&locked->endpoints[0]));
  CHECK(root_save(NULL,locked,saved,sizeof(saved))==(int64_t)sizeof(expected));
  CHECK(!memcmp(saved,expected,sizeof(saved)));
  extent=root_load_measure_ex(expected,sizeof(expected),&attribution,&reason);

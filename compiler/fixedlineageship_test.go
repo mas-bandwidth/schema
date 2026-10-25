@@ -294,7 +294,7 @@ var fixedLineageShipKnownRecord = map[string]func(hash uint64) *regexp.Regexp{
 // `8 + body` already, so a driver that passed the lock's number through
 // unchanged shipped a LOCKED unit's older entries EIGHT BYTES SHORT — and step
 // 9 divides the tail behind the layout by that number, so every record of a
-// file written by the older peer is misread or the read is refused as ragged.
+// file written by the older endpoint is misread or the read is refused as ragged.
 //
 // It is invisible in every harness fixture because none of them carries a lock,
 // and invisible for the CURRENT layout because the leg's own entry wins for it.

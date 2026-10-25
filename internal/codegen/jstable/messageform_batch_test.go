@@ -344,7 +344,7 @@ const shortCount = %[1]sLoadMessages(shortStorage, v, threeBatch, shortReport);
 if (shortCount !== 3 || shortReport.Verdict !== 1 || shortReport.Reason !== "batch_too_large" || shortReport.Malformed) {
   fail("LoadMessages above capacity: count=" + shortCount + " " + JSON.stringify(shortReport));
 }
-// "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME" (§3.3).
+// "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME" (§3.3).
 const unannounced = new TableVocabulary();
 unannounced.Init(new Array(%[2]d));
 const noReport = {};

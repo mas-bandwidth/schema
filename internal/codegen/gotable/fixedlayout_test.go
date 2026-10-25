@@ -13,7 +13,7 @@ import (
 // layout_validation() (test/tables/fixedform_main.cpp): ONE file that reads
 // clean, broken in exactly one place per case, and every case refused UNDER ITS
 // OWN NAME (docs/FIXED-FORM-ALGORITHM.md §1.1). A layout arrives from an
-// untrusted peer and is the one structure a reader parses before it knows
+// untrusted endpoint and is the one structure a reader parses before it knows
 // anything at all, so a single word for all seven rules is a validation nobody
 // can watch fail.
 //

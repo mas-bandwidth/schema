@@ -23,7 +23,7 @@ package cpptable
 // ZERO there (schema#1254); cpp is not that leg. The identity half is a NAMED
 // RESIDUAL, not a fake: cppRunVersionProbe(t, row, file, body, forge) takes NO
 // reader and NO lineage — it always compiles the NEW generation and finds the
-// VOLD_ peer through the nil-lock sibling-filename convention — so there is no
+// VOLD_ endpoint through the nil-lock sibling-filename convention — so there is no
 // identity-plan call on this leg without a reader argument of the kind ctable's
 // cRunVersionProbe already has. What is owed: that reader argument, then the
 // identity half asserting the same landing (None, seq 15, clamped == 1) over

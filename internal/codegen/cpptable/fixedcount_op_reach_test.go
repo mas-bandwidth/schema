@@ -2,9 +2,9 @@ package cpptable
 
 // fixedcount_op_reach — the cpp leg of SER-SCHEMA-05 part 2: a kTableFixedCount
 // entry reads four bytes at its source whatever its size, so a count op must be
-// bounded at src + 4 (not src + size) and a counted LOCAL against a PEER whose
+// bounded at src + 4 (not src + size) and a counted LOCAL against an ENDPOINT whose
 // array is bare (te.size < 4) must refuse the plan rather than underflow the
-// head subtraction and land a count op that over-reads the peer's record.
+// head subtraction and land a count op that over-reads the endpoint's record.
 
 import (
 	"fmt"
@@ -27,10 +27,10 @@ func TestFixedCountOpReachCoversItsHeader(t *testing.T) {
 	if !strings.Contains(tableFixedRuntime, "( e.op == kTableFixedText || e.op == kTableFixedCount )") {
 		t.Error("the reach check does not bound a kTableFixedCount entry at src + 4")
 	}
-	// The kind-14 compile step refuses a counted local against a peer array too
+	// The kind-14 compile step refuses a counted local against an endpoint array too
 	// small to carry the four-byte count, before the head subtraction underflows.
 	if !strings.Contains(tableFixedRuntime, "if ( d.counted && te.size < 4u ) { c.hostile = true; break; }") {
-		t.Error("kind-14 does not refuse a counted local field against a peer array smaller than the count")
+		t.Error("kind-14 does not refuse a counted local field against an endpoint array smaller than the count")
 	}
 	// The refusal must run before the head subtraction, not after: once
 	// (te.size - head) underflows the count has already been mis-derived.
@@ -40,7 +40,7 @@ func TestFixedCountOpReachCoversItsHeader(t *testing.T) {
 }
 
 // cppCountOpFixture stages the VOLD_/VNEW_ sibling pair the reader's nil-lock
-// lineage reads (the peer is VOLD_foo's bare [1]uint8 array, the reader is
+// lineage reads (the endpoint is VOLD_foo's bare [1]uint8 array, the reader is
 // VNEW_foo's counted [..1]uint8), generates the reader, and answers its header.
 func cppCountOpFixture(t *testing.T) (dir, header, pkg string) {
 	t.Helper()
@@ -101,7 +101,7 @@ int main( void )
     memcpy( file + kTableFixedHeaderBytes + 4, RootFixedKnown[0].layout, (size_t) RootFixedKnown[0].layout_bytes );
     uint8_t * at = file + kTableFixedHeaderBytes + 4 + RootFixedKnown[0].layout_bytes;
     TableFixedPut64( at, RootFixedKnown[0].hash );
-    at[8] = 0x7Fu; /* the bare [1]uint8 array element: the peer's last record */
+    at[8] = 0x7Fu; /* the bare [1]uint8 array element: the endpoint's last record */
     const int64_t len = (int64_t) ( at + 9 - file );
 
     Root back;

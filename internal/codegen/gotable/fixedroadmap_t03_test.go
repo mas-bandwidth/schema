@@ -544,7 +544,7 @@ func t03GoR20(t *testing.T) {
 	// an array's element 0 is the only one that censuses.
 	t03GoHas(t, load, "report.Unknown += censusUnknown", "R20 the census lands once, after the loop")
 	t03GoHas(t, tableFixedRuntime, "if !named && census && c.report != nil {", "R20 an unknown field is counted")
-	t03GoHas(t, tableFixedRuntime, "census && i == 0)", "R20 once per FIELD per peer, not per element")
+	t03GoHas(t, tableFixedRuntime, "census && i == 0)", "R20 once per FIELD per endpoint, not per element")
 	t03GoHasNot(t, load, "report.Unknown++", "R20 the census is never per record")
 	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
 	t03GoHas(t, tableFixedRuntime, "report.Widened++", "R20 a widen counts")
@@ -684,7 +684,7 @@ func t03GoR29(t *testing.T) {
 		t.Errorf("R29: the warning does not name the table: %s", joined)
 	}
 	runtime := tableFixedRuntime
-	t03GoHas(t, runtime, "if root.Size == 0 || root.Size > tableFixedRecordMaxBytes {", "R29 the reader holds the peer's layout to the same ceiling")
+	t03GoHas(t, runtime, "if root.Size == 0 || root.Size > tableFixedRecordMaxBytes {", "R29 the reader holds the endpoint's layout to the same ceiling")
 	t03GoHas(t, runtime, "if e.Size > tableFixedRecordMaxBytes {", "R29 a single entry past the ceiling")
 	t03GoHas(t, runtime, "c.record != 0 && tableFixedSrcEnd(e) > uint64(c.record) {", "R29 an entry past the writer's declared record")
 	t03GoHas(t, runtime, "v > int32(p.Size)", "R29 the count clamps to the writer's bound")

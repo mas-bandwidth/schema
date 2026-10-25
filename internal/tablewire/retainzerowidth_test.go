@@ -11,7 +11,7 @@ import (
 )
 
 // A RETAINING READ IS BOUNDED BY THE STORE, NOT BY THE ANNOUNCED COUNT
-// (docs/SPEC-TABLES.md §3.3, §6.6). A peer's announcement is untrusted, and one
+// (docs/SPEC-TABLES.md §3.3, §6.6). An endpoint's announcement is untrusted, and one
 // unknown entry announcing an array with `min = max = 0xFFFFFFFF` over an
 // element that rides no bits used to buy about 4 GiB of transcoding for a few
 // bytes of wire: `msgElements` looped `range n` and `msgPayload` appended a LEB

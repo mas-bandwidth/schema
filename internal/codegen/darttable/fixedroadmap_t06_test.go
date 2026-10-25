@@ -194,7 +194,7 @@ func t06R31(t *testing.T) {
 }
 
 // t06C12: C12 "bool byte != 0". docs/FIXED-FORM-ALGORITHM.md §4.5: a bool is
-// ONE byte and lands as `byte != 0` — a peer's 2 is true, not malformed. The
+// ONE byte and lands as `byte != 0` — an endpoint's 2 is true, not malformed. The
 // scalar bool and the bool-run array both take the comparator.
 func t06C12(t *testing.T) {
 	src := t06Generated(t, "VNEW_hostile_bool")

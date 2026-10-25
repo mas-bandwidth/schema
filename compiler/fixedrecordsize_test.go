@@ -7,7 +7,7 @@
 //
 //	4096   ADVISORY, always on. The table still carries the fixed form.
 //	65536  THE WIRE'S CEILING. The fixed form is not emitted for the table at
-//	       all, because a reader holds an untrusted peer's layout to the same
+//	       all, because a reader holds an untrusted endpoint's layout to the same
 //	       number and would refuse the record; the table keeps form 1. The
 //	       `fixed` KEYWORD DOES NOT MAKE THIS A REFUSAL — it declares the
 //	       CLASS and this bound is the FORM's; see the last test in the file.
@@ -90,7 +90,7 @@ func TestFixedRecordPastTheAdvisoryBoundWarns(t *testing.T) {
 }
 
 // PAST 65536: THE FORM IS NOT EMITTED, and the compiler says so. A reader holds
-// an untrusted peer's layout to the same number (layout_record_too_large), so a
+// an untrusted endpoint's layout to the same number (layout_record_too_large), so a
 // writer past it would produce bytes no conforming reader decodes.
 func TestFixedRecordPastTheWireCeilingLosesTheForm(t *testing.T) {
 	dir, body := fixedSizeUnit(t, "Huge", ir.TableFixedRecordMaxBytes)
@@ -171,7 +171,7 @@ func generatedFixedForm(t *testing.T, dir string) string {
 //
 //   - THE CLASS is a by-value storage, a cook, a block form (§19) and no arena
 //     edge anywhere in the closure. A 7.5 MB record is all of those things.
-//   - THE FORM is form `3` on the tolerant wire, and 65536 is what a PEER's
+//   - THE FORM is form `3` on the tolerant wire, and 65536 is what an ENDPOINT's
 //     reader holds an untrusted layout to (`layout_record_too_large`).
 //
 // §12.1's render frame and §2.8's `WideBlob` are DECLARED `fixed table` in this

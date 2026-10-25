@@ -125,7 +125,7 @@ func t04C8(t *testing.T) {
 
 // t04R20: §21.2's landing rules [weak]. An added field lands its declared
 // default through the prefill that fills the plan's holes; an unnamed older
-// field is counted ONCE under unknown per peer; a narrower integer or float is
+// field is counted ONCE under unknown per endpoint; a narrower integer or float is
 // widened exactly and counts once; the writer's template zeros are what a
 // shorter array or string leaves as slack; and an older enum's ordinals are the
 // reader's, the list being a prefix (SPEC-TABLES §3.4; FIXED-FORM-ALGORITHM
@@ -138,7 +138,7 @@ func t04R20(t *testing.T) {
 	t04Has(t, n, "if (!named) { report.unknown++; }",
 		"R20 a field of theirs the reader cannot name is one unknown")
 	t04Has(t, n, "censusUnknown = lane.unknown;",
-		"R20 the unknown census is once per peer, taken from the compiled lane")
+		"R20 the unknown census is once per endpoint, taken from the compiled lane")
 	t04Has(t, n, "report.widened++;",
 		"R20 a narrow value widened exactly counts one widened")
 	t04Has(t, n, "bytes.fill(0, at + 8, at + TFixedRecordBytes); // the template's zeros",

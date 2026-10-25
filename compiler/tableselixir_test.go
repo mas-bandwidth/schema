@@ -313,7 +313,7 @@ fixed table Holder
 //
 // NO `wstring(N)`: compiler/widetext.go refuses wide text in a TABLE closure for
 // every target but C, C++, C# and Go, and this leg does not move that refusal —
-// the fixed form's LAYOUT and PLAN carry kind 33 so a PEER's wide text reads
+// the fixed form's LAYOUT and PLAN carry kind 33 so an ENDPOINT's wide text reads
 // here, but a declaration of one is still the named follow-on it already was.
 const elixirFixedSrc = `package probe
 

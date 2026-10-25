@@ -739,7 +739,7 @@ func t03C8(t *testing.T) {
 // array's and string's slack the template's zeros, an older enum's ordinals
 // the reader's) and TestFixedVersioningUnknownCensus' ("a deprecated field is
 // dropped and counted once under unknown per plan": unknown == 1, once per
-// field per peer). This subtest holds the deprecated-field clause's exact
+// field per endpoint). This subtest holds the deprecated-field clause's exact
 // count on the many-records file, which is the row's own divergence.
 func t03R20(t *testing.T) {
 	manyFile := t03CorpusFile(t, "many_unknown_census.bin")

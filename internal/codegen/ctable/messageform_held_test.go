@@ -63,7 +63,7 @@ const cMsgShared = `
 #define CHECK(x) do { if(!(x)){ fprintf(stderr,"line %d: %s\n",__LINE__,#x); return 1; } } while(0)
 `
 
-// "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
+// "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
 // decoded, no counter moves and `malformed` does not fire." (docs/SPEC-TABLES.md §3.3).
 const cMsgNoVocabularyProbe = cMsgShared + `
 int main(void)

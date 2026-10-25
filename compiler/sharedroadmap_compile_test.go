@@ -112,7 +112,7 @@ func testSharedS5(t *testing.T) {
 			}
 		}
 		if got := generatedFixedForm(t, dir); strings.Contains(got, "HugeFixedLayout") {
-			t.Error("a table past the WIRE CEILING must not carry the fixed form: a reader holds an untrusted peer to the same 65536 and would refuse the record it writes")
+			t.Error("a table past the WIRE CEILING must not carry the fixed form: a reader holds an untrusted endpoint to the same 65536 and would refuse the record it writes")
 		}
 	})
 

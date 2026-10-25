@@ -690,7 +690,7 @@ type sideSpec struct {
 // §12.5): the ranged scalars the older unit declared, on the raw scale — a
 // fixed-point's whole-unit bounds shifted by F — matched by the field's name.
 // The reference's collectKnownRanges hands its emitter the same facts from the
-// same peer schemas; a leg's bounds pass holds a compiled lane to the peer's
+// same endpoint schemas; a leg's bounds pass holds a compiled lane to the endpoint's
 // own bounds, so the entry is where they ride.
 func lineageOf(t *testing.T, older []string, retire int) map[string][]FixedLineageEntry {
 	t.Helper()

@@ -1,15 +1,15 @@
 package javatable
 
-// `writer_bound_count` with TWO lineage peers (§5.8 row 4 of
+// `writer_bound_count` with TWO lineage endpoints (§5.8 row 4 of
 // docs/FIXED-FORM-VERSIONING-TESTS.md), on the java leg. The reader
-// VNEW_array_bounded_grow ([..8]int32) is handed TWO older peers with DIFFERENT
+// VNEW_array_bounded_grow ([..8]int32) is handed TWO older endpoints with DIFFERENT
 // bounds: VOLD_array_bounded_grow ([..4]int32), which WROTE the file, and
 // VMID_array_bounded_grow ([..6]int32), the distractor, which did not. The count
-// word is forged to 7 exactly as the landed single-peer test forges it.
+// word is forged to 7 exactly as the landed single-endpoint test forges it.
 //
 // The number that makes this test worth having is 6: a reader that clamps to its
-// own bound lands 8, a reader that clamps to whichever peer it saw last lands 6,
-// and only a plan that carries the WRITING peer's bound lands 4.
+// own bound lands 8, a reader that clamps to whichever endpoint it saw last lands 6,
+// and only a plan that carries the WRITING endpoint's bound lands 4.
 import (
 	"bytes"
 	"os"
@@ -17,7 +17,7 @@ import (
 	"testing"
 )
 
-func TestFixedVersioningWriterBoundCountTwoPeers(t *testing.T) {
+func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
 	corpus := corpusDir(t)
 	oldFile := filepath.Join(corpus, "old_array_bounded_grow.bin")
 	raw, err := os.ReadFile(oldFile)

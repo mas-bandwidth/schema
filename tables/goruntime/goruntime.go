@@ -51,10 +51,10 @@ type TableReport struct {
 	// already named (mas-bandwidth/schema docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
 	// node, never a copy per slot, and the strict read refuses blob_shared.
 	BlobShared int32
-	// BuildVersionPeer and BuildVersionOwn are the two build versions a strict
-	// announcement refusal carries (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the peer's
+	// BuildVersionRemote and BuildVersionOwn are the two build versions a strict
+	// announcement refusal carries (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the endpoint's
 	// announcement and this unit's own. They are zero on every other read.
-	BuildVersionPeer uint64
+	BuildVersionRemote uint64
 	BuildVersionOwn  uint64
 	// FixedRaised is true only on a FIXED form's refusal
 	// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): a refusal that has a name answers it
@@ -298,23 +298,23 @@ func TableRefuseError(reason TableRefuseReason) error {
 }
 
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
-// reports (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the peer's build version and the
+// reports (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the endpoint's build version and the
 // reader's own, each a 64-bit number.
-type TableBuildVersionMismatch struct{ Peer, Own uint64 }
+type TableBuildVersionMismatch struct{ Remote, Own uint64 }
 
 func (m TableBuildVersionMismatch) Error() string {
 	const digits = "0123456789abcdef"
-	var peer, own [16]byte
-	p, o := m.Peer, m.Own
+	var remote, own [16]byte
+	p, o := m.Remote, m.Own
 	for i := 15; i >= 0; i-- {
-		peer[i] = digits[p&0xf]
+		remote[i] = digits[p&0xf]
 		p >>= 4
 	}
 	for i := 15; i >= 0; i-- {
 		own[i] = digits[o&0xf]
 		o >>= 4
 	}
-	return "build_version_mismatch: peer 0x" + string(peer[:]) + " own 0x" + string(own[:])
+	return "build_version_mismatch: remote 0x" + string(remote[:]) + " own 0x" + string(own[:])
 }
 
 // TableMissingRequired is the typed error a strict read reports for a record
@@ -335,7 +335,7 @@ func (r *TableReport) Err() error {
 		return nil
 	}
 	if r.Reason == "build_version_mismatch" {
-		return TableBuildVersionMismatch{Peer: r.BuildVersionPeer, Own: r.BuildVersionOwn}
+		return TableBuildVersionMismatch{Remote: r.BuildVersionRemote, Own: r.BuildVersionOwn}
 	}
 	// The fixed form's named refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3) answer as
 	// their TableRefuseReason member, so errors.Is(err, TableRefuseLayoutUnknown)
@@ -621,7 +621,7 @@ const TableFixedEntryBytes int32 = 17
 // THE LAYOUT'S OWN BOUNDS (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §1.1). The header is
 // the u32 entry count and nothing else. 65536 is the form's record body bound,
 // which a DECLARED fixed table is held to at compile time and an untrusted
-// peer's layout is held to here, so the two sides agree by construction. The
+// endpoint's layout is held to here, so the two sides agree by construction. The
 // depth is a bound on THIS READER'S WALK and not on the wire: the reference
 // states 64 and every leg states the same number.
 const TableFixedLayoutHeaderBytes int32 = 4
@@ -1417,7 +1417,7 @@ func TableFixedUnionArmBytes(b TableFixedLayoutView, i int32) uint32 {
 
 // ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
 //
-// A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+// A LAYOUT ARRIVES FROM AN UNTRUSTED ENDPOINT and it is the one structure a reader
 // must parse before it knows anything at all, so every rule below runs BEFORE a
 // single record byte is touched and each refuses under ITS OWN NAME rather than
 // under one word for all of them (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §1.1).
@@ -1789,7 +1789,7 @@ type TableFixedKnownLayout struct {
 
 // tableFixedLineagePlan is one older entry's plan, laid down once from the
 // LOCK'S bytes. Unknown and KindMismatch are the COMPILE census: a writer field
-// no reader field names is counted ONCE PER PEER and never per record (§5.4).
+// no reader field names is counted ONCE PER ENDPOINT and never per record (§5.4).
 type TableFixedLineagePlan struct {
 	Entries      []TableFixedEntry
 	Count        int32

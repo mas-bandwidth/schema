@@ -385,10 +385,10 @@ func t04R20(t *testing.T) {
 	t04Has(t, text, "image[o..o + z].copy_from_slice(&", "R20 an added field lands the declared default")
 	t04Has(t, text, "_FIXED_DEFAULTS: [u8;", "R20 the prefill image is emitted")
 	// A DEPRECATED FIELD, counted ONCE per plan: the census flag is the first
-	// time the peer's field is seen, and an array's element 0 is the only one
+	// time the writer's field is seen, and an array's element 0 is the only one
 	// that censuses.
 	t04Has(t, runtime, "if !named && census {", "R20 an unknown field is counted")
-	t04Has(t, runtime, "census && i == 0,", "R20 once per FIELD per peer, not per element")
+	t04Has(t, runtime, "census && i == 0,", "R20 once per FIELD per endpoint, not per element")
 	t04Has(t, text, "report.unknown += census.0;", "R20 the census lands once, after the loop")
 	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
 	t04Has(t, runtime, "report.widened += 1;", "R20 a widen counts")
@@ -463,7 +463,7 @@ func t04R29(t *testing.T) {
 		t.Errorf("R29: the warning does not name the table: %s", joined)
 	}
 	runtime := string(fixedRuntimeBody)
-	t04Has(t, runtime, "if root.size == 0 || root.size > 65536 {", "R29 the reader holds the peer's layout to the same ceiling")
+	t04Has(t, runtime, "if root.size == 0 || root.size > 65536 {", "R29 the reader holds the endpoint's layout to the same ceiling")
 	t04Has(t, runtime, "if self.record != 0 && end > self.record as u64 {", "R29 an entry past the writer's declared record")
 	t04Has(t, runtime, "let held = raw.clamp(0, p.size as i32);", "R29 the count clamps to the writer's bound")
 	t04Has(t, runtime, "let held = raw.clamp(0, p.aux as i32);", "R29 the text clamps to the writer's span")

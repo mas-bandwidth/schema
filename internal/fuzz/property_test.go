@@ -112,7 +112,7 @@ func TestGeneratedOutputIsDeterministic(t *testing.T) {
 	}
 }
 
-// The protocol id is a hash of the source and rides on every wire: two peers
+// The protocol id is a hash of the source and rides on every wire: two endpoints
 // that disagree about it cannot talk. It must be stable across runs for
 // identical input — anything else silently breaks compatibility between two
 // builds of the SAME schema.

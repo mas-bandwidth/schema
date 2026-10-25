@@ -378,7 +378,7 @@ func t06C2(t *testing.T) {
 
 // t06R11: cs/R11 [owed] "the plan carries the WRITER's bounds, per plan; the
 // hostile pass runs against the plan's bounds" — the bound is the plan entry's
-// size, and a compiled plan is one entry per lineage peer, so the bound travels
+// size, and a compiled plan is one entry per lineage endpoint, so the bound travels
 // with the plan and never with the reader (docs/FIXED-FORM-ALGORITHM.md §5.2,
 // §5.8 row 4).
 func t06R11(t *testing.T) {
@@ -410,7 +410,7 @@ fixed table T {
 	src := string(files[t02File])
 	t06Has(t, strings.Join(strings.Fields(src), " "),
 		"TableFixedWire.LineagePlans(TFixedKnown, TFixedLayout, TFixedDst, TFixedHash)",
-		"R11 one plan per lineage peer, so the writer's bound travels with the peer's plan")
+		"R11 one plan per lineage endpoint, so the writer's bound travels with the endpoint's plan")
 }
 
 // ---- the 257-arm round trip (§5.2 EMIT kind 15, §5.8 row 7) -----------------
@@ -475,7 +475,7 @@ func t06WideBuildAndRun(runtime, dotnet string) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("FixedLineageOf has no entry for Root")
 	}
-	// ONE OLDER PEER with the same layout and another hash: the reader selects it
+	// ONE OLDER ENDPOINT with the same layout and another hash: the reader selects it
 	// by the file's hash and reads under the COMPILED plan, not the static one.
 	older := FixedLineageEntry{Wire: own.Wire ^ 0x5a5a5a5a, Layout: own.Layout, Record: own.Record}
 	files, err := csharp.Generate(u)
@@ -526,9 +526,9 @@ namespace Probe
 
         // One record written through the generated writer and read back. A tag
         // that names an arm carries 1000+ordinal in that arm; a forged tag
-        // carries nothing. The peer read patches the file's hash and the record's
-        // hash to the older peer's, so the reader selects the compiled plan.
-        static string Once(ulong tag, bool arm, bool peer)
+        // carries nothing. The endpoint read patches the file's hash and the record's
+        // hash to the older endpoint's, so the reader selects the compiled plan.
+        static string Once(ulong tag, bool arm, bool endpoint)
         {
             Root w = new Root();
             w.Seq = 41;
@@ -537,7 +537,7 @@ namespace Probe
             byte[] buf = new byte[Schema.RootFixedMeasure(1)];
             long wrote = Schema.RootFixedSave(w, buf);
             if (wrote != buf.Length) { return "tag " + tag + ": wrote " + wrote + " of " + buf.Length; }
-            if (peer)
+            if (endpoint)
             {
                 ulong oldHash = Schema.RootFixedHash ^ 0x5a5a5a5aUL;
                 BinaryPrimitives.WriteUInt64LittleEndian(buf.AsSpan(Schema.TableFixedWire.HashAt), oldHash);
@@ -569,12 +569,12 @@ namespace Probe
             return null;
         }
 
-        static int Group(string row, ulong[] tags, bool arm, bool peer)
+        static int Group(string row, ulong[] tags, bool arm, bool endpoint)
         {
             int bad = 0;
             foreach (ulong tag in tags)
             {
-                string why = Once(tag, arm, peer);
+                string why = Once(tag, arm, endpoint);
                 if (why != null) { bad += ProbeLog.Fail(row, why); }
             }
             if (bad == 0) { Console.WriteLine("ROW " + row + ": ok"); }

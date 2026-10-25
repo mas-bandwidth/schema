@@ -103,7 +103,7 @@ func TestSpecGoS3WireAndFixedForm(t *testing.T) {
 			stale:   []string{"PLANNED to become FIXED-ONLY"},
 		},
 		{
-			// §3.4 one reader path / untrusted peer / conformance set: plans
+			// §3.4 one reader path / untrusted endpoint / conformance set: plans
 			// come from the lock lineage, a hash outside it is layout_unknown,
 			// and no stranger's layout is parsed (gotable/fixedform.go,
 			// fixedruntime.go, §21.3).
@@ -119,12 +119,12 @@ func TestSpecGoS3WireAndFixedForm(t *testing.T) {
 			},
 		},
 		{
-			// §3.4 FRAMING, stream carrier: several layouts a peer is a named
+			// §3.4 FRAMING, stream carrier: several layouts an endpoint is a named
 			// follow-on and Go does not carry it.
 			name:    "3.4-several-layouts-follow-on",
 			section: "3.4",
-			want:    []string{"A PEER ANNOUNCING SEVERAL LAYOUTS, ONE PER HASH, IS A NAMED FOLLOW-ON"},
-			stale:   []string{"A PEER MAY ANNOUNCE MORE THAN ONE LAYOUT, ONE PER HASH."},
+			want:    []string{"AN ENDPOINT ANNOUNCING SEVERAL LAYOUTS, ONE PER HASH, IS A NAMED FOLLOW-ON"},
+			stale:   []string{"AN ENDPOINT MAY ANNOUNCE MORE THAN ONE LAYOUT, ONE PER HASH."},
 		},
 		{
 			// §3.4 SELECTION: three bounds drop form 3, and the leaf cap is a

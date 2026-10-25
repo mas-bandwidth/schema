@@ -310,9 +310,9 @@ fixed table T
 	t04Has(t, text, "@t_prefill", "R20 the declared defaults ride the emitted prefill")
 
 	// A DEPRECATED FIELD IS DROPPED AND COUNTED ONCE UNDER `unknown` PER PLAN:
-	// the census flag counts a peer field once PER FIELD PER PEER, so only the
+	// the census flag counts a writer's field once PER FIELD PER ENDPOINT, so only the
 	// first slot of an array element censuses.
-	t04Has(t, fixedRuntimeBody, "nil -> if census, do: bump(report, :unknown), else: report", "R20 a dropped field counts once per field per peer")
+	t04Has(t, fixedRuntimeBody, "nil -> if census, do: bump(report, :unknown), else: report", "R20 a dropped field counts once per field per endpoint")
 	t04Has(t, fixedRuntimeBody, "def census(report, unknown, kind_mismatch)", "R20 the unknown census is per plan")
 
 	// A NARROWER INTEGER OR FLOAT IS WIDENED EXACTLY AND WIDENED COUNTS: the

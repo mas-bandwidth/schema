@@ -748,7 +748,7 @@ fixed table Bag {
 		t.Error("an enum a `type` reaches is absent from the projection — the closure lost edge 1")
 	}
 	if !strings.Contains(proj, "flags Perks") {
-		t.Fatal("a flags declaration no `type` reaches left the projection — the connect gate is the only runtime frame that refuses two peers holding different bit assignments (SPEC §3.1)")
+		t.Fatal("a flags declaration no `type` reaches left the projection — the connect gate is the only runtime frame that refuses two endpoints holding different bit assignments (SPEC §3.1)")
 	}
 
 	// the edits that must NOT move the id, because no packet byte moves

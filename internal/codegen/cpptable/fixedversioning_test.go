@@ -7,7 +7,7 @@ package cpptable
 // row 4 `writer_bound_count`.
 //
 // THE LINEAGE COMES FROM THE SIBLING-FILENAME CONVENTION, not handed-in
-// entries: GenerateLineage takes a nil lock and reads the VOLD_ peer off the
+// entries: GenerateLineage takes a nil lock and reads the VOLD_ endpoint off the
 // sibling path — §5.8 row 1's INTERIM. A row is probed by copying
 // VOLD_/VNEW_<row>.schema into one temp dir and loading the NEW one.
 //
@@ -84,7 +84,7 @@ func cppFixedRootName(t *testing.T, u *ir.Unit) string {
 }
 
 // cppRunVersionProbe generates the READER's unit — the VNEW_ file copied
-// beside its VOLD_ peer, which is how a nil lock finds the lineage — compiles
+// beside its VOLD_ endpoint, which is how a nil lock finds the lineage — compiles
 // a probe and runs it against `file`. `forge` is C++ that damages the bytes
 // before the load (the forged count word), and `body` is the assertions after
 // it. The type-wire headers come from cpp.Generate and the table headers from
@@ -140,16 +140,16 @@ func cppRunVersionProbe(t *testing.T, row, file, body, forge string) ([]byte, er
 	}
 
 	// THE INTERIM MUST HAVE FIRED before the probe is trusted: the header has
-	// to carry a FixedLineage[] with more than the identity — the VOLD_ peer
+	// to carry a FixedLineage[] with more than the identity — the VOLD_ endpoint
 	// picked up by the sibling-filename convention. Identity-only means the
-	// convention missed the peer and the row cannot be probed; inventing a lock
+	// convention missed the endpoint and the row cannot be probed; inventing a lock
 	// to work around it is not allowed.
 	text := string(files[header])
 	if !strings.Contains(text, "FixedLineage[]") {
 		t.Fatalf("the generated header carries no FixedLineage[]; the nil-lock convention did not fire:\n%s", text)
 	}
 	if n := strings.Count(text, "ull, //"); n <= 1 {
-		t.Fatalf("the nil-lock convention picked up no VOLD_ peer (identity only, %d note); the row cannot be probed:\n%s", n, text)
+		t.Fatalf("the nil-lock convention picked up no VOLD_ endpoint (identity only, %d note); the row cannot be probed:\n%s", n, text)
 	}
 
 	root := cppFixedRootName(t, u)
@@ -248,7 +248,7 @@ type cppVersionRow struct {
 	// every other row is an APPEND and owes all six counters at zero (§5.9 #10).
 	widens bool
 	// unported is a row this leg's harness cannot probe, cited by name (§5.9
-	// #44): the nil-lock sibling convention has no DISTINCT VOLD_ peer to
+	// #44): the nil-lock sibling convention has no DISTINCT VOLD_ endpoint to
 	// compile against, so the row is skipped BY NAME, never green and never
 	// red — a green folds an unrun row into a pass, a red blames the row for
 	// the harness. A reader may not read either as "this row passed".
@@ -265,8 +265,8 @@ var cppVersionRows = []cppVersionRow{
 	{row: "enum_append"},
 	{row: "enum_width", widens: true},
 	{row: "field_append"},
-	{row: "field_deprecate", sameHash: true, unported: "sameHash: the two sides carry equal hashes, so the nil-lock sibling convention collapses to the identity entry alone (one lineage note) and cppRunVersionProbe's interim guard refuses to probe a reader with no distinct VOLD_ peer. The row reads in both directions by §5.7, but proving it needs an explicit lock, which is a change to cppRunVersionProbe's signature this card is not"},
-	{row: "field_undeprecate", sameHash: true, unported: "sameHash: the two sides carry equal hashes, so the nil-lock sibling convention collapses to the identity entry alone (one lineage note) and cppRunVersionProbe's interim guard refuses to probe a reader with no distinct VOLD_ peer. The row reads in both directions by §5.7, but proving it needs an explicit lock, which is a change to cppRunVersionProbe's signature this card is not"},
+	{row: "field_deprecate", sameHash: true, unported: "sameHash: the two sides carry equal hashes, so the nil-lock sibling convention collapses to the identity entry alone (one lineage note) and cppRunVersionProbe's interim guard refuses to probe a reader with no distinct VOLD_ endpoint. The row reads in both directions by §5.7, but proving it needs an explicit lock, which is a change to cppRunVersionProbe's signature this card is not"},
+	{row: "field_undeprecate", sameHash: true, unported: "sameHash: the two sides carry equal hashes, so the nil-lock sibling convention collapses to the identity entry alone (one lineage note) and cppRunVersionProbe's interim guard refuses to probe a reader with no distinct VOLD_ endpoint. The row reads in both directions by §5.7, but proving it needs an explicit lock, which is a change to cppRunVersionProbe's signature this card is not"},
 	{row: "fixed_I_grow", widens: true},
 	{row: "fixed_I_grow_element", widens: true},
 	{row: "flags_append"},
@@ -276,7 +276,7 @@ var cppVersionRows = []cppVersionRow{
 	{row: "nested_append"},
 	{row: "optional_add"},
 	{row: "range_widen"},
-	{row: "rename_without_was", sameHash: true, unported: "sameHash: the two sides carry equal hashes, so the nil-lock sibling convention collapses to the identity entry alone (one lineage note) and cppRunVersionProbe's interim guard refuses to probe a reader with no distinct VOLD_ peer. The row reads in both directions by §5.7, but proving it needs an explicit lock, which is a change to cppRunVersionProbe's signature this card is not"},
+	{row: "rename_without_was", sameHash: true, unported: "sameHash: the two sides carry equal hashes, so the nil-lock sibling convention collapses to the identity entry alone (one lineage note) and cppRunVersionProbe's interim guard refuses to probe a reader with no distinct VOLD_ endpoint. The row reads in both directions by §5.7, but proving it needs an explicit lock, which is a change to cppRunVersionProbe's signature this card is not"},
 	{row: "string_grow"},
 	{row: "uint_widen", widens: true},
 	{row: "union_append"},

@@ -24,7 +24,7 @@ package elixirtable
 //
 // elixir/E9 [verify]: duplicate never raised.
 //
-// elixir/R16 [weak]: §5.4's counters exactly (unknown once per peer at COMPILE,
+// elixir/R16 [weak]: §5.4's counters exactly (unknown once per endpoint at COMPILE,
 // widened and clamped once per entry per record, the bounds pass counts a
 // forged ordinal remapped to None, copy/const/present/ordinal move nothing).
 //
@@ -242,13 +242,13 @@ fixed table T
 // ---- elixir/R16 --------------------------------------------------------------
 
 // t05R16 holds elixir/R16 to §5.4's counters, each asserted by the site that
-// owns it: the census ONCE per peer after the loop, the widen and clamp bumps of
+// owns it: the census ONCE per endpoint after the loop, the widen and clamp bumps of
 // the plan's step, the bounds pass's `clamps`/`fclamps`, and the ordinal remap
 // that lands None and counts one in the bounds pass and nowhere else.
 func t05R16(t *testing.T) {
 	runtime := t05Runtime(t)
 	for _, want := range []string{
-		// unknown: ONCE PER PEER, after the record loop (§5.9 #6).
+		// unknown: ONCE PER ENDPOINT, after the record loop (§5.9 #6).
 		"def census(report, unknown, kind_mismatch) do",
 		"unknown: report.unknown + unknown",
 		// widened: once per entry per record.

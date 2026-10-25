@@ -12,23 +12,23 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 )
 
-// writer_bound_count with TWO lineage peers (§5.8 row 4). The reader is
-// VNEW_array_bounded_grow ([..8]int32). It holds two peers with DIFFERENT
+// writer_bound_count with TWO lineage endpoints (§5.8 row 4). The reader is
+// VNEW_array_bounded_grow ([..8]int32). It holds two endpoints with DIFFERENT
 // bounds: VOLD_array_bounded_grow ([..4]int32), which WROTE the file, and
 // VMID_array_bounded_grow ([..6]int32), the distractor, which did not. The
-// count word is forged to 7 exactly as the landed single-peer test forges it.
-// A count past the PLAN's bound is the WRITING peer's (4) — the number the
+// count word is forged to 7 exactly as the landed single-endpoint test forges it.
+// A count past the PLAN's bound is the WRITING endpoint's (4) — the number the
 // plan carries — so the load refuses `count_over_bound` by name, the Go
 // oracle's count_over_bound_ends row (internal/codegen/gotable/
 // fixedversioning_count_clamp_ends_test.go). Nothing is decoded and no counter
 // moves.
 //
-// The C++ leg's sibling-filename convention (fixturePeerPaths) discovers every
+// The C++ leg's sibling-filename convention (fixtureRemotePaths) discovers every
 // VOLD_/VMID_/VBRA_/VBRB_ sibling beside VNEW_, but cppRunVersionProbe copies
 // only VOLD_ and VNEW_ into its temp dir, so VMID_ would never be found there.
 // This test copies all three and drives the same pipeline by hand, so the
-// reader really is handed BOTH peers before it reads the writer's file.
-func TestFixedVersioningWriterBoundCountTwoPeers(t *testing.T) {
+// reader really is handed BOTH endpoints before it reads the writer's file.
+func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
 	corpus := cppFixedCorpus(t)
 	row := "array_bounded_grow"
 
@@ -72,13 +72,13 @@ func TestFixedVersioningWriterBoundCountTwoPeers(t *testing.T) {
 		t.Fatal("no Table.h was generated")
 	}
 
-	// BOTH peers must be in the lineage, or this is just the single-peer test.
+	// BOTH endpoints must be in the lineage, or this is just the single-endpoint test.
 	text := string(files[header])
 	if !strings.Contains(text, "FixedLineage[]") {
 		t.Fatalf("the generated header carries no FixedLineage[]; the nil-lock convention did not fire:\n%s", text)
 	}
 	if !strings.Contains(text, "vold_array_bounded_grow") || !strings.Contains(text, "vmid_array_bounded_grow") {
-		t.Fatalf("the lineage is missing a peer; the two-peer probe needs VOLD_ and VMID_ both:\n%s", text)
+		t.Fatalf("the lineage is missing an endpoint; the two-endpoint probe needs VOLD_ and VMID_ both:\n%s", text)
 	}
 
 	root := cppFixedRootName(t, u)
@@ -159,10 +159,10 @@ int main( void )
 	args := []string{"-std=c++17", "-O1", "-I" + outDir, "-I" + serialize, filepath.Join(outDir, "probe.cpp"), "-o", filepath.Join(outDir, "probe")}
 	build := exec.Command(cxx, args...)
 	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("writer_bound_count, two peers: the probe did not compile: %v\n%s", err, out)
+		t.Fatalf("writer_bound_count, two endpoints: the probe did not compile: %v\n%s", err, out)
 	}
 	out, err := exec.Command(filepath.Join(outDir, "probe")).CombinedOutput()
 	if err != nil {
-		t.Fatalf("writer_bound_count, two peers: %v\n%s", err, out)
+		t.Fatalf("writer_bound_count, two endpoints: %v\n%s", err, out)
 	}
 }

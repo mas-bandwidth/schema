@@ -251,7 +251,7 @@ func TestMessageFormBatchDart(t *testing.T) {
 
 	// 2.2 "`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME" and "`M` ABOVE
 	// THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... The reader
-	// sets the returned count to the wire's `M`", and "A BODY FROM A PEER THAT
+	// sets the returned count to the wire's `M`", and "A BODY FROM AN ENDPOINT THAT
 	// NEVER ANNOUNCED IS REFUSED BY NAME" (`no_vocabulary`).
 	t.Run("batch_refusals", func(t *testing.T) {
 		t.Parallel()
@@ -294,7 +294,7 @@ fixed table Root {
 // batch of two empty bodies is two zero references.
 const batchRefusalsBody = `
   final entries = List<h.TableMessageEntry>.generate(4096, (i) => h.TableMessageEntry(0, 0));
-  // "A BODY FROM A PEER THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
+  // "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
   // decoded, no counter moves and 'malformed' does not fire."
   final v = h.Root();
   h.initRoot(v);

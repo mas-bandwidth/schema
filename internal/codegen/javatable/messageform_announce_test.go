@@ -594,7 +594,7 @@ func refusalsMain(u *ir.Unit) string {
             fail("second announcement was not refused by name");
         }
         if (first.count != before) { fail("a second announcement replaced the vocabulary"); }
-        // A refused FIRST announcement is terminal: a peer whose announcement was
+        // A refused FIRST announcement is terminal: an endpoint whose announcement was
         // refused holds no retry on that connection (§3.3).
         final TableVocabulary refused = new TableVocabulary();
         refused.reset(%d);

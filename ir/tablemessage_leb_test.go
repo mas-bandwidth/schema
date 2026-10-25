@@ -1,5 +1,5 @@
 // THE MESSAGE FORM's LEB READ (docs/SPEC-TABLES.md §3.3): a tenth byte with a
-// bit above the 64th value bit is malformed. readLebBytes decodes a peer's
+// bit above the 64th value bit is malformed. readLebBytes decodes an endpoint's
 // announcement, which is untrusted, so the tenth byte must be refused before
 // it is OR-ed in.
 package ir

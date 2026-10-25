@@ -763,7 +763,7 @@ func findGenerated(t *testing.T, out map[string][]byte, needle string) string {
 }
 
 // THE COUNT OP'S BOUND IS THE WRITER'S their_n, NEVER THE READER'S OWN (§5.2
-// EMIT kind 14, bill §12.5). The plan carries THAT PEER's bounds for the hostile
+// EMIT kind 14, bill §12.5). The plan carries THAT ENDPOINT's bounds for the hostile
 // pass, so a count forged past what the writer could have written clamps and
 // counts one `clamped`. Held to the READER's bound instead — which on a grown
 // array is the larger number — a count between `their_n` and `my_n` goes through
