@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// The listdemo unit (tables/lists/Save.schema). The Mixed table carries four
+// The listdemo unit (tables/lists/SaveGame.schema). The Mixed table carries four
 // lists of four element classes — an enum, a flags mask, a union and a ranged
 // int32 — under the wire-fuzzer cause D9b.
 const listdemoMixedSchema = `package listdemo

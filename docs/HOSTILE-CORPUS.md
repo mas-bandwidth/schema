@@ -87,7 +87,9 @@ port's decoder and the same manifest.
 ## Reasons
 
 `damaged` is a read that reports a malformed/kind-mismatch event without naming
-a refusal. Every other reason is the Go engine's own name, read off its
+a refusal. A text read §16.3 refuses (`string_not_utf8`,
+`string_lone_surrogate`, `text_holds_zero`) is a malformed read and is
+`damaged` here too. Every other reason is the Go engine's own name, read off its
 constants:
 
 `newer_form`, `no_vocabulary`, `second_announcement`, `vocabulary_too_large`,
