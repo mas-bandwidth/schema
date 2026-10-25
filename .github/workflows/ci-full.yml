@@ -341,6 +341,14 @@ jobs:
         if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest'
         run: make dist-goose
 
+      # THE Lobster PIN for the test steps below: internal/codegen/lobster and
+      # internal/codegen/lobstertable run generated Lobster under the pinned compiler
+      # and fail, never skip, without it. make/lobster.mk's dist-lobster installs it
+      # at the sha256 it names, into the dist/ path the leg's default names.
+      - name: install the Lobster pin
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest'
+        run: make dist-lobster
+
       # THE EMITTERS' OWN TESTS, which are the slow half of `go test ./...`:
       # every codegen package generates and compiles something.
       # SCHEMA_SLOW=1 IS THE WHOLE OF THE SPLIT ON THIS LANE. internal/slowtest
@@ -354,6 +362,17 @@ jobs:
         env:
           SCHEMA_SLOW: '1'
         run: go test ./internal/codegen/...
+
+      # THE Lobster FIXED-FORM SUITE AGAINST THE REFERENCE'S BYTES. The step
+      # above runs internal/codegen/lobstertable without build/fixedform-corpus,
+      # so its corpus-reading tests skip there as every leg's do; test-lobster
+      # builds the corpus (the ../serialize checkout above is all it needs) and
+      # sets SCHEMA_REQUIRE_CORPUS=1, under which a missing oracle is a failure.
+      - name: the Lobster fixed form reads the reference's bytes
+        if: matrix.group == 'unit-codegen'
+        env:
+          SCHEMA_SLOW: '1'
+        run: make test-lobster
 
       # AND THE COMPLEMENT, derived from `go list` rather than listed here, so a
       # new package lands in one group or the other with no edit to this file.
@@ -701,6 +720,16 @@ jobs:
       # under the pinned compiler (make/goose.mk's dist-goose)
       - name: install the Goose pin
         run: make dist-goose
+
+      # update-goldens ends in `go test ./...`, which runs the Lobster packages
+      # under the pinned compiler (make/lobster.mk's dist-lobster)
+      # The release binary links libOpenGL and libGLX, which the hosted ubuntu
+      # image does not carry.
+      - name: install the Lobster pin
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          make dist-lobster
 
       - name: rewrite every pin under testdata/ from the reference
         run: make -j"$(nproc)" conformance-pin update-goldens

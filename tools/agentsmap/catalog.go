@@ -118,6 +118,8 @@ var catalog = []Entry{
 	e("internal/codegen/javatable", "Java table emitter", "go test ./internal/codegen/javatable", "go test ./internal/codegen/javatable"),
 	e("internal/codegen/js", "JS packet emitter", "go test ./internal/codegen/js", "go test ./internal/codegen/js"),
 	e("internal/codegen/jstable", "JS table emitter", "go test ./internal/codegen/jstable", "go test ./internal/codegen/jstable"),
+	e("internal/codegen/lobster", "Lobster type emitter (docs/PORT-LOBSTER.md)", "go test ./internal/codegen/lobster", "go test ./internal/codegen/lobster/..."),
+	e("internal/codegen/lobstertable", "Lobster table emitter (docs/PORT-LOBSTER.md)", "go test ./internal/codegen/lobstertable", "go test ./internal/codegen/lobstertable"),
 	e("internal/codegen/lua", "Lua packet emitter (docs/PORT-LUA.md)", "make test-lua", "go test ./internal/codegen/lua"),
 	e("internal/codegen/luatable", "Lua table emitter (docs/PORT-LUA.md)", "make test-lua", "go test ./internal/codegen/luatable"),
 	e("internal/codegen/luau", "Luau type emitter (docs/PORT-LUAU.md)", "go test ./internal/codegen/luau", "go test ./internal/codegen/luau/..."),

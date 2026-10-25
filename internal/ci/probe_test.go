@@ -47,11 +47,11 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	}
 	// A real `schema new-leg` leg in the tree (make/<lang>.mk beside a
 	// compiler/target_<lang>.go behind its schema_leg_<lang> tag, such as
-	// luau, docs/PORT-LUAU.md, and goose, docs/PORT-GOOSE.md) is a skeleton
-	// here too: its marker file is carried into the fixture, so the gate skips
-	// it by the same rule. One entry per leg, so a real lua leg (make/lua.mk
-	// and its tagged compiler/target_lua.go, docs/PORT-LUA.md) is the planted
-	// one, not a second.
+	// lobster, docs/PORT-LOBSTER.md, luau, docs/PORT-LUAU.md, or goose,
+	// docs/PORT-GOOSE.md) is a skeleton here too: its marker file is carried
+	// into the fixture, so the gate skips it by the same rule. One entry per
+	// leg, so a real lua leg (make/lua.mk and its tagged compiler/target_lua.go,
+	// docs/PORT-LUA.md) is the planted one, not a second.
 	skeletons := map[string]bool{"lua": true} // the planted lua
 	tagged, err := filepath.Glob(filepath.Join(root, "compiler", "target_*.go"))
 	if err != nil {

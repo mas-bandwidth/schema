@@ -63,6 +63,11 @@ type tagEnumClaim struct {
 }
 
 var tagEnumSurface = map[string]tagEnumClaim{
+	"lobster": {
+		count:    "let WeaponFireTypeCount = 2 // the declared variant count (SPEC §4.2)",
+		max:      "let WeaponFireTypeMax = 2 // the exported extent (SPEC §4.2)",
+		nameFunc: "def EnumNameWeaponFireType(value:int) -> string:",
+	},
 	"c": {
 		count:    "#define WEAPON_FIRE_TYPE_COUNT 2",
 		max:      "#define WEAPON_FIRE_TYPE_MAX 2",
