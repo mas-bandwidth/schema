@@ -1,6 +1,7 @@
 package goldens
 
 import (
+	"bytes"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -21,7 +22,7 @@ var bannedTerm = regexp.MustCompile(`peer|PEER|Peer|(?i:\bpeer)`)
 
 // absolutePath is the shape of a machine-local absolute path: a home, volume
 // or temporary directory, or a Windows drive path.
-var absolutePath = regexp.MustCompile(`(^|[^A-Za-z0-9_.])(/Users/|/home/|/Volumes/|/private/|/tmp/|/var/folders/|/root/|[A-Za-z]:\\\\Users\\\\)`)
+var absolutePath = regexp.MustCompile(`(?m:^|[^A-Za-z0-9_.])(/Users/|/home/|/Volumes/|/private/|/tmp/|/var/folders/|/root/|[A-Za-z]:\\{1,2}Users\\)`)
 
 // textUnits is every testdata schema unit: the three corpora and every unit
 // under tables/ that holds schema files.
@@ -77,7 +78,7 @@ func TestGeneratedTextNamesNoMachine(t *testing.T) {
 		if len(w) < 3 {
 			continue
 		}
-		machine = append(machine, regexp.MustCompile(`(?i)(^|[^A-Za-z0-9_])`+regexp.QuoteMeta(w)+`($|[^A-Za-z0-9_])`))
+		machine = append(machine, regexp.MustCompile(`(?im)(^|[^A-Za-z0-9_])`+regexp.QuoteMeta(w)+`($|[^A-Za-z0-9_])`))
 	}
 	units := textUnits(t)
 	for _, target := range schema.Targets() {
@@ -102,19 +103,23 @@ func TestGeneratedTextNamesNoMachine(t *testing.T) {
 			}
 			sort.Strings(names)
 			for _, name := range names {
-				for i, line := range strings.Split(string(files[name]), "\n") {
-					where := target + " " + dir + " " + name
-					if bannedTerm.MatchString(line) {
-						t.Errorf("%s:%d uses the banned term: %s", where, i+1, strings.TrimSpace(line))
-					}
-					if absolutePath.MatchString(line) {
-						t.Errorf("%s:%d carries an absolute path: %s", where, i+1, strings.TrimSpace(line))
-					}
-					for _, m := range machine {
-						if m.MatchString(line) {
-							t.Errorf("%s:%d names the machine that ran the compiler: %s", where, i+1, strings.TrimSpace(line))
+				text := files[name]
+				where := target + " " + dir + " " + name
+				report := func(m *regexp.Regexp, what string) {
+					for _, at := range m.FindAllIndex(text, -1) {
+						start := bytes.LastIndexByte(text[:at[0]], '\n') + 1
+						end := bytes.IndexByte(text[at[0]:], '\n')
+						if end < 0 {
+							end = len(text) - at[0]
 						}
+						line := bytes.Count(text[:at[0]], []byte("\n")) + 1
+						t.Errorf("%s:%d %s: %s", where, line, what, strings.TrimSpace(string(text[start:at[0]+end])))
 					}
+				}
+				report(bannedTerm, "uses the banned term")
+				report(absolutePath, "carries an absolute path")
+				for _, m := range machine {
+					report(m, "names the machine that ran the compiler")
 				}
 			}
 		}
