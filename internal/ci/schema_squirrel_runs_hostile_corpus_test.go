@@ -61,13 +61,26 @@ type squirrelExpectedHostileMismatch struct {
 	name, input, expected, actual, fixCard string
 }
 
-// The list is empty. The last rows it carried (the three ill-formed UTF-8
-// fuzz-text inputs and conformance-str-illformed-at-bound) had one cause: the
-// corpus manifest predated §16.3. The shared corpus on dev now holds the
-// engine's refusal of ill-formed UTF-8 at every string site (`refuse damaged`),
-// which is the Squirrel reader's answer, so those rows pass and the exact set
-// is none.
-var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{}
+// One row is carried. The four rows the list held before (the three
+// ill-formed UTF-8 fuzz-text inputs and conformance-str-illformed-at-bound)
+// had one cause, a corpus manifest that predated §16.3; the shared corpus on
+// dev now holds the engine's refusal of ill-formed UTF-8 (`refuse damaged`),
+// which is the Squirrel reader's answer, so those rows pass.
+//
+// conformance-str-zero-escape-map-key arrived with dev's §16.3 zero rows. Its
+// schema, tables/maps, declares wide text (SPEC §4.12, table kind 33), which
+// the Squirrel descriptors do not map yet, so the generator refuses the unit
+// and there is no reader verdict. The wide-text carry cards own it
+// (docs/PORT-SQUIRREL.md, THE REGISTER).
+var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{
+	{
+		name:     "conformance-str-zero-escape-map-key",
+		input:    "inputs/conformance-str-zero-escape-map-key.json",
+		expected: "refuse damaged",
+		actual:   "generator refuses tables/maps; no reader verdict",
+		fixCard:  "schema-squirrel-carries-wide-text",
+	},
+}
 
 func squirrelExpectedHostileMismatchNames() []string {
 	names := make([]string, 0, len(squirrelExpectedHostileMismatches))
