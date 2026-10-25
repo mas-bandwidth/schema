@@ -21,20 +21,11 @@ import (
 // that comes back ANSWERED fails too, so the entry is deleted the day the leg
 // carries it rather than going stale.
 var cookWriteAbsentDart = map[string]string{
-	// the Dart fixed class reads form 3 only, and these instances are form 1
-	// (docs/SPEC-TABLES.md §3, §3.4): the leg has no Dart value to cook
-	"tabledemo": "form 3 only",
-	"tblv1":     "form 3 only",
-	"tblv2":     "form 3 only",
-	"tblp1":     "form 3 only",
-	"tblp3":     "form 3 only",
-	"tblm1":     "form 3 only",
-	"tblm2":     "form 3 only",
-	// the Dart table backend refuses the unit outright (§2.6, §5, §11)
-	"messagedemo": "refuses the unit",
-	"streamdemo":  "refuses the unit",
-	// the wide kinds take no Dart cook form (§3)
-	"scalars": "no cook form",
+	// the Dart form-1 cook writer carries neither an array of unions
+	// (ToolMessage.history, §2.6) nor the fixed-point kind (SimState.tilt, §3),
+	// so no cook writer is emitted for either root (§7.2)
+	"messagedemo": "array of unions",
+	"scalars":     "fixed-point kind",
 }
 
 // TestCookWriteAnswersEveryCookWriteRowDart pins §7.6's runtime writer to
