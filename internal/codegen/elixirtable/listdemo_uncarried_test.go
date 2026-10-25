@@ -33,7 +33,7 @@ func TestListdemoNamesUncarriedRoots(t *testing.T) {
 		filepath.Join(dir, "Holders.schema"),
 		filepath.Join(dir, "Migrate.schema"),
 		filepath.Join(dir, "Report.schema"),
-		filepath.Join(dir, "Save.schema"),
+		filepath.Join(dir, "SaveGame.schema"),
 		filepath.Join(dir, "Shared.schema"),
 	)
 	files, err := compiler.New().Generate(unit, "elixir", compiler.Options{})

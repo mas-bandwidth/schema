@@ -66,7 +66,7 @@ table Outer
 }
 table InnerOld
 {
-    pad int32
+    spare int32
 }
 table OuterOld
 {
