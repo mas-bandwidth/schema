@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package bench — the MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3)
+# package bench — the MESSAGE FORM, announcement and batch (docs/SPEC-TABLES.md §3.3)
 
 defmodule Bench.TableMessage do
   @moduledoc """
-  The MESSAGE FORM's announcement (docs/SPEC-TABLES.md §3.3), form byte 2.
+  The MESSAGE FORM's announcement and batch runtime (docs/SPEC-TABLES.md §3.3), form byte 2.
 
   A message is a bitpacked body under a vocabulary the endpoint announces once,
   before the first body and never again. The announcement is an ordinary
@@ -21,7 +21,9 @@ defmodule Bench.TableMessage do
   a vocabulary past either bound is `:vocabulary_too_large`, and the two
   strict checks — the build version present exactly once at kind 9 eight
   bytes wide, the vocabulary present exactly once at kind 14 element kind 6
-  — answer `:malformed`, never a refusal.
+  — answer `:malformed`, never a refusal. `measure_messages/2`,
+  `save_messages/2` and `load_messages/2,3` measure, write and read a
+  form-`2` batch of bodies against that resolved vocabulary.
   """
 
   import Bitwise
@@ -470,11 +472,21 @@ defmodule Bench.TableMessage do
       case shape(elem, rest) do
         {:ok, es, rest2} ->
           if elem in [14, 16] do
-            # A nested array carries one more kind byte, which nothing decodes.
+            # A nested array carries one more kind byte. That kind is kept so a
+            # zero-width nested run is the same bounded read as a flat one.
+            # The shape bytes after that kind byte are still not decoded.
             case rest2 do
               <<inner, rest3::binary>> ->
                 if known_kind?(inner) and inner not in [12, 33] do
-                  {:ok, %{id: id, kind: kind, shape: s, element: %{kind: elem, shape: es}}, rest3}
+                  inner_elem = %{kind: inner, shape: %{kind: inner}}
+
+                  {:ok,
+                   %{
+                     id: id,
+                     kind: kind,
+                     shape: s,
+                     element: %{kind: elem, shape: es, element: inner_elem}
+                   }, rest3}
                 else
                   :error
                 end
@@ -911,7 +923,7 @@ defmodule Bench.TableMessage do
   defp encode_elements(_vocab, _elem, [], acc), do: {:ok, acc}
 
   defp encode_elements(vocab, elem, [v | rest], acc) do
-    case encode_value(vocab, elem.kind, elem.shape, nil, v, acc) do
+    case encode_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), v, acc) do
       {:ok, acc2} -> encode_elements(vocab, elem, rest, acc2)
       :error -> :error
     end
@@ -1038,7 +1050,7 @@ defmodule Bench.TableMessage do
   defp read_array(vocab, shape, elem, r) do
     with {:ok, offset, rest} <- get_bits(r, bit_length(shape.max - shape.min)),
          {:ok, rest2} <- maybe_align(elem, rest) do
-      read_elements(vocab, elem, shape.min + offset, rest2, [])
+      read_elements(vocab, shape, elem, shape.min + offset, rest2, [])
     else
       _ -> :malformed
     end
@@ -1047,14 +1059,51 @@ defmodule Bench.TableMessage do
   defp maybe_align(%{kind: 6}, r), do: align(r)
   defp maybe_align(_elem, r), do: {:ok, r}
 
-  defp read_elements(_vocab, _elem, 0, r, acc), do: {:ok, Enum.reverse(acc), r}
+  defp read_elements(_vocab, _shape, _elem, 0, r, acc), do: {:ok, Enum.reverse(acc), r}
 
-  defp read_elements(vocab, elem, n, r, acc) do
-    case read_value(vocab, elem.kind, elem.shape, nil, r) do
-      {:ok, v, rest} -> read_elements(vocab, elem, n - 1, rest, [v | acc])
-      :malformed -> :malformed
+  # A zero-width element leaves the cursor where it stood: kind 0, kind 32, a
+  # ranged scalar whose bit width is 0, or a nested run of those. Looping on
+  # the count would allocate a list in proportion to the announcement and
+  # consume no input. This reader returns the list, so zero_width_run holds an
+  # unbounded list (shape.max == 0xFFFFFFFF, ir.TableMessageListMax) to the
+  # bits the batch still holds (internal/tablewire/messagedecode.go) before any
+  # cell is allocated. A fixed or bounded array's count is a declared capacity,
+  # not a wire claim, so it is materialized without that limit.
+  defp read_elements(vocab, shape, elem, n, r, acc) when is_map(elem) and n > 0 do
+    case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), r) do
+      {:ok, v, ^r} ->
+        zero_width_run(vocab, shape, n, r, acc, v)
+
+      {:ok, v, rest} ->
+        read_elements(vocab, shape, elem, n - 1, rest, [v | acc])
+
+      :malformed ->
+        :malformed
     end
   end
+
+  defp read_elements(_vocab, _shape, _elem, n, _r, _acc) when n > 0, do: :malformed
+
+  defp zero_width_run(_vocab, shape, n, r, acc, v) do
+    # A fixed or bounded array (shape.max < 0xFFFFFFFF) declares its count in
+    # the schema, so its elements are legitimate required capacity regardless
+    # of the vocabulary's byte budget (vocab.max_bytes bounds the announcement,
+    # not an element count) or the bits the batch still holds; a valid
+    # last-field arrangement must not depend on following payload or padding.
+    # An unbounded array (shape.max == 0xFFFFFFFF, ir.TableMessageListMax) has
+    # no declared bound and is held to the bits left in the batch
+    # (internal/tablewire/messagedecode.go): an element costs at least one bit
+    # (floor 1), so a count the batch cannot back is refused before any cell is
+    # allocated. The uint32 ceiling on the announced shape is untouched.
+    if shape.max == 0xFFFFFFFF and n > bits_left(r) do
+      :malformed
+    else
+      {:ok, Enum.reverse(acc, List.duplicate(v, n)), r}
+    end
+  end
+
+  defp bits_left({_int, off, total}) when total > off, do: total - off
+  defp bits_left({_int, _off, _total}), do: 0
 
   defp read_union(vocab, r) do
     case get_bits(r, vocab.ref_bits) do
@@ -1144,12 +1193,20 @@ defmodule Bench.TableMessage do
   end
 
   # r is byte-aligned here (align precedes the call), so read n bytes whole.
-  defp take_bytes({int, off, total}, n) do
-    if off + n * 8 > total do
+  # A legal zero-length text is an exact empty binary and the cursor unchanged.
+  # 0..(n - 1) with no step is the descending range 0..-1 when n is 0, and that
+  # range walks two bytes. Positive lengths step //1. A run past the batch
+  # stays :error.
+  defp take_bytes({_int, _off, _total} = r, 0), do: {:ok, <<>>, r}
+
+  defp take_bytes({int, off, total}, n) when is_integer(n) and n > 0 do
+    need = n * 8
+
+    if off + need > total do
       :error
     else
-      bytes = for i <- 0..(n - 1), into: <<>>, do: <<int >>> (off + 8 * i) &&& 0xFF>>
-      {:ok, bytes, {int, off + n * 8, total}}
+      bytes = for i <- 0..(n - 1)//1, into: <<>>, do: <<int >>> (off + 8 * i) &&& 0xFF>>
+      {:ok, bytes, {int, off + need, total}}
     end
   end
 
