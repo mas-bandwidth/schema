@@ -65,6 +65,11 @@ static SCHEMA_UNUSED int table_message_skip_deeper(TableMessageReader * r,const 
  int saved=r->skip_depth,ok;
  r->skip_depth=saved+1;ok=table_message_skip(r,e);r->skip_depth=saved;return ok;
 }
+static SCHEMA_UNUSED int table_message_skip_at(TableMessageReader * r,const TableMessageEntry * e,int depth)
+{
+ int saved=r->skip_depth,ok;
+ r->skip_depth=depth;ok=table_message_skip(r,e);r->skip_depth=saved;return ok;
+}
 static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMessageEntry * e)
 {
  uint64_t n,i;const TableMessageEntry * entry;int saved,ok;

@@ -9,15 +9,15 @@ import (
 
 func (g *tableGen) emitMessageExtentDeclarations(members []*ir.Struct, unions []*ir.Union) {
 	for _, st := range members {
-		g.pf("static SCHEMA_UNUSED int %s(TableMessageReader *,int64_t *);\n", g.sym(st.Name, "message_extent"))
+		g.pf("static SCHEMA_UNUSED int %s(TableMessageReader *,int64_t *,int);\n", g.sym(st.Name, "message_extent"))
 	}
 	for _, un := range unions {
-		g.pf("static SCHEMA_UNUSED int %s(TableMessageReader *,int64_t *);\n", g.sym(un.Name, "message_extent"))
+		g.pf("static SCHEMA_UNUSED int %s(TableMessageReader *,int64_t *,int);\n", g.sym(un.Name, "message_extent"))
 	}
 }
 
 func (g *tableGen) emitMessageExtent(st *ir.Struct) {
-	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,int64_t * at)\n{\n (void)at;for(;;){const TableMessageEntry * entry;if(!table_message_ref(r,&entry,0))return 0;if(entry==NULL)return 1;\n switch(entry->id){\n", g.sym(st.Name, "message_extent"))
+	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,int64_t * at,int depth)\n{\n (void)at;if(depth>128)return 0;for(;;){const TableMessageEntry * entry;if(!table_message_ref(r,&entry,0))return 0;if(entry==NULL)return 1;\n switch(entry->id){\n", g.sym(st.Name, "message_extent"))
 	step := 0
 	for _, f := range st.Fields {
 		if !g.messageFieldHasExtent(f) {
@@ -25,14 +25,14 @@ func (g *tableGen) emitMessageExtent(st *ir.Struct) {
 		}
 		e := ir.TableFieldEntry(f)
 		g.pf(" case UINT64_C(0x%016x):if(entry->kind==%d && (entry->elem_kind==%d || table_kind_widens(entry->elem_kind,%d))){\n", e.Id, e.Kind, e.Shape.Elem, e.Shape.Elem)
-		g.messageExtentValue(f, "entry", " ", &step)
+		g.messageExtentValue(f, "entry", " ", &step, "depth")
 		g.pf(" continue;}break;\n")
 	}
-	g.pf(" default:break;}if(!table_message_skip(r,entry))return 0;\n }\n}\n")
+	g.pf(" default:break;}if(!table_message_skip_at(r,entry,depth))return 0;\n }\n}\n")
 }
 
 func (g *tableGen) emitMessageUnionExtent(un *ir.Union) {
-	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,int64_t * at)\n{\n const TableMessageEntry * entry;(void)at;if(!table_message_ref(r,&entry,0))return 0;if(entry==NULL)return 1;if(entry->kind==0)return 0;\n switch(entry->id){\n", g.sym(un.Name, "message_extent"))
+	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,int64_t * at,int depth)\n{\n const TableMessageEntry * entry;(void)at;if(depth>128)return 0;if(!table_message_ref(r,&entry,0))return 0;if(entry==NULL)return 1;if(entry->kind==0)return 0;\n switch(entry->id){\n", g.sym(un.Name, "message_extent"))
 	step := 0
 	for _, v := range un.Variants {
 		if v.Void() || !g.messageFieldHasExtent(v.F) {
@@ -40,13 +40,13 @@ func (g *tableGen) emitMessageUnionExtent(un *ir.Union) {
 		}
 		e := ir.TableArmEntry(v)
 		g.pf(" case UINT64_C(0x%016x):if(entry->kind==%d && (entry->elem_kind==%d || table_kind_widens(entry->elem_kind,%d))){\n", e.Id, e.Kind, e.Shape.Elem, e.Shape.Elem)
-		g.messageExtentValue(v.F, "entry", " ", &step)
+		g.messageExtentValue(v.F, "entry", " ", &step, "depth")
 		g.pf(" return 1;}break;\n")
 	}
-	g.pf(" default:break;}return table_message_skip(r,entry);\n}\n")
+	g.pf(" default:break;}return table_message_skip_at(r,entry,depth);\n}\n")
 }
 
-func (g *tableGen) messageExtentValue(f *ir.Field, e, ind string, step *int) {
+func (g *tableGen) messageExtentValue(f *ir.Field, e, ind string, step *int, depth string) {
 	*step++
 	label := fmt.Sprintf("extent%d", *step)
 	if f.IsList() || f.IsMap() || f.Array != ir.ArrayNone {
@@ -75,25 +75,25 @@ func (g *tableGen) messageExtentValue(f *ir.Field, e, ind string, step *int) {
 			condition = fmt.Sprintf("%s_i<%d", label, f.ArrayBound)
 		}
 		g.pf("%s if(%s){\n", ind, condition)
-		g.messageExtentElement(elem, label, ind+" ")
-		g.pf("%s }else if(!table_message_skip(r,%s))return 0;\n%s } } }\n", ind, label, ind)
+		g.messageExtentElement(elem, label, ind+" ", depth+"+1")
+		g.pf("%s }else if(!table_message_skip_at(r,%s,%s+1))return 0;\n%s } } }\n", ind, label, depth, ind)
 		return
 	}
-	g.messageExtentElement(f, e, ind)
+	g.messageExtentElement(f, e, ind, depth)
 }
 
-func (g *tableGen) messageExtentElement(f *ir.Field, e, ind string) {
+func (g *tableGen) messageExtentElement(f *ir.Field, e, ind string, depth string) {
 	if !f.Type.Pointer {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
-			g.pf("%sif(!%s(r,at))return 0;\n", ind, g.sym(ref.Name, "message_extent"))
+			g.pf("%sif(!%s(r,at,%s+1))return 0;\n", ind, g.sym(ref.Name, "message_extent"), depth)
 			return
 		case *ir.Union:
-			g.pf("%sif(!%s(r,at))return 0;\n", ind, g.sym(ref.Name, "message_extent"))
+			g.pf("%sif(!%s(r,at,%s+1))return 0;\n", ind, g.sym(ref.Name, "message_extent"), depth)
 			return
 		}
 	}
-	g.pf("%sif(!table_message_skip(r,%s))return 0;\n", ind, e)
+	g.pf("%sif(!table_message_skip_at(r,%s,%s))return 0;\n", ind, e, depth)
 }
 
 func (g *tableGen) messageHasExtent(st *ir.Struct) bool {
