@@ -1,18 +1,18 @@
-// THE MESSAGE FORM'S ANNOUNCEMENT ON THE ELIXIR LEG (docs/SPEC-TABLES.md
-// §3.3). The message form is a batch of bitpacked bodies under one announced
-// vocabulary, and the announcement is an ordinary form-`1` file the compiler
-// settles byte for byte. This card emits the ANNOUNCEMENT SURFACE only:
+// THE MESSAGE FORM ON THE ELIXIR LEG (docs/SPEC-TABLES.md §3.3). The message
+// form is a batch of bitpacked bodies under one announced vocabulary, and the
+// announcement is an ordinary form-`1` file the compiler settles byte for
+// byte. This module emits both surfaces:
 //
 //	Announce / AnnounceMeasure — the constant and its length, not a walk;
 //	AnnounceRead — reads the announcement file and fills a TableVocabulary;
-//	the refusals the page names, and the two strict checks answered malformed.
+//	the refusals the page names, and the two strict checks answered malformed;
+//	MeasureMessages / SaveMessages / LoadMessages — the batch, a form-`2` body.
 //
-// The batch verbs (MeasureMessages / SaveMessages / LoadMessages) are the NEXT
-// card; nothing here reads a form-`2` body. The announcement's form-`1` reader
-// below is the whole of the wire this surface owes, and it is emitted once per
-// unit that declares a fixed table, beside BuildVersion — the announcement is a
-// compile-time constant of the unit and its vocabulary is a pure function of
-// the build version (docs/SPEC-TABLES.md §3.3).
+// The batch runtime below reads and writes that form-`2` body. The
+// announcement's form-`1` reader is emitted once per unit that declares a
+// fixed table, beside BuildVersion — the announcement is a compile-time
+// constant of the unit and its vocabulary is a pure function of the build
+// version (docs/SPEC-TABLES.md §3.3).
 //
 // THE BEAM HAS NO CALLER-OWNED ARRAY, so §3.3's "the resolved vocabulary's
 // storage is the caller's, declared by capacity" is honoured the way this leg's
@@ -29,16 +29,18 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TableMessageModule is the message form's announcement surface module, one per
-// unit that declares a fixed table, claimed beside BuildVersion and the two
-// accelerators' runtimes (docs/SPEC-TABLES.md §3.3, §11).
+// TableMessageModule is the message form's module, one per unit that declares
+// a fixed table, claimed beside BuildVersion and the two accelerators'
+// runtimes (docs/SPEC-TABLES.md §3.3, §11). It carries the announcement
+// surface and the batch verbs that read and write a form-`2` body.
 const TableMessageModule = "TableMessage"
 
 // messageformModule emits <ns>.TableMessage: the announcement constant, its
-// measure, and the reader that resolves it into a TableVocabulary.
+// measure, the reader that resolves it into a TableVocabulary, and the batch
+// verbs that measure, save and load a form-`2` body.
 func messageformModule(u *ir.Unit, ns string) []byte {
 	var b strings.Builder
-	b.WriteString(header(TableMessageModule, u.Package, "the MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3)"))
+	b.WriteString(header(TableMessageModule, u.Package, "the MESSAGE FORM, announcement and batch (docs/SPEC-TABLES.md §3.3)"))
 	b.WriteString("\n")
 	fmt.Fprintf(&b, "defmodule %s.%s do\n", ns, TableMessageModule)
 	b.WriteString("  @moduledoc \"\"\"\n")
@@ -274,7 +276,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp encode_elements(_vocab, _elem, [], acc), do: {:ok, acc}
 
   defp encode_elements(vocab, elem, [v | rest], acc) do
-    case encode_value(vocab, elem.kind, elem.shape, nil, v, acc) do
+    case encode_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), v, acc) do
       {:ok, acc2} -> encode_elements(vocab, elem, rest, acc2)
       :error -> :error
     end
@@ -412,12 +414,46 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp read_elements(_vocab, _elem, 0, r, acc), do: {:ok, Enum.reverse(acc), r}
 
-  defp read_elements(vocab, elem, n, r, acc) do
-    case read_value(vocab, elem.kind, elem.shape, nil, r) do
-      {:ok, v, rest} -> read_elements(vocab, elem, n - 1, rest, [v | acc])
-      :malformed -> :malformed
+  # A zero-width element leaves the cursor where it stood: kind 0, kind 32, a
+  # ranged scalar whose bit width is 0, or a nested run of those. Looping on
+  # the count would allocate a list in proportion to the announcement and
+  # consume no input. The walked zero-progress rule
+  # (internal/tablewire/messagedecode.go) refuses a remaining count the bits
+  # still in the batch cannot back, and otherwise the rest of the run is that
+  # one value. This reader returns the list, so the same rule runs before any
+  # cell is allocated.
+  defp read_elements(vocab, elem, n, r, acc) when is_map(elem) and n > 0 do
+    case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), r) do
+      {:ok, v, ^r} ->
+        zero_width_run(n, r, acc, v)
+
+      {:ok, v, rest} ->
+        read_elements(vocab, elem, n - 1, rest, [v | acc])
+
+      :malformed ->
+        :malformed
     end
   end
+
+  defp read_elements(_vocab, _elem, n, _r, _acc) when n > 0, do: :malformed
+
+  defp zero_width_run(n, r, acc, v) do
+    left = bits_left(r)
+
+    # n - 1 > left is the walked rule after the element that consumed nothing:
+    # the remaining count has to be backed by bits still in the batch. A backed
+    # count is one List.duplicate and the cursor stays. A wide announcement the
+    # batch cannot cover is :malformed and allocates nothing. The uint32
+    # ceiling on the announcement is not applied here.
+    if n - 1 > left do
+      :malformed
+    else
+      {:ok, Enum.reverse(acc, List.duplicate(v, n)), r}
+    end
+  end
+
+  defp bits_left({_int, off, total}) when total > off, do: total - off
+  defp bits_left({_int, _off, _total}), do: 0
 
   defp read_union(vocab, r) do
     case get_bits(r, vocab.ref_bits) do
@@ -507,12 +543,20 @@ const messageBatchRuntimeBody = `  @batch_max 256
   end
 
   # r is byte-aligned here (align precedes the call), so read n bytes whole.
-  defp take_bytes({int, off, total}, n) do
-    if off + n * 8 > total do
+  # A legal zero-length text is an exact empty binary and the cursor unchanged.
+  # 0..(n - 1) with no step is the descending range 0..-1 when n is 0, and that
+  # range walks two bytes. Positive lengths step //1. A run past the batch
+  # stays :error.
+  defp take_bytes({_int, _off, _total} = r, 0), do: {:ok, <<>>, r}
+
+  defp take_bytes({int, off, total}, n) when is_integer(n) and n > 0 do
+    need = n * 8
+
+    if off + need > total do
       :error
     else
-      bytes = for i <- 0..(n - 1), into: <<>>, do: <<int >>> (off + 8 * i) &&& 0xFF>>
-      {:ok, bytes, {int, off + n * 8, total}}
+      bytes = for i <- 0..(n - 1)//1, into: <<>>, do: <<int >>> (off + 8 * i) &&& 0xFF>>
+      {:ok, bytes, {int, off + need, total}}
     end
   end
 
@@ -976,11 +1020,21 @@ const messageRuntimeBody = `  defstruct announced: false,
       case shape(elem, rest) do
         {:ok, es, rest2} ->
           if elem in [14, 16] do
-            # A nested array carries one more kind byte, which nothing decodes.
+            # A nested array carries one more kind byte. That kind is kept so a
+            # zero-width nested run is the same bounded read as a flat one.
+            # The shape bytes after that kind byte are still not decoded.
             case rest2 do
               <<inner, rest3::binary>> ->
                 if known_kind?(inner) and inner not in [12, 33] do
-                  {:ok, %{id: id, kind: kind, shape: s, element: %{kind: elem, shape: es}}, rest3}
+                  inner_elem = %{kind: inner, shape: %{kind: inner}}
+
+                  {:ok,
+                   %{
+                     id: id,
+                     kind: kind,
+                     shape: s,
+                     element: %{kind: elem, shape: es, element: inner_elem}
+                   }, rest3}
                 else
                   :error
                 end
