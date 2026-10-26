@@ -241,15 +241,32 @@ loop, one combined name for CI.
 
 ## The gates a change has to pass
 
-CI runs on Linux and macOS, and both must be green:
+Per-push evidence is Linux. A green pull request is not a macOS certificate.
+The same split is in [SECURITY.md](SECURITY.md).
 
-- `make test` — the cross-language corpus and the goldens.
-- `go test ./internal/fuzz/` — the seeded fuzz corpus, which re-runs every
-  crasher ever found.
+- [`.github/workflows/ci-fast.yml`](../.github/workflows/ci-fast.yml) runs on a
+  pull request into `main` or `fixed-table-form`, and on `workflow_dispatch`.
+  It is a path-selected Linux lane. It is not the full `make test` chain, and
+  it does not run on macOS.
+- [`.github/workflows/ci-full.yml`](../.github/workflows/ci-full.yml) runs on a
+  push to `main` or `fixed-table-form`, on its nightly schedule
+  (`10 7 * * *`), on `workflow_dispatch`, and on a pull request that carries
+  the `full-ci` label. Its runners are Linux and Windows. It does not include
+  `macos-latest`. An unlabeled pull request does not run it.
+- macOS certification of the full chain is
+  [`.github/workflows/certify.yml`](../.github/workflows/certify.yml), nightly
+  (`17 9 * * *`) and on `workflow_dispatch`
+  (`gh workflow run certify.yml --ref <branch>`), with no push trigger. Its
+  `test` matrix is `ubuntu-latest` and `macos-latest` and runs `make test`.
+  Further macOS rows cover the go, cpp, c, rust and cs legs.
 
-Run both locally before opening a pull request.
+Run `make test` and `go test ./internal/fuzz/` locally before opening a pull
+request. The fuzz package re-runs every crasher ever found. Those local
+commands are not a macOS certificate.
 
-A third rides every pull request on Windows: **`msvc`** — cl
+**`msvc`** rides `ci-full.yml`, so a push to `main` or `fixed-table-form`, the
+nightly, a dispatch, and a pull request that carries `full-ci` run it. An
+unlabeled pull request does not. It is cl
 `/W4 /WX /std:c++17 /permissive-` over the generated C++ corpus, one
 translation unit at a time, on a pinned `windows-2025` image, with a negative
 control that must go red on a GNU extension. Visual C++ is a hard requirement

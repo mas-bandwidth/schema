@@ -1,18 +1,18 @@
-// THE MESSAGE FORM'S ANNOUNCEMENT ON THE ELIXIR LEG (docs/SPEC-TABLES.md
-// §3.3). The message form is a batch of bitpacked bodies under one announced
-// vocabulary, and the announcement is an ordinary form-`1` file the compiler
-// settles byte for byte. This card emits the ANNOUNCEMENT SURFACE only:
+// THE MESSAGE FORM ON THE ELIXIR LEG (docs/SPEC-TABLES.md §3.3). The message
+// form is a batch of bitpacked bodies under one announced vocabulary, and the
+// announcement is an ordinary form-`1` file the compiler settles byte for byte.
+// When the unit has a fixed root, this file emits both surfaces:
 //
-//	Announce / AnnounceMeasure — the constant and its length, not a walk;
-//	AnnounceRead — reads the announcement file and fills a TableVocabulary;
-//	the refusals the page names, and the two strict checks answered malformed.
+//	announce / announce_measure — the constant and its length, not a walk;
+//	announce_read — reads the announcement file and fills a TableVocabulary;
+//	measure_messages / save_messages / load_messages — the bitpacked batch,
+//	form byte 2, over the vocabulary announce_read resolved.
 //
-// The batch verbs (MeasureMessages / SaveMessages / LoadMessages) are the NEXT
-// card; nothing here reads a form-`2` body. The announcement's form-`1` reader
-// below is the whole of the wire this surface owes, and it is emitted once per
-// unit that declares a fixed table, beside BuildVersion — the announcement is a
-// compile-time constant of the unit and its vocabulary is a pure function of
-// the build version (docs/SPEC-TABLES.md §3.3).
+// The announcement's form-`1` reader is emitted once per unit that declares a
+// fixed table, beside BuildVersion. The announcement is a compile-time constant
+// of the unit and its vocabulary is a pure function of the build version
+// (docs/SPEC-TABLES.md §3.3). The batch verbs are the module's, not a generated
+// verb per root.
 //
 // THE BEAM HAS NO CALLER-OWNED ARRAY, so §3.3's "the resolved vocabulary's
 // storage is the caller's, declared by capacity" is honoured the way this leg's
