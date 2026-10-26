@@ -81,3 +81,84 @@ func TestFastPlanSelectsTableFixtures(t *testing.T) {
 		})
 	}
 }
+
+// TestFastPlanCoversStreamToDevAndSelectsRelevantWork verifies that ci-fast.yml's
+// plan job diffs against the PR's base branch on pull_request (so stream-to-dev
+// PRs diff against origin/dev and main promotion PRs diff against origin/main),
+// defaults to dev on workflow_dispatch, and selects only relevant packages and
+// legs without broadening a single-leg change into the full suite.
+func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wf := string(data)
+
+	const wantBaseLine = "BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || 'dev' }}"
+	if !strings.Contains(wf, wantBaseLine) {
+		t.Fatalf("ci-fast.yml plan does not set %q", wantBaseLine)
+	}
+
+	_, tail, ok := strings.Cut(wf, "          # THE BROAD RULE.")
+	if !ok {
+		t.Fatal("fast workflow broad selector not found")
+	}
+	selector, _, ok := strings.Cut(tail, "          echo \"broad=$broad\"")
+	if !ok {
+		t.Fatal("fast workflow output boundary not found")
+	}
+	_, selector, _ = strings.Cut(selector, "\n")
+	var script strings.Builder
+	for line := range strings.SplitSeq(selector, "\n") {
+		script.WriteString(strings.TrimPrefix(line, "          "))
+		script.WriteByte('\n')
+	}
+	script.WriteString(`printf '%s|%s|%s' "$broad" "$packages" "$json"`)
+
+	for _, tc := range []struct {
+		name  string
+		files string
+		want  string
+	}{
+		{
+			name:  "elixir leg only",
+			files: "internal/codegen/elixirtable/wire.go",
+			want:  `no|./internal/codegen/elixirtable|["elixir"]`,
+		},
+		{
+			name:  "dart leg only",
+			files: "internal/codegen/darttable/darttable.go",
+			want:  `no|./internal/codegen/darttable|["dart"]`,
+		},
+		{
+			name:  "ci package only",
+			files: "internal/ci/ci_test.go",
+			want:  `no|./internal/ci|[]`,
+		},
+		{
+			name:  "docs only",
+			files: "docs/CONTRIBUTING.md",
+			want:  `no||[]`,
+		},
+		{
+			name:  "broad compiler change",
+			files: "compiler/compiler.go",
+			want:  `yes|./...|["c","cpp","cs","dart","elixir","go","java","js","rust"]`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
+			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
+			cmd.Dir = repoRoot(t)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("plan script: %v: %s", err, out)
+			}
+			got := selectorOutput(out)
+			if got != tc.want {
+				t.Fatalf("files=%q produced %q; want %q", tc.files, got, tc.want)
+			}
+		})
+	}
+}

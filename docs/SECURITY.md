@@ -110,16 +110,19 @@ what the language specifies, in a way that weakens a check.
   That comparison is not a per-push macOS job, and it is not promised on every
   push. Per-push evidence is Linux.
   [`.github/workflows/ci-fast.yml`](../.github/workflows/ci-fast.yml) runs on a
-  pull request into `main` or `fixed-table-form`, and on `workflow_dispatch`:
+  pull request into `main`, `dev`, or `fixed-table-form`, and on `workflow_dispatch`:
   a path-selected lane on Linux (the fleet, or `ubuntu-latest` for a pull
   request into a branch below `main`). It is not the full `make test` chain
   and it does not run on macOS.
   [`.github/workflows/ci-full.yml`](../.github/workflows/ci-full.yml) runs on a
-  push to `main` or `fixed-table-form`, on its nightly schedule
-  (`10 7 * * *`), on `workflow_dispatch`, and on a pull request that carries
-  the `full-ci` label. Its runners are Linux and Windows (`windows-latest`,
-  `windows-2025`). It does not include `macos-latest`, and an unlabeled pull
-  request does not run it.
+  push to `main`, `dev`, or `fixed-table-form`, on its nightly schedule
+  (`10 7 * * *`), on `workflow_dispatch`, and on a pull request into those
+  branches. Most of its jobs run on a pull request only when that pull request
+  carries the `full-ci` label. Fleet jobs on a pull request also require the
+  head repository to be this one. `generated` and `cs-tables` run on a pull
+  request without that label. `pins` runs on a same-repository pull request
+  without that label. Its runners are Linux and
+  Windows (`windows-latest`, `windows-2025`). It does not include `macos-latest`.
   macOS certification of the full chain is
   [`.github/workflows/certify.yml`](../.github/workflows/certify.yml), which
   runs on its nightly schedule (`17 9 * * *`) and on `workflow_dispatch`
