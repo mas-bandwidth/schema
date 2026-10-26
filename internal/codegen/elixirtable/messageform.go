@@ -44,7 +44,7 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("\n")
 	fmt.Fprintf(&b, "defmodule %s.%s do\n", ns, TableMessageModule)
 	b.WriteString("  @moduledoc \"\"\"\n")
-	b.WriteString("  The MESSAGE FORM's announcement (docs/SPEC-TABLES.md §3.3), form byte 2.\n\n")
+	b.WriteString("  The MESSAGE FORM's announcement and batch runtime (docs/SPEC-TABLES.md §3.3), form byte 2.\n\n")
 	b.WriteString("  A message is a bitpacked body under a vocabulary the endpoint announces once,\n")
 	b.WriteString("  before the first body and never again. The announcement is an ordinary\n")
 	b.WriteString("  form-`1` FILE whose body carries the unit's BUILD VERSION and the unit's\n")
@@ -57,7 +57,9 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("  a vocabulary past either bound is `:vocabulary_too_large`, and the two\n")
 	b.WriteString("  strict checks — the build version present exactly once at kind 9 eight\n")
 	b.WriteString("  bytes wide, the vocabulary present exactly once at kind 14 element kind 6\n")
-	b.WriteString("  — answer `:malformed`, never a refusal.\n")
+	b.WriteString("  — answer `:malformed`, never a refusal. `measure_messages/2`,\n")
+	b.WriteString("  `save_messages/2` and `load_messages/2,3` measure, write and read a\n")
+	b.WriteString("  form-`2` batch of bodies against that resolved vocabulary.\n")
 	b.WriteString("  \"\"\"\n\n")
 	b.WriteString("  import Bitwise\n\n")
 	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(ir.TableAnnouncement(u))))
@@ -85,14 +87,6 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 // a reader that has lost its position has lost it for the rest of the batch:
 // damage is terminal for the batch (§3.3's "DAMAGE IS TERMINAL FOR THE BATCH").
 const messageBatchRuntimeBody = `  @batch_max 256
-
-  # The largest FIXED (min == max) zero-width array a reader will materialize.
-  # A fixed count is a schema constant, not wire data, so it is legitimate
-  # required capacity and is accepted regardless of the bits a batch still
-  # holds; this ceiling is only the OOM guard for an announcement that declares
-  # an absurd fixed run (e.g. min = max = 0xFFFFFFFF). It is far above any real
-  # fixed array and far below the BEAM list sizes that threaten memory.
-  @zero_width_cap 1048576
 
   @doc """
   The batch's byte size for ` + "`" + `values` + "`" + `, or the refusal by name (docs/SPEC-TABLES.md §3.3).
@@ -411,8 +405,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp read_array(vocab, shape, elem, r) do
     with {:ok, offset, rest} <- get_bits(r, bit_length(shape.max - shape.min)),
          {:ok, rest2} <- maybe_align(elem, rest) do
-      fixed = shape.max == shape.min
-      read_elements(vocab, elem, shape.min + offset, rest2, [], fixed)
+      read_elements(vocab, shape, elem, shape.min + offset, rest2, [])
     else
       _ -> :malformed
     end
@@ -421,43 +414,41 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp maybe_align(%{kind: 6}, r), do: align(r)
   defp maybe_align(_elem, r), do: {:ok, r}
 
-  defp read_elements(_vocab, _elem, 0, r, acc, _fixed), do: {:ok, Enum.reverse(acc), r}
+  defp read_elements(_vocab, _shape, _elem, 0, r, acc), do: {:ok, Enum.reverse(acc), r}
 
   # A zero-width element leaves the cursor where it stood: kind 0, kind 32, a
   # ranged scalar whose bit width is 0, or a nested run of those. Looping on
   # the count would allocate a list in proportion to the announcement and
-  # consume no input. This reader returns the list, so the same zero-progress
-  # rule the tablewire walk runs (internal/tablewire/messagedecode.go) runs here
-  # before any cell is allocated, except that a FIXED count (min == max) is a
-  # schema constant and is not held to the bits the batch still holds.
-  defp read_elements(vocab, elem, n, r, acc, fixed) when is_map(elem) and n > 0 do
+  # consume no input. This reader returns the list, so zero_width_run checks
+  # the count against the caller's existing vocabulary capacity (vocab.max_bytes)
+  # and holds an unbounded list (shape.max == 0xFFFFFFFF, ir.TableMessageListMax)
+  # to the bits the batch still holds (internal/tablewire/messagedecode.go)
+  # before any cell is allocated.
+  defp read_elements(vocab, shape, elem, n, r, acc) when is_map(elem) and n > 0 do
     case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), r) do
       {:ok, v, ^r} ->
-        zero_width_run(n, r, acc, v, fixed)
+        zero_width_run(vocab, shape, n, r, acc, v)
 
       {:ok, v, rest} ->
-        read_elements(vocab, elem, n - 1, rest, [v | acc], fixed)
+        read_elements(vocab, shape, elem, n - 1, rest, [v | acc])
 
       :malformed ->
         :malformed
     end
   end
 
-  defp read_elements(_vocab, _elem, n, _r, _acc, _fixed) when n > 0, do: :malformed
+  defp read_elements(_vocab, _shape, _elem, n, _r, _acc) when n > 0, do: :malformed
 
-  defp zero_width_run(n, r, acc, v, fixed) do
-    left = bits_left(r)
-
-    # A wire-read count (a variable array, min < max) is held to the walked
-    # rule: the remaining count has to be backed by bits still in the batch, so
-    # a hostile announcement cannot buy an unbounded list with input that never
-    # advances. A FIXED count (min == max) is a schema constant, not wire data:
-    # it is legitimate required capacity and is accepted however few bits remain
-    # (a correct fixed zero-width array does not depend on following payload or
-    # padding), up to @zero_width_cap, the OOM guard for an announcement that
-    # declares an absurd fixed run. The uint32 ceiling on the announced shape is
-    # untouched.
-    if (not fixed and n - 1 > left) or (fixed and n > @zero_width_cap) do
+  defp zero_width_run(vocab, shape, n, r, acc, v) do
+    # A bounded or fixed array (shape.max < 0xFFFFFFFF) whose count fits within
+    # vocab.max_bytes is accepted regardless of the bits remaining in the batch,
+    # so a valid last-field fixed or bounded zero-width array never depends on
+    # following payload or padding. An unbounded array (shape.max == 0xFFFFFFFF,
+    # ir.TableMessageListMax) has no declared bound and is held to the bits left
+    # in the batch (internal/tablewire/messagedecode.go), and any count past
+    # vocab.max_bytes is refused as malformed. The uint32 ceiling on the
+    # announced shape is untouched.
+    if n > vocab.max_bytes or (shape.max == 0xFFFFFFFF and n - 1 > bits_left(r)) do
       :malformed
     else
       {:ok, Enum.reverse(acc, List.duplicate(v, n)), r}

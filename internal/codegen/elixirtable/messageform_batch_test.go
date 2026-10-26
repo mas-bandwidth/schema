@@ -506,11 +506,8 @@ func assertElixirBoundsSource(t *testing.T, src, module string) {
 	for _, want := range []string{
 		"defp take_bytes({_int, _off, _total} = r, 0), do: {:ok, <<>>, r}",
 		"for i <- 0..(n - 1)//1, into:",
-		"defp zero_width_run(n, r, acc, v, fixed)",
-		"@zero_width_cap 1048576",
-		"not fixed and n - 1 > left",
-		"fixed and n > @zero_width_cap",
-		"fixed = shape.max == shape.min",
+		"defp zero_width_run(vocab, shape, n, r, acc, v)",
+		"n > vocab.max_bytes or (shape.max == 0xFFFFFFFF and n - 1 > bits_left(r))",
 		"min > 0xFFFFFFFF or max > 0xFFFFFFFF or max < min",
 		"defp read_value(_vocab, 0, _shape, _elem, r), do: {:ok, :name, r}",
 		"defp read_value(_vocab, 32, _shape, _elem, r), do: {:ok, :none, r}",
@@ -620,7 +617,7 @@ func sabotageDescendingEmptyRange(t *testing.T, module []byte) []byte {
 func sabotageCountLoop(t *testing.T, module []byte) []byte {
 	t.Helper()
 	const have = `      {:ok, v, ^r} ->
-        zero_width_run(n, r, acc, v, fixed)`
+        zero_width_run(vocab, shape, n, r, acc, v)`
 	const restored = `      {:ok, v, rest} when rest == r ->
         seen = Process.get(:zero_iters, 0) + 1
         Process.put(:zero_iters, seen)
@@ -629,14 +626,14 @@ func sabotageCountLoop(t *testing.T, module []byte) []byte {
           raise "count-driven zero-progress materialization"
         end
 
-        read_elements(vocab, elem, n - 1, rest, [v | acc], fixed)`
+        read_elements(vocab, shape, elem, n - 1, rest, [v | acc])`
 	return replaceModuleOnce(t, module, have, restored, "count-driven zero-progress materialization")
 }
 
 func sabotageFixedZeroWidth(t *testing.T, module []byte) []byte {
 	t.Helper()
-	const have = `    if (not fixed and n - 1 > left) or (fixed and n > @zero_width_cap) do`
-	const restored = `    if n - 1 > left do`
+	const have = `    if n > vocab.max_bytes or (shape.max == 0xFFFFFFFF and n - 1 > bits_left(r)) do`
+	const restored = `    if n - 1 > bits_left(r) do`
 	return replaceModuleOnce(t, module, have, restored, "fixed zero-width bits-left rule")
 }
 
@@ -779,6 +776,16 @@ const boundsValueFns = boundsElixirHelpers + `
     kind32 = read!(entry(0x1000, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<32>>))
     ceiling(kind32)
     refuse_wide(kind32)
+
+    # An unbounded list (min = 0, max = 0xFFFFFFFF) carrying a hostile wire
+    # count (9 elements in a 6-byte batch with only 7 trailing bits, or 100_000
+    # past vocab.max_bytes) is refused without allocating the list.
+    unbounded = read!(entry(0x1000, <<14>> <> leb(0) <> leb(0xFFFFFFFF) <> <<0>>))
+
+    case M.load_messages(unbounded, <<2, 0, 19, 0, 0, 0, 0>>) do
+      {:malformed, 0, []} -> :ok
+      other -> check(false, "unbounded zero-width count #{inspect_small(other)}")
+    end
   end
 
   defp nested_counts do
@@ -839,6 +846,29 @@ const boundsValueFns = boundsElixirHelpers + `
 
       other ->
         check(false, "fixed nine save #{inspect_small(other)}")
+    end
+
+    # A bounded variable zero-width array (min = 0, max = 9) as the last field
+    # of a batch writes 1 ref bit + 4 count bits + 1 terminator bit + 2 pad
+    # bits = <<2, 0, 19>> (only 3 bits remain after the count is read), and
+    # must also round-trip all 9 elements without depending on trailing bits.
+    bounded = read!(entry(0x1000, <<14>> <> leb(0) <> leb(9) <> <<0>>))
+
+    case M.save_messages(bounded, [[{1, List.duplicate(:name, 9)}]]) do
+      {:ok, <<2, 0, 19>>} ->
+        case M.load_messages(bounded, <<2, 0, 19>>) do
+          {:ok, [[{1, nine}]]} ->
+            if nine == List.duplicate(:name, 9) do
+              :ok
+            else
+              check(false, "bounded nine last field #{inspect_small({:ok, [[{1, nine}]]})}")
+            end
+
+          other -> check(false, "bounded nine last field #{inspect_small(other)}")
+        end
+
+      other ->
+        check(false, "bounded nine save #{inspect_small(other)}")
     end
   end
 `
