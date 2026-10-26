@@ -1944,10 +1944,12 @@ $ schema unpack --in backend_conn.bin tables/backend
 ```
 
 **FORM BYTE `2` CARRIES THE BITPACKED MESSAGE BODY** (SPEC-TABLES.md §3.3,
-§6.6). The C++ reference, the tool and Go read and write the bitpacked form-`2`
-path. An earlier byte-framed body for form `2` was never released; bitpacking
-replaced it before release, and the form-`2` corpus pins the current body. The
-other seven language backends carry the variable form alone.
+§6.6). An earlier byte-framed body for form `2` was never released; bitpacking
+replaced it before release, and the form-`2` corpus pins the current body.
+Which of the nine emitted runtimes reads and writes that body, and the subset
+each one carries, is one list: SPEC-TABLES.md §3.3, "WHERE THE FORM IS
+CARRIED". It is not a C++ and Go-only path, and it is not the same subset in
+every language.
 
 ### Nesting: a root table IS a format
 

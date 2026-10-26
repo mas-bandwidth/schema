@@ -100,15 +100,16 @@ work lands as card heads, in a batch, onto a branch per work stream
 SERIALLY into `dev`, never into `main` and never into another stream. `main`
 only moves by a promotion pull request from `dev` (titled "promote dev to
 main"), which runs the full checks; a hand fix goes to `dev` first, the same
-way. A stream whose base is `main` is a defect. Pull requests into `dev` and
-`main` automatically run `ci-fast.yml` (planning by diff against the target
-branch so only touched packages and legs are selected) and the always-on
-`generated`, `pins` and `cs-tables` gates in `ci-full.yml` (with the full
-`ci-full.yml` suite running on every merge push to `dev` and `main`, nightly, on
-`workflow_dispatch`, and on any same-repository pull request carrying the
-`full-ci` label). Every self-hosted fleet job requires
-`github.event.pull_request.head.repo.full_name == github.repository` on
-`pull_request` events so fork code never executes on fleet runners.
+way. A stream whose base is `main` is a defect. Pull requests into `main`,
+`dev`, or `fixed-table-form` automatically run `ci-fast.yml` (planning by diff
+against the target branch so only touched packages and legs are selected) and
+the `generated` and `cs-tables` gates in `ci-full.yml`, plus `pins` when the
+pull request is from this repository. The rest of `ci-full.yml` runs on a push
+to those three branches, nightly, on `workflow_dispatch`, and on a pull
+request into those branches that carries the `full-ci` label. A self-hosted
+fleet job on a pull request also requires
+`github.event.pull_request.head.repo.full_name == github.repository`, so fork
+code never executes on fleet runners.
 
 **When the compiler refuses.** Every refusal the language can produce is a case
 in the break-the-language suite (`internal/check/diagnostics_test.go`, and
@@ -249,15 +250,36 @@ loop, one combined name for CI.
 
 ## The gates a change has to pass
 
-CI runs on Linux and macOS, and both must be green:
+Per-push evidence is Linux. A green pull request is not a macOS certificate.
+The same split is in [SECURITY.md](SECURITY.md).
 
-- `make test` — the cross-language corpus and the goldens.
-- `go test ./internal/fuzz/` — the seeded fuzz corpus, which re-runs every
-  crasher ever found.
+- [`.github/workflows/ci-fast.yml`](../.github/workflows/ci-fast.yml) runs on a
+  pull request into `main`, `dev`, or `fixed-table-form`, and on `workflow_dispatch`.
+  It is a path-selected Linux lane. It is not the full `make test` chain, and
+  it does not run on macOS.
+- [`.github/workflows/ci-full.yml`](../.github/workflows/ci-full.yml) runs on a
+  push to `main`, `dev`, or `fixed-table-form`, on its nightly schedule
+  (`10 7 * * *`), on `workflow_dispatch`, and on a pull request into those
+  branches. Most of its jobs run on a pull request only when that pull request
+  carries the `full-ci` label. Fleet jobs on a pull request also require the
+  head repository to be this one. `generated` and `cs-tables` run on a pull
+  request without that label. `pins` runs on a same-repository pull request
+  without that label. Its runners are Linux and
+  Windows. It does not include `macos-latest`.
+- macOS certification of the full chain is
+  [`.github/workflows/certify.yml`](../.github/workflows/certify.yml), nightly
+  (`17 9 * * *`) and on `workflow_dispatch`
+  (`gh workflow run certify.yml --ref <branch>`), with no push trigger. Its
+  `test` matrix is `ubuntu-latest` and `macos-latest` and runs `make test`.
+  Further macOS rows cover the go, cpp, c, rust and cs legs.
 
-Run both locally before opening a pull request.
+Run `make test` and `go test ./internal/fuzz/` locally before opening a pull
+request. The fuzz package re-runs every crasher ever found. Those local
+commands are not a macOS certificate.
 
-A third rides every pull request on Windows: **`msvc`** — cl
+**`msvc`** rides `ci-full.yml`, so a push to `main`, `dev`, or `fixed-table-form`, the
+nightly, a dispatch, and a pull request that carries `full-ci` run it. An
+unlabeled pull request does not. It is `cl` with
 `/W4 /WX /std:c++17 /permissive-` over the generated C++ corpus, one
 translation unit at a time, on a pinned `windows-2025` image, with a negative
 control that must go red on a GNU extension. Visual C++ is a hard requirement
