@@ -397,19 +397,22 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
+		// the report decides the exit code, and a run that exits nonzero must
+		// leave NO output behind: a `.bin` newer than its prerequisites makes
+		// the next `make` skip the rule and the failure vanish, and writing
+		// `--announce` before the gate would replace a prior announcement
+		// while leaving the prior message beside it. The gate runs first, and
+		// both files land atomically after it.
+		reportLine(report, verbose, *tolerate)
 		if *announce != "" {
-			if err := writeAtomic(*announce, c.Announce(unit)); err != nil {
+			announcement := c.Announce(unit)
+			if err := writeAtomic(*announce, announcement); err != nil {
 				fatalf("%v", err)
 			}
 			if verbose {
-				fmt.Printf("announced %s: %d bytes\n", *announce, len(c.Announce(unit)))
+				fmt.Printf("announced %s: %d bytes\n", *announce, len(announcement))
 			}
 		}
-		// the report decides the exit code, and a run that exits nonzero must
-		// leave NO output behind: a `.bin` newer than its prerequisites makes
-		// the next `make` skip the rule and the failure vanish. The gate runs
-		// first, and the file lands atomically after it.
-		reportLine(report, verbose, *tolerate)
 		if err := writeAtomic(*out, bytes); err != nil {
 			fatalf("%v", err)
 		}
