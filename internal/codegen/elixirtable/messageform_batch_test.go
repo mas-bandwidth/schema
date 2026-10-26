@@ -237,12 +237,12 @@ func TestMessageFormBatchElixir(t *testing.T) {
 			}
 		})
 
-		t.Run("known_bad_fixed_zero_width", func(t *testing.T) {
+		t.Run("known_bad_declared_capacity_cap", func(t *testing.T) {
 			t.Parallel()
-			bad := sabotageFixedZeroWidth(t, module)
-			out, err := runElixirModuleProbe(t, bad, boundsFixedProbe(ns))
-			if err == nil || !strings.Contains(out, "fixed nine did not stand") || strings.Contains(out, "control did not restore") || strings.Contains(out, "CompileError") || strings.Contains(out, "SyntaxError") {
-				t.Fatalf("known-bad fixed zero-width did not fail for the bits-left reason:\nerr=%v\n%s", err, out)
+			bad := sabotageDeclaredCapacityCap(t, module)
+			out, err := runElixirModuleProbe(t, bad, boundsDeclaredProbe(ns))
+			if err == nil || !strings.Contains(out, "declared capacity shrank") || strings.Contains(out, "control did not restore") || strings.Contains(out, "CompileError") || strings.Contains(out, "SyntaxError") {
+				t.Fatalf("known-bad declared capacity cap did not fail for the element-cap reason:\nerr=%v\n%s", err, out)
 			}
 		})
 	})
@@ -506,8 +506,8 @@ func assertElixirBoundsSource(t *testing.T, src, module string) {
 	for _, want := range []string{
 		"defp take_bytes({_int, _off, _total} = r, 0), do: {:ok, <<>>, r}",
 		"for i <- 0..(n - 1)//1, into:",
-		"defp zero_width_run(vocab, shape, n, r, acc, v)",
-		"n > vocab.max_bytes or (shape.max == 0xFFFFFFFF and n - 1 > bits_left(r))",
+		"defp zero_width_run(_vocab, shape, n, r, acc, v)",
+		"shape.max == 0xFFFFFFFF and n > bits_left(r)",
 		"min > 0xFFFFFFFF or max > 0xFFFFFFFF or max < min",
 		"defp read_value(_vocab, 0, _shape, _elem, r), do: {:ok, :name, r}",
 		"defp read_value(_vocab, 32, _shape, _elem, r), do: {:ok, :none, r}",
@@ -522,6 +522,10 @@ func assertElixirBoundsSource(t *testing.T, src, module string) {
 	const descending = "for i <- 0..(n - 1), into:"
 	if strings.Contains(src, descending) || strings.Contains(module, descending) {
 		t.Errorf("the unstepped range %s is still emitted", descending)
+	}
+	const elementCap = "n > vocab.max_bytes or"
+	if strings.Contains(src, elementCap) || strings.Contains(module, elementCap) {
+		t.Errorf("the vocabulary byte budget is still spent as an element cap (%s)", elementCap)
 	}
 }
 
@@ -552,6 +556,7 @@ func boundsValuesProbe(ns string) string {
     nested_counts()
     second_body_damage()
     fixed_nine_last_field()
+    declared_capacity_above_budget()
 `)
 }
 
@@ -567,9 +572,9 @@ func boundsCountProbe(ns string) string {
 `)
 }
 
-func boundsFixedProbe(ns string) string {
-	return boundsProbe(ns, boundsFixedFn, `
-    fixed_nine_control()
+func boundsDeclaredProbe(ns string) string {
+	return boundsProbe(ns, boundsDeclaredFn, `
+    declared_capacity_control()
 `)
 }
 
@@ -630,11 +635,11 @@ func sabotageCountLoop(t *testing.T, module []byte) []byte {
 	return replaceModuleOnce(t, module, have, restored, "count-driven zero-progress materialization")
 }
 
-func sabotageFixedZeroWidth(t *testing.T, module []byte) []byte {
+func sabotageDeclaredCapacityCap(t *testing.T, module []byte) []byte {
 	t.Helper()
-	const have = `    if n > vocab.max_bytes or (shape.max == 0xFFFFFFFF and n - 1 > bits_left(r)) do`
-	const restored = `    if n - 1 > bits_left(r) do`
-	return replaceModuleOnce(t, module, have, restored, "fixed zero-width bits-left rule")
+	const have = `    if shape.max == 0xFFFFFFFF and n > bits_left(r) do`
+	const restored = `    if n > _vocab.max_bytes do`
+	return replaceModuleOnce(t, module, have, restored, "declared capacity element cap")
 }
 
 func replaceModuleOnce(t *testing.T, module []byte, old, new, what string) []byte {
@@ -778,13 +783,34 @@ const boundsValueFns = boundsElixirHelpers + `
     refuse_wide(kind32)
 
     # An unbounded list (min = 0, max = 0xFFFFFFFF) carrying a hostile wire
-    # count (9 elements in a 6-byte batch with only 7 trailing bits, or 100_000
-    # past vocab.max_bytes) is refused without allocating the list.
+    # count (9 elements in a 6-byte batch with only 7 trailing bits) is
+    # refused without allocating the list.
     unbounded = read!(entry(0x1000, <<14>> <> leb(0) <> leb(0xFFFFFFFF) <> <<0>>))
 
     case M.load_messages(unbounded, <<2, 0, 19, 0, 0, 0, 0>>) do
       {:malformed, 0, []} -> :ok
       other -> check(false, "unbounded zero-width count #{inspect_small(other)}")
+    end
+
+    # The unbounded count is compared with n > bits_left, each element costing
+    # at least one bit: a count equal to the seven bits left is backed by the
+    # wire and is accepted, and one past it is refused. The body is five bytes,
+    # so the 1-bit reference and 32-bit count leave seven bits.
+    case M.load_messages(unbounded, <<2, 0, 15, 0, 0, 0, 0>>) do
+      {:ok, [[{1, seven}]]} ->
+        if seven == List.duplicate(:name, 7) do
+          :ok
+        else
+          check(false, "unbounded count at the bit bound #{inspect_small({:ok, [[{1, seven}]]})}")
+        end
+
+      other ->
+        check(false, "unbounded count at the bit bound #{inspect_small(other)}")
+    end
+
+    case M.load_messages(unbounded, <<2, 0, 17, 0, 0, 0, 0>>) do
+      {:malformed, 0, []} -> :ok
+      other -> check(false, "unbounded count past the bit bound #{inspect_small(other)}")
     end
   end
 
@@ -871,6 +897,41 @@ const boundsValueFns = boundsElixirHelpers + `
         check(false, "bounded nine save #{inspect_small(other)}")
     end
   end
+
+  defp declared_capacity_above_budget do
+    # vocab.max_bytes bounds the announcement's bytes, not an array's declared
+    # element count. A fixed zero-width array of 70_000 elements is above the
+    # 65_536-byte default and is still legitimate required capacity.
+    n = 70_000
+    words = entry(0x1000, <<14>> <> leb(n) <> leb(n) <> <<0>>)
+    vocab = read!(words)
+
+    case M.save_messages(vocab, [[{1, List.duplicate(:name, n)}]]) do
+      {:ok, batch} ->
+        case M.load_messages(vocab, batch) do
+          {:ok, [[{1, got}]]} when length(got) == n -> :ok
+          other -> check(false, "declared zero-width capacity shrank #{inspect_small(other)}")
+        end
+
+      other ->
+        check(false, "declared zero-width capacity save #{inspect_small(other)}")
+    end
+
+    # The same capacity is legitimate when the count is a bounded variable,
+    # not only when min equals max.
+    bounded = read!(entry(0x1000, <<14>> <> leb(0) <> leb(n) <> <<0>>))
+
+    case M.save_messages(bounded, [[{1, List.duplicate(:name, n)}]]) do
+      {:ok, batch} ->
+        case M.load_messages(bounded, batch) do
+          {:ok, [[{1, got}]]} when length(got) == n -> :ok
+          other -> check(false, "bounded zero-width capacity shrank #{inspect_small(other)}")
+        end
+
+      other ->
+        check(false, "bounded zero-width capacity save #{inspect_small(other)}")
+    end
+  end
 `
 
 const boundsDescendingFn = boundsElixirHelpers + `
@@ -935,27 +996,24 @@ const boundsCountFn = boundsElixirHelpers + `
   end
 `
 
-const boundsFixedFn = boundsElixirHelpers + `
-  defp fixed_nine_control do
-    words = entry(0x1000, <<14>> <> leb(9) <> leb(9) <> <<0>>)
+const boundsDeclaredFn = boundsElixirHelpers + `
+  defp declared_capacity_control do
+    n = 70_000
+    words = entry(0x1000, <<14>> <> leb(n) <> leb(n) <> <<0>>)
     vocab = read!(words)
 
-    case M.save_messages(vocab, [[{1, List.duplicate(:name, 9)}]]) do
+    case M.save_messages(vocab, [[{1, List.duplicate(:name, n)}]]) do
       {:ok, batch} ->
         case M.load_messages(vocab, batch) do
-          {:ok, [[{1, nine}]]} ->
-            if nine == List.duplicate(:name, 9) do
-              IO.puts(:stderr, "control did not restore the fixed-nine refusal: #{inspect_small({:ok, batch})}")
-            else
-              IO.puts(:stderr, "fixed nine did not stand: #{inspect_small({:ok, [[{1, nine}]]})}")
-            end
+          {:ok, [[{1, got}]]} when length(got) == n ->
+            IO.puts(:stderr, "control did not restore the declared capacity cap: #{inspect_small({:ok, batch})}")
 
-          other ->
-            IO.puts(:stderr, "fixed nine did not stand: #{inspect_small(other)}")
+          _ ->
+            IO.puts(:stderr, "declared capacity shrank under an element cap")
         end
 
       other ->
-        IO.puts(:stderr, "fixed nine did not stand: #{inspect(other)}")
+        IO.puts(:stderr, "declared capacity shrank under an element cap: #{inspect(other)}")
     end
 
     System.halt(1)
