@@ -144,7 +144,7 @@ func (g *tableGen) emitMessageBodyDeclarations(members []*ir.Struct) {
 			g.pf("template <typename Ctx> inline bool %sSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const %s & value );\n", st.Name, st.Name)
 			g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, %s & value );\n", st.Name, st.Name)
 			if g.anyExtent && g.hasExtent(st) {
-				g.pf("inline bool %sMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at );\n", st.Name)
+				g.pf("inline bool %sMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth = 0 );\n", st.Name)
 			}
 			continue
 		}
@@ -953,7 +953,8 @@ func (g *tableGen) emitMessageMapKeyReader(me *ir.Struct) {
 func (g *tableGen) emitMessageExtent(st *ir.Struct) {
 	g.pf("// %sMessageExtent: the extent %s's maps command on the message wire, from\n", st.Name, st.Name)
 	g.pf("// the FRAMING alone (docs/SPEC-TABLES.md §2.8, §3.3, §6.5).\n")
-	g.pf("inline bool %sMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at )\n{\n", st.Name)
+	g.pf("inline bool %sMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth )\n{\n", st.Name)
+	g.pf("    if ( depth > 128 ) { return false; } // message_skip_depth (docs/SPEC-TABLES.md)\n")
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t ref = 0;\n")
 	g.pf("        if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }\n")
@@ -962,7 +963,7 @@ func (g *tableGen) emitMessageExtent(st *ir.Struct) {
 	g.pf("        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );\n")
 	g.pf("        if ( TableMessageReserved( entry.id ) ) { return false; }\n")
 	g.emitMessageExtentCases(st)
-	g.pf("        if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { return false; }\n")
+	g.pf("        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }\n")
 	g.pf("    }\n}\n\n")
 }
 
@@ -981,9 +982,9 @@ func (g *tableGen) emitMessageExtentCases(st *ir.Struct) {
 			g.pf("            at += (int64_t) n * (int64_t) sizeof( %s ); // the whole array FIRST\n", me.Name)
 			g.pf("            for ( uint64_t i = 0; i < n; i++ ) // then, entry by entry in key order\n            {\n")
 			if g.hasExtent(me) {
-				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at ) ) { return false; }\n", me.Name)
+				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at, depth + 2 ) ) { return false; }\n", me.Name)
 			} else {
-				g.pf("                if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { return false; }\n")
+				g.pf("                if ( !TableMessageSkipBody( r, vocabulary, index_bits, depth + 2 ) ) { return false; }\n")
 			}
 			g.pf("            }\n")
 			g.pf("            continue;\n        }\n")
@@ -1005,7 +1006,7 @@ func (g *tableGen) emitMessageExtentCases(st *ir.Struct) {
 			g.pf("            at += (int64_t) n * (int64_t) sizeof( %s ); // the whole array FIRST\n", elem)
 			if ref := listElementStruct(f); ref != nil && g.hasExtent(ref) {
 				g.pf("            for ( uint64_t i = 0; i < n; i++ ) // then, element by element in index order\n            {\n")
-				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at ) ) { return false; }\n", ref.Name)
+				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at, depth + 2 ) ) { return false; }\n", ref.Name)
 				g.pf("            }\n")
 			} else {
 				// A RUN OF FIXED-WIDTH ELEMENTS IS ONE MULTIPLICATION (§3.3):
@@ -1014,7 +1015,7 @@ func (g *tableGen) emitMessageExtentCases(st *ir.Struct) {
 				// the framing pass two billion iterations
 				g.pf("            const int64_t run = TableMessageElementRunBits( vocabulary, entry );\n")
 				g.pf("            if ( run >= 0 ) { if ( !TableMessageSkipRun( r, n, run ) ) { return false; } }\n")
-				g.pf("            else { for ( uint64_t i = 0; i < n; i++ ) { if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry ) ) { return false; } } }\n")
+				g.pf("            else { for ( uint64_t i = 0; i < n; i++ ) { if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; } } }\n")
 			}
 			g.pf("            continue;\n        }\n")
 			continue
@@ -1032,7 +1033,7 @@ func (g *tableGen) emitMessageExtentCases(st *ir.Struct) {
 				g.pf("            if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { return false; }\n")
 				g.pf("            for ( uint64_t i = 0; i < n; i++ )\n            {\n")
 				g.pf("                if ( !r.skip( vocabulary.ref_bits ) ) { return false; } // the slot's key reference\n")
-				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at ) ) { return false; }\n", f.Type.Name)
+				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at, depth + 2 ) ) { return false; }\n", f.Type.Name)
 				g.pf("            }\n")
 				g.pf("            continue;\n        }\n")
 			case f.Array != ir.ArrayNone:
@@ -1041,12 +1042,12 @@ func (g *tableGen) emitMessageExtentCases(st *ir.Struct) {
 				g.pf("            const int64_t count_bits = TableBitsRequired( entry.min, entry.max );\n")
 				g.pf("            if ( count_bits > 0 ) { uint64_t raw = 0; if ( !r.get( raw, count_bits ) ) { return false; } n = raw + (uint64_t) entry.min; }\n")
 				g.pf("            for ( uint64_t i = 0; i < n; i++ )\n            {\n")
-				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at ) ) { return false; }\n", f.Type.Name)
+				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at, depth + 2 ) ) { return false; }\n", f.Type.Name)
 				g.pf("            }\n")
 				g.pf("            continue;\n        }\n")
 			default:
 				g.pf("        if ( entry.id == 0x%016xull && entry.kind == %d ) // %s: a nesting that holds a map\n        {\n", ir.TableFieldWireId(f), tkTable, f.Name)
-				g.pf("            if ( !%sMessageExtent( r, vocabulary, index_bits, at ) ) { return false; }\n", f.Type.Name)
+				g.pf("            if ( !%sMessageExtent( r, vocabulary, index_bits, at, depth + 1 ) ) { return false; }\n", f.Type.Name)
 				g.pf("            continue;\n        }\n")
 			}
 		case edgeArm:
@@ -1076,11 +1077,11 @@ func (g *tableGen) emitMessageExtentCases(st *ir.Struct) {
 				// (docs/SPEC-TABLES.md §5), so the dispatch names what the
 				// writer wrote
 				g.pf("                case 0x%016xull: // %s\n", ir.TableArmEntry(v).Id, v.Name)
-				g.pf("                    if ( arm.kind == %d ) { if ( !%sMessageExtent( r, vocabulary, index_bits, at ) ) { return false; } }\n", tkTable, v.Type)
-				g.pf("                    else if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { return false; } // another kind: a mismatch the load counts\n")
+				g.pf("                    if ( arm.kind == %d ) { if ( !%sMessageExtent( r, vocabulary, index_bits, at, depth + 2 ) ) { return false; } }\n", tkTable, v.Type)
+				g.pf("                    else if ( !TableMessageSkip( r, vocabulary, index_bits, arm, depth + 1 ) ) { return false; } // another kind: a mismatch the load counts\n")
 				g.pf("                    break;\n")
 			}
-			g.pf("                default: if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { return false; } break; // an arm this reader cannot name\n")
+			g.pf("                default: if ( !TableMessageSkip( r, vocabulary, index_bits, arm, depth + 1 ) ) { return false; } break; // an arm this reader cannot name\n")
 			g.pf("            }\n")
 			g.pf("            continue;\n        }\n")
 		}

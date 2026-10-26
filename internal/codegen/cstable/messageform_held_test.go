@@ -40,6 +40,20 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 		{"damage_inside_body", "DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`."},
 		{"bytes_after_pad", "BYTES AFTER THE PAD ARE MALFORMED."},
 		{"form_byte", "a form a reader does not know is a REFUSAL by name and never damage ... a reader handed a form-`2` wire where a file was expected refuses by name."},
+		{"skip_depth_body_below_128", "The skip walk is bounded at depth 128."},
+		{"skip_depth_body_at_128", "The skip walk is bounded at depth 128."},
+		{"skip_depth_above_128_body", "The skip walk is bounded at depth 128: a nested body past 128 levels is refused as malformed."},
+		{"skip_depth_union_below_128", "The skip walk is bounded at depth 128."},
+		{"skip_depth_union_at_128", "The skip walk is bounded at depth 128."},
+		{"skip_depth_above_128_union", "The skip walk is bounded at depth 128: a union arm past 128 levels is refused as malformed."},
+		{"skip_depth_array_below_128", "The skip walk is bounded at depth 128."},
+		{"skip_depth_array_at_128", "The skip walk is bounded at depth 128."},
+		{"skip_depth_above_128_array", "The skip walk is bounded at depth 128: an element skip past 128 levels is refused as malformed."},
+		{"skip_depth_keyed_fixed_at_128", "The skip walk is bounded at depth 128: a fixed-width keyed array at depth 128 does not charge element depth."},
+		{"skip_depth_keyed_nopayload_at_128", "The skip walk is bounded at depth 128: a no-payload keyed array at depth 128 does not charge element depth."},
+		{"skip_depth_above_128_keyed", "The skip walk is bounded at depth 128: a keyed nested-body element past 128 levels is refused as malformed."},
+		{"skip_depth_continuation", "The skip walk is bounded at depth 128."},
+		{"skip_depth_truncation", "The skip walk is bounded at depth 128."},
 	}
 	for _, clause := range clauses {
 		t.Run(clause.name, func(t *testing.T) {
@@ -166,7 +180,7 @@ func csHeldBuild(t *testing.T) ([]byte, error) {
 	csc, refs, runtime := csDotnetToolchain(t)
 	dotnet := csDotnet()
 	app := filepath.Join(dir, "csmsgheld.dll")
-	args := []string{"exec", csc, "-nologo", "-noconfig", "-target:exe", "-unsafe",
+	args := []string{"exec", csc, "-nologo", "-noconfig", "-target:exe", "-optimize+", "-unsafe",
 		"-nullable:annotations", "-langversion:latest", "-nostdlib+", "-out:" + app}
 	for _, ref := range refs {
 		args = append(args, "-r:"+ref)
@@ -434,6 +448,7 @@ static class Held
         DamageInsideBody();
         BytesAfterPad();
         FormByte();
+        SkipDepth();
         Console.WriteLine(bad == 0 ? "cs message form: every clause green" : "cs message form: " + bad + " FAILED");
         return bad == 0 ? 0 : 1;
     }
@@ -625,6 +640,84 @@ static class Held
         Schema.AnnounceRead(file, new byte[]{2, 0, 0, 0}, fileReport);
         if (!fileReport.Refused || fileReport.Reason != "message_form_as_file") { Fail(row, "form-2 batch as a file: reason=" + fileReport.Reason); return; }
         Ok(row);
+    }
+
+    // message_skip_depth (docs/SPEC-TABLES.md, value 128). Nested bodies, union
+    // arms and walked array elements are accepted at 127 and at 128. Each
+    // above-limit row is a complete zero-padded batch whose only fault is depth
+    // past 128, so removing the guard fails that row and leaves the others ok.
+    // Truncation drops the root terminator of the at-limit body. 16 + 256 bits
+    // is a whole number of bytes, so a pad bit cannot stand in for it.
+    static byte[] Pack(int width, int nlead, int lead, int nmid, int mid, int ntail)
+    {
+        int at = 16;
+        int n = nlead + nmid + ntail;
+        int bits = 16 + n * width;
+        byte[] buf = new byte[(bits + 7) / 8];
+        buf[0] = 2;
+        buf[1] = 0;
+        for (int i = 0; i < n; i++)
+        {
+            int slot = i < nlead ? lead : (i < nlead + nmid ? mid : 0);
+            for (int b = 0; b < width; b++)
+            {
+                if (((slot >> b) & 1) != 0) buf[at >> 3] |= (byte)(1 << (at & 7));
+                at++;
+            }
+        }
+        return buf;
+    }
+    static TableVocabulary Vocab(params TableMessageEntry[] entries)
+    {
+        return new TableVocabulary { Entries = entries, Announced = true };
+    }
+    static TableMessageEntry Entry(ulong id, byte kind)
+    {
+        return new TableMessageEntry { Id = id, Kind = kind, Shape = new TableMessageShape() };
+    }
+    static void ExpectOk(string row, TableVocabulary vocab, byte[] buf)
+    {
+        Root[] storage = Bodies(1);
+        var report = new TableReport();
+        var verdict = Schema.RootLoadMessages(storage, buf, vocab, report, out int count);
+        if (verdict != Schema.TableWire.Verdict.Ok || count != 1 || report.Malformed || report.Unknown != 1 || storage[0].A != 0)
+        { Fail(row, "verdict=" + verdict + " count=" + count + " malformed=" + report.Malformed + " unknown=" + report.Unknown + " a=" + storage[0].A); return; }
+        Ok(row);
+    }
+    static void ExpectBad(string row, TableVocabulary vocab, byte[] buf)
+    {
+        Root[] storage = Bodies(1);
+        var report = new TableReport();
+        var verdict = Schema.RootLoadMessages(storage, buf, vocab, report, out int count);
+        if (verdict != Schema.TableWire.Verdict.Damaged || count != 0 || !report.Malformed)
+        { Fail(row, "verdict=" + verdict + " count=" + count + " malformed=" + report.Malformed); return; }
+        Ok(row);
+    }
+    static void SkipDepth()
+    {
+        var body = Vocab(Entry(1, 13));
+        var arm = Vocab(Entry(1, 15));
+        var array = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 14, Shape = new TableMessageShape { Min = 1, Max = 1, Elem = 13, Inner = new TableMessageShape() } });
+        var keyed6 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 6, Inner = new TableMessageShape() } });
+        var keyed32 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 32, Inner = new TableMessageShape() } });
+        var keyed13 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 13, Inner = new TableMessageShape() } });
+        ExpectOk("skip_depth_body_below_128", body, Pack(1, 127, 1, 0, 0, 128));
+        byte[] at = Pack(1, 128, 1, 0, 0, 129);
+        ExpectOk("skip_depth_body_at_128", body, at);
+        ExpectOk("skip_depth_continuation", body, at);
+        byte[] cut = Pack(1, 128, 1, 0, 0, 128);
+        if (cut.Length * 8 != 16 + 256) { Fail("skip_depth_truncation", "alignment"); }
+        else { ExpectBad("skip_depth_truncation", body, cut); }
+        ExpectBad("skip_depth_above_128_body", body, Pack(1, 129, 1, 0, 0, 130));
+        ExpectOk("skip_depth_union_below_128", arm, Pack(1, 128, 1, 0, 0, 2));
+        ExpectOk("skip_depth_union_at_128", arm, Pack(1, 129, 1, 0, 0, 2));
+        ExpectBad("skip_depth_above_128_union", arm, Pack(1, 130, 1, 0, 0, 2));
+        ExpectOk("skip_depth_array_below_128", array, Pack(2, 125, 1, 1, 2, 127));
+        ExpectOk("skip_depth_array_at_128", array, Pack(2, 126, 1, 1, 2, 128));
+        ExpectBad("skip_depth_above_128_array", array, Pack(2, 127, 1, 1, 2, 129));
+        ExpectOk("skip_depth_keyed_fixed_at_128", keyed6, Pack(2, 128, 1, 2, 2, 139));
+        ExpectOk("skip_depth_keyed_nopayload_at_128", keyed32, Pack(2, 128, 1, 2, 2, 131));
+        ExpectBad("skip_depth_above_128_keyed", keyed13, Pack(2, 127, 1, 2, 2, 132));
     }
 }
 

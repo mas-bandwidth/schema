@@ -2980,7 +2980,7 @@ static SCHEMA_UNUSED int announce_read(TableVocabulary * v,const uint8_t * buffe
 
 typedef struct TableMessageReader {
  TableBitReader bits; const TableVocabulary * vocabulary; TableReport * report;
- int64_t index_bits; int extent_refused;
+ int64_t index_bits; int extent_refused; int skip_depth;
 } TableMessageReader;
 /* Framing scans skip by announced shape, including a reserved transport id
    (kind 0, no extra bits). A NAME reference still refuses reserved ids.
@@ -3026,26 +3026,54 @@ static SCHEMA_UNUSED int table_message_count(TableMessageReader * r,const TableM
  return !(e->kind==14 && e->elem_kind==6) || table_bit_align_read(&r->bits);
 }
 static SCHEMA_UNUSED int table_message_skip(TableMessageReader *,const TableMessageEntry *);
+/* skip_depth is one counter for the unknown-skip walk (docs/SPEC-TABLES.md
+   message_skip_depth). table_message_open zeroes it, so every external caller
+   starts at 0. A nested body, a union arm and a walked element each enter the
+   next call at skip_depth+1; the caller restores the saved value on every
+   path. Past 128 is malformed, and 128 itself still skips. */
 static SCHEMA_UNUSED int table_message_skip_body(TableMessageReader * r)
 {
+ if(r->skip_depth>128)return 0;
  for(;;) {const TableMessageEntry * entry;
   if(!table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
   if(!table_message_skip(r,entry))return 0;
  }
 }
+static SCHEMA_UNUSED int table_message_skip_deeper(TableMessageReader * r,const TableMessageEntry * e)
+{
+ int saved=r->skip_depth,ok;
+ r->skip_depth=saved+1;
+ ok=table_message_skip(r,e);
+ r->skip_depth=saved;
+ return ok;
+}
+static SCHEMA_UNUSED int table_message_skip_at(TableMessageReader * r,const TableMessageEntry * e,int depth)
+{
+ int saved=r->skip_depth,ok;
+ r->skip_depth=depth;
+ ok=table_message_skip(r,e);
+ r->skip_depth=saved;
+ return ok;
+}
 static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMessageEntry * e)
 {
  uint64_t n,i;
  const TableMessageEntry * entry;
+ int saved,ok;
+ if(r->skip_depth>128)return 0;
  switch(e->kind) {
  case 0:case 32:return 1;
  case 30:return table_message_ref(r,&entry,1);
- case 13:return table_message_skip_body(r);
+ case 13:saved=r->skip_depth;
+ r->skip_depth=saved+1;
+ ok=table_message_skip_body(r);
+ r->skip_depth=saved;
+ return ok;
  case 17:return r->index_bits>0 && table_bit_skip(&r->bits,r->index_bits);
  case 15:
   if(!table_message_ref(r,&entry,0))return 0;
-  return entry==NULL || (entry->kind!=0 && table_message_skip(r,entry));
+  return entry==NULL || (entry->kind!=0 && table_message_skip_deeper(r,entry));
  case 12:case 33:
   if(!table_bit_get(&r->bits,&n,table_bits_required(0,e->max)))return 0;
   if(e->kind==12 && !table_bit_align_read(&r->bits))return 0;
@@ -3056,11 +3084,14 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMe
  case 14:case 16: {
   TableMessageEntry elem=table_message_element(e);
   if(!table_message_count(r,e,&n))return 0;
-  if(e->kind==14 && (elem.kind==0||elem.kind==32))return 1;
-  if(e->kind==14 && elem.value_bits>=0)return table_message_skip_run(r,n,elem.value_bits);
+  if(elem.value_bits>=0||elem.kind==0||elem.kind==32) {
+   int64_t width=elem.value_bits>0?elem.value_bits:0;
+   if(e->kind==16)width+=r->vocabulary->ref_bits;
+   return table_message_skip_run(r,n,width);
+  }
   for(i=0;i<n;i++) {
    if(e->kind==16 && !table_message_ref(r,&entry,1))return 0;
-   if(!table_message_skip(r,&elem))return 0;
+   if(!table_message_skip_deeper(r,&elem))return 0;
   }return 1;
  }
  default:return e->value_bits>=0 && table_bit_skip(&r->bits,e->value_bits);
@@ -3363,13 +3394,13 @@ static SCHEMA_UNUSED int table_hit_event_load_message_body(TableMessageReader *,
 static SCHEMA_UNUSED int table_chat_event_load_message_body(TableMessageReader *,TableChatEvent *);
 static SCHEMA_UNUSED int table_pickup_event_load_message_body(TableMessageReader *,TablePickupEvent *);
 static SCHEMA_UNUSED int schema_benchtable_table_event_wire_message_load_(TableMessageReader *,TableEvent *);
-static SCHEMA_UNUSED int schema_benchtable_table_entity_message_extent_(TableMessageReader *,int64_t *);
-static SCHEMA_UNUSED int schema_benchtable_table_stat_message_extent_(TableMessageReader *,int64_t *);
-static SCHEMA_UNUSED int schema_benchtable_table_mixed_message_extent_(TableMessageReader *,int64_t *);
-static SCHEMA_UNUSED int schema_benchtable_table_hit_event_message_extent_(TableMessageReader *,int64_t *);
-static SCHEMA_UNUSED int schema_benchtable_table_chat_event_message_extent_(TableMessageReader *,int64_t *);
-static SCHEMA_UNUSED int schema_benchtable_table_pickup_event_message_extent_(TableMessageReader *,int64_t *);
-static SCHEMA_UNUSED int schema_benchtable_table_event_message_extent_(TableMessageReader *,int64_t *);
+static SCHEMA_UNUSED int schema_benchtable_table_entity_message_extent_(TableMessageReader *,int64_t *,int);
+static SCHEMA_UNUSED int schema_benchtable_table_stat_message_extent_(TableMessageReader *,int64_t *,int);
+static SCHEMA_UNUSED int schema_benchtable_table_mixed_message_extent_(TableMessageReader *,int64_t *,int);
+static SCHEMA_UNUSED int schema_benchtable_table_hit_event_message_extent_(TableMessageReader *,int64_t *,int);
+static SCHEMA_UNUSED int schema_benchtable_table_chat_event_message_extent_(TableMessageReader *,int64_t *,int);
+static SCHEMA_UNUSED int schema_benchtable_table_pickup_event_message_extent_(TableMessageReader *,int64_t *,int);
+static SCHEMA_UNUSED int schema_benchtable_table_event_message_extent_(TableMessageReader *,int64_t *,int);
 static SCHEMA_UNUSED int schema_benchtable_table_event_wire_message_save_(TableBitWriter * w,const TableEvent * value)
 {
  switch(value->type) {
@@ -3441,16 +3472,17 @@ static SCHEMA_UNUSED int schema_benchtable_table_event_wire_message_load_(TableM
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int schema_benchtable_table_event_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_benchtable_table_event_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  const TableMessageEntry * entry;
  (void)at;
+ if(depth>128)return 0;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  if(entry->kind==0)return 0;
  switch(entry->id){
  default:break;
- }return table_message_skip(r,entry);
+ }return table_message_skip_at(r,entry,depth);
 }
 static SCHEMA_UNUSED int schema_benchtable_table_event_wire_save_( TableWriter * w, const TableEvent * value );
 static SCHEMA_UNUSED int schema_benchtable_table_event_wire_load_( TableReader * r, TableEvent * value, int element );
@@ -4843,15 +4875,16 @@ static SCHEMA_UNUSED int table_entity_load_messages(TableEntity * values,int64_t
  (*count)++;
  }return table_message_close(&r);
 }
-static SCHEMA_UNUSED int schema_benchtable_table_entity_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_benchtable_table_entity_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  (void)at;
+ if(depth>128)return 0;
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  switch(entry->id){
  default:break;
- }if(!table_message_skip(r,entry))return 0;
+ }if(!table_message_skip_at(r,entry,depth))return 0;
  }
 }
 static SCHEMA_UNUSED int table_stat_save_body( TableWriter * w, const TableStat * value )
@@ -5134,15 +5167,16 @@ static SCHEMA_UNUSED int table_stat_load_messages(TableStat * values,int64_t * c
  (*count)++;
  }return table_message_close(&r);
 }
-static SCHEMA_UNUSED int schema_benchtable_table_stat_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_benchtable_table_stat_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  (void)at;
+ if(depth>128)return 0;
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  switch(entry->id){
  default:break;
- }if(!table_message_skip(r,entry))return 0;
+ }if(!table_message_skip_at(r,entry,depth))return 0;
  }
 }
 static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_entities_( TableWriter * w, const TableMixed * value, int64_t * element_sizes )
@@ -7475,15 +7509,16 @@ static SCHEMA_UNUSED int table_mixed_load_messages(TableMixed * values,int64_t *
  (*count)++;
  }return table_message_close(&r);
 }
-static SCHEMA_UNUSED int schema_benchtable_table_mixed_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_benchtable_table_mixed_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  (void)at;
+ if(depth>128)return 0;
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  switch(entry->id){
  default:break;
- }if(!table_message_skip(r,entry))return 0;
+ }if(!table_message_skip_at(r,entry,depth))return 0;
  }
 }
 static SCHEMA_UNUSED int table_hit_event_save_body( TableWriter * w, const TableHitEvent * value )
@@ -7929,15 +7964,16 @@ static SCHEMA_UNUSED int table_hit_event_load_messages(TableHitEvent * values,in
  (*count)++;
  }return table_message_close(&r);
 }
-static SCHEMA_UNUSED int schema_benchtable_table_hit_event_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_benchtable_table_hit_event_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  (void)at;
+ if(depth>128)return 0;
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  switch(entry->id){
  default:break;
- }if(!table_message_skip(r,entry))return 0;
+ }if(!table_message_skip_at(r,entry,depth))return 0;
  }
 }
 static SCHEMA_UNUSED int table_chat_event_save_body( TableWriter * w, const TableChatEvent * value )
@@ -8248,15 +8284,16 @@ static SCHEMA_UNUSED int table_chat_event_load_messages(TableChatEvent * values,
  (*count)++;
  }return table_message_close(&r);
 }
-static SCHEMA_UNUSED int schema_benchtable_table_chat_event_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_benchtable_table_chat_event_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  (void)at;
+ if(depth>128)return 0;
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  switch(entry->id){
  default:break;
- }if(!table_message_skip(r,entry))return 0;
+ }if(!table_message_skip_at(r,entry,depth))return 0;
  }
 }
 static SCHEMA_UNUSED int table_pickup_event_save_body( TableWriter * w, const TablePickupEvent * value )
@@ -8567,15 +8604,16 @@ static SCHEMA_UNUSED int table_pickup_event_load_messages(TablePickupEvent * val
  (*count)++;
  }return table_message_close(&r);
 }
-static SCHEMA_UNUSED int schema_benchtable_table_pickup_event_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_benchtable_table_pickup_event_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  (void)at;
+ if(depth>128)return 0;
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  switch(entry->id){
  default:break;
- }if(!table_message_skip(r,entry))return 0;
+ }if(!table_message_skip_at(r,entry,depth))return 0;
  }
 }
 /* ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
