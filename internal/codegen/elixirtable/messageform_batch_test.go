@@ -181,6 +181,62 @@ func TestMessageFormBatchElixir(t *testing.T) {
 			t.Fatalf("%v\n%s", err, out)
 		}
 	})
+
+	// Empty text and zero-width counts. The probes build their own
+	// announcements and batches; they take no clock, socket, or network.
+	// The Go skip oracle TestGoMessageSkipOfZeroWidthElementsIsBounded keeps
+	// its flat 0xFFFFFFFF acceptance (zero iterations, no list). This reader
+	// returns the list, so that announcement is malformed when the bits left
+	// cannot back the count. Subtests stay inside this function so
+	// tables-elixir-message-batch's -run filter reaches them.
+	t.Run("bounds", func(t *testing.T) {
+		t.Parallel()
+		u := messageLoadUnit(t, root, units["backenddemo"])
+		tables, err := Generate(u)
+		if err != nil {
+			t.Fatalf("generate: %v", err)
+		}
+		module, ok := tables[TableMessageModule+".ex"]
+		if !ok {
+			t.Fatalf("the unit grows no %s.ex", TableMessageModule)
+		}
+		src, err := os.ReadFile(filepath.Join(root, "internal", "codegen", "elixirtable", "messageform.go"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ns := ir.GoExportName(u.Package)
+
+		t.Run("source", func(t *testing.T) {
+			t.Parallel()
+			assertElixirBoundsSource(t, string(src), string(module))
+		})
+
+		t.Run("values", func(t *testing.T) {
+			t.Parallel()
+			out, err := runElixirModuleProbe(t, module, boundsValuesProbe(ns))
+			if err != nil {
+				t.Fatalf("%v\n%s", err, out)
+			}
+		})
+
+		t.Run("known_bad_descending_range", func(t *testing.T) {
+			t.Parallel()
+			bad := sabotageDescendingEmptyRange(t, module)
+			out, err := runElixirModuleProbe(t, bad, boundsDescendingProbe(ns))
+			if err == nil || !strings.Contains(out, "empty text") || strings.Contains(out, "control did not restore") || strings.Contains(out, "CompileError") || strings.Contains(out, "SyntaxError") {
+				t.Fatalf("known-bad descending range did not fail for the empty-text reason:\nerr=%v\n%s", err, out)
+			}
+		})
+
+		t.Run("known_bad_count_loop", func(t *testing.T) {
+			t.Parallel()
+			bad := sabotageCountLoop(t, module)
+			out, err := runElixirModuleProbe(t, bad, boundsCountProbe(ns))
+			if err == nil || !strings.Contains(out, "count-driven zero-progress materialization") || strings.Contains(out, "control did not restore") || strings.Contains(out, "CompileError") || strings.Contains(out, "SyntaxError") {
+				t.Fatalf("known-bad count loop did not fail for the count-driven reason:\nerr=%v\n%s", err, out)
+			}
+		})
+	})
 }
 
 // roundTripBody is the 2.1 probe: LoadMessages the batch, compare the decoded
@@ -417,3 +473,381 @@ Probe.run()
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
+
+// assertElixirBoundsSource pins the empty-text clause, the zero-width
+// materialization rule, and the batch comment. It does not spawn Elixir.
+func assertElixirBoundsSource(t *testing.T, src, module string) {
+	t.Helper()
+	header := src
+	if i := strings.Index(src, "\npackage "); i >= 0 {
+		header = src[:i]
+	}
+	for _, bad := range []string{
+		"ANNOUNCEMENT SURFACE only",
+		"nothing here reads a form-",
+		"are the NEXT",
+	} {
+		if strings.Contains(header, bad) {
+			t.Errorf("messageform.go header still says %q", bad)
+		}
+	}
+	if !strings.Contains(header, "form-`2` body") {
+		t.Error("messageform.go header does not say the module reads and writes a form-2 body")
+	}
+	for _, want := range []string{
+		"defp take_bytes({_int, _off, _total} = r, 0), do: {:ok, <<>>, r}",
+		"for i <- 0..(n - 1)//1, into:",
+		"defp zero_width_run(n, r, acc, v)",
+		"if n - 1 > left do",
+		"min > 0xFFFFFFFF or max > 0xFFFFFFFF or max < min",
+		"defp read_value(_vocab, 0, _shape, _elem, r), do: {:ok, :name, r}",
+		"defp read_value(_vocab, 32, _shape, _elem, r), do: {:ok, :none, r}",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("messageform.go is missing %q", want)
+		}
+		if !strings.Contains(module, want) {
+			t.Errorf("generated TableMessage is missing %q", want)
+		}
+	}
+	const descending = "for i <- 0..(n - 1), into:"
+	if strings.Contains(src, descending) || strings.Contains(module, descending) {
+		t.Errorf("the unstepped range %s is still emitted", descending)
+	}
+}
+
+// runElixirModuleProbe runs one probe against an already generated
+// TableMessage module. The probe builds its announcements itself.
+func runElixirModuleProbe(t *testing.T, module []byte, probe string) (string, error) {
+	t.Helper()
+	elixirBin := elixirBinary(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, TableMessageModule+".ex"), module, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func boundsValuesProbe(ns string) string {
+	return boundsProbe(ns, boundsValueFns, `
+    empty_text_and_lengths()
+    small_arrays()
+    wide_counts()
+    nested_counts()
+    second_body_damage()
+`)
+}
+
+func boundsDescendingProbe(ns string) string {
+	return boundsProbe(ns, boundsDescendingFn, `
+    descending_control()
+`)
+}
+
+func boundsCountProbe(ns string) string {
+	return boundsProbe(ns, boundsCountFn, `
+    count_control()
+`)
+}
+
+func boundsProbe(ns, fns, body string) string {
+	return fmt.Sprintf(`# GENERATED BY internal/codegen/elixirtable/messageform_batch_test.go.
+defmodule Probe do
+  import Bitwise
+  alias %s.TableMessage, as: M
+%s
+  def run do
+%s
+    if Process.get(:failed), do: System.halt(1), else: IO.puts("ok")
+  end
+end
+
+Probe.run()
+`, ns, fns, indentBody(body))
+}
+
+func sabotageDescendingEmptyRange(t *testing.T, module []byte) []byte {
+	t.Helper()
+	const have = `  defp take_bytes({_int, _off, _total} = r, 0), do: {:ok, <<>>, r}
+
+  defp take_bytes({int, off, total}, n) when is_integer(n) and n > 0 do
+    need = n * 8
+
+    if off + need > total do
+      :error
+    else
+      bytes = for i <- 0..(n - 1)//1, into: <<>>, do: <<int >>> (off + 8 * i) &&& 0xFF>>
+      {:ok, bytes, {int, off + need, total}}
+    end
+  end`
+	const restored = `  defp take_bytes({int, off, total}, n) do
+    if off + n * 8 > total do
+      :error
+    else
+      bytes = for i <- 0..(n - 1), into: <<>>, do: <<int >>> (off + 8 * i) &&& 0xFF>>
+      {:ok, bytes, {int, off + n * 8, total}}
+    end
+  end`
+	return replaceModuleOnce(t, module, have, restored, "descending empty range")
+}
+
+func sabotageCountLoop(t *testing.T, module []byte) []byte {
+	t.Helper()
+	const have = `      {:ok, v, ^r} ->
+        zero_width_run(n, r, acc, v)`
+	const restored = `      {:ok, v, rest} when rest == r ->
+        seen = Process.get(:zero_iters, 0) + 1
+        Process.put(:zero_iters, seen)
+
+        if seen > 32 do
+          raise "count-driven zero-progress materialization"
+        end
+
+        read_elements(vocab, elem, n - 1, rest, [v | acc])`
+	return replaceModuleOnce(t, module, have, restored, "count-driven zero-progress materialization")
+}
+
+func replaceModuleOnce(t *testing.T, module []byte, old, new, what string) []byte {
+	t.Helper()
+	text := string(module)
+	if strings.Count(text, old) != 1 {
+		t.Fatalf("%s: the generated module does not contain the anchor once", what)
+	}
+	return []byte(strings.Replace(text, old, new, 1))
+}
+
+const boundsElixirHelpers = `
+  def check(true, _what), do: :ok
+
+  def check(false, what) do
+    IO.puts(:stderr, "FAIL: " <> what)
+    Process.put(:failed, true)
+  end
+
+  defp leb(v) when v < 0x80, do: <<v>>
+
+  defp leb(v) do
+    <<(v &&& 0x7F) ||| 0x80>> <> leb(v >>> 7)
+  end
+
+  defp entry(id, payload), do: <<id::little-unsigned-64>> <> payload
+
+  defp announce(words) do
+    vocab_sub = <<6>> <> leb(byte_size(words)) <> words
+    version = <<1, 9, 0, 0, 0, 0, 0, 0, 0, 0>>
+    vocab = <<2, 14>> <> leb(byte_size(vocab_sub)) <> vocab_sub
+    body = version <> vocab <> <<0>>
+    <<1>> <> body <>
+      <<0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        2, 0, 0, 0, 0, 0, 0, 0>>
+  end
+
+  defp read!(words) do
+    case M.announce_read(announce(words)) do
+      {:ok, vocab} -> vocab
+      other -> raise "announce_read #{inspect(other)}"
+    end
+  end
+
+  defp ceiling(vocab) do
+    case vocab.entries do
+      [%{shape: %{min: 0xFFFFFFFF, max: 0xFFFFFFFF}} | _] -> :ok
+      [e | _] -> check(false, "uint32 ceiling changed #{inspect(e.shape)}")
+      [] -> check(false, "announcement kept no entry")
+    end
+  end
+
+  defp round_trip(vocab, values) do
+    case M.save_messages(vocab, [values]) do
+      {:ok, batch} ->
+        case M.load_messages(vocab, batch) do
+          {:ok, [got]} when got == values -> :ok
+          other -> check(false, "round trip got #{inspect_small(other)} want #{inspect(values)}")
+        end
+
+      other ->
+        check(false, "save got #{inspect(other)}")
+    end
+  end
+
+  defp refuse_wide(vocab) do
+    case M.save_messages(vocab, [[{1, []}]]) do
+      {:ok, batch} ->
+        case M.load_messages(vocab, batch) do
+          {:malformed, 0, []} -> :ok
+          other -> check(false, "wide count #{inspect_small(other)}")
+        end
+
+      other ->
+        check(false, "save wide #{inspect(other)}")
+    end
+  end
+
+  defp inspect_small({:ok, bodies}) when is_list(bodies), do: "ok n=#{length(bodies)}"
+  defp inspect_small({:malformed, k, bodies}) when is_list(bodies), do: "malformed #{k} n=#{length(bodies)}"
+  defp inspect_small({:error, reason}), do: "error #{inspect(reason)}"
+  defp inspect_small({:error, reason, extra}), do: "error #{inspect(reason)} #{inspect(extra)}"
+  defp inspect_small(other), do: inspect(other)
+`
+
+const boundsValueFns = boundsElixirHelpers + `
+  defp empty_text_and_lengths do
+    words = entry(0x1000, <<12>> <> leb(15)) <> entry(0x1001, <<6, 0>>)
+    vocab = read!(words)
+    round_trip(vocab, [{1, <<>>}, {2, 7}])
+    round_trip(vocab, [{1, <<"z">>}, {2, 1}])
+    round_trip(vocab, [{1, :binary.copy(<<65>>, 15)}, {2, 2}])
+
+    only = read!(entry(0x1000, <<12>> <> leb(15)))
+
+    case M.save_messages(only, [[{1, <<"abcd">>}]]) do
+      {:ok, batch} ->
+        short = binary_part(batch, 0, byte_size(batch) - 2)
+
+        case M.load_messages(only, short) do
+          {:malformed, 0, []} -> :ok
+          other -> check(false, "truncated text decoded #{inspect_small(other)}")
+        end
+
+      other ->
+        check(false, "save of abcd #{inspect(other)}")
+    end
+  end
+
+  defp small_arrays do
+    uints = entry(0x1000, <<14>> <> leb(3) <> leb(3) <> <<6, 0>>) <> entry(0x1001, <<6, 0>>)
+    round_trip(read!(uints), [{1, [9, 8, 7]}, {2, 4}])
+
+    names = entry(0x1000, <<14>> <> leb(2) <> leb(2) <> <<0>>) <> entry(0x1001, <<6, 0>>)
+    round_trip(read!(names), [{1, [:name, :name]}, {2, 5}])
+
+    none = entry(0x1000, <<14>> <> leb(2) <> leb(2) <> <<32>>) <> entry(0x1001, <<6, 0>>)
+    round_trip(read!(none), [{1, [:none, :none]}, {2, 6}])
+
+    empty = entry(0x1000, <<14>> <> leb(0) <> leb(0) <> <<0>>) <> entry(0x1001, <<6, 0>>)
+    round_trip(read!(empty), [{1, []}, {2, 8}])
+
+    one = entry(0x1000, <<14>> <> leb(1) <> leb(1) <> <<0>>) <> entry(0x1001, <<6, 0>>)
+    round_trip(read!(one), [{1, [:name]}, {2, 8}])
+
+    ranged =
+      entry(0x1000, <<14>> <> leb(2) <> leb(2) <> <<6, 1>> <> leb(0) <> leb(7)) <>
+        entry(0x1001, <<6, 0>>)
+
+    round_trip(read!(ranged), [{1, [7, 7]}, {2, 3}])
+  end
+
+  defp wide_counts do
+    kind0 = read!(entry(0x1000, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<0>>))
+    ceiling(kind0)
+    refuse_wide(kind0)
+
+    kind32 = read!(entry(0x1000, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<32>>))
+    ceiling(kind32)
+    refuse_wide(kind32)
+  end
+
+  defp nested_counts do
+    wide =
+      entry(0x1000, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<14>> <> leb(0) <> leb(0) <> <<0>>)
+
+    vocab = read!(wide)
+    ceiling(vocab)
+    refuse_wide(vocab)
+
+    small =
+      entry(0x1000, <<14>> <> leb(2) <> leb(2) <> <<14>> <> leb(2) <> leb(2) <> <<0>>) <>
+        entry(0x1001, <<6, 0>>)
+
+    round_trip(read!(small), [{1, [[:name, :name], [:name, :name]]}, {2, 9}])
+  end
+
+  defp second_body_damage do
+    words =
+      entry(0x1000, <<12>> <> leb(15)) <>
+        entry(0x2000, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<0>>)
+
+    vocab = read!(words)
+
+    case M.save_messages(vocab, [[{1, "hi"}], [{2, []}]]) do
+      {:ok, batch} ->
+        case M.load_messages(vocab, batch) do
+          {:malformed, 1, [[{1, "hi"}]]} -> :ok
+          other -> check(false, "second body damage #{inspect_small(other)}")
+        end
+
+      other ->
+        check(false, "save of two bodies #{inspect(other)}")
+    end
+  end
+`
+
+const boundsDescendingFn = boundsElixirHelpers + `
+  defp descending_control do
+    words = entry(0x1000, <<12>> <> leb(15)) <> entry(0x1001, <<6, 0>>)
+    vocab = read!(words)
+
+    try do
+      case M.save_messages(vocab, [[{1, <<>>}, {2, 7}]]) do
+        {:ok, batch} ->
+          case M.load_messages(vocab, batch) do
+            {:ok, [[{1, text}, {2, _}]]} when text != <<>> ->
+              IO.puts(:stderr, "empty text")
+
+            {:ok, [[{1, <<>>}, {2, 7}]]} ->
+              IO.puts(:stderr, "control did not restore the descending empty range")
+
+            other ->
+              IO.puts(:stderr, "control did not restore the descending empty range: #{inspect_small(other)}")
+          end
+
+        other ->
+          IO.puts(:stderr, "control did not restore the descending empty range: #{inspect(other)}")
+      end
+    rescue
+      e ->
+        IO.puts(:stderr, "empty text raised (descending range): #{Exception.message(e)}")
+    end
+
+    System.halt(1)
+  end
+`
+
+const boundsCountFn = boundsElixirHelpers + `
+  defp count_control do
+    words = entry(0x1000, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<0>>)
+    vocab = read!(words)
+
+    try do
+      case M.save_messages(vocab, [[{1, []}]]) do
+        {:ok, batch} ->
+          case M.load_messages(vocab, batch) do
+            other ->
+              IO.puts(:stderr, "control did not restore the count-driven loop: #{inspect_small(other)}")
+          end
+
+        other ->
+          IO.puts(:stderr, "control did not restore the count-driven loop: #{inspect(other)}")
+      end
+    rescue
+      e ->
+        msg = Exception.message(e)
+
+        if String.contains?(msg, "count-driven zero-progress materialization") do
+          IO.puts(:stderr, msg)
+        else
+          IO.puts(:stderr, "control did not restore the count-driven loop: #{msg}")
+        end
+    end
+
+    System.halt(1)
+  end
+`
