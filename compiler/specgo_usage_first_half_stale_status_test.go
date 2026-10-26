@@ -154,6 +154,9 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 	if strings.Contains(specFlat, flat("The C++ reference, Go and the compiler's own engine carry the BITPACKED body under form byte `2`")) {
 		t.Error("SPEC-TABLES.md still limits the bitpacked body to the C++ reference, Go and the engine")
 	}
+	if strings.Contains(specFlat, flat("The C++ reference, Go and the compiler's own engine read and write the current bitpacked form-")) {
+		t.Error("SPEC-TABLES.md still limits the bitpacked form-2 path to the C++ reference, Go and the engine")
+	}
 	if strings.Contains(specFlat, "The eight ports carry the VARIABLE form alone") {
 		t.Error("SPEC-TABLES.md still excludes ports from the form-2 carriers")
 	}
