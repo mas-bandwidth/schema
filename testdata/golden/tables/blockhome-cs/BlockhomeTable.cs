@@ -3778,17 +3778,22 @@ namespace Blockhome
             }
             static bool MessageName(ref BitReader r, MessageRead d, out ulong reference, out TableMessageEntry entry)
             { return MessageReference(ref r, d, out reference, out entry) && reference != 0 && !Reserved(entry.Id) && entry.Kind == 0; }
-            static bool MessageSkipBody(ref BitReader r, MessageRead d)
+            // depth is the unknown-skip walk (docs/SPEC-TABLES.md message_skip_depth).
+            // Callers that omit it start at 0. A nested body, a union arm and a walked
+            // element pass depth + 1. depth > 128 is malformed; 128 itself still skips.
+            static bool MessageSkipBody(ref BitReader r, MessageRead d, int depth = 0)
             {
+                if (depth > 128) { return false; }
                 for (; ; )
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry e)) { return false; }
                     if (reference == 0) { return true; }
-                    if (!MessageSkip(ref r, d, e.Kind, e.Shape)) { return false; }
+                    if (!MessageSkip(ref r, d, e.Kind, e.Shape, depth)) { return false; }
                 }
             }
-            static bool MessageSkip(ref BitReader r, MessageRead d, byte kind, TableMessageShape shape)
+            static bool MessageSkip(ref BitReader r, MessageRead d, byte kind, TableMessageShape shape, int depth = 0)
             {
+                if (depth > 128) { return false; }
                 switch (kind)
                 {
                     case 0: case 32: return true;
@@ -3797,8 +3802,8 @@ namespace Blockhome
                             (variant == 0 || !Reserved(ve.Id) && ve.Kind == 0);
                     case 15:
                         if (!MessageReference(ref r, d, out ulong arm, out TableMessageEntry ae)) { return false; }
-                        return arm == 0 || !Reserved(ae.Id) && ae.Kind != 0 && MessageSkip(ref r, d, ae.Kind, ae.Shape);
-                    case 13: return MessageSkipBody(ref r, d);
+                        return arm == 0 || !Reserved(ae.Id) && ae.Kind != 0 && MessageSkip(ref r, d, ae.Kind, ae.Shape, depth + 1);
+                    case 13: return MessageSkipBody(ref r, d, depth + 1);
                     case 17: return d.IndexBits > 0 && r.Skip(d.IndexBits);
                     case 12:
                     case 33:
@@ -3808,15 +3813,16 @@ namespace Blockhome
                         return r.Align() && r.Get(32, out UInt128 opaque) && r.Skip((long)opaque * 8);
                     case 14:
                     case 16:
-                        if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
-                        ulong n = (ulong)raw + shape.Min;
-                        if (kind == 14 && (Width(shape.Elem) != 0 || shape.Elem == 0 || shape.Elem == 32))
-                        { return r.Skip((long)n * ValueBits(shape.Elem, shape.Inner)); }
+                        ulong min = kind == 16 ? 0 : shape.Min;
+                        if (!r.Get(BitCount(shape.Max - min), out UInt128 raw) || kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
+                        ulong n = (ulong)raw + min;
+                        if (Width(shape.Elem) != 0 || shape.Elem == 0 || shape.Elem == 32)
+                        { return r.Skip((long)n * (ValueBits(shape.Elem, shape.Inner) + (kind == 16 ? d.Vocabulary.RefBits : 0))); }
                         for (ulong i = 0; i < n; i++)
                         {
                             if (kind == 16 && !r.Get(d.Vocabulary.RefBits, out _)) { return false; }
                             if (shape.Elem == 13 || shape.Elem == 15 || shape.Elem == 17 || shape.Elem == 30)
-                            { if (!MessageSkip(ref r, d, shape.Elem, shape.Inner)) { return false; } }
+                            { if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, depth + 1)) { return false; } }
                             else { int bits = ValueBits(shape.Elem, shape.Inner); if (bits < 0 || !r.Skip(bits)) { return false; } }
                         }
                         return true;
@@ -3885,8 +3891,9 @@ namespace Blockhome
                 widened = entry.Shape.Elem == elem ? Widen(entry.Kind, mine) : entry.Kind == mine && mine == 14 && Widen(entry.Shape.Elem, elem);
                 return entry.Kind == mine && entry.Shape.Elem == elem || widened;
             }
-            static bool MessageReadBody(ref BitReader r, MessageRead d, object value, TableTypeInfo type)
+            static bool MessageReadBody(ref BitReader r, MessageRead d, object value, TableTypeInfo type, int depth = 0)
             {
+                if (depth > 128) { return false; }
                 if (value != null) { type.Reset(value); }
                 for (; ; )
                 {
@@ -3895,17 +3902,17 @@ namespace Blockhome
                     if (Reserved(entry.Id)) { return false; }
                     TableFieldInfo field = FindField(type, entry.Id);
                     if (field == null)
-                    { d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } continue; }
+                    { d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
                     if (!MessageCompatible(entry, field, out bool widened))
-                    { d.Report.KindMismatch++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } continue; }
-                    if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape)) { return false; }
+                    { d.Report.KindMismatch++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
+                    if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape, depth)) { return false; }
                     if (widened && !field.MapKey) { d.Report.Widened++; }
                     if (field.Optional && value != null) { field.SetPresent(value, true); }
                 }
             }
-            static bool MessageReadField(ref BitReader r, MessageRead d, object value, TableFieldInfo f, byte kind, TableMessageShape shape)
+            static bool MessageReadField(ref BitReader r, MessageRead d, object value, TableFieldInfo f, byte kind, TableMessageShape shape, int depth = 0)
             {
-                if (f.Map) { return MessageReadMap(ref r, d, value, f, shape); }
+                if (f.Map) { return MessageReadMap(ref r, d, value, f, shape, depth); }
                 if (f.IsArray && f.GetBuffer != null)
                 {
                     if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || !r.Align()) { return false; }
@@ -3953,7 +3960,7 @@ namespace Blockhome
                             if (!MessageName(ref r, d, out _, out TableMessageEntry key)) { return false; }
                             int slot = FindVariant(f, key.Id, true);
                             if (slot == 0) { d.Report.Unknown++; }
-                            if (!MessageReadElement(ref r, d, value, f, slot - 1, shape.Elem, shape.Inner, slot != 0)) { return false; }
+                            if (!MessageReadElement(ref r, d, value, f, slot - 1, shape.Elem, shape.Inner, slot != 0, depth)) { return false; }
                         }
                         return true;
                     }
@@ -3966,20 +3973,21 @@ namespace Blockhome
                     for (ulong i = 0; i < walk; i++)
                     {
                         if (f.Dynamic && value != null) { f.EnsureCount(value, (int)i + 1); }
-                        if (!MessageReadElement(ref r, d, value, f, (int)i, shape.Elem, shape.Inner, i < (ulong)kept)) { return false; }
+                        if (!MessageReadElement(ref r, d, value, f, (int)i, shape.Elem, shape.Inner, i < (ulong)kept, depth)) { return false; }
                     }
                     if (walk < n && !r.Skip((long)(n - walk) * run)) { return false; }
                     if (f.Counted && value != null) { ResetCountedTail(value, f, previous, kept); }
                     if (f.Optional && value != null) { f.SetPresent(value, true); }
                     return true;
                 }
-                return MessageReadElement(ref r, d, value, f, 0, kind, shape, true);
+                return MessageReadElement(ref r, d, value, f, 0, kind, shape, true, depth);
             }
-            static bool MessageReadElement(ref BitReader r, MessageRead d, object value, TableFieldInfo f, int index, byte kind, TableMessageShape shape, bool keep)
+            static bool MessageReadElement(ref BitReader r, MessageRead d, object value, TableFieldInfo f, int index, byte kind, TableMessageShape shape, bool keep, int depth = 0)
             {
+                if (depth > 128) { return false; }
                 keep = keep && value != null;
                 if (kind == 13)
-                { return MessageReadBody(ref r, d, keep ? f.GetChild(value, index) : null, f.Table); }
+                { return MessageReadBody(ref r, d, keep ? f.GetChild(value, index) : null, f.Table, depth + 1); }
                 if (kind == 17)
                 {
                     if (d.IndexBits == 0 || !r.Get(d.IndexBits, out UInt128 raw)) { return false; }
@@ -3997,22 +4005,23 @@ namespace Blockhome
                 }
                 if (kind == 15)
                 {
+                    if (depth + 1 > 128) { return false; }
                     object union = keep ? f.GetChild(value, index) : null;
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
                     if (reference == 0) { if (union != null) { f.Arms.SetTag(union, 0); } return true; }
                     if (entry.Kind == 0 || Reserved(entry.Id)) { return false; }
                     int tag = FindVariant(f, entry.Id, false);
                     if (tag == 0)
-                    { if (union != null) { f.Arms.SetTag(union, 0); } d.Report.Unknown++; return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
+                    { if (union != null) { f.Arms.SetTag(union, 0); } d.Report.Unknown++; return MessageSkip(ref r, d, entry.Kind, entry.Shape, depth + 1); }
                     TableFieldInfo arm = f.Arms.Arms[tag].Field;
                     bool widened = false;
                     if (arm == null ? entry.Kind != 32 : !MessageCompatible(entry, arm, out widened))
-                    { if (union != null) { f.Arms.SetTag(union, 0); } d.Report.KindMismatch++; return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
+                    { if (union != null) { f.Arms.SetTag(union, 0); } d.Report.KindMismatch++; return MessageSkip(ref r, d, entry.Kind, entry.Shape, depth + 1); }
                     if (widened) { d.Report.Widened++; }
                     if (union != null) { f.Arms.SetTag(union, (ulong)tag); }
                     if (arm == null) { return true; }
                     if (union != null) { ResetArm(union, arm); }
-                    return MessageReadField(ref r, d, union, arm, entry.Kind, entry.Shape);
+                    return MessageReadField(ref r, d, union, arm, entry.Kind, entry.Shape, depth + 1);
                 }
                 int width = ValueBits(kind, shape);
                 if (!r.Get(width, out UInt128 bits)) { return false; }
@@ -4069,18 +4078,19 @@ namespace Blockhome
                 }
                 return true;
             }
-            static bool MessageMapKey(ref BitReader r, MessageRead d, TableFieldInfo keyField, out MapKey key, out bool mismatch, out bool widened)
+            static bool MessageMapKey(ref BitReader r, MessageRead d, TableFieldInfo keyField, out MapKey key, out bool mismatch, out bool widened, int depth = 0)
             {
+                if (depth > 128) { key = default; mismatch = false; widened = false; return false; }
                 key = new MapKey { Text = Array.Empty<byte>() }; mismatch = false; widened = false;
                 for (; ; )
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
                     if (reference == 0) { return true; }
                     if (Reserved(entry.Id)) { return false; }
-                    if (entry.Id != keyField.Id) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } continue; }
+                    if (entry.Id != keyField.Id) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
                     mismatch = entry.Kind != keyField.Kind && !Widen(entry.Kind, keyField.Kind);
                     widened = keyField.Kind != 12 && entry.Kind != keyField.Kind;
-                    if (mismatch) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } continue; }
+                    if (mismatch) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
                     if (keyField.Kind == 12)
                     {
                         if (!r.Get(BitCount(entry.Shape.Max), out UInt128 n) || !r.Align() || n > (UInt128)((r.End - r.At) / 8)) { return false; }
@@ -4098,21 +4108,22 @@ namespace Blockhome
                     }
                 }
             }
-            static bool MessageReadMap(ref BitReader r, MessageRead d, object value, TableFieldInfo f, TableMessageShape shape)
+            static bool MessageReadMap(ref BitReader r, MessageRead d, object value, TableFieldInfo f, TableMessageShape shape, int depth = 0)
             {
+                if (depth + 1 > 128) { return false; }
                 if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || raw + shape.Min > int.MaxValue) { return false; }
                 ulong count = (ulong)raw + shape.Min; if (value != null) { f.ResetField(value); }
                 int landed = 0; bool widened = false; MapKey last = default; TableFieldInfo keyField = f.Table.Fields[0];
                 for (ulong i = 0; i < count; i++)
                 {
                     BitReader scan = r;
-                    if (!MessageMapKey(ref scan, d, keyField, out MapKey key, out bool mismatch, out bool entryWidened)) { return false; }
+                    if (!MessageMapKey(ref scan, d, keyField, out MapKey key, out bool mismatch, out bool entryWidened, depth + 1)) { return false; }
                     if (entryWidened && !widened) { widened = true; d.Report.Widened++; }
                     if (mismatch)
                     {
                         d.Report.KindMismatch++; if (value != null) { f.ResetField(value); }
                         r = scan;
-                        for (ulong j = i + 1; j < count; j++) { if (!MessageSkipBody(ref r, d)) { return false; } }
+                        for (ulong j = i + 1; j < count; j++) { if (!MessageSkipBody(ref r, d, depth + 1)) { return false; } }
                         return true;
                     }
                     if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { d.Report.Clamped++; r = scan; continue; }
@@ -4122,7 +4133,7 @@ namespace Blockhome
                     if (order == 0) { d.Report.Duplicate++; } else { landed++; }
                     object entry = null;
                     if (value != null) { f.EnsureCount(value, landed); f.SetCount(value, landed); entry = f.Table.Create(); f.SetChild(value, slot, entry); }
-                    if (!MessageReadBody(ref r, d, entry, f.Table) || r.At != scan.At) { return false; }
+                    if (!MessageReadBody(ref r, d, entry, f.Table, depth + 1) || r.At != scan.At) { return false; }
                     last = key;
                 }
                 return true;
@@ -4154,8 +4165,15 @@ namespace Blockhome
                 return Finish(report, Verdict.Ok);
             }
 
-            static bool MessageExtentBody(ref BitReader r, MessageRead d, TableTypeInfo type, ref long extent)
+            // depth is the same counter MessageSkip uses (docs/SPEC-TABLES.md
+            // message_skip_depth). Callers that omit it start at 0. An unknown field
+            // is skipped at this depth. A nested body, a union arm and a walked
+            // element go one deeper, so an array element that is itself a body is
+            // two deeper. The remaining-byte floor below is a count bound, not this
+            // counter. depth > 128 is malformed; 128 itself still measures.
+            static bool MessageExtentBody(ref BitReader r, MessageRead d, TableTypeInfo type, ref long extent, int depth = 0)
             {
+                if (depth > 128) { return false; }
                 for (; ; )
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
@@ -4163,13 +4181,14 @@ namespace Blockhome
                     TableFieldInfo field = null;
                     if (type != null)
                     { field = FindField(type, entry.Id); if (field != null && !MessageCompatible(entry, field, out _)) { field = null; } }
-                    if (field == null) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } }
-                    else if (!MessageExtentField(ref r, d, field, entry.Kind, entry.Shape, ref extent)) { return false; }
+                    if (field == null) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } }
+                    else if (!MessageExtentField(ref r, d, field, entry.Kind, entry.Shape, ref extent, depth)) { return false; }
                 }
             }
-            static bool MessageExtentField(ref BitReader r, MessageRead d, TableFieldInfo field, byte kind, TableMessageShape shape, ref long extent)
+            static bool MessageExtentField(ref BitReader r, MessageRead d, TableFieldInfo field, byte kind, TableMessageShape shape, ref long extent, int depth = 0)
             {
-                if (kind == 13) { return MessageExtentBody(ref r, d, field.Table, ref extent); }
+                if (depth > 128) { return false; }
+                if (kind == 13) { return MessageExtentBody(ref r, d, field.Table, ref extent, depth + 1); }
                 if (kind == 15)
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
@@ -4177,30 +4196,33 @@ namespace Blockhome
                     if (entry.Kind == 0 || Reserved(entry.Id)) { return false; }
                     int tag = FindVariant(field, entry.Id, false);
                     TableFieldInfo arm = tag == 0 ? null : field.Arms.Arms[tag].Field;
-                    if (arm == null || !MessageCompatible(entry, arm, out _)) { return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
-                    return MessageExtentField(ref r, d, arm, entry.Kind, entry.Shape, ref extent);
+                    if (arm == null || !MessageCompatible(entry, arm, out _)) { return MessageSkip(ref r, d, entry.Kind, entry.Shape, depth + 1); }
+                    return MessageExtentField(ref r, d, arm, entry.Kind, entry.Shape, ref extent, depth + 1);
                 }
                 if ((kind == 14 || kind == 16) && (shape.Elem == field.Kind || Widen(shape.Elem, field.Kind)))
                 {
-                    if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
-                    ulong n = (ulong)raw + shape.Min;
+                    ulong min = kind == 16 ? 0 : shape.Min;
+                    if (!r.Get(BitCount(shape.Max - min), out UInt128 raw) || kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
+                    ulong n = (ulong)raw + min;
                     if (field.Dynamic)
                     {
                         int floor = Width(shape.Elem) != 0 ? ValueBits(shape.Elem, shape.Inner) : 1;
                         if (n > int.MaxValue || floor > 0 && n > (ulong)((r.End - r.At) / floor)) { return false; }
                         extent = Align(extent, field.StorageAlign) + (long)n * field.StorageSize;
                     }
-                    if (kind == 14 && Width(shape.Elem) != 0) { return r.Skip((long)n * ValueBits(shape.Elem, shape.Inner)); }
+                    if (Width(shape.Elem) != 0 || shape.Elem == 0 || shape.Elem == 32)
+                    { return r.Skip((long)n * (ValueBits(shape.Elem, shape.Inner) + (kind == 16 ? d.Vocabulary.RefBits : 0))); }
                     for (ulong i = 0; i < n; i++)
                     {
                         if (kind == 16 && !r.Get(d.Vocabulary.RefBits, out _)) { return false; }
-                        if (shape.Elem == 13) { if (!MessageExtentBody(ref r, d, field.Table, ref extent)) { return false; } }
-                        else if (shape.Elem == 15) { if (!MessageExtentField(ref r, d, field, 15, shape.Inner, ref extent)) { return false; } }
-                        else if (!MessageSkip(ref r, d, shape.Elem, shape.Inner)) { return false; }
+                        if (shape.Elem == 13) { if (!MessageExtentBody(ref r, d, field.Table, ref extent, depth + 2)) { return false; } }
+                        else if (shape.Elem == 15) { if (!MessageExtentField(ref r, d, field, 15, shape.Inner, ref extent, depth + 1)) { return false; } }
+                        else if (shape.Elem == 17 || shape.Elem == 30) { if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, depth + 1)) { return false; } }
+                        else { int bits = ValueBits(shape.Elem, shape.Inner); if (bits < 0 || !r.Skip(bits)) { return false; } }
                     }
                     return true;
                 }
-                return MessageSkip(ref r, d, kind, shape);
+                return MessageSkip(ref r, d, kind, shape, depth);
             }
             // Frame one body without constructing its values. The root follows the
             // node records on the wire but precedes them in the region.
