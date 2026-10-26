@@ -236,6 +236,15 @@ func TestMessageFormBatchElixir(t *testing.T) {
 				t.Fatalf("known-bad count loop did not fail for the count-driven reason:\nerr=%v\n%s", err, out)
 			}
 		})
+
+		t.Run("known_bad_fixed_zero_width", func(t *testing.T) {
+			t.Parallel()
+			bad := sabotageFixedZeroWidth(t, module)
+			out, err := runElixirModuleProbe(t, bad, boundsFixedProbe(ns))
+			if err == nil || !strings.Contains(out, "fixed nine did not stand") || strings.Contains(out, "control did not restore") || strings.Contains(out, "CompileError") || strings.Contains(out, "SyntaxError") {
+				t.Fatalf("known-bad fixed zero-width did not fail for the bits-left reason:\nerr=%v\n%s", err, out)
+			}
+		})
 	})
 }
 
@@ -497,8 +506,11 @@ func assertElixirBoundsSource(t *testing.T, src, module string) {
 	for _, want := range []string{
 		"defp take_bytes({_int, _off, _total} = r, 0), do: {:ok, <<>>, r}",
 		"for i <- 0..(n - 1)//1, into:",
-		"defp zero_width_run(n, r, acc, v)",
-		"if n - 1 > left do",
+		"defp zero_width_run(n, r, acc, v, fixed)",
+		"@zero_width_cap 1048576",
+		"not fixed and n - 1 > left",
+		"fixed and n > @zero_width_cap",
+		"fixed = shape.max == shape.min",
 		"min > 0xFFFFFFFF or max > 0xFFFFFFFF or max < min",
 		"defp read_value(_vocab, 0, _shape, _elem, r), do: {:ok, :name, r}",
 		"defp read_value(_vocab, 32, _shape, _elem, r), do: {:ok, :none, r}",
@@ -542,6 +554,7 @@ func boundsValuesProbe(ns string) string {
     wide_counts()
     nested_counts()
     second_body_damage()
+    fixed_nine_last_field()
 `)
 }
 
@@ -554,6 +567,12 @@ func boundsDescendingProbe(ns string) string {
 func boundsCountProbe(ns string) string {
 	return boundsProbe(ns, boundsCountFn, `
     count_control()
+`)
+}
+
+func boundsFixedProbe(ns string) string {
+	return boundsProbe(ns, boundsFixedFn, `
+    fixed_nine_control()
 `)
 }
 
@@ -601,7 +620,7 @@ func sabotageDescendingEmptyRange(t *testing.T, module []byte) []byte {
 func sabotageCountLoop(t *testing.T, module []byte) []byte {
 	t.Helper()
 	const have = `      {:ok, v, ^r} ->
-        zero_width_run(n, r, acc, v)`
+        zero_width_run(n, r, acc, v, fixed)`
 	const restored = `      {:ok, v, rest} when rest == r ->
         seen = Process.get(:zero_iters, 0) + 1
         Process.put(:zero_iters, seen)
@@ -610,8 +629,15 @@ func sabotageCountLoop(t *testing.T, module []byte) []byte {
           raise "count-driven zero-progress materialization"
         end
 
-        read_elements(vocab, elem, n - 1, rest, [v | acc])`
+        read_elements(vocab, elem, n - 1, rest, [v | acc], fixed)`
 	return replaceModuleOnce(t, module, have, restored, "count-driven zero-progress materialization")
+}
+
+func sabotageFixedZeroWidth(t *testing.T, module []byte) []byte {
+	t.Helper()
+	const have = `    if (not fixed and n - 1 > left) or (fixed and n > @zero_width_cap) do`
+	const restored = `    if n - 1 > left do`
+	return replaceModuleOnce(t, module, have, restored, "fixed zero-width bits-left rule")
 }
 
 func replaceModuleOnce(t *testing.T, module []byte, old, new, what string) []byte {
@@ -788,6 +814,33 @@ const boundsValueFns = boundsElixirHelpers + `
         check(false, "save of two bodies #{inspect(other)}")
     end
   end
+
+  defp fixed_nine_last_field do
+    words = entry(0x1000, <<14>> <> leb(9) <> leb(9) <> <<0>>)
+    vocab = read!(words)
+
+    # One announced array entry, ref_bits 1. A fixed zero-width count is a
+    # schema constant: the batch is <<2, 0, 1>> and the body is the reference
+    # bit, the nine zero-width elements, the terminator bit and the pad. There
+    # is no following payload or padding to back the count, and it must still
+    # round-trip exactly.
+    case M.save_messages(vocab, [[{1, List.duplicate(:name, 9)}]]) do
+      {:ok, <<2, 0, 1>>} ->
+        case M.load_messages(vocab, <<2, 0, 1>>) do
+          {:ok, [[{1, nine}]]} ->
+            if nine == List.duplicate(:name, 9) do
+              :ok
+            else
+              check(false, "fixed nine last field #{inspect_small({:ok, [[{1, nine}]]})}")
+            end
+
+          other -> check(false, "fixed nine last field #{inspect_small(other)}")
+        end
+
+      other ->
+        check(false, "fixed nine save #{inspect_small(other)}")
+    end
+  end
 `
 
 const boundsDescendingFn = boundsElixirHelpers + `
@@ -846,6 +899,33 @@ const boundsCountFn = boundsElixirHelpers + `
         else
           IO.puts(:stderr, "control did not restore the count-driven loop: #{msg}")
         end
+    end
+
+    System.halt(1)
+  end
+`
+
+const boundsFixedFn = boundsElixirHelpers + `
+  defp fixed_nine_control do
+    words = entry(0x1000, <<14>> <> leb(9) <> leb(9) <> <<0>>)
+    vocab = read!(words)
+
+    case M.save_messages(vocab, [[{1, List.duplicate(:name, 9)}]]) do
+      {:ok, batch} ->
+        case M.load_messages(vocab, batch) do
+          {:ok, [[{1, nine}]]} ->
+            if nine == List.duplicate(:name, 9) do
+              IO.puts(:stderr, "control did not restore the fixed-nine refusal: #{inspect_small({:ok, batch})}")
+            else
+              IO.puts(:stderr, "fixed nine did not stand: #{inspect_small({:ok, [[{1, nine}]]})}")
+            end
+
+          other ->
+            IO.puts(:stderr, "fixed nine did not stand: #{inspect_small(other)}")
+        end
+
+      other ->
+        IO.puts(:stderr, "fixed nine did not stand: #{inspect(other)}")
     end
 
     System.halt(1)

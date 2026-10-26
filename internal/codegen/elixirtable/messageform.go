@@ -86,6 +86,14 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 // damage is terminal for the batch (§3.3's "DAMAGE IS TERMINAL FOR THE BATCH").
 const messageBatchRuntimeBody = `  @batch_max 256
 
+  # The largest FIXED (min == max) zero-width array a reader will materialize.
+  # A fixed count is a schema constant, not wire data, so it is legitimate
+  # required capacity and is accepted regardless of the bits a batch still
+  # holds; this ceiling is only the OOM guard for an announcement that declares
+  # an absurd fixed run (e.g. min = max = 0xFFFFFFFF). It is far above any real
+  # fixed array and far below the BEAM list sizes that threaten memory.
+  @zero_width_cap 1048576
+
   @doc """
   The batch's byte size for ` + "`" + `values` + "`" + `, or the refusal by name (docs/SPEC-TABLES.md §3.3).
   """
@@ -403,7 +411,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp read_array(vocab, shape, elem, r) do
     with {:ok, offset, rest} <- get_bits(r, bit_length(shape.max - shape.min)),
          {:ok, rest2} <- maybe_align(elem, rest) do
-      read_elements(vocab, elem, shape.min + offset, rest2, [])
+      fixed = shape.max == shape.min
+      read_elements(vocab, elem, shape.min + offset, rest2, [], fixed)
     else
       _ -> :malformed
     end
@@ -412,40 +421,43 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp maybe_align(%{kind: 6}, r), do: align(r)
   defp maybe_align(_elem, r), do: {:ok, r}
 
-  defp read_elements(_vocab, _elem, 0, r, acc), do: {:ok, Enum.reverse(acc), r}
+  defp read_elements(_vocab, _elem, 0, r, acc, _fixed), do: {:ok, Enum.reverse(acc), r}
 
   # A zero-width element leaves the cursor where it stood: kind 0, kind 32, a
   # ranged scalar whose bit width is 0, or a nested run of those. Looping on
   # the count would allocate a list in proportion to the announcement and
-  # consume no input. The walked zero-progress rule
-  # (internal/tablewire/messagedecode.go) refuses a remaining count the bits
-  # still in the batch cannot back, and otherwise the rest of the run is that
-  # one value. This reader returns the list, so the same rule runs before any
-  # cell is allocated.
-  defp read_elements(vocab, elem, n, r, acc) when is_map(elem) and n > 0 do
+  # consume no input. This reader returns the list, so the same zero-progress
+  # rule the tablewire walk runs (internal/tablewire/messagedecode.go) runs here
+  # before any cell is allocated, except that a FIXED count (min == max) is a
+  # schema constant and is not held to the bits the batch still holds.
+  defp read_elements(vocab, elem, n, r, acc, fixed) when is_map(elem) and n > 0 do
     case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), r) do
       {:ok, v, ^r} ->
-        zero_width_run(n, r, acc, v)
+        zero_width_run(n, r, acc, v, fixed)
 
       {:ok, v, rest} ->
-        read_elements(vocab, elem, n - 1, rest, [v | acc])
+        read_elements(vocab, elem, n - 1, rest, [v | acc], fixed)
 
       :malformed ->
         :malformed
     end
   end
 
-  defp read_elements(_vocab, _elem, n, _r, _acc) when n > 0, do: :malformed
+  defp read_elements(_vocab, _elem, n, _r, _acc, _fixed) when n > 0, do: :malformed
 
-  defp zero_width_run(n, r, acc, v) do
+  defp zero_width_run(n, r, acc, v, fixed) do
     left = bits_left(r)
 
-    # n - 1 > left is the walked rule after the element that consumed nothing:
-    # the remaining count has to be backed by bits still in the batch. A backed
-    # count is one List.duplicate and the cursor stays. A wide announcement the
-    # batch cannot cover is :malformed and allocates nothing. The uint32
-    # ceiling on the announcement is not applied here.
-    if n - 1 > left do
+    # A wire-read count (a variable array, min < max) is held to the walked
+    # rule: the remaining count has to be backed by bits still in the batch, so
+    # a hostile announcement cannot buy an unbounded list with input that never
+    # advances. A FIXED count (min == max) is a schema constant, not wire data:
+    # it is legitimate required capacity and is accepted however few bits remain
+    # (a correct fixed zero-width array does not depend on following payload or
+    # padding), up to @zero_width_cap, the OOM guard for an announcement that
+    # declares an absurd fixed run. The uint32 ceiling on the announced shape is
+    # untouched.
+    if (not fixed and n - 1 > left) or (fixed and n > @zero_width_cap) do
       :malformed
     else
       {:ok, Enum.reverse(acc, List.duplicate(v, n)), r}
