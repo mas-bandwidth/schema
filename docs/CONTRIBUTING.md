@@ -105,11 +105,11 @@ way. A stream whose base is `main` is a defect. Pull requests into `main`,
 against the target branch so only touched packages and legs are selected) and
 the `generated` and `cs-tables` gates in `ci-full.yml`, plus `pins` when the
 pull request is from this repository. The rest of `ci-full.yml` runs on a push
-to those three branches, nightly, on `workflow_dispatch`, and on a
-same-repository pull request into those branches that carries the `full-ci`
-label. Every self-hosted fleet job requires
-`github.event.pull_request.head.repo.full_name == github.repository` on
-`pull_request` events so fork code never executes on fleet runners.
+to those three branches, nightly, on `workflow_dispatch`, and on a pull
+request into those branches that carries the `full-ci` label. A self-hosted
+fleet job on a pull request also requires
+`github.event.pull_request.head.repo.full_name == github.repository`, so fork
+code never executes on fleet runners.
 
 **When the compiler refuses.** Every refusal the language can produce is a case
 in the break-the-language suite (`internal/check/diagnostics_test.go`, and

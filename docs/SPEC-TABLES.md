@@ -6770,9 +6770,9 @@ away, so element zero is element zero either way.
 
 **THE BITPACKED BODY TAKES FORM BYTE `2`. It does not take `3`.** An earlier
 byte-framed body for form `2` landed in this repository (#549) but was never
-released. Before release, its body was replaced in place by bitpacking. The
-C++ reference, Go and the compiler's own engine read and write the current
-bitpacked form-`2` path; no released tag carries the earlier byte framing.
+released. Before release, its body was replaced in place by bitpacking. Who
+reads and writes that path is WHERE THE FORM IS CARRIED, below: it is not a
+C++ and Go-only path. No released tag carries the earlier byte framing.
 
 The alternative was to take `3` and leave `2` as a form no writer writes. It was
 declined because it costs forever what it saves once: every reader in nine

@@ -93,6 +93,7 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 	hasFlat("WHERE THE FORM IS CARRIED")
 	hasFlat("It is not a C++ and Go-only path, and it is not the same subset in every language.")
 	notHasFlat("The C++ reference, the tool and Go read and write the bitpacked form-`2`")
+	notHasFlat("The C++ reference, Go and the compiler's own engine read and write the current bitpacked form-")
 	notHasFlat("other seven language backends carry the variable form alone")
 	notHas("ahead of its implementation")
 	notHas("its body is byte framed")
