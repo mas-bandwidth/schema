@@ -58,7 +58,7 @@ func (g *tableGen) messageExtentValue(f *ir.Field, e, ind string, step *int, dep
 			g.pf("%s if(%s_n>INT32_MAX || !table_extent_reserve(at,(int64_t)%s_n,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s))){r->extent_refused=1;return 0;}\n", ind, label, label, g.sequenceType(f), g.sequenceType(f))
 		}
 		if !g.messageFieldHasExtent(elem) || f.Type.Pointer {
-			g.pf("%s if((%s->value_bits>=0||%s->kind==0||%s->kind==32) && %s->kind!=16){if(!table_message_skip_run(r,%s_n,%s->value_bits>0?%s->value_bits:0))return 0;}else{\n", ind, label, label, label, e, label, label, label)
+			g.pf("%s if(%s->value_bits>=0||%s->kind==0||%s->kind==32){int64_t %s_w=%s->value_bits>0?%s->value_bits:0;if(%s->kind==16)%s_w+=r->vocabulary->ref_bits;if(!table_message_skip_run(r,%s_n,%s_w))return 0;}else{\n", ind, label, label, label, label, label, label, e, label, label, label)
 		} else {
 			g.pf("%s {\n", ind)
 		}
