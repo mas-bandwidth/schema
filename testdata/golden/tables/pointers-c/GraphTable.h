@@ -3850,7 +3850,7 @@ static SCHEMA_UNUSED int announce_read(TableVocabulary * v,const uint8_t * buffe
 
 typedef struct TableMessageReader {
  TableBitReader bits; const TableVocabulary * vocabulary; TableReport * report;
- int64_t index_bits; int extent_refused;TableNodeMap * nodes;
+ int64_t index_bits; int extent_refused; int skip_depth;TableNodeMap * nodes;
 } TableMessageReader;
 /* Framing scans skip by announced shape, including a reserved transport id
    (kind 0, no extra bits). A NAME reference still refuses reserved ids.
@@ -3896,26 +3896,54 @@ static SCHEMA_UNUSED int table_message_count(TableMessageReader * r,const TableM
  return !(e->kind==14 && e->elem_kind==6) || table_bit_align_read(&r->bits);
 }
 static SCHEMA_UNUSED int table_message_skip(TableMessageReader *,const TableMessageEntry *);
+/* skip_depth is one counter for the unknown-skip walk (docs/SPEC-TABLES.md
+   message_skip_depth). table_message_open zeroes it, so every external caller
+   starts at 0. A nested body, a union arm and a walked element each enter the
+   next call at skip_depth+1; the caller restores the saved value on every
+   path. Past 128 is malformed, and 128 itself still skips. */
 static SCHEMA_UNUSED int table_message_skip_body(TableMessageReader * r)
 {
+ if(r->skip_depth>128)return 0;
  for(;;) {const TableMessageEntry * entry;
   if(!table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
   if(!table_message_skip(r,entry))return 0;
  }
 }
+static SCHEMA_UNUSED int table_message_skip_deeper(TableMessageReader * r,const TableMessageEntry * e)
+{
+ int saved=r->skip_depth,ok;
+ r->skip_depth=saved+1;
+ ok=table_message_skip(r,e);
+ r->skip_depth=saved;
+ return ok;
+}
+static SCHEMA_UNUSED int table_message_skip_at(TableMessageReader * r,const TableMessageEntry * e,int depth)
+{
+ int saved=r->skip_depth,ok;
+ r->skip_depth=depth;
+ ok=table_message_skip(r,e);
+ r->skip_depth=saved;
+ return ok;
+}
 static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMessageEntry * e)
 {
  uint64_t n,i;
  const TableMessageEntry * entry;
+ int saved,ok;
+ if(r->skip_depth>128)return 0;
  switch(e->kind) {
  case 0:case 32:return 1;
  case 30:return table_message_ref(r,&entry,1);
- case 13:return table_message_skip_body(r);
+ case 13:saved=r->skip_depth;
+ r->skip_depth=saved+1;
+ ok=table_message_skip_body(r);
+ r->skip_depth=saved;
+ return ok;
  case 17:return r->index_bits>0 && table_bit_skip(&r->bits,r->index_bits);
  case 15:
   if(!table_message_ref(r,&entry,0))return 0;
-  return entry==NULL || (entry->kind!=0 && table_message_skip(r,entry));
+  return entry==NULL || (entry->kind!=0 && table_message_skip_deeper(r,entry));
  case 12:case 33:
   if(!table_bit_get(&r->bits,&n,table_bits_required(0,e->max)))return 0;
   if(e->kind==12 && !table_bit_align_read(&r->bits))return 0;
@@ -3926,11 +3954,14 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMe
  case 14:case 16: {
   TableMessageEntry elem=table_message_element(e);
   if(!table_message_count(r,e,&n))return 0;
-  if(e->kind==14 && (elem.kind==0||elem.kind==32))return 1;
-  if(e->kind==14 && elem.value_bits>=0)return table_message_skip_run(r,n,elem.value_bits);
+  if(elem.value_bits>=0||elem.kind==0||elem.kind==32) {
+   int64_t width=elem.value_bits>0?elem.value_bits:0;
+   if(e->kind==16)width+=r->vocabulary->ref_bits;
+   return table_message_skip_run(r,n,width);
+  }
   for(i=0;i<n;i++) {
    if(e->kind==16 && !table_message_ref(r,&entry,1))return 0;
-   if(!table_message_skip(r,&elem))return 0;
+   if(!table_message_skip_deeper(r,&elem))return 0;
   }return 1;
  }
  default:return e->value_bits>=0 && table_bit_skip(&r->bits,e->value_bits);
@@ -5184,14 +5215,14 @@ static SCHEMA_UNUSED int layer_load_message_body(TableMessageReader *,Layer *);
 static SCHEMA_UNUSED int scene_load_message_body(TableMessageReader *,Scene *);
 static SCHEMA_UNUSED int depot_load_message_body(TableMessageReader *,Depot *);
 static SCHEMA_UNUSED int album_load_message_body(TableMessageReader *,Album *);
-static SCHEMA_UNUSED int schema_graphdemo_meta_message_extent_(TableMessageReader *,int64_t *);
-static SCHEMA_UNUSED int schema_graphdemo_settings_message_extent_(TableMessageReader *,int64_t *);
-static SCHEMA_UNUSED int schema_graphdemo_list_node_message_extent_(TableMessageReader *,int64_t *);
-static SCHEMA_UNUSED int schema_graphdemo_tree_node_message_extent_(TableMessageReader *,int64_t *);
-static SCHEMA_UNUSED int schema_graphdemo_layer_message_extent_(TableMessageReader *,int64_t *);
-static SCHEMA_UNUSED int schema_graphdemo_scene_message_extent_(TableMessageReader *,int64_t *);
-static SCHEMA_UNUSED int schema_graphdemo_depot_message_extent_(TableMessageReader *,int64_t *);
-static SCHEMA_UNUSED int schema_graphdemo_album_message_extent_(TableMessageReader *,int64_t *);
+static SCHEMA_UNUSED int schema_graphdemo_meta_message_extent_(TableMessageReader *,int64_t *,int);
+static SCHEMA_UNUSED int schema_graphdemo_settings_message_extent_(TableMessageReader *,int64_t *,int);
+static SCHEMA_UNUSED int schema_graphdemo_list_node_message_extent_(TableMessageReader *,int64_t *,int);
+static SCHEMA_UNUSED int schema_graphdemo_tree_node_message_extent_(TableMessageReader *,int64_t *,int);
+static SCHEMA_UNUSED int schema_graphdemo_layer_message_extent_(TableMessageReader *,int64_t *,int);
+static SCHEMA_UNUSED int schema_graphdemo_scene_message_extent_(TableMessageReader *,int64_t *,int);
+static SCHEMA_UNUSED int schema_graphdemo_depot_message_extent_(TableMessageReader *,int64_t *,int);
+static SCHEMA_UNUSED int schema_graphdemo_album_message_extent_(TableMessageReader *,int64_t *,int);
 static SCHEMA_UNUSED int schema_graphdemo_meta_wire_tag_( TableWriter * w, const Meta * value )
 {
     if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
@@ -5500,15 +5531,16 @@ static SCHEMA_UNUSED int meta_load_messages(Meta * values,int64_t * count,const 
  (*count)++;
  }return table_message_close(&r);
 }
-static SCHEMA_UNUSED int schema_graphdemo_meta_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_graphdemo_meta_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  (void)at;
+ if(depth>128)return 0;
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  switch(entry->id){
  default:break;
- }if(!table_message_skip(r,entry))return 0;
+ }if(!table_message_skip_at(r,entry,depth))return 0;
  }
 }
 static SCHEMA_UNUSED int schema_graphdemo_settings_wire_label_( TableWriter * w, const Settings * value )
@@ -5811,15 +5843,16 @@ static SCHEMA_UNUSED int settings_load_messages(Settings * values,int64_t * coun
  (*count)++;
  }return table_message_close(&r);
 }
-static SCHEMA_UNUSED int schema_graphdemo_settings_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_graphdemo_settings_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  (void)at;
+ if(depth>128)return 0;
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  switch(entry->id){
  default:break;
- }if(!table_message_skip(r,entry))return 0;
+ }if(!table_message_skip_at(r,entry,depth))return 0;
  }
 }
 static SCHEMA_UNUSED int schema_graphdemo_list_node_wire_name_( TableWriter * w, const ListNode * value )
@@ -6075,15 +6108,16 @@ static SCHEMA_UNUSED int list_node_load_message_body(TableMessageReader * r,List
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int schema_graphdemo_list_node_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_graphdemo_list_node_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  (void)at;
+ if(depth>128)return 0;
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  switch(entry->id){
  default:break;
- }if(!table_message_skip(r,entry))return 0;
+ }if(!table_message_skip_at(r,entry,depth))return 0;
  }
 }
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_wire_label_( TableWriter * w, const TreeNode * value )
@@ -6301,15 +6335,16 @@ static SCHEMA_UNUSED int tree_node_load_message_body(TableMessageReader * r,Tree
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int schema_graphdemo_tree_node_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_graphdemo_tree_node_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  (void)at;
+ if(depth>128)return 0;
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  switch(entry->id){
  default:break;
- }if(!table_message_skip(r,entry))return 0;
+ }if(!table_message_skip_at(r,entry,depth))return 0;
  }
 }
 static SCHEMA_UNUSED int layer_save_body( TableWriter * w, const Layer * value )
@@ -6503,15 +6538,16 @@ static SCHEMA_UNUSED int layer_load_message_body(TableMessageReader * r,Layer * 
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int schema_graphdemo_layer_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_graphdemo_layer_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  (void)at;
+ if(depth>128)return 0;
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  switch(entry->id){
  default:break;
- }if(!table_message_skip(r,entry))return 0;
+ }if(!table_message_skip_at(r,entry,depth))return 0;
  }
 }
 static SCHEMA_UNUSED int schema_graphdemo_scene_wire_name_( TableWriter * w, const Scene * value )
@@ -7133,15 +7169,16 @@ static SCHEMA_UNUSED int scene_load_message_body(TableMessageReader * r,Scene * 
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int schema_graphdemo_scene_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_graphdemo_scene_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  (void)at;
+ if(depth>128)return 0;
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  switch(entry->id){
  default:break;
- }if(!table_message_skip(r,entry))return 0;
+ }if(!table_message_skip_at(r,entry,depth))return 0;
  }
 }
 #define SCHEMA_GRAPHDEMO_DEPOT_BANKS_AT(value,key) SCHEMA_TABLE_KEYED_AT((value).banks,(key),TIER_MAX)
@@ -7551,15 +7588,16 @@ static SCHEMA_UNUSED int depot_load_message_body(TableMessageReader * r,Depot * 
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int schema_graphdemo_depot_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_graphdemo_depot_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  (void)at;
+ if(depth>128)return 0;
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  switch(entry->id){
  default:break;
- }if(!table_message_skip(r,entry))return 0;
+ }if(!table_message_skip_at(r,entry,depth))return 0;
  }
 }
 static SCHEMA_UNUSED int schema_graphdemo_album_wire_name_( TableWriter * w, const Album * value )
@@ -7948,15 +7986,16 @@ static SCHEMA_UNUSED int album_load_message_body(TableMessageReader * r,Album * 
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int schema_graphdemo_album_message_extent_(TableMessageReader * r,int64_t * at)
+static SCHEMA_UNUSED int schema_graphdemo_album_message_extent_(TableMessageReader * r,int64_t * at,int depth)
 {
  (void)at;
+ if(depth>128)return 0;
  for(;;){const TableMessageEntry * entry;
  if(!table_message_ref(r,&entry,0))return 0;
  if(entry==NULL)return 1;
  switch(entry->id){
  default:break;
- }if(!table_message_skip(r,entry))return 0;
+ }if(!table_message_skip_at(r,entry,depth))return 0;
  }
 }
 /* ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
@@ -12169,7 +12208,7 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_message_record_scan_(TableMe
  return *size>=0;
  }switch(*id){
  case UINT64_C(0xf60ec899a5a69fa9):at=sizeof(ListNode);
- if(!schema_graphdemo_list_node_message_extent_(r,&at))return 0;
+ if(!schema_graphdemo_list_node_message_extent_(r,&at,0))return 0;
  break;
  default:return table_message_skip_body(r);
  }if(at>INT64_MAX-kTableAlign)return 0;
@@ -12187,7 +12226,7 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_message_storage_(TableMessag
  if(!schema_graphdemo_list_node_message_record_scan_(r,&id,&size,&length)||size>INT64_MAX-*data)return 0;
  *data+=size;
  }
- if(!schema_graphdemo_list_node_message_extent_(r,&root))*complete=0;
+ if(!schema_graphdemo_list_node_message_extent_(r,&root,0))*complete=0;
  if(r->extent_refused)return 0;
  if(root>INT64_MAX-kTableAlign)return 0;
  *root_bytes=table_align_up64(root);
@@ -12291,7 +12330,7 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_message_load_into_(TableMess
  case UINT64_C(0xf60ec899a5a69fa9):carve.used=sizeof(ListNode);
  carve.capacity=sizeof(ListNode);
  scan=*r;
- if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!list_node_load_message_body(r,(ListNode *)(void *)value))goto malformed;
  break;
  default:goto malformed;
@@ -12618,7 +12657,7 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_message_record_scan_(TableMe
  return *size>=0;
  }switch(*id){
  case UINT64_C(0xb97e90a3784c431d):at=sizeof(TreeNode);
- if(!schema_graphdemo_tree_node_message_extent_(r,&at))return 0;
+ if(!schema_graphdemo_tree_node_message_extent_(r,&at,0))return 0;
  break;
  default:return table_message_skip_body(r);
  }if(at>INT64_MAX-kTableAlign)return 0;
@@ -12636,7 +12675,7 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_message_storage_(TableMessag
  if(!schema_graphdemo_tree_node_message_record_scan_(r,&id,&size,&length)||size>INT64_MAX-*data)return 0;
  *data+=size;
  }
- if(!schema_graphdemo_tree_node_message_extent_(r,&root))*complete=0;
+ if(!schema_graphdemo_tree_node_message_extent_(r,&root,0))*complete=0;
  if(r->extent_refused)return 0;
  if(root>INT64_MAX-kTableAlign)return 0;
  *root_bytes=table_align_up64(root);
@@ -12740,7 +12779,7 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_message_load_into_(TableMess
  case UINT64_C(0xb97e90a3784c431d):carve.used=sizeof(TreeNode);
  carve.capacity=sizeof(TreeNode);
  scan=*r;
- if(!schema_graphdemo_tree_node_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_tree_node_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!tree_node_load_message_body(r,(TreeNode *)(void *)value))goto malformed;
  break;
  default:goto malformed;
@@ -13067,7 +13106,7 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_message_record_scan_(TableMessag
  return *size>=0;
  }switch(*id){
  case UINT64_C(0xf60ec899a5a69fa9):at=sizeof(ListNode);
- if(!schema_graphdemo_list_node_message_extent_(r,&at))return 0;
+ if(!schema_graphdemo_list_node_message_extent_(r,&at,0))return 0;
  break;
  default:return table_message_skip_body(r);
  }if(at>INT64_MAX-kTableAlign)return 0;
@@ -13085,7 +13124,7 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_message_storage_(TableMessageRea
  if(!schema_graphdemo_layer_message_record_scan_(r,&id,&size,&length)||size>INT64_MAX-*data)return 0;
  *data+=size;
  }
- if(!schema_graphdemo_layer_message_extent_(r,&root))*complete=0;
+ if(!schema_graphdemo_layer_message_extent_(r,&root,0))*complete=0;
  if(r->extent_refused)return 0;
  if(root>INT64_MAX-kTableAlign)return 0;
  *root_bytes=table_align_up64(root);
@@ -13189,7 +13228,7 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_message_load_into_(TableMessageR
  case UINT64_C(0xf60ec899a5a69fa9):carve.used=sizeof(ListNode);
  carve.capacity=sizeof(ListNode);
  scan=*r;
- if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!list_node_load_message_body(r,(ListNode *)(void *)value))goto malformed;
  break;
  default:goto malformed;
@@ -13528,13 +13567,13 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_message_record_scan_(TableMessag
  return *size>=0;
  }switch(*id){
  case UINT64_C(0xf60ec899a5a69fa9):at=sizeof(ListNode);
- if(!schema_graphdemo_list_node_message_extent_(r,&at))return 0;
+ if(!schema_graphdemo_list_node_message_extent_(r,&at,0))return 0;
  break;
  case UINT64_C(0xb97e90a3784c431d):at=sizeof(TreeNode);
- if(!schema_graphdemo_tree_node_message_extent_(r,&at))return 0;
+ if(!schema_graphdemo_tree_node_message_extent_(r,&at,0))return 0;
  break;
  case UINT64_C(0x9d8b8aa2b404c2c8):at=sizeof(Settings);
- if(!schema_graphdemo_settings_message_extent_(r,&at))return 0;
+ if(!schema_graphdemo_settings_message_extent_(r,&at,0))return 0;
  break;
  default:return table_message_skip_body(r);
  }if(at>INT64_MAX-kTableAlign)return 0;
@@ -13552,7 +13591,7 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_message_storage_(TableMessageRea
  if(!schema_graphdemo_scene_message_record_scan_(r,&id,&size,&length)||size>INT64_MAX-*data)return 0;
  *data+=size;
  }
- if(!schema_graphdemo_scene_message_extent_(r,&root))*complete=0;
+ if(!schema_graphdemo_scene_message_extent_(r,&root,0))*complete=0;
  if(r->extent_refused)return 0;
  if(root>INT64_MAX-kTableAlign)return 0;
  *root_bytes=table_align_up64(root);
@@ -13656,19 +13695,19 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_message_load_into_(TableMessageR
  case UINT64_C(0xf60ec899a5a69fa9):carve.used=sizeof(ListNode);
  carve.capacity=sizeof(ListNode);
  scan=*r;
- if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!list_node_load_message_body(r,(ListNode *)(void *)value))goto malformed;
  break;
  case UINT64_C(0xb97e90a3784c431d):carve.used=sizeof(TreeNode);
  carve.capacity=sizeof(TreeNode);
  scan=*r;
- if(!schema_graphdemo_tree_node_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_tree_node_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!tree_node_load_message_body(r,(TreeNode *)(void *)value))goto malformed;
  break;
  case UINT64_C(0x9d8b8aa2b404c2c8):carve.used=sizeof(Settings);
  carve.capacity=sizeof(Settings);
  scan=*r;
- if(!schema_graphdemo_settings_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_settings_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!settings_load_message_body(r,(Settings *)(void *)value))goto malformed;
  break;
  default:goto malformed;
@@ -13995,7 +14034,7 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_message_record_scan_(TableMessag
  return *size>=0;
  }switch(*id){
  case UINT64_C(0xf60ec899a5a69fa9):at=sizeof(ListNode);
- if(!schema_graphdemo_list_node_message_extent_(r,&at))return 0;
+ if(!schema_graphdemo_list_node_message_extent_(r,&at,0))return 0;
  break;
  default:return table_message_skip_body(r);
  }if(at>INT64_MAX-kTableAlign)return 0;
@@ -14013,7 +14052,7 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_message_storage_(TableMessageRea
  if(!schema_graphdemo_depot_message_record_scan_(r,&id,&size,&length)||size>INT64_MAX-*data)return 0;
  *data+=size;
  }
- if(!schema_graphdemo_depot_message_extent_(r,&root))*complete=0;
+ if(!schema_graphdemo_depot_message_extent_(r,&root,0))*complete=0;
  if(r->extent_refused)return 0;
  if(root>INT64_MAX-kTableAlign)return 0;
  *root_bytes=table_align_up64(root);
@@ -14117,7 +14156,7 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_message_load_into_(TableMessageR
  case UINT64_C(0xf60ec899a5a69fa9):carve.used=sizeof(ListNode);
  carve.capacity=sizeof(ListNode);
  scan=*r;
- if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!list_node_load_message_body(r,(ListNode *)(void *)value))goto malformed;
  break;
  default:goto malformed;
@@ -14456,13 +14495,13 @@ static SCHEMA_UNUSED int schema_graphdemo_album_message_record_scan_(TableMessag
  return *size>=0;
  }switch(*id){
  case UINT64_C(0x69ff34904242a73d):at=sizeof(Tally);
- if(!schema_graphdemo_tally_message_extent_(r,&at))return 0;
+ if(!schema_graphdemo_tally_message_extent_(r,&at,0))return 0;
  break;
  case UINT64_C(0xd6458a3eef83d457):at=sizeof(Marker);
- if(!schema_graphdemo_marker_message_extent_(r,&at))return 0;
+ if(!schema_graphdemo_marker_message_extent_(r,&at,0))return 0;
  break;
  case UINT64_C(0xf60ec899a5a69fa9):at=sizeof(ListNode);
- if(!schema_graphdemo_list_node_message_extent_(r,&at))return 0;
+ if(!schema_graphdemo_list_node_message_extent_(r,&at,0))return 0;
  break;
  default:return table_message_skip_body(r);
  }if(at>INT64_MAX-kTableAlign)return 0;
@@ -14480,7 +14519,7 @@ static SCHEMA_UNUSED int schema_graphdemo_album_message_storage_(TableMessageRea
  if(!schema_graphdemo_album_message_record_scan_(r,&id,&size,&length)||size>INT64_MAX-*data)return 0;
  *data+=size;
  }
- if(!schema_graphdemo_album_message_extent_(r,&root))*complete=0;
+ if(!schema_graphdemo_album_message_extent_(r,&root,0))*complete=0;
  if(r->extent_refused)return 0;
  if(root>INT64_MAX-kTableAlign)return 0;
  *root_bytes=table_align_up64(root);
@@ -14584,19 +14623,19 @@ static SCHEMA_UNUSED int schema_graphdemo_album_message_load_into_(TableMessageR
  case UINT64_C(0x69ff34904242a73d):carve.used=sizeof(Tally);
  carve.capacity=sizeof(Tally);
  scan=*r;
- if(!schema_graphdemo_tally_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_tally_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!tally_load_message_body(r,(Tally *)(void *)value))goto malformed;
  break;
  case UINT64_C(0xd6458a3eef83d457):carve.used=sizeof(Marker);
  carve.capacity=sizeof(Marker);
  scan=*r;
- if(!schema_graphdemo_marker_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_marker_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!marker_load_message_body(r,(Marker *)(void *)value))goto malformed;
  break;
  case UINT64_C(0xf60ec899a5a69fa9):carve.used=sizeof(ListNode);
  carve.capacity=sizeof(ListNode);
  scan=*r;
- if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!list_node_load_message_body(r,(ListNode *)(void *)value))goto malformed;
  break;
  default:goto malformed;
@@ -14865,7 +14904,7 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_message_load_into_retain_(Ta
  /* type 0xf60ec899a5a69fa9 */carve.used=sizeof(ListNode);
  carve.capacity=sizeof(ListNode);
  scan=*r;
- if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!list_node_load_message_body_retain(r,(ListNode *)(void *)value, retention))goto malformed;
  break;
  default:goto malformed;
@@ -15139,7 +15178,7 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_message_load_into_retain_(Ta
  /* type 0xb97e90a3784c431d */carve.used=sizeof(TreeNode);
  carve.capacity=sizeof(TreeNode);
  scan=*r;
- if(!schema_graphdemo_tree_node_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_tree_node_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!tree_node_load_message_body_retain(r,(TreeNode *)(void *)value, retention))goto malformed;
  break;
  default:goto malformed;
@@ -15414,7 +15453,7 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_message_load_into_retain_(TableM
  /* type 0xf60ec899a5a69fa9 */carve.used=sizeof(ListNode);
  carve.capacity=sizeof(ListNode);
  scan=*r;
- if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!list_node_load_message_body_retain(r,(ListNode *)(void *)value, retention))goto malformed;
  break;
  default:goto malformed;
@@ -15697,21 +15736,21 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_message_load_into_retain_(TableM
  /* type 0xf60ec899a5a69fa9 */carve.used=sizeof(ListNode);
  carve.capacity=sizeof(ListNode);
  scan=*r;
- if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!list_node_load_message_body_retain(r,(ListNode *)(void *)value, retention))goto malformed;
  break;
  case UINT64_C(0xb97e90a3784c431d):retention.path=table_retain_root(value,(uint32_t)i+2);
  /* type 0xb97e90a3784c431d */carve.used=sizeof(TreeNode);
  carve.capacity=sizeof(TreeNode);
  scan=*r;
- if(!schema_graphdemo_tree_node_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_tree_node_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!tree_node_load_message_body_retain(r,(TreeNode *)(void *)value, retention))goto malformed;
  break;
  case UINT64_C(0x9d8b8aa2b404c2c8):retention.path=table_retain_root(value,(uint32_t)i+2);
  /* type 0x9d8b8aa2b404c2c8 */carve.used=sizeof(Settings);
  carve.capacity=sizeof(Settings);
  scan=*r;
- if(!schema_graphdemo_settings_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_settings_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!settings_load_message_body_retain(r,(Settings *)(void *)value, retention))goto malformed;
  break;
  default:goto malformed;
@@ -15986,7 +16025,7 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_message_load_into_retain_(TableM
  /* type 0xf60ec899a5a69fa9 */carve.used=sizeof(ListNode);
  carve.capacity=sizeof(ListNode);
  scan=*r;
- if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!list_node_load_message_body_retain(r,(ListNode *)(void *)value, retention))goto malformed;
  break;
  default:goto malformed;
@@ -16269,21 +16308,21 @@ static SCHEMA_UNUSED int schema_graphdemo_album_message_load_into_retain_(TableM
  /* type 0x69ff34904242a73d */carve.used=sizeof(Tally);
  carve.capacity=sizeof(Tally);
  scan=*r;
- if(!schema_graphdemo_tally_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_tally_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!tally_load_message_body_retain(r,(Tally *)(void *)value, retention))goto malformed;
  break;
  case UINT64_C(0xd6458a3eef83d457):retention.path=table_retain_root(value,(uint32_t)i+2);
  /* type 0xd6458a3eef83d457 */carve.used=sizeof(Marker);
  carve.capacity=sizeof(Marker);
  scan=*r;
- if(!schema_graphdemo_marker_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_marker_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!marker_load_message_body_retain(r,(Marker *)(void *)value, retention))goto malformed;
  break;
  case UINT64_C(0xf60ec899a5a69fa9):retention.path=table_retain_root(value,(uint32_t)i+2);
  /* type 0xf60ec899a5a69fa9 */carve.used=sizeof(ListNode);
  carve.capacity=sizeof(ListNode);
  scan=*r;
- if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity))goto malformed;
+ if(!schema_graphdemo_list_node_message_extent_(&scan,&carve.capacity,0))goto malformed;
  if(!list_node_load_message_body_retain(r,(ListNode *)(void *)value, retention))goto malformed;
  break;
  default:goto malformed;
