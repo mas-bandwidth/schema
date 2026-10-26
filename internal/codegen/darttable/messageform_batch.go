@@ -1158,15 +1158,31 @@ final class TableMessageShape {
     return -1;
   }
 
-  /// Steps over ONE announced entry's payload without decoding it, the mirror
-  /// of the Go reference's skip (internal/tablewire/messagedecode.go): the
-  /// announcement's kind and shape alone say where the next reference begins.
-  static bool skipEntry(TableMessageReader r, TableMessageEntry e) {
+  /// Steps over ONE announced entry's payload without decoding it. The
+  /// announcement's kind and shape say where the next reference begins.
+  /// [depth] is the unknown-skip walk (docs/SPEC-TABLES.md message_skip_depth):
+  /// callers that omit it start at 0, and a nested body, a union arm or a
+  /// walked element passes depth + 1. depth > 128 is malformed; 128 still skips.
+  static bool skipEntry(TableMessageReader r, TableMessageEntry e, [int depth = 0]) {
+    if (depth > 128) return false;
     final shape = decode(e.signature, 9, e.kind);
-    return skip(r, e.kind, shape.$1);
+    return skip(r, e.kind, shape.$1, depth);
   }
 
-  static bool skip(TableMessageReader r, int kind, TableMessageShape s) {
+  /// One body at [depth]. Fields of the body are skipped at this same depth.
+  static bool skipBody(TableMessageReader r, int depth) {
+    if (depth > 128) return false;
+    while (true) {
+      final ref = r.bits.get(r.vocabulary.refBits);
+      if (r.bits.failed) return false;
+      if (ref == 0) return true;
+      if (ref > r.vocabulary.count) return false;
+      if (!skipEntry(r, r.vocabulary.entries[ref - 1], depth)) return false;
+    }
+  }
+
+  static bool skip(TableMessageReader r, int kind, TableMessageShape s, [int depth = 0]) {
+    if (depth > 128) return false;
     switch (kind) {
       case 0:
       case 32:
@@ -1187,15 +1203,9 @@ final class TableMessageShape {
         final arm = r.vocabulary.entries[ref - 1];
         // bitDecoder.arm: a reserved id or a kind-0 entry is damage
         if (tableMessageReservedId(arm.id) || arm.kind == 0) return false;
-        return skipEntry(r, arm);
+        return skipEntry(r, arm, depth + 1);
       case 13:
-        while (true) {
-          final ref = r.bits.get(r.vocabulary.refBits);
-          if (r.bits.failed) return false;
-          if (ref == 0) return true;
-          if (ref > r.vocabulary.count) return false;
-          if (!skipEntry(r, r.vocabulary.entries[ref - 1])) return false;
-        }
+        return skipBody(r, depth + 1);
       case 17:
         // A FIXED ROOT NUMBERS NO NODE, so there is no index width to step
         // (internal/tablewire/messagedecode.go root: indexBits = 0).
@@ -1251,7 +1261,7 @@ final class TableMessageShape {
             r.bits.get(r.vocabulary.refBits);
             if (r.bits.failed) return false;
           }
-          if (!skip(r, s.elem, inner)) return false;
+          if (!skip(r, s.elem, inner, depth + 1)) return false;
         }
         return true;
     }

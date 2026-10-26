@@ -18,17 +18,22 @@ const tableMessageReadSource = `
     }
     static bool MessageName(ref BitReader r, MessageRead d, out ulong reference, out TableMessageEntry entry)
     { return MessageReference(ref r, d, out reference, out entry) && reference != 0 && !Reserved(entry.Id) && entry.Kind == 0; }
-    static bool MessageSkipBody(ref BitReader r, MessageRead d)
+    // depth is the unknown-skip walk (docs/SPEC-TABLES.md message_skip_depth).
+    // Callers that omit it start at 0. A nested body, a union arm and a walked
+    // element pass depth + 1. depth > 128 is malformed; 128 itself still skips.
+    static bool MessageSkipBody(ref BitReader r, MessageRead d, int depth = 0)
     {
+        if (depth > 128) { return false; }
         for (; ; )
         {
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry e)) { return false; }
             if (reference == 0) { return true; }
-            if (!MessageSkip(ref r, d, e.Kind, e.Shape)) { return false; }
+            if (!MessageSkip(ref r, d, e.Kind, e.Shape, depth)) { return false; }
         }
     }
-    static bool MessageSkip(ref BitReader r, MessageRead d, byte kind, TableMessageShape shape)
+    static bool MessageSkip(ref BitReader r, MessageRead d, byte kind, TableMessageShape shape, int depth = 0)
     {
+        if (depth > 128) { return false; }
         switch (kind)
         {
             case 0: case 32: return true;
@@ -37,8 +42,8 @@ const tableMessageReadSource = `
                     (variant == 0 || !Reserved(ve.Id) && ve.Kind == 0);
             case 15:
                 if (!MessageReference(ref r, d, out ulong arm, out TableMessageEntry ae)) { return false; }
-                return arm == 0 || !Reserved(ae.Id) && ae.Kind != 0 && MessageSkip(ref r, d, ae.Kind, ae.Shape);
-            case 13: return MessageSkipBody(ref r, d);
+                return arm == 0 || !Reserved(ae.Id) && ae.Kind != 0 && MessageSkip(ref r, d, ae.Kind, ae.Shape, depth + 1);
+            case 13: return MessageSkipBody(ref r, d, depth + 1);
             case 17: return d.IndexBits > 0 && r.Skip(d.IndexBits);
             case 12:
             case 33:
@@ -56,7 +61,7 @@ const tableMessageReadSource = `
                 {
                     if (kind == 16 && !r.Get(d.Vocabulary.RefBits, out _)) { return false; }
                     if (shape.Elem == 13 || shape.Elem == 15 || shape.Elem == 17 || shape.Elem == 30)
-                    { if (!MessageSkip(ref r, d, shape.Elem, shape.Inner)) { return false; } }
+                    { if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, depth + 1)) { return false; } }
                     else { int bits = ValueBits(shape.Elem, shape.Inner); if (bits < 0 || !r.Skip(bits)) { return false; } }
                 }
                 return true;

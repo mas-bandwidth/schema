@@ -716,3 +716,133 @@ func TestMessageFormHeldCPP(t *testing.T) {
 		})
 	}
 }
+
+// TestMessageFormSkipDepthCPP is the message_skip_depth boundary on the
+// generated C++ reader (docs/SPEC-TABLES.md, limit value 128). Nested bodies,
+// union arms and walked array elements succeed at 127 and at 128. The named
+// above-limit rows are complete zero-padded batches whose only fault is depth
+// past 128. Verdicts are the spec's. TableMessageEntry keeps its default
+// value_bits of -1; zeroing the entry would take the arithmetic element path.
+func TestMessageFormSkipDepthCPP(t *testing.T) {
+	t.Parallel()
+	const schema = `package probe
+
+fixed table Root {
+ a int32
+ b bool
+ c uint8
+}
+`
+	out, err := runCppGeneratedEdited(t, schema, cppSkipDepthMain, nil)
+	if err != nil {
+		t.Fatalf("skip_depth_above_128: %v\n%s", err, out)
+	}
+}
+
+const cppSkipDepthMain = `#include "ProbeTable.h"
+#include <cstdio>
+#include <cstdint>
+#include <cstring>
+using namespace probe;
+
+static void fill_entry(TableMessageEntry & e, uint8_t kind)
+{
+    e.id = 1;
+    e.kind = kind;
+}
+static int64_t pack_refs(uint8_t * buf, int cap, int width, int nlead, uint64_t lead, int nmid, uint64_t mid, int ntail)
+{
+    int at = 16, i, b, n;
+    if (cap < 2) return -1;
+    memset(buf, 0, (size_t)cap);
+    buf[0] = 2;
+    buf[1] = 0;
+    n = nlead + nmid + ntail;
+    for (i = 0; i < n; i++) {
+        uint64_t ref = i < nlead ? lead : (i < nlead + nmid ? mid : 0);
+        for (b = 0; b < width; b++) {
+            if ((at >> 3) >= cap) return -1;
+            if ((ref >> b) & 1) buf[at >> 3] |= (uint8_t)(1u << (at & 7));
+            at++;
+        }
+    }
+    return (int64_t)(at + 7) / 8;
+}
+static int load_one(const TableVocabulary & vocabulary, const uint8_t * buf, int64_t n, Root & storage, int64_t & count, TableReport & report)
+{
+    RootReset(storage);
+    count = 1;
+    memset(&report, 0, sizeof(report));
+    return RootLoadMessages(&storage, &count, vocabulary, buf, n, &report) ? 1 : 0;
+}
+static int expect_ok(const char * row, const TableVocabulary & vocabulary, const uint8_t * buf, int64_t n)
+{
+    Root storage; int64_t count = 0; TableReport report; int ok;
+    ok = load_one(vocabulary, buf, n, storage, count, report);
+    if (!(ok && !report.malformed && report.unknown == 1 && storage.a == 0 && count == 1)) {
+        printf("%s: ok=%d malformed=%d unknown=%d a=%d count=%lld\n",
+            row, ok, (int)report.malformed, (int)report.unknown, (int)storage.a, (long long)count);
+        return 1;
+    }
+    return 0;
+}
+static int expect_bad(const char * row, const TableVocabulary & vocabulary, const uint8_t * buf, int64_t n)
+{
+    Root storage; int64_t count = 0; TableReport report; int ok;
+    ok = load_one(vocabulary, buf, n, storage, count, report);
+    if (!(!ok && report.malformed && count == 0)) {
+        printf("%s: ok=%d malformed=%d count=%lld\n", row, ok, (int)report.malformed, (long long)count);
+        return 1;
+    }
+    return 0;
+}
+int main()
+{
+    uint8_t buf[128];
+    int64_t n;
+    TableMessageEntry body, arm, arr[2];
+    fill_entry(body, 13);
+    fill_entry(arm, 15);
+    fill_entry(arr[0], 13);
+    fill_entry(arr[1], 14);
+    arr[1].id = 2;
+    arr[1].min = 1;
+    arr[1].max = 1;
+    arr[1].elem_kind = 13;
+    TableVocabulary body_v(&body, 1);
+    body_v.count = 1;
+    body_v.ref_bits = 1;
+    body_v.announced = true;
+    TableVocabulary arm_v(&arm, 1);
+    arm_v.count = 1;
+    arm_v.ref_bits = 1;
+    arm_v.announced = true;
+    TableVocabulary arr_v(arr, 2);
+    arr_v.count = 2;
+    arr_v.ref_bits = 2;
+    arr_v.announced = true;
+    n = pack_refs(buf, 128, 1, 127, 1, 0, 0, 128);
+    if (n < 0 || expect_ok("skip_depth_body_below_128", body_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 128, 1, 0, 0, 129);
+    if (n < 0 || expect_ok("skip_depth_body_at_128", body_v, buf, n)) return 1;
+    if (expect_ok("skip_depth_continuation", body_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 128, 1, 0, 0, 128);
+    if (n < 0 || n * 8 != 16 + 256) { printf("skip_depth_truncation alignment\n"); return 1; }
+    if (expect_bad("skip_depth_truncation", body_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 129, 1, 0, 0, 130);
+    if (n < 0 || expect_bad("skip_depth_above_128 body", body_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 128, 1, 0, 0, 2);
+    if (n < 0 || expect_ok("skip_depth_union_below_128", arm_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 129, 1, 0, 0, 2);
+    if (n < 0 || expect_ok("skip_depth_union_at_128", arm_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 1, 130, 1, 0, 0, 2);
+    if (n < 0 || expect_bad("skip_depth_above_128 union", arm_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 125, 1, 1, 2, 127);
+    if (n < 0 || expect_ok("skip_depth_array_below_128", arr_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 126, 1, 1, 2, 128);
+    if (n < 0 || expect_ok("skip_depth_array_at_128", arr_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 127, 1, 1, 2, 129);
+    if (n < 0 || expect_bad("skip_depth_above_128 array", arr_v, buf, n)) return 1;
+    return 0;
+}
+`

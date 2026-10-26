@@ -612,3 +612,107 @@ const nestedDefaultElidesBody = `
   check(count == 1 && !rep.refused && !rep.malformed, 'load count=$count reason=${rep.reason}');
   check(back[0].child.x == 7, 'the nested value did not round trip: ${back[0].child.x}');
 `
+
+// TestMessageFormSkipDepthDart is the message_skip_depth boundary on the
+// generated Dart reader (docs/SPEC-TABLES.md, limit value 128). The typed body
+// reads references at tableMessageRefBits, and skip reads vocabulary.refBits,
+// so the probe sets those equal. Slots 1..3 are Root's fields; the unknown
+// entry rides at slot 8. Verdicts are the spec's. The above-limit rows are
+// complete zero-padded batches whose only fault is depth past 128.
+func TestMessageFormSkipDepthDart(t *testing.T) {
+	t.Parallel()
+	u := unitFrom(t, `package probe
+
+fixed table Root {
+    a int32
+    b bool
+    c uint8
+}
+`)
+	out, err := runBatchProbe(t, u, "Root", dartSkipDepthBody)
+	if err != nil {
+		t.Fatalf("skip_depth_above_128: %v\n%s", err, out)
+	}
+}
+
+const dartSkipDepthBody = `
+  // Slot 8 is the Root name, not a field of this root (a, b, c are 1..3).
+  // A reference width below 4 cannot spell it.
+  check(h.tableMessageRefBits >= 4, 'skip depth slot needs four reference bits, got ${h.tableMessageRefBits}');
+  final width = h.tableMessageRefBits;
+  final sig14 = Uint8List(12);
+  sig14[9] = 1;
+  sig14[10] = 1;
+  sig14[11] = 13;
+
+  h.TableVocabulary vocabAt(int kind) {
+    final entries = List<h.TableMessageEntry>.generate(8, (i) => h.TableMessageEntry(0, 0));
+    entries[7] = h.TableMessageEntry(1, kind, Uint8List(9));
+    final vocab = h.TableVocabulary(entries: entries);
+    vocab.count = 8;
+    vocab.refBits = width;
+    vocab.announced = true;
+    return vocab;
+  }
+
+  final body = vocabAt(13);
+  final arm = vocabAt(15);
+  final arrayEntries = List<h.TableMessageEntry>.generate(8, (i) => h.TableMessageEntry(0, 0));
+  arrayEntries[6] = h.TableMessageEntry(1, 13, Uint8List(9));
+  arrayEntries[7] = h.TableMessageEntry(2, 14, sig14);
+  final array = h.TableVocabulary(entries: arrayEntries);
+  array.count = 8;
+  array.refBits = width;
+  array.announced = true;
+
+  Uint8List pack(int nlead, int lead, int nmid, int mid, int ntail) {
+    final n = nlead + nmid + ntail;
+    final bits = 16 + n * width;
+    final buf = Uint8List((bits + 7) >> 3);
+    buf[0] = 2;
+    buf[1] = 0;
+    var at = 16;
+    for (var i = 0; i < n; i++) {
+      final slot = i < nlead ? lead : (i < nlead + nmid ? mid : 0);
+      for (var b = 0; b < width; b++) {
+        if (((slot >> b) & 1) != 0) {
+          buf[at >> 3] |= 1 << (at & 7);
+        }
+        at++;
+      }
+    }
+    return buf;
+  }
+
+  void expectOk(String row, h.TableVocabulary vocab, Uint8List buf) {
+    final value = h.Root();
+    h.initRoot(value);
+    final rep = h.TableReport();
+    final count = r.rootLoadMessages(<h.Root>[value], buf, vocab, rep);
+    check(count == 1 && !rep.malformed && !rep.refused && rep.unknown == 1 && value.a == 0,
+        '$row: count=$count malformed=${rep.malformed} unknown=${rep.unknown} a=${value.a}');
+  }
+
+  void expectBad(String row, h.TableVocabulary vocab, Uint8List buf) {
+    final value = h.Root();
+    h.initRoot(value);
+    final rep = h.TableReport();
+    final count = r.rootLoadMessages(<h.Root>[value], buf, vocab, rep);
+    check(count == 0 && rep.malformed, '$row: count=$count malformed=${rep.malformed}');
+  }
+
+  expectOk('skip_depth_body_below_128', body, pack(127, 8, 0, 0, 128));
+  final at = pack(128, 8, 0, 0, 129);
+  expectOk('skip_depth_body_at_128', body, at);
+  expectOk('skip_depth_continuation', body, at);
+  final cut = pack(128, 8, 0, 0, 128);
+  check(cut.length * 8 == 16 + 256 * width, 'skip_depth_truncation alignment');
+  expectBad('skip_depth_truncation', body, cut);
+  expectBad('skip_depth_above_128 body', body, pack(129, 8, 0, 0, 130));
+  expectOk('skip_depth_union_below_128', arm, pack(128, 8, 0, 0, 2));
+  expectOk('skip_depth_union_at_128', arm, pack(129, 8, 0, 0, 2));
+  expectBad('skip_depth_above_128 union', arm, pack(130, 8, 0, 0, 2));
+  expectOk('skip_depth_array_below_128', array, pack(125, 7, 1, 8, 127));
+  expectOk('skip_depth_array_at_128', array, pack(126, 7, 1, 8, 128));
+  expectBad('skip_depth_above_128 array', array, pack(127, 7, 1, 8, 129));
+`
