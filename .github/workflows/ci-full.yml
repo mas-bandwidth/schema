@@ -14,7 +14,7 @@ name: CI full
 # iteration. A 15-minute job timeout was raised that morning instead of the
 # cause being fixed, which treats a queue as a budget.
 #
-# SO THIS FILE NOW RUNS: on every push to main and to fixed-table-form (the
+# SO THIS FILE NOW RUNS: on every push to main, dev and fixed-table-form (the
 # merge gate), nightly at 07:10 UTC, on `gh workflow run ci-full.yml --ref
 # <branch>`, and on any pull request carrying the `full-ci` label. Every job
 # carries the same `if:` for that last case, which is why the expression is
@@ -91,18 +91,20 @@ name: CI full
 
 on:
   push:
-    # THE MERGE GATE. main, and the fixed-form integration branch while the
+    # THE MERGE GATE. main, dev (where work streams land serially before
+    # promoting to main), and the fixed-form integration branch while the
     # nine language legs land on it (2026-09-09): the batch to main must never
     # be the first time anybody sees red, so the whole of this file runs on
-    # every merge into that branch.
-    branches: [ main, fixed-table-form ]
+    # every merge into those branches.
+    branches: [ main, dev, fixed-table-form ]
   pull_request:
     # A pull request runs this file only when it carries the `full-ci` label —
-    # every job below is gated on that. The label is how a branch near the hot
-    # paths, or anything that moves the C++ emitters, asks for the whole suite
-    # before merging; `gh workflow run ci-full.yml --ref <branch>` is the other
-    # way, and needs no label.
-    branches: [ main, fixed-table-form ]
+    # every job below is gated on that, except `generated`, `pins` and
+    # `cs-tables` which run on every pull request. The label is how a branch
+    # near the hot paths, or anything that moves the C++ emitters, asks for the
+    # whole suite before merging; `gh workflow run ci-full.yml --ref <branch>`
+    # is the other way, and needs no label.
+    branches: [ main, dev, fixed-table-form ]
     types: [ opened, synchronize, reopened, labeled ]
   schedule:
     # nightly, so a tree nobody pushed to is still checked against the
@@ -166,10 +168,12 @@ jobs:
   # another generator running a probe per row per column; fifteen is the budget
   # they share.
   go-test:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    # Runs on a pull request only when it comes from this repository and
+    # carries the `full-ci` label; on a merge, the nightly and a dispatch it
+    # always runs. A fork pull request never reaches the fleet runners, even if
+    # labelled `full-ci`. The expression is repeated per job because a job-level
+    # `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     name: go-test (${{ matrix.group }})
     # THE FLEET'S RUNNERS, as ci-fast's runs into main use (standing rule,
     # 2026-10-21: every CI job on fleet runners, never GitHub-hosted). On a
@@ -614,16 +618,18 @@ jobs:
   # duplicates the go-test job and is the time to reclaim when someone wants
   # it, which is a change to `update-goldens` and belongs to its own diff.
   pins:
-    # Runs on EVERY pull request, not behind the `full-ci` label (issue #1421):
-    # like `generated`, a stale pin is a "this diff is self-consistent" failure,
-    # and a pull request into fixed-table-form runs no other leg gate. On a
-    # merge, the nightly and a dispatch it runs with the rest of the file;
-    # carrying no job-level `if:` keeps every one of those live.
+    # Runs on EVERY same-repository pull request, not behind the `full-ci`
+    # label (issue #1421): like `generated`, a stale pin is a "this diff is
+    # self-consistent" failure, and a pull request into dev or
+    # fixed-table-form runs no other leg gate. On a merge, the nightly and a
+    # dispatch it runs with the rest of the file; a fork pull request is
+    # skipped before it can reach the fleet runners.
     #
     # THE FLEET'S RUNNERS (standing rule, 2026-10-21: every CI job on fleet
     # runners, never GitHub-hosted). On a hosted two-core runner the re-pin
     # reached the 15-minute timeout; the timeout is not raised to fit that
     # runner. The setup steps below run only on a hosted fallback.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 15
     steps:

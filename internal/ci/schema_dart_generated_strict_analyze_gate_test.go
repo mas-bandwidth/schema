@@ -155,9 +155,44 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 		"push:",
 		"dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d",
 		"sdk: 3.13.2",
+		"if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
 	} {
 		if !strings.Contains(wf, want) {
 			t.Errorf("workflow does not carry %q", want)
 		}
+	}
+
+	// Self-hosted admission and tier assertions for fast and nightly jobs.
+	for _, ev := range []ciEvent{
+		{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema"},
+		{Name: "pull_request", Branch: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema", Labels: []string{"full-ci"}},
+	} {
+		if ok, err := jobSelectsSelfHosted(wf, "fast", ev); err != nil || ok {
+			t.Errorf("Dart fast job admitted fork PR (%+v): ok=%v err=%v", ev, ok, err)
+		}
+		if ok, err := jobSelectsSelfHosted(wf, "nightly", ev); err != nil || ok {
+			t.Errorf("Dart nightly job admitted fork PR (%+v): ok=%v err=%v", ev, ok, err)
+		}
+	}
+	for _, ev := range []ciEvent{
+		{Name: "pull_request", Branch: "dev", HeadRef: "sprint/schema-dart", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
+		{Name: "pull_request", Branch: "main", HeadRef: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
+		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
+		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
+	} {
+		if ok, err := jobSelectsSelfHosted(wf, "fast", ev); err != nil || !ok {
+			t.Errorf("Dart fast job did not run for allowed event (%+v): ok=%v err=%v", ev, ok, err)
+		}
+		wantNightly := ev.Name == "schedule" || ev.Name == "workflow_dispatch"
+		if ok, err := jobSelectsSelfHosted(wf, "nightly", ev); err != nil || ok != wantNightly {
+			t.Errorf("Dart nightly job under (%+v) = %v (err=%v), want %v", ev, ok, err, wantNightly)
+		}
+	}
+	// Guard mutation must fail fork PR admission.
+	mutated := strings.Replace(wf, "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n", "", 1)
+	if ok, err := jobSelectsSelfHosted(mutated, "fast", ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema"}); err != nil || !ok {
+		t.Errorf("guard mutation control did not admit fork PR as expected: ok=%v err=%v", ok, err)
 	}
 }
