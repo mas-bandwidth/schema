@@ -106,8 +106,29 @@ what the language specifies, in a way that weakens a check.
   input and re-run on every push.
 - The cross-language corpus generates the same schemas in C, C++, C#, Dart,
   Elixir, Go, Java, JavaScript and Rust
-  and compares emitted wire bit for bit against pinned goldens, on Linux and
-  macOS, on every push. Divergence between languages fails CI.
+  and compares emitted wire bit for bit against pinned goldens.
+  That comparison is not a per-push macOS job, and it is not promised on every
+  push. Per-push evidence is Linux.
+  [`.github/workflows/ci-fast.yml`](../.github/workflows/ci-fast.yml) runs on a
+  pull request into `main` or `fixed-table-form`, and on `workflow_dispatch`:
+  a path-selected lane on Linux (the fleet, or `ubuntu-latest` for a pull
+  request into a branch below `main`). It is not the full `make test` chain
+  and it does not run on macOS.
+  [`.github/workflows/ci-full.yml`](../.github/workflows/ci-full.yml) runs on a
+  push to `main` or `fixed-table-form`, on its nightly schedule
+  (`10 7 * * *`), on `workflow_dispatch`, and on a pull request that carries
+  the `full-ci` label. Its runners are Linux and Windows (`windows-latest`,
+  `windows-2025`). It does not include `macos-latest`, and an unlabeled pull
+  request does not run it.
+  macOS certification of the full chain is
+  [`.github/workflows/certify.yml`](../.github/workflows/certify.yml), which
+  runs on its nightly schedule (`17 9 * * *`) and on `workflow_dispatch`
+  (`gh workflow run certify.yml --ref <branch>`), and has no push trigger.
+  Its `test` matrix is `ubuntu-latest` and `macos-latest` and runs `make test`.
+  Further macOS rows in that file cover the go, cpp, c, rust and cs legs.
+  A green pull request is not a macOS certificate. Divergence between
+  languages fails the run that actually executed. The same no-push rule is
+  recorded in [CONTRIBUTING.md](CONTRIBUTING.md).
 - Generated readers are exercised against hand-crafted hostile bytes.
 - The TABLES wire is read as untrusted input, exactly as the type wire is,
   and the claim has its own gate: `make tables-wire-fuzz` mutates every pinned

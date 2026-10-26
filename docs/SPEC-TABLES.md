@@ -6997,12 +6997,68 @@ compressed float's quantization is not a §4 row, because §4 has none for it: i
 is the third of the three ways this form changes a value across the forms
 (above), and it is pinned by the round trip's own rows rather than by §4's.
 
-**WHERE THE FORM IS CARRIED.** The C++ reference, Go and the compiler's own
-engine carry the BITPACKED body under form byte `2`, and every form-`2` golden
-in the corpus is its. The other seven language backends carry the VARIABLE form
-alone: their `LoadMessages`, `MeasureMessages` and `SaveMessages` are a named
-follow-on beside the wire-form work M20 already registers
-(test/conformance/README.md).
+**WHERE THE FORM IS CARRIED.** The bitpacked body under form byte `2` is not a
+C++ and Go-only path, and the nine emitted runtimes do not carry one subset.
+The compiler's own engine (`internal/tablewire`, `EncodeMessages` /
+`DecodeMessages`) and the tool (`schema pack --message`, `schema unpack
+--announce`) carry the body. Every form-`2` golden in the corpus is that
+body's. What each emitted runtime adds is its own gate. A plain `table` is the
+variable class and a `fixed table` is not (`ir.VariableTables`). This is the
+checkout's emitters, not a claim that a release tag already said so, and not a
+claim that every subset is the same surface.
+
+- **C++** (`internal/codegen/cpptable/messageload.go`, `messagevariable.go`) is
+  the reference. `emitMessageEntries` writes `MeasureMessages`, `SaveMessages`
+  and `LoadMessages` for a closure member that is not a map entry and not
+  variable, which is a `fixed table` root and a nested `type`. A variable
+  root's batch is the same three verbs over one region
+  (`emitVariableMessageSurface`), and `LoadMeasure` sizes that region.
+  `LoadRetainMessages` on a fixed-class root is refused by name.
+- **C** (`internal/codegen/ctable/message.go`, `message_save.go`,
+  `message_read.go`, `message_graph.go`) emits the announcement constant from
+  `tableMessageForm` in every unit that declares a table. A member that is not
+  variable and not a map entry gets `measure_messages`, `save_messages` and
+  `load_messages`. A variable root's batch is `measure_messages`,
+  `save_messages` and `load_messages` over one region in `emitMessageGraph`,
+  plus `load_measure_messages`, written when the file carries the wire.
+- **C#** (`internal/codegen/cstable/message.go`, `region.go`) emits `Announce`,
+  `AnnounceMeasure` and `AnnounceRead` with the runtime, and `MeasureMessages`,
+  `SaveMessages` and `LoadMessages` on the value array for every closure member
+  that is not a map entry. That emit is not gated on `fixed table`. A variable
+  table also gets `LoadMeasure` and, in `region.go`, the region overloads of
+  those three verbs and `LoadRetainMessages`.
+- **Go** (`internal/codegen/gotable/messagewrite.go`, `messageread.go`) carries
+  the batch for a `fixed table` root only, and only when the `message` surface
+  is on (it is in the default set; `--surface` can drop it). A plain `table`
+  root gets no `MeasureMessages`, `SaveMessages`, `LoadMessages` or
+  `LoadRetainMessages`. `LoadRetainMessages` on a fixed root is a named refusal
+  when the retain surface is on: retention needs a region, and a fixed root has
+  none. A table whose closure holds unbounded text emits no message codec
+  (`messageCarries`).
+- **Rust** (`internal/codegen/rusttable/message.go`, `messagebatch.go`) emits
+  the announcement when the unit has a fixed root, and the batch verbs for
+  fixed roots a fixed closure reaches. A plain `table` grows no message verb.
+- **Java** (`internal/codegen/javatable/messageform.go`) carries the
+  announcement and the batch only for a unit with a fixed root, and writes no
+  message file otherwise. The batch verbs are the root's (`emitRootBatch`); a
+  nested type gets the body walkers only.
+- **JavaScript** (`internal/codegen/jstable/messageform.go`, `messagebatch.go`)
+  carries the announcement and a fixed-root batch. The announcement file does
+  not itself emit the batch; `messagebatch.go` does, and only when the unit has
+  a fixed root. A plain `table` unit emits none of it.
+- **Dart** (`internal/codegen/darttable/messageform_announce.go`,
+  `messageform_batch.go`) carries the announcement and a fixed-root batch from
+  the fixed home. `emitMessageBatch` returns unless the root is a declared
+  fixed table.
+- **Elixir** (`internal/codegen/elixirtable/elixirtable.go`, `messageform.go`)
+  emits `<Package>.TableMessage` when the unit has a fixed root and does not
+  emit it otherwise. The module carries the announcement (`announce`,
+  `announce_measure`, `announce_read`) and the bitpacked batch
+  (`measure_messages`, `save_messages`, `load_messages`). The batch verbs are
+  the module's, over the vocabulary `announce_read` resolved, not a generated
+  verb per root. The entry bound and the byte bound are fields of that
+  vocabulary (default 4096 and 64 KiB), because the BEAM has no caller-owned
+  array.
 
 ---
 

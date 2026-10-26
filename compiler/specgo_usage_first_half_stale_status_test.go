@@ -24,6 +24,8 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 	}
 	spec := string(specBytes)
 
+	flat := func(s string) string { return strings.Join(strings.Fields(s), " ") }
+	pageFlat := flat(page)
 	has := func(want string) {
 		t.Helper()
 		if !strings.Contains(page, want) {
@@ -33,6 +35,20 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 	notHas := func(stale string) {
 		t.Helper()
 		if strings.Contains(page, stale) {
+			t.Errorf("USAGE.md still holds the stale sentence %q", stale)
+		}
+	}
+	// Wrapped prose still counts: a carrier or a false exclusion is the words
+	// in order, not the line break.
+	hasFlat := func(want string) {
+		t.Helper()
+		if !strings.Contains(pageFlat, flat(want)) {
+			t.Errorf("USAGE.md does not state %q", want)
+		}
+	}
+	notHasFlat := func(stale string) {
+		t.Helper()
+		if strings.Contains(pageFlat, flat(stale)) {
 			t.Errorf("USAGE.md still holds the stale sentence %q", stale)
 		}
 	}
@@ -70,16 +86,78 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 	has("and by Go; the seven other backends")
 	notHas("the eight other backends still write its previous")
 
-	// message form: Go carries the bitpacked form 2 in USAGE and SPEC.
-	has("The C++ reference, the tool and Go read and write the bitpacked form-`2`")
-	has("other seven language backends carry the variable form alone")
+	// message form: one list, SPEC-TABLES.md "WHERE THE FORM IS CARRIED".
+	// A supported carrier missing from that section, or a false exclusion
+	// back in USAGE or SPEC, fails. The stale C++/Go-only sentences are not
+	// required.
+	hasFlat("WHERE THE FORM IS CARRIED")
+	hasFlat("It is not a C++ and Go-only path, and it is not the same subset in every language.")
+	notHasFlat("The C++ reference, the tool and Go read and write the bitpacked form-`2`")
+	notHasFlat("other seven language backends carry the variable form alone")
 	notHas("ahead of its implementation")
 	notHas("its body is byte framed")
-	if !strings.Contains(spec, "The C++ reference, Go and the compiler's own\nengine carry the BITPACKED body under form byte `2`") {
-		t.Error("SPEC-TABLES.md does not list Go as a form-2 carrier")
+	notHasFlat("announcement surface only")
+	notHasFlat("nothing here reads a form-")
+
+	section := messageCarrierSection(spec)
+	if section == "" {
+		t.Fatal("SPEC-TABLES.md has no WHERE THE FORM IS CARRIED section")
 	}
-	if strings.Contains(spec, "The eight ports carry the VARIABLE form alone") {
-		t.Error("SPEC-TABLES.md still excludes Go from the form-2 carriers")
+	sectionFlat := flat(section)
+	hasSection := func(want string) {
+		t.Helper()
+		if !strings.Contains(sectionFlat, flat(want)) {
+			t.Errorf("WHERE THE FORM IS CARRIED does not state %q", want)
+		}
+	}
+	notSection := func(stale string) {
+		t.Helper()
+		if strings.Contains(sectionFlat, flat(stale)) {
+			t.Errorf("WHERE THE FORM IS CARRIED holds the false exclusion %q", stale)
+		}
+	}
+	hasSection("**C++** (`internal/codegen/cpptable/messageload.go`")
+	hasSection("`emitMessageEntries` writes `MeasureMessages`, `SaveMessages` and `LoadMessages` for a closure member that is not a map entry and not variable")
+	hasSection("A variable root's batch is the same three verbs over one region")
+	hasSection("**C** (`internal/codegen/ctable/message.go`")
+	hasSection("A member that is not variable and not a map entry gets `measure_messages`, `save_messages` and `load_messages`")
+	hasSection("A variable root's batch is `measure_messages`, `save_messages` and `load_messages` over one region in `emitMessageGraph`")
+	hasSection("**C#** (`internal/codegen/cstable/message.go`")
+	hasSection("That emit is not gated on `fixed table`")
+	hasSection("the region overloads of those three verbs and `LoadRetainMessages`")
+	hasSection("**Go** (`internal/codegen/gotable/messagewrite.go`")
+	hasSection("carries the batch for a `fixed table` root only")
+	hasSection("A plain `table` root gets no `MeasureMessages`")
+	hasSection("emits no message codec (`messageCarries`)")
+	hasSection("`LoadRetainMessages` on a fixed root is a named refusal")
+	hasSection("**Rust** (`internal/codegen/rusttable/message.go`")
+	hasSection("A plain `table` grows no message verb")
+	hasSection("**Java** (`internal/codegen/javatable/messageform.go`")
+	hasSection("writes no message file otherwise")
+	hasSection("**JavaScript** (`internal/codegen/jstable/messageform.go`")
+	hasSection("The announcement file does not itself emit the batch")
+	hasSection("**Dart** (`internal/codegen/darttable/messageform_announce.go`")
+	hasSection("`emitMessageBatch` returns unless the root is a declared fixed table")
+	hasSection("**Elixir** (`internal/codegen/elixirtable/elixirtable.go`")
+	hasSection("The module carries the announcement (`announce`, `announce_measure`, `announce_read`) and the bitpacked batch (`measure_messages`, `save_messages`, `load_messages`)")
+	hasSection("not a generated verb per root")
+	notSection("other seven language backends carry the variable form alone")
+	notSection("other seven language backends carry the VARIABLE form")
+	notSection("The eight ports carry the VARIABLE form alone")
+	notSection("announcement surface only")
+	notSection("nothing here reads a form-")
+	notSection("are a named follow-on beside the wire-form work M20")
+	notSection("The C++ reference, the tool and Go read and write the bitpacked form-")
+	notSection("engine carry the BITPACKED body under form byte")
+	specFlat := flat(spec)
+	if strings.Contains(specFlat, flat("The C++ reference, Go and the compiler's own engine carry the BITPACKED body under form byte `2`")) {
+		t.Error("SPEC-TABLES.md still limits the bitpacked body to the C++ reference, Go and the engine")
+	}
+	if strings.Contains(specFlat, "The eight ports carry the VARIABLE form alone") {
+		t.Error("SPEC-TABLES.md still excludes ports from the form-2 carriers")
+	}
+	if strings.Contains(specFlat, "other seven language backends carry the VARIABLE form") || strings.Contains(specFlat, "other seven language backends carry the variable form alone") {
+		t.Error("SPEC-TABLES.md still says the other seven carry the variable form alone")
 	}
 
 	// messages, table arms: C++, the tool, C, C# and Go carry table-armed unions.
@@ -113,4 +191,20 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 
 	// floats: a compressed float's -0 default becomes +0.
 	has("compressed float's `-0` lands and reads back as `+0`")
+}
+
+// messageCarrierSection is the one capability list, from its heading through
+// the next section. A carrier named only elsewhere does not satisfy the pin.
+func messageCarrierSection(spec string) string {
+	const start = "**WHERE THE FORM IS CARRIED.**"
+	i := strings.Index(spec, start)
+	if i < 0 {
+		return ""
+	}
+	rest := spec[i:]
+	j := strings.Index(rest, "#### THE SURFACE")
+	if j < 0 {
+		return ""
+	}
+	return rest[:j]
 }
