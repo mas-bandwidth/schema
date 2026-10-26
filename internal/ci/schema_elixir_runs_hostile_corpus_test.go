@@ -107,6 +107,8 @@ func TestSchemaElixirRunsHostileCorpusWiring(t *testing.T) {
 		"schedule:",
 		"workflow_dispatch:",
 		"runs-on: [self-hosted, linux, x64, schema]",
+		"branches: [ main, dev, fixed-table-form, 'sprint/**' ]",
+		"if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
 	} {
 		if !strings.Contains(workflowText, want) {
 			t.Errorf("the workflow does not carry %q", want)
@@ -117,5 +119,44 @@ func TestSchemaElixirRunsHostileCorpusWiring(t *testing.T) {
 	}
 	if !strings.Contains(workflowText, "schema-elixir-runs-hostile-corpus-negative-control") {
 		t.Error("the workflow does not run the planted-bad-pattern control")
+	}
+
+	// Self-hosted admission and dev/main trigger assertions for corpus and negative-control.
+	for _, ev := range []ciEvent{
+		{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema"},
+		{Name: "pull_request", Branch: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema", Labels: []string{"full-ci"}},
+	} {
+		if ok, err := jobSelectsSelfHosted(workflowText, "corpus", ev); err != nil || ok {
+			t.Errorf("Elixir corpus job admitted fork PR (%+v): ok=%v err=%v", ev, ok, err)
+		}
+		if ok, err := jobSelectsSelfHosted(workflowText, "negative-control", ev); err != nil || ok {
+			t.Errorf("Elixir negative-control job admitted fork PR (%+v): ok=%v err=%v", ev, ok, err)
+		}
+	}
+	for _, ev := range []ciEvent{
+		{Name: "pull_request", Branch: "dev", HeadRef: "sprint/schema-elixir", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
+		{Name: "pull_request", Branch: "main", HeadRef: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
+		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
+		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "push", Branch: "sprint/schema-elixir", Repo: "mas-bandwidth/schema"},
+		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
+		{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
+	} {
+		if ok, err := jobSelectsSelfHosted(workflowText, "corpus", ev); err != nil || !ok {
+			t.Errorf("Elixir corpus job did not run for allowed event (%+v): ok=%v err=%v", ev, ok, err)
+		}
+		wantNeg := ev.Name == "schedule" || ev.Name == "workflow_dispatch"
+		if ok, err := jobSelectsSelfHosted(workflowText, "negative-control", ev); err != nil || ok != wantNeg {
+			t.Errorf("Elixir negative-control under (%+v) = %v (err=%v), want %v", ev, ok, err, wantNeg)
+		}
+	}
+	// Mutation checks: dropping same-repo guard admits fork PR; dropping dev branch skips stream-to-dev PR.
+	noGuard := strings.Replace(workflowText, "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n", "", 1)
+	if ok, err := jobSelectsSelfHosted(noGuard, "corpus", ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema"}); err != nil || !ok {
+		t.Errorf("guard mutation control did not admit fork PR as expected: ok=%v err=%v", ok, err)
+	}
+	noDev := strings.ReplaceAll(workflowText, "branches: [ main, dev, fixed-table-form, 'sprint/**' ]", "branches: [ main, 'sprint/**' ]")
+	if ok, err := jobSelectsSelfHosted(noDev, "corpus", ciEvent{Name: "pull_request", Branch: "dev", HeadRef: "sprint/schema-elixir", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}); err != nil || ok {
+		t.Errorf("trigger mutation control still ran stream-to-dev PR after removing dev: ok=%v err=%v", ok, err)
 	}
 }
