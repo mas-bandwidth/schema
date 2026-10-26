@@ -92,8 +92,11 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMe
  case 14:case 16: {
   TableMessageEntry elem=table_message_element(e);
   if(!table_message_count(r,e,&n))return 0;
-  if(e->kind==14 && (elem.kind==0||elem.kind==32))return 1;
-  if(e->kind==14 && elem.value_bits>=0)return table_message_skip_run(r,n,elem.value_bits);
+  if(elem.value_bits>=0||elem.kind==0||elem.kind==32) {
+   int64_t width=elem.value_bits>0?elem.value_bits:0;
+   if(e->kind==16)width+=r->vocabulary->ref_bits;
+   return table_message_skip_run(r,n,width);
+  }
   for(i=0;i<n;i++) {
    if(e->kind==16 && !table_message_ref(r,&entry,1))return 0;
    if(!table_message_skip_deeper(r,&elem))return 0;

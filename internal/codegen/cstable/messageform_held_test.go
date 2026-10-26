@@ -49,6 +49,9 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 		{"skip_depth_array_below_128", "The skip walk is bounded at depth 128."},
 		{"skip_depth_array_at_128", "The skip walk is bounded at depth 128."},
 		{"skip_depth_above_128_array", "The skip walk is bounded at depth 128: an element skip past 128 levels is refused as malformed."},
+		{"skip_depth_keyed_fixed_at_128", "The skip walk is bounded at depth 128: a fixed-width keyed array at depth 128 does not charge element depth."},
+		{"skip_depth_keyed_nopayload_at_128", "The skip walk is bounded at depth 128: a no-payload keyed array at depth 128 does not charge element depth."},
+		{"skip_depth_above_128_keyed", "The skip walk is bounded at depth 128: a keyed nested-body element past 128 levels is refused as malformed."},
 		{"skip_depth_continuation", "The skip walk is bounded at depth 128."},
 		{"skip_depth_truncation", "The skip walk is bounded at depth 128."},
 	}
@@ -177,7 +180,7 @@ func csHeldBuild(t *testing.T) ([]byte, error) {
 	csc, refs, runtime := csDotnetToolchain(t)
 	dotnet := csDotnet()
 	app := filepath.Join(dir, "csmsgheld.dll")
-	args := []string{"exec", csc, "-nologo", "-noconfig", "-target:exe", "-unsafe",
+	args := []string{"exec", csc, "-nologo", "-noconfig", "-target:exe", "-optimize+", "-unsafe",
 		"-nullable:annotations", "-langversion:latest", "-nostdlib+", "-out:" + app}
 	for _, ref := range refs {
 		args = append(args, "-r:"+ref)
@@ -695,6 +698,9 @@ static class Held
         var body = Vocab(Entry(1, 13));
         var arm = Vocab(Entry(1, 15));
         var array = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 14, Shape = new TableMessageShape { Min = 1, Max = 1, Elem = 13, Inner = new TableMessageShape() } });
+        var keyed6 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 6, Inner = new TableMessageShape() } });
+        var keyed32 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 32, Inner = new TableMessageShape() } });
+        var keyed13 = Vocab(Entry(1, 13), new TableMessageEntry { Id = 2, Kind = 16, Shape = new TableMessageShape { Min = 0, Max = 3, Elem = 13, Inner = new TableMessageShape() } });
         ExpectOk("skip_depth_body_below_128", body, Pack(1, 127, 1, 0, 0, 128));
         byte[] at = Pack(1, 128, 1, 0, 0, 129);
         ExpectOk("skip_depth_body_at_128", body, at);
@@ -709,6 +715,9 @@ static class Held
         ExpectOk("skip_depth_array_below_128", array, Pack(2, 125, 1, 1, 2, 127));
         ExpectOk("skip_depth_array_at_128", array, Pack(2, 126, 1, 1, 2, 128));
         ExpectBad("skip_depth_above_128_array", array, Pack(2, 127, 1, 1, 2, 129));
+        ExpectOk("skip_depth_keyed_fixed_at_128", keyed6, Pack(2, 128, 1, 2, 2, 139));
+        ExpectOk("skip_depth_keyed_nopayload_at_128", keyed32, Pack(2, 128, 1, 2, 2, 131));
+        ExpectBad("skip_depth_above_128_keyed", keyed13, Pack(2, 127, 1, 2, 2, 132));
     }
 }
 

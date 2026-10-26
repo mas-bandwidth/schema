@@ -937,6 +937,7 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
     if ( depth > 128 ) { return false; }
     switch ( entry.elem_kind )
     {
+        case 0: case 32: return true;
         case 13: return TableMessageSkipBody( r, vocabulary, index_bits, depth + 1 );
         case 30: return TableMessageSkipVariant( r, vocabulary );
         case 17: return index_bits > 0 && r.skip( index_bits );
@@ -968,6 +969,7 @@ inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, c
         // RESOLVE something, and a resolve that contradicts its position is
         // damage this reader must still find, so they are walked
         case 13: case 15: case 30: case 17: return -1;
+        case 0: case 32: elem = 0; break;
         default: elem = entry.elem_value_bits; break;
     }
     if ( elem < 0 ) { return -1; }

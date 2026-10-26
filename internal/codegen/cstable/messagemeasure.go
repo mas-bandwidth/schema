@@ -37,21 +37,24 @@ const tableMessageMeasureSource = `
         }
         if ((kind == 14 || kind == 16) && (shape.Elem == field.Kind || Widen(shape.Elem, field.Kind)))
         {
-            if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
-            ulong n = (ulong)raw + shape.Min;
+            ulong min = kind == 16 ? 0 : shape.Min;
+            if (!r.Get(BitCount(shape.Max - min), out UInt128 raw) || kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
+            ulong n = (ulong)raw + min;
             if (field.Dynamic)
             {
                 int floor = Width(shape.Elem) != 0 ? ValueBits(shape.Elem, shape.Inner) : 1;
                 if (n > int.MaxValue || floor > 0 && n > (ulong)((r.End - r.At) / floor)) { return false; }
                 extent = Align(extent, field.StorageAlign) + (long)n * field.StorageSize;
             }
-            if (kind == 14 && Width(shape.Elem) != 0) { return r.Skip((long)n * ValueBits(shape.Elem, shape.Inner)); }
+            if (Width(shape.Elem) != 0 || shape.Elem == 0 || shape.Elem == 32)
+            { return r.Skip((long)n * (ValueBits(shape.Elem, shape.Inner) + (kind == 16 ? d.Vocabulary.RefBits : 0))); }
             for (ulong i = 0; i < n; i++)
             {
                 if (kind == 16 && !r.Get(d.Vocabulary.RefBits, out _)) { return false; }
                 if (shape.Elem == 13) { if (!MessageExtentBody(ref r, d, field.Table, ref extent, depth + 2)) { return false; } }
                 else if (shape.Elem == 15) { if (!MessageExtentField(ref r, d, field, 15, shape.Inner, ref extent, depth + 1)) { return false; } }
-                else if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, depth + 1)) { return false; }
+                else if (shape.Elem == 17 || shape.Elem == 30) { if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, depth + 1)) { return false; } }
+                else { int bits = ValueBits(shape.Elem, shape.Inner); if (bits < 0 || !r.Skip(bits)) { return false; } }
             }
             return true;
         }

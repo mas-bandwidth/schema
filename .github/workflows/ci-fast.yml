@@ -35,7 +35,7 @@ name: CI fast
 #     versioning gates of the LEGS the diff touches.
 #   * ci-full.yml runs everything — the whole go-test, pins, the nine
 #     conformance legs, the 47 negative controls, windows, msvc, big-endian,
-#     vuln — on merge to main or fixed-table-form, nightly, on
+#     vuln — on merge to main, dev or fixed-table-form, nightly, on
 #     `gh workflow run ci-full.yml --ref <branch>`, and on any pull request
 #     carrying the `full-ci` label.
 #
@@ -143,7 +143,7 @@ name: CI fast
 
 on:
   pull_request:
-    branches: [ main, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form ]
   workflow_dispatch:
 
 # A superseded push cancels its predecessor: this lane is for the tip of a
@@ -187,7 +187,7 @@ jobs:
       - name: the diff, the packages and the legs
         id: pick
         env:
-          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || 'fixed-table-form' }}
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || 'dev' }}
         run: |
           set -euo pipefail
           git fetch --quiet origin "$BASE"
@@ -286,7 +286,7 @@ jobs:
           fi
 
           # the legs as a JSON array, which is what a matrix reads
-          json=$(printf '%s' "$legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} {printf "%s\"%s\"", (NR>1?",":""), $1} END{printf "]"}')
+          json=$(printf '%s' "$legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
           [ -n "$json" ] || json='[]'
 
           echo "broad=$broad"        >> "$GITHUB_OUTPUT"

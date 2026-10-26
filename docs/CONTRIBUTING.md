@@ -100,7 +100,15 @@ work lands as card heads, in a batch, onto a branch per work stream
 SERIALLY into `dev`, never into `main` and never into another stream. `main`
 only moves by a promotion pull request from `dev` (titled "promote dev to
 main"), which runs the full checks; a hand fix goes to `dev` first, the same
-way. A stream whose base is `main` is a defect.
+way. A stream whose base is `main` is a defect. Pull requests into `dev` and
+`main` automatically run `ci-fast.yml` (planning by diff against the target
+branch so only touched packages and legs are selected) and the always-on
+`generated`, `pins` and `cs-tables` gates in `ci-full.yml` (with the full
+`ci-full.yml` suite running on every merge push to `dev` and `main`, nightly, on
+`workflow_dispatch`, and on any same-repository pull request carrying the
+`full-ci` label). Every self-hosted fleet job requires
+`github.event.pull_request.head.repo.full_name == github.repository` on
+`pull_request` events so fork code never executes on fleet runners.
 
 **When the compiler refuses.** Every refusal the language can produce is a case
 in the break-the-language suite (`internal/check/diagnostics_test.go`, and

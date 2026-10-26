@@ -3856,22 +3856,17 @@ namespace Benchtable
             }
             static bool MessageName(ref BitReader r, MessageRead d, out ulong reference, out TableMessageEntry entry)
             { return MessageReference(ref r, d, out reference, out entry) && reference != 0 && !Reserved(entry.Id) && entry.Kind == 0; }
-            // depth is the unknown-skip walk (docs/SPEC-TABLES.md message_skip_depth).
-            // Callers that omit it start at 0. A nested body, a union arm and a walked
-            // element pass depth + 1. depth > 128 is malformed; 128 itself still skips.
-            static bool MessageSkipBody(ref BitReader r, MessageRead d, int depth = 0)
+            static bool MessageSkipBody(ref BitReader r, MessageRead d)
             {
-                if (depth > 128) { return false; }
                 for (; ; )
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry e)) { return false; }
                     if (reference == 0) { return true; }
-                    if (!MessageSkip(ref r, d, e.Kind, e.Shape, depth)) { return false; }
+                    if (!MessageSkip(ref r, d, e.Kind, e.Shape)) { return false; }
                 }
             }
-            static bool MessageSkip(ref BitReader r, MessageRead d, byte kind, TableMessageShape shape, int depth = 0)
+            static bool MessageSkip(ref BitReader r, MessageRead d, byte kind, TableMessageShape shape)
             {
-                if (depth > 128) { return false; }
                 switch (kind)
                 {
                     case 0: case 32: return true;
@@ -3880,8 +3875,8 @@ namespace Benchtable
                             (variant == 0 || !Reserved(ve.Id) && ve.Kind == 0);
                     case 15:
                         if (!MessageReference(ref r, d, out ulong arm, out TableMessageEntry ae)) { return false; }
-                        return arm == 0 || !Reserved(ae.Id) && ae.Kind != 0 && MessageSkip(ref r, d, ae.Kind, ae.Shape, depth + 1);
-                    case 13: return MessageSkipBody(ref r, d, depth + 1);
+                        return arm == 0 || !Reserved(ae.Id) && ae.Kind != 0 && MessageSkip(ref r, d, ae.Kind, ae.Shape);
+                    case 13: return MessageSkipBody(ref r, d);
                     case 17: return d.IndexBits > 0 && r.Skip(d.IndexBits);
                     case 12:
                     case 33:
@@ -3899,7 +3894,7 @@ namespace Benchtable
                         {
                             if (kind == 16 && !r.Get(d.Vocabulary.RefBits, out _)) { return false; }
                             if (shape.Elem == 13 || shape.Elem == 15 || shape.Elem == 17 || shape.Elem == 30)
-                            { if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, depth + 1)) { return false; } }
+                            { if (!MessageSkip(ref r, d, shape.Elem, shape.Inner)) { return false; } }
                             else { int bits = ValueBits(shape.Elem, shape.Inner); if (bits < 0 || !r.Skip(bits)) { return false; } }
                         }
                         return true;
@@ -4237,15 +4232,8 @@ namespace Benchtable
                 return Finish(report, Verdict.Ok);
             }
 
-            // depth is the same counter MessageSkip uses (docs/SPEC-TABLES.md
-            // message_skip_depth). Callers that omit it start at 0. An unknown field
-            // is skipped at this depth. A nested body, a union arm and a walked
-            // element go one deeper, so an array element that is itself a body is
-            // two deeper. The remaining-byte floor below is a count bound, not this
-            // counter. depth > 128 is malformed; 128 itself still measures.
-            static bool MessageExtentBody(ref BitReader r, MessageRead d, TableTypeInfo type, ref long extent, int depth = 0)
+            static bool MessageExtentBody(ref BitReader r, MessageRead d, TableTypeInfo type, ref long extent)
             {
-                if (depth > 128) { return false; }
                 for (; ; )
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
@@ -4253,14 +4241,13 @@ namespace Benchtable
                     TableFieldInfo field = null;
                     if (type != null)
                     { field = FindField(type, entry.Id); if (field != null && !MessageCompatible(entry, field, out _)) { field = null; } }
-                    if (field == null) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } }
-                    else if (!MessageExtentField(ref r, d, field, entry.Kind, entry.Shape, ref extent, depth)) { return false; }
+                    if (field == null) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape)) { return false; } }
+                    else if (!MessageExtentField(ref r, d, field, entry.Kind, entry.Shape, ref extent)) { return false; }
                 }
             }
-            static bool MessageExtentField(ref BitReader r, MessageRead d, TableFieldInfo field, byte kind, TableMessageShape shape, ref long extent, int depth = 0)
+            static bool MessageExtentField(ref BitReader r, MessageRead d, TableFieldInfo field, byte kind, TableMessageShape shape, ref long extent)
             {
-                if (depth > 128) { return false; }
-                if (kind == 13) { return MessageExtentBody(ref r, d, field.Table, ref extent, depth + 1); }
+                if (kind == 13) { return MessageExtentBody(ref r, d, field.Table, ref extent); }
                 if (kind == 15)
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
@@ -4268,8 +4255,8 @@ namespace Benchtable
                     if (entry.Kind == 0 || Reserved(entry.Id)) { return false; }
                     int tag = FindVariant(field, entry.Id, false);
                     TableFieldInfo arm = tag == 0 ? null : field.Arms.Arms[tag].Field;
-                    if (arm == null || !MessageCompatible(entry, arm, out _)) { return MessageSkip(ref r, d, entry.Kind, entry.Shape, depth + 1); }
-                    return MessageExtentField(ref r, d, arm, entry.Kind, entry.Shape, ref extent, depth + 1);
+                    if (arm == null || !MessageCompatible(entry, arm, out _)) { return MessageSkip(ref r, d, entry.Kind, entry.Shape); }
+                    return MessageExtentField(ref r, d, arm, entry.Kind, entry.Shape, ref extent);
                 }
                 if ((kind == 14 || kind == 16) && (shape.Elem == field.Kind || Widen(shape.Elem, field.Kind)))
                 {
@@ -4285,13 +4272,13 @@ namespace Benchtable
                     for (ulong i = 0; i < n; i++)
                     {
                         if (kind == 16 && !r.Get(d.Vocabulary.RefBits, out _)) { return false; }
-                        if (shape.Elem == 13) { if (!MessageExtentBody(ref r, d, field.Table, ref extent, depth + 2)) { return false; } }
-                        else if (shape.Elem == 15) { if (!MessageExtentField(ref r, d, field, 15, shape.Inner, ref extent, depth + 1)) { return false; } }
-                        else if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, depth + 1)) { return false; }
+                        if (shape.Elem == 13) { if (!MessageExtentBody(ref r, d, field.Table, ref extent)) { return false; } }
+                        else if (shape.Elem == 15) { if (!MessageExtentField(ref r, d, field, 15, shape.Inner, ref extent)) { return false; } }
+                        else if (!MessageSkip(ref r, d, shape.Elem, shape.Inner)) { return false; }
                     }
                     return true;
                 }
-                return MessageSkip(ref r, d, kind, shape, depth);
+                return MessageSkip(ref r, d, kind, shape);
             }
             // Frame one body without constructing its values. The root follows the
             // node records on the wire but precedes them in the region.

@@ -50,7 +50,11 @@ fixed table Root {
 	for _, clause := range clauses {
 		t.Run(clause.name, func(t *testing.T) {
 			t.Parallel()
-			runCGenerated(t, schema, clause.probe)
+			if clause.name == "skip_depth_above_128" {
+				runCGenerated(t, schema, clause.probe, "-fsanitize=address,undefined", "-fno-omit-frame-pointer")
+			} else {
+				runCGenerated(t, schema, clause.probe)
+			}
 		})
 	}
 }
@@ -415,8 +419,8 @@ int main(void)
 {
     uint8_t buf[128];
     int64_t n;
-    TableMessageEntry body, arm, arr[2];
-    TableVocabulary body_v, arm_v, arr_v;
+    TableMessageEntry body, arm, arr[2], keyed6[2], keyed32[2], keyed13[2];
+    TableVocabulary body_v, arm_v, arr_v, keyed6_v, keyed32_v, keyed13_v;
     fill_entry(&body, 13);
     body_v = vocab_of(&body, 1, 1);
     fill_entry(&arm, 15);
@@ -428,6 +432,25 @@ int main(void)
     arr[1].max = 1;
     arr[1].elem_kind = 13;
     arr_v = vocab_of(arr, 2, 2);
+    fill_entry(&keyed6[0], 13);
+    fill_entry(&keyed6[1], 16);
+    keyed6[1].id = 2;
+    keyed6[1].max = 3;
+    keyed6[1].elem_kind = 6;
+    keyed6[1].elem_value_bits = 8;
+    keyed6_v = vocab_of(keyed6, 2, 2);
+    fill_entry(&keyed32[0], 13);
+    fill_entry(&keyed32[1], 16);
+    keyed32[1].id = 2;
+    keyed32[1].max = 3;
+    keyed32[1].elem_kind = 32;
+    keyed32_v = vocab_of(keyed32, 2, 2);
+    fill_entry(&keyed13[0], 13);
+    fill_entry(&keyed13[1], 16);
+    keyed13[1].id = 2;
+    keyed13[1].max = 3;
+    keyed13[1].elem_kind = 13;
+    keyed13_v = vocab_of(keyed13, 2, 2);
     n = pack_refs(buf, 128, 1, 127, 1, 0, 0, 128);
     if (n < 0 || expect_ok("skip_depth_body_below_128", &body_v, buf, n)) return 1;
     n = pack_refs(buf, 128, 1, 128, 1, 0, 0, 129);
@@ -450,6 +473,12 @@ int main(void)
     if (n < 0 || expect_ok("skip_depth_array_at_128", &arr_v, buf, n)) return 1;
     n = pack_refs(buf, 128, 2, 127, 1, 1, 2, 129);
     if (n < 0 || expect_bad("skip_depth_above_128 array", &arr_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 128, 1, 2, 2, 139);
+    if (n < 0 || expect_ok("skip_depth_keyed_fixed_at_128", &keyed6_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 128, 1, 2, 2, 131);
+    if (n < 0 || expect_ok("skip_depth_keyed_nopayload_at_128", &keyed32_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 127, 1, 2, 2, 132);
+    if (n < 0 || expect_bad("skip_depth_above_128 keyed", &keyed13_v, buf, n)) return 1;
     return 0;
 }
 `

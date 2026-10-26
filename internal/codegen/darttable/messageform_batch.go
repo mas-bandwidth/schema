@@ -1242,18 +1242,19 @@ final class TableMessageShape {
         }
         if (kind == 14 && s.elem == 6 && !r.bits.align()) return false;
         final inner = s.inner ?? TableMessageShape();
-        // elementRunBits + skipRun (internal/tablewire/messagedecode.go): a
-        // fixed-width element of an ARRAY is stepped arithmetically; every
-        // other element is walked one at a time.
-        if (kind == 14) {
-          final elem = s.elem;
-          if (elem != 13 && elem != 15 && elem != 17 && elem != 30) {
-            final run = valueBits(elem, inner);
-            if (run == 0) return true;
-            if (run > 0) {
-              if (n > 0x7fffffffffffffff ~/ run) return false;
-              return r.bits.skip(n * run);
+        // elementRunBits + skipRun (internal/codegen/gotable/message.go): a
+        // fixed-width element of an array or keyed entry is stepped
+        // arithmetically; only a walked element recurses at depth + 1.
+        final elem = s.elem;
+        if (elem != 13 && elem != 15 && elem != 17 && elem != 30) {
+          var run = (elem == 0 || elem == 32) ? 0 : valueBits(elem, inner);
+          if (run >= 0) {
+            if (kind == 16) {
+              run += r.vocabulary.refBits;
             }
+            if (run == 0) return true;
+            if (n > 0x7fffffffffffffff ~/ run) return false;
+            return r.bits.skip(n * run);
           }
         }
         for (var i = 0; i < n; i++) {

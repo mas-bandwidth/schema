@@ -737,6 +737,40 @@ fixed table Root {
 	if err != nil {
 		t.Fatalf("skip_depth_above_128: %v\n%s", err, out)
 	}
+	out, err = runCppGeneratedEdited(t, schema, cppSkipDepthMain, func(files map[string][]byte) {
+		files["ProbeTable.h"] = []byte(strings.ReplaceAll(string(files["ProbeTable.h"]), "if ( depth > 128 )", "if ( depth > 256 )"))
+	})
+	if err == nil {
+		t.Fatalf("skip_depth_above_128: raising the depth bound from 128 to 256 did not fail the above-limit rows")
+	}
+	u := cppUnitFrom(t, schema)
+	files, err := cpp.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.cpp"), []byte(cppSkipDepthMain), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "probe_asan")
+	args := []string{"-std=c++17", "-O2", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-I", dir,
+		filepath.Join(dir, "main.cpp"), filepath.Join(dir, "ProbeBlock.cpp"), filepath.Join(dir, "ProbeTable.cpp"), "-o", bin}
+	if out, err := exec.Command("c++", args...).CombinedOutput(); err != nil {
+		t.Fatalf("compile asan: %v\n%s", err, out)
+	}
+	if out, err := exec.Command(bin).CombinedOutput(); err != nil {
+		t.Fatalf("run asan: %v\n%s", err, out)
+	}
 }
 
 const cppSkipDepthMain = `#include "ProbeTable.h"
@@ -800,7 +834,7 @@ int main()
 {
     uint8_t buf[128];
     int64_t n;
-    TableMessageEntry body, arm, arr[2];
+    TableMessageEntry body, arm, arr[2], keyed6[2], keyed32[2], keyed13[2];
     fill_entry(body, 13);
     fill_entry(arm, 15);
     fill_entry(arr[0], 13);
@@ -809,6 +843,22 @@ int main()
     arr[1].min = 1;
     arr[1].max = 1;
     arr[1].elem_kind = 13;
+    fill_entry(keyed6[0], 13);
+    fill_entry(keyed6[1], 16);
+    keyed6[1].id = 2;
+    keyed6[1].max = 3;
+    keyed6[1].elem_kind = 6;
+    keyed6[1].elem_value_bits = 8;
+    fill_entry(keyed32[0], 13);
+    fill_entry(keyed32[1], 16);
+    keyed32[1].id = 2;
+    keyed32[1].max = 3;
+    keyed32[1].elem_kind = 32;
+    fill_entry(keyed13[0], 13);
+    fill_entry(keyed13[1], 16);
+    keyed13[1].id = 2;
+    keyed13[1].max = 3;
+    keyed13[1].elem_kind = 13;
     TableVocabulary body_v(&body, 1);
     body_v.count = 1;
     body_v.ref_bits = 1;
@@ -821,6 +871,18 @@ int main()
     arr_v.count = 2;
     arr_v.ref_bits = 2;
     arr_v.announced = true;
+    TableVocabulary keyed6_v(keyed6, 2);
+    keyed6_v.count = 2;
+    keyed6_v.ref_bits = 2;
+    keyed6_v.announced = true;
+    TableVocabulary keyed32_v(keyed32, 2);
+    keyed32_v.count = 2;
+    keyed32_v.ref_bits = 2;
+    keyed32_v.announced = true;
+    TableVocabulary keyed13_v(keyed13, 2);
+    keyed13_v.count = 2;
+    keyed13_v.ref_bits = 2;
+    keyed13_v.announced = true;
     n = pack_refs(buf, 128, 1, 127, 1, 0, 0, 128);
     if (n < 0 || expect_ok("skip_depth_body_below_128", body_v, buf, n)) return 1;
     n = pack_refs(buf, 128, 1, 128, 1, 0, 0, 129);
@@ -843,6 +905,12 @@ int main()
     if (n < 0 || expect_ok("skip_depth_array_at_128", arr_v, buf, n)) return 1;
     n = pack_refs(buf, 128, 2, 127, 1, 1, 2, 129);
     if (n < 0 || expect_bad("skip_depth_above_128 array", arr_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 128, 1, 2, 2, 139);
+    if (n < 0 || expect_ok("skip_depth_keyed_fixed_at_128", keyed6_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 128, 1, 2, 2, 131);
+    if (n < 0 || expect_ok("skip_depth_keyed_nopayload_at_128", keyed32_v, buf, n)) return 1;
+    n = pack_refs(buf, 128, 2, 127, 1, 2, 2, 132);
+    if (n < 0 || expect_bad("skip_depth_above_128 keyed", keyed13_v, buf, n)) return 1;
     return 0;
 }
 `

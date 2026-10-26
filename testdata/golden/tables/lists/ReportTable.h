@@ -2027,31 +2027,25 @@ inline bool TableMessageSkipVariant( TableBitReader & r, const TableVocabulary &
 // the announced ENTRY alone (§3.3). It is what makes an unknown entry
 // skippable on a body with no kind byte, and it is ONE function over every
 // table, because a shape says everything a skipper needs.
-// depth is the unknown-skip walk (docs/SPEC-TABLES.md message_skip_depth).
-// Callers that omit it start at 0. A nested body, a union arm and a walked
-// element pass depth + 1. depth > 128 is malformed; 128 itself still skips.
-inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth = 0 );
-inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth = 0 );
+inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits );
+inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry );
 
 // TableMessageSkipElement steps over ONE element of an array or keyed entry
 // by the element's own announced shape: a nested body to its zero reference,
 // a variant or a node index at its reference width, a union arm by its own
-// entry, and a fixed-width value at its bits. depth is that element's depth:
-// a body under it is one level deeper, and a union arm's own increment lives
-// inside TableMessageSkip.
-inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth = 0 )
+// entry, and a fixed-width value at its bits.
+inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry )
 {
-    if ( depth > 128 ) { return false; }
     switch ( entry.elem_kind )
     {
-        case 13: return TableMessageSkipBody( r, vocabulary, index_bits, depth + 1 );
+        case 13: return TableMessageSkipBody( r, vocabulary, index_bits );
         case 30: return TableMessageSkipVariant( r, vocabulary );
         case 17: return index_bits > 0 && r.skip( index_bits );
         case 15:
         {
             TableMessageEntry inner;
             inner.kind = 15;
-            return TableMessageSkip( r, vocabulary, index_bits, inner, depth );
+            return TableMessageSkip( r, vocabulary, index_bits, inner );
         }
         default:
         {
@@ -2094,14 +2088,13 @@ inline bool TableMessageSkipRun( TableBitReader & r, uint64_t n, int64_t width )
     return r.skip( (int64_t) ( n * (uint64_t) width ) );
 }
 
-inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth )
+inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry )
 {
-    if ( depth > 128 ) { return false; }
     switch ( entry.kind )
     {
         case 0: case 32: return true;              // a name, and a payload-free arm
         case 30: return TableMessageSkipVariant( r, vocabulary );
-        case 13: return TableMessageSkipBody( r, vocabulary, index_bits, depth + 1 );
+        case 13: return TableMessageSkipBody( r, vocabulary, index_bits );
         case 17: return index_bits > 0 && r.skip( index_bits ); // a node index, at the width the body's node count settled
         case 15:
         {
@@ -2110,7 +2103,7 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             if ( arm == 0 ) { return true; }
             TableMessageEntry arm_entry;
             if ( !TableMessageArmEntry( vocabulary, arm, arm_entry ) ) { return false; }
-            return TableMessageSkip( r, vocabulary, index_bits, arm_entry, depth + 1 );
+            return TableMessageSkip( r, vocabulary, index_bits, arm_entry );
         }
         case 12:
         {
@@ -2152,7 +2145,7 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             for ( uint64_t i = 0; i < n; i++ )
             {
                 if ( entry.kind == 16 && !r.skip( vocabulary.ref_bits ) ) { return false; }
-                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; }
+                if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry ) ) { return false; }
             }
             return true;
         }
@@ -2161,16 +2154,15 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
     return width >= 0 && r.skip( width );
 }
 
-inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth )
+inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits )
 {
-    if ( depth > 128 ) { return false; }
     for ( ;; )
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
         if ( ref == 0 ) { return true; }
         if ( ref > (uint64_t) vocabulary.count ) { return false; }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, TableVocabularyEntryAt( vocabulary, ref ), depth ) ) { return false; }
+        if ( !TableMessageSkip( r, vocabulary, index_bits, TableVocabularyEntryAt( vocabulary, ref ) ) ) { return false; }
     }
 }
 
@@ -8348,15 +8340,15 @@ inline void FloatsReset( Floats & value )
 template <typename Ctx> inline int64_t BytesMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Bytes & value );
 template <typename Ctx> inline bool BytesSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Bytes & value );
 inline bool BytesLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Bytes & value );
-inline bool BytesMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth = 0 );
+inline bool BytesMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at );
 template <typename Ctx> inline int64_t IntsMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Ints & value );
 template <typename Ctx> inline bool IntsSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Ints & value );
 inline bool IntsLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Ints & value );
-inline bool IntsMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth = 0 );
+inline bool IntsMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at );
 template <typename Ctx> inline int64_t FloatsMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Floats & value );
 template <typename Ctx> inline bool FloatsSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Floats & value );
 inline bool FloatsLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Floats & value );
-inline bool FloatsMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth = 0 );
+inline bool FloatsMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at );
 
 // ---- the arena's reset hook (docs/SPEC-TABLES.md §6) ----
 //
@@ -8683,9 +8675,8 @@ inline bool BytesSaveMessageBody( const Ctx & ctx, const TableNumbering & number
 
 // BytesMessageExtent: the extent Bytes's maps command on the message wire, from
 // the FRAMING alone (docs/SPEC-TABLES.md §2.8, §3.3, §6.5).
-inline bool BytesMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth )
+inline bool BytesMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at )
 {
-    if ( depth > 128 ) { return false; } // message_skip_depth (docs/SPEC-TABLES.md)
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -8705,10 +8696,10 @@ inline bool BytesMessageExtent( TableBitReader & r, const TableVocabulary & voca
             at += (int64_t) n * (int64_t) sizeof( uint8_t ); // the whole array FIRST
             const int64_t run = TableMessageElementRunBits( vocabulary, entry );
             if ( run >= 0 ) { if ( !TableMessageSkipRun( r, n, run ) ) { return false; } }
-            else { for ( uint64_t i = 0; i < n; i++ ) { if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; } } }
+            else { for ( uint64_t i = 0; i < n; i++ ) { if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry ) ) { return false; } } }
             continue;
         }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
+        if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { return false; }
     }
 }
 
@@ -9102,9 +9093,8 @@ inline bool IntsSaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
 
 // IntsMessageExtent: the extent Ints's maps command on the message wire, from
 // the FRAMING alone (docs/SPEC-TABLES.md §2.8, §3.3, §6.5).
-inline bool IntsMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth )
+inline bool IntsMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at )
 {
-    if ( depth > 128 ) { return false; } // message_skip_depth (docs/SPEC-TABLES.md)
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -9123,10 +9113,10 @@ inline bool IntsMessageExtent( TableBitReader & r, const TableVocabulary & vocab
             at += (int64_t) n * (int64_t) sizeof( int32_t ); // the whole array FIRST
             const int64_t run = TableMessageElementRunBits( vocabulary, entry );
             if ( run >= 0 ) { if ( !TableMessageSkipRun( r, n, run ) ) { return false; } }
-            else { for ( uint64_t i = 0; i < n; i++ ) { if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; } } }
+            else { for ( uint64_t i = 0; i < n; i++ ) { if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry ) ) { return false; } } }
             continue;
         }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
+        if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { return false; }
     }
 }
 
@@ -9494,9 +9484,8 @@ inline bool FloatsSaveMessageBody( const Ctx & ctx, const TableNumbering & numbe
 
 // FloatsMessageExtent: the extent Floats's maps command on the message wire, from
 // the FRAMING alone (docs/SPEC-TABLES.md §2.8, §3.3, §6.5).
-inline bool FloatsMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth )
+inline bool FloatsMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at )
 {
-    if ( depth > 128 ) { return false; } // message_skip_depth (docs/SPEC-TABLES.md)
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -9515,10 +9504,10 @@ inline bool FloatsMessageExtent( TableBitReader & r, const TableVocabulary & voc
             at += (int64_t) n * (int64_t) sizeof( float ); // the whole array FIRST
             const int64_t run = TableMessageElementRunBits( vocabulary, entry );
             if ( run >= 0 ) { if ( !TableMessageSkipRun( r, n, run ) ) { return false; } }
-            else { for ( uint64_t i = 0; i < n; i++ ) { if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; } } }
+            else { for ( uint64_t i = 0; i < n; i++ ) { if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry ) ) { return false; } } }
             continue;
         }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
+        if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { return false; }
     }
 }
 

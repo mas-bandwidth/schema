@@ -665,6 +665,24 @@ const dartSkipDepthBody = `
   array.refBits = width;
   array.announced = true;
 
+  h.TableVocabulary keyedVocab(int elemKind) {
+    final sig16 = Uint8List(12);
+    sig16[9] = (1 << width) - 1;
+    sig16[10] = elemKind;
+    final entries = List<h.TableMessageEntry>.generate(8, (i) => h.TableMessageEntry(0, 0));
+    entries[6] = h.TableMessageEntry(1, 13, Uint8List(9));
+    entries[7] = h.TableMessageEntry(2, 16, sig16);
+    final vocab = h.TableVocabulary(entries: entries);
+    vocab.count = 8;
+    vocab.refBits = width;
+    vocab.announced = true;
+    return vocab;
+  }
+
+  final keyed6 = keyedVocab(6);
+  final keyed32 = keyedVocab(32);
+  final keyed13 = keyedVocab(13);
+
   Uint8List pack(int nlead, int lead, int nmid, int mid, int ntail) {
     final n = nlead + nmid + ntail;
     final bits = 16 + n * width;
@@ -715,4 +733,7 @@ const dartSkipDepthBody = `
   expectOk('skip_depth_array_below_128', array, pack(125, 7, 1, 8, 127));
   expectOk('skip_depth_array_at_128', array, pack(126, 7, 1, 8, 128));
   expectBad('skip_depth_above_128 array', array, pack(127, 7, 1, 8, 129));
+  expectOk('skip_depth_keyed_fixed_at_128', keyed6, pack(128, 7, 2, 8, 153));
+  expectOk('skip_depth_keyed_nopayload_at_128', keyed32, pack(128, 7, 2, 8, 137));
+  expectBad('skip_depth_above_128 keyed', keyed13, pack(127, 7, 2, 8, 137));
 `

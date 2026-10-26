@@ -10,9 +10,9 @@ name: schema-elixir-runs-hostile-corpus
 
 on:
   push:
-    branches: [ main, 'sprint/**' ]
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
   pull_request:
-    branches: [ main, 'sprint/**' ]
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
   schedule:
     - cron: "29 3 * * *"
   workflow_dispatch:
@@ -23,6 +23,9 @@ env:
 
 jobs:
   corpus:
+    # Fleet only: a fork pull request has no fleet runner and is skipped before
+    # it can reach one.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64, schema]
     timeout-minutes: 10
     steps:

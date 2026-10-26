@@ -58,7 +58,7 @@ func (g *tableGen) messageExtentValue(f *ir.Field, e, ind string, step *int, dep
 			g.pf("%s if(%s_n>INT32_MAX || !table_extent_reserve(at,(int64_t)%s_n,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s))){r->extent_refused=1;return 0;}\n", ind, label, label, g.sequenceType(f), g.sequenceType(f))
 		}
 		if !g.messageFieldHasExtent(elem) || f.Type.Pointer {
-			g.pf("%s if(%s->value_bits>=0 && %s->kind!=16){if(!table_message_skip_run(r,%s_n,%s->value_bits))return 0;}else{\n", ind, label, e, label, label)
+			g.pf("%s if((%s->value_bits>=0||%s->kind==0||%s->kind==32) && %s->kind!=16){if(!table_message_skip_run(r,%s_n,%s->value_bits>0?%s->value_bits:0))return 0;}else{\n", ind, label, label, label, e, label, label, label)
 		} else {
 			g.pf("%s {\n", ind)
 		}
@@ -76,7 +76,7 @@ func (g *tableGen) messageExtentValue(f *ir.Field, e, ind string, step *int, dep
 		}
 		g.pf("%s if(%s){\n", ind, condition)
 		g.messageExtentElement(elem, label, ind+" ", depth+"+1")
-		g.pf("%s }else if(!table_message_skip_at(r,%s,%s+1))return 0;\n%s } } }\n", ind, label, depth, ind)
+		g.pf("%s }else if(%s->value_bits>=0||%s->kind==0||%s->kind==32){if(!table_message_skip_run(r,1,%s->value_bits>0?%s->value_bits:0))return 0;}else if(!table_message_skip_at(r,%s,%s+1))return 0;\n%s } } }\n", ind, label, label, label, label, label, label, depth, ind)
 		return
 	}
 	g.messageExtentElement(f, e, ind, depth)
