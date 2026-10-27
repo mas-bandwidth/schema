@@ -86,6 +86,7 @@ func t08RoundTrip(t *testing.T, dartBin, src, body string) {
 import 'dart:io';
 import 'dart:typed_data';
 
+import './Probe.dart' as p;
 import './ProbeFixed.dart' as t;
 
 void check(bool ok, String what) {
@@ -275,7 +276,7 @@ fixed table Rec
   final v = t.Rec();
   t.initRec(v);
   v.lead = 7;
-  v.pick.type = 1;
+  v.pick.type = p.PickType.alpha;
   v.pick.alpha.m = 99;
   v.trail = 13;
   final b1 = Uint8List(t.recFixedMeasure(1));
@@ -624,7 +625,7 @@ fixed table Rec
   for (final count in [0, 4]) {
     v.historyCount = count;
     for (var i = 0; i < count; i++) {
-      v.history[i].type = 1;
+      v.history[i].type = p.ReplyType.ping;
       v.history[i].ping.n = 11 * (i + 1);
     }
     final bytes = Uint8List(t.recFixedMeasure(1));

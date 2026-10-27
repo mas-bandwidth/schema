@@ -31,6 +31,7 @@ func TestCardDescriptorsNameEveryField(t *testing.T) {
 	}
 
 	dir := t.TempDir()
+	writeFiles(t, dir, packetFiles(t, u))
 	if err := os.WriteFile(filepath.Join(dir, "CardsWire.dart"), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -164,6 +165,7 @@ func retainProbe(t *testing.T, schema string, probe string, args ...string) stri
 		t.Fatalf("Generate emitted no CardsWire.dart for %s", schema)
 	}
 	dir := t.TempDir()
+	writeFiles(t, dir, packetFiles(t, u))
 	if err := os.WriteFile(filepath.Join(dir, "CardsWire.dart"), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -210,6 +212,7 @@ void main(List<String> args) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	writeFiles(t, dir, packetFiles(t, u))
 	if err := os.WriteFile(filepath.Join(dir, "CardsWire.dart"), files["CardsWire.dart"], 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -351,10 +354,11 @@ table Card
 `
 	produce := `import 'dart:io';
 import 'CardsWire.dart';
+import 'T.dart' show Tier;
 void main(List<String> args) {
   final c = Card();
   c.id = 'x';
-  c.tier = 3;
+  c.tier = Tier.heavy;
   File(args[0]).writeAsBytesSync(cardWireSave(c));
 }
 `
@@ -374,6 +378,7 @@ void main(List<String> args) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
+	writeFiles(t, dir, packetFiles(t, u))
 	if err := os.WriteFile(filepath.Join(dir, "CardsWire.dart"), files["CardsWire.dart"], 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -392,6 +397,7 @@ void main(List<String> args) {
 		t.Fatal(err)
 	}
 	dir2 := t.TempDir()
+	writeFiles(t, dir2, packetFiles(t, u))
 	if err := os.WriteFile(filepath.Join(dir2, "CardsWire.dart"), files["CardsWire.dart"], 0o600); err != nil {
 		t.Fatal(err)
 	}

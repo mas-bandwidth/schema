@@ -51,7 +51,7 @@ func TestWireMeasureCountsListExtentsDart(t *testing.T) {
 		t.Fatalf("Go FileRegionMeasure = %d, want 168 (the 128-vs-168 list_scalar_widen case)", want)
 	}
 
-	got := measureProbe(t, "ListdemoWire.dart", wire, "Save", oracle)
+	got := measureProbe(t, "ListdemoWire.dart", wire, "Save", oracle, packetFiles(t, u))
 	if int64(got) != want {
 		t.Errorf("Dart saveWireMeasure = %d, tablewire.FileRegionMeasure = %d on list_scalar_widen (the 128-vs-168 case)", got, want)
 	}
@@ -73,7 +73,7 @@ func TestWireMeasureCountsListExtentsDart(t *testing.T) {
 	if mutantRefused {
 		mutantWant = -1
 	}
-	got = measureProbe(t, "ListdemoWire.dart", wire, "Save", mutantPath)
+	got = measureProbe(t, "ListdemoWire.dart", wire, "Save", mutantPath, packetFiles(t, u))
 	if int64(got) != mutantWant {
 		t.Errorf("Dart saveWireMeasure = %d, tablewire.FileRegionMeasure = %d on the vector #0 mutant", got, mutantWant)
 	}

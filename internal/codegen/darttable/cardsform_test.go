@@ -264,6 +264,7 @@ func TestCardConstructsRoundTripTheVariableForm(t *testing.T) {
 	}
 
 	dir := t.TempDir()
+	writeFiles(t, dir, packetFiles(t, u))
 	if err := os.WriteFile(filepath.Join(dir, "CardsWire.dart"), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -362,6 +363,7 @@ func TestCardTextFormMatchesGo(t *testing.T) {
 	}
 
 	dir := t.TempDir()
+	writeFiles(t, dir, packetFiles(t, u))
 	if err := os.WriteFile(filepath.Join(dir, "CardsWire.dart"), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -462,6 +464,7 @@ func TestCardTextFormEnumNoneRoundTrips(t *testing.T) {
 	}
 
 	dir := t.TempDir()
+	writeFiles(t, dir, packetFiles(t, u))
 	if err := os.WriteFile(filepath.Join(dir, "CardsWire.dart"), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}

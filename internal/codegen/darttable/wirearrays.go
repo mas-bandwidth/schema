@@ -79,7 +79,7 @@ func (g *wireGen) elemDefault(f *ir.Field) string {
 // fixedStorageDecl is the member of a `[N]T` or `[E]T`: a list of exactly the
 // declared slot count, every slot at the element's default (§2.4, §5).
 func (g *wireGen) fixedStorageDecl(f *ir.Field, name string) string {
-	et := dartListElemType(f)
+	et := g.listElemType(f)
 	return fmt.Sprintf("List<%s> %s = List<%s>.generate(%d, (_) => %s);", et, name, et, f.ArrayBound, g.elemDefault(f))
 }
 
@@ -180,7 +180,7 @@ func (g *wireGen) emitArrayHelpers(st *ir.Struct) {
 
 func (g *wireGen) emitFixedHelper(st *ir.Struct, f *ir.Field) {
 	ek := arrayElemKind(f)
-	et := dartListElemType(f)
+	et := g.listElemType(f)
 	// THE HEADER (element kind and count) is read by the FIELD against the
 	// PARENT buffer, exactly as internal/tablewire arrayBody reads it; the
 	// helper gets the body the header framed and the header it carried, and
@@ -208,7 +208,7 @@ func (g *wireGen) emitFixedHelper(st *ir.Struct, f *ir.Field) {
 func (g *wireGen) emitKeyedHelper(st *ir.Struct, f *ir.Field) {
 	e := f.KeyEnumRef
 	ek := ir.TableWireElemKind(f)
-	et := dartListElemType(f)
+	et := g.listElemType(f)
 	elem := arrayHelper(st, f, "Elem")
 	g.pf("bool %s(TableWireReader p, List<%s> v, int slot, int kind) {\n", elem, et)
 	g.emitGetPayload(singleOf(f), "v[slot]", "p", "\t")

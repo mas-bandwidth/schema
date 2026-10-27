@@ -36,6 +36,7 @@ func TestCookMapFieldExposesItsEntriesLikeGo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	maps.Copy(files, packetFiles(t, lists)) // the enum types the libraries import
 	cook := string(files["HoldersCook.dart"])
 	row := dartClassBody(t, cook, "SquadRow")
 	for line := range strings.SplitSeq(row, "\n") {
@@ -64,6 +65,7 @@ func TestCookMapFieldExposesItsEntriesLikeGo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	maps.Copy(keyFiles, packetFiles(t, keys))
 	keysRow := dartClassBody(t, string(keyFiles["ProbeCook.dart"]), "KeysRow")
 	for _, want := range []string{
 		"KeysNamesEntryRow? namesFind(List<int> key, KeysNamesEntryRow into) {",

@@ -44,7 +44,9 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
 	// field by field on the destination value, because the question is what the
 	// image-to-value scatter does to an unselected arm.
 	compiled := fmt.Sprintf(`  final data = File(FILE).readAsBytesSync();
-  values[0].pick.type = 0x5A5A5A5A;
+  // the tag is the packet PickType extension type, which this probe does
+  // not import: the poison int lands through dynamic (erased, so it is one)
+  values[0].pick.type = 0x5A5A5A5A as dynamic;
   values[0].pick.alpha.m = 0x5A5A5A5A;
   values[0].pick.beta.n = 0x5A5A5A5A;
   values[0].pick.gamma.p = 0x5A5A5A5A;
@@ -60,7 +62,9 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
 	// plan, the same file, the same poison — without the arm the old build does
 	// not declare.
 	identity := fmt.Sprintf(`  final data = File(FILE).readAsBytesSync();
-  values[0].pick.type = 0x5A5A5A5A;
+  // the tag is the packet PickType extension type, which this probe does
+  // not import: the poison int lands through dynamic (erased, so it is one)
+  values[0].pick.type = 0x5A5A5A5A as dynamic;
   values[0].pick.alpha.m = 0x5A5A5A5A;
   values[0].pick.beta.n = 0x5A5A5A5A;
   values[0].seq = 0x5A5A5A5A;

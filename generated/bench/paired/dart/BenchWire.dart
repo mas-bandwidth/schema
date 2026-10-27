@@ -7,6 +7,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'Bench.dart' show MixedWeapon;
+
 // The RESERVED node-table id (§3.1, §5) and the *string BLOB type id
 // (§2.5, §3.1), both as their 64-bit two's-complement Dart spelling.
 const int _kNodeTableId = -1; // 0xFFFFFFFFFFFFFFFF
@@ -1637,7 +1639,7 @@ final class MixedEntity {
   int velY = 0;
   int velZ = 0;
   int health = 0;
-  int weapon = 0;
+  MixedWeapon weapon = MixedWeapon.none;
   int damage = 0;
   bool moving = false;
   bool firing = false;
@@ -1876,7 +1878,7 @@ void mixedEntityWireSaveBodyFields(TableWireWriter w, MixedEntity v) {
     w.putByte(4);
     w.putU32(v.health);
   }
-  if (v.weapon != 0) {
+  if (v.weapon != MixedWeapon.none) {
     w.putLeb(w.refFor(-6866282850657997311));
     w.putByte(30);
     int vid;
@@ -2552,26 +2554,26 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         {
           final ref2 = r.readLeb();
           if (ref2 == null) { r.report.malformed = true; return; }
-          if (ref2 == 0) { v.weapon = 0; break; }
+          if (ref2 == 0) { v.weapon = MixedWeapon.none; break; }
           final vid = r.refToId[ref2];
           if (vid == null) { r.report.malformed = true; return; }
           switch (vid) {
-            case -6372330821933150452: v.weapon = 1;
-            case -6935561395390217098: v.weapon = 2;
-            case 1768712988339112597: v.weapon = 3;
-            case 3185847833948484337: v.weapon = 4;
-            case 912176952613754358: v.weapon = 5;
-            case -7467029643251279282: v.weapon = 6;
-            case 2494154474894420565: v.weapon = 7;
-            case 80074449652715421: v.weapon = 8;
-            case -8505234340531936929: v.weapon = 9;
-            case -8250835097599916951: v.weapon = 10;
-            case -2752528626751932394: v.weapon = 11;
-            case 350179810443481718: v.weapon = 12;
-            case 3883575963473318423: v.weapon = 13;
-            case 3226873318306908209: v.weapon = 14;
-            case 2358437193313989428: v.weapon = 15;
-            default: v.weapon = 0; r.report.unknown++; if (r.retain != null) r.report.retainLost++;
+            case -6372330821933150452: v.weapon = MixedWeapon.fists;
+            case -6935561395390217098: v.weapon = MixedWeapon.pistol;
+            case 1768712988339112597: v.weapon = MixedWeapon.shotgun;
+            case 3185847833948484337: v.weapon = MixedWeapon.rifle;
+            case 912176952613754358: v.weapon = MixedWeapon.sniper;
+            case -7467029643251279282: v.weapon = MixedWeapon.smg;
+            case 2494154474894420565: v.weapon = MixedWeapon.rocket;
+            case 80074449652715421: v.weapon = MixedWeapon.grenade;
+            case -8505234340531936929: v.weapon = MixedWeapon.plasma;
+            case -8250835097599916951: v.weapon = MixedWeapon.railgun;
+            case -2752528626751932394: v.weapon = MixedWeapon.flamer;
+            case 350179810443481718: v.weapon = MixedWeapon.mine;
+            case 3883575963473318423: v.weapon = MixedWeapon.turret;
+            case 3226873318306908209: v.weapon = MixedWeapon.drone;
+            case 2358437193313989428: v.weapon = MixedWeapon.repair;
+            default: v.weapon = MixedWeapon.none; r.report.unknown++; if (r.retain != null) r.report.retainLost++;
           }
         }
         break;
@@ -5125,28 +5127,28 @@ String mixedWeaponName(int v) {
   return '';
 }
 
-int mixedWeaponFromName(dynamic val, TableTextReport r) {
-  if (val is! String) { r.kindMismatch++; return 0; }
+MixedWeapon mixedWeaponFromName(dynamic val, TableTextReport r) {
+  if (val is! String) { r.kindMismatch++; return MixedWeapon.none; }
   switch (val) {
-    case "None": return 0;
-    case "Fists": return 1;
-    case "Pistol": return 2;
-    case "Shotgun": return 3;
-    case "Rifle": return 4;
-    case "Sniper": return 5;
-    case "Smg": return 6;
-    case "Rocket": return 7;
-    case "Grenade": return 8;
-    case "Plasma": return 9;
-    case "Railgun": return 10;
-    case "Flamer": return 11;
-    case "Mine": return 12;
-    case "Turret": return 13;
-    case "Drone": return 14;
-    case "Repair": return 15;
+    case "None": return MixedWeapon.none;
+    case "Fists": return MixedWeapon.fists;
+    case "Pistol": return MixedWeapon.pistol;
+    case "Shotgun": return MixedWeapon.shotgun;
+    case "Rifle": return MixedWeapon.rifle;
+    case "Sniper": return MixedWeapon.sniper;
+    case "Smg": return MixedWeapon.smg;
+    case "Rocket": return MixedWeapon.rocket;
+    case "Grenade": return MixedWeapon.grenade;
+    case "Plasma": return MixedWeapon.plasma;
+    case "Railgun": return MixedWeapon.railgun;
+    case "Flamer": return MixedWeapon.flamer;
+    case "Mine": return MixedWeapon.mine;
+    case "Turret": return MixedWeapon.turret;
+    case "Drone": return MixedWeapon.drone;
+    case "Repair": return MixedWeapon.repair;
   }
   r.unknown++;
-  return 0;
+  return MixedWeapon.none;
 }
 
 void _mixedDamageToJson(_JOut out, int bits, int depth) {

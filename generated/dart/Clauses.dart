@@ -1967,10 +1967,10 @@ bool readEmptyB(EmptyB value, ByteData view, int numBits) {
 }
 
 // EmptyUnionType: union EmptyUnion's tag — None = 0, then each variant in declared order (SPEC §4.8)
-abstract final class EmptyUnionType {
-  static const int none = 0;
-  static const int a = 1;
-  static const int b = 2;
+extension type const EmptyUnionType(int _value) implements int {
+  static const EmptyUnionType none = EmptyUnionType(0);
+  static const EmptyUnionType a = EmptyUnionType(1);
+  static const EmptyUnionType b = EmptyUnionType(2);
   static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
 }
@@ -1995,7 +1995,7 @@ String enumNameEmptyUnionType(int value) {
 // construction defaults; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 final class EmptyUnion {
-  int type = EmptyUnionType.none;
+  EmptyUnionType type = EmptyUnionType.none;
   final EmptyA a = EmptyA();
   final EmptyB b = EmptyB();
 }
@@ -2074,7 +2074,7 @@ bool readEmptyUnion(EmptyUnion value, ByteData view, int numBits) {
   if (v > 2) {
     return false; // not a wire-legal tag (SPEC §4.8)
   }
-  value.type = v;
+  value.type = EmptyUnionType(v);
   switch (value.type) {
     case EmptyUnionType.a:
       break; // empty arm — presence is the payload (SPEC §4.6)
@@ -2100,14 +2100,14 @@ const int holdsEmptyUnionMaxBytes = 8;
 // construction.
 void zeroHoldsEmptyUnion(HoldsEmptyUnion value) {
   value.lead = 0;
-  value.u.type = 0;
+  value.u.type = EmptyUnionType.none;
   value.tail = 0;
 }
 
 // Restore construction defaults in place; buffers and objects are retained.
 void initHoldsEmptyUnion(HoldsEmptyUnion value) {
   value.lead = 0;
-  value.u.type = 0;
+  value.u.type = EmptyUnionType.none;
   value.tail = 0;
 }
 
@@ -2182,7 +2182,7 @@ bool readHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view, int numBits) {
   if (v > 2) {
     return false; // not a wire-legal tag (SPEC §4.8)
   }
-  value.u.type = v;
+  value.u.type = EmptyUnionType(v);
   switch (value.u.type) {
     case EmptyUnionType.a:
       break; // empty arm — presence is the payload (SPEC §4.6)

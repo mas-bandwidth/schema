@@ -69,7 +69,7 @@ func TestVariableClassBeyondCardConstructsDart(t *testing.T) {
 			if !ok || len(wire) == 0 {
 				t.Fatalf("Generate emitted no %s for %s — the variable class is not carried yet", c.wire, c.unit)
 			}
-			roundTripOracle(t, c.root, c.wire, wire, c.oracle)
+			roundTripOracle(t, c.root, c.wire, wire, c.oracle, packetFiles(t, u))
 		})
 	}
 
@@ -84,7 +84,7 @@ func TestVariableClassBeyondCardConstructsDart(t *testing.T) {
 		if !ok || len(wire) == 0 {
 			t.Fatal("Generate emitted no ScalarWire.dart — the scalar kinds get no codec (silently kind 0)")
 		}
-		scalarRoundTrip(t, wire)
+		scalarRoundTrip(t, wire, packetFiles(t, u))
 	})
 
 	t.Run("bytes blob", func(t *testing.T) {
@@ -98,7 +98,7 @@ func TestVariableClassBeyondCardConstructsDart(t *testing.T) {
 		if !ok || len(wire) == 0 {
 			t.Fatal("Generate emitted no BlobWire.dart — *bytes gets no codec")
 		}
-		bytesBlobRoundTrip(t, wire)
+		bytesBlobRoundTrip(t, wire, packetFiles(t, u))
 	})
 
 	t.Run("scalar arrays", func(t *testing.T) {
@@ -112,16 +112,17 @@ func TestVariableClassBeyondCardConstructsDart(t *testing.T) {
 		if !ok || len(wire) == 0 {
 			t.Fatal("Generate emitted no SarraysWire.dart — unbounded scalar arrays get no codec")
 		}
-		scalarArrayRoundTrip(t, wire)
+		scalarArrayRoundTrip(t, wire, packetFiles(t, u))
 	})
 }
 
 // roundTripOracle loads a committed oracle .bin through the generated library's
 // <root>WireLoad, re-saves it, and requires the bytes to be identical — the
 // same contract the Go leg's committed byte oracle holds for the card record.
-func roundTripOracle(t *testing.T, root, wireName string, wire []byte, oracle string) {
+func roundTripOracle(t *testing.T, root, wireName string, wire []byte, oracle string, packet map[string][]byte) {
 	t.Helper()
 	dir := t.TempDir()
+	writeFiles(t, dir, packet)
 	if err := os.WriteFile(filepath.Join(dir, wireName), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -170,9 +171,10 @@ void main(List<String> args) {
 // scalarRoundTrip saves and loads the scalar-kind declaration through its own
 // generated codec and requires the values to survive, the way the field kinds
 // must never be silenced to kind 0.
-func scalarRoundTrip(t *testing.T, wire []byte) {
+func scalarRoundTrip(t *testing.T, wire []byte, packet map[string][]byte) {
 	t.Helper()
 	dir := t.TempDir()
+	writeFiles(t, dir, packet)
 	if err := os.WriteFile(filepath.Join(dir, "ScalarWire.dart"), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -255,9 +257,10 @@ table Blob {
 // bytesBlobRoundTrip saves and loads a *bytes blob through its own generated
 // codec and requires the bytes to survive beside a *string in the same node
 // table, the way the two reserved blob ids must never be confused.
-func bytesBlobRoundTrip(t *testing.T, wire []byte) {
+func bytesBlobRoundTrip(t *testing.T, wire []byte, packet map[string][]byte) {
 	t.Helper()
 	dir := t.TempDir()
+	writeFiles(t, dir, packet)
 	if err := os.WriteFile(filepath.Join(dir, "BlobWire.dart"), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -315,13 +318,15 @@ table Arrays {
 // declaration through its own generated codec and requires every element value
 // to survive, the way a `[]T` with a non-table element must never be encoded
 // as a table body (docs/SPEC-TABLES.md §2.9, §3).
-func scalarArrayRoundTrip(t *testing.T, wire []byte) {
+func scalarArrayRoundTrip(t *testing.T, wire []byte, packet map[string][]byte) {
 	t.Helper()
 	dir := t.TempDir()
+	writeFiles(t, dir, packet)
 	if err := os.WriteFile(filepath.Join(dir, "SarraysWire.dart"), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	probe := `import 'dart:io';
+import 'T.dart' show Grade;
 import 'SarraysWire.dart';
 
 void main() {
@@ -330,7 +335,7 @@ void main() {
   v.octets = [0, 200, 255];
   v.flts = [1.5, -0.25];
   v.flags = [true, false, true];
-  v.grades = [1, 3, 0];
+  v.grades = [Grade.a, Grade.c, Grade.none];
   final resaved = arraysWireSave(v);
   final w = arraysWireLoad(resaved);
   var ok = w.ints.length == 3 && w.ints[0] == 1 && w.ints[1] == -2 && w.ints[2] == 300;

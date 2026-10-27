@@ -183,7 +183,7 @@ func (g *wireGen) storageDecl(f *ir.Field, name string) string {
 		}
 		return fmt.Sprintf("Uint8List? %s;", name)
 	case f.CountedOnWire():
-		et := dartListElemType(f)
+		et := g.listElemType(f)
 		return fmt.Sprintf("List<%s> %s = <%s>[];", et, name, et)
 	case isUnionField(f):
 		return fmt.Sprintf("%s %s = %s();", f.Type.Name, name, f.Type.Name)
@@ -204,7 +204,7 @@ func (g *wireGen) storageDecl(f *ir.Field, name string) string {
 	case f.Type.Kind == ir.TWString:
 		return fmt.Sprintf("String %s = '';", name)
 	case f.Type.Kind == ir.TNamed && enumRef(f) != nil:
-		return fmt.Sprintf("int %s = %s;", name, g.enumDefault(f))
+		return fmt.Sprintf("%s %s = %s;", g.enumType(enumRef(f)), name, g.enumDefault(f))
 	}
 	return fmt.Sprintf("int %s = 0;", name)
 }
@@ -530,7 +530,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		if f.Array == ir.ArrayCounted {
 			g.pf("%sif (count > %d) %s\n", ind, f.ArrayBound, bad)
 		}
-		et := dartListElemType(f)
+		et := g.listElemType(f)
 		g.pf("%sfinal out = <%s>[];\n", ind, et)
 		g.pf("%sfor (var i = 0; i < count; i++) {\n", ind)
 		g.emitGetElem(f, ek, "out", p, ind+"\t")
@@ -542,7 +542,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		// a fixed array arm (§2.6, §3): every declared slot, a slot the payload
 		// does not carry at its default
 		ek := arrayElemKind(f)
-		et := dartListElemType(f)
+		et := g.listElemType(f)
 		g.pf("%sif (!%s.has(1)) %s\n", ind, p, bad)
 		g.pf("%sfinal elemKind = %s.readByte();\n", ind, p)
 		g.pf("%sfinal count = %s.readLeb();\n", ind, p)
@@ -590,14 +590,14 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		e := enumRef(f)
 		g.pf("%sfinal vref = %s.readLeb();\n", ind, p)
 		g.pf("%sif (vref == null || %s.pos != %s.limit) %s\n", ind, p, p, bad)
-		g.pf("%sif (vref == 0) { %s = 0; return true; }\n", ind, dest)
+		g.pf("%sif (vref == 0) { %s = %s; return true; }\n", ind, dest, g.enumConst(e, 0))
 		g.pf("%sfinal vid = %s.refToId[vref];\n", ind, p)
 		g.pf("%sif (vid == null) %s\n", ind, bad)
 		g.pf("%sswitch (vid) {\n", ind)
 		for i := range e.Variants {
-			g.pf("%s\tcase %s: %s = %d;\n", ind, dartU64Literal(ir.TableWireId(e.VariantWireName(i))), dest, i+1)
+			g.pf("%s\tcase %s: %s = %s;\n", ind, dartU64Literal(ir.TableWireId(e.VariantWireName(i))), dest, g.enumConst(e, i+1))
 		}
-		g.pf("%s\tdefault: %s = 0; %s.report.unknown++; if (%s.retain != null) %s.report.retainLost++;\n", ind, dest, p, p, p)
+		g.pf("%s\tdefault: %s = %s; %s.report.unknown++; if (%s.retain != null) %s.report.retainLost++;\n", ind, dest, g.enumConst(e, 0), p, p, p)
 		g.pf("%s}\n", ind)
 		g.pf("%sreturn true;\n", ind)
 	case f.Type.Kind == ir.TBool:
@@ -694,11 +694,11 @@ func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
 		// an element naming no variant this reader knows reads None and
 		// counts unknown, exactly as an enum field does (§4)
 		g.pf("%sswitch (vid) {\n", ind)
-		g.pf("%s\tcase 0: %s.add(0);\n", ind, out)
+		g.pf("%s\tcase 0: %s.add(%s);\n", ind, out, g.enumConst(e, 0))
 		for i := range e.Variants {
-			g.pf("%s\tcase %s: %s.add(%d);\n", ind, dartU64Literal(ir.TableWireId(e.VariantWireName(i))), out, i+1)
+			g.pf("%s\tcase %s: %s.add(%s);\n", ind, dartU64Literal(ir.TableWireId(e.VariantWireName(i))), out, g.enumConst(e, i+1))
 		}
-		g.pf("%s\tdefault: %s.add(0); %s.report.unknown++; if (%s.retain != null) %s.report.retainLost++;\n", ind, out, p, p, p)
+		g.pf("%s\tdefault: %s.add(%s); %s.report.unknown++; if (%s.retain != null) %s.report.retainLost++;\n", ind, out, g.enumConst(e, 0), p, p, p)
 		g.pf("%s}\n", ind)
 	case wireKindBool:
 		g.pf("%sif (!%s.has(1)) %s\n", ind, p, bad)

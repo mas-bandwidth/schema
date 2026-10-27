@@ -16,7 +16,7 @@ final class RenderSprite {
   int meshId = 0;
   int materialId = 0;
   int layer = 0;
-  int team = Team.none;
+  Team team = Team.none;
 }
 
 // renderSpriteMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -31,7 +31,7 @@ void zeroRenderSprite(RenderSprite value) {
   value.meshId = 0;
   value.materialId = 0;
   value.layer = 0;
-  value.team = 0;
+  value.team = Team.none;
 }
 
 // Restore construction defaults in place; buffers and objects are retained.
@@ -40,7 +40,7 @@ void initRenderSprite(RenderSprite value) {
   value.meshId = 0;
   value.materialId = 0;
   value.layer = 0;
-  value.team = 0;
+  value.team = Team.none;
 }
 
 // writeRenderSprite packs value into view — the trusted writer (contracts asserted,
@@ -155,7 +155,7 @@ bool readRenderSprite(RenderSprite value, ByteData view, int numBits) {
   if (v > 2) {
     return false; // headroom above the wire range is refused
   }
-  value.team = v;
+  value.team = Team(v);
   return true;
 }
 
@@ -363,7 +363,7 @@ bool readRenderBlock(RenderBlock value, ByteData view, int numBits) {
     if (v > 2) {
       return false; // headroom above the wire range is refused
     }
-    e0.team = v;
+    e0.team = Team(v);
   }
   return true;
 }

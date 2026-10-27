@@ -135,6 +135,7 @@ func t15RunDart(t *testing.T, chain bool) {
 	probe := fmt.Sprintf(`import 'dart:io';
 import 'dart:typed_data';
 
+import './Probe.dart' as p;
 import './ProbeFixed.dart' as t;
 
 void check(bool ok, String what) {
@@ -149,7 +150,7 @@ void main() {
   t.initRoot(v);
   v.o.type = 1;
   v.o.m.type = 1;
-  v.o.m.i.type = 1;
+  v.o.m.i.type = p.InnerType.a;
   v.o.m.i.a.x = 42;
   final bytes = Uint8List(t.rootFixedMeasure(1));
   check(t.rootFixedSave([v], 1, bytes) == bytes.length, 'the save');

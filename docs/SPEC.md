@@ -2515,7 +2515,11 @@ Per `type`, per target:
    it — no Go slices as storage, no Rust `Vec`, no growing containers.
 
    An enum's representation is the target's choice — today an integer-backed
-   named type in every target (a Rust newtype, C#'s `enum E : uint`). Nothing
+   named type in every target (a Rust newtype, C#'s `enum E : uint`, Dart's
+   `extension type const E(int _value) implements int`, which is erased to
+   the int and so costs nothing, holds every wire-legal value including `| max`
+   headroom as `E(n)`, and types the fields, union tags and table accessors
+   that store it). Nothing
    on the wire requires it: a wire value above max is refused on read (§4.2),
    so no unnamed enum value is ever representable on the read side.
 

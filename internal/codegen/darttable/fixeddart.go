@@ -59,8 +59,10 @@ func fixedScalarType(t ir.FieldType) string {
 		return "double"
 	case ir.TNamed:
 		switch t.Ref.(type) {
-		case *ir.Enum, *ir.Flags:
-			return "int" // an integer-backed namespace, as the packet classes hold it
+		case *ir.Enum:
+			return t.Name // the packet emitter's extension type over int
+		case *ir.Flags:
+			return "int" // masks, uint64 storage, as the packet classes hold it
 		}
 	}
 	if fixedIs128(t) {
@@ -140,9 +142,12 @@ func fixedIsByteList(t ir.FieldType) bool {
 // ---------------------------------------------------------------------------
 
 type fixedGen struct {
-	unit              *ir.Unit
-	body              strings.Builder
-	need              func(cls string, extra ...string) // an import for another emitter's class
+	unit *ir.Unit
+	body strings.Builder
+	need func(cls string, extra ...string) // an import for another emitter's class
+	// needTag imports a packet union's <Union>Type alone, from the library
+	// that declares the union (the union's class itself may go unused)
+	needTag           func(union string)
 	float32WordsCache bool
 }
 
@@ -341,12 +346,36 @@ func (g *fixedGen) storeTag(ind, at string, width int64, expr string) {
 	g.call(ind, "", fmt.Sprintf("view.setUint%d", width*8), []string{at, expr, "Endian.little"}, ";")
 }
 
-func (g *fixedGen) loadTag(ind, lhs, at string, width int64) {
-	if width == 1 {
-		g.call(ind, lhs+" = ", "view.getUint8", []string{at}, ";")
+// loadTag loads an ordinal; wrap, when set, is the extension type the
+// target holds it as (an enum, or a packet union's <Union>Type).
+func (g *fixedGen) loadTag(ind, lhs, at string, width int64, wrap string) {
+	fn, args := "view.getUint8", []string{at}
+	if width != 1 {
+		fn, args = fmt.Sprintf("view.getUint%d", width*8), []string{at, "Endian.little"}
+	}
+	if wrap == "" {
+		g.call(ind, lhs+" = ", fn, args, ";")
 		return
 	}
-	g.call(ind, lhs+" = ", fmt.Sprintf("view.getUint%d", width*8), []string{at, "Endian.little"}, ";")
+	inner := fn + "(" + strings.Join(args, ", ") + ")"
+	if one := ind + lhs + " = " + wrap + "(" + inner + ");"; len(one) <= 80 {
+		g.pf("%s\n", one)
+		return
+	}
+	g.pf("%s%s = %s(\n", ind, lhs, wrap)
+	g.call(ind+"  ", "", fn, args, ",")
+	g.pf("%s);\n", ind)
+}
+
+// unionTagType is the type a union's tag member holds, and its None: the
+// packet class's <Union>Type extension type, or a plain int for a union whose
+// storage the fixed form declares itself (unionStorageIsLocal).
+func (g *fixedGen) unionTagType(un *ir.Union) (typ, none string) {
+	if unionStorageIsLocal(un) {
+		return "", "0"
+	}
+	g.needTag(un.Name)
+	return un.Name + "Type", un.Name + "Type.none"
 }
 
 // ---------------------------------------------------------------------------
@@ -927,7 +956,8 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			return
 		case *ir.Union:
 			tag := fixedUnionTagBytes(r)
-			g.loadTag(ind, expr+".type", fixedOff(base, at), tag)
+			tagType, tagNone := g.unionTagType(r)
+			g.loadTag(ind, expr+".type", fixedOff(base, at), tag, tagType)
 			g.pf("%sswitch (%s.type) {\n", ind, expr)
 			g.pf("%s  case 0:\n%s    break; // None, which is a tag this reader holds\n", ind, ind)
 			for i, v := range r.Variants {
@@ -943,12 +973,13 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			// the compiled plan gives it through its own remap, so the identity
 			// path and a stranger's plan agree about a hostile tag.
 			g.pf("%s  default:\n", ind)
-			g.pf("%s    %s.type = 0;\n", ind, expr)
+			g.pf("%s    %s.type = %s;\n", ind, expr, tagNone)
 			g.pf("%s    report.clamped++;\n", ind)
 			g.pf("%s    break;\n%s}\n", ind, ind)
 			return
 		case *ir.Enum:
-			g.loadTag(ind, expr, fixedOff(base, at), int64(r.StorageBits/8))
+			g.need(r.Name)
+			g.loadTag(ind, expr, fixedOff(base, at), int64(r.StorageBits/8), r.Name)
 			// AN ORDINAL PAST THE LAST VARIANT IS None (§3.4): the ordinal is
 			// the variant's POSITION IN THE LAYOUT, from 1, and the layout
 			// lists this reader's variants and no more. Past them it lands 0
@@ -963,7 +994,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			// this test covered both, which was false.
 			if n := len(r.Variants); n > 0 {
 				g.pf("%sif (%s > %d) {\n", ind, expr, n)
-				g.pf("%s  %s = 0;\n", ind, expr)
+				g.pf("%s  %s = %s.none;\n", ind, expr, r.Name)
 				g.pf("%s  report.clamped++;\n", ind)
 				g.pf("%s}\n", ind)
 			}

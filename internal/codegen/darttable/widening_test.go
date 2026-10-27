@@ -81,6 +81,7 @@ func TestWideningReasonsDart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		packet := packetFiles(t, u)
 		wireLib := ""
 		for name := range files {
 			if strings.HasSuffix(name, "Wire.dart") {
@@ -159,11 +160,8 @@ func TestWideningReasonsDart(t *testing.T) {
 		}
 
 		dir := t.TempDir()
-		for name, src := range files {
-			if err := os.WriteFile(filepath.Join(dir, name), src, 0o600); err != nil {
-				t.Fatal(err)
-			}
-		}
+		writeFiles(t, dir, packet)
+		writeFiles(t, dir, files)
 		var in strings.Builder
 		for _, c := range cases {
 			fmt.Fprintf(&in, "%s %s\n", c.field, hex.EncodeToString(c.wire))
@@ -229,15 +227,13 @@ void main(List<String> args) {
 		t.Parallel()
 		dir := t.TempDir()
 		for _, unit := range []string{"tables/pointers", "tables/block"} {
-			files, err := Generate(loadUnit(t, unitSchemas(t, unit)...))
+			u := loadUnit(t, unitSchemas(t, unit)...)
+			files, err := Generate(u)
 			if err != nil {
 				t.Fatal(err)
 			}
-			for name, src := range files {
-				if err := os.WriteFile(filepath.Join(dir, name), src, 0o600); err != nil {
-					t.Fatal(err)
-				}
-			}
+			writeFiles(t, dir, packetFiles(t, u))
+			writeFiles(t, dir, files)
 		}
 		graph, err := filepath.Abs(filepath.Join("..", "..", "..", "testdata", "wire", "tables", "graph_tree.bin"))
 		if err != nil {

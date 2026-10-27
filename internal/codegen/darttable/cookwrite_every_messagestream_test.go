@@ -115,7 +115,7 @@ func init() {
 		cookEveryFamily{
 			name:   "message-open",
 			schema: cookEveryMessageSchema,
-			probe:  cookEveryUnionProbe("body", 1, `b.open.path = 'docs/a.md'; b.open.mode = 2; b.open.cursor.line = 3; b.open.cursor.column = 4;`),
+			probe:  cookEveryUnionProbe("body", 1, `b.open.path = 'docs/a.md'; b.open.mode = p.Mode.write; b.open.cursor.line = 3; b.open.cursor.column = 4;`),
 			mutate: func(t *testing.T, m *tabletext.Model, v *tabletext.Instance) {
 				arm := cookEveryArm(t, m, cookEveryField(t, v, "body"), "open")
 				b := arm.Cell.Tab
@@ -234,6 +234,7 @@ func init() {
 func cookEveryUnionProbe(holder string, tag int, setup string) string {
 	return fmt.Sprintf(`import 'dart:io';
 import 'dart:typed_data';
+import 'Probe.dart' as p;
 import 'ProbeWire.dart' as w;
 import 'ProbeCook.dart' as c;
 String hex(Uint8List b,int length)=>b.take(length).map((v)=>v.toRadixString(16).padLeft(2,'0')).join();

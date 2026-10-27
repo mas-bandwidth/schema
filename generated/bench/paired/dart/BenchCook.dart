@@ -14,6 +14,8 @@
 
 import 'dart:typed_data';
 
+import 'Bench.dart' show MixedWeapon;
+
 // THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the bytes
 // this build produces depend on. It rides here because this unit has no block
 // form to carry it — exactly one accelerator defines it (§20.7).
@@ -412,7 +414,7 @@ final class MixedEntityRow {
   int get velY => view.getInt32(at + 28, Endian.little);
   int get velZ => view.getInt32(at + 32, Endian.little);
   int get health => view.getInt32(at + 36, Endian.little);
-  int get weapon => view.getUint8(at + 40);
+  MixedWeapon get weapon => MixedWeapon(view.getUint8(at + 40));
   int get damage => view.getUint64(at + 48, Endian.little);
   bool get moving => view.getUint8(at + 56) != 0;
   bool get firing => view.getUint8(at + 57) != 0;

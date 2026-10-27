@@ -598,14 +598,15 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 		g.pf("\t\tcase %d: return %s;\n", i+1, strconv.Quote(name))
 	}
 	g.pf("\t}\n\treturn '';\n}\n\n")
-	g.pf("int %sFromName(dynamic val, TableTextReport r) {\n", dn)
-	g.pf("\tif (val is! String) { r.kindMismatch++; return 0; }\n")
+	none := g.enumConst(e, 0)
+	g.pf("%s %sFromName(dynamic val, TableTextReport r) {\n", g.enumType(e), dn)
+	g.pf("\tif (val is! String) { r.kindMismatch++; return %s; }\n", none)
 	g.pf("\tswitch (val) {\n")
-	g.pf("\t\tcase \"None\": return 0;\n")
+	g.pf("\t\tcase \"None\": return %s;\n", none)
 	for i, name := range e.Variants {
-		g.pf("\t\tcase %s: return %d;\n", strconv.Quote(name), i+1)
+		g.pf("\t\tcase %s: return %s;\n", strconv.Quote(name), g.enumConst(e, i+1))
 	}
-	g.pf("\t}\n\tr.unknown++;\n\treturn 0;\n}\n\n")
+	g.pf("\t}\n\tr.unknown++;\n\treturn %s;\n}\n\n", none)
 }
 
 // emitTextToJsonBody emits one table's text write body: every field, in
@@ -817,7 +818,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tbreak;\n")
 	case f.CountedOnWire():
 		g.pf("\t\t\t\tif (val is! List) { r.kindMismatch++; break; }\n")
-		et := dartListElemType(f)
+		et := g.listElemType(f)
 		g.pf("\t\t\t\tv.%s = <%s>[];\n", name, et)
 		g.pf("\t\t\t\tfor (var index = 0; index < val.length; index++) {\n")
 		if f.ArrayBound > 0 {

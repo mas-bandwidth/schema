@@ -83,7 +83,7 @@ func TestWireMeasureCountsNodeRecordsDart(t *testing.T) {
 					if err != nil {
 						t.Fatalf("read oracle: %v", err)
 					}
-					got := measureProbe(t, c.wire, wire, c.root, oracle)
+					got := measureProbe(t, c.wire, wire, c.root, oracle, packetFiles(t, u))
 					want, _, _ := tablewire.FileRegionMeasure(u, root, data)
 					if int64(got) != want {
 						t.Errorf("Dart %sWireMeasure = %d, tablewire.FileRegionMeasure = %d on %s", c.root, got, want, o)
@@ -96,9 +96,10 @@ func TestWireMeasureCountsNodeRecordsDart(t *testing.T) {
 
 // measureProbe runs the generated <root>WireMeasure over an oracle .bin and
 // returns the byte count it reports.
-func measureProbe(t *testing.T, wireName string, wire []byte, root, oracle string) int {
+func measureProbe(t *testing.T, wireName string, wire []byte, root, oracle string, packet map[string][]byte) int {
 	t.Helper()
 	dir := t.TempDir()
+	writeFiles(t, dir, packet)
 	if err := os.WriteFile(filepath.Join(dir, wireName), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}

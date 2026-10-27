@@ -742,17 +742,17 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int) string {
 		}
 		slots.WriteString("}")
 		return fmt.Sprintf("_jsonKeyed<%s>(%s, r, %d, () => %s, %s, (%s) => %s)",
-			dartListElemType(f), val, f.ArrayBound, g.elemDefault(f), slots.String(), item, g.jsonReadExpr(singleOf(f), item, d+1))
+			g.listElemType(f), val, f.ArrayBound, g.elemDefault(f), slots.String(), item, g.jsonReadExpr(singleOf(f), item, d+1))
 	case f.Array == ir.ArrayFixed:
 		return fmt.Sprintf("_jsonFixed<%s>(%s, r, %d, () => %s, (%s) => %s)",
-			dartListElemType(f), val, f.ArrayBound, g.elemDefault(f), item, g.jsonReadExpr(singleOf(f), item, d+1))
+			g.listElemType(f), val, f.ArrayBound, g.elemDefault(f), item, g.jsonReadExpr(singleOf(f), item, d+1))
 	case f.Array != ir.ArrayNone:
 		bound := -1
 		if f.Array == ir.ArrayCounted {
 			bound = int(f.ArrayBound)
 		}
 		return fmt.Sprintf("_jsonList<%s>(%s, r, %d, (%s) => %s)",
-			dartListElemType(f), val, bound, item, g.jsonReadExpr(singleOf(f), item, d+1))
+			g.listElemType(f), val, bound, item, g.jsonReadExpr(singleOf(f), item, d+1))
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
 			return fmt.Sprintf("_jsonStringBlob(%s, r)", val)

@@ -18,14 +18,14 @@ const double tickRate = 60.0;
 const double spinRate = 1.5;
 
 // Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
-// an int-constant namespace — the Dart translation of the family's integer-
-// backed enums: storage must hold every wire-legal value, and | max = ...
-// headroom values have no Dart enum member to be
-abstract final class Weapon {
-  static const int none = 0;
-  static const int laser = 1;
-  static const int missile = 2;
-  static const int railgun = 3;
+// an extension type over int — the Dart translation of the family's
+// integer-backed enums: storage holds every wire-legal value, | max = ...
+// headroom included (Weapon(n)), at no runtime cost over a bare int
+extension type const Weapon(int _value) implements int {
+  static const Weapon none = Weapon(0);
+  static const Weapon laser = Weapon(1);
+  static const Weapon missile = Weapon(2);
+  static const Weapon railgun = Weapon(3);
   static const int count = 3; // the declared variant count (SPEC §4.2)
   static const int max = 15; // the exported extent (SPEC §4.2)
 }
@@ -403,7 +403,7 @@ final class ProbeSample {
 
   // active — wire branch; storage holds both sides, a read zeroes the
   // untaken side (SPEC §5)
-  int weapon = Weapon.none;
+  Weapon weapon = Weapon.none;
   bool hasTarget = false;
 
   // active && has_target — wire branch; storage holds both sides, a read zeroes the
@@ -430,7 +430,7 @@ void zeroProbeSample(ProbeSample value) {
   value.orientation = 0.0;
   value.rawDelta = 0;
   value.bigDelta = 0;
-  value.weapon = 0;
+  value.weapon = Weapon.none;
   value.hasTarget = false;
   value.targetId = 0;
   value.idleTicks = 0;
@@ -444,7 +444,7 @@ void initProbeSample(ProbeSample value) {
   value.orientation = 0.0;
   value.rawDelta = 0;
   value.bigDelta = 0;
-  value.weapon = 0;
+  value.weapon = Weapon.none;
   value.hasTarget = false;
   value.targetId = 0;
   value.idleTicks = 0;
@@ -645,7 +645,7 @@ bool readProbeSample(ProbeSample value, ByteData view, int numBits) {
     }
     v = window & 0xf;
     bitsRead += 4;
-    value.weapon = v;
+    value.weapon = Weapon(v);
     v = (window >>> 4) & 0x1;
     bitsRead += 1;
     value.hasTarget = v != 0;
@@ -678,7 +678,7 @@ bool readProbeSample(ProbeSample value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     value.idleTicks = v;
-    value.weapon = 0;
+    value.weapon = Weapon.none;
     value.hasTarget = false;
     value.targetId = 0;
   }
@@ -895,10 +895,10 @@ bool readProbeSlab(ProbeSlab value, ByteData view, int numBits) {
 }
 
 // ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC §4.8)
-abstract final class ProbeShapeType {
-  static const int none = 0;
-  static const int ring = 1;
-  static const int slab = 2;
+extension type const ProbeShapeType(int _value) implements int {
+  static const ProbeShapeType none = ProbeShapeType(0);
+  static const ProbeShapeType ring = ProbeShapeType(1);
+  static const ProbeShapeType slab = ProbeShapeType(2);
   static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
 }
@@ -923,7 +923,7 @@ String enumNameProbeShapeType(int value) {
 // construction defaults; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 final class ProbeShape {
-  int type = ProbeShapeType.none;
+  ProbeShapeType type = ProbeShapeType.none;
   final ProbeRing ring = ProbeRing();
   final ProbeSlab slab = ProbeSlab();
 }
@@ -1008,7 +1008,7 @@ bool readProbeShape(ProbeShape value, ByteData view, int numBits) {
   if (v > 2) {
     return false; // not a wire-legal tag (SPEC §4.8)
   }
-  value.type = v;
+  value.type = ProbeShapeType(v);
   switch (value.type) {
     case ProbeShapeType.ring:
       if (bitsRead + 16 > numBits) {
@@ -1064,10 +1064,10 @@ const int probeColliderMaxBytes = 16;
 // construction.
 void zeroProbeCollider(ProbeCollider value) {
   value.armor = 0;
-  value.shape.type = 0;
-  value.backup.type = 0;
+  value.shape.type = ProbeShapeType.none;
+  value.backup.type = ProbeShapeType.none;
   for (var i0 = 0; i0 < 2; i0++) {
-    value.extras[i0].type = 0;
+    value.extras[i0].type = ProbeShapeType.none;
   }
   value.extrasCount = 0;
 }
@@ -1075,10 +1075,10 @@ void zeroProbeCollider(ProbeCollider value) {
 // Restore construction defaults in place; buffers and objects are retained.
 void initProbeCollider(ProbeCollider value) {
   value.armor = 0;
-  value.shape.type = 0;
-  value.backup.type = 0;
+  value.shape.type = ProbeShapeType.none;
+  value.backup.type = ProbeShapeType.none;
   for (var i0 = 0; i0 < 2; i0++) {
-    value.extras[i0].type = 0;
+    value.extras[i0].type = ProbeShapeType.none;
   }
   value.extrasCount = 0;
 }
@@ -1221,7 +1221,7 @@ bool readProbeCollider(ProbeCollider value, ByteData view, int numBits) {
   if (v > 2) {
     return false; // not a wire-legal tag (SPEC §4.8)
   }
-  value.shape.type = v;
+  value.shape.type = ProbeShapeType(v);
   switch (value.shape.type) {
     case ProbeShapeType.ring:
       if (bitsRead + 16 > numBits) {
@@ -1269,7 +1269,7 @@ bool readProbeCollider(ProbeCollider value, ByteData view, int numBits) {
   if (v > 2) {
     return false; // not a wire-legal tag (SPEC §4.8)
   }
-  value.backup.type = v;
+  value.backup.type = ProbeShapeType(v);
   switch (value.backup.type) {
     case ProbeShapeType.ring:
       if (bitsRead + 16 > numBits) {
@@ -1333,7 +1333,7 @@ bool readProbeCollider(ProbeCollider value, ByteData view, int numBits) {
     if (v > 2) {
       return false; // not a wire-legal tag (SPEC §4.8)
     }
-    e0.type = v;
+    e0.type = ProbeShapeType(v);
     switch (e0.type) {
       case ProbeShapeType.ring:
         if (bitsRead + 16 > numBits) {
@@ -1377,7 +1377,7 @@ final class ProbeConfig {
   // specified default at construction; zero* gives the §5 zero form
   int retries = -1;
   // specified default at construction; zero* gives the §5 zero form
-  int preferred = Weapon.railgun;
+  Weapon preferred = Weapon.railgun;
 }
 
 // probeConfigMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -1389,7 +1389,7 @@ const int probeConfigMaxBytes = 8;
 // construction.
 void zeroProbeConfig(ProbeConfig value) {
   value.retries = 0;
-  value.preferred = 0;
+  value.preferred = Weapon.none;
 }
 
 // Restore construction defaults in place; buffers and objects are retained.
@@ -1454,7 +1454,7 @@ bool readProbeConfig(ProbeConfig value, ByteData view, int numBits) {
   value.retries = (v << 32) >> 32;
   v = (window >>> 32) & 0xf;
   bitsRead += 4;
-  value.preferred = v;
+  value.preferred = Weapon(v);
   return true;
 }
 
@@ -1716,7 +1716,7 @@ bool readProbeArray(ProbeArray value, ByteData view, int numBits) {
       }
       v = window & 0xf;
       bitsRead += 4;
-      e0.weapon = v;
+      e0.weapon = Weapon(v);
       v = (window >>> 4) & 0x1;
       bitsRead += 1;
       e0.hasTarget = v != 0;
@@ -1750,7 +1750,7 @@ bool readProbeArray(ProbeArray value, ByteData view, int numBits) {
       v = window & 0xffffffff;
       bitsRead += 32;
       e0.idleTicks = v;
-      e0.weapon = 0;
+      e0.weapon = Weapon.none;
       e0.hasTarget = false;
       e0.targetId = 0;
     }
@@ -1813,7 +1813,7 @@ bool readProbeArray(ProbeArray value, ByteData view, int numBits) {
   value.config.retries = (v << 32) >> 32;
   v = (window >>> 32) & 0xf;
   bitsRead += 4;
-  value.config.preferred = v;
+  value.config.preferred = Weapon(v);
   return true;
 }
 

@@ -159,11 +159,12 @@ func TestCookWriteEveryConstructDart(t *testing.T) {
 
 const cookEveryEnumProbe = `import 'dart:io';
 import 'dart:typed_data';
+import 'Probe.dart' as p;
 import 'ProbeWire.dart' as w;
 import 'ProbeCook.dart' as c;
 String hex(Uint8List b,int length)=>b.take(length).map((v)=>v.toRadixString(16).padLeft(2,'0')).join();
 void main(){
- final value=w.Root()..tier=2;
+ final value=w.Root()..tier=p.Tier.pro;
  final size=c.RootCook.cookMeasure(value);
  for(final order in [Endian.little,Endian.big]){
   final bytes=Uint8List(size)..fillRange(0,size,0xa5);

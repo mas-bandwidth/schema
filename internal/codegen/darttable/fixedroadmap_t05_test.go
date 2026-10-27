@@ -337,7 +337,7 @@ fixed table T
 `)
 	t05Has(t, identity, "report.clamped++;",
 		"R16 the identity plan's ordinal bounds pass counts a forged ordinal")
-	t05Has(t, identity, "= 0;\n    report.clamped++;", "R16 a forged ordinal lands None and counts")
+	t05Has(t, identity, "= Tier.none;\n    report.clamped++;", "R16 a forged ordinal lands None and counts")
 	// A FOLDED ELEMENT RUN IS ONE and a widened run is never folded, so the
 	// coalescer merges COPY entries and nothing else (§5.4's "per ENTRY",
 	// §5.9 #33).
