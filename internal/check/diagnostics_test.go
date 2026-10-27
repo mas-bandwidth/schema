@@ -333,6 +333,8 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\nunion U {\n    u Box\n}\ntype Box { x uint8 }\n"},
 		{name: "union variants colliding after export mapping", want: "both become BoxA",
 			src: "package t\nunion U {\n    box_a Box\n    boxA Box\n}\ntype Box { x uint8 }\n"},
+		{name: "union variants colliding after Go initialisms", want: "both become ID in the generated Go",
+			src: "package t\nunion U {\n    id Box\n    i_d Box\n}\ntype Box { x uint8 }\n"},
 		// AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an enum, a
 		// scalar, a string, an array, a pointer and a union are arms, and
 		// what refuses them OUTSIDE a table closure is the closure rule —
@@ -424,6 +426,8 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { class uint8 }\n"},
 		{name: "Go export-casing collision", want: "both become AtRest",
 			src: "package t\ntype T {\n    at_rest bool\n    atRest bool\n}\n"},
+		{name: "Go initialism collision", want: "both become ObjectID in the generated Go",
+			src: "package t\ntype T {\n    object_id bool\n    object_i_d bool\n}\n"},
 		{name: "a decl collides with an enum's flat variant constant (Go)", want: "variant constant",
 			src: "package t\nenum Team { Red }\ntype TeamRed { x uint8 }\n"},
 		{name: "a decl collides with a flags mask constant", want: "mask constant",

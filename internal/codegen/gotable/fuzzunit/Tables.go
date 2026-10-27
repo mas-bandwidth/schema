@@ -3,6 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package tabledemo — protocol id 0xba7b344f28584d33
+// The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package tabledemo
 
@@ -10,29 +11,35 @@ import (
 	"strconv"
 )
 
+// MaxLoadoutSlots is a schema constant.
+//
 // The slots a loadout admits. Raising it is a free edit on the wire: a
 // bound sizes storage, and it is not an id.
 const MaxLoadoutSlots = 8
 
+// MaxProfileName is a schema constant.
 const MaxProfileName = 32
 
+// Grade is an enum: None = 0, then the variants densely from 1; the wire
+// carries [0, 3].
+//
 // A profile's standing, ranked low to high.
-// Grade — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
 type Grade uint8
 
+// The Grade variants. GradeMax is the highest value a read accepts.
 const (
 	GradeNone   Grade = 0
 	GradeBronze Grade = 1
 	GradeSilver Grade = 2
 	// The top rank. A profile that reaches it keeps it.
 	GradeGold Grade = 3
-	GradeMax  Grade = 3 // the exported extent (SPEC §4.2)
+	GradeMax  Grade = 3
 )
 
-// EnumNameGrade: debug/log/tooling name for any Grade wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameGrade(value Grade) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to GradeMax).
+func (v Grade) String() string {
+	switch v {
 	case GradeNone:
 		return "None"
 	case GradeBronze:
@@ -45,21 +52,29 @@ func EnumNameGrade(value Grade) string {
 	return "???"
 }
 
-// Perks — one bit per variant, consumed as masks; storage uint64 in every
-// target, wire 3 bits (SPEC §4.2)
+// EnumNameGrade returns the variant name of value, or "???" for a value outside
+// the declared variants. It is value.String() under the name every target gives
+// its debug-name function.
+func EnumNameGrade(value Grade) string {
+	return value.String()
+}
+
+// Perks is a flags set: one bit per variant, consumed as masks, stored as
+// uint64 and carried in 3 wire bits.
 type Perks uint64
 
+// The Perks masks, one bit per variant.
 const (
 	PerksShielded Perks = 1 << 0
 	PerksCloaked  Perks = 1 << 1
 	PerksTurbo    Perks = 1 << 2
 )
 
-// PerksCount is the declared variant count (SPEC §4.2).
+// PerksCount is the declared variant count.
 const PerksCount = 3
 
-// FlagNamePerks: debug/log/tooling name for bit i of Perks —
-// out-of-range bits name as "???"
+// FlagNamePerks returns the name of bit i of Perks, or "???" for a bit past the
+// declared variants.
 func FlagNamePerks(bit int) string {
 	switch bit {
 	case 0:
@@ -72,9 +87,9 @@ func FlagNamePerks(bit int) string {
 	return "???"
 }
 
-// FlagNamesPerks renders the set bits of value as "A|B" — "0" for the
-// empty set, bits past the declared variants as hex
-func FlagNamesPerks(value uint64) string {
+// FlagNamesPerks renders the set bits of value as "A|B": "0" for the empty set,
+// bits past the declared variants as hex.
+func FlagNamesPerks(value Perks) string {
 	names := ""
 	if value&(1<<0) != 0 {
 		names += "|Shielded"
@@ -86,7 +101,7 @@ func FlagNamesPerks(value uint64) string {
 		names += "|Turbo"
 	}
 	if rest := value >> 3; rest != 0 {
-		names += "|0x" + strconv.FormatUint(rest<<3, 16)
+		names += "|0x" + strconv.FormatUint(uint64(rest<<3), 16)
 	}
 	if names == "" {
 		return "0"
@@ -94,15 +109,21 @@ func FlagNamesPerks(value uint64) string {
 	return names[1:]
 }
 
-// type Attachment
+// String renders the set bits of v as FlagNamesPerks does.
+func (v Perks) String() string {
+	return FlagNamesPerks(v)
+}
+
+// Attachment is the storage of schema type Attachment; WriteAttachment and
+// ReadAttachment carry it on the wire.
 type Attachment struct {
 	Slot  int32   // = 0 in New* (zero value otherwise); wire [0, 7]
 	Power float32 // = 1.0 in New* (zero value otherwise)
 }
 
-// NewAttachment returns a Attachment with its specified defaults applied; the plain zero
-// value is the all-zero form (SPEC §4.2: zero initialization unless a
-// specified default overrides it).
+// NewAttachment returns a Attachment with its specified defaults applied. The
+// plain zero value is the all-zero form: a specified default is the only thing
+// that overrides zero initialization.
 func NewAttachment() Attachment {
 	var value Attachment
 	value.Slot = 0
@@ -110,64 +131,101 @@ func NewAttachment() Attachment {
 	return value
 }
 
-// AttachmentMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// AttachmentMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// AttachmentMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const AttachmentMaxBits = 35
+
+// AttachmentMaxBytes is AttachmentMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const AttachmentMaxBytes = 8
 
-// type Buff
+// WriteAttachment writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
+
+// ReadAttachment reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
+
+// Buff is the storage of schema type Buff; WriteBuff and ReadBuff carry it on
+// the wire.
 type Buff struct {
 	Multiplier float32 // = 1.0 in New* (zero value otherwise)
 }
 
-// NewBuff returns a Buff with its specified defaults applied; the plain zero
-// value is the all-zero form (SPEC §4.2: zero initialization unless a
-// specified default overrides it).
+// NewBuff returns a Buff with its specified defaults applied. The plain zero
+// value is the all-zero form: a specified default is the only thing that
+// overrides zero initialization.
 func NewBuff() Buff {
 	var value Buff
 	value.Multiplier = 1.0
 	return value
 }
 
-// BuffMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// BuffMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// BuffMaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const BuffMaxBits = 32
+
+// BuffMaxBytes is BuffMaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const BuffMaxBytes = 8
 
-// type Debuff
+// WriteBuff writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
+
+// ReadBuff reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
+
+// Debuff is the storage of schema type Debuff; WriteDebuff and ReadDebuff carry
+// it on the wire.
 type Debuff struct {
 	Amount int32 // = 0 in New* (zero value otherwise); wire [0, 100]
 }
 
-// NewDebuff returns a Debuff with its specified defaults applied; the plain zero
-// value is the all-zero form (SPEC §4.2: zero initialization unless a
-// specified default overrides it).
+// NewDebuff returns a Debuff with its specified defaults applied. The plain
+// zero value is the all-zero form: a specified default is the only thing that
+// overrides zero initialization.
 func NewDebuff() Debuff {
 	var value Debuff
 	value.Amount = 0
 	return value
 }
 
-// DebuffMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// DebuffMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// DebuffMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const DebuffMaxBits = 7
+
+// DebuffMaxBytes is DebuffMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const DebuffMaxBytes = 8
 
-// EffectType: union Effect's tag — None = 0, then each variant in declared order (SPEC §4.8)
+// WriteDebuff writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
+
+// ReadDebuff reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
+
+// EffectType is the tag of union Effect: None = 0, then each arm in declared
+// order.
 type EffectType uint8
 
+// The EffectType tags. EffectTypeMax is the highest tag a read accepts.
 const (
 	EffectTypeNone EffectType = 0
 	// A multiplier that rides while the effect is live.
 	EffectTypeBuff   EffectType = 1
 	EffectTypeDebuff EffectType = 2
-	EffectTypeMax    EffectType = 2 // the exported extent (SPEC §4.2)
+	EffectTypeMax    EffectType = 2
 )
 
-// EnumNameEffectType: debug/log/tooling name for any EffectType wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameEffectType(value EffectType) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to EffectTypeMax).
+func (v EffectType) String() string {
+	switch v {
 	case EffectTypeNone:
 		return "None"
 	case EffectTypeBuff:
@@ -178,18 +236,40 @@ func EnumNameEffectType(value EffectType) string {
 	return "???"
 }
 
+// EnumNameEffectType returns the variant name of value, or "???" for a value
+// outside the declared variants. It is value.String() under the name every
+// target gives its debug-name function.
+func EnumNameEffectType(value EffectType) string {
+	return value.String()
+}
+
+// Effect is union Effect: at most one arm, and Type says which.
+//
 // What a weapon does to a target beyond its damage.
-// Effect — at most one of the arms; Type says which. The zero value is the
-// empty union (None). A read constructs the selected arm with its defaults before
-// decoding it (SPEC §5); unselected arms keep what they last held — the
-// reused-storage discipline. Consumers read the selected arm only.
+//
+// The zero value is the empty union, None. The struct holds every arm side by
+// side rather than one arm behind an interface: an interface value would
+// heap-allocate per value, and generated storage never allocates. A read
+// constructs the selected arm with its defaults before decoding it; unselected
+// arms keep what they last held, so read only the arm Type selects.
 type Effect struct {
 	Type   EffectType
 	Buff   Buff
 	Debuff Debuff
 }
 
-// EffectMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
-// EffectMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// EffectMaxBits is the tag plus the largest arm, in bits; None costs the tag
+// only.
 const EffectMaxBits = 34
+
+// EffectMaxBytes is EffectMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const EffectMaxBytes = 8
+
+// WriteEffect writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
+
+// ReadEffect reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.

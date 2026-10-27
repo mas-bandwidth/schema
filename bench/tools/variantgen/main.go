@@ -75,8 +75,8 @@ func pinGenMixed() bench.BenchMixed {
 	in.Sequence = 52428
 	in.AckSequence = 12345
 	in.AckBits = 0xA5A5A5A5
-	in.SessionId = 0x123456789ABCDEF0
-	in.ClientId = 0xDEADBEEF
+	in.SessionID = 0x123456789ABCDEF0
+	in.ClientID = 0xDEADBEEF
 	in.Nonce = 0xFEDCBA9876543210
 	in.WorldTime = -987654321000
 	in.FrameTick = 0x123456789ABC
@@ -84,7 +84,7 @@ func pinGenMixed() bench.BenchMixed {
 	in.EntitiesCount = 8
 	for i := 0; i < 8; i++ {
 		e := &in.Entities[i]
-		e.EntityId = uint32(2049 + i*17)
+		e.EntityID = uint32(2049 + i*17)
 		e.PosX = int32(-16383 + i*4096)
 		e.PosY = int32(16383 - i*4096)
 		e.PosZ = int32(-1 + i*2048)
@@ -101,11 +101,11 @@ func pinGenMixed() bench.BenchMixed {
 	}
 	in.StatsCount = 80
 	for i := 0; i < 80; i++ {
-		in.Stats[i].StatId = uint32((i * 3) % 256)
+		in.Stats[i].StatID = uint32((i * 3) % 256)
 		in.Stats[i].Delta = int32(-512 + (i*13)%1024)
 	}
 	in.GameEvent.Type = bench.MixedEventTypeHit
-	in.GameEvent.Hit.TargetId = 4095
+	in.GameEvent.Hit.TargetID = 4095
 	in.GameEvent.Hit.Damage = 4095
 	in.GameEvent.Hit.HitKind = 7
 	in.GameEvent.Hit.Crit = true
@@ -139,15 +139,15 @@ func varyGenMixed(f *bench.BenchMixed, rng uint64) {
 	f.Sequence = uint32(rng>>8) & 65535
 	f.AckSequence = int32(uint32(rng>>24) & 65535)
 	f.AckBits = uint32(rng >> 16)
-	f.SessionId = rng
-	f.ClientId = uint32(rng >> 32)
+	f.SessionID = rng
+	f.ClientID = uint32(rng >> 32)
 	f.Nonce = rng ^ 0xA5A5A5A5A5A5A5A5
 	f.WorldTime = int64((rng>>12)&0xFFFFFFFFF) - 34359738368 // within +/-1e12
 	f.FrameTick = rng & 0xFFFFFFFFFFFF
 	f.ServerTime = int32((rng >> 20) & 0x7FFFFF) // raw Q24.8 <= 65535 << 8
 	for i := 0; i < 8; i++ {
 		e := &f.Entities[i]
-		e.EntityId = uint32((rng >> uint(i)) & 4095)
+		e.EntityID = uint32((rng >> uint(i)) & 4095)
 		e.PosX = int32((rng>>uint(i+4))&16383) - 8192
 		e.PosY = int32((rng>>uint(i+12))&16383) - 8192
 		e.Health = int32((rng >> uint(i+20)) & 511) // within [0, 1000]
@@ -158,7 +158,7 @@ func varyGenMixed(f *bench.BenchMixed, rng uint64) {
 	for i := 0; i < 80; i++ {
 		f.Stats[i].Delta = int32((rng>>uint(i&31))&1023) - 512
 	}
-	f.GameEvent.Hit.TargetId = uint32((rng >> 6) & 4095)
+	f.GameEvent.Hit.TargetID = uint32((rng >> 6) & 4095)
 	f.GameEvent.Hit.Damage = int32((rng >> 18) & 4095)
 	f.GameEvent.Hit.HitKind = int32((rng >> 30) & 7)
 	f.GameEvent.Hit.Crit = rng&4 != 0

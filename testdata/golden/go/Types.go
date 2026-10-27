@@ -3,6 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xeb26c970fde3fd71
+// The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package example
 
@@ -12,18 +13,25 @@ import (
 	"github.com/mas-bandwidth/serialize.go"
 )
 
-// type Vec3
+// Vec3 is the storage of schema type Vec3; WriteVec3 and ReadVec3 carry it on
+// the wire.
 type Vec3 struct {
 	X float64
 	Y float64
 	Z float64
 }
 
-// Vec3MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// Vec3MaxBytes is rounded up to the 8-byte write-buffer granularity.
+// Vec3MaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const Vec3MaxBits = 192
+
+// Vec3MaxBytes is Vec3MaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const Vec3MaxBytes = 24
 
+// WriteVec3 writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteVec3(stream *serialize.WriteStream, value *Vec3) error {
 	stream.SerializeFloat64(&value.X)
 	stream.SerializeFloat64(&value.Y)
@@ -31,6 +39,9 @@ func WriteVec3(stream *serialize.WriteStream, value *Vec3) error {
 	return stream.Err()
 }
 
+// ReadVec3 reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadVec3(stream *serialize.ReadStream, value *Vec3) error {
 	stream.SerializeFloat64(&value.X)
 	stream.SerializeFloat64(&value.Y)
@@ -38,7 +49,8 @@ func ReadVec3(stream *serialize.ReadStream, value *Vec3) error {
 	return stream.Err()
 }
 
-// type Quat
+// Quat is the storage of schema type Quat; WriteQuat and ReadQuat carry it on
+// the wire.
 type Quat struct {
 	X float64
 	Y float64
@@ -46,11 +58,17 @@ type Quat struct {
 	W float64
 }
 
-// QuatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// QuatMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// QuatMaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const QuatMaxBits = 256
+
+// QuatMaxBytes is QuatMaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const QuatMaxBytes = 32
 
+// WriteQuat writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteQuat(stream *serialize.WriteStream, value *Quat) error {
 	stream.SerializeFloat64(&value.X)
 	stream.SerializeFloat64(&value.Y)
@@ -59,6 +77,9 @@ func WriteQuat(stream *serialize.WriteStream, value *Quat) error {
 	return stream.Err()
 }
 
+// ReadQuat reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadQuat(stream *serialize.ReadStream, value *Quat) error {
 	stream.SerializeFloat64(&value.X)
 	stream.SerializeFloat64(&value.Y)
@@ -67,194 +88,197 @@ func ReadQuat(stream *serialize.ReadStream, value *Quat) error {
 	return stream.Err()
 }
 
-// type Handle
+// Handle is the storage of schema type Handle; WriteHandle and ReadHandle carry
+// it on the wire.
 type Handle struct {
-	ObjectId       int32 // wire [0, 9999]
+	ObjectID       int32 // wire [0, 9999]
 	ObjectSequence uint8
 }
 
-// HandleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// HandleMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// HandleMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const HandleMaxBits = 22
+
+// HandleMaxBytes is HandleMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const HandleMaxBytes = 8
 
+// WriteHandle writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteHandle(stream *serialize.WriteStream, value *Handle) error {
-	{
-		if value.ObjectId < 0 || value.ObjectId > MaxObjects-1 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(uint32(value.ObjectId))) & 0x3fff
-		f1 := (uint64(value.ObjectSequence)) & 0xff
-		w0 := uint32(f0 | (f1 << 14))
-		stream.SerializeBits(&w0, 22)
+	if value.ObjectID < 0 || value.ObjectID > MaxObjects-1 {
+		return serialize.ErrValueOutOfRange
 	}
+	f0 := uint64(value.ObjectID) & 0x3fff
+	f1 := uint64(value.ObjectSequence) & 0xff
+	w0 := uint32(f0 | f1<<14)
+	stream.SerializeBits(&w0, 22)
 	return stream.Err()
 }
 
+// ReadHandle reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadHandle(stream *serialize.ReadStream, value *Handle) error {
-	{
-		n0 := uint32(0)
-		stream.SerializeBits(&n0, 22)
-		c0 := uint64(n0)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0x3fff
-		if v0 > 9999 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.ObjectId = int32(v0)
-		v1 := (c0 >> 14) & 0xff
-		value.ObjectSequence = uint8(v1)
+	n0 := uint32(0)
+	stream.SerializeBits(&n0, 22)
+	c0 := uint64(n0)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0x3fff
+	if v0 > 9999 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.ObjectID = int32(v0)
+	v1 := (c0 >> 14) & 0xff
+	value.ObjectSequence = uint8(v1)
 	return stream.Err()
 }
 
-// type QuantizedPosition
+// QuantizedPosition is the storage of schema type QuantizedPosition;
+// WriteQuantizedPosition and ReadQuantizedPosition carry it on the wire.
 type QuantizedPosition struct {
 	X int32 // wire [-8388608, 8388608]
 	Y int32 // wire [-8388608, 8388608]
 	Z int32 // wire [-8388608, 8388608]
 }
 
-// QuantizedPositionMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// QuantizedPositionMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// QuantizedPositionMaxBits is the longest wire path in bits, alignment padding
+// at its worst case.
 const QuantizedPositionMaxBits = 75
+
+// QuantizedPositionMaxBytes is QuantizedPositionMaxBits in bytes, rounded up to
+// the 8-byte write-buffer granularity: size write buffers from it.
 const QuantizedPositionMaxBytes = 16
 
+// WriteQuantizedPosition writes value to stream in wire order. It returns the
+// first write-side refusal (serialize.ErrValueOutOfRange for a value the wire
+// cannot carry) or the stream's error; the size written is
+// stream.BitsProcessed().
 func WriteQuantizedPosition(stream *serialize.WriteStream, value *QuantizedPosition) error {
-	{
-		if value.X < -MaxPositionUnits || value.X > MaxPositionUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.Y < -MaxPositionUnits || value.Y > MaxPositionUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.Z < -MaxPositionUnits || value.Z > MaxPositionUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(uint32(value.X - (-MaxPositionUnits)))) & 0x1ffffff
-		f1 := (uint64(uint32(value.Y - (-MaxPositionUnits)))) & 0x1ffffff
-		f2 := (uint64(uint32(value.Z - (-MaxPositionUnits)))) & 0x1ffffff
-		w0 := f0 | (f1 << 25) | (f2 << 50)
-		stream.SerializeBits64(&w0, 64)
-		w1 := uint32((f2 >> 14))
-		stream.SerializeBits(&w1, 11)
+	if value.X < -MaxPositionUnits || value.X > MaxPositionUnits {
+		return serialize.ErrValueOutOfRange
 	}
+	if value.Y < -MaxPositionUnits || value.Y > MaxPositionUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Z < -MaxPositionUnits || value.Z > MaxPositionUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	f0 := uint64(value.X+MaxPositionUnits) & 0x1ffffff
+	f1 := uint64(value.Y+MaxPositionUnits) & 0x1ffffff
+	f2 := uint64(value.Z+MaxPositionUnits) & 0x1ffffff
+	w0 := f0 | f1<<25 | f2<<50
+	stream.SerializeBits64(&w0, 64)
+	w1 := uint32(f2 >> 14)
+	stream.SerializeBits(&w1, 11)
 	return stream.Err()
 }
 
+// ReadQuantizedPosition reads value from stream, validating every field. It
+// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
+// for a wire the schema refuses.
 func ReadQuantizedPosition(stream *serialize.ReadStream, value *QuantizedPosition) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		n1 := uint32(0)
-		stream.SerializeBits(&n1, 11)
-		c1 := uint64(n1)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0x1ffffff
-		if v0 > 16777216 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-MaxPositionUnits)
-			value.X = int32(uint32(v0) + uint32(lowValue))
-		}
-		v1 := (c0 >> 25) & 0x1ffffff
-		if v1 > 16777216 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-MaxPositionUnits)
-			value.Y = int32(uint32(v1) + uint32(lowValue))
-		}
-		v2 := ((c0 >> 50) | (c1 << 14)) & 0x1ffffff
-		if v2 > 16777216 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-MaxPositionUnits)
-			value.Z = int32(uint32(v2) + uint32(lowValue))
-		}
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 64)
+	n1 := uint32(0)
+	stream.SerializeBits(&n1, 11)
+	c1 := uint64(n1)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0x1ffffff
+	if v0 > 16777216 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.X = int32(v0) - MaxPositionUnits
+	v1 := (c0 >> 25) & 0x1ffffff
+	if v1 > 16777216 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Y = int32(v1) - MaxPositionUnits
+	v2 := (c0>>50 | c1<<14) & 0x1ffffff
+	if v2 > 16777216 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Z = int32(v2) - MaxPositionUnits
 	return stream.Err()
 }
 
-// type QuantizedVelocity
+// QuantizedVelocity is the storage of schema type QuantizedVelocity;
+// WriteQuantizedVelocity and ReadQuantizedVelocity carry it on the wire.
 type QuantizedVelocity struct {
 	X int32 // wire [-2097152, 2097152]
 	Y int32 // wire [-2097152, 2097152]
 	Z int32 // wire [-2097152, 2097152]
 }
 
-// QuantizedVelocityMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// QuantizedVelocityMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// QuantizedVelocityMaxBits is the longest wire path in bits, alignment padding
+// at its worst case.
 const QuantizedVelocityMaxBits = 69
+
+// QuantizedVelocityMaxBytes is QuantizedVelocityMaxBits in bytes, rounded up to
+// the 8-byte write-buffer granularity: size write buffers from it.
 const QuantizedVelocityMaxBytes = 16
 
+// WriteQuantizedVelocity writes value to stream in wire order. It returns the
+// first write-side refusal (serialize.ErrValueOutOfRange for a value the wire
+// cannot carry) or the stream's error; the size written is
+// stream.BitsProcessed().
 func WriteQuantizedVelocity(stream *serialize.WriteStream, value *QuantizedVelocity) error {
-	{
-		if value.X < -MaxVelocityUnits || value.X > MaxVelocityUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.Y < -MaxVelocityUnits || value.Y > MaxVelocityUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.Z < -MaxVelocityUnits || value.Z > MaxVelocityUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(uint32(value.X - (-MaxVelocityUnits)))) & 0x7fffff
-		f1 := (uint64(uint32(value.Y - (-MaxVelocityUnits)))) & 0x7fffff
-		f2 := (uint64(uint32(value.Z - (-MaxVelocityUnits)))) & 0x7fffff
-		w0 := f0 | (f1 << 23) | (f2 << 46)
-		stream.SerializeBits64(&w0, 64)
-		w1 := uint32((f2 >> 18))
-		stream.SerializeBits(&w1, 5)
+	if value.X < -MaxVelocityUnits || value.X > MaxVelocityUnits {
+		return serialize.ErrValueOutOfRange
 	}
+	if value.Y < -MaxVelocityUnits || value.Y > MaxVelocityUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Z < -MaxVelocityUnits || value.Z > MaxVelocityUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	f0 := uint64(value.X+MaxVelocityUnits) & 0x7fffff
+	f1 := uint64(value.Y+MaxVelocityUnits) & 0x7fffff
+	f2 := uint64(value.Z+MaxVelocityUnits) & 0x7fffff
+	w0 := f0 | f1<<23 | f2<<46
+	stream.SerializeBits64(&w0, 64)
+	w1 := uint32(f2 >> 18)
+	stream.SerializeBits(&w1, 5)
 	return stream.Err()
 }
 
+// ReadQuantizedVelocity reads value from stream, validating every field. It
+// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
+// for a wire the schema refuses.
 func ReadQuantizedVelocity(stream *serialize.ReadStream, value *QuantizedVelocity) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		n1 := uint32(0)
-		stream.SerializeBits(&n1, 5)
-		c1 := uint64(n1)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0x7fffff
-		if v0 > 4194304 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-MaxVelocityUnits)
-			value.X = int32(uint32(v0) + uint32(lowValue))
-		}
-		v1 := (c0 >> 23) & 0x7fffff
-		if v1 > 4194304 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-MaxVelocityUnits)
-			value.Y = int32(uint32(v1) + uint32(lowValue))
-		}
-		v2 := ((c0 >> 46) | (c1 << 18)) & 0x7fffff
-		if v2 > 4194304 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-MaxVelocityUnits)
-			value.Z = int32(uint32(v2) + uint32(lowValue))
-		}
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 64)
+	n1 := uint32(0)
+	stream.SerializeBits(&n1, 5)
+	c1 := uint64(n1)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0x7fffff
+	if v0 > 4194304 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.X = int32(v0) - MaxVelocityUnits
+	v1 := (c0 >> 23) & 0x7fffff
+	if v1 > 4194304 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Y = int32(v1) - MaxVelocityUnits
+	v2 := (c0>>46 | c1<<18) & 0x7fffff
+	if v2 > 4194304 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Z = int32(v2) - MaxVelocityUnits
 	return stream.Err()
 }
 
-// type QuantizedRotation
+// QuantizedRotation is the storage of schema type QuantizedRotation;
+// WriteQuantizedRotation and ReadQuantizedRotation carry it on the wire.
 type QuantizedRotation struct {
 	X int16 // wire [-1024, 1024]
 	Y int16 // wire [-1024, 1024]
@@ -262,99 +286,96 @@ type QuantizedRotation struct {
 	W int16 // wire [-1024, 1024]
 }
 
-// QuantizedRotationMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// QuantizedRotationMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// QuantizedRotationMaxBits is the longest wire path in bits, alignment padding
+// at its worst case.
 const QuantizedRotationMaxBits = 48
+
+// QuantizedRotationMaxBytes is QuantizedRotationMaxBits in bytes, rounded up to
+// the 8-byte write-buffer granularity: size write buffers from it.
 const QuantizedRotationMaxBytes = 8
 
+// WriteQuantizedRotation writes value to stream in wire order. It returns the
+// first write-side refusal (serialize.ErrValueOutOfRange for a value the wire
+// cannot carry) or the stream's error; the size written is
+// stream.BitsProcessed().
 func WriteQuantizedRotation(stream *serialize.WriteStream, value *QuantizedRotation) error {
-	{
-		rangeValue0 := int32(value.X)
-		if rangeValue0 < -RotationUnits || rangeValue0 > RotationUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue1 := int32(value.Y)
-		if rangeValue1 < -RotationUnits || rangeValue1 > RotationUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue2 := int32(value.Z)
-		if rangeValue2 < -RotationUnits || rangeValue2 > RotationUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue3 := int32(value.W)
-		if rangeValue3 < -RotationUnits || rangeValue3 > RotationUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(uint32(rangeValue0 - (-RotationUnits)))) & 0xfff
-		f1 := (uint64(uint32(rangeValue1 - (-RotationUnits)))) & 0xfff
-		f2 := (uint64(uint32(rangeValue2 - (-RotationUnits)))) & 0xfff
-		f3 := (uint64(uint32(rangeValue3 - (-RotationUnits)))) & 0xfff
-		w0 := f0 | (f1 << 12) | (f2 << 24) | (f3 << 36)
-		stream.SerializeBits64(&w0, 48)
+	if value.X < -RotationUnits || value.X > RotationUnits {
+		return serialize.ErrValueOutOfRange
 	}
+	if value.Y < -RotationUnits || value.Y > RotationUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Z < -RotationUnits || value.Z > RotationUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.W < -RotationUnits || value.W > RotationUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	f0 := uint64(int32(value.X)+RotationUnits) & 0xfff
+	f1 := uint64(int32(value.Y)+RotationUnits) & 0xfff
+	f2 := uint64(int32(value.Z)+RotationUnits) & 0xfff
+	f3 := uint64(int32(value.W)+RotationUnits) & 0xfff
+	w0 := f0 | f1<<12 | f2<<24 | f3<<36
+	stream.SerializeBits64(&w0, 48)
 	return stream.Err()
 }
 
+// ReadQuantizedRotation reads value from stream, validating every field. It
+// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
+// for a wire the schema refuses.
 func ReadQuantizedRotation(stream *serialize.ReadStream, value *QuantizedRotation) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 48)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xfff
-		if v0 > 2048 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-RotationUnits)
-			value.X = int16(int32(uint32(v0) + uint32(lowValue)))
-		}
-		v1 := (c0 >> 12) & 0xfff
-		if v1 > 2048 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-RotationUnits)
-			value.Y = int16(int32(uint32(v1) + uint32(lowValue)))
-		}
-		v2 := (c0 >> 24) & 0xfff
-		if v2 > 2048 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-RotationUnits)
-			value.Z = int16(int32(uint32(v2) + uint32(lowValue)))
-		}
-		v3 := (c0 >> 36) & 0xfff
-		if v3 > 2048 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-RotationUnits)
-			value.W = int16(int32(uint32(v3) + uint32(lowValue)))
-		}
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 48)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0xfff
+	if v0 > 2048 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.X = int16(int32(v0) - RotationUnits)
+	v1 := (c0 >> 12) & 0xfff
+	if v1 > 2048 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Y = int16(int32(v1) - RotationUnits)
+	v2 := (c0 >> 24) & 0xfff
+	if v2 > 2048 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Z = int16(int32(v2) - RotationUnits)
+	v3 := (c0 >> 36) & 0xfff
+	if v3 > 2048 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.W = int16(int32(v3) - RotationUnits)
 	return stream.Err()
 }
 
-// type RigidBody
+// RigidBody is the storage of schema type RigidBody; WriteRigidBody and
+// ReadRigidBody carry it on the wire.
 type RigidBody struct {
 	Position    Vec3
 	Orientation Quat
 	AtRest      bool
 
 	// !at_rest — wire branch; storage holds both sides, a read zeroes the
-	// untaken side (SPEC §5)
+	// untaken side
 	LinearVelocity  Vec3
 	AngularVelocity Vec3
 }
 
-// RigidBodyMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// RigidBodyMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// RigidBodyMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const RigidBodyMaxBits = 833
+
+// RigidBodyMaxBytes is RigidBodyMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const RigidBodyMaxBytes = 112
 
+// WriteRigidBody writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteRigidBody(stream *serialize.WriteStream, value *RigidBody) error {
 	if err := WriteVec3(stream, &value.Position); err != nil {
 		return err
@@ -374,6 +395,9 @@ func WriteRigidBody(stream *serialize.WriteStream, value *RigidBody) error {
 	return stream.Err()
 }
 
+// ReadRigidBody reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadRigidBody(stream *serialize.ReadStream, value *RigidBody) error {
 	if err := ReadVec3(stream, &value.Position); err != nil {
 		return err
@@ -396,7 +420,8 @@ func ReadRigidBody(stream *serialize.ReadStream, value *RigidBody) error {
 	return stream.Err()
 }
 
-// type Input
+// Input is the storage of schema type Input; WriteInput and ReadInput carry it
+// on the wire.
 type Input struct {
 	StickX   float32
 	StickY   float32
@@ -413,102 +438,108 @@ type Input struct {
 	Ping     bool
 }
 
-// InputMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// InputMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// InputMaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const InputMaxBits = 168
+
+// InputMaxBytes is InputMaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const InputMaxBytes = 24
 
+// WriteInput writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteInput(stream *serialize.WriteStream, value *Input) error {
-	{
-		f0 := (uint64(math.Float32bits(value.StickX))) & 0xffffffff
-		f1 := (uint64(math.Float32bits(value.StickY))) & 0xffffffff
-		f2 := (uint64(math.Float32bits(value.Throttle))) & 0xffffffff
-		f3 := (uint64(math.Float32bits(value.Yaw))) & 0xffffffff
-		f4 := (uint64(math.Float32bits(value.Pitch))) & 0xffffffff
-		f5 := uint64(0)
-		if value.Fire {
-			f5 = 1
-		}
-		f6 := uint64(0)
-		if value.AltFire {
-			f6 = 1
-		}
-		f7 := uint64(0)
-		if value.Boost {
-			f7 = 1
-		}
-		f8 := uint64(0)
-		if value.Brake {
-			f8 = 1
-		}
-		f9 := uint64(0)
-		if value.Aim {
-			f9 = 1
-		}
-		f10 := uint64(0)
-		if value.LockOn {
-			f10 = 1
-		}
-		f11 := uint64(0)
-		if value.Zoom {
-			f11 = 1
-		}
-		f12 := uint64(0)
-		if value.Ping {
-			f12 = 1
-		}
-		w0 := f0 | (f1 << 32)
-		stream.SerializeBits64(&w0, 64)
-		w1 := f2 | (f3 << 32)
-		stream.SerializeBits64(&w1, 64)
-		w2 := f4 | (f5 << 32) | (f6 << 33) | (f7 << 34) | (f8 << 35) | (f9 << 36) | (f10 << 37) | (f11 << 38) | (f12 << 39)
-		stream.SerializeBits64(&w2, 40)
+	f0 := uint64(math.Float32bits(value.StickX)) & 0xffffffff
+	f1 := uint64(math.Float32bits(value.StickY)) & 0xffffffff
+	f2 := uint64(math.Float32bits(value.Throttle)) & 0xffffffff
+	f3 := uint64(math.Float32bits(value.Yaw)) & 0xffffffff
+	f4 := uint64(math.Float32bits(value.Pitch)) & 0xffffffff
+	f5 := uint64(0)
+	if value.Fire {
+		f5 = 1
 	}
+	f6 := uint64(0)
+	if value.AltFire {
+		f6 = 1
+	}
+	f7 := uint64(0)
+	if value.Boost {
+		f7 = 1
+	}
+	f8 := uint64(0)
+	if value.Brake {
+		f8 = 1
+	}
+	f9 := uint64(0)
+	if value.Aim {
+		f9 = 1
+	}
+	f10 := uint64(0)
+	if value.LockOn {
+		f10 = 1
+	}
+	f11 := uint64(0)
+	if value.Zoom {
+		f11 = 1
+	}
+	f12 := uint64(0)
+	if value.Ping {
+		f12 = 1
+	}
+	w0 := f0 | f1<<32
+	stream.SerializeBits64(&w0, 64)
+	w1 := f2 | f3<<32
+	stream.SerializeBits64(&w1, 64)
+	w2 := f4 | f5<<32 | f6<<33 | f7<<34 | f8<<35 | f9<<36 | f10<<37 | f11<<38 | f12<<39
+	stream.SerializeBits64(&w2, 40)
 	return stream.Err()
 }
 
+// ReadInput reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadInput(stream *serialize.ReadStream, value *Input) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 64)
-		c2 := uint64(0)
-		stream.SerializeBits64(&c2, 40)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xffffffff
-		value.StickX = math.Float32frombits(uint32(v0))
-		v1 := (c0 >> 32) & 0xffffffff
-		value.StickY = math.Float32frombits(uint32(v1))
-		v2 := c1 & 0xffffffff
-		value.Throttle = math.Float32frombits(uint32(v2))
-		v3 := (c1 >> 32) & 0xffffffff
-		value.Yaw = math.Float32frombits(uint32(v3))
-		v4 := c2 & 0xffffffff
-		value.Pitch = math.Float32frombits(uint32(v4))
-		v5 := (c2 >> 32) & 0x1
-		value.Fire = v5 != 0
-		v6 := (c2 >> 33) & 0x1
-		value.AltFire = v6 != 0
-		v7 := (c2 >> 34) & 0x1
-		value.Boost = v7 != 0
-		v8 := (c2 >> 35) & 0x1
-		value.Brake = v8 != 0
-		v9 := (c2 >> 36) & 0x1
-		value.Aim = v9 != 0
-		v10 := (c2 >> 37) & 0x1
-		value.LockOn = v10 != 0
-		v11 := (c2 >> 38) & 0x1
-		value.Zoom = v11 != 0
-		v12 := (c2 >> 39) & 0x1
-		value.Ping = v12 != 0
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 64)
+	c1 := uint64(0)
+	stream.SerializeBits64(&c1, 64)
+	c2 := uint64(0)
+	stream.SerializeBits64(&c2, 40)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0xffffffff
+	value.StickX = math.Float32frombits(uint32(v0))
+	v1 := (c0 >> 32) & 0xffffffff
+	value.StickY = math.Float32frombits(uint32(v1))
+	v2 := c1 & 0xffffffff
+	value.Throttle = math.Float32frombits(uint32(v2))
+	v3 := (c1 >> 32) & 0xffffffff
+	value.Yaw = math.Float32frombits(uint32(v3))
+	v4 := c2 & 0xffffffff
+	value.Pitch = math.Float32frombits(uint32(v4))
+	v5 := (c2 >> 32) & 0x1
+	value.Fire = v5 != 0
+	v6 := (c2 >> 33) & 0x1
+	value.AltFire = v6 != 0
+	v7 := (c2 >> 34) & 0x1
+	value.Boost = v7 != 0
+	v8 := (c2 >> 35) & 0x1
+	value.Brake = v8 != 0
+	v9 := (c2 >> 36) & 0x1
+	value.Aim = v9 != 0
+	v10 := (c2 >> 37) & 0x1
+	value.LockOn = v10 != 0
+	v11 := (c2 >> 38) & 0x1
+	value.Zoom = v11 != 0
+	v12 := (c2 >> 39) & 0x1
+	value.Ping = v12 != 0
 	return stream.Err()
 }
 
-// type InputPacket
+// InputPacket is the storage of schema type InputPacket; WriteInputPacket and
+// ReadInputPacket carry it on the wire.
 type InputPacket struct {
 	SynchronizeSequence uint16
 	CurrentFrame        uint64
@@ -517,34 +548,36 @@ type InputPacket struct {
 	InputsCount         int32
 }
 
-// InputPacketMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// InputPacketMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// InputPacketMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const InputPacketMaxBits = 2837
+
+// InputPacketMaxBytes is InputPacketMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const InputPacketMaxBytes = 360
 
+// WriteInputPacket writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteInputPacket(stream *serialize.WriteStream, value *InputPacket) error {
-	{
-		rawValue := uint32(value.SynchronizeSequence)
-		stream.SerializeBits(&rawValue, 16)
-	}
+	rawValue := uint32(value.SynchronizeSequence)
+	stream.SerializeBits(&rawValue, 16)
 	stream.SerializeBits64(&value.CurrentFrame, 64)
 	stream.SerializeBits64(&value.StartFrame, 64)
 	if value.InputsCount < 0 || value.InputsCount > MaxInputsPerPacket {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.InputsCount)
-		stream.SerializeBits(&offsetValue, 5)
-	}
-	if stream.Err() != nil { // the count guards the loop (§6.3)
+	offsetValue := uint32(value.InputsCount)
+	stream.SerializeBits(&offsetValue, 5)
+	if stream.Err() != nil { // the count guards the loop
 		return stream.Err()
 	}
 	for i := int32(0); i < value.InputsCount; i++ {
-		f0 := (uint64(math.Float32bits(value.Inputs[i].StickX))) & 0xffffffff
-		f1 := (uint64(math.Float32bits(value.Inputs[i].StickY))) & 0xffffffff
-		f2 := (uint64(math.Float32bits(value.Inputs[i].Throttle))) & 0xffffffff
-		f3 := (uint64(math.Float32bits(value.Inputs[i].Yaw))) & 0xffffffff
-		f4 := (uint64(math.Float32bits(value.Inputs[i].Pitch))) & 0xffffffff
+		f0 := uint64(math.Float32bits(value.Inputs[i].StickX)) & 0xffffffff
+		f1 := uint64(math.Float32bits(value.Inputs[i].StickY)) & 0xffffffff
+		f2 := uint64(math.Float32bits(value.Inputs[i].Throttle)) & 0xffffffff
+		f3 := uint64(math.Float32bits(value.Inputs[i].Yaw)) & 0xffffffff
+		f4 := uint64(math.Float32bits(value.Inputs[i].Pitch)) & 0xffffffff
 		f5 := uint64(0)
 		if value.Inputs[i].Fire {
 			f5 = 1
@@ -577,35 +610,34 @@ func WriteInputPacket(stream *serialize.WriteStream, value *InputPacket) error {
 		if value.Inputs[i].Ping {
 			f12 = 1
 		}
-		w0 := f0 | (f1 << 32)
+		w0 := f0 | f1<<32
 		stream.SerializeBits64(&w0, 64)
-		w1 := f2 | (f3 << 32)
+		w1 := f2 | f3<<32
 		stream.SerializeBits64(&w1, 64)
-		w2 := f4 | (f5 << 32) | (f6 << 33) | (f7 << 34) | (f8 << 35) | (f9 << 36) | (f10 << 37) | (f11 << 38) | (f12 << 39)
+		w2 := f4 | f5<<32 | f6<<33 | f7<<34 | f8<<35 | f9<<36 | f10<<37 | f11<<38 | f12<<39
 		stream.SerializeBits64(&w2, 40)
 	}
 	return stream.Err()
 }
 
+// ReadInputPacket reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadInputPacket(stream *serialize.ReadStream, value *InputPacket) error {
-	{
-		rawValue := uint32(0)
-		stream.SerializeBits(&rawValue, 16)
-		value.SynchronizeSequence = uint16(rawValue)
-	}
+	rawValue := uint32(0)
+	stream.SerializeBits(&rawValue, 16)
+	value.SynchronizeSequence = uint16(rawValue)
 	stream.SerializeBits64(&value.CurrentFrame, 64)
 	stream.SerializeBits64(&value.StartFrame, 64)
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 5)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 16 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.InputsCount = int32(offsetValue)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 5)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	if offsetValue > 16 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.InputsCount = int32(offsetValue)
 	for i := int32(0); i < value.InputsCount; i++ {
 		c0 := uint64(0)
 		stream.SerializeBits64(&c0, 64)
@@ -646,7 +678,8 @@ func ReadInputPacket(stream *serialize.ReadStream, value *InputPacket) error {
 	return stream.Err()
 }
 
-// type ShipCreate
+// ShipCreate is the storage of schema type ShipCreate; WriteShipCreate and
+// ReadShipCreate carry it on the wire.
 type ShipCreate struct {
 	ShipType       ShipType
 	Position       QuantizedPosition
@@ -655,7 +688,7 @@ type ShipCreate struct {
 	HasFlags       bool
 
 	// has_flags — wire branch; storage holds both sides, a read zeroes the
-	// untaken side (SPEC §5)
+	// untaken side
 	Flags ShipFlags
 
 	Team    Team
@@ -664,311 +697,276 @@ type ShipCreate struct {
 	Pending Pending
 }
 
-// ShipCreateMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ShipCreateMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ShipCreateMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const ShipCreateMaxBits = 219
+
+// ShipCreateMaxBytes is ShipCreateMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const ShipCreateMaxBytes = 32
 
+// WriteShipCreate writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteShipCreate(stream *serialize.WriteStream, value *ShipCreate) error {
-	{
-		enumValue0 := int32(value.ShipType)
-		if enumValue0 < 0 || enumValue0 > 5 {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.Position.X < -MaxPositionUnits || value.Position.X > MaxPositionUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.Position.Y < -MaxPositionUnits || value.Position.Y > MaxPositionUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.Position.Z < -MaxPositionUnits || value.Position.Z > MaxPositionUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue4 := int32(value.Rotation.X)
-		if rangeValue4 < -RotationUnits || rangeValue4 > RotationUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue5 := int32(value.Rotation.Y)
-		if rangeValue5 < -RotationUnits || rangeValue5 > RotationUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue6 := int32(value.Rotation.Z)
-		if rangeValue6 < -RotationUnits || rangeValue6 > RotationUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue7 := int32(value.Rotation.W)
-		if rangeValue7 < -RotationUnits || rangeValue7 > RotationUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.LinearVelocity.X < -MaxVelocityUnits || value.LinearVelocity.X > MaxVelocityUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.LinearVelocity.Y < -MaxVelocityUnits || value.LinearVelocity.Y > MaxVelocityUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.LinearVelocity.Z < -MaxVelocityUnits || value.LinearVelocity.Z > MaxVelocityUnits {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(uint32(enumValue0))) & 0x7
-		f1 := (uint64(uint32(value.Position.X - (-MaxPositionUnits)))) & 0x1ffffff
-		f2 := (uint64(uint32(value.Position.Y - (-MaxPositionUnits)))) & 0x1ffffff
-		f3 := (uint64(uint32(value.Position.Z - (-MaxPositionUnits)))) & 0x1ffffff
-		f4 := (uint64(uint32(rangeValue4 - (-RotationUnits)))) & 0xfff
-		f5 := (uint64(uint32(rangeValue5 - (-RotationUnits)))) & 0xfff
-		f6 := (uint64(uint32(rangeValue6 - (-RotationUnits)))) & 0xfff
-		f7 := (uint64(uint32(rangeValue7 - (-RotationUnits)))) & 0xfff
-		f8 := (uint64(uint32(value.LinearVelocity.X - (-MaxVelocityUnits)))) & 0x7fffff
-		f9 := (uint64(uint32(value.LinearVelocity.Y - (-MaxVelocityUnits)))) & 0x7fffff
-		f10 := (uint64(uint32(value.LinearVelocity.Z - (-MaxVelocityUnits)))) & 0x7fffff
-		f11 := uint64(0)
-		if value.HasFlags {
-			f11 = 1
-		}
-		w0 := f0 | (f1 << 3) | (f2 << 28) | (f3 << 53)
-		stream.SerializeBits64(&w0, 64)
-		w1 := (f3 >> 11) | (f4 << 14) | (f5 << 26) | (f6 << 38) | (f7 << 50) | (f8 << 62)
-		stream.SerializeBits64(&w1, 64)
-		w2 := (f8 >> 2) | (f9 << 21) | (f10 << 44)
-		stream.SerializeBits64(&w2, 64)
-		w3 := uint32((f10 >> 20) | (f11 << 3))
-		stream.SerializeBits(&w3, 4)
+	if value.ShipType > 5 {
+		return serialize.ErrValueOutOfRange
 	}
+	if value.Position.X < -MaxPositionUnits || value.Position.X > MaxPositionUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Position.Y < -MaxPositionUnits || value.Position.Y > MaxPositionUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Position.Z < -MaxPositionUnits || value.Position.Z > MaxPositionUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Rotation.X < -RotationUnits || value.Rotation.X > RotationUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Rotation.Y < -RotationUnits || value.Rotation.Y > RotationUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Rotation.Z < -RotationUnits || value.Rotation.Z > RotationUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Rotation.W < -RotationUnits || value.Rotation.W > RotationUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.LinearVelocity.X < -MaxVelocityUnits || value.LinearVelocity.X > MaxVelocityUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.LinearVelocity.Y < -MaxVelocityUnits || value.LinearVelocity.Y > MaxVelocityUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.LinearVelocity.Z < -MaxVelocityUnits || value.LinearVelocity.Z > MaxVelocityUnits {
+		return serialize.ErrValueOutOfRange
+	}
+	f0 := uint64(value.ShipType) & 0x7
+	f1 := uint64(value.Position.X+MaxPositionUnits) & 0x1ffffff
+	f2 := uint64(value.Position.Y+MaxPositionUnits) & 0x1ffffff
+	f3 := uint64(value.Position.Z+MaxPositionUnits) & 0x1ffffff
+	f4 := uint64(int32(value.Rotation.X)+RotationUnits) & 0xfff
+	f5 := uint64(int32(value.Rotation.Y)+RotationUnits) & 0xfff
+	f6 := uint64(int32(value.Rotation.Z)+RotationUnits) & 0xfff
+	f7 := uint64(int32(value.Rotation.W)+RotationUnits) & 0xfff
+	f8 := uint64(value.LinearVelocity.X+MaxVelocityUnits) & 0x7fffff
+	f9 := uint64(value.LinearVelocity.Y+MaxVelocityUnits) & 0x7fffff
+	f10 := uint64(value.LinearVelocity.Z+MaxVelocityUnits) & 0x7fffff
+	f11 := uint64(0)
+	if value.HasFlags {
+		f11 = 1
+	}
+	w0 := f0 | f1<<3 | f2<<28 | f3<<53
+	stream.SerializeBits64(&w0, 64)
+	w1 := f3>>11 | f4<<14 | f5<<26 | f6<<38 | f7<<50 | f8<<62
+	stream.SerializeBits64(&w1, 64)
+	w2 := f8>>2 | f9<<21 | f10<<44
+	stream.SerializeBits64(&w2, 64)
+	w3 := uint32(f10>>20 | f11<<3)
+	stream.SerializeBits(&w3, 4)
 	if value.HasFlags {
 		if value.Flags >= 1<<4 { // a mask bit above the wire width cannot ride
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			flagsValue := uint32(value.Flags)
-			stream.SerializeBits(&flagsValue, 4)
-		}
+		flagsValue := uint32(value.Flags)
+		stream.SerializeBits(&flagsValue, 4)
 	}
-	{
-		enumValue0 := int32(value.Team)
-		if enumValue0 < 0 || enumValue0 > 2 {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue1 := int32(value.Health)
-		if rangeValue1 < 0 || rangeValue1 > MaxHealth {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue2 := int32(value.Thrust)
-		if rangeValue2 < 0 || rangeValue2 > 100 {
-			return serialize.ErrValueOutOfRange
-		}
-		enumValue3 := int32(value.Pending)
-		if enumValue3 < 0 || enumValue3 > 0 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(uint32(enumValue0))) & 0x3
-		f1 := (uint64(uint32(rangeValue1))) & 0x3ff
-		f2 := (uint64(uint32(rangeValue2))) & 0x7f
-		w0 := uint32(f0 | (f1 << 2) | (f2 << 12))
-		stream.SerializeBits(&w0, 19)
+	if value.Team > 2 {
+		return serialize.ErrValueOutOfRange
 	}
+	if value.Health < 0 || value.Health > MaxHealth {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Thrust < 0 || value.Thrust > 100 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Pending > 0 {
+		return serialize.ErrValueOutOfRange
+	}
+	f12 := uint64(value.Team) & 0x3
+	f13 := uint64(value.Health) & 0x3ff
+	f14 := uint64(value.Thrust) & 0x7f
+	w4 := uint32(f12 | f13<<2 | f14<<12)
+	stream.SerializeBits(&w4, 19)
 	return stream.Err()
 }
 
+// ReadShipCreate reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadShipCreate(stream *serialize.ReadStream, value *ShipCreate) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 64)
-		c2 := uint64(0)
-		stream.SerializeBits64(&c2, 64)
-		n3 := uint32(0)
-		stream.SerializeBits(&n3, 4)
-		c3 := uint64(n3)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0x7
-		if v0 > 5 {
-			return serialize.ErrValueOutOfRange
-		}
-		value.ShipType = ShipType(int32(v0))
-		v1 := (c0 >> 3) & 0x1ffffff
-		if v1 > 16777216 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-MaxPositionUnits)
-			value.Position.X = int32(uint32(v1) + uint32(lowValue))
-		}
-		v2 := (c0 >> 28) & 0x1ffffff
-		if v2 > 16777216 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-MaxPositionUnits)
-			value.Position.Y = int32(uint32(v2) + uint32(lowValue))
-		}
-		v3 := ((c0 >> 53) | (c1 << 11)) & 0x1ffffff
-		if v3 > 16777216 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-MaxPositionUnits)
-			value.Position.Z = int32(uint32(v3) + uint32(lowValue))
-		}
-		v4 := (c1 >> 14) & 0xfff
-		if v4 > 2048 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-RotationUnits)
-			value.Rotation.X = int16(int32(uint32(v4) + uint32(lowValue)))
-		}
-		v5 := (c1 >> 26) & 0xfff
-		if v5 > 2048 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-RotationUnits)
-			value.Rotation.Y = int16(int32(uint32(v5) + uint32(lowValue)))
-		}
-		v6 := (c1 >> 38) & 0xfff
-		if v6 > 2048 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-RotationUnits)
-			value.Rotation.Z = int16(int32(uint32(v6) + uint32(lowValue)))
-		}
-		v7 := (c1 >> 50) & 0xfff
-		if v7 > 2048 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-RotationUnits)
-			value.Rotation.W = int16(int32(uint32(v7) + uint32(lowValue)))
-		}
-		v8 := ((c1 >> 62) | (c2 << 2)) & 0x7fffff
-		if v8 > 4194304 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-MaxVelocityUnits)
-			value.LinearVelocity.X = int32(uint32(v8) + uint32(lowValue))
-		}
-		v9 := (c2 >> 21) & 0x7fffff
-		if v9 > 4194304 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-MaxVelocityUnits)
-			value.LinearVelocity.Y = int32(uint32(v9) + uint32(lowValue))
-		}
-		v10 := ((c2 >> 44) | (c3 << 20)) & 0x7fffff
-		if v10 > 4194304 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-MaxVelocityUnits)
-			value.LinearVelocity.Z = int32(uint32(v10) + uint32(lowValue))
-		}
-		v11 := (c3 >> 3) & 0x1
-		value.HasFlags = v11 != 0
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 64)
+	c1 := uint64(0)
+	stream.SerializeBits64(&c1, 64)
+	c2 := uint64(0)
+	stream.SerializeBits64(&c2, 64)
+	n3 := uint32(0)
+	stream.SerializeBits(&n3, 4)
+	c3 := uint64(n3)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0x7
+	if v0 > 5 {
+		return serialize.ErrValueOutOfRange
+	}
+	value.ShipType = ShipType(v0)
+	v1 := (c0 >> 3) & 0x1ffffff
+	if v1 > 16777216 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Position.X = int32(v1) - MaxPositionUnits
+	v2 := (c0 >> 28) & 0x1ffffff
+	if v2 > 16777216 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Position.Y = int32(v2) - MaxPositionUnits
+	v3 := (c0>>53 | c1<<11) & 0x1ffffff
+	if v3 > 16777216 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Position.Z = int32(v3) - MaxPositionUnits
+	v4 := (c1 >> 14) & 0xfff
+	if v4 > 2048 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Rotation.X = int16(int32(v4) - RotationUnits)
+	v5 := (c1 >> 26) & 0xfff
+	if v5 > 2048 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Rotation.Y = int16(int32(v5) - RotationUnits)
+	v6 := (c1 >> 38) & 0xfff
+	if v6 > 2048 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Rotation.Z = int16(int32(v6) - RotationUnits)
+	v7 := (c1 >> 50) & 0xfff
+	if v7 > 2048 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Rotation.W = int16(int32(v7) - RotationUnits)
+	v8 := (c1>>62 | c2<<2) & 0x7fffff
+	if v8 > 4194304 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.LinearVelocity.X = int32(v8) - MaxVelocityUnits
+	v9 := (c2 >> 21) & 0x7fffff
+	if v9 > 4194304 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.LinearVelocity.Y = int32(v9) - MaxVelocityUnits
+	v10 := (c2>>44 | c3<<20) & 0x7fffff
+	if v10 > 4194304 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.LinearVelocity.Z = int32(v10) - MaxVelocityUnits
+	v11 := (c3 >> 3) & 0x1
+	value.HasFlags = v11 != 0
 	if value.HasFlags {
-		{
-			flagsValue := uint32(0)
-			stream.SerializeBits(&flagsValue, 4)
-			value.Flags = ShipFlags(flagsValue)
-		}
+		flagsValue := uint32(0)
+		stream.SerializeBits(&flagsValue, 4)
+		value.Flags = ShipFlags(flagsValue)
 	} else {
 		value.Flags = 0
 	}
-	{
-		n0 := uint32(0)
-		stream.SerializeBits(&n0, 19)
-		c0 := uint64(n0)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0x3
-		if v0 > 2 {
-			return serialize.ErrValueOutOfRange
-		}
-		value.Team = Team(int32(v0))
-		v1 := (c0 >> 2) & 0x3ff
-		if v1 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.Health = int16(int32(v1))
-		v2 := (c0 >> 12) & 0x7f
-		if v2 > 100 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.Thrust = int8(int32(v2))
-		value.Pending = Pending(int32(0))
+	n0 := uint32(0)
+	stream.SerializeBits(&n0, 19)
+	c4 := uint64(n0)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v12 := c4 & 0x3
+	if v12 > 2 {
+		return serialize.ErrValueOutOfRange
+	}
+	value.Team = Team(v12)
+	v13 := (c4 >> 2) & 0x3ff
+	if v13 > 1000 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Health = int16(v13)
+	v14 := (c4 >> 12) & 0x7f
+	if v14 > 100 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Thrust = int8(v14)
+	value.Pending = Pending(0)
 	return stream.Err()
 }
 
-// type ExpressionProbe
+// ExpressionProbe is the storage of schema type ExpressionProbe;
+// WriteExpressionProbe and ReadExpressionProbe carry it on the wire.
 type ExpressionProbe struct {
 	HardpointIndex int32 // wire [0, 31]
 	SpinRate       int32 // = RotationUnits in New* (zero value otherwise); wire [1024, 2048]
 }
 
-// NewExpressionProbe returns a ExpressionProbe with its specified defaults applied; the plain zero
-// value is the all-zero form (SPEC §4.2: zero initialization unless a
-// specified default overrides it).
+// NewExpressionProbe returns a ExpressionProbe with its specified defaults
+// applied. The plain zero value is the all-zero form: a specified default is
+// the only thing that overrides zero initialization.
 func NewExpressionProbe() ExpressionProbe {
 	var value ExpressionProbe
 	value.SpinRate = RotationUnits
 	return value
 }
 
-// ExpressionProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ExpressionProbeMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ExpressionProbeMaxBits is the longest wire path in bits, alignment padding at
+// its worst case.
 const ExpressionProbeMaxBits = 16
+
+// ExpressionProbeMaxBytes is ExpressionProbeMaxBits in bytes, rounded up to the
+// 8-byte write-buffer granularity: size write buffers from it.
 const ExpressionProbeMaxBytes = 8
 
+// WriteExpressionProbe writes value to stream in wire order. It returns the
+// first write-side refusal (serialize.ErrValueOutOfRange for a value the wire
+// cannot carry) or the stream's error; the size written is
+// stream.BitsProcessed().
 func WriteExpressionProbe(stream *serialize.WriteStream, value *ExpressionProbe) error {
-	{
-		if value.HardpointIndex < 0 || value.HardpointIndex > (ShipMaxLasers+ShipMaxMissiles)-1 {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.SpinRate < -(-RotationUnits) || value.SpinRate > RotationUnits*2 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(uint32(value.HardpointIndex))) & 0x1f
-		f1 := (uint64(uint32(value.SpinRate - (-(-RotationUnits))))) & 0x7ff
-		w0 := uint32(f0 | (f1 << 5))
-		stream.SerializeBits(&w0, 16)
+	if value.HardpointIndex < 0 || value.HardpointIndex > (ShipMaxLasers+ShipMaxMissiles)-1 {
+		return serialize.ErrValueOutOfRange
 	}
+	if value.SpinRate < -(-RotationUnits) || value.SpinRate > RotationUnits*2 {
+		return serialize.ErrValueOutOfRange
+	}
+	f0 := uint64(value.HardpointIndex) & 0x1f
+	f1 := uint64(value.SpinRate-(-(-RotationUnits))) & 0x7ff
+	w0 := uint32(f0 | f1<<5)
+	stream.SerializeBits(&w0, 16)
 	return stream.Err()
 }
 
+// ReadExpressionProbe reads value from stream, validating every field. It
+// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
+// for a wire the schema refuses.
 func ReadExpressionProbe(stream *serialize.ReadStream, value *ExpressionProbe) error {
-	{
-		n0 := uint32(0)
-		stream.SerializeBits(&n0, 16)
-		c0 := uint64(n0)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0x1f
-		value.HardpointIndex = int32(v0)
-		v1 := (c0 >> 5) & 0x7ff
-		if v1 > 1024 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-(-RotationUnits))
-			value.SpinRate = int32(uint32(v1) + uint32(lowValue))
-		}
+	n0 := uint32(0)
+	stream.SerializeBits(&n0, 16)
+	c0 := uint64(n0)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0x1f
+	value.HardpointIndex = int32(v0)
+	v1 := (c0 >> 5) & 0x7ff
+	if v1 > 1024 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.SpinRate = int32(v1) + (-(-RotationUnits))
 	return stream.Err()
 }
 
+// FloorLimit is a schema constant.
 const FloorLimit = -9223372036854775808
 
+// CeilingCount is a schema constant.
 const CeilingCount uint64 = 18446744073709551615
 
-// type ExtremeProbe
+// ExtremeProbe is the storage of schema type ExtremeProbe; WriteExtremeProbe
+// and ReadExtremeProbe carry it on the wire.
 type ExtremeProbe struct {
 	FloorBound     int64  // wire [-9223372036854775808, 100]
 	DoubledFloor   int64  // wire [-9223372036854775808, 100]
@@ -977,9 +975,9 @@ type ExtremeProbe struct {
 	CeilingDefault uint64 // = 18446744073709551615 in New* (zero value otherwise)
 }
 
-// NewExtremeProbe returns a ExtremeProbe with its specified defaults applied; the plain zero
-// value is the all-zero form (SPEC §4.2: zero initialization unless a
-// specified default overrides it).
+// NewExtremeProbe returns a ExtremeProbe with its specified defaults applied.
+// The plain zero value is the all-zero form: a specified default is the only
+// thing that overrides zero initialization.
 func NewExtremeProbe() ExtremeProbe {
 	var value ExtremeProbe
 	value.CeilingRange = 1
@@ -988,87 +986,79 @@ func NewExtremeProbe() ExtremeProbe {
 	return value
 }
 
-// ExtremeProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ExtremeProbeMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ExtremeProbeMaxBits is the longest wire path in bits, alignment padding at
+// its worst case.
 const ExtremeProbeMaxBits = 320
+
+// ExtremeProbeMaxBytes is ExtremeProbeMaxBits in bytes, rounded up to the
+// 8-byte write-buffer granularity: size write buffers from it.
 const ExtremeProbeMaxBytes = 40
 
+// WriteExtremeProbe writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteExtremeProbe(stream *serialize.WriteStream, value *ExtremeProbe) error {
-	if value.FloorBound < -9223372036854775808 || value.FloorBound > 100 {
+	if value.FloorBound > 100 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint64(value.FloorBound - (-9223372036854775808))
-		stream.SerializeBits64(&offsetValue, 64)
-	}
-	if value.DoubledFloor < -(-FloorLimit) || value.DoubledFloor > 100 {
+	offsetValue := uint64(value.FloorBound - (-9223372036854775808))
+	stream.SerializeBits64(&offsetValue, 64)
+	if value.DoubledFloor > 100 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint64(value.DoubledFloor - (-(-FloorLimit)))
-		stream.SerializeBits64(&offsetValue, 64)
-	}
+	offsetValue2 := uint64(value.DoubledFloor - (-(-FloorLimit)))
+	stream.SerializeBits64(&offsetValue2, 64)
 	if value.CeilingRange < 1 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := value.CeilingRange - 1
-		stream.SerializeBits64(&offsetValue, 64)
-	}
-	{
-		rawValue := uint64(value.FloorDefault)
-		stream.SerializeBits64(&rawValue, 64)
-	}
+	offsetValue3 := value.CeilingRange - 1
+	stream.SerializeBits64(&offsetValue3, 64)
+	rawValue := uint64(value.FloorDefault)
+	stream.SerializeBits64(&rawValue, 64)
 	stream.SerializeBits64(&value.CeilingDefault, 64)
 	return stream.Err()
 }
 
+// ReadExtremeProbe reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadExtremeProbe(stream *serialize.ReadStream, value *ExtremeProbe) error {
-	{
-		offsetValue := uint64(0)
-		stream.SerializeBits64(&offsetValue, 64)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 9223372036854775908 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		lowValue := int64(-9223372036854775808)
-		value.FloorBound = int64(offsetValue + uint64(lowValue))
+	offsetValue := uint64(0)
+	stream.SerializeBits64(&offsetValue, 64)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
-	{
-		offsetValue := uint64(0)
-		stream.SerializeBits64(&offsetValue, 64)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 9223372036854775908 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		lowValue := int64(-(-FloorLimit))
-		value.DoubledFloor = int64(offsetValue + uint64(lowValue))
+	if offsetValue > 9223372036854775908 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint64(0)
-		stream.SerializeBits64(&offsetValue, 64)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 18446744073709551614 { // a read rejects out-of-range (SPEC §5)
-			return ErrValidation
-		}
-		value.CeilingRange = offsetValue + 1
+	value.FloorBound = int64(offsetValue) + (-9223372036854775808)
+	offsetValue2 := uint64(0)
+	stream.SerializeBits64(&offsetValue2, 64)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
-	{
-		rawValue := uint64(0)
-		stream.SerializeBits64(&rawValue, 64)
-		value.FloorDefault = int64(rawValue)
+	if offsetValue2 > 9223372036854775908 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
 	}
+	value.DoubledFloor = int64(offsetValue2) + (-(-FloorLimit))
+	offsetValue3 := uint64(0)
+	stream.SerializeBits64(&offsetValue3, 64)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	if offsetValue3 > 18446744073709551614 { // a read rejects out-of-range
+		return ErrValidation
+	}
+	value.CeilingRange = offsetValue3 + 1
+	rawValue := uint64(0)
+	stream.SerializeBits64(&rawValue, 64)
+	value.FloorDefault = int64(rawValue)
 	stream.SerializeBits64(&value.CeilingDefault, 64)
 	return stream.Err()
 }
 
-// type ExtremeRow
+// ExtremeRow is the storage of schema type ExtremeRow; WriteExtremeRow and
+// ReadExtremeRow carry it on the wire.
 type ExtremeRow struct {
 	ClampedFloor   int64  // wire [-9223372036854775808, 100]
 	ClampedCeiling uint64 // = 1 in New* (zero value otherwise); wire [1, 18446744073709551614]
@@ -1076,9 +1066,9 @@ type ExtremeRow struct {
 	CeilingDef     uint64 // = 18446744073709551615 in New* (zero value otherwise)
 }
 
-// NewExtremeRow returns a ExtremeRow with its specified defaults applied; the plain zero
-// value is the all-zero form (SPEC §4.2: zero initialization unless a
-// specified default overrides it).
+// NewExtremeRow returns a ExtremeRow with its specified defaults applied. The
+// plain zero value is the all-zero form: a specified default is the only thing
+// that overrides zero initialization.
 func NewExtremeRow() ExtremeRow {
 	var value ExtremeRow
 	value.ClampedCeiling = 1
@@ -1087,63 +1077,59 @@ func NewExtremeRow() ExtremeRow {
 	return value
 }
 
-// ExtremeRowMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ExtremeRowMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ExtremeRowMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const ExtremeRowMaxBits = 256
+
+// ExtremeRowMaxBytes is ExtremeRowMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const ExtremeRowMaxBytes = 32
 
+// WriteExtremeRow writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteExtremeRow(stream *serialize.WriteStream, value *ExtremeRow) error {
-	if value.ClampedFloor < -9223372036854775808 || value.ClampedFloor > 100 {
+	if value.ClampedFloor > 100 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint64(value.ClampedFloor - (-9223372036854775808))
-		stream.SerializeBits64(&offsetValue, 64)
-	}
+	offsetValue := uint64(value.ClampedFloor - (-9223372036854775808))
+	stream.SerializeBits64(&offsetValue, 64)
 	if value.ClampedCeiling < 1 || value.ClampedCeiling > 18446744073709551614 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := value.ClampedCeiling - 1
-		stream.SerializeBits64(&offsetValue, 64)
-	}
-	{
-		rawValue := uint64(value.FloorDef)
-		stream.SerializeBits64(&rawValue, 64)
-	}
+	offsetValue2 := value.ClampedCeiling - 1
+	stream.SerializeBits64(&offsetValue2, 64)
+	rawValue := uint64(value.FloorDef)
+	stream.SerializeBits64(&rawValue, 64)
 	stream.SerializeBits64(&value.CeilingDef, 64)
 	return stream.Err()
 }
 
+// ReadExtremeRow reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadExtremeRow(stream *serialize.ReadStream, value *ExtremeRow) error {
-	{
-		offsetValue := uint64(0)
-		stream.SerializeBits64(&offsetValue, 64)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 9223372036854775908 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		lowValue := int64(-9223372036854775808)
-		value.ClampedFloor = int64(offsetValue + uint64(lowValue))
+	offsetValue := uint64(0)
+	stream.SerializeBits64(&offsetValue, 64)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
-	{
-		offsetValue := uint64(0)
-		stream.SerializeBits64(&offsetValue, 64)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 18446744073709551613 { // a read rejects out-of-range (SPEC §5)
-			return ErrValidation
-		}
-		value.ClampedCeiling = offsetValue + 1
+	if offsetValue > 9223372036854775908 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
 	}
-	{
-		rawValue := uint64(0)
-		stream.SerializeBits64(&rawValue, 64)
-		value.FloorDef = int64(rawValue)
+	value.ClampedFloor = int64(offsetValue) + (-9223372036854775808)
+	offsetValue2 := uint64(0)
+	stream.SerializeBits64(&offsetValue2, 64)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	if offsetValue2 > 18446744073709551613 { // a read rejects out-of-range
+		return ErrValidation
+	}
+	value.ClampedCeiling = offsetValue2 + 1
+	rawValue := uint64(0)
+	stream.SerializeBits64(&rawValue, 64)
+	value.FloorDef = int64(rawValue)
 	stream.SerializeBits64(&value.CeilingDef, 64)
 	return stream.Err()
 }

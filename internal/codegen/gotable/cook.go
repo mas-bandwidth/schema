@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -376,7 +377,7 @@ func (w *cookWriter) next() {
 }
 
 func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
-	name := ir.GoExportName(f.Name)
+	name := goname.Member(f.Name)
 	next := w.next
 	switch {
 	case f.IsMap():
@@ -498,7 +499,7 @@ func (g *cookGen) emitRecordCheck(name string) {
 	g.hf("\ttableCookLayoutSize(%q, unsafe.Alignof(%s{}), %d)\n", spelled+" alignment", spelled, min(ml.Align, 8))
 	for _, fl := range ml.Fields {
 		g.hf("\ttableCookLayoutOffset(%q, unsafe.Offsetof(%s{}.%s), %d)\n",
-			spelled+"."+ir.GoExportName(fl.Field.Name), spelled, ir.GoExportName(fl.Field.Name), fl.Offset)
+			spelled+"."+goname.Member(fl.Field.Name), spelled, goname.Member(fl.Field.Name), fl.Offset)
 	}
 }
 

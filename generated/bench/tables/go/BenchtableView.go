@@ -91,7 +91,7 @@ func init() {
 	}}
 	tableViewPacketTypes[1] = TableTypeInfo{Name: "TableHitEvent", Size: uint32(unsafe.Sizeof(TableHitEvent{})), NumFields: 4, Reset: func(p unsafe.Pointer) { *(*TableHitEvent)(p) = TableHitEvent{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
 		{Name: "target_id", Json: "target_id", TypeName: "bits(12)", DeclaredTypeName: "bits(12)", Id: 0xb7bc9ac015a25050, Kind: 7, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.TargetId)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.TargetId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.TargetID)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.TargetID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeUintMin: 0, RangeUintMax: 4095, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 			EnumName:    nil,
@@ -137,7 +137,7 @@ func init() {
 	}}
 	tableViewPacketTypes[2] = TableTypeInfo{Name: "TablePickupEvent", Size: uint32(unsafe.Sizeof(TablePickupEvent{})), NumFields: 2, Reset: func(p unsafe.Pointer) { *(*TablePickupEvent)(p) = TablePickupEvent{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
 		{Name: "item_id", Json: "item_id", TypeName: "bits(10)", DeclaredTypeName: "bits(10)", Id: 0x9e7fd06d864fbd56, Kind: 7, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TablePickupEvent{}.ItemId)), ElemSize: uint32(unsafe.Sizeof(TablePickupEvent{}.ItemId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TablePickupEvent{}.ItemID)), ElemSize: uint32(unsafe.Sizeof(TablePickupEvent{}.ItemID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 1023.0, RangeUintMin: 0, RangeUintMax: 1023, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 			EnumName:    nil,

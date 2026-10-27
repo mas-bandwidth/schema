@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -173,7 +174,7 @@ func fieldDefaultExpr(f *ir.Field) string {
 
 // member is a field's Go storage member name — the exported mapping the packet
 // emitter uses, so one field is spelled one way across a unit.
-func member(f *ir.Field) string { return ir.GoExportName(f.Name) }
+func member(f *ir.Field) string { return goname.Member(f.Name) }
 
 // enumRef returns the enum a field's values come from, or nil.
 func enumRef(f *ir.Field) *ir.Enum {
@@ -392,7 +393,7 @@ func tableGuardStrings(st *ir.Struct) map[string]string {
 func guardWalk(st *ir.Struct, gostyle bool) map[string]string {
 	name := func(cond string) string {
 		if gostyle {
-			return "value." + ir.GoExportName(cond)
+			return "value." + goname.Member(cond)
 		}
 		return cond
 	}

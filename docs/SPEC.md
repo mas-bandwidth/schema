@@ -1808,7 +1808,7 @@ union Value
   | cs | `EnumNameWeaponFireType(ulong)` |
   | dart | `enumNameWeaponFireType(int)` |
   | elixir | `enum_name_weapon_fire_type/1` |
-  | go | `EnumNameWeaponFireType(uint64)` |
+  | go | `EnumNameWeaponFireType(WeaponFireType)`, which returns its `String()` |
   | java | `enumNameWeaponFireType(long)` |
   | js | `EnumNameWeaponFireType(value)` |
   | rust | `enum_name_weapon_fire_type` |
@@ -2515,7 +2515,10 @@ Per `type`, per target:
    so no unnamed enum value is ever representable on the read side.
 
 2. **`Write(buffer, object) -> bytesWritten`** — straight-line write code in
-   wire order.
+   wire order. In Go, `Write<T>` returns `error` alone and the size written
+   is the stream's own running count, `stream.BitsProcessed()` (bytes after
+   `Flush`): a nested write's count is the enclosing stream's position, so a
+   second return value would only repeat that counter at every call site.
 3. **`Read(buffer, object) -> ok/error`** — straight-line read code with full
    validation, in each target's native error idiom — the list is exhaustive
    at all nine: `int` 1/0 in C, `bool` in C++, Dart and Java, `bool` +

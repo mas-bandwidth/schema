@@ -80,6 +80,7 @@ var catalog = []Entry{
 	e("internal/docgate", "link-and-citation gate over the pages", "go test ./internal/docgate", "make docs-check"),
 	e("internal/format", "schemafmt", "go test ./internal/format", "go test ./internal/format"),
 	e("internal/fuzz", "seeded fuzz corpus", "go test ./internal/fuzz", "go test ./internal/fuzz"),
+	e("internal/goname", "Go member spelling (initialisms)", "go test ./internal/goname", "go test ./internal/goname"),
 	e("internal/goldens", "source, id, and wire pins", "go test ./internal/goldens", "make update-goldens"),
 	e("internal/jsontestsuite", "JSONTestSuite oracle harness", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
 	e("internal/listwalk", "unbounded-array walk", "go test ./internal/listwalk", "go test ./internal/listwalk"),

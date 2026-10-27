@@ -35,6 +35,7 @@ import (
 	"math/bits"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -399,7 +400,7 @@ func (w *blockWriter) next() {
 }
 
 func (g *blockGen) emitBlittableField(f *ir.Field, projection bool, w *blockWriter) {
-	name := ir.GoExportName(f.Name)
+	name := goname.Member(f.Name)
 	next := w.next
 	if projection && ir.BlockOutOfLine(f) {
 		next()
@@ -528,7 +529,7 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 	}
 	for _, fl := range ml.Fields {
 		g.hf("\ttableBlockLayoutOffset(%q, unsafe.Offsetof(%s{}.%s), %d)\n",
-			spelled+"."+ir.GoExportName(fl.Field.Name), spelled, ir.GoExportName(fl.Field.Name), fl.Offset)
+			spelled+"."+goname.Member(fl.Field.Name), spelled, goname.Member(fl.Field.Name), fl.Offset)
 	}
 	if bl != nil {
 		// and each array's PITCH CONSTANT, against this runtime's own size.
@@ -537,7 +538,7 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 		// turn anything red here.
 		for _, a := range bl.Arrays {
 			g.hf("\ttableBlockLayoutSize(%q, unsafe.Sizeof(%sRow{}), %d)\n",
-				bl.Table.Name+"."+ir.GoExportName(a.Field.Name)+" stride", a.ElemName, a.Stride)
+				bl.Table.Name+"."+goname.Member(a.Field.Name)+" stride", a.ElemName, a.Stride)
 		}
 	}
 }
@@ -570,7 +571,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 
 	g.hf("// ---- block fill path: begin ----\n")
 	for _, a := range bl.Arrays {
-		field := ir.GoExportName(a.Field.Name)
+		field := goname.Member(a.Field.Name)
 		g.hf("// %sStride, %sMax and %sProjectionOffset are the constants this build\n", field, field, field)
 		g.hf("// asserts against. A consumer INDEXES with what it read from the instance,\n")
 		g.hf("// never with these (docs/SPEC-TABLES.md §19.2). They are METHODS rather than\n")
@@ -626,7 +627,7 @@ func(block *%sBlock)Open(base unsafe.Pointer,bytes int64)error{
  used:=int64(%d)
 `, name, name, name, name, name, bl.Projection.Size, bl.Projection.Size, bits.ReverseBytes64(ir.BlockMagic), bl.Projection.Size)
 	for _, a := range bl.Arrays {
-		field := ir.GoExportName(a.Field.Name)
+		field := goname.Member(a.Field.Name)
 		g.hf("\t{\n")
 		g.hf("\t\t// EVERY NUMBER BELOW COMES FROM THE INSTANCE, so the arithmetic is\n")
 		g.hf("\t\t// unsigned and each term is BOUNDED BEFORE IT IS ADDED. A forged\n")

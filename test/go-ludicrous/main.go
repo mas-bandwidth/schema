@@ -76,7 +76,7 @@ func makeState() ludicrous.LudicrousState {
 	in.Probe.Ticks = 777777
 	in.Probe.Samples[0] = -524288 // raw_min
 	in.Probe.Samples[1] = 524288  // raw_max
-	in.Wide.EntityId = serialize.Uint128{Lo: 0xFEDCBA9876543210, Hi: 0x0123456789ABCDEF}
+	in.Wide.EntityID = serialize.Uint128{Lo: 0xFEDCBA9876543210, Hi: 0x0123456789ABCDEF}
 	in.Wide.Energy = serialize.Int128From64(4999999999)
 	in.Wide.Flux = serialize.Int128{Lo: 7, Hi: 0x800000000} // 2^99 + 7
 	// wide.bias and wide.seed stay at their SPECIFIED DEFAULTS (-250 and
@@ -85,7 +85,7 @@ func makeState() ludicrous.LudicrousState {
 	in.Keys[0] = serialize.Uint128From64(1)
 	in.Keys[1] = serialize.Uint128{Lo: 0, Hi: 0x8000000000000000} // 1 << 127
 	in.HasTarget = true
-	in.TargetId = serialize.Uint128From64(42)
+	in.TargetID = serialize.Uint128From64(42)
 	return in
 }
 
@@ -105,11 +105,11 @@ func main() {
 		zero := ludicrous.NewLudicrousState()
 		check(zero.Mode == ludicrous.DriveModeNone, "a fresh state starts at DriveMode None")
 		check(zero.Probe.Reach == serialize.Int128{}, "reach starts zero")
-		check(zero.Wide.EntityId == serialize.Uint128{}, "entity_id starts zero")
+		check(zero.Wide.EntityID == serialize.Uint128{}, "entity_id starts zero")
 		check(zero.Wide.Bias == serialize.Int128From64(-250), "bias defaults -250")
 		check(zero.Wide.Seed == serialize.Uint128{Lo: 0, Hi: 2}, "seed defaults 2^65")
 		check(zero.KeysCount == 0, "keys start empty")
-		check(zero.TargetId == serialize.Uint128{}, "target_id starts zero")
+		check(zero.TargetID == serialize.Uint128{}, "target_id starts zero")
 		// Go keeps the §5 zero form on the plain zero value; New* alone
 		// installs the defaults (SPEC §4.2, the Go column)
 		check(ludicrous.LudicrousState{}.Wide.Bias == serialize.Int128{}, "the plain zero value stays zero")
@@ -134,14 +134,14 @@ func main() {
 		check(out.Probe.Reach == in.Probe.Reach, "reach round-trips")
 		check(out.Probe.Ticks == in.Probe.Ticks, "ticks round-trips")
 		check(out.Probe.Samples == in.Probe.Samples, "samples round-trip")
-		check(out.Wide.EntityId == in.Wide.EntityId, "entity_id round-trips")
+		check(out.Wide.EntityID == in.Wide.EntityID, "entity_id round-trips")
 		check(out.Wide.Energy == in.Wide.Energy, "energy round-trips")
 		check(out.Wide.Flux == in.Wide.Flux, "flux round-trips")
 		check(out.Wide.Bias == serialize.Int128From64(-250), "the bias default rides the wire")
 		check(out.Wide.Seed == serialize.Uint128{Lo: 0, Hi: 2}, "the seed default rides the wire")
 		check(out.KeysCount == 2, "keys_count round-trips")
 		check(out.Keys[0] == in.Keys[0] && out.Keys[1] == in.Keys[1], "keys round-trip")
-		check(out.HasTarget && out.TargetId == serialize.Uint128From64(42), "the taken branch round-trips")
+		check(out.HasTarget && out.TargetID == serialize.Uint128From64(42), "the taken branch round-trips")
 	}
 
 	// ---- the untaken branch: identical prefix, and the 128-bit field under
@@ -155,11 +155,11 @@ func main() {
 		goldenWire("ludicrous_state_untargeted", ws.Data())
 
 		out := ludicrous.LudicrousState{}
-		out.TargetId = serialize.Uint128From64(0xDEAD) // dirty — the read must zero it
+		out.TargetID = serialize.Uint128From64(0xDEAD) // dirty — the read must zero it
 		rs := serialize.NewReadStream(ws.Data())
 		checkErr(ludicrous.ReadLudicrousState(rs, &out), "read LudicrousState untargeted")
 		check(!out.HasTarget, "has_target reads false")
-		check(out.TargetId == serialize.Uint128{}, "the untaken 128-bit field reads as zero (SPEC §5)")
+		check(out.TargetID == serialize.Uint128{}, "the untaken 128-bit field reads as zero (SPEC §5)")
 	}
 
 	// ---- hostile reads REJECT, never clamp (STANDARD.md, SPEC §5) ----

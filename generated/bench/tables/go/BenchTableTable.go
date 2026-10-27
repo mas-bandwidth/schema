@@ -32,7 +32,7 @@ type TableChatEventRow struct {
 // TableEntityRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TableEntityRow struct {
-	EntityId uint32
+	EntityID uint32
 	PosX     int32
 	PosY     int32
 	PosZ     int32
@@ -53,7 +53,7 @@ type TableEntityRow struct {
 // TableHitEventRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TableHitEventRow struct {
-	TargetId uint32
+	TargetID uint32
 	Damage   int32
 	HitKind  int32
 	Crit     bool
@@ -68,8 +68,8 @@ type TableMixedRow struct {
 	Sequence         uint32
 	AckSequence      int32
 	AckBits          uint32
-	SessionId        uint64
-	ClientId         uint32
+	SessionID        uint64
+	ClientID         uint32
 	_                [4]byte // generated padding
 	Nonce            uint64
 	WorldTime        int64
@@ -105,14 +105,14 @@ type TableMixedRow struct {
 // TablePickupEventRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TablePickupEventRow struct {
-	ItemId uint32
+	ItemID uint32
 	Amount int32
 }
 
 // TableStatRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TableStatRow struct {
-	StatId uint32
+	StatID uint32
 	Delta  int32
 }
 type TableEventRow struct {
@@ -125,7 +125,7 @@ type TableEventRow struct {
 // TableEntity — TABLE-wire storage: exported fields, every buffer inside the value,
 // declared defaults restored by TableEntityReset (mas-bandwidth/schema docs/SPEC-TABLES.md).
 type TableEntity struct {
-	EntityId uint32
+	EntityID uint32
 	PosX     int32
 	PosY     int32
 	PosZ     int32
@@ -144,7 +144,7 @@ type TableEntity struct {
 // TableStat — TABLE-wire storage: exported fields, every buffer inside the value,
 // declared defaults restored by TableStatReset (mas-bandwidth/schema docs/SPEC-TABLES.md).
 type TableStat struct {
-	StatId uint32
+	StatID uint32
 	Delta  int32
 }
 
@@ -155,8 +155,8 @@ type TableMixed struct {
 	Sequence         uint32
 	AckSequence      int32
 	AckBits          uint32
-	SessionId        uint64
-	ClientId         uint32
+	SessionID        uint64
+	ClientID         uint32
 	Nonce            uint64
 	WorldTime        int64
 	FrameTick        uint64
@@ -3386,7 +3386,7 @@ func (value *TableWeapon) TableEnumValue(id uint64) bool {
 // TableEntityReset restores TableEntity's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func TableEntityReset(value *TableEntity) {
-	value.EntityId = 0
+	value.EntityID = 0
 	value.PosX = 0
 	value.PosY = 0
 	value.PosZ = 0
@@ -3404,10 +3404,10 @@ func TableEntityReset(value *TableEntity) {
 
 func TableEntityMeasureBody(value *TableEntity, ids *TableIds) int64 {
 	bytes := int64(1)
-	if (value.EntityId != 0) && (value.EntityId > 4095) {
+	if (value.EntityID != 0) && (value.EntityID > 4095) {
 		return -1
 	}
-	if value.EntityId != 0 {
+	if value.EntityID != 0 {
 		bytes += tableLebBytes(ids.refAtHit(11, 0x23fcfd6678e36712)) + 1 + 2
 	} // entity_id
 	if (value.PosX != 0) && (value.PosX < -16383 || value.PosX > 16383) {
@@ -3537,14 +3537,14 @@ func TableEntityMeasureReason(value *TableEntity) (int64, error) {
 }
 func TableEntitySaveBody(w *TableWriter, value *TableEntity) bool {
 	{
-		if value.EntityId != 0 {
+		if value.EntityID != 0 {
 			if ref := w.Ids.refAtHit(11, 0x23fcfd6678e36712); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
-			if value.EntityId > 4095 {
+			if value.EntityID > 4095 {
 				return false
 			}
-			w.Put16(uint16(value.EntityId))
+			w.Put16(uint16(value.EntityID))
 		}
 	}
 	{
@@ -3780,7 +3780,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "TableEntity.entity_id")
 						}
-						value.EntityId = uint32(v)
+						value.EntityID = uint32(v)
 					}
 					r.Report.Widened++
 					break
@@ -3803,7 +3803,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "TableEntity.entity_id")
 				}
-				value.EntityId = uint32(v)
+				value.EntityID = uint32(v)
 			}
 		case 0xcb4b37357667310e: // pos_x
 			if kind != 4 {
@@ -4439,16 +4439,16 @@ const TableEntitySaveRetain = "TableEntity: retention requires a variable root a
 // TableStatReset restores TableStat's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func TableStatReset(value *TableStat) {
-	value.StatId = 0
+	value.StatID = 0
 	value.Delta = 0
 }
 
 func TableStatMeasureBody(value *TableStat, ids *TableIds) int64 {
 	bytes := int64(1)
-	if (value.StatId != 0) && (value.StatId > 255) {
+	if (value.StatID != 0) && (value.StatID > 255) {
 		return -1
 	}
-	if value.StatId != 0 {
+	if value.StatID != 0 {
 		bytes += tableLebBytes(ids.refAtHit(42, 0x80ab75f0866dbf65)) + 1 + 1
 	} // stat_id
 	if (value.Delta != 0) && (value.Delta < -512 || value.Delta > 511) {
@@ -4481,14 +4481,14 @@ func TableStatMeasureReason(value *TableStat) (int64, error) {
 }
 func TableStatSaveBody(w *TableWriter, value *TableStat) bool {
 	{
-		if value.StatId != 0 {
+		if value.StatID != 0 {
 			if ref := w.Ids.refAtHit(42, 0x80ab75f0866dbf65); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
-			if value.StatId > 255 {
+			if value.StatID > 255 {
 				return false
 			}
-			w.Put8(uint8(value.StatId))
+			w.Put8(uint8(value.StatID))
 		}
 	}
 	{
@@ -4565,7 +4565,7 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "TableStat.stat_id")
 				}
-				value.StatId = uint32(v)
+				value.StatID = uint32(v)
 			}
 		case 0x52076675ec13a0c1: // delta
 			if kind != 4 {
@@ -4742,8 +4742,8 @@ func TableMixedReset(value *TableMixed) {
 	value.Sequence = 0
 	value.AckSequence = 0
 	value.AckBits = 0
-	value.SessionId = 0
-	value.ClientId = 0
+	value.SessionID = 0
+	value.ClientID = 0
 	value.Nonce = 1
 	value.WorldTime = 0
 	value.FrameTick = 0
@@ -4846,19 +4846,19 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 		}
 	}
 	{
-		if value.SessionId != 0 {
+		if value.SessionID != 0 {
 			if ref := w.Ids.refAtHit(61, 0xb7d7b5650a590b05); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
-			w.Put64(uint64(value.SessionId))
+			w.Put64(uint64(value.SessionID))
 		}
 	}
 	{
-		if value.ClientId != 0 {
+		if value.ClientID != 0 {
 			if ref := w.Ids.refAtHit(32, 0x6d7b98e2d095967e); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
-			w.Put32(uint32(value.ClientId))
+			w.Put32(uint32(value.ClientID))
 		}
 	}
 	{
@@ -5557,7 +5557,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					}
 					{
 						v := r.Unsigned(kind)
-						value.SessionId = uint64(v)
+						value.SessionID = uint64(v)
 					}
 					r.Report.Widened++
 					break
@@ -5575,7 +5575,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 			}
 			{
 				v := r.Get64()
-				value.SessionId = uint64(v)
+				value.SessionID = uint64(v)
 			}
 		case 0x6d7b98e2d095967e: // client_id
 			if kind != 8 {
@@ -5586,7 +5586,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					}
 					{
 						v := r.Unsigned(kind)
-						value.ClientId = uint32(v)
+						value.ClientID = uint32(v)
 					}
 					r.Report.Widened++
 					break
@@ -5604,7 +5604,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 			}
 			{
 				v := r.Get32()
-				value.ClientId = uint32(v)
+				value.ClientID = uint32(v)
 			}
 		case 0x73a94c71d60dc0d8: // nonce
 			if kind != 9 {
@@ -6617,7 +6617,7 @@ const TableMixedSaveRetain = "TableMixed: retention requires a variable root and
 // TableHitEventReset restores TableHitEvent's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func TableHitEventReset(value *TableHitEvent) {
-	value.TargetId = 0
+	value.TargetID = 0
 	value.Damage = 0
 	value.HitKind = 0
 	value.Crit = false
@@ -6625,10 +6625,10 @@ func TableHitEventReset(value *TableHitEvent) {
 
 func TableHitEventMeasureBody(value *TableHitEvent, ids *TableIds) int64 {
 	bytes := int64(1)
-	if (value.TargetId != 0) && (value.TargetId > 4095) {
+	if (value.TargetID != 0) && (value.TargetID > 4095) {
 		return -1
 	}
-	if value.TargetId != 0 {
+	if value.TargetID != 0 {
 		bytes += tableLebBytes(ids.refAtHit(60, 0xb7bc9ac015a25050)) + 1 + 2
 	} // target_id
 	if (value.Damage != 0) && (value.Damage < 0 || value.Damage > 4095) {
@@ -6670,14 +6670,14 @@ func TableHitEventMeasureReason(value *TableHitEvent) (int64, error) {
 }
 func TableHitEventSaveBody(w *TableWriter, value *TableHitEvent) bool {
 	{
-		if value.TargetId != 0 {
+		if value.TargetID != 0 {
 			if ref := w.Ids.refAtHit(60, 0xb7bc9ac015a25050); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
-			if value.TargetId > 4095 {
+			if value.TargetID > 4095 {
 				return false
 			}
-			w.Put16(uint16(value.TargetId))
+			w.Put16(uint16(value.TargetID))
 		}
 	}
 	{
@@ -6771,7 +6771,7 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "TableHitEvent.target_id")
 						}
-						value.TargetId = uint32(v)
+						value.TargetID = uint32(v)
 					}
 					r.Report.Widened++
 					break
@@ -6794,7 +6794,7 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "TableHitEvent.target_id")
 				}
-				value.TargetId = uint32(v)
+				value.TargetID = uint32(v)
 			}
 		case 0x7f6308be8ab37fc0: // damage
 			if kind != 4 {
@@ -7331,16 +7331,16 @@ func TableChatEventReadStrict(wire []byte) (*TableChatEvent, error) {
 // TablePickupEventReset restores TablePickupEvent's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func TablePickupEventReset(value *TablePickupEvent) {
-	value.ItemId = 0
+	value.ItemID = 0
 	value.Amount = 0
 }
 
 func TablePickupEventMeasureBody(value *TablePickupEvent, ids *TableIds) int64 {
 	bytes := int64(1)
-	if (value.ItemId != 0) && (value.ItemId > 1023) {
+	if (value.ItemID != 0) && (value.ItemID > 1023) {
 		return -1
 	}
-	if value.ItemId != 0 {
+	if value.ItemID != 0 {
 		bytes += tableLebBytes(ids.refAtHit(51, 0x9e7fd06d864fbd56)) + 1 + 2
 	} // item_id
 	if (value.Amount != 0) && (value.Amount < 0 || value.Amount > 255) {
@@ -7373,14 +7373,14 @@ func TablePickupEventMeasureReason(value *TablePickupEvent) (int64, error) {
 }
 func TablePickupEventSaveBody(w *TableWriter, value *TablePickupEvent) bool {
 	{
-		if value.ItemId != 0 {
+		if value.ItemID != 0 {
 			if ref := w.Ids.refAtHit(51, 0x9e7fd06d864fbd56); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
-			if value.ItemId > 1023 {
+			if value.ItemID > 1023 {
 				return false
 			}
-			w.Put16(uint16(value.ItemId))
+			w.Put16(uint16(value.ItemID))
 		}
 	}
 	{
@@ -7451,7 +7451,7 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "TablePickupEvent.item_id")
 						}
-						value.ItemId = uint32(v)
+						value.ItemID = uint32(v)
 					}
 					r.Report.Widened++
 					break
@@ -7474,7 +7474,7 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "TablePickupEvent.item_id")
 				}
-				value.ItemId = uint32(v)
+				value.ItemID = uint32(v)
 			}
 		case 0x8113fe7ea2b16969: // amount
 			if kind != 4 {
@@ -7643,7 +7643,7 @@ func TableEntityFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.EntityId))
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.EntityID))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
@@ -7729,7 +7729,7 @@ func TableEntityFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink
 }
 
 func TableEntityFixedWriteBody(b []byte, value *TableEntity) {
-	tableFixedPut32(b[0:], uint32(value.EntityId))
+	tableFixedPut32(b[0:], uint32(value.EntityID))
 	tableFixedPut32(b[4:], uint32(value.PosX))
 	tableFixedPut32(b[8:], uint32(value.PosY))
 	tableFixedPut32(b[12:], uint32(value.PosZ))
@@ -7761,7 +7761,7 @@ func TableStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, 
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(TableStat{}.StatId))
+		ed := dst + uint32(unsafe.Offsetof(TableStat{}.StatID))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
@@ -7775,7 +7775,7 @@ func TableStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, 
 }
 
 func TableStatFixedWriteBody(b []byte, value *TableStat) {
-	tableFixedPut32(b[0:], uint32(value.StatId))
+	tableFixedPut32(b[0:], uint32(value.StatID))
 	tableFixedPut32(b[4:], uint32(value.Delta))
 }
 
@@ -7783,7 +7783,7 @@ func TableHitEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLi
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(TableHitEvent{}.TargetId))
+		ed := dst + uint32(unsafe.Offsetof(TableHitEvent{}.TargetID))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
@@ -7809,7 +7809,7 @@ func TableHitEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLi
 }
 
 func TableHitEventFixedWriteBody(b []byte, value *TableHitEvent) {
-	tableFixedPut32(b[0:], uint32(value.TargetId))
+	tableFixedPut32(b[0:], uint32(value.TargetID))
 	tableFixedPut32(b[4:], uint32(value.Damage))
 	tableFixedPut32(b[8:], uint32(value.HitKind))
 	{
@@ -7847,7 +7847,7 @@ func TablePickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuar
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(TablePickupEvent{}.ItemId))
+		ed := dst + uint32(unsafe.Offsetof(TablePickupEvent{}.ItemID))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
@@ -7861,7 +7861,7 @@ func TablePickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuar
 }
 
 func TablePickupEventFixedWriteBody(b []byte, value *TablePickupEvent) {
-	tableFixedPut32(b[0:], uint32(value.ItemId))
+	tableFixedPut32(b[0:], uint32(value.ItemID))
 	tableFixedPut32(b[4:], uint32(value.Amount))
 }
 
@@ -7893,13 +7893,13 @@ func TableMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 	}
 	{
 		es := src + 14
-		ed := dst + uint32(unsafe.Offsetof(TableMixed{}.SessionId))
+		ed := dst + uint32(unsafe.Offsetof(TableMixed{}.SessionID))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
 	{
 		es := src + 22
-		ed := dst + uint32(unsafe.Offsetof(TableMixed{}.ClientId))
+		ed := dst + uint32(unsafe.Offsetof(TableMixed{}.ClientID))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
@@ -8058,8 +8058,8 @@ func TableMixedFixedWriteBody(b []byte, value *TableMixed) {
 	tableFixedPut32(b[2:], uint32(value.Sequence))
 	tableFixedPut32(b[6:], uint32(value.AckSequence))
 	tableFixedPut32(b[10:], uint32(value.AckBits))
-	tableFixedPut64(b[14:], uint64(value.SessionId))
-	tableFixedPut32(b[22:], uint32(value.ClientId))
+	tableFixedPut64(b[14:], uint64(value.SessionID))
+	tableFixedPut32(b[22:], uint32(value.ClientID))
 	tableFixedPut64(b[26:], uint64(value.Nonce))
 	tableFixedPut64(b[34:], uint64(value.WorldTime))
 	tableFixedPut64(b[42:], uint64(value.FrameTick))
@@ -8121,8 +8121,8 @@ func TableMixedFixedWriteBody(b []byte, value *TableMixed) {
 // TableEntity's read-side bounds.
 func TableEntityFixedClampBody(value *TableEntity, clamped *int32) {
 	_, _ = value, clamped
-	if value.EntityId > 4095 {
-		value.EntityId = 4095
+	if value.EntityID > 4095 {
+		value.EntityID = 4095
 		(*clamped)++
 	}
 	if value.PosX < -16383 {
@@ -8191,8 +8191,8 @@ func TableEntityFixedClampBody(value *TableEntity, clamped *int32) {
 // TableStat's read-side bounds.
 func TableStatFixedClampBody(value *TableStat, clamped *int32) {
 	_, _ = value, clamped
-	if value.StatId > 255 {
-		value.StatId = 255
+	if value.StatID > 255 {
+		value.StatID = 255
 		(*clamped)++
 	}
 	if value.Delta < -512 {
@@ -8207,8 +8207,8 @@ func TableStatFixedClampBody(value *TableStat, clamped *int32) {
 // TableHitEvent's read-side bounds.
 func TableHitEventFixedClampBody(value *TableHitEvent, clamped *int32) {
 	_, _ = value, clamped
-	if value.TargetId > 4095 {
-		value.TargetId = 4095
+	if value.TargetID > 4095 {
+		value.TargetID = 4095
 		(*clamped)++
 	}
 	if value.Damage < 0 {
@@ -8246,8 +8246,8 @@ func TableChatEventFixedClampBody(value *TableChatEvent, clamped *int32) {
 // TablePickupEvent's read-side bounds.
 func TablePickupEventFixedClampBody(value *TablePickupEvent, clamped *int32) {
 	_, _ = value, clamped
-	if value.ItemId > 1023 {
-		value.ItemId = 1023
+	if value.ItemID > 1023 {
+		value.ItemID = 1023
 		(*clamped)++
 	}
 	if value.Amount < 0 {
@@ -8399,7 +8399,7 @@ func TableMixedFixedClampBody(value *TableMixed, clamped *int32) {
 // TableEntity's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func TableEntityFixedCheckBody(value *TableEntity) bool {
 	_ = value
-	if value.EntityId > 4095 {
+	if value.EntityID > 4095 {
 		return false
 	}
 	if value.PosX < -16383 || value.PosX > 16383 {
@@ -8438,7 +8438,7 @@ func TableEntityFixedCheckBody(value *TableEntity) bool {
 // TableStat's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func TableStatFixedCheckBody(value *TableStat) bool {
 	_ = value
-	if value.StatId > 255 {
+	if value.StatID > 255 {
 		return false
 	}
 	if value.Delta < -512 || value.Delta > 511 {
@@ -8450,7 +8450,7 @@ func TableStatFixedCheckBody(value *TableStat) bool {
 // TableHitEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func TableHitEventFixedCheckBody(value *TableHitEvent) bool {
 	_ = value
-	if value.TargetId > 4095 {
+	if value.TargetID > 4095 {
 		return false
 	}
 	if value.Damage < 0 || value.Damage > 4095 {
@@ -8477,7 +8477,7 @@ func TableChatEventFixedCheckBody(value *TableChatEvent) bool {
 // TablePickupEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func TablePickupEventFixedCheckBody(value *TablePickupEvent) bool {
 	_ = value
-	if value.ItemId > 1023 {
+	if value.ItemID > 1023 {
 		return false
 	}
 	if value.Amount < 0 || value.Amount > 255 {
@@ -8744,7 +8744,7 @@ var TableEntityFixedLayout = []byte{
 
 var TableEntityFixedDst = []TableFixedDst{
 	{0, 0, 0, 0, 0, 0}, // TableEntity
-	{uint32(unsafe.Offsetof(TableEntity{}.EntityId)), 0, 0, 0, 0, 0}, // entity_id
+	{uint32(unsafe.Offsetof(TableEntity{}.EntityID)), 0, 0, 0, 0, 0}, // entity_id
 	{uint32(unsafe.Offsetof(TableEntity{}.PosX)), 0, 0, 0, 0, 0},     // pos_x
 	{uint32(unsafe.Offsetof(TableEntity{}.PosY)), 0, 0, 0, 0, 0},     // pos_y
 	{uint32(unsafe.Offsetof(TableEntity{}.PosZ)), 0, 0, 0, 0, 0},     // pos_z
@@ -9073,7 +9073,7 @@ var TableStatFixedLayout = []byte{
 
 var TableStatFixedDst = []TableFixedDst{
 	{0, 0, 0, 0, 0, 0}, // TableStat
-	{uint32(unsafe.Offsetof(TableStat{}.StatId)), 0, 0, 0, 0, 0}, // stat_id
+	{uint32(unsafe.Offsetof(TableStat{}.StatID)), 0, 0, 0, 0, 0}, // stat_id
 	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0, 0},  // delta
 }
 
@@ -9426,15 +9426,15 @@ var TableMixedFixedDst = []TableFixedDst{
 	{uint32(unsafe.Offsetof(TableMixed{}.Sequence)), 0, 0, 0, 0, 0},                                                                                      // sequence
 	{uint32(unsafe.Offsetof(TableMixed{}.AckSequence)), 0, 0, 0, 0, 0},                                                                                   // ack_sequence
 	{uint32(unsafe.Offsetof(TableMixed{}.AckBits)), 0, 0, 0, 0, 0},                                                                                       // ack_bits
-	{uint32(unsafe.Offsetof(TableMixed{}.SessionId)), 0, 0, 0, 0, 0},                                                                                     // session_id
-	{uint32(unsafe.Offsetof(TableMixed{}.ClientId)), 0, 0, 0, 0, 0},                                                                                      // client_id
+	{uint32(unsafe.Offsetof(TableMixed{}.SessionID)), 0, 0, 0, 0, 0},                                                                                     // session_id
+	{uint32(unsafe.Offsetof(TableMixed{}.ClientID)), 0, 0, 0, 0, 0},                                                                                      // client_id
 	{uint32(unsafe.Offsetof(TableMixed{}.Nonce)), 0, 0, 0, 0, 0},                                                                                         // nonce
 	{uint32(unsafe.Offsetof(TableMixed{}.WorldTime)), 0, 0, 0, 0, 0},                                                                                     // world_time
 	{uint32(unsafe.Offsetof(TableMixed{}.FrameTick)), 0, 0, 0, 0, 0},                                                                                     // frame_tick
 	{uint32(unsafe.Offsetof(TableMixed{}.ServerTime)), 0, 0, 0, 0, 0},                                                                                    // server_time
 	{uint32(unsafe.Offsetof(TableMixed{}.Entities)), uint32(unsafe.Sizeof(TableEntity{})), uint32(unsafe.Offsetof(TableMixed{}.EntitiesCount)), 1, 0, 0}, // entities
 	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(TableEntity{}.EntityId)), 0, 0, 0, 0, 0}, // entity_id
+	{uint32(unsafe.Offsetof(TableEntity{}.EntityID)), 0, 0, 0, 0, 0}, // entity_id
 	{uint32(unsafe.Offsetof(TableEntity{}.PosX)), 0, 0, 0, 0, 0},     // pos_x
 	{uint32(unsafe.Offsetof(TableEntity{}.PosY)), 0, 0, 0, 0, 0},     // pos_y
 	{uint32(unsafe.Offsetof(TableEntity{}.PosZ)), 0, 0, 0, 0, 0},     // pos_z
@@ -9465,11 +9465,11 @@ var TableMixedFixedDst = []TableFixedDst{
 	{uint32(unsafe.Offsetof(TableEntity{}.Firing)), 0, 0, 0, 0, 0},                                                                               // firing
 	{uint32(unsafe.Offsetof(TableMixed{}.Stats)), uint32(unsafe.Sizeof(TableStat{})), uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), 1, 0, 0}, // stats
 	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(TableStat{}.StatId)), 0, 0, 0, 0, 0}, // stat_id
+	{uint32(unsafe.Offsetof(TableStat{}.StatID)), 0, 0, 0, 0, 0}, // stat_id
 	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0, 0},  // delta
 	{uint32(unsafe.Offsetof(TableMixed{}.GameEvent)), 0, uint32(unsafe.Offsetof(TableMixed{}.GameEvent)) + uint32(unsafe.Offsetof(TableEvent{}.Type)), 0, 0, 0}, // game_event
 	{uint32(unsafe.Offsetof(TableEvent{}.Hit)), 0, 0, 0, 0, 0},                                   // hit
-	{uint32(unsafe.Offsetof(TableHitEvent{}.TargetId)), 0, 0, 0, 0, 0},                           // target_id
+	{uint32(unsafe.Offsetof(TableHitEvent{}.TargetID)), 0, 0, 0, 0, 0},                           // target_id
 	{uint32(unsafe.Offsetof(TableHitEvent{}.Damage)), 0, 0, 0, 0, 0},                             // damage
 	{uint32(unsafe.Offsetof(TableHitEvent{}.HitKind)), 0, 0, 0, 0, 0},                            // hit_kind
 	{uint32(unsafe.Offsetof(TableHitEvent{}.Crit)), 0, 0, 0, 0, 0},                               // crit
@@ -9477,7 +9477,7 @@ var TableMixedFixedDst = []TableFixedDst{
 	{uint32(unsafe.Offsetof(TableChatEvent{}.Channel)), 0, 0, 0, 0, 0},                           // channel
 	{uint32(unsafe.Offsetof(TableChatEvent{}.Speaker)), 0, 0, 0, 0, 0},                           // speaker
 	{uint32(unsafe.Offsetof(TableEvent{}.Pickup)), 0, 0, 0, 0, 0},                                // pickup
-	{uint32(unsafe.Offsetof(TablePickupEvent{}.ItemId)), 0, 0, 0, 0, 0},                          // item_id
+	{uint32(unsafe.Offsetof(TablePickupEvent{}.ItemID)), 0, 0, 0, 0, 0},                          // item_id
 	{uint32(unsafe.Offsetof(TablePickupEvent{}.Amount)), 0, 0, 0, 0, 0},                          // amount
 	{uint32(unsafe.Offsetof(TableMixed{}.Loadout)), uint32(unsafe.Sizeof(uint8(0))), 0, 0, 0, 0}, // loadout
 	{0, 0, 0, 0, 0, 0}, // element
@@ -9820,7 +9820,7 @@ func TableMixedFixedLoadTolerant(values []TableMixed, data []byte, plan []TableF
 // TableEntityTableFields is TableEntity's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TableEntityTableFields = []TableFieldInfo{
 	{Name: "entity_id", Json: "entity_id", TypeName: "bits(12)", DeclaredTypeName: "bits(12)", Id: 0x23fcfd6678e36712, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.EntityId)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.EntityId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.EntityID)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.EntityID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeUintMin: 0, RangeUintMax: 4095, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -10002,7 +10002,7 @@ func TableEntityTableType() *TableTypeInfo { return &TableEntityTableInfo }
 // TableStatTableFields is TableStat's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TableStatTableFields = []TableFieldInfo{
 	{Name: "stat_id", Json: "stat_id", TypeName: "bits(8)", DeclaredTypeName: "bits(8)", Id: 0x80ab75f0866dbf65, Kind: 6, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableStat{}.StatId)), ElemSize: uint32(unsafe.Sizeof(TableStat{}.StatId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableStat{}.StatID)), ElemSize: uint32(unsafe.Sizeof(TableStat{}.StatID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, RangeUintMin: 0, RangeUintMax: 255, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -10088,7 +10088,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "session_id", Json: "session_id", TypeName: "uint64", DeclaredTypeName: "uint64", Id: 0xb7d7b5650a590b05, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.SessionId)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.SessionId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.SessionID)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.SessionID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 16, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -10100,7 +10100,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "client_id", Json: "client_id", TypeName: "uint32", DeclaredTypeName: "uint32", Id: 0x6d7b98e2d095967e, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.ClientId)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.ClientId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.ClientID)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.ClientID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 24, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -10414,7 +10414,7 @@ func TableMixedTableType() *TableTypeInfo { return &TableMixedTableInfo }
 // TableHitEventTableFields is TableHitEvent's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TableHitEventTableFields = []TableFieldInfo{
 	{Name: "target_id", Json: "target_id", TypeName: "bits(12)", DeclaredTypeName: "bits(12)", Id: 0xb7bc9ac015a25050, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.TargetId)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.TargetId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.TargetID)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.TargetID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeUintMin: 0, RangeUintMax: 4095, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -10514,7 +10514,7 @@ func TableChatEventTableType() *TableTypeInfo { return &TableChatEventTableInfo 
 // TablePickupEventTableFields is TablePickupEvent's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TablePickupEventTableFields = []TableFieldInfo{
 	{Name: "item_id", Json: "item_id", TypeName: "bits(10)", DeclaredTypeName: "bits(10)", Id: 0x9e7fd06d864fbd56, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TablePickupEvent{}.ItemId)), ElemSize: uint32(unsafe.Sizeof(TablePickupEvent{}.ItemId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TablePickupEvent{}.ItemID)), ElemSize: uint32(unsafe.Sizeof(TablePickupEvent{}.ItemID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1023.0, RangeUintMin: 0, RangeUintMax: 1023, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
