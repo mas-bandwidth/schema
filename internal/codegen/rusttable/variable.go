@@ -655,7 +655,7 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         5 | 9 | 11 | 23 | 28 | 36 => fixed(off, 8),
         18 | 19 | 24 | 29 => fixed(off, 16),
         17 | 30 => {
-            if let Some(_) = leb_read(bounded, off) { *off <= end } else { false }
+            leb_read(bounded, off).is_some() && *off <= end
         }
         12 | 13 | 14 | 16 | 31 | 32 | 33 => {
             let Some(n) = leb_read(bounded, off) else { return false; };
@@ -1081,7 +1081,7 @@ pub fn retain_ref(ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], id
 pub fn retain_emit_tail(out: &mut Vec<u8>, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], path: TableRetainPath, report: &mut TableReport) {
     let mut at = 0usize;
     while at + 4 <= retain.bytes.len() {
-        let len = retain_record_len(&retain.bytes[at..]) as usize;
+        let len = retain_record_len(&retain.bytes[at..]);
         if len < 17 || at + len > retain.bytes.len() {
             break;
         }
@@ -1126,7 +1126,7 @@ pub fn retain_discard(retain: &mut TableRetain, path: TableRetainPath, ordinal: 
     let mut read = 0usize;
     let mut write = 0usize;
     while read + 4 <= retain.bytes.len() {
-        let len = retain_record_len(&retain.bytes[read..]) as usize;
+        let len = retain_record_len(&retain.bytes[read..]);
         if len < 17 || read + len > retain.bytes.len() {
             break;
         }
@@ -1179,6 +1179,7 @@ fn retain_emit_ref(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetai
     retain_ref(ids, retain, known, id)
 }
 
+#[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
 fn retain_emit_resolve(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     if *bad || depth > TABLE_RETAIN_DEPTH_CAP {
         *bad = true;
@@ -1219,6 +1220,7 @@ fn retain_emit_resolve(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableR
     }
 }
 
+#[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
 fn retain_emit_framed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     if c.off + 8 > c.buf.len() {
         *bad = true;
@@ -1241,6 +1243,7 @@ fn retain_emit_framed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRe
     out.extend_from_slice(&content);
 }
 
+#[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
 fn retain_emit_content(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     if *bad || depth > TABLE_RETAIN_DEPTH_CAP {
         *bad = true;
@@ -1289,6 +1292,7 @@ fn retain_emit_content(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableR
     }
 }
 
+#[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
 fn retain_emit_keyed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], ek: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     let slot = retain_emit_ref(c, ids, retain, known, bad);
     leb_write(out, slot);

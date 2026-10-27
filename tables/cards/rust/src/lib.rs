@@ -1,23 +1,8 @@
-// The generated wire modules are not hand-written and bear their own lint
-// classes; the facade crate allows them crate-wide so clippy -D warnings runs
-// clean over the hand-written facade (make/rust.mk cards-rust-test).
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    clippy::borrow_deref_ref,
-    clippy::collapsible_if,
-    clippy::derivable_impls,
-    clippy::manual_is_multiple_of,
-    clippy::match_single_binding,
-    clippy::module_inception,
-    clippy::needless_borrow,
-    clippy::needless_option_as_deref,
-    clippy::needless_range_loop,
-    clippy::redundant_pattern_matching,
-    clippy::too_many_arguments,
-    clippy::unnecessary_cast
-)]
+// The facade compiles only the card's wire modules, without the generated
+// lib.rs, so generated items it does not call are dead here; that one class
+// is allowed crate-wide and clippy -D warnings runs over everything else
+// (make/rust.mk cards-rust-test).
+#![allow(dead_code)]
 
 // The cards facade's Rust leg: L1 is the owning Record and the customer
 // bounds, L2 parse once and render many. The generated variable modules are the
@@ -26,7 +11,10 @@
 // parse.go and render.go.
 
 mod card_table;
-mod card_variable;
+// the file holds `pub mod card_variable`; the file module takes another
+// name so the two do not nest under one (as the generated lib.rs does)
+#[path = "card_variable.rs"]
+mod card_variable_constants;
 mod variable_runtime;
 mod card_descriptors;
 
@@ -111,14 +99,14 @@ pub fn to_json(record: &Record) -> Result<(String, TableReport), String> {
 /// The checked-write helper: the customer bounds, enforced before bytes are
 /// published (cards.go checkCard).
 fn check_card(card: &Card) -> Result<(), String> {
-    if let Some(body) = &card.body {
-        if body.len() > MAX_BODY_BYTES {
-            return Err(format!(
-                "cards: body is {} bytes, past the {}-byte ceiling",
-                body.len(),
-                MAX_BODY_BYTES
-            ));
-        }
+    if let Some(body) = &card.body
+        && body.len() > MAX_BODY_BYTES
+    {
+        return Err(format!(
+            "cards: body is {} bytes, past the {}-byte ceiling",
+            body.len(),
+            MAX_BODY_BYTES
+        ));
     }
     check_path_list(&card.paths, "paths")?;
     check_path_list(&card._new, "_new")?;

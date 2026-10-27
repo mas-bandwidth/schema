@@ -52,7 +52,7 @@ pub const WIDE_SEVEN_MAX_BYTES: usize = 32;
 pub fn write_wide_seven(stream: &mut WriteStream<'_>, value: &WideSeven) -> Result {
     {
         let mut length = value.text_length;
-        debug_assert!(length >= 0 && length <= 7, "text_length out of range [0, 7]");
+        debug_assert!((0..=7).contains(&length), "text_length out of range [0, 7]");
         stream.serialize_int(&mut length, 0, 7)?;
         for &unit in &value.text[..length as usize] {
             debug_assert!(unit != 0, "text carries an interior null within its used length");
@@ -101,7 +101,7 @@ pub const WIDE_FOUR_MAX_BYTES: usize = 24;
 pub fn write_wide_four(stream: &mut WriteStream<'_>, value: &WideFour) -> Result {
     {
         let mut length = value.text_length;
-        debug_assert!(length >= 0 && length <= 4, "text_length out of range [0, 4]");
+        debug_assert!((0..=4).contains(&length), "text_length out of range [0, 4]");
         stream.serialize_int(&mut length, 0, 4)?;
         for &unit in &value.text[..length as usize] {
             debug_assert!(unit != 0, "text carries an interior null within its used length");
@@ -190,7 +190,7 @@ pub const WIDE_INTEROP_MAX_BYTES: usize = 32;
 pub fn write_wide_interop(stream: &mut WriteStream<'_>, value: &WideInterop) -> Result {
     {
         let mut length = value.caption_length;
-        debug_assert!(length >= 0 && length <= 7, "caption_length out of range [0, 7]");
+        debug_assert!((0..=7).contains(&length), "caption_length out of range [0, 7]");
         stream.serialize_int(&mut length, 0, 7)?;
         for &unit in &value.caption[..length as usize] {
             debug_assert!(unit != 0, "caption carries an interior null within its used length");

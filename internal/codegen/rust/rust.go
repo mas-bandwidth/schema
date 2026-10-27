@@ -112,8 +112,23 @@ func assembleLib(u *ir.Unit, modules map[string]string, extra []string) []byte {
 		names = append(names, mod)
 	}
 	sort.Strings(names)
+	if len(extra) > 0 {
+		// A unit with tables can emit more than one Rust item under one
+		// declared name: the packet storage here and the table storage below
+		// for a schema type both layers reach, and a table enum (with its JSON
+		// name functions) in each file whose tables reach it. Every glob
+		// exports its own, so at the crate root such a name is ambiguous and
+		// reachable through neither. Which module owns the root spelling is an
+		// open naming decision; until it is made the globs say so here instead
+		// of warning once per name.
+		b.WriteString("// A table unit can declare one schema name in more than one module (the\n")
+		b.WriteString("// packet and table layers, and a table enum per file that reaches it);\n")
+		b.WriteString("// such a name is ambiguous at the crate root, which exports none of them.\n")
+	}
 	for _, mod := range names {
-		if exports[mod] {
+		if exports[mod] && len(extra) > 0 {
+			fmt.Fprintf(&b, "mod %s;\n#[allow(ambiguous_glob_reexports)]\npub use %s::*;\n", mod, mod)
+		} else if exports[mod] {
 			fmt.Fprintf(&b, "mod %s;\npub use %s::*;\n", mod, mod)
 		} else {
 			fmt.Fprintf(&b, "mod %s; // no items — documentation only\n", mod)
@@ -138,8 +153,14 @@ func assembleLib(u *ir.Unit, modules map[string]string, extra []string) []byte {
 				fmt.Fprintf(&b, "#[cfg(feature = \"block\")]\nmod %s;\n#[cfg(feature = \"block\")]\npub use %s::*;\n", mod, mod)
 			case strings.HasSuffix(mod, "_cook") || mod == "cook_runtime":
 				fmt.Fprintf(&b, "#[cfg(feature = \"cook\")]\nmod %s;\n#[cfg(feature = \"cook\")]\npub use %s::*;\n", mod, mod)
+			case strings.HasSuffix(mod, "_variable"):
+				// the file holds one `pub mod <table>_variable` per table, and
+				// the table that shares the file's name would be shadowed by the
+				// file's own module: the file module takes another name, so the
+				// glob exports every table's constants at crate::<table>_variable
+				fmt.Fprintf(&b, "#[path = \"%s.rs\"]\nmod %s_constants;\npub use %s_constants::*;\n", mod, mod, mod)
 			default:
-				fmt.Fprintf(&b, "mod %s;\npub use %s::*;\n", mod, mod)
+				fmt.Fprintf(&b, "mod %s;\n#[allow(ambiguous_glob_reexports)]\npub use %s::*;\n", mod, mod)
 			}
 		}
 	}

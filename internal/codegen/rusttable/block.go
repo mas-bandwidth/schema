@@ -676,8 +676,10 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("            if table_block_read64(base.add(16)) != TABLE_BLOCK_BYTE_ORDER { return \"not_a_cook\"; }\n")
 	if len(bl.Arrays) > 0 {
 		b.pf("            let projection = &*(base as *const %sBlockProjection);\n", name)
+		b.pf("            let mut used: i64 = %d;\n", bl.Projection.Size)
+	} else {
+		b.pf("            let used: i64 = %d;\n", bl.Projection.Size)
 	}
-	b.pf("            let mut used: i64 = %d;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		b.pf("            {\n")
 		b.pf("                let offset_of = projection.%s.offset_of;\n", a.Field.Name)

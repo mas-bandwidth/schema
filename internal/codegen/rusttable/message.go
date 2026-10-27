@@ -410,8 +410,8 @@ fn announce_read_once(
             for other in filled.iter() {
                 let other_len = (other.shape.max - other.shape.min) as usize;
                 if other_len == at - began
-                    && &vocabulary_bytes[other.shape.min as usize..other.shape.max as usize]
-                        == &vocabulary_bytes[began..at]
+                    && vocabulary_bytes[other.shape.min as usize..other.shape.max as usize]
+                        == vocabulary_bytes[began..at]
                 {
                     report.malformed = true;
                     return false;
@@ -500,15 +500,15 @@ fn bits_required(count: usize) -> u32 {
 }
 
 fn known_kind(kind: u8) -> bool {
-    kind == 0 || (kind >= 1 && kind <= 17) || (kind >= 18 && kind <= 29) || (kind >= 30 && kind <= 33)
+    kind == 0 || (1..=17).contains(&kind) || (18..=29).contains(&kind) || (30..=33).contains(&kind)
 }
 
 fn integer_kind(kind: u8) -> bool {
-    (kind >= 2 && kind <= 9) || kind == 18 || kind == 19
+    (2..=9).contains(&kind) || kind == 18 || kind == 19
 }
 
 fn fixed_kind(kind: u8) -> bool {
-    kind >= 20 && kind <= 29
+    (20..=29).contains(&kind)
 }
 
 /// The widest ranged value a kind can carry, its own storage width (§3.3): a
@@ -527,7 +527,7 @@ fn kind_bits(kind: u8) -> u64 {
 /// (§3.3): the step count, the delta and the width. False is a non-conforming
 /// triple, which on the announcement is a hostile width.
 fn quantization(qmin: f32, qmax: f32, qres: f32) -> (u32, f32, u64, bool) {
-    if !(qmin < qmax) || !(qres > 0.0) {
+    if qmin.is_nan() || qmax.is_nan() || qmin >= qmax || qres.is_nan() || qres <= 0.0 {
         return (0, 0.0, 0, false);
     }
     let delta = qmax - qmin;
@@ -535,7 +535,7 @@ fn quantization(qmin: f32, qmax: f32, qres: f32) -> (u32, f32, u64, bool) {
     if delta.is_nan() || values.is_nan() {
         return (0, 0.0, 0, false);
     }
-    if !(values >= 1.0) {
+    if values.is_nan() || values < 1.0 {
         values = 1.0;
     } else if values > 4294967040.0 {
         values = 4294967040.0;
@@ -617,7 +617,7 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
             if !ok {
                 return (s, false);
             }
-            if kind >= 2 && kind <= 5 {
+            if (2..=5).contains(&kind) {
                 s.base_lo = (v >> 1) ^ (0u64.wrapping_sub(v & 1));
             } else {
                 s.base_lo = v;

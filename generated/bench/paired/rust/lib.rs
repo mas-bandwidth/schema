@@ -4,7 +4,18 @@
 // AGPL-3.0, its output is not.
 // package bench — protocol id 0xc93127c82f083edf
 
+// Two clippy classes are silenced deliberately, crate-wide:
+// - derivable_impls / field_reassign_with_default: Default impls are
+//   hand-emitted as the explicit ZERO form (SPEC §5) and new() reassigns
+//   only the specified defaults — certainty over derive, in every target
+//   the same way, is the point.
+#![allow(clippy::derivable_impls, clippy::field_reassign_with_default)]
+
+// A table unit can declare one schema name in more than one module (the
+// packet and table layers, and a table enum per file that reaches it);
+// such a name is ambiguous at the crate root, which exports none of them.
 mod bench;
+#[allow(ambiguous_glob_reexports)]
 pub use bench::*;
 mod fixedtable; // no items — documentation only
 
@@ -19,28 +30,41 @@ mod fixedtable; // no items — documentation only
 // all; a consumer that says nothing gets everything, so the default is
 // the whole surface and the saving is opt-in.
 mod bench_fixed;
+#[allow(ambiguous_glob_reexports)]
 pub use bench_fixed::*;
 mod bench_message;
+#[allow(ambiguous_glob_reexports)]
 pub use bench_message::*;
 mod bench_records;
+#[allow(ambiguous_glob_reexports)]
 pub use bench_records::*;
 mod bench_table;
+#[allow(ambiguous_glob_reexports)]
 pub use bench_table::*;
-mod bench_variable;
-pub use bench_variable::*;
+#[path = "bench_variable.rs"]
+mod bench_variable_constants;
+pub use bench_variable_constants::*;
 mod build_version;
+#[allow(ambiguous_glob_reexports)]
 pub use build_version::*;
 mod fixed_runtime;
+#[allow(ambiguous_glob_reexports)]
 pub use fixed_runtime::*;
 mod fixedtable_fixed;
+#[allow(ambiguous_glob_reexports)]
 pub use fixedtable_fixed::*;
 mod fixedtable_message;
+#[allow(ambiguous_glob_reexports)]
 pub use fixedtable_message::*;
 mod fixedtable_records;
+#[allow(ambiguous_glob_reexports)]
 pub use fixedtable_records::*;
 mod message_runtime;
+#[allow(ambiguous_glob_reexports)]
 pub use message_runtime::*;
 mod unit_view;
+#[allow(ambiguous_glob_reexports)]
 pub use unit_view::*;
 mod variable_runtime;
+#[allow(ambiguous_glob_reexports)]
 pub use variable_runtime::*;

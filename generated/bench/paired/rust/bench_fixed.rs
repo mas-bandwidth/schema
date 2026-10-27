@@ -121,6 +121,7 @@ pub fn mixed_event_fixed_scatter(b: &[u8], value: &mut MixedEventRow, report: &m
 
 /// MixedEvent's read-side bounds: the arm THE TAG NAMES, and no other — the
 /// overlay behind a narrower arm is bytes nobody wrote.
+#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
 pub fn mixed_event_fixed_clamp_body(value: &mut MixedEventRow, clamped: &mut i32, damaged: &mut i32) {
     let _ = (&clamped, &damaged);
     match value.tag {
@@ -264,6 +265,7 @@ pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: 
 
 /// MixedEntity's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
+#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
 pub fn mixed_entity_fixed_clamp_body(value: &mut MixedEntityRow, clamped: &mut i32, damaged: &mut i32) {
     let _ = (&clamped, &damaged);
     *clamped += (value.entity_id > 4095) as i32; // bits(12)'s own width
@@ -319,6 +321,7 @@ pub fn mixed_stat_fixed_scatter(b: &[u8], value: &mut MixedStatRow, report: &mut
 
 /// MixedStat's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
+#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
 pub fn mixed_stat_fixed_clamp_body(value: &mut MixedStatRow, clamped: &mut i32, damaged: &mut i32) {
     let _ = (&clamped, &damaged);
     *clamped += (value.stat_id > 255) as i32; // bits(8)'s own width
@@ -371,6 +374,7 @@ pub fn mixed_hit_event_fixed_scatter(b: &[u8], value: &mut MixedHitEventRow, rep
 
 /// MixedHitEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
+#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
 pub fn mixed_hit_event_fixed_clamp_body(value: &mut MixedHitEventRow, clamped: &mut i32, damaged: &mut i32) {
     let _ = (&clamped, &damaged);
     *clamped += (value.target_id > 4095) as i32; // bits(12)'s own width
@@ -412,6 +416,7 @@ pub fn mixed_chat_event_fixed_scatter(b: &[u8], value: &mut MixedChatEventRow, r
 
 /// MixedChatEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
+#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
 pub fn mixed_chat_event_fixed_clamp_body(value: &mut MixedChatEventRow, clamped: &mut i32, damaged: &mut i32) {
     let _ = (&clamped, &damaged);
     *clamped += ((value.channel < 0_i32) | (value.channel > 3_i32)) as i32;
@@ -451,6 +456,7 @@ pub fn mixed_pickup_event_fixed_scatter(b: &[u8], value: &mut MixedPickupEventRo
 
 /// MixedPickupEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
+#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
 pub fn mixed_pickup_event_fixed_clamp_body(value: &mut MixedPickupEventRow, clamped: &mut i32, damaged: &mut i32) {
     let _ = (&clamped, &damaged);
     *clamped += (value.item_id > 1023) as i32; // bits(10)'s own width
@@ -718,6 +724,7 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
 
 /// BenchMixed's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
+#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
 pub fn bench_mixed_fixed_clamp_body(value: &mut BenchMixedRow, clamped: &mut i32, damaged: &mut i32) {
     let _ = (&clamped, &damaged);
     *clamped += (value.sequence > 65535) as i32; // bits(16)'s own width
