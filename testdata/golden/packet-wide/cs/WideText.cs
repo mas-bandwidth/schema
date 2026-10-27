@@ -20,36 +20,56 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Serialize;
 
 namespace Wide
 {
 
-    // type WideSeven
-    public sealed class WideSeven
+    // Inline fixed buffers: a struct's arrays, strings and bytes live inside it.
+    [InlineArray(4)]
+    public struct InlineBuffer4<T>
     {
-        public char[] Text = new char[7];
+        private T element0;
+    }
+
+    [InlineArray(7)]
+    public struct InlineBuffer7<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(15)]
+    public struct InlineBuffer15<T>
+    {
+        private T element0;
+    }
+
+    // type WideSeven
+    public struct WideSeven
+    {
+        public InlineBuffer7<char> Text;
         public int TextLength;
     }
 
     // type WideFour
-    public sealed class WideFour
+    public struct WideFour
     {
-        public char[] Text = new char[4];
+        public InlineBuffer4<char> Text;
         public int TextLength;
     }
 
     // type NarrowFifteen
-    public sealed class NarrowFifteen
+    public struct NarrowFifteen
     {
-        public byte[] Text = new byte[15]; // string(15): max length, used length beside it (SPEC §4.7)
+        public InlineBuffer15<byte> Text; // string(15): max length, used length beside it (SPEC §4.7)
         public int TextLength;
     }
 
     // type WideInterop
-    public sealed class WideInterop
+    public struct WideInterop
     {
-        public char[] Caption = new char[7];
+        public InlineBuffer7<char> Caption;
         public int CaptionLength;
     }
 
@@ -68,13 +88,13 @@ namespace Wide
         public const int WideSevenMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroWideSeven(WideSeven value)
+        public static void ZeroWideSeven(ref WideSeven value)
         {
-            Array.Clear(value.Text, 0, 7);
+            value.Text[..].Clear();
             value.TextLength = 0;
         }
 
-        public static bool WriteWideSeven(WriteStream stream, WideSeven value)
+        public static bool WriteWideSeven(WriteStream stream, ref WideSeven value)
         {
             Debug.Assert(value.TextLength >= 0 && value.TextLength <= 7, "value.TextLength out of range [0, 7]");
             {
@@ -96,7 +116,7 @@ namespace Wide
             return true;
         }
 
-        public static bool ReadWideSeven(ReadStream stream, WideSeven value)
+        public static bool ReadWideSeven(ReadStream stream, ref WideSeven value)
         {
             if (!stream.SerializeInt(ref value.TextLength, 0, 7))
             {
@@ -129,13 +149,13 @@ namespace Wide
         public const int WideFourMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroWideFour(WideFour value)
+        public static void ZeroWideFour(ref WideFour value)
         {
-            Array.Clear(value.Text, 0, 4);
+            value.Text[..].Clear();
             value.TextLength = 0;
         }
 
-        public static bool WriteWideFour(WriteStream stream, WideFour value)
+        public static bool WriteWideFour(WriteStream stream, ref WideFour value)
         {
             Debug.Assert(value.TextLength >= 0 && value.TextLength <= 4, "value.TextLength out of range [0, 4]");
             {
@@ -157,7 +177,7 @@ namespace Wide
             return true;
         }
 
-        public static bool ReadWideFour(ReadStream stream, WideFour value)
+        public static bool ReadWideFour(ReadStream stream, ref WideFour value)
         {
             if (!stream.SerializeInt(ref value.TextLength, 0, 4))
             {
@@ -190,13 +210,13 @@ namespace Wide
         public const int NarrowFifteenMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroNarrowFifteen(NarrowFifteen value)
+        public static void ZeroNarrowFifteen(ref NarrowFifteen value)
         {
-            Array.Clear(value.Text, 0, 15);
+            value.Text[..].Clear();
             value.TextLength = 0;
         }
 
-        public static bool WriteNarrowFifteen(WriteStream stream, NarrowFifteen value)
+        public static bool WriteNarrowFifteen(WriteStream stream, ref NarrowFifteen value)
         {
             Debug.Assert(value.TextLength >= 0 && value.TextLength <= 15, "value.TextLength out of range [0, 15]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
@@ -206,20 +226,20 @@ namespace Wide
                     return false;
                 }
             }
-            if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
+            if (!stream.SerializeBytes(value.Text[..value.TextLength]))
             {
                 return false;
             }
             return true;
         }
 
-        public static bool ReadNarrowFifteen(ReadStream stream, NarrowFifteen value)
+        public static bool ReadNarrowFifteen(ReadStream stream, ref NarrowFifteen value)
         {
             if (!stream.SerializeInt(ref value.TextLength, 0, 15)) // the length guards the slice (§6.3)
             {
                 return false;
             }
-            if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
+            if (!stream.SerializeBytes(value.Text[..value.TextLength]))
             {
                 return false;
             }
@@ -259,13 +279,13 @@ namespace Wide
         public const int WideInteropMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroWideInterop(WideInterop value)
+        public static void ZeroWideInterop(ref WideInterop value)
         {
-            Array.Clear(value.Caption, 0, 7);
+            value.Caption[..].Clear();
             value.CaptionLength = 0;
         }
 
-        public static bool WriteWideInterop(WriteStream stream, WideInterop value)
+        public static bool WriteWideInterop(WriteStream stream, ref WideInterop value)
         {
             Debug.Assert(value.CaptionLength >= 0 && value.CaptionLength <= 7, "value.CaptionLength out of range [0, 7]");
             {
@@ -287,7 +307,7 @@ namespace Wide
             return true;
         }
 
-        public static bool ReadWideInterop(ReadStream stream, WideInterop value)
+        public static bool ReadWideInterop(ReadStream stream, ref WideInterop value)
         {
             if (!stream.SerializeInt(ref value.CaptionLength, 0, 7))
             {

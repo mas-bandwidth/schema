@@ -26,8 +26,45 @@ using Serialize;
 namespace Bench
 {
 
+    // Inline fixed buffers: a struct's arrays, strings and bytes live inside it.
+    [InlineArray(4)]
+    public struct InlineBuffer4<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(8)]
+    public struct InlineBuffer8<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(15)]
+    public struct InlineBuffer15<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(16)]
+    public struct InlineBuffer16<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(17)]
+    public struct InlineBuffer17<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(80)]
+    public struct InlineBuffer80<T>
+    {
+        private T element0;
+    }
+
     // type BenchPacket
-    public sealed class BenchPacket
+    public struct BenchPacket
     {
         public int A; // wire [-100, 100]
         public int B; // wire [0, 65535]
@@ -40,11 +77,11 @@ namespace Bench
         public float Y;
         public float Z;
         public ulong Big;
-        public byte[] Blob = new byte[17];
+        public InlineBuffer17<byte> Blob;
     }
 
     // type BenchInts
-    public sealed class BenchInts
+    public struct BenchInts
     {
         public int F0; // wire [-100, 100]
         public int F1; // wire [0, 65535]
@@ -59,7 +96,7 @@ namespace Bench
     }
 
     // type BenchBits
-    public sealed class BenchBits
+    public struct BenchBits
     {
         public uint B7;
         public uint B13;
@@ -111,7 +148,7 @@ namespace Bench
     }
 
     // type MixedEntity
-    public sealed class MixedEntity
+    public struct MixedEntity
     {
         public uint EntityId;
         public int PosX; // wire [-16383, 16383]
@@ -130,14 +167,14 @@ namespace Bench
     }
 
     // type MixedStat
-    public sealed class MixedStat
+    public struct MixedStat
     {
         public uint StatId;
         public int Delta; // wire [-512, 511]
     }
 
     // type MixedHitEvent
-    public sealed class MixedHitEvent
+    public struct MixedHitEvent
     {
         public uint TargetId;
         public int Damage; // wire [0, 4095]
@@ -146,14 +183,14 @@ namespace Bench
     }
 
     // type MixedChatEvent
-    public sealed class MixedChatEvent
+    public struct MixedChatEvent
     {
         public int Channel; // wire [0, 3]
         public uint Speaker;
     }
 
     // type MixedPickupEvent
-    public sealed class MixedPickupEvent
+    public struct MixedPickupEvent
     {
         public uint ItemId;
         public int Amount; // wire [0, 255]
@@ -172,16 +209,16 @@ namespace Bench
     // union (None). Every read selection initializes the chosen payload from
     // construction defaults; unselected arms keep what they last held — the
     // MessageStorage reuse discipline. Consumers read the selected arm only.
-    public sealed class MixedEvent
+    public struct MixedEvent
     {
         public MixedEventType Type;
-        public MixedHitEvent Hit = new MixedHitEvent();
-        public MixedChatEvent Chat = new MixedChatEvent();
-        public MixedPickupEvent Pickup = new MixedPickupEvent();
+        public MixedHitEvent Hit;
+        public MixedChatEvent Chat;
+        public MixedPickupEvent Pickup;
     }
 
     // type BenchMixed
-    public sealed class BenchMixed
+    public struct BenchMixed
     {
         public uint Sequence;
         public int AckSequence; // wire [0, 65535]
@@ -192,15 +229,15 @@ namespace Bench
         public long WorldTime; // wire [-1000000000000, 1000000000000]
         public ulong FrameTick;
         public int ServerTime; // wire [0, 65535]
-        public MixedEntity[] Entities = new MixedEntity[8]; // used count beside it; wire count in [1, 8]
-        public int EntitiesCount = 1;
-        public MixedStat[] Stats = new MixedStat[80]; // used count beside it; wire count in [0, 80]
+        public InlineBuffer8<MixedEntity> Entities; // used count beside it; wire count in [1, 8]
+        public int EntitiesCount;
+        public InlineBuffer80<MixedStat> Stats; // used count beside it; wire count in [0, 80]
         public int StatsCount;
-        public MixedEvent GameEvent = new MixedEvent();
-        public byte[] Loadout = new byte[4];
-        public byte[] PlayerName = new byte[15]; // string(15): max length, used length beside it (SPEC §4.7)
+        public MixedEvent GameEvent;
+        public InlineBuffer4<byte> Loadout;
+        public InlineBuffer15<byte> PlayerName; // string(15): max length, used length beside it (SPEC §4.7)
         public int PlayerNameLength;
-        public byte[] Payload = new byte[16]; // bytes(16): fixed buffer, used length beside it (SPEC §4.7)
+        public InlineBuffer16<byte> Payload; // bytes(16): fixed buffer, used length beside it (SPEC §4.7)
         public int PayloadLength;
         public float AimX; // compressed float [-1.0, 1.0] @ 0.01
         public float AimY; // compressed float [-1.0, 1.0] @ 0.01
@@ -211,20 +248,13 @@ namespace Bench
         public Int128Value Flux; // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
         public ushort Ping; // wire [0, 250]
         public uint CrcHint;
-        public bool HasExtra = true; // specified default at construction; Zero* gives the §5 zero form
+        public bool HasExtra; // specified default at construction; Zero* gives the §5 zero form
         public int Extra; // wire [0, 255]
         public int IdleTicks; // wire [0, 15]
 
         public BenchMixed()
         {
-            for (int i = 0; i < Entities.Length; i++)
-            {
-                Entities[i] = new MixedEntity();
-            }
-            for (int i = 0; i < Stats.Length; i++)
-            {
-                Stats[i] = new MixedStat();
-            }
+            Schema.InitBenchMixed(ref this);
         }
     }
 
@@ -243,7 +273,7 @@ namespace Bench
         public const int BenchPacketMaxBytes = 56;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroBenchPacket(BenchPacket value)
+        public static void ZeroBenchPacket(ref BenchPacket value)
         {
             value.A = 0;
             value.B = 0;
@@ -256,10 +286,10 @@ namespace Bench
             value.Y = 0.0f;
             value.Z = 0.0f;
             value.Big = 0;
-            Array.Clear(value.Blob, 0, 17);
+            value.Blob[..].Clear();
         }
 
-        public static bool WriteBenchPacket(WriteStream stream, BenchPacket value)
+        public static bool WriteBenchPacket(WriteStream stream, ref BenchPacket value)
         {
             {
                 // flat run: 89 bits in 2 chunk(s) — the field placement is folded
@@ -304,14 +334,14 @@ namespace Bench
             {
                 return false;
             }
-            if (!stream.SerializeBytes(value.Blob.AsSpan(0, 17))) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+            if (!stream.SerializeBytes(value.Blob[..17])) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
             {
                 return false;
             }
             return true;
         }
 
-        public static bool ReadBenchPacket(ReadStream stream, BenchPacket value)
+        public static bool ReadBenchPacket(ReadStream stream, ref BenchPacket value)
         {
             if (!stream.SerializeInt(ref value.A, -100, 100))
             {
@@ -363,7 +393,7 @@ namespace Bench
             {
                 return false;
             }
-            if (!stream.SerializeBytes(value.Blob.AsSpan(0, 17))) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+            if (!stream.SerializeBytes(value.Blob[..17])) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
             {
                 return false;
             }
@@ -376,7 +406,7 @@ namespace Bench
         public const int BenchIntsMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroBenchInts(BenchInts value)
+        public static void ZeroBenchInts(ref BenchInts value)
         {
             value.F0 = 0;
             value.F1 = 0;
@@ -392,17 +422,17 @@ namespace Bench
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteBenchInts(WriteStream stream, BenchInts value)
+        public static bool WriteBenchInts(WriteStream stream, ref BenchInts value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteBenchIntsBatch(ref batch, value);
+            bool result = WriteBenchIntsBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteBenchIntsBatch(ref WriteBatch batch, BenchInts value)
+        private static bool WriteBenchIntsBatch(ref WriteBatch batch, ref BenchInts value)
         {
             {
                 // flat run: 110 bits in 2 chunk(s) — the field placement is folded
@@ -440,17 +470,17 @@ namespace Bench
             return true;
         }
 
-        public static bool ReadBenchInts(ReadStream stream, BenchInts value)
+        public static bool ReadBenchInts(ReadStream stream, ref BenchInts value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadBenchIntsBatch(ref batch, value);
+            bool result = ReadBenchIntsBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadBenchIntsBatch(ref ReadBatch batch, BenchInts value)
+        private static bool ReadBenchIntsBatch(ref ReadBatch batch, ref BenchInts value)
         {
             if (!batch.SerializeInt(ref value.F0, -100, 100))
             {
@@ -507,7 +537,7 @@ namespace Bench
         public const int BenchBitsMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroBenchBits(BenchBits value)
+        public static void ZeroBenchBits(ref BenchBits value)
         {
             value.B7 = 0;
             value.B13 = 0;
@@ -521,17 +551,17 @@ namespace Bench
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteBenchBits(WriteStream stream, BenchBits value)
+        public static bool WriteBenchBits(WriteStream stream, ref BenchBits value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteBenchBitsBatch(ref batch, value);
+            bool result = WriteBenchBitsBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteBenchBitsBatch(ref WriteBatch batch, BenchBits value)
+        private static bool WriteBenchBitsBatch(ref WriteBatch batch, ref BenchBits value)
         {
             {
                 // flat run: 156 bits in 3 chunk(s) — the field placement is folded
@@ -562,17 +592,17 @@ namespace Bench
             return true;
         }
 
-        public static bool ReadBenchBits(ReadStream stream, BenchBits value)
+        public static bool ReadBenchBits(ReadStream stream, ref BenchBits value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadBenchBitsBatch(ref batch, value);
+            bool result = ReadBenchBitsBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadBenchBitsBatch(ref ReadBatch batch, BenchBits value)
+        private static bool ReadBenchBitsBatch(ref ReadBatch batch, ref BenchBits value)
         {
             {
                 // flat run: 156 bits in 3 chunk(s) — one bounds check per chunk,
@@ -723,7 +753,7 @@ namespace Bench
         public const int MixedEntityMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroMixedEntity(MixedEntity value)
+        public static void ZeroMixedEntity(ref MixedEntity value)
         {
             value.EntityId = 0;
             value.PosX = 0;
@@ -743,17 +773,17 @@ namespace Bench
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteMixedEntity(WriteStream stream, MixedEntity value)
+        public static bool WriteMixedEntity(WriteStream stream, ref MixedEntity value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteMixedEntityBatch(ref batch, value);
+            bool result = WriteMixedEntityBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteMixedEntityBatch(ref WriteBatch batch, MixedEntity value)
+        private static bool WriteMixedEntityBatch(ref WriteBatch batch, ref MixedEntity value)
         {
             {
                 // flat run: 135 bits in 3 chunk(s) — the field placement is folded
@@ -799,17 +829,17 @@ namespace Bench
             return true;
         }
 
-        public static bool ReadMixedEntity(ReadStream stream, MixedEntity value)
+        public static bool ReadMixedEntity(ReadStream stream, ref MixedEntity value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadMixedEntityBatch(ref batch, value);
+            bool result = ReadMixedEntityBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadMixedEntityBatch(ref ReadBatch batch, MixedEntity value)
+        private static bool ReadMixedEntityBatch(ref ReadBatch batch, ref MixedEntity value)
         {
             if (!batch.SerializeBits(ref value.EntityId, 12))
             {
@@ -878,7 +908,7 @@ namespace Bench
         public const int MixedStatMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroMixedStat(MixedStat value)
+        public static void ZeroMixedStat(ref MixedStat value)
         {
             value.StatId = 0;
             value.Delta = 0;
@@ -886,17 +916,17 @@ namespace Bench
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteMixedStat(WriteStream stream, MixedStat value)
+        public static bool WriteMixedStat(WriteStream stream, ref MixedStat value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteMixedStatBatch(ref batch, value);
+            bool result = WriteMixedStatBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteMixedStatBatch(ref WriteBatch batch, MixedStat value)
+        private static bool WriteMixedStatBatch(ref WriteBatch batch, ref MixedStat value)
         {
             {
                 // flat run: 18 bits in 1 chunk(s) — the field placement is folded
@@ -912,17 +942,17 @@ namespace Bench
             return true;
         }
 
-        public static bool ReadMixedStat(ReadStream stream, MixedStat value)
+        public static bool ReadMixedStat(ReadStream stream, ref MixedStat value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadMixedStatBatch(ref batch, value);
+            bool result = ReadMixedStatBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadMixedStatBatch(ref ReadBatch batch, MixedStat value)
+        private static bool ReadMixedStatBatch(ref ReadBatch batch, ref MixedStat value)
         {
             {
                 // flat run: 18 bits in 1 chunk(s) — one bounds check per chunk,
@@ -947,7 +977,7 @@ namespace Bench
         public const int MixedHitEventMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroMixedHitEvent(MixedHitEvent value)
+        public static void ZeroMixedHitEvent(ref MixedHitEvent value)
         {
             value.TargetId = 0;
             value.Damage = 0;
@@ -957,17 +987,17 @@ namespace Bench
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteMixedHitEvent(WriteStream stream, MixedHitEvent value)
+        public static bool WriteMixedHitEvent(WriteStream stream, ref MixedHitEvent value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteMixedHitEventBatch(ref batch, value);
+            bool result = WriteMixedHitEventBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteMixedHitEventBatch(ref WriteBatch batch, MixedHitEvent value)
+        private static bool WriteMixedHitEventBatch(ref WriteBatch batch, ref MixedHitEvent value)
         {
             {
                 // flat run: 28 bits in 1 chunk(s) — the field placement is folded
@@ -986,17 +1016,17 @@ namespace Bench
             return true;
         }
 
-        public static bool ReadMixedHitEvent(ReadStream stream, MixedHitEvent value)
+        public static bool ReadMixedHitEvent(ReadStream stream, ref MixedHitEvent value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadMixedHitEventBatch(ref batch, value);
+            bool result = ReadMixedHitEventBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadMixedHitEventBatch(ref ReadBatch batch, MixedHitEvent value)
+        private static bool ReadMixedHitEventBatch(ref ReadBatch batch, ref MixedHitEvent value)
         {
             {
                 // flat run: 28 bits in 1 chunk(s) — one bounds check per chunk,
@@ -1025,7 +1055,7 @@ namespace Bench
         public const int MixedChatEventMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroMixedChatEvent(MixedChatEvent value)
+        public static void ZeroMixedChatEvent(ref MixedChatEvent value)
         {
             value.Channel = 0;
             value.Speaker = 0;
@@ -1033,17 +1063,17 @@ namespace Bench
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteMixedChatEvent(WriteStream stream, MixedChatEvent value)
+        public static bool WriteMixedChatEvent(WriteStream stream, ref MixedChatEvent value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteMixedChatEventBatch(ref batch, value);
+            bool result = WriteMixedChatEventBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteMixedChatEventBatch(ref WriteBatch batch, MixedChatEvent value)
+        private static bool WriteMixedChatEventBatch(ref WriteBatch batch, ref MixedChatEvent value)
         {
             {
                 // flat run: 14 bits in 1 chunk(s) — the field placement is folded
@@ -1059,17 +1089,17 @@ namespace Bench
             return true;
         }
 
-        public static bool ReadMixedChatEvent(ReadStream stream, MixedChatEvent value)
+        public static bool ReadMixedChatEvent(ReadStream stream, ref MixedChatEvent value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadMixedChatEventBatch(ref batch, value);
+            bool result = ReadMixedChatEventBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadMixedChatEventBatch(ref ReadBatch batch, MixedChatEvent value)
+        private static bool ReadMixedChatEventBatch(ref ReadBatch batch, ref MixedChatEvent value)
         {
             {
                 // flat run: 14 bits in 1 chunk(s) — one bounds check per chunk,
@@ -1094,7 +1124,7 @@ namespace Bench
         public const int MixedPickupEventMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroMixedPickupEvent(MixedPickupEvent value)
+        public static void ZeroMixedPickupEvent(ref MixedPickupEvent value)
         {
             value.ItemId = 0;
             value.Amount = 0;
@@ -1102,17 +1132,17 @@ namespace Bench
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteMixedPickupEvent(WriteStream stream, MixedPickupEvent value)
+        public static bool WriteMixedPickupEvent(WriteStream stream, ref MixedPickupEvent value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteMixedPickupEventBatch(ref batch, value);
+            bool result = WriteMixedPickupEventBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteMixedPickupEventBatch(ref WriteBatch batch, MixedPickupEvent value)
+        private static bool WriteMixedPickupEventBatch(ref WriteBatch batch, ref MixedPickupEvent value)
         {
             {
                 // flat run: 18 bits in 1 chunk(s) — the field placement is folded
@@ -1128,17 +1158,17 @@ namespace Bench
             return true;
         }
 
-        public static bool ReadMixedPickupEvent(ReadStream stream, MixedPickupEvent value)
+        public static bool ReadMixedPickupEvent(ReadStream stream, ref MixedPickupEvent value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadMixedPickupEventBatch(ref batch, value);
+            bool result = ReadMixedPickupEventBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadMixedPickupEventBatch(ref ReadBatch batch, MixedPickupEvent value)
+        private static bool ReadMixedPickupEventBatch(ref ReadBatch batch, ref MixedPickupEvent value)
         {
             {
                 // flat run: 18 bits in 1 chunk(s) — one bounds check per chunk,
@@ -1186,24 +1216,24 @@ namespace Bench
         // ZeroMixedEvent resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
         // is unselected at None; an arm initializes at its next selection.
-        public static void ZeroMixedEvent(MixedEvent value)
+        public static void ZeroMixedEvent(ref MixedEvent value)
         {
             value.Type = MixedEventType.None;
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteMixedEvent(WriteStream stream, MixedEvent value)
+        public static bool WriteMixedEvent(WriteStream stream, ref MixedEvent value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteMixedEventBatch(ref batch, value);
+            bool result = WriteMixedEventBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteMixedEventBatch(ref WriteBatch batch, MixedEvent value)
+        private static bool WriteMixedEventBatch(ref WriteBatch batch, ref MixedEvent value)
         {
             uint tagValue = (uint)value.Type;
             Debug.Assert(tagValue <= 3, "the union tag is outside the variant set [0, 3]"); // the tag contract holds BEFORE it rides (SPEC §4.8)
@@ -1214,26 +1244,26 @@ namespace Bench
             switch (value.Type)
             {
                 case MixedEventType.Hit:
-                    return WriteMixedHitEventBatch(ref batch, value.Hit);
+                    return WriteMixedHitEventBatch(ref batch, ref value.Hit);
                 case MixedEventType.Chat:
-                    return WriteMixedChatEventBatch(ref batch, value.Chat);
+                    return WriteMixedChatEventBatch(ref batch, ref value.Chat);
                 case MixedEventType.Pickup:
-                    return WriteMixedPickupEventBatch(ref batch, value.Pickup);
+                    return WriteMixedPickupEventBatch(ref batch, ref value.Pickup);
             }
             return true; // None — the tag is the whole wire (SPEC §4.8)
         }
 
-        public static bool ReadMixedEvent(ReadStream stream, MixedEvent value)
+        public static bool ReadMixedEvent(ReadStream stream, ref MixedEvent value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadMixedEventBatch(ref batch, value);
+            bool result = ReadMixedEventBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadMixedEventBatch(ref ReadBatch batch, MixedEvent value)
+        private static bool ReadMixedEventBatch(ref ReadBatch batch, ref MixedEvent value)
         {
             int tagValue = 0;
             if (!batch.SerializeInt(ref tagValue, 0, 3)) // rejects a tag above the count (SPEC §4.8)
@@ -1244,14 +1274,14 @@ namespace Bench
             switch (value.Type)
             {
                 case MixedEventType.Hit:
-                    ZeroMixedHitEvent(value.Hit); // every selection starts from construction defaults
-                    return ReadMixedHitEventBatch(ref batch, value.Hit);
+                    ZeroMixedHitEvent(ref value.Hit); // every selection starts from construction defaults
+                    return ReadMixedHitEventBatch(ref batch, ref value.Hit);
                 case MixedEventType.Chat:
-                    ZeroMixedChatEvent(value.Chat); // every selection starts from construction defaults
-                    return ReadMixedChatEventBatch(ref batch, value.Chat);
+                    ZeroMixedChatEvent(ref value.Chat); // every selection starts from construction defaults
+                    return ReadMixedChatEventBatch(ref batch, ref value.Chat);
                 case MixedEventType.Pickup:
-                    ZeroMixedPickupEvent(value.Pickup); // every selection starts from construction defaults
-                    return ReadMixedPickupEventBatch(ref batch, value.Pickup);
+                    ZeroMixedPickupEvent(ref value.Pickup); // every selection starts from construction defaults
+                    return ReadMixedPickupEventBatch(ref batch, ref value.Pickup);
             }
             return true; // None
         }
@@ -1262,7 +1292,7 @@ namespace Bench
         public const int BenchMixedMaxBytes = 456;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroBenchMixed(BenchMixed value)
+        public static void ZeroBenchMixed(ref BenchMixed value)
         {
             value.Sequence = 0;
             value.AckSequence = 0;
@@ -1275,19 +1305,19 @@ namespace Bench
             value.ServerTime = 0;
             for (int i = 0; i < 8; i++)
             {
-                ZeroMixedEntity(value.Entities[i]);
+                ZeroMixedEntity(ref value.Entities[i]);
             }
             value.EntitiesCount = 0;
             for (int i = 0; i < 80; i++)
             {
-                ZeroMixedStat(value.Stats[i]);
+                ZeroMixedStat(ref value.Stats[i]);
             }
             value.StatsCount = 0;
-            ZeroMixedEvent(value.GameEvent);
-            Array.Clear(value.Loadout, 0, 4);
-            Array.Clear(value.PlayerName, 0, 15);
+            ZeroMixedEvent(ref value.GameEvent);
+            value.Loadout[..].Clear();
+            value.PlayerName[..].Clear();
             value.PlayerNameLength = 0;
-            Array.Clear(value.Payload, 0, 16);
+            value.Payload[..].Clear();
             value.PayloadLength = 0;
             value.AimX = 0.0f;
             value.AimY = 0.0f;
@@ -1304,7 +1334,7 @@ namespace Bench
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitBenchMixed(BenchMixed value)
+        public static void InitBenchMixed(ref BenchMixed value)
         {
             value.Sequence = 0;
             value.AckSequence = 0;
@@ -1317,19 +1347,19 @@ namespace Bench
             value.ServerTime = 0;
             for (int i = 0; i < 8; i++)
             {
-                ZeroMixedEntity(value.Entities[i]);
+                ZeroMixedEntity(ref value.Entities[i]);
             }
             value.EntitiesCount = 1;
             for (int i = 0; i < 80; i++)
             {
-                ZeroMixedStat(value.Stats[i]);
+                ZeroMixedStat(ref value.Stats[i]);
             }
             value.StatsCount = 0;
-            ZeroMixedEvent(value.GameEvent);
-            Array.Clear(value.Loadout, 0, 4);
-            Array.Clear(value.PlayerName, 0, 15);
+            ZeroMixedEvent(ref value.GameEvent);
+            value.Loadout[..].Clear();
+            value.PlayerName[..].Clear();
             value.PlayerNameLength = 0;
-            Array.Clear(value.Payload, 0, 16);
+            value.Payload[..].Clear();
             value.PayloadLength = 0;
             value.AimX = 0.0f;
             value.AimY = 0.0f;
@@ -1345,7 +1375,7 @@ namespace Bench
             value.IdleTicks = 0;
         }
 
-        public static bool WriteBenchMixed(WriteStream stream, BenchMixed value)
+        public static bool WriteBenchMixed(WriteStream stream, ref BenchMixed value)
         {
             {
                 // flat run: 329 bits in 6 chunk(s) — the field placement is folded
@@ -1409,7 +1439,7 @@ namespace Bench
                 bool batchOk = true;
                 for (int i = 0; i < value.EntitiesCount; i++)
                 {
-                    if (!WriteMixedEntityBatch(ref batch, value.Entities[i]))
+                    if (!WriteMixedEntityBatch(ref batch, ref value.Entities[i]))
                     {
                         batchOk = false;
                         break;
@@ -1435,7 +1465,7 @@ namespace Bench
                 bool batchOk = true;
                 for (int i = 0; i < value.StatsCount; i++)
                 {
-                    if (!WriteMixedStatBatch(ref batch, value.Stats[i]))
+                    if (!WriteMixedStatBatch(ref batch, ref value.Stats[i]))
                     {
                         batchOk = false;
                         break;
@@ -1450,7 +1480,7 @@ namespace Bench
             {
                 // scoped batch: one capture and one restore for the whole site
                 WriteBatch batch = stream.BeginBatch();
-                bool batchOk = WriteMixedEventBatch(ref batch, value.GameEvent);
+                bool batchOk = WriteMixedEventBatch(ref batch, ref value.GameEvent);
                 batch.End();
                 if (!batchOk)
                 {
@@ -1475,7 +1505,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (!stream.SerializeBytes(value.PlayerName.AsSpan(0, value.PlayerNameLength)))
+            if (!stream.SerializeBytes(value.PlayerName[..value.PlayerNameLength]))
             {
                 return false;
             }
@@ -1487,7 +1517,7 @@ namespace Bench
                     return false;
                 }
             }
-            if (!stream.SerializeBytes(value.Payload.AsSpan(0, value.PayloadLength)))
+            if (!stream.SerializeBytes(value.Payload[..value.PayloadLength]))
             {
                 return false;
             }
@@ -1560,7 +1590,7 @@ namespace Bench
             return true;
         }
 
-        public static bool ReadBenchMixed(ReadStream stream, BenchMixed value)
+        public static bool ReadBenchMixed(ReadStream stream, ref BenchMixed value)
         {
             {
                 // flat run: 240 bits in 4 chunk(s) — one bounds check per chunk,
@@ -1617,7 +1647,7 @@ namespace Bench
                 bool batchOk = true;
                 for (int i = 0; i < value.EntitiesCount; i++)
                 {
-                    if (!ReadMixedEntityBatch(ref batch, value.Entities[i]))
+                    if (!ReadMixedEntityBatch(ref batch, ref value.Entities[i]))
                     {
                         batchOk = false;
                         break;
@@ -1639,7 +1669,7 @@ namespace Bench
                 bool batchOk = true;
                 for (int i = 0; i < value.StatsCount; i++)
                 {
-                    if (!ReadMixedStatBatch(ref batch, value.Stats[i]))
+                    if (!ReadMixedStatBatch(ref batch, ref value.Stats[i]))
                     {
                         batchOk = false;
                         break;
@@ -1654,7 +1684,7 @@ namespace Bench
             {
                 // scoped batch: one capture and one restore for the whole site
                 ReadBatch batch = stream.BeginBatch();
-                bool batchOk = ReadMixedEventBatch(ref batch, value.GameEvent);
+                bool batchOk = ReadMixedEventBatch(ref batch, ref value.GameEvent);
                 batch.End();
                 if (!batchOk)
                 {
@@ -1676,7 +1706,7 @@ namespace Bench
             {
                 return false;
             }
-            if (!stream.SerializeBytes(value.PlayerName.AsSpan(0, value.PlayerNameLength)))
+            if (!stream.SerializeBytes(value.PlayerName[..value.PlayerNameLength]))
             {
                 return false;
             }
@@ -1711,7 +1741,7 @@ namespace Bench
             {
                 return false;
             }
-            if (!stream.SerializeBytes(value.Payload.AsSpan(0, value.PayloadLength)))
+            if (!stream.SerializeBytes(value.Payload[..value.PayloadLength]))
             {
                 return false;
             }

@@ -52,7 +52,7 @@ namespace Realworld
     }
 
     // type RealPacket
-    public sealed class RealPacket
+    public struct RealPacket
     {
         public int F001Int; // wire [-805495, 805495]
         public double F002F64;
@@ -65,7 +65,7 @@ namespace Realworld
         public sbyte F009Int; // wire [-22, 22]
         public float F010F32;
         public uint F011Bits;
-        public bool F012Bool = true; // specified default at construction; Zero* gives the §5 zero form
+        public bool F012Bool; // specified default at construction; Zero* gives the §5 zero form
 
         // f012_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
@@ -100,7 +100,7 @@ namespace Realworld
         public short F040Fixed; // wire [-5, 5]
         public sbyte F041Int; // wire [-55, 55]
         public uint F042Bits;
-        public bool F043Bool = false; // specified default at construction; Zero* gives the §5 zero form
+        public bool F043Bool; // specified default at construction; Zero* gives the §5 zero form
 
         // f043_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
@@ -111,7 +111,7 @@ namespace Realworld
 
         public double F048F64;
         public ushort F049Ufixed; // wire [0, 3]
-        public bool F050Bool = true; // specified default at construction; Zero* gives the §5 zero form
+        public bool F050Bool; // specified default at construction; Zero* gives the §5 zero form
 
         // f050_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
@@ -139,7 +139,7 @@ namespace Realworld
         public float F071Cf32; // compressed float [0.0, 10.0] @ 0.02
         public float F072Cf32; // compressed float [0.0, 100.0] @ 0.01
         public sbyte F073Int; // wire [-4, 4]
-        public bool F074Bool = false; // specified default at construction; Zero* gives the §5 zero form
+        public bool F074Bool; // specified default at construction; Zero* gives the §5 zero form
 
         // f074_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
@@ -167,6 +167,11 @@ namespace Realworld
         public int F095Fixed; // wire [-1577, 1577]
         public uint F096Bits;
         public uint F097Bits;
+
+        public RealPacket()
+        {
+            Schema.InitRealPacket(ref this);
+        }
     }
 
     // Schema carries every generated function and constant of the unit — C# has
@@ -259,7 +264,7 @@ namespace Realworld
         public const int RealPacketMaxBytes = 232;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroRealPacket(RealPacket value)
+        public static void ZeroRealPacket(ref RealPacket value)
         {
             value.F001Int = 0;
             value.F002F64 = 0.0;
@@ -361,7 +366,7 @@ namespace Realworld
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitRealPacket(RealPacket value)
+        public static void InitRealPacket(ref RealPacket value)
         {
             value.F001Int = 0;
             value.F002F64 = 0.0;
@@ -462,7 +467,7 @@ namespace Realworld
             value.F097Bits = 0;
         }
 
-        public static bool WriteRealPacket(WriteStream stream, RealPacket value)
+        public static bool WriteRealPacket(WriteStream stream, ref RealPacket value)
         {
             Debug.Assert(value.F001Int >= -805495 && value.F001Int <= 805495, "value.F001Int out of range [-805495, 805495]");
             {
@@ -941,7 +946,7 @@ namespace Realworld
             return true;
         }
 
-        public static bool ReadRealPacket(ReadStream stream, RealPacket value)
+        public static bool ReadRealPacket(ReadStream stream, ref RealPacket value)
         {
             if (!stream.SerializeInt(ref value.F001Int, -805495, 805495))
             {

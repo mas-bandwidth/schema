@@ -60,7 +60,7 @@ var countName = map[string]string{
 var bornAtMinimum = map[string]string{
 	"c":      "value.window_count = 2;",
 	"cpp":    "int32_t window_count = 2;",
-	"cs":     "public int WindowCount = 2;",
+	"cs":     "value.WindowCount = 2;", // a struct: Init, run by its constructor, births the count
 	"dart":   "int windowCount = 2;",
 	"elixir": "defstruct window: List.duplicate(0, 2)",
 	"go":     "value.WindowCount = 2",

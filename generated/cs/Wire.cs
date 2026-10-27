@@ -35,14 +35,14 @@ namespace Example
     }
 
     // type ProbeHeader
-    public sealed class ProbeHeader
+    public struct ProbeHeader
     {
         public uint Version;
         public ulong ProbeId;
     }
 
     // type ProbeBits
-    public sealed class ProbeBits
+    public struct ProbeBits
     {
         public uint Small;
         public ulong Boundary;
@@ -52,9 +52,9 @@ namespace Example
     }
 
     // type ProbeSample
-    public sealed class ProbeSample
+    public struct ProbeSample
     {
-        public bool Active = true; // specified default at construction; Zero* gives the §5 zero form
+        public bool Active; // specified default at construction; Zero* gives the §5 zero form
         public float Orientation; // compressed float [-180.0, 180.0] @ 0.01
         public int RawDelta;
         public long BigDelta;
@@ -72,18 +72,23 @@ namespace Example
         // untaken side (SPEC §5)
         public uint IdleTicks;
 
-        public ushort[] Samples = new ushort[8]; // used count beside it; wire count in [1, 8]
-        public int SamplesCount = 1;
+        public InlineBuffer8<ushort> Samples; // used count beside it; wire count in [1, 8]
+        public int SamplesCount;
+
+        public ProbeSample()
+        {
+            Schema.InitProbeSample(ref this);
+        }
     }
 
     // type ProbeRing
-    public sealed class ProbeRing
+    public struct ProbeRing
     {
         public ushort Radius;
     }
 
     // type ProbeSlab
-    public sealed class ProbeSlab
+    public struct ProbeSlab
     {
         public byte Width; // wire [0, 100]
         public byte Height;
@@ -101,60 +106,54 @@ namespace Example
     // union (None). Every read selection initializes the chosen payload from
     // construction defaults; unselected arms keep what they last held — the
     // MessageStorage reuse discipline. Consumers read the selected arm only.
-    public sealed class ProbeShape
+    public struct ProbeShape
     {
         public ProbeShapeType Type;
-        public ProbeRing Ring = new ProbeRing();
-        public ProbeSlab Slab = new ProbeSlab();
+        public ProbeRing Ring;
+        public ProbeSlab Slab;
     }
 
     // type ProbeCollider
-    public sealed class ProbeCollider
+    public struct ProbeCollider
     {
         public byte Armor;
-        public ProbeShape Shape = new ProbeShape();
-        public ProbeShape Backup = new ProbeShape();
-        public ProbeShape[] Extras = new ProbeShape[2]; // used count beside it; wire count in [0, 2]
+        public ProbeShape Shape;
+        public ProbeShape Backup;
+        public InlineBuffer2<ProbeShape> Extras; // used count beside it; wire count in [0, 2]
         public int ExtrasCount;
-
-        public ProbeCollider()
-        {
-            for (int i = 0; i < Extras.Length; i++)
-            {
-                Extras[i] = new ProbeShape();
-            }
-        }
     }
 
     // type ProbeConfig
-    public sealed class ProbeConfig
+    public struct ProbeConfig
     {
-        public int Retries = -1; // specified default at construction; Zero* gives the §5 zero form
-        public Weapon Preferred = Weapon.Railgun; // specified default at construction; Zero* gives the §5 zero form
+        public int Retries; // specified default at construction; Zero* gives the §5 zero form
+        public Weapon Preferred; // specified default at construction; Zero* gives the §5 zero form
+
+        public ProbeConfig()
+        {
+            Schema.InitProbeConfig(ref this);
+        }
     }
 
     // type ProbeArray
-    public sealed class ProbeArray
+    public struct ProbeArray
     {
-        public ProbeSample[] Samples = new ProbeSample[2];
-        public ProbeConfig Config = new ProbeConfig();
+        public InlineBuffer2<ProbeSample> Samples;
+        public ProbeConfig Config;
 
         public ProbeArray()
         {
-            for (int i = 0; i < Samples.Length; i++)
-            {
-                Samples[i] = new ProbeSample();
-            }
+            Schema.InitProbeArray(ref this);
         }
     }
 
     // type Heartbeat
-    public sealed class Heartbeat
+    public struct Heartbeat
     {
     }
 
     // type Test
-    public sealed class Test
+    public struct Test
     {
         public ushort TestA;
         public short TestB; // wire [0, 1000]
@@ -163,29 +162,29 @@ namespace Example
     }
 
     // type Block
-    public sealed class Block
+    public struct Block
     {
-        public byte[] Data = new byte[Schema.MaxBlockSize]; // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
+        public InlineBuffer2000<byte> Data; // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
         public int DataLength;
     }
 
     // type Chat
-    public sealed class Chat
+    public struct Chat
     {
-        public byte[] Text = new byte[Schema.MaxChatLength]; // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
+        public InlineBuffer256<byte> Text; // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
         public int TextLength;
     }
 
     // type ProbeReport
-    public sealed class ProbeReport
+    public struct ProbeReport
     {
-        public ProbeHeader Header = new ProbeHeader();
+        public ProbeHeader Header;
         public ProbeFlags Flags;
-        public Test Echo = new Test();
+        public Test Echo;
     }
 
     // type TestData
-    public sealed class TestData
+    public struct TestData
     {
         public int A; // wire [-100, 100]
         public int B; // wire [-100, 100]
@@ -194,7 +193,7 @@ namespace Example
         public uint E;
         public uint F;
         public bool G;
-        public int[] Items = new int[16]; // used count beside it; wire count in [0, 16]
+        public InlineBuffer16<int> Items; // used count beside it; wire count in [0, 16]
         public int ItemsCount;
         public float FloatValue;
         public float CompressedFloatValue; // compressed float [0.0, 10.0] @ 0.01
@@ -207,13 +206,13 @@ namespace Example
         public ulong Uint64Value;
         public long Int64Full;
         public long Int64Range; // wire [-1000000000000, 1000000000000]
-        public byte[] FixedBytes = new byte[17];
-        public byte[] Text = new byte[255]; // string(255): max length, used length beside it (SPEC §4.7)
+        public InlineBuffer17<byte> FixedBytes;
+        public InlineBuffer255<byte> Text; // string(255): max length, used length beside it (SPEC §4.7)
         public int TextLength;
     }
 
     // type CompressedProbe
-    public sealed class CompressedProbe
+    public struct CompressedProbe
     {
         public float Boundary; // compressed float [0.0, 10.0] @ 0.01
         public float Offset; // compressed float [-5.0, 5.0] @ 0.001
@@ -299,7 +298,7 @@ namespace Example
         public const int ProbeHeaderMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroProbeHeader(ProbeHeader value)
+        public static void ZeroProbeHeader(ref ProbeHeader value)
         {
             value.Version = 0;
             value.ProbeId = 0;
@@ -307,17 +306,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteProbeHeader(WriteStream stream, ProbeHeader value)
+        public static bool WriteProbeHeader(WriteStream stream, ref ProbeHeader value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteProbeHeaderBatch(ref batch, value);
+            bool result = WriteProbeHeaderBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteProbeHeaderBatch(ref WriteBatch batch, ProbeHeader value)
+        private static bool WriteProbeHeaderBatch(ref WriteBatch batch, ref ProbeHeader value)
         {
             {
                 // flat run: 16 bits in 1 chunk(s) — the field placement is folded
@@ -341,17 +340,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadProbeHeader(ReadStream stream, ProbeHeader value)
+        public static bool ReadProbeHeader(ReadStream stream, ref ProbeHeader value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadProbeHeaderBatch(ref batch, value);
+            bool result = ReadProbeHeaderBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadProbeHeaderBatch(ref ReadBatch batch, ProbeHeader value)
+        private static bool ReadProbeHeaderBatch(ref ReadBatch batch, ref ProbeHeader value)
         {
             {
                 // flat run: 16 bits in 1 chunk(s) — one bounds check per chunk,
@@ -392,7 +391,7 @@ namespace Example
         public const int ProbeBitsMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroProbeBits(ProbeBits value)
+        public static void ZeroProbeBits(ref ProbeBits value)
         {
             value.Small = 0;
             value.Boundary = 0;
@@ -403,17 +402,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteProbeBits(WriteStream stream, ProbeBits value)
+        public static bool WriteProbeBits(WriteStream stream, ref ProbeBits value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteProbeBitsBatch(ref batch, value);
+            bool result = WriteProbeBitsBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteProbeBitsBatch(ref WriteBatch batch, ProbeBits value)
+        private static bool WriteProbeBitsBatch(ref WriteBatch batch, ref ProbeBits value)
         {
             {
                 // flat run: 202 bits in 4 chunk(s) — the field placement is folded
@@ -446,17 +445,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadProbeBits(ReadStream stream, ProbeBits value)
+        public static bool ReadProbeBits(ReadStream stream, ref ProbeBits value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadProbeBitsBatch(ref batch, value);
+            bool result = ReadProbeBitsBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadProbeBitsBatch(ref ReadBatch batch, ProbeBits value)
+        private static bool ReadProbeBitsBatch(ref ReadBatch batch, ref ProbeBits value)
         {
             {
                 // flat run: 202 bits in 4 chunk(s) — one bounds check per chunk,
@@ -493,7 +492,7 @@ namespace Example
         public const int ProbeSampleMaxBytes = 40;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroProbeSample(ProbeSample value)
+        public static void ZeroProbeSample(ref ProbeSample value)
         {
             value.Active = false;
             value.Orientation = 0.0f;
@@ -503,12 +502,12 @@ namespace Example
             value.HasTarget = false;
             value.TargetId = 0;
             value.IdleTicks = 0;
-            Array.Clear(value.Samples, 0, 8);
+            value.Samples[..].Clear();
             value.SamplesCount = 0;
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitProbeSample(ProbeSample value)
+        public static void InitProbeSample(ref ProbeSample value)
         {
             value.Active = true;
             value.Orientation = 0.0f;
@@ -518,23 +517,23 @@ namespace Example
             value.HasTarget = false;
             value.TargetId = 0;
             value.IdleTicks = 0;
-            Array.Clear(value.Samples, 0, 8);
+            value.Samples[..].Clear();
             value.SamplesCount = 1;
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteProbeSample(WriteStream stream, ProbeSample value)
+        public static bool WriteProbeSample(WriteStream stream, ref ProbeSample value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteProbeSampleBatch(ref batch, value);
+            bool result = WriteProbeSampleBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteProbeSampleBatch(ref WriteBatch batch, ProbeSample value)
+        private static bool WriteProbeSampleBatch(ref WriteBatch batch, ref ProbeSample value)
         {
             if (!batch.SerializeBool(ref value.Active))
             {
@@ -613,17 +612,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadProbeSample(ReadStream stream, ProbeSample value)
+        public static bool ReadProbeSample(ReadStream stream, ref ProbeSample value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadProbeSampleBatch(ref batch, value);
+            bool result = ReadProbeSampleBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadProbeSampleBatch(ref ReadBatch batch, ProbeSample value)
+        private static bool ReadProbeSampleBatch(ref ReadBatch batch, ref ProbeSample value)
         {
             if (!batch.SerializeBool(ref value.Active))
             {
@@ -716,12 +715,12 @@ namespace Example
         public const int ProbeRingMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroProbeRing(ProbeRing value)
+        public static void ZeroProbeRing(ref ProbeRing value)
         {
             value.Radius = 0;
         }
 
-        public static bool WriteProbeRing(WriteStream stream, ProbeRing value)
+        public static bool WriteProbeRing(WriteStream stream, ref ProbeRing value)
         {
             {
                 uint rawValue = value.Radius;
@@ -735,7 +734,7 @@ namespace Example
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteProbeRingBatch(ref WriteBatch batch, ProbeRing value)
+        private static bool WriteProbeRingBatch(ref WriteBatch batch, ref ProbeRing value)
         {
             {
                 uint rawValue = value.Radius;
@@ -747,7 +746,7 @@ namespace Example
             return true;
         }
 
-        public static bool ReadProbeRing(ReadStream stream, ProbeRing value)
+        public static bool ReadProbeRing(ReadStream stream, ref ProbeRing value)
         {
             {
                 uint rawValue = 0;
@@ -762,7 +761,7 @@ namespace Example
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadProbeRingBatch(ref ReadBatch batch, ProbeRing value)
+        private static bool ReadProbeRingBatch(ref ReadBatch batch, ref ProbeRing value)
         {
             {
                 uint rawValue = 0;
@@ -781,7 +780,7 @@ namespace Example
         public const int ProbeSlabMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroProbeSlab(ProbeSlab value)
+        public static void ZeroProbeSlab(ref ProbeSlab value)
         {
             value.Width = 0;
             value.Height = 0;
@@ -789,17 +788,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteProbeSlab(WriteStream stream, ProbeSlab value)
+        public static bool WriteProbeSlab(WriteStream stream, ref ProbeSlab value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteProbeSlabBatch(ref batch, value);
+            bool result = WriteProbeSlabBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteProbeSlabBatch(ref WriteBatch batch, ProbeSlab value)
+        private static bool WriteProbeSlabBatch(ref WriteBatch batch, ref ProbeSlab value)
         {
             {
                 // flat run: 15 bits in 1 chunk(s) — the field placement is folded
@@ -815,17 +814,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadProbeSlab(ReadStream stream, ProbeSlab value)
+        public static bool ReadProbeSlab(ReadStream stream, ref ProbeSlab value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadProbeSlabBatch(ref batch, value);
+            bool result = ReadProbeSlabBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadProbeSlabBatch(ref ReadBatch batch, ProbeSlab value)
+        private static bool ReadProbeSlabBatch(ref ReadBatch batch, ref ProbeSlab value)
         {
             {
                 int rangeValue = 0;
@@ -873,24 +872,24 @@ namespace Example
         // ZeroProbeShape resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
         // is unselected at None; an arm initializes at its next selection.
-        public static void ZeroProbeShape(ProbeShape value)
+        public static void ZeroProbeShape(ref ProbeShape value)
         {
             value.Type = ProbeShapeType.None;
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteProbeShape(WriteStream stream, ProbeShape value)
+        public static bool WriteProbeShape(WriteStream stream, ref ProbeShape value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteProbeShapeBatch(ref batch, value);
+            bool result = WriteProbeShapeBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteProbeShapeBatch(ref WriteBatch batch, ProbeShape value)
+        private static bool WriteProbeShapeBatch(ref WriteBatch batch, ref ProbeShape value)
         {
             uint tagValue = (uint)value.Type;
             Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]"); // the tag contract holds BEFORE it rides (SPEC §4.8)
@@ -901,24 +900,24 @@ namespace Example
             switch (value.Type)
             {
                 case ProbeShapeType.Ring:
-                    return WriteProbeRingBatch(ref batch, value.Ring);
+                    return WriteProbeRingBatch(ref batch, ref value.Ring);
                 case ProbeShapeType.Slab:
-                    return WriteProbeSlabBatch(ref batch, value.Slab);
+                    return WriteProbeSlabBatch(ref batch, ref value.Slab);
             }
             return true; // None — the tag is the whole wire (SPEC §4.8)
         }
 
-        public static bool ReadProbeShape(ReadStream stream, ProbeShape value)
+        public static bool ReadProbeShape(ReadStream stream, ref ProbeShape value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadProbeShapeBatch(ref batch, value);
+            bool result = ReadProbeShapeBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadProbeShapeBatch(ref ReadBatch batch, ProbeShape value)
+        private static bool ReadProbeShapeBatch(ref ReadBatch batch, ref ProbeShape value)
         {
             int tagValue = 0;
             if (!batch.SerializeInt(ref tagValue, 0, 2)) // rejects a tag above the count (SPEC §4.8)
@@ -929,11 +928,11 @@ namespace Example
             switch (value.Type)
             {
                 case ProbeShapeType.Ring:
-                    ZeroProbeRing(value.Ring); // every selection starts from construction defaults
-                    return ReadProbeRingBatch(ref batch, value.Ring);
+                    ZeroProbeRing(ref value.Ring); // every selection starts from construction defaults
+                    return ReadProbeRingBatch(ref batch, ref value.Ring);
                 case ProbeShapeType.Slab:
-                    ZeroProbeSlab(value.Slab); // every selection starts from construction defaults
-                    return ReadProbeSlabBatch(ref batch, value.Slab);
+                    ZeroProbeSlab(ref value.Slab); // every selection starts from construction defaults
+                    return ReadProbeSlabBatch(ref batch, ref value.Slab);
             }
             return true; // None
         }
@@ -944,31 +943,31 @@ namespace Example
         public const int ProbeColliderMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroProbeCollider(ProbeCollider value)
+        public static void ZeroProbeCollider(ref ProbeCollider value)
         {
             value.Armor = 0;
-            ZeroProbeShape(value.Shape);
-            ZeroProbeShape(value.Backup);
+            ZeroProbeShape(ref value.Shape);
+            ZeroProbeShape(ref value.Backup);
             for (int i = 0; i < 2; i++)
             {
-                ZeroProbeShape(value.Extras[i]);
+                ZeroProbeShape(ref value.Extras[i]);
             }
             value.ExtrasCount = 0;
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteProbeCollider(WriteStream stream, ProbeCollider value)
+        public static bool WriteProbeCollider(WriteStream stream, ref ProbeCollider value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteProbeColliderBatch(ref batch, value);
+            bool result = WriteProbeColliderBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteProbeColliderBatch(ref WriteBatch batch, ProbeCollider value)
+        private static bool WriteProbeColliderBatch(ref WriteBatch batch, ref ProbeCollider value)
         {
             {
                 uint rawValue = value.Armor;
@@ -977,11 +976,11 @@ namespace Example
                     return false;
                 }
             }
-            if (!WriteProbeShapeBatch(ref batch, value.Shape))
+            if (!WriteProbeShapeBatch(ref batch, ref value.Shape))
             {
                 return false;
             }
-            if (!WriteProbeShapeBatch(ref batch, value.Backup))
+            if (!WriteProbeShapeBatch(ref batch, ref value.Backup))
             {
                 return false;
             }
@@ -995,7 +994,7 @@ namespace Example
             }
             for (int i = 0; i < value.ExtrasCount; i++)
             {
-                if (!WriteProbeShapeBatch(ref batch, value.Extras[i]))
+                if (!WriteProbeShapeBatch(ref batch, ref value.Extras[i]))
                 {
                     return false;
                 }
@@ -1003,17 +1002,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadProbeCollider(ReadStream stream, ProbeCollider value)
+        public static bool ReadProbeCollider(ReadStream stream, ref ProbeCollider value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadProbeColliderBatch(ref batch, value);
+            bool result = ReadProbeColliderBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadProbeColliderBatch(ref ReadBatch batch, ProbeCollider value)
+        private static bool ReadProbeColliderBatch(ref ReadBatch batch, ref ProbeCollider value)
         {
             {
                 uint rawValue = 0;
@@ -1023,11 +1022,11 @@ namespace Example
                 }
                 value.Armor = (byte)rawValue;
             }
-            if (!ReadProbeShapeBatch(ref batch, value.Shape))
+            if (!ReadProbeShapeBatch(ref batch, ref value.Shape))
             {
                 return false;
             }
-            if (!ReadProbeShapeBatch(ref batch, value.Backup))
+            if (!ReadProbeShapeBatch(ref batch, ref value.Backup))
             {
                 return false;
             }
@@ -1037,7 +1036,7 @@ namespace Example
             }
             for (int i = 0; i < value.ExtrasCount; i++)
             {
-                if (!ReadProbeShapeBatch(ref batch, value.Extras[i]))
+                if (!ReadProbeShapeBatch(ref batch, ref value.Extras[i]))
                 {
                     return false;
                 }
@@ -1051,14 +1050,14 @@ namespace Example
         public const int ProbeConfigMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroProbeConfig(ProbeConfig value)
+        public static void ZeroProbeConfig(ref ProbeConfig value)
         {
             value.Retries = 0;
             value.Preferred = Weapon.None;
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitProbeConfig(ProbeConfig value)
+        public static void InitProbeConfig(ref ProbeConfig value)
         {
             value.Retries = -1;
             value.Preferred = Weapon.Railgun;
@@ -1066,17 +1065,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteProbeConfig(WriteStream stream, ProbeConfig value)
+        public static bool WriteProbeConfig(WriteStream stream, ref ProbeConfig value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteProbeConfigBatch(ref batch, value);
+            bool result = WriteProbeConfigBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteProbeConfigBatch(ref WriteBatch batch, ProbeConfig value)
+        private static bool WriteProbeConfigBatch(ref WriteBatch batch, ref ProbeConfig value)
         {
             {
                 // flat run: 36 bits in 1 chunk(s) — the field placement is folded
@@ -1092,17 +1091,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadProbeConfig(ReadStream stream, ProbeConfig value)
+        public static bool ReadProbeConfig(ReadStream stream, ref ProbeConfig value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadProbeConfigBatch(ref batch, value);
+            bool result = ReadProbeConfigBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadProbeConfigBatch(ref ReadBatch batch, ProbeConfig value)
+        private static bool ReadProbeConfigBatch(ref ReadBatch batch, ref ProbeConfig value)
         {
             {
                 // flat run: 36 bits in 1 chunk(s) — one bounds check per chunk,
@@ -1127,73 +1126,73 @@ namespace Example
         public const int ProbeArrayMaxBytes = 80;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroProbeArray(ProbeArray value)
+        public static void ZeroProbeArray(ref ProbeArray value)
         {
             for (int i = 0; i < 2; i++)
             {
-                ZeroProbeSample(value.Samples[i]);
+                ZeroProbeSample(ref value.Samples[i]);
             }
-            ZeroProbeConfig(value.Config);
+            ZeroProbeConfig(ref value.Config);
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitProbeArray(ProbeArray value)
+        public static void InitProbeArray(ref ProbeArray value)
         {
             for (int i = 0; i < 2; i++)
             {
-                InitProbeSample(value.Samples[i]);
+                InitProbeSample(ref value.Samples[i]);
             }
-            InitProbeConfig(value.Config);
+            InitProbeConfig(ref value.Config);
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteProbeArray(WriteStream stream, ProbeArray value)
+        public static bool WriteProbeArray(WriteStream stream, ref ProbeArray value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteProbeArrayBatch(ref batch, value);
+            bool result = WriteProbeArrayBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteProbeArrayBatch(ref WriteBatch batch, ProbeArray value)
+        private static bool WriteProbeArrayBatch(ref WriteBatch batch, ref ProbeArray value)
         {
             for (int i = 0; i < 2; i++)
             {
-                if (!WriteProbeSampleBatch(ref batch, value.Samples[i]))
+                if (!WriteProbeSampleBatch(ref batch, ref value.Samples[i]))
                 {
                     return false;
                 }
             }
-            if (!WriteProbeConfigBatch(ref batch, value.Config))
+            if (!WriteProbeConfigBatch(ref batch, ref value.Config))
             {
                 return false;
             }
             return true;
         }
 
-        public static bool ReadProbeArray(ReadStream stream, ProbeArray value)
+        public static bool ReadProbeArray(ReadStream stream, ref ProbeArray value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadProbeArrayBatch(ref batch, value);
+            bool result = ReadProbeArrayBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadProbeArrayBatch(ref ReadBatch batch, ProbeArray value)
+        private static bool ReadProbeArrayBatch(ref ReadBatch batch, ref ProbeArray value)
         {
             for (int i = 0; i < 2; i++)
             {
-                if (!ReadProbeSampleBatch(ref batch, value.Samples[i]))
+                if (!ReadProbeSampleBatch(ref batch, ref value.Samples[i]))
                 {
                     return false;
                 }
             }
-            if (!ReadProbeConfigBatch(ref batch, value.Config))
+            if (!ReadProbeConfigBatch(ref batch, ref value.Config))
             {
                 return false;
             }
@@ -1206,18 +1205,18 @@ namespace Example
         public const int HeartbeatMaxBytes = 0;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroHeartbeat(Heartbeat value)
+        public static void ZeroHeartbeat(ref Heartbeat value)
         {
             _ = value; // empty body — nothing to reset (SPEC §4.6)
         }
 
-        public static bool WriteHeartbeat(WriteStream stream, Heartbeat value)
+        public static bool WriteHeartbeat(WriteStream stream, ref Heartbeat value)
         {
             // empty body — presence is the payload (SPEC §4.6)
             return true;
         }
 
-        public static bool ReadHeartbeat(ReadStream stream, Heartbeat value)
+        public static bool ReadHeartbeat(ReadStream stream, ref Heartbeat value)
         {
             return true;
         }
@@ -1228,7 +1227,7 @@ namespace Example
         public const int TestMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroTest(Test value)
+        public static void ZeroTest(ref Test value)
         {
             value.TestA = 0;
             value.TestB = 0;
@@ -1238,17 +1237,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteTest(WriteStream stream, Test value)
+        public static bool WriteTest(WriteStream stream, ref Test value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteTestBatch(ref batch, value);
+            bool result = WriteTestBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteTestBatch(ref WriteBatch batch, Test value)
+        private static bool WriteTestBatch(ref WriteBatch batch, ref Test value)
         {
             {
                 // flat run: 46 bits in 1 chunk(s) — the field placement is folded
@@ -1268,17 +1267,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadTest(ReadStream stream, Test value)
+        public static bool ReadTest(ReadStream stream, ref Test value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadTestBatch(ref batch, value);
+            bool result = ReadTestBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadTestBatch(ref ReadBatch batch, Test value)
+        private static bool ReadTestBatch(ref ReadBatch batch, ref Test value)
         {
             {
                 uint rawValue = 0;
@@ -1321,13 +1320,13 @@ namespace Example
         public const int BlockMaxBytes = 2008;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroBlock(Block value)
+        public static void ZeroBlock(ref Block value)
         {
-            Array.Clear(value.Data, 0, (int)MaxBlockSize);
+            value.Data[..].Clear();
             value.DataLength = 0;
         }
 
-        public static bool WriteBlock(WriteStream stream, Block value)
+        public static bool WriteBlock(WriteStream stream, ref Block value)
         {
             Debug.Assert(value.DataLength >= 0 && value.DataLength <= (int)MaxBlockSize, "value.DataLength out of range [0, (int)MaxBlockSize]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
@@ -1337,20 +1336,20 @@ namespace Example
                     return false;
                 }
             }
-            if (!stream.SerializeBytes(value.Data.AsSpan(0, value.DataLength)))
+            if (!stream.SerializeBytes(value.Data[..value.DataLength]))
             {
                 return false;
             }
             return true;
         }
 
-        public static bool ReadBlock(ReadStream stream, Block value)
+        public static bool ReadBlock(ReadStream stream, ref Block value)
         {
             if (!stream.SerializeInt(ref value.DataLength, 0, (int)MaxBlockSize)) // the length guards the slice (§6.3)
             {
                 return false;
             }
-            if (!stream.SerializeBytes(value.Data.AsSpan(0, value.DataLength)))
+            if (!stream.SerializeBytes(value.Data[..value.DataLength]))
             {
                 return false;
             }
@@ -1363,13 +1362,13 @@ namespace Example
         public const int ChatMaxBytes = 264;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroChat(Chat value)
+        public static void ZeroChat(ref Chat value)
         {
-            Array.Clear(value.Text, 0, (int)MaxChatLength);
+            value.Text[..].Clear();
             value.TextLength = 0;
         }
 
-        public static bool WriteChat(WriteStream stream, Chat value)
+        public static bool WriteChat(WriteStream stream, ref Chat value)
         {
             Debug.Assert(value.TextLength >= 0 && value.TextLength <= (int)MaxChatLength, "value.TextLength out of range [0, (int)MaxChatLength]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
@@ -1379,20 +1378,20 @@ namespace Example
                     return false;
                 }
             }
-            if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
+            if (!stream.SerializeBytes(value.Text[..value.TextLength]))
             {
                 return false;
             }
             return true;
         }
 
-        public static bool ReadChat(ReadStream stream, Chat value)
+        public static bool ReadChat(ReadStream stream, ref Chat value)
         {
             if (!stream.SerializeInt(ref value.TextLength, 0, (int)MaxChatLength)) // the length guards the slice (§6.3)
             {
                 return false;
             }
-            if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
+            if (!stream.SerializeBytes(value.Text[..value.TextLength]))
             {
                 return false;
             }
@@ -1432,28 +1431,28 @@ namespace Example
         public const int ProbeReportMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroProbeReport(ProbeReport value)
+        public static void ZeroProbeReport(ref ProbeReport value)
         {
-            ZeroProbeHeader(value.Header);
+            ZeroProbeHeader(ref value.Header);
             value.Flags = 0;
-            ZeroTest(value.Echo);
+            ZeroTest(ref value.Echo);
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteProbeReport(WriteStream stream, ProbeReport value)
+        public static bool WriteProbeReport(WriteStream stream, ref ProbeReport value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteProbeReportBatch(ref batch, value);
+            bool result = WriteProbeReportBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteProbeReportBatch(ref WriteBatch batch, ProbeReport value)
+        private static bool WriteProbeReportBatch(ref WriteBatch batch, ref ProbeReport value)
         {
-            if (!WriteProbeHeaderBatch(ref batch, value.Header))
+            if (!WriteProbeHeaderBatch(ref batch, ref value.Header))
             {
                 return false;
             }
@@ -1465,26 +1464,26 @@ namespace Example
                     return false;
                 }
             }
-            if (!WriteTestBatch(ref batch, value.Echo))
+            if (!WriteTestBatch(ref batch, ref value.Echo))
             {
                 return false;
             }
             return true;
         }
 
-        public static bool ReadProbeReport(ReadStream stream, ProbeReport value)
+        public static bool ReadProbeReport(ReadStream stream, ref ProbeReport value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadProbeReportBatch(ref batch, value);
+            bool result = ReadProbeReportBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadProbeReportBatch(ref ReadBatch batch, ProbeReport value)
+        private static bool ReadProbeReportBatch(ref ReadBatch batch, ref ProbeReport value)
         {
-            if (!ReadProbeHeaderBatch(ref batch, value.Header))
+            if (!ReadProbeHeaderBatch(ref batch, ref value.Header))
             {
                 return false;
             }
@@ -1496,7 +1495,7 @@ namespace Example
                 }
                 value.Flags = (ProbeFlags)flagsValue;
             }
-            if (!ReadTestBatch(ref batch, value.Echo))
+            if (!ReadTestBatch(ref batch, ref value.Echo))
             {
                 return false;
             }
@@ -1509,7 +1508,7 @@ namespace Example
         public const int TestDataMaxBytes = 344;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroTestData(TestData value)
+        public static void ZeroTestData(ref TestData value)
         {
             value.A = 0;
             value.B = 0;
@@ -1518,7 +1517,7 @@ namespace Example
             value.E = 0;
             value.F = 0;
             value.G = false;
-            Array.Clear(value.Items, 0, 16);
+            value.Items[..].Clear();
             value.ItemsCount = 0;
             value.FloatValue = 0.0f;
             value.CompressedFloatValue = 0.0f;
@@ -1531,12 +1530,12 @@ namespace Example
             value.Uint64Value = 0;
             value.Int64Full = 0;
             value.Int64Range = 0;
-            Array.Clear(value.FixedBytes, 0, 17);
-            Array.Clear(value.Text, 0, 255);
+            value.FixedBytes[..].Clear();
+            value.Text[..].Clear();
             value.TextLength = 0;
         }
 
-        public static bool WriteTestData(WriteStream stream, TestData value)
+        public static bool WriteTestData(WriteStream stream, ref TestData value)
         {
             {
                 // flat run: 49 bits in 1 chunk(s) — the field placement is folded
@@ -1626,7 +1625,7 @@ namespace Example
             {
                 return false;
             }
-            if (!stream.SerializeBytes(value.FixedBytes.AsSpan(0, 17))) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+            if (!stream.SerializeBytes(value.FixedBytes[..17])) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
             {
                 return false;
             }
@@ -1638,14 +1637,14 @@ namespace Example
                     return false;
                 }
             }
-            if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
+            if (!stream.SerializeBytes(value.Text[..value.TextLength]))
             {
                 return false;
             }
             return true;
         }
 
-        public static bool ReadTestData(ReadStream stream, TestData value)
+        public static bool ReadTestData(ReadStream stream, ref TestData value)
         {
             if (!stream.SerializeInt(ref value.A, -100, 100))
             {
@@ -1738,7 +1737,7 @@ namespace Example
             {
                 return false;
             }
-            if (!stream.SerializeBytes(value.FixedBytes.AsSpan(0, 17))) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+            if (!stream.SerializeBytes(value.FixedBytes[..17])) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
             {
                 return false;
             }
@@ -1746,7 +1745,7 @@ namespace Example
             {
                 return false;
             }
-            if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
+            if (!stream.SerializeBytes(value.Text[..value.TextLength]))
             {
                 return false;
             }
@@ -1786,7 +1785,7 @@ namespace Example
         public const int CompressedProbeMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroCompressedProbe(CompressedProbe value)
+        public static void ZeroCompressedProbe(ref CompressedProbe value)
         {
             value.Boundary = 0.0f;
             value.Offset = 0.0f;
@@ -1794,17 +1793,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteCompressedProbe(WriteStream stream, CompressedProbe value)
+        public static bool WriteCompressedProbe(WriteStream stream, ref CompressedProbe value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteCompressedProbeBatch(ref batch, value);
+            bool result = WriteCompressedProbeBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteCompressedProbeBatch(ref WriteBatch batch, CompressedProbe value)
+        private static bool WriteCompressedProbeBatch(ref WriteBatch batch, ref CompressedProbe value)
         {
             {
                 float compressedValue = value.Boundary;
@@ -1823,17 +1822,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadCompressedProbe(ReadStream stream, CompressedProbe value)
+        public static bool ReadCompressedProbe(ReadStream stream, ref CompressedProbe value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadCompressedProbeBatch(ref batch, value);
+            bool result = ReadCompressedProbeBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadCompressedProbeBatch(ref ReadBatch batch, CompressedProbe value)
+        private static bool ReadCompressedProbeBatch(ref ReadBatch batch, ref CompressedProbe value)
         {
             if (!batch.SerializeCompressedFloatPrecomputed(ref value.Boundary, 1000u, 10, 10.0f, 0.0f))
             {

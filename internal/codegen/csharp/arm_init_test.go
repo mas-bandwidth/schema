@@ -129,19 +129,19 @@ func TestUnionSelectionInitializesConstructionDefaults(t *testing.T) {
 	armInitContains(t, zero, "value.Active = false;", "value.Kind = Mode.None;", "value.Q = 0;")
 
 	init := armInitBody(t, source, "public static void InitPayload(")
-	armInitContains(t, init, "InitLeaf(value.Current);", "InitLeaf(value.FixedValues[i]);",
-		"i < 3", "InitLeaf(value.Live[i]);", "value.LiveCount = 1;",
-		"ZeroNested(value.Nested);", "ZeroNested(value.NestedValues[i]);",
-		"Array.Clear(value.Raw, 0, 4);", "value.RawLength = 0;", "InitLeaf(value.Branch);")
+	armInitContains(t, init, "InitLeaf(ref value.Current);", "InitLeaf(ref value.FixedValues[i]);",
+		"i < 3", "InitLeaf(ref value.Live[i]);", "value.LiveCount = 1;",
+		"ZeroNested(ref value.Nested);", "ZeroNested(ref value.NestedValues[i]);",
+		"value.Raw[..].Clear();", "value.RawLength = 0;", "InitLeaf(ref value.Branch);")
 	armInitExcludes(t, init, "new ", "InitNested(", "value.Nested.Leaf", "value.LiveCount = 0;")
 	zero = armInitBody(t, source, "public static void ZeroPayload(")
-	armInitContains(t, zero, "ZeroLeaf(value.Current);", "ZeroLeaf(value.Live[i]);", "value.LiveCount = 0;")
+	armInitContains(t, zero, "ZeroLeaf(ref value.Current);", "ZeroLeaf(ref value.Live[i]);", "value.LiveCount = 0;")
 	armInitExcludes(t, zero, "InitLeaf(")
 
 	read := armInitBody(t, source, "public static bool ReadChoice(")
-	armInitContains(t, read, "InitPayload(value.Selected);", "ReadPayload(stream, value.Selected)")
-	armInitExcludes(t, read, "ZeroPayload(value.Selected)", "value.Empty")
+	armInitContains(t, read, "InitPayload(ref value.Selected);", "ReadPayload(stream, ref value.Selected)")
+	armInitExcludes(t, read, "ZeroPayload(ref value.Selected)", "value.Empty")
 	// Both the normal pair and any emitted batch core share this same read
 	// closure. A call to the old reset in either form must disappear.
-	armInitExcludes(t, source, "ZeroPayload(value.Selected)")
+	armInitExcludes(t, source, "ZeroPayload(ref value.Selected)")
 }

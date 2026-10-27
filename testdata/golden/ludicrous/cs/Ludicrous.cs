@@ -18,12 +18,25 @@
 // the caller's responsibility to be correct on the write side; every check
 // the reader needs is on the read side and runs in every build.
 
-using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Serialize;
 
 namespace Ludicrous
 {
+
+    // Inline fixed buffers: a struct's arrays, strings and bytes live inside it.
+    [InlineArray(2)]
+    public struct InlineBuffer2<T>
+    {
+        private T element0;
+    }
+
+    [InlineArray(4)]
+    public struct InlineBuffer4<T>
+    {
+        private T element0;
+    }
 
     // DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
     // a native enum with unsigned backing — | max = ... headroom values are
@@ -37,63 +50,83 @@ namespace Ludicrous
     }
 
     // type FixedProbe
-    public sealed class FixedProbe
+    public struct FixedProbe
     {
         public int Angle; // wire [-180, 180]
         public long Position; // wire [-30000, 30000]
         public Int128Value Reach; // wire [-1000000, 1000000]
         public int Ticks; // wire [0, 1000000]
-        public int[] Samples = new int[2]; // wire [-8, 8]
+        public InlineBuffer2<int> Samples; // wire [-8, 8]
     }
 
     // type UnsignedProbe
-    public sealed class UnsignedProbe
+    public struct UnsignedProbe
     {
         public uint Angle; // wire [0, 360]
         public ulong Span; // wire [0, 281474976710655]
         public UInt128Value Reach; // wire [0, 2000000]
         public uint Ticks; // wire [0, 1000000]
-        public uint[] Samples = new uint[2]; // wire [0, 16]
-        public uint Locked = 196608; // specified default at construction; Zero* gives the §5 zero form; wire [3, 3]
+        public InlineBuffer2<uint> Samples; // wire [0, 16]
+        public uint Locked; // specified default at construction; Zero* gives the §5 zero form; wire [3, 3]
         public byte Tail;
+
+        public UnsignedProbe()
+        {
+            Schema.InitUnsignedProbe(ref this);
+        }
     }
 
     // type WideProbe
-    public sealed class WideProbe
+    public struct WideProbe
     {
         public UInt128Value EntityId;
         public Int128Value Energy; // wire [-5000000000, 5000000000]
         public Int128Value Flux; // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
-        public Int128Value Bias = -250; // specified default at construction; Zero* gives the §5 zero form; wire [-1000, 1000]
-        public UInt128Value Seed = new UInt128Value(0x2ul, 0x0ul); // specified default at construction; Zero* gives the §5 zero form
+        public Int128Value Bias; // specified default at construction; Zero* gives the §5 zero form; wire [-1000, 1000]
+        public UInt128Value Seed; // specified default at construction; Zero* gives the §5 zero form
+
+        public WideProbe()
+        {
+            Schema.InitWideProbe(ref this);
+        }
     }
 
     // type LudicrousState
-    public sealed class LudicrousState
+    public struct LudicrousState
     {
         public DriveMode Mode;
-        public FixedProbe Probe = new FixedProbe();
-        public WideProbe Wide = new WideProbe();
-        public UInt128Value[] Keys = new UInt128Value[4]; // used count beside it; wire count in [0, 4]
+        public FixedProbe Probe;
+        public WideProbe Wide;
+        public InlineBuffer4<UInt128Value> Keys; // used count beside it; wire count in [0, 4]
         public int KeysCount;
         public bool HasTarget;
 
         // has_target — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public UInt128Value TargetId;
+
+        public LudicrousState()
+        {
+            Schema.InitLudicrousState(ref this);
+        }
     }
 
     // type DegenerateProbe
-    public sealed class DegenerateProbe
+    public struct DegenerateProbe
     {
-        public int LockedFixed = -196608; // specified default at construction; Zero* gives the §5 zero form; wire [-3, -3]
-        public int LockedInt = 7; // specified default at construction; Zero* gives the §5 zero form; wire [7, 7]
-        public Int128Value LockedWide = -12345678901234L; // specified default at construction; Zero* gives the §5 zero form; wire [-12345678901234, -12345678901234]
+        public int LockedFixed; // specified default at construction; Zero* gives the §5 zero form; wire [-3, -3]
+        public int LockedInt; // specified default at construction; Zero* gives the §5 zero form; wire [7, 7]
+        public Int128Value LockedWide; // specified default at construction; Zero* gives the §5 zero form; wire [-12345678901234, -12345678901234]
         public byte Tail;
+
+        public DegenerateProbe()
+        {
+            Schema.InitDegenerateProbe(ref this);
+        }
     }
 
     // type FixedVec
-    public sealed class FixedVec
+    public struct FixedVec
     {
         public long X; // wire [-100000, 100000]
         public long Y; // wire [-100000, 100000]
@@ -101,12 +134,17 @@ namespace Ludicrous
     }
 
     // type FixedQuat
-    public sealed class FixedQuat
+    public struct FixedQuat
     {
         public int X; // wire [-1, 1]
         public int Y; // wire [-1, 1]
         public int Z; // wire [-1, 1]
-        public int W = 1073741824; // specified default at construction; Zero* gives the §5 zero form; wire [-1, 1]
+        public int W; // specified default at construction; Zero* gives the §5 zero form; wire [-1, 1]
+
+        public FixedQuat()
+        {
+            Schema.InitFixedQuat(ref this);
+        }
     }
 
     // Schema carries every generated function and constant of the unit — C# has
@@ -147,16 +185,16 @@ namespace Ludicrous
         public const int FixedProbeMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroFixedProbe(FixedProbe value)
+        public static void ZeroFixedProbe(ref FixedProbe value)
         {
             value.Angle = 0;
             value.Position = 0;
             value.Reach = 0;
             value.Ticks = 0;
-            Array.Clear(value.Samples, 0, 2);
+            value.Samples[..].Clear();
         }
 
-        public static bool WriteFixedProbe(WriteStream stream, FixedProbe value)
+        public static bool WriteFixedProbe(WriteStream stream, ref FixedProbe value)
         {
             if (!stream.SerializeFixed(ref value.Angle, 16, 16, -180, 180))
             {
@@ -184,7 +222,7 @@ namespace Ludicrous
             return true;
         }
 
-        public static bool ReadFixedProbe(ReadStream stream, FixedProbe value)
+        public static bool ReadFixedProbe(ReadStream stream, ref FixedProbe value)
         {
             if (!stream.SerializeFixed(ref value.Angle, 16, 16, -180, 180))
             {
@@ -218,30 +256,30 @@ namespace Ludicrous
         public const int UnsignedProbeMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroUnsignedProbe(UnsignedProbe value)
+        public static void ZeroUnsignedProbe(ref UnsignedProbe value)
         {
             value.Angle = 0;
             value.Span = 0;
             value.Reach = 0;
             value.Ticks = 0;
-            Array.Clear(value.Samples, 0, 2);
+            value.Samples[..].Clear();
             value.Locked = 0;
             value.Tail = 0;
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitUnsignedProbe(UnsignedProbe value)
+        public static void InitUnsignedProbe(ref UnsignedProbe value)
         {
             value.Angle = 0;
             value.Span = 0;
             value.Reach = 0;
             value.Ticks = 0;
-            Array.Clear(value.Samples, 0, 2);
+            value.Samples[..].Clear();
             value.Locked = 196608;
             value.Tail = 0;
         }
 
-        public static bool WriteUnsignedProbe(WriteStream stream, UnsignedProbe value)
+        public static bool WriteUnsignedProbe(WriteStream stream, ref UnsignedProbe value)
         {
             if (!stream.SerializeFixed(ref value.Angle, 16, 16, 0, 360))
             {
@@ -277,7 +315,7 @@ namespace Ludicrous
             return true;
         }
 
-        public static bool ReadUnsignedProbe(ReadStream stream, UnsignedProbe value)
+        public static bool ReadUnsignedProbe(ReadStream stream, ref UnsignedProbe value)
         {
             if (!stream.SerializeFixed(ref value.Angle, 16, 16, 0, 360))
             {
@@ -320,7 +358,7 @@ namespace Ludicrous
         public const int WideProbeMaxBytes = 56;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroWideProbe(WideProbe value)
+        public static void ZeroWideProbe(ref WideProbe value)
         {
             value.EntityId = 0;
             value.Energy = 0;
@@ -330,7 +368,7 @@ namespace Ludicrous
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitWideProbe(WideProbe value)
+        public static void InitWideProbe(ref WideProbe value)
         {
             value.EntityId = 0;
             value.Energy = 0;
@@ -339,7 +377,7 @@ namespace Ludicrous
             value.Seed = new UInt128Value(0x2ul, 0x0ul);
         }
 
-        public static bool WriteWideProbe(WriteStream stream, WideProbe value)
+        public static bool WriteWideProbe(WriteStream stream, ref WideProbe value)
         {
             if (!stream.SerializeUInt128(ref value.EntityId))
             {
@@ -364,7 +402,7 @@ namespace Ludicrous
             return true;
         }
 
-        public static bool ReadWideProbe(ReadStream stream, WideProbe value)
+        public static bool ReadWideProbe(ReadStream stream, ref WideProbe value)
         {
             if (!stream.SerializeUInt128(ref value.EntityId))
             {
@@ -395,30 +433,30 @@ namespace Ludicrous
         public const int LudicrousStateMaxBytes = 152;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroLudicrousState(LudicrousState value)
+        public static void ZeroLudicrousState(ref LudicrousState value)
         {
             value.Mode = DriveMode.None;
-            ZeroFixedProbe(value.Probe);
-            ZeroWideProbe(value.Wide);
-            Array.Clear(value.Keys, 0, 4);
+            ZeroFixedProbe(ref value.Probe);
+            ZeroWideProbe(ref value.Wide);
+            value.Keys[..].Clear();
             value.KeysCount = 0;
             value.HasTarget = false;
             value.TargetId = 0;
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitLudicrousState(LudicrousState value)
+        public static void InitLudicrousState(ref LudicrousState value)
         {
             value.Mode = DriveMode.None;
-            ZeroFixedProbe(value.Probe);
-            InitWideProbe(value.Wide);
-            Array.Clear(value.Keys, 0, 4);
+            ZeroFixedProbe(ref value.Probe);
+            InitWideProbe(ref value.Wide);
+            value.Keys[..].Clear();
             value.KeysCount = 0;
             value.HasTarget = false;
             value.TargetId = 0;
         }
 
-        public static bool WriteLudicrousState(WriteStream stream, LudicrousState value)
+        public static bool WriteLudicrousState(WriteStream stream, ref LudicrousState value)
         {
             {
                 uint enumValue = (uint)value.Mode;
@@ -428,11 +466,11 @@ namespace Ludicrous
                     return false;
                 }
             }
-            if (!WriteFixedProbe(stream, value.Probe))
+            if (!WriteFixedProbe(stream, ref value.Probe))
             {
                 return false;
             }
-            if (!WriteWideProbe(stream, value.Wide))
+            if (!WriteWideProbe(stream, ref value.Wide))
             {
                 return false;
             }
@@ -465,7 +503,7 @@ namespace Ludicrous
             return true;
         }
 
-        public static bool ReadLudicrousState(ReadStream stream, LudicrousState value)
+        public static bool ReadLudicrousState(ReadStream stream, ref LudicrousState value)
         {
             {
                 int enumValue = 0;
@@ -475,11 +513,11 @@ namespace Ludicrous
                 }
                 value.Mode = (DriveMode)enumValue;
             }
-            if (!ReadFixedProbe(stream, value.Probe))
+            if (!ReadFixedProbe(stream, ref value.Probe))
             {
                 return false;
             }
-            if (!ReadWideProbe(stream, value.Wide))
+            if (!ReadWideProbe(stream, ref value.Wide))
             {
                 return false;
             }
@@ -518,7 +556,7 @@ namespace Ludicrous
         public const int DegenerateProbeMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroDegenerateProbe(DegenerateProbe value)
+        public static void ZeroDegenerateProbe(ref DegenerateProbe value)
         {
             value.LockedFixed = 0;
             value.LockedInt = 0;
@@ -527,7 +565,7 @@ namespace Ludicrous
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitDegenerateProbe(DegenerateProbe value)
+        public static void InitDegenerateProbe(ref DegenerateProbe value)
         {
             value.LockedFixed = -196608;
             value.LockedInt = 7;
@@ -535,7 +573,7 @@ namespace Ludicrous
             value.Tail = 0;
         }
 
-        public static bool WriteDegenerateProbe(WriteStream stream, DegenerateProbe value)
+        public static bool WriteDegenerateProbe(WriteStream stream, ref DegenerateProbe value)
         {
             Debug.Assert((long)value.LockedFixed == -196608L, "value.LockedFixed is not -196608, the one legal raw of a degenerate fixed range");
             Debug.Assert(value.LockedInt >= 7 && value.LockedInt <= 7, "value.LockedInt out of range [7, 7]");
@@ -550,7 +588,7 @@ namespace Ludicrous
             return true;
         }
 
-        public static bool ReadDegenerateProbe(ReadStream stream, DegenerateProbe value)
+        public static bool ReadDegenerateProbe(ReadStream stream, ref DegenerateProbe value)
         {
             value.LockedFixed = unchecked((int)(-196608L));
             value.LockedInt = unchecked((int)(7L));
@@ -572,14 +610,14 @@ namespace Ludicrous
         public const int FixedVecMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroFixedVec(FixedVec value)
+        public static void ZeroFixedVec(ref FixedVec value)
         {
             value.X = 0;
             value.Y = 0;
             value.Z = 0;
         }
 
-        public static bool WriteFixedVec(WriteStream stream, FixedVec value)
+        public static bool WriteFixedVec(WriteStream stream, ref FixedVec value)
         {
             if (!stream.SerializeFixed(ref value.X, 48, 16, -100000, 100000))
             {
@@ -596,7 +634,7 @@ namespace Ludicrous
             return true;
         }
 
-        public static bool ReadFixedVec(ReadStream stream, FixedVec value)
+        public static bool ReadFixedVec(ReadStream stream, ref FixedVec value)
         {
             if (!stream.SerializeFixed(ref value.X, 48, 16, -100000, 100000))
             {
@@ -619,7 +657,7 @@ namespace Ludicrous
         public const int FixedQuatMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroFixedQuat(FixedQuat value)
+        public static void ZeroFixedQuat(ref FixedQuat value)
         {
             value.X = 0;
             value.Y = 0;
@@ -628,7 +666,7 @@ namespace Ludicrous
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitFixedQuat(FixedQuat value)
+        public static void InitFixedQuat(ref FixedQuat value)
         {
             value.X = 0;
             value.Y = 0;
@@ -636,7 +674,7 @@ namespace Ludicrous
             value.W = 1073741824;
         }
 
-        public static bool WriteFixedQuat(WriteStream stream, FixedQuat value)
+        public static bool WriteFixedQuat(WriteStream stream, ref FixedQuat value)
         {
             if (!stream.SerializeFixed(ref value.X, 2, 30, -1, 1))
             {
@@ -657,7 +695,7 @@ namespace Ludicrous
             return true;
         }
 
-        public static bool ReadFixedQuat(ReadStream stream, FixedQuat value)
+        public static bool ReadFixedQuat(ReadStream stream, ref FixedQuat value)
         {
             if (!stream.SerializeFixed(ref value.X, 2, 30, -1, 1))
             {

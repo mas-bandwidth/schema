@@ -59,8 +59,14 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
 	batched, needCore := batchPlan(u)
+	values := valueTypes(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, home: f.Base == home, batched: batched, needCore: needCore}
+		g := &gen{unit: u, file: f, home: f.Base == home, batched: batched, needCore: needCore, values: values}
+		if g.home {
+			if err := g.emitBuffers(); err != nil {
+				return nil, err
+			}
+		}
 		g.emitFile(g.home)
 		out[f.Base+".cs"] = g.assemble()
 	}
@@ -72,6 +78,8 @@ type gen struct {
 	file  *ir.File
 	home  bool   // this file carries ProtocolId and the unit-level target notes
 	owner string // the class whose members are being emitted (CS0542 escape)
+
+	values map[string]bool // declarations emitted as structs (values.go)
 
 	batched   map[string]bool    // Write/Read pair names whose entry runs a batch
 	needCore  map[string]bool    // pair names that get a *Batch core (batched or composed under one)
@@ -239,11 +247,22 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.tf("// union (None). Every read selection initializes the chosen payload from\n")
 	g.tf("// construction defaults; unselected arms keep what they last held — the\n")
 	g.tf("// MessageStorage reuse discipline. Consumers read the selected arm only.\n")
-	g.tf("public sealed class %s\n{\n", d.Name)
+	value := g.isValue(d.Name)
+	if value {
+		// every arm is a field of the value: no arm allocates, and a union
+		// holds no reference default(T) could leave null
+		g.tf("public struct %s\n{\n", d.Name)
+	} else {
+		g.tf("public sealed class %s\n{\n", d.Name)
+	}
 	g.tf("    public %sType Type;\n", d.Name)
 	for _, v := range d.Variants {
 		if v.Void() {
 			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
+		}
+		if value {
+			g.tf("    public %s %s;\n", v.Type, ir.GoExportName(v.Name))
+			continue
 		}
 		g.tf("    public %s %s = new %s();\n", v.Type, ir.GoExportName(v.Name), v.Type)
 	}
@@ -384,9 +403,27 @@ func (g *gen) emitClass(d *ir.Struct) {
 	g.tf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.tf("// type %s\n", d.Name)
 	g.owner = d.Name
+	if g.isValue(d.Name) {
+		g.emitStruct(d)
+		return
+	}
 	g.tf("public sealed class %s\n{\n", d.Name)
 	g.emitClassFields(d.Fields)
 	g.emitElementConstructor(d.Name, d.Fields)
+	g.tf("}\n\n")
+}
+
+// emitStruct emits a type as a value: fixed buffers inline as the unit's
+// generic [InlineArray] types (values.go), nothing allocated, and — when the type carries a
+// specified default — a parameterless constructor that runs Init, so
+// `new T()` is the construction form while default(T) and a fresh array
+// element are the §5 zero form until Init runs on them.
+func (g *gen) emitStruct(d *ir.Struct) {
+	g.tf("public struct %s\n{\n", d.Name)
+	g.emitClassFields(d.Fields)
+	if hasDefaults(d) {
+		g.tf("\n    public %s()\n    {\n        Schema.Init%s(ref this);\n    }\n", d.Name, d.Name)
+	}
 	g.tf("}\n\n")
 }
 
@@ -462,6 +499,10 @@ func (g *gen) emitClassFields(fields []*ir.Field) {
 func (g *gen) emitStorageField(f *ir.Field) {
 	name := g.fieldBase(f)
 	typ := g.csFieldType(f.Type)
+	if g.ownerValue() {
+		g.emitValueField(f, name, typ)
+		return
+	}
 
 	switch {
 	case f.Type.Kind == ir.TWString:
@@ -491,6 +532,30 @@ func (g *gen) emitStorageField(f *ir.Field) {
 			init = " = new " + f.Type.Name + "()"
 		}
 		g.tf("    public %s %s%s;%s\n", typ, name, init, g.fieldComment(f))
+	}
+}
+
+// emitValueField is a struct's member: buffers are the nested inline types
+// emitStruct declared, and nothing has an initializer — construction values
+// are Init's to install (SPEC §6.1).
+func (g *gen) emitValueField(f *ir.Field, name, typ string) {
+	n := fieldBufferLength(f)
+	switch {
+	case f.Type.Kind == ir.TWString:
+		g.tf("    public %s %s;\n    public int %s;\n", bufferType(n, "char"), name, g.m(name+"Length"))
+	case f.Type.Kind == ir.TString:
+		g.tf("    public %s %s; // string(%s): max length, used length beside it (SPEC §4.7)\n", bufferType(n, "byte"), name, ir.RenderExpr(f.Type.SizeExpr))
+		g.tf("    public int %s;\n", g.m(name+"Length"))
+	case f.Type.Kind == ir.TBytes:
+		g.tf("    public %s %s; // bytes(%s): fixed buffer, used length beside it (SPEC §4.7)\n", bufferType(n, "byte"), name, ir.RenderExpr(f.Type.SizeExpr))
+		g.tf("    public int %s;\n", g.m(name+"Length"))
+	case f.Array == ir.ArrayFixed:
+		g.tf("    public %s %s;%s\n", bufferType(n, typ), name, g.fieldComment(f))
+	case f.Array == ir.ArrayCounted:
+		g.tf("    public %s %s; // used count beside it; wire count in [%d, %s]\n", bufferType(n, typ), name, f.ArrayMin, ir.RenderExpr(f.ArrayExpr))
+		g.tf("    public int %s;\n", g.m(name+"Count"))
+	default:
+		g.tf("    public %s %s;%s\n", typ, name, g.fieldComment(f))
 	}
 }
 

@@ -135,8 +135,11 @@ What the generator holds:
   an empty initializer.
 - **Naming.** Types, members and enumerators are PascalCase from the schema's
   names. The namespace is the schema package, capitalised (`Example`,
-  `Tblrt1`). An enum declares its wire-width underlying type (`enum Team : byte`). A packet struct and a managed table value are each a
-  `public sealed class` with public fields; native rows, cooks and blocks are
+  `Tblrt1`). An enum declares its wire-width underlying type (`enum Team : byte`). A packet `type` or union is a `public struct`
+  with public fields and `[InlineArray]` buffers, taken by `ref`, in a unit
+  without tables; in a unit with tables, packet declarations and managed
+  table values are each a `public sealed class` with public fields until the
+  table surface takes values by ref. Native rows, cooks and blocks are
   `struct`s, `unsafe readonly` where they point at memory.
 - **`public static partial class Schema`.** C# has no namespace-level functions
   or constants, so each unit's functions and constants live in one static class

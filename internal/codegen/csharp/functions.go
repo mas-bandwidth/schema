@@ -81,12 +81,14 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 // identical on every path.
 func (g *gen) emitPair(pair, typ string, writeBody, readBody func()) {
 	batched := g.batched[pair]
+	r := g.byRef(typ)
+	typ = r + typ
 	if batched {
 		g.sf("// batch form: stream state stays in registers across the body and End\n")
 		g.sf("// publishes it — same wire bytes, same validation, same error model.\n")
 		g.sf("public static bool Write%s(WriteStream stream, %s value)\n{\n", pair, typ)
 		g.sf("    WriteBatch batch = stream.BeginBatch();\n")
-		g.sf("    bool result = Write%sBatch(ref batch, value);\n", pair)
+		g.sf("    bool result = Write%sBatch(ref batch, %svalue);\n", pair, r)
 		g.sf("    batch.End();\n")
 		g.sf("    return result;\n}\n\n")
 	} else {
@@ -105,7 +107,7 @@ func (g *gen) emitPair(pair, typ string, writeBody, readBody func()) {
 	if batched {
 		g.sf("public static bool Read%s(ReadStream stream, %s value)\n{\n", pair, typ)
 		g.sf("    ReadBatch batch = stream.BeginBatch();\n")
-		g.sf("    bool result = Read%sBatch(ref batch, value);\n", pair)
+		g.sf("    bool result = Read%sBatch(ref batch, %svalue);\n", pair, r)
 		g.sf("    batch.End();\n")
 		g.sf("    return result;\n}\n\n")
 	} else {
@@ -192,11 +194,11 @@ func (g *gen) emitBatchScope(writing bool, f *ir.Field, child, ind string) {
 	g.sf("%s    // scoped batch: one capture and one restore for the whole site\n", ind)
 	g.sf("%s    %s batch = stream.BeginBatch();\n", ind, batchType)
 	if f.Array == ir.ArrayNone {
-		g.sf("%s    bool batchOk = %s%sBatch(ref batch, %s);\n", ind, dir, child, name)
+		g.sf("%s    bool batchOk = %s%sBatch(ref batch, %s%s);\n", ind, dir, child, g.byRef(child), name)
 	} else {
 		g.sf("%s    bool batchOk = true;\n", ind)
 		g.sf("%s    for (int i = 0; i < %s; i++)\n%s    {\n", ind, count, ind)
-		g.sf("%s        if (!%s%sBatch(ref batch, %s[i]))\n%s        {\n", ind, dir, child, name, ind)
+		g.sf("%s        if (!%s%sBatch(ref batch, %s%s[i]))\n%s        {\n", ind, dir, child, g.byRef(child), name, ind)
 		g.sf("%s            batchOk = false;\n%s            break;\n%s        }\n", ind, ind, ind)
 		g.sf("%s    }\n", ind)
 	}
@@ -211,7 +213,7 @@ func (g *gen) emitBatchScope(writing bool, f *ir.Field, child, ind string) {
 // C++ target's memset: branch zeroing and explicit zero resets go through here.
 func (g *gen) emitZeroFunction(st *ir.Struct) {
 	g.sf("// The §5 zero form: all-zero storage; specified defaults live only in construction.\n")
-	g.sf("public static void Zero%s(%s value)\n{\n", st.Name, st.Name)
+	g.sf("public static void Zero%s(%s%s value)\n{\n", st.Name, g.byRef(st.Name), st.Name)
 	if len(st.Fields) == 0 {
 		g.sf("    _ = value; // empty body — nothing to reset (SPEC §4.6)\n")
 	}
@@ -230,7 +232,7 @@ func (g *gen) emitInitFunction(st *ir.Struct) {
 		return
 	}
 	g.sf("// Restore construction defaults in place; buffers and objects are retained.\n")
-	g.sf("public static void Init%s(%s value)\n{\n", st.Name, st.Name)
+	g.sf("public static void Init%s(%s%s value)\n{\n", st.Name, g.byRef(st.Name), st.Name)
 	if len(st.Fields) == 0 {
 		g.sf("    _ = value; // empty body — nothing to initialize\n")
 	}
@@ -394,7 +396,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.sf("// Zero%s resets value to the §5 zero form — the empty union. The tag alone\n", d.Name)
 	g.sf("// resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm\n")
 	g.sf("// is unselected at None; an arm initializes at its next selection.\n")
-	g.sf("public static void Zero%s(%s value)\n{\n", d.Name, d.Name)
+	g.sf("public static void Zero%s(%s%s value)\n{\n", d.Name, g.byRef(d.Name), d.Name)
 	g.sf("    value.Type = %sType.None;\n}\n\n", d.Name)
 
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
@@ -445,7 +447,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 					g.sf("            return true; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n")
 					continue
 				}
-				g.sf("            %s%s(value.%s); // every selection starts from construction defaults\n", initFor(v.Ref), v.Type, ir.GoExportName(v.Name))
+				g.sf("            %s%s(%svalue.%s); // every selection starts from construction defaults\n", initFor(v.Ref), v.Type, g.byRef(v.Type), ir.GoExportName(v.Name))
 				g.sf("            return %s;\n", g.armCall("Read", v))
 			}
 			g.sf("    }\n    return true; // None\n")
@@ -457,9 +459,9 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 // nested struct field), the plain stream entry otherwise.
 func (g *gen) armCall(dir string, v ir.UnionVariant) string {
 	if g.inBatch {
-		return fmt.Sprintf("%s%sBatch(ref batch, value.%s)", dir, v.Type, ir.GoExportName(v.Name))
+		return fmt.Sprintf("%s%sBatch(ref batch, %svalue.%s)", dir, v.Type, g.byRef(v.Type), ir.GoExportName(v.Name))
 	}
-	return fmt.Sprintf("%s%s(stream, value.%s)", dir, v.Type, ir.GoExportName(v.Name))
+	return fmt.Sprintf("%s%s(stream, %svalue.%s)", dir, v.Type, g.byRef(v.Type), ir.GoExportName(v.Name))
 }
 
 func (g *gen) call(ind, expr, comment string) {
@@ -556,8 +558,7 @@ func (g *gen) emitInitializeField(f *ir.Field, ind string, defaults bool) {
 	name := "value." + base
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
-		g.needsSystem = true
-		g.sf("%sArray.Clear(%s, 0, %s);\n%svalue.%s = 0;\n", ind, name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false), ind, g.m(base+"Length"))
+		g.sf("%s%s\n%svalue.%s = 0;\n", ind, g.clearBuffer(name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false)), ind, g.m(base+"Length"))
 		if defaults && f.HasDefault {
 			g.emitByteDefault(f, name, "value."+g.m(base+"Length"), ind, g.sf)
 		}
@@ -570,10 +571,9 @@ func (g *gen) emitInitializeField(f *ir.Field, ind string, defaults bool) {
 				init = initFor(inner)
 			}
 			g.sf("%sfor (int i = 0; i < %s; i++)\n%s{\n", ind, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "int", false), ind)
-			g.sf("%s    %s%s(%s[i]);\n%s}\n", ind, init, f.Type.Name, name, ind)
+			g.sf("%s    %s%s(%s%s[i]);\n%s}\n", ind, init, f.Type.Name, g.byRef(f.Type.Name), name, ind)
 		} else {
-			g.needsSystem = true
-			g.sf("%sArray.Clear(%s, 0, %s);\n", ind, name, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "int", false))
+			g.sf("%s%s\n", ind, g.clearBuffer(name, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "int", false)))
 		}
 		if f.Array == ir.ArrayCounted {
 			count := int64(0)
@@ -606,11 +606,11 @@ func (g *gen) emitInitializeField(f *ir.Field, ind string, defaults bool) {
 				if defaults {
 					init = initFor(ref)
 				}
-				g.sf("%s%s%s(%s);\n", ind, init, f.Type.Name, name)
+				g.sf("%s%s%s(%s%s);\n", ind, init, f.Type.Name, g.byRef(f.Type.Name), name)
 			case *ir.Union:
 				// through Zero<Union> — the tag resets to None; arms are
 				// initialized at their next selection (SPEC §4.8)
-				g.sf("%sZero%s(%s);\n", ind, f.Type.Name, name)
+				g.sf("%sZero%s(%s%s);\n", ind, f.Type.Name, g.byRef(f.Type.Name), name)
 			}
 		default:
 			g.sf("%s%s = 0;\n", ind, name)
@@ -754,7 +754,7 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 			// to the per-byte loop. The SCHEMA bound slices the span, so
 			// reassigned-short storage faults loudly, as the loop did.
 			g.needsSystem = true
-			g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s.AsSpan(0, %s))", g.rv(), name, bound),
+			g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s)", g.rv(), g.prefix(name, bound)),
 				" // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop")
 			return
 		}
@@ -902,7 +902,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteFoldedRange(length, "0", g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false),
 			big.NewInt(0), big.NewInt(f.Type.Size), false, true, true,
 			" // the length guards the slice (§6.3); an out-of-contract length is caller error", ind)
-		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s.AsSpan(0, %s))", g.rv(), name, length), "")
+		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s)", g.rv(), g.prefix(name, length)), "")
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -913,15 +913,15 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.emitWriteFlagsValue(name, ref.WireBits, ind)
 		case *ir.Struct:
 			if g.inBatch {
-				g.call(ind, fmt.Sprintf("Write%sBatch(ref batch, %s)", f.Type.Name, name), "")
+				g.call(ind, fmt.Sprintf("Write%sBatch(ref batch, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			} else {
-				g.call(ind, fmt.Sprintf("Write%s(stream, %s)", f.Type.Name, name), "")
+				g.call(ind, fmt.Sprintf("Write%s(stream, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			}
 		case *ir.Union:
 			if g.inBatch {
-				g.call(ind, fmt.Sprintf("Write%sBatch(ref batch, %s)", f.Type.Name, name), "")
+				g.call(ind, fmt.Sprintf("Write%sBatch(ref batch, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			} else {
-				g.call(ind, fmt.Sprintf("Write%s(stream, %s)", f.Type.Name, name), "")
+				g.call(ind, fmt.Sprintf("Write%s(stream, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			}
 		}
 	}
@@ -1012,7 +1012,7 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 			// the write twin's bulk path exactly: zero align bits consumed
 			// here, then a bulk copy of the N bytes (see emitWriteField)
 			g.needsSystem = true
-			g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s.AsSpan(0, %s))", g.rv(), name, bound),
+			g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s)", g.rv(), g.prefix(name, bound)),
 				" // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop")
 			return
 		}
@@ -1167,7 +1167,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.call(ind, fmt.Sprintf("%s.SerializeInt(ref %s, 0, %s)",
 			g.rv(), length, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "int", false)),
 			" // the length guards the slice (§6.3)")
-		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s.AsSpan(0, %s))", g.rv(), name, length), "")
+		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s)", g.rv(), g.prefix(name, length)), "")
 		if f.Type.Kind == ir.TString {
 			g.emitReadUTF8(name, length, ind)
 			// the interior-null rule is generated-code validation (SPEC §4.7);
@@ -1188,15 +1188,15 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			g.emitReadFlags(name, f.Type.Name, ref.WireBits, ind)
 		case *ir.Struct:
 			if g.inBatch {
-				g.call(ind, fmt.Sprintf("Read%sBatch(ref batch, %s)", f.Type.Name, name), "")
+				g.call(ind, fmt.Sprintf("Read%sBatch(ref batch, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			} else {
-				g.call(ind, fmt.Sprintf("Read%s(stream, %s)", f.Type.Name, name), "")
+				g.call(ind, fmt.Sprintf("Read%s(stream, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			}
 		case *ir.Union:
 			if g.inBatch {
-				g.call(ind, fmt.Sprintf("Read%sBatch(ref batch, %s)", f.Type.Name, name), "")
+				g.call(ind, fmt.Sprintf("Read%sBatch(ref batch, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			} else {
-				g.call(ind, fmt.Sprintf("Read%s(stream, %s)", f.Type.Name, name), "")
+				g.call(ind, fmt.Sprintf("Read%s(stream, %s%s)", f.Type.Name, g.byRef(f.Type.Name), name), "")
 			}
 		}
 	}

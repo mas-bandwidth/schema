@@ -12,7 +12,7 @@ namespace Example
 {
 
     // type RenderSprite
-    public sealed class RenderSprite
+    public struct RenderSprite
     {
         public ulong SortKey;
         public uint MeshId;
@@ -22,20 +22,12 @@ namespace Example
     }
 
     // type RenderBlock
-    public sealed class RenderBlock
+    public struct RenderBlock
     {
         public uint WorkerIndex;
         public uint SpriteCountHint;
-        public RenderSprite[] Sprites = new RenderSprite[Schema.RenderBlockMaxSprites]; // used count beside it; wire count in [0, RenderBlockMaxSprites]
+        public InlineBuffer64<RenderSprite> Sprites; // used count beside it; wire count in [0, RenderBlockMaxSprites]
         public int SpritesCount;
-
-        public RenderBlock()
-        {
-            for (int i = 0; i < Sprites.Length; i++)
-            {
-                Sprites[i] = new RenderSprite();
-            }
-        }
     }
 
     // Schema carries every generated function and constant of the unit — C# has
@@ -51,7 +43,7 @@ namespace Example
         public const int RenderSpriteMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroRenderSprite(RenderSprite value)
+        public static void ZeroRenderSprite(ref RenderSprite value)
         {
             value.SortKey = 0;
             value.MeshId = 0;
@@ -62,17 +54,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteRenderSprite(WriteStream stream, RenderSprite value)
+        public static bool WriteRenderSprite(WriteStream stream, ref RenderSprite value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteRenderSpriteBatch(ref batch, value);
+            bool result = WriteRenderSpriteBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteRenderSpriteBatch(ref WriteBatch batch, RenderSprite value)
+        private static bool WriteRenderSpriteBatch(ref WriteBatch batch, ref RenderSprite value)
         {
             {
                 // flat run: 138 bits in 3 chunk(s) — the field placement is folded
@@ -101,17 +93,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadRenderSprite(ReadStream stream, RenderSprite value)
+        public static bool ReadRenderSprite(ReadStream stream, ref RenderSprite value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadRenderSpriteBatch(ref batch, value);
+            bool result = ReadRenderSpriteBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadRenderSpriteBatch(ref ReadBatch batch, RenderSprite value)
+        private static bool ReadRenderSpriteBatch(ref ReadBatch batch, ref RenderSprite value)
         {
             {
                 // flat run: 136 bits in 3 chunk(s) — one bounds check per chunk,
@@ -152,30 +144,30 @@ namespace Example
         public const int RenderBlockMaxBytes = 1120;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroRenderBlock(RenderBlock value)
+        public static void ZeroRenderBlock(ref RenderBlock value)
         {
             value.WorkerIndex = 0;
             value.SpriteCountHint = 0;
             for (int i = 0; i < (int)RenderBlockMaxSprites; i++)
             {
-                ZeroRenderSprite(value.Sprites[i]);
+                ZeroRenderSprite(ref value.Sprites[i]);
             }
             value.SpritesCount = 0;
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteRenderBlock(WriteStream stream, RenderBlock value)
+        public static bool WriteRenderBlock(WriteStream stream, ref RenderBlock value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteRenderBlockBatch(ref batch, value);
+            bool result = WriteRenderBlockBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteRenderBlockBatch(ref WriteBatch batch, RenderBlock value)
+        private static bool WriteRenderBlockBatch(ref WriteBatch batch, ref RenderBlock value)
         {
             {
                 // flat run: 64 bits in 1 chunk(s) — the field placement is folded
@@ -197,7 +189,7 @@ namespace Example
             }
             for (int i = 0; i < value.SpritesCount; i++)
             {
-                if (!WriteRenderSpriteBatch(ref batch, value.Sprites[i]))
+                if (!WriteRenderSpriteBatch(ref batch, ref value.Sprites[i]))
                 {
                     return false;
                 }
@@ -205,17 +197,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadRenderBlock(ReadStream stream, RenderBlock value)
+        public static bool ReadRenderBlock(ReadStream stream, ref RenderBlock value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadRenderBlockBatch(ref batch, value);
+            bool result = ReadRenderBlockBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadRenderBlockBatch(ref ReadBatch batch, RenderBlock value)
+        private static bool ReadRenderBlockBatch(ref ReadBatch batch, ref RenderBlock value)
         {
             {
                 // flat run: 64 bits in 1 chunk(s) — one bounds check per chunk,
@@ -237,7 +229,7 @@ namespace Example
             }
             for (int i = 0; i < value.SpritesCount; i++)
             {
-                if (!ReadRenderSpriteBatch(ref batch, value.Sprites[i]))
+                if (!ReadRenderSpriteBatch(ref batch, ref value.Sprites[i]))
                 {
                     return false;
                 }

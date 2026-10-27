@@ -4459,8 +4459,11 @@ namespaced engine type — `math::Vec2`, the common case — is written
 `cpp_native = math::Vec2` and emits as `::math::Vec2`. No global alias in
 your own header is needed.
 
-**C#** — C# 9 / netstandard2.1-clean, so it runs on Unity-class runtimes.
-Reads scalars without boxing.
+**C#** — modern .NET: .NET 8 or later and C# 12 or later. Types and unions
+are structs with `[InlineArray]` buffers, taken by `ref`; assigning one
+copies it. Reads scalars without boxing. Unity's runtime (C# 9,
+netstandard2.1) is the job of a separate Unity generator, which is not
+landed yet; this target no longer compiles there.
 
 **Dart** — Dart 3, VM and AOT (Flutter release ships AOT — the deployment
 the backend is tuned for). Generated code is **self-contained**: it imports

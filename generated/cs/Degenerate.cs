@@ -4,7 +4,6 @@
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xeb26c970fde3fd71
 
-using System;
 using System.Runtime.CompilerServices;
 using Serialize;
 
@@ -12,58 +11,58 @@ namespace Example
 {
 
     // type Vec2
-    public sealed class Vec2
+    public struct Vec2
     {
         public double X;
         public double Y;
     }
 
     // type SpanF64
-    public sealed class SpanF64
+    public struct SpanF64
     {
-        public double[] Values = new double[2];
+        public InlineBuffer2<double> Values;
     }
 
     // type SpanU64
-    public sealed class SpanU64
+    public struct SpanU64
     {
-        public ulong[] Values = new ulong[2];
+        public InlineBuffer2<ulong> Values;
     }
 
     // type SpanI64
-    public sealed class SpanI64
+    public struct SpanI64
     {
-        public long[] Values = new long[2];
+        public InlineBuffer2<long> Values;
     }
 
     // type SpanOne
-    public sealed class SpanOne
+    public struct SpanOne
     {
-        public ulong[] Values = new ulong[1];
+        public InlineBuffer1<ulong> Values;
     }
 
     // type SpanChunk
-    public sealed class SpanChunk
+    public struct SpanChunk
     {
-        public ushort[] Values = new ushort[4];
+        public InlineBuffer4<ushort> Values;
     }
 
     // type SpanTail
-    public sealed class SpanTail
+    public struct SpanTail
     {
-        public double[] Values = new double[2];
+        public InlineBuffer2<double> Values;
         public uint Tail;
     }
 
     // type SpanTwice
-    public sealed class SpanTwice
+    public struct SpanTwice
     {
-        public double[] A = new double[2];
-        public double[] B = new double[2];
+        public InlineBuffer2<double> A;
+        public InlineBuffer2<double> B;
     }
 
     // type Trio
-    public sealed class Trio
+    public struct Trio
     {
         public uint A;
         public uint B;
@@ -71,26 +70,26 @@ namespace Example
     }
 
     // type TrioSole
-    public sealed class TrioSole
+    public struct TrioSole
     {
-        public Trio Inner = new Trio();
+        public Trio Inner;
     }
 
     // type Vec3Sole
-    public sealed class Vec3Sole
+    public struct Vec3Sole
     {
-        public Vec3 V = new Vec3();
+        public Vec3 V;
     }
 
     // type TrioFirst
-    public sealed class TrioFirst
+    public struct TrioFirst
     {
-        public Trio Inner = new Trio();
+        public Trio Inner;
         public uint Trailer;
     }
 
     // type TrioStraddle
-    public sealed class TrioStraddle
+    public struct TrioStraddle
     {
         public ulong Pad0;
         public ulong Pad1;
@@ -98,7 +97,7 @@ namespace Example
         public ulong Pad3;
         public ulong Pad4;
         public uint Pad5;
-        public Trio Inner = new Trio();
+        public Trio Inner;
     }
 
     // Schema carries every generated function and constant of the unit — C# has
@@ -112,7 +111,7 @@ namespace Example
         public const int Vec2MaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroVec2(Vec2 value)
+        public static void ZeroVec2(ref Vec2 value)
         {
             value.X = 0.0;
             value.Y = 0.0;
@@ -120,17 +119,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteVec2(WriteStream stream, Vec2 value)
+        public static bool WriteVec2(WriteStream stream, ref Vec2 value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteVec2Batch(ref batch, value);
+            bool result = WriteVec2Batch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteVec2Batch(ref WriteBatch batch, Vec2 value)
+        private static bool WriteVec2Batch(ref WriteBatch batch, ref Vec2 value)
         {
             if (!batch.SerializeDouble(ref value.X))
             {
@@ -143,17 +142,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadVec2(ReadStream stream, Vec2 value)
+        public static bool ReadVec2(ReadStream stream, ref Vec2 value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadVec2Batch(ref batch, value);
+            bool result = ReadVec2Batch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadVec2Batch(ref ReadBatch batch, Vec2 value)
+        private static bool ReadVec2Batch(ref ReadBatch batch, ref Vec2 value)
         {
             if (!batch.SerializeDouble(ref value.X))
             {
@@ -172,24 +171,24 @@ namespace Example
         public const int SpanF64MaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroSpanF64(SpanF64 value)
+        public static void ZeroSpanF64(ref SpanF64 value)
         {
-            Array.Clear(value.Values, 0, 2);
+            value.Values[..].Clear();
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteSpanF64(WriteStream stream, SpanF64 value)
+        public static bool WriteSpanF64(WriteStream stream, ref SpanF64 value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteSpanF64Batch(ref batch, value);
+            bool result = WriteSpanF64Batch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteSpanF64Batch(ref WriteBatch batch, SpanF64 value)
+        private static bool WriteSpanF64Batch(ref WriteBatch batch, ref SpanF64 value)
         {
             for (int i = 0; i < 2; i++)
             {
@@ -201,17 +200,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadSpanF64(ReadStream stream, SpanF64 value)
+        public static bool ReadSpanF64(ReadStream stream, ref SpanF64 value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadSpanF64Batch(ref batch, value);
+            bool result = ReadSpanF64Batch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadSpanF64Batch(ref ReadBatch batch, SpanF64 value)
+        private static bool ReadSpanF64Batch(ref ReadBatch batch, ref SpanF64 value)
         {
             for (int i = 0; i < 2; i++)
             {
@@ -229,24 +228,24 @@ namespace Example
         public const int SpanU64MaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroSpanU64(SpanU64 value)
+        public static void ZeroSpanU64(ref SpanU64 value)
         {
-            Array.Clear(value.Values, 0, 2);
+            value.Values[..].Clear();
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteSpanU64(WriteStream stream, SpanU64 value)
+        public static bool WriteSpanU64(WriteStream stream, ref SpanU64 value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteSpanU64Batch(ref batch, value);
+            bool result = WriteSpanU64Batch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteSpanU64Batch(ref WriteBatch batch, SpanU64 value)
+        private static bool WriteSpanU64Batch(ref WriteBatch batch, ref SpanU64 value)
         {
             for (int i = 0; i < 2; i++)
             {
@@ -258,17 +257,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadSpanU64(ReadStream stream, SpanU64 value)
+        public static bool ReadSpanU64(ReadStream stream, ref SpanU64 value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadSpanU64Batch(ref batch, value);
+            bool result = ReadSpanU64Batch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadSpanU64Batch(ref ReadBatch batch, SpanU64 value)
+        private static bool ReadSpanU64Batch(ref ReadBatch batch, ref SpanU64 value)
         {
             for (int i = 0; i < 2; i++)
             {
@@ -286,24 +285,24 @@ namespace Example
         public const int SpanI64MaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroSpanI64(SpanI64 value)
+        public static void ZeroSpanI64(ref SpanI64 value)
         {
-            Array.Clear(value.Values, 0, 2);
+            value.Values[..].Clear();
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteSpanI64(WriteStream stream, SpanI64 value)
+        public static bool WriteSpanI64(WriteStream stream, ref SpanI64 value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteSpanI64Batch(ref batch, value);
+            bool result = WriteSpanI64Batch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteSpanI64Batch(ref WriteBatch batch, SpanI64 value)
+        private static bool WriteSpanI64Batch(ref WriteBatch batch, ref SpanI64 value)
         {
             for (int i = 0; i < 2; i++)
             {
@@ -318,17 +317,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadSpanI64(ReadStream stream, SpanI64 value)
+        public static bool ReadSpanI64(ReadStream stream, ref SpanI64 value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadSpanI64Batch(ref batch, value);
+            bool result = ReadSpanI64Batch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadSpanI64Batch(ref ReadBatch batch, SpanI64 value)
+        private static bool ReadSpanI64Batch(ref ReadBatch batch, ref SpanI64 value)
         {
             for (int i = 0; i < 2; i++)
             {
@@ -350,12 +349,12 @@ namespace Example
         public const int SpanOneMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroSpanOne(SpanOne value)
+        public static void ZeroSpanOne(ref SpanOne value)
         {
-            Array.Clear(value.Values, 0, 1);
+            value.Values[..].Clear();
         }
 
-        public static bool WriteSpanOne(WriteStream stream, SpanOne value)
+        public static bool WriteSpanOne(WriteStream stream, ref SpanOne value)
         {
             for (int i = 0; i < 1; i++)
             {
@@ -367,7 +366,7 @@ namespace Example
             return true;
         }
 
-        public static bool ReadSpanOne(ReadStream stream, SpanOne value)
+        public static bool ReadSpanOne(ReadStream stream, ref SpanOne value)
         {
             for (int i = 0; i < 1; i++)
             {
@@ -385,24 +384,24 @@ namespace Example
         public const int SpanChunkMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroSpanChunk(SpanChunk value)
+        public static void ZeroSpanChunk(ref SpanChunk value)
         {
-            Array.Clear(value.Values, 0, 4);
+            value.Values[..].Clear();
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteSpanChunk(WriteStream stream, SpanChunk value)
+        public static bool WriteSpanChunk(WriteStream stream, ref SpanChunk value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteSpanChunkBatch(ref batch, value);
+            bool result = WriteSpanChunkBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteSpanChunkBatch(ref WriteBatch batch, SpanChunk value)
+        private static bool WriteSpanChunkBatch(ref WriteBatch batch, ref SpanChunk value)
         {
             for (int i = 0; i < 4; i++)
             {
@@ -417,17 +416,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadSpanChunk(ReadStream stream, SpanChunk value)
+        public static bool ReadSpanChunk(ReadStream stream, ref SpanChunk value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadSpanChunkBatch(ref batch, value);
+            bool result = ReadSpanChunkBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadSpanChunkBatch(ref ReadBatch batch, SpanChunk value)
+        private static bool ReadSpanChunkBatch(ref ReadBatch batch, ref SpanChunk value)
         {
             for (int i = 0; i < 4; i++)
             {
@@ -449,25 +448,25 @@ namespace Example
         public const int SpanTailMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroSpanTail(SpanTail value)
+        public static void ZeroSpanTail(ref SpanTail value)
         {
-            Array.Clear(value.Values, 0, 2);
+            value.Values[..].Clear();
             value.Tail = 0;
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteSpanTail(WriteStream stream, SpanTail value)
+        public static bool WriteSpanTail(WriteStream stream, ref SpanTail value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteSpanTailBatch(ref batch, value);
+            bool result = WriteSpanTailBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteSpanTailBatch(ref WriteBatch batch, SpanTail value)
+        private static bool WriteSpanTailBatch(ref WriteBatch batch, ref SpanTail value)
         {
             for (int i = 0; i < 2; i++)
             {
@@ -483,17 +482,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadSpanTail(ReadStream stream, SpanTail value)
+        public static bool ReadSpanTail(ReadStream stream, ref SpanTail value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadSpanTailBatch(ref batch, value);
+            bool result = ReadSpanTailBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadSpanTailBatch(ref ReadBatch batch, SpanTail value)
+        private static bool ReadSpanTailBatch(ref ReadBatch batch, ref SpanTail value)
         {
             for (int i = 0; i < 2; i++)
             {
@@ -515,25 +514,25 @@ namespace Example
         public const int SpanTwiceMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroSpanTwice(SpanTwice value)
+        public static void ZeroSpanTwice(ref SpanTwice value)
         {
-            Array.Clear(value.A, 0, 2);
-            Array.Clear(value.B, 0, 2);
+            value.A[..].Clear();
+            value.B[..].Clear();
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteSpanTwice(WriteStream stream, SpanTwice value)
+        public static bool WriteSpanTwice(WriteStream stream, ref SpanTwice value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteSpanTwiceBatch(ref batch, value);
+            bool result = WriteSpanTwiceBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteSpanTwiceBatch(ref WriteBatch batch, SpanTwice value)
+        private static bool WriteSpanTwiceBatch(ref WriteBatch batch, ref SpanTwice value)
         {
             for (int i = 0; i < 2; i++)
             {
@@ -552,17 +551,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadSpanTwice(ReadStream stream, SpanTwice value)
+        public static bool ReadSpanTwice(ReadStream stream, ref SpanTwice value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadSpanTwiceBatch(ref batch, value);
+            bool result = ReadSpanTwiceBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadSpanTwiceBatch(ref ReadBatch batch, SpanTwice value)
+        private static bool ReadSpanTwiceBatch(ref ReadBatch batch, ref SpanTwice value)
         {
             for (int i = 0; i < 2; i++)
             {
@@ -587,7 +586,7 @@ namespace Example
         public const int TrioMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroTrio(Trio value)
+        public static void ZeroTrio(ref Trio value)
         {
             value.A = 0;
             value.B = 0;
@@ -596,17 +595,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteTrio(WriteStream stream, Trio value)
+        public static bool WriteTrio(WriteStream stream, ref Trio value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteTrioBatch(ref batch, value);
+            bool result = WriteTrioBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteTrioBatch(ref WriteBatch batch, Trio value)
+        private static bool WriteTrioBatch(ref WriteBatch batch, ref Trio value)
         {
             {
                 // flat run: 64 bits in 1 chunk(s) — the field placement is folded
@@ -622,17 +621,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadTrio(ReadStream stream, Trio value)
+        public static bool ReadTrio(ReadStream stream, ref Trio value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadTrioBatch(ref batch, value);
+            bool result = ReadTrioBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadTrioBatch(ref ReadBatch batch, Trio value)
+        private static bool ReadTrioBatch(ref ReadBatch batch, ref Trio value)
         {
             {
                 // flat run: 64 bits in 1 chunk(s) — one bounds check per chunk,
@@ -659,45 +658,45 @@ namespace Example
         public const int TrioSoleMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroTrioSole(TrioSole value)
+        public static void ZeroTrioSole(ref TrioSole value)
         {
-            ZeroTrio(value.Inner);
+            ZeroTrio(ref value.Inner);
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteTrioSole(WriteStream stream, TrioSole value)
+        public static bool WriteTrioSole(WriteStream stream, ref TrioSole value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteTrioSoleBatch(ref batch, value);
+            bool result = WriteTrioSoleBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteTrioSoleBatch(ref WriteBatch batch, TrioSole value)
+        private static bool WriteTrioSoleBatch(ref WriteBatch batch, ref TrioSole value)
         {
-            if (!WriteTrioBatch(ref batch, value.Inner))
+            if (!WriteTrioBatch(ref batch, ref value.Inner))
             {
                 return false;
             }
             return true;
         }
 
-        public static bool ReadTrioSole(ReadStream stream, TrioSole value)
+        public static bool ReadTrioSole(ReadStream stream, ref TrioSole value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadTrioSoleBatch(ref batch, value);
+            bool result = ReadTrioSoleBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadTrioSoleBatch(ref ReadBatch batch, TrioSole value)
+        private static bool ReadTrioSoleBatch(ref ReadBatch batch, ref TrioSole value)
         {
-            if (!ReadTrioBatch(ref batch, value.Inner))
+            if (!ReadTrioBatch(ref batch, ref value.Inner))
             {
                 return false;
             }
@@ -710,45 +709,45 @@ namespace Example
         public const int Vec3SoleMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroVec3Sole(Vec3Sole value)
+        public static void ZeroVec3Sole(ref Vec3Sole value)
         {
-            ZeroVec3(value.V);
+            ZeroVec3(ref value.V);
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteVec3Sole(WriteStream stream, Vec3Sole value)
+        public static bool WriteVec3Sole(WriteStream stream, ref Vec3Sole value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteVec3SoleBatch(ref batch, value);
+            bool result = WriteVec3SoleBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteVec3SoleBatch(ref WriteBatch batch, Vec3Sole value)
+        private static bool WriteVec3SoleBatch(ref WriteBatch batch, ref Vec3Sole value)
         {
-            if (!WriteVec3Batch(ref batch, value.V))
+            if (!WriteVec3Batch(ref batch, ref value.V))
             {
                 return false;
             }
             return true;
         }
 
-        public static bool ReadVec3Sole(ReadStream stream, Vec3Sole value)
+        public static bool ReadVec3Sole(ReadStream stream, ref Vec3Sole value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadVec3SoleBatch(ref batch, value);
+            bool result = ReadVec3SoleBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadVec3SoleBatch(ref ReadBatch batch, Vec3Sole value)
+        private static bool ReadVec3SoleBatch(ref ReadBatch batch, ref Vec3Sole value)
         {
-            if (!ReadVec3Batch(ref batch, value.V))
+            if (!ReadVec3Batch(ref batch, ref value.V))
             {
                 return false;
             }
@@ -761,27 +760,27 @@ namespace Example
         public const int TrioFirstMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroTrioFirst(TrioFirst value)
+        public static void ZeroTrioFirst(ref TrioFirst value)
         {
-            ZeroTrio(value.Inner);
+            ZeroTrio(ref value.Inner);
             value.Trailer = 0;
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteTrioFirst(WriteStream stream, TrioFirst value)
+        public static bool WriteTrioFirst(WriteStream stream, ref TrioFirst value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteTrioFirstBatch(ref batch, value);
+            bool result = WriteTrioFirstBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteTrioFirstBatch(ref WriteBatch batch, TrioFirst value)
+        private static bool WriteTrioFirstBatch(ref WriteBatch batch, ref TrioFirst value)
         {
-            if (!WriteTrioBatch(ref batch, value.Inner))
+            if (!WriteTrioBatch(ref batch, ref value.Inner))
             {
                 return false;
             }
@@ -792,19 +791,19 @@ namespace Example
             return true;
         }
 
-        public static bool ReadTrioFirst(ReadStream stream, TrioFirst value)
+        public static bool ReadTrioFirst(ReadStream stream, ref TrioFirst value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadTrioFirstBatch(ref batch, value);
+            bool result = ReadTrioFirstBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadTrioFirstBatch(ref ReadBatch batch, TrioFirst value)
+        private static bool ReadTrioFirstBatch(ref ReadBatch batch, ref TrioFirst value)
         {
-            if (!ReadTrioBatch(ref batch, value.Inner))
+            if (!ReadTrioBatch(ref batch, ref value.Inner))
             {
                 return false;
             }
@@ -821,7 +820,7 @@ namespace Example
         public const int TrioStraddleMaxBytes = 56;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroTrioStraddle(TrioStraddle value)
+        public static void ZeroTrioStraddle(ref TrioStraddle value)
         {
             value.Pad0 = 0;
             value.Pad1 = 0;
@@ -829,22 +828,22 @@ namespace Example
             value.Pad3 = 0;
             value.Pad4 = 0;
             value.Pad5 = 0;
-            ZeroTrio(value.Inner);
+            ZeroTrio(ref value.Inner);
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteTrioStraddle(WriteStream stream, TrioStraddle value)
+        public static bool WriteTrioStraddle(WriteStream stream, ref TrioStraddle value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteTrioStraddleBatch(ref batch, value);
+            bool result = WriteTrioStraddleBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteTrioStraddleBatch(ref WriteBatch batch, TrioStraddle value)
+        private static bool WriteTrioStraddleBatch(ref WriteBatch batch, ref TrioStraddle value)
         {
             if (!batch.SerializeBits64(ref value.Pad0, 64))
             {
@@ -870,24 +869,24 @@ namespace Example
             {
                 return false;
             }
-            if (!WriteTrioBatch(ref batch, value.Inner))
+            if (!WriteTrioBatch(ref batch, ref value.Inner))
             {
                 return false;
             }
             return true;
         }
 
-        public static bool ReadTrioStraddle(ReadStream stream, TrioStraddle value)
+        public static bool ReadTrioStraddle(ReadStream stream, ref TrioStraddle value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadTrioStraddleBatch(ref batch, value);
+            bool result = ReadTrioStraddleBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadTrioStraddleBatch(ref ReadBatch batch, TrioStraddle value)
+        private static bool ReadTrioStraddleBatch(ref ReadBatch batch, ref TrioStraddle value)
         {
             if (!batch.SerializeBits64(ref value.Pad0, 64))
             {
@@ -913,7 +912,7 @@ namespace Example
             {
                 return false;
             }
-            if (!ReadTrioBatch(ref batch, value.Inner))
+            if (!ReadTrioBatch(ref batch, ref value.Inner))
             {
                 return false;
             }
