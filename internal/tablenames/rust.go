@@ -6,6 +6,7 @@ const Rust Backend = 1 << 2
 func init() {
 	define(Rust,
 		Name{Name: "TableBlockTriple", What: "one array's (offset_of, count, stride)"},
+		Name{Name: "TableEnums", What: "the module that holds the table layer's enums once per crate (table_enums.rs); a module name, which a schema file lowering to it is refused for by the crate root's own module check", Scoped: true},
 		Name{Name: "TableBlockFieldInfo", What: "a block field's reflection descriptor"},
 		Name{Name: "TableBlockInfo", What: "a block's reflection descriptor"},
 		Name{Name: "TableBlockMagic", What: "the block prologue's magic, and the byte-order check with it", RustConst: true},

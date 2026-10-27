@@ -8,6 +8,15 @@ mod bench;
 pub use bench::*;
 mod fixedtable; // no items — documentation only
 
+// a schema name both layers declare: the packet type keeps the root name,
+// the table type is crate::tables::<Name> (docs/SPEC-TABLES.md, Rust notes)
+pub use bench::MixedChatEvent;
+pub use bench::MixedEntity;
+pub use bench::MixedHitEvent;
+pub use bench::MixedPickupEvent;
+pub use bench::MixedStat;
+pub use bench::MixedWeapon;
+
 // the TABLE surface (docs/SPEC-TABLES.md): emitted only for a unit that
 // declares tables, and glob re-exported like every other module.
 //
@@ -26,8 +35,9 @@ mod bench_records;
 pub use bench_records::*;
 mod bench_table;
 pub use bench_table::*;
-mod bench_variable;
-pub use bench_variable::*;
+#[path = "bench_variable.rs"]
+mod bench_variable_constants;
+pub use bench_variable_constants::*;
 mod build_version;
 pub use build_version::*;
 mod fixed_runtime;
@@ -40,7 +50,28 @@ mod fixedtable_records;
 pub use fixedtable_records::*;
 mod message_runtime;
 pub use message_runtime::*;
+mod table_enums;
+pub use table_enums::*;
 mod unit_view;
 pub use unit_view::*;
 mod variable_runtime;
 pub use variable_runtime::*;
+
+/// The table surface (docs/SPEC-TABLES.md): every table module, and the
+/// table layer's type for a schema name the packet layer also declares.
+pub mod tables {
+    pub use super::bench_fixed::*;
+    pub use super::bench_message::*;
+    pub use super::bench_records::*;
+    pub use super::bench_table::*;
+    pub use super::bench_variable_constants::*;
+    pub use super::build_version::*;
+    pub use super::fixed_runtime::*;
+    pub use super::fixedtable_fixed::*;
+    pub use super::fixedtable_message::*;
+    pub use super::fixedtable_records::*;
+    pub use super::message_runtime::*;
+    pub use super::table_enums::*;
+    pub use super::unit_view::*;
+    pub use super::variable_runtime::*;
+}

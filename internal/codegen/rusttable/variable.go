@@ -84,6 +84,9 @@ func variableModules(u *ir.Unit) map[string][]byte {
 	if d := variableDescriptorModule(u); d != nil {
 		out[VariableDescriptorModule+".rs"] = d
 	}
+	if body := tableEnumsModule(u, vc); body != nil {
+		out[TableEnumsModule+".rs"] = body
+	}
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, closure: ir.TableClosure(u), vc: vc}
 		if body := g.variableModule(); body != nil {
@@ -655,7 +658,7 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         5 | 9 | 11 | 23 | 28 | 36 => fixed(off, 8),
         18 | 19 | 24 | 29 => fixed(off, 16),
         17 | 30 => {
-            if let Some(_) = leb_read(bounded, off) { *off <= end } else { false }
+            leb_read(bounded, off).is_some() && *off <= end
         }
         12 | 13 | 14 | 16 | 31 | 32 | 33 => {
             let Some(n) = leb_read(bounded, off) else { return false; };
@@ -1081,7 +1084,7 @@ pub fn retain_ref(ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], id
 pub fn retain_emit_tail(out: &mut Vec<u8>, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], path: TableRetainPath, report: &mut TableReport) {
     let mut at = 0usize;
     while at + 4 <= retain.bytes.len() {
-        let len = retain_record_len(&retain.bytes[at..]) as usize;
+        let len = retain_record_len(&retain.bytes[at..]);
         if len < 17 || at + len > retain.bytes.len() {
             break;
         }
@@ -1126,7 +1129,7 @@ pub fn retain_discard(retain: &mut TableRetain, path: TableRetainPath, ordinal: 
     let mut read = 0usize;
     let mut write = 0usize;
     while read + 4 <= retain.bytes.len() {
-        let len = retain_record_len(&retain.bytes[read..]) as usize;
+        let len = retain_record_len(&retain.bytes[read..]);
         if len < 17 || read + len > retain.bytes.len() {
             break;
         }
@@ -1179,6 +1182,7 @@ fn retain_emit_ref(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetai
     retain_ref(ids, retain, known, id)
 }
 
+#[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
 fn retain_emit_resolve(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     if *bad || depth > TABLE_RETAIN_DEPTH_CAP {
         *bad = true;
@@ -1219,6 +1223,7 @@ fn retain_emit_resolve(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableR
     }
 }
 
+#[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
 fn retain_emit_framed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     if c.off + 8 > c.buf.len() {
         *bad = true;
@@ -1241,6 +1246,7 @@ fn retain_emit_framed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRe
     out.extend_from_slice(&content);
 }
 
+#[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
 fn retain_emit_content(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     if *bad || depth > TABLE_RETAIN_DEPTH_CAP {
         *bad = true;
@@ -1289,6 +1295,7 @@ fn retain_emit_content(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableR
     }
 }
 
+#[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
 fn retain_emit_keyed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], ek: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     let slot = retain_emit_ref(c, ids, retain, known, bad);
     leb_write(out, slot);
@@ -1422,4 +1429,42 @@ func (g *gen) emitVariableConstants(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "    pub const %s: (u64, u8) = (0x%016x, %d);\n", strings.ToUpper(ir.RustSnake(f.Name)), id, kind)
 	}
 	b.WriteString("}\n")
+}
+
+// TableEnumsModule holds every enum the unit's variable tables reach, with its
+// JSON name maps, ONCE per crate: each file's table module imports it rather
+// than declaring its own copy, so one schema enum is one Rust type across the
+// table layer (docs/SPEC-TABLES.md, the Rust backend's notes).
+const TableEnumsModule = "table_enums"
+
+// tableEnumsModule emits TableEnumsModule; nil when no carried table reaches an
+// enum. The order is the files' declaration order, then first reach.
+func tableEnumsModule(u *ir.Unit, vc *variableClass) []byte {
+	seen := map[string]bool{}
+	var enums []*ir.Enum
+	for _, f := range u.Files {
+		g := &gen{unit: u, file: f, closure: ir.TableClosure(u), vc: vc}
+		names := cardVariableTableNames(g)
+		if len(names) == 0 {
+			continue
+		}
+		for _, e := range g.collectVariableEnums(names) {
+			if !seen[e.Name] {
+				seen[e.Name] = true
+				enums = append(enums, e)
+			}
+		}
+	}
+	if len(enums) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString(header(runtimeSourceName(u), u.Package, "the table layer's enums and their JSON names, once per crate (docs/SPEC-TABLES.md §3, §16.2)"))
+	b.WriteString("\n")
+	emitVariableEnums(&b, enums)
+	b.WriteString("// ---- the JSON text form's names (docs/SPEC-TABLES.md §16.2) ----\n\n")
+	for _, e := range enums {
+		emitEnumText(&b, e)
+	}
+	return []byte(b.String())
 }

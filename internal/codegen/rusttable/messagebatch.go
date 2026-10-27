@@ -962,9 +962,10 @@ pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape,
     if s.packing == 2 {
         let value = f32::from_bits(lo as u32);
         let mut ratio = (value - s.qmin) / s.qdelta;
-        if !(ratio >= 0.0) {
+        // NaN clamps low, as the negated comparisons this replaces did
+        if ratio.is_nan() || ratio < 0.0 {
             ratio = 0.0;
-        } else if !(ratio <= 1.0) {
+        } else if ratio > 1.0 {
             ratio = 1.0;
         }
         let scaled = ratio * s.qcount as f32;

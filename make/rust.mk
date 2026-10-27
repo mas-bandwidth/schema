@@ -86,17 +86,16 @@ generated/rust/.stamp: bin/schema $(SCHEMAS)
 MIRI_N ?= 8
 MIRI_MAX_SEED_BYTES ?= 4224
 
-# THE GENERATED RUST BUILDS UNDER A CONSUMER'S CLIPPY. A consumer who runs
-# clippy over their own crate runs it over the generated modules too, and a
-# DEFAULT-DENY lint there would fail their build for something they did not
-# write. This runs plain `cargo clippy` over every generated unit of the
-# corpus, which is exactly that question: it exits non-zero on a denied lint
-# and zero on a warning.
+# THE GENERATED RUST BUILDS CLEAN UNDER CLIPPY, WARNINGS DENIED. A consumer
+# who runs clippy over their own crate runs it over the generated modules too,
+# and zero warnings is the rule for generated code as for hand-written: every
+# generated unit of the corpus runs `cargo clippy -- -D warnings`, and the
+# feature gate below builds the other three feature sets with warnings denied.
 #
-# It is deliberately NOT `-D warnings`. A clippy release that adds a new
-# warning must not turn this red — that is version drift breaking a gate, the
-# thing the estate's pins exist to prevent — and a warning breaks no
-# consumer's build. What a denied lint does is exactly what this catches.
+# The toolchain is the stable channel at run time, so a clippy release that
+# adds a lint can turn this red without a change here. That is a finding about
+# the generated code, fixed in the emitter, never a reason to relax the gate.
+
 # THE ACCELERATOR FEATURES (docs/SPEC-TABLES.md §19). §19's rule is that the
 # block form costs nothing unless you reach for it — in C++ by not including
 # the header, and here by not enabling the cargo feature. Both are ON by
@@ -117,16 +116,19 @@ tables-rust-features: build/tables-generated-rust/.stamp
 		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features ) || exit 1; \
 		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features --features cook ) || exit 1; \
 		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features --features block ) || exit 1; \
+		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --quiet --no-default-features -- -D warnings ) || exit 1; \
+		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --quiet --no-default-features --features cook -- -D warnings ) || exit 1; \
+		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --quiet --no-default-features --features block -- -D warnings ) || exit 1; \
 	done
-	@echo "rust feature gate: minimal, cook-only, block-only and everything all build"
+	@echo "rust feature gate: minimal, cook-only, block-only and everything all build, the first three clean under clippy -D warnings (everything: tables-rust-clippy)"
 
 .PHONY: tables-rust-clippy
 tables-rust-clippy: build/tables-generated-rust/.stamp
 	@for unit in build/tables-generated-rust/*/; do \
 		[ -f $$unit/Cargo.toml ] || continue; \
-		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --quiet ) || exit 1; \
+		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --quiet -- -D warnings ) || exit 1; \
 	done
-	@echo "rust clippy gate: every generated unit builds under a consumer's clippy"
+	@echo "rust clippy gate: every generated unit is clean under clippy -D warnings"
 
 # THE RUST TABLE SURFACE ON A BIG-ENDIAN TARGET (docs/SPEC-TABLES.md §7.1,
 # §19.1, §20.3). The pinned toolchain cross-compiles to s390x — the same
@@ -823,6 +825,7 @@ build/conformance-rust-card: cards-rust-generate test/conformance/rust/src/wire_
 	@mkdir -p build/cards-rust-fuzz
 	@cp build/tables-generated-rust/cards/src/variable_runtime.rs build/cards-rust-fuzz/
 	@cp build/tables-generated-rust/cards/src/card_table.rs build/cards-rust-fuzz/
+	@cp build/tables-generated-rust/cards/src/table_enums.rs build/cards-rust-fuzz/
 	@cp build/tables-generated-rust/cards/src/card_variable.rs build/cards-rust-fuzz/
 	@cp test/conformance/rust/src/wire_fuzz.rs build/cards-rust-fuzz/main.rs
 	@rustc --edition 2024 -O -o build/conformance-rust-card build/cards-rust-fuzz/main.rs
@@ -874,6 +877,7 @@ cards-rust-test: cards-rust-generate
 	@mkdir -p build/cards-rust
 	@cp build/tables-generated-rust/cards/src/variable_runtime.rs build/cards-rust/
 	@cp build/tables-generated-rust/cards/src/card_table.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/table_enums.rs build/cards-rust/
 	@cp build/tables-generated-rust/cards/src/card_variable.rs build/cards-rust/
 	@cp build/tables-generated-rust/cards/src/card_records.rs build/cards-rust/
 	@cp build/tables-generated-rust/cards/src/card.rs build/cards-rust/

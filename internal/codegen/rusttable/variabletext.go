@@ -27,9 +27,6 @@ func (g *gen) emitVariableText(b *strings.Builder) {
 	}
 	b.WriteString("\n// ---- the JSON text form (docs/SPEC-TABLES.md §16, §16.2, §16.7) ----\n")
 
-	for _, e := range g.collectVariableEnums(names) {
-		g.emitEnumText(b, e)
-	}
 	g.emitUnionText(b, names)
 
 	for _, n := range names {
@@ -152,7 +149,7 @@ pub fn json_unb64(s: &str) -> Option<Vec<u8>> {
     while end > 0 && b[end - 1] == b'=' {
         end -= 1;
     }
-    if b.len() - end > 2 || (b.len() != end && b.len() % 4 != 0) || end % 4 == 1 {
+    if b.len() - end > 2 || (b.len() != end && !b.len().is_multiple_of(4)) || end % 4 == 1 {
         return None;
     }
     let mut out = Vec::with_capacity(end * 3 / 4);
@@ -692,13 +689,13 @@ impl<'a> Jr<'a> {
                     // reference to it reads null; an &node alone is a reference
                     // and defines nothing.
                     let mut labelled = false;
-                    if key.as_deref() == Some("&node") {
-                        if let Some(label) = self.read_label() {
-                            labelled = true;
-                            self.space();
-                            if self.p < self.b.len() && self.b[self.p] == b',' {
-                                self.labels.entry(label).or_insert(JsonLabel::Dropped);
-                            }
+                    if key.as_deref() == Some("&node")
+                        && let Some(label) = self.read_label()
+                    {
+                        labelled = true;
+                        self.space();
+                        if self.p < self.b.len() && self.b[self.p] == b',' {
+                            self.labels.entry(label).or_insert(JsonLabel::Dropped);
                         }
                     }
                     if !labelled {
@@ -773,7 +770,7 @@ impl<'a> Jr<'a> {
 // emitEnumText emits one enum's JSON name maps: variant -> schema name for the
 // writer, schema name -> variant for the reader (docs/SPEC-TABLES.md §16.2, the
 // enum row's "the variant NAME").
-func (g *gen) emitEnumText(b *strings.Builder, e *ir.Enum) {
+func emitEnumText(b *strings.Builder, e *ir.Enum) {
 	write := fn(e.Name, "json_name")
 	fmt.Fprintf(b, "#[allow(dead_code)]\n")
 	fmt.Fprintf(b, "pub fn %s(v: %s) -> &'static str {\n", write, e.Name)
@@ -823,21 +820,19 @@ func (g *gen) emitFieldTextCount(b *strings.Builder, f *ir.Field, x, ind string)
 		// A BLOB IS A STRING IN THE TEXT AND TAKES NO LABEL (§16.7): a blob
 		// two slots name has no spelling this form can carry, so the writer
 		// refuses the graph, as the oracle does
-		fmt.Fprintf(b, "%sif let Some(n) = &%s { let c = w.counts.entry(Rc::as_ptr(n) as *const u8 as usize).or_insert(0); *c += 1; if *c > 1 { w.refused = true; } }\n", ind, x)
+		fmt.Fprintf(b, "%sif let Some(n) = %s { let c = w.counts.entry(Rc::as_ptr(n) as *const u8 as usize).or_insert(0); *c += 1; if *c > 1 { w.refused = true; } }\n", ind, borrowOf(x))
 	case vPointer:
-		visit := func(e string) string {
-			return fmt.Sprintf("if let Some(n) = %s { let c = w.counts.entry(Rc::as_ptr(n) as *const () as usize).or_insert(0); *c += 1; if *c == 1 { %s(n, w); } }", e, fn(f.Type.Name, "json_count"))
-		}
+		count := fmt.Sprintf("let c = w.counts.entry(Rc::as_ptr(n) as *const () as usize).or_insert(0); *c += 1; if *c == 1 { %s(n, w); }", fn(f.Type.Name, "json_count"))
 		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
-			fmt.Fprintf(b, "%sfor e in %s.iter() { %s }\n", ind, x, visit("e"))
+			fmt.Fprintf(b, "%sfor n in %s.iter().flatten() { %s }\n", ind, x, count)
 		} else {
-			fmt.Fprintf(b, "%s%s\n", ind, visit("&"+x))
+			fmt.Fprintf(b, "%sif let Some(n) = %s { %s }\n", ind, borrowOf(x), count)
 		}
 	case vTable:
 		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
 			fmt.Fprintf(b, "%sfor e in %s.iter() { %s(e, w); }\n", ind, x, fn(f.Type.Name, "json_count"))
 		} else {
-			fmt.Fprintf(b, "%s%s(&%s, w);\n", ind, fn(f.Type.Name, "json_count"), x)
+			fmt.Fprintf(b, "%s%s(%s, w);\n", ind, fn(f.Type.Name, "json_count"), borrowOf(x))
 		}
 	case vMap:
 		fmt.Fprintf(b, "%sfor e in %s.iter() { %s(e, w); }\n", ind, x, fn(f.MapEntry.Name, "json_count"))
@@ -846,7 +841,7 @@ func (g *gen) emitFieldTextCount(b *strings.Builder, f *ir.Field, x, ind string)
 		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
 			fmt.Fprintf(b, "%sfor e in %s.iter() { %s(e, w); }\n", ind, x, fn(un.Name, "json_count"))
 		} else {
-			fmt.Fprintf(b, "%s%s(&%s, w);\n", ind, fn(un.Name, "json_count"), x)
+			fmt.Fprintf(b, "%s%s(%s, w);\n", ind, fn(un.Name, "json_count"), borrowOf(x))
 		}
 	}
 }
@@ -931,7 +926,7 @@ func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind stri
 func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string) {
 	switch classOf(f) {
 	case vBlob:
-		fmt.Fprintf(b, "%smatch &%s {\n", ind, x)
+		fmt.Fprintf(b, "%smatch %s {\n", ind, borrowOf(x))
 		if f.Type.Kind == ir.TString {
 			fmt.Fprintf(b, "%s    Some(s) => json_escape(s, &mut w.out),\n", ind)
 		} else {
@@ -943,7 +938,7 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		// a node named once is its object in place; a node named more than
 		// once is DEFINED at its first write, `&node` first, and NAMED by
 		// `&node` alone after (§16.7)
-		fmt.Fprintf(b, "%smatch &%s {\n", ind, x)
+		fmt.Fprintf(b, "%smatch %s {\n", ind, borrowOf(x))
 		fmt.Fprintf(b, "%s    None => w.out.push_str(\"null\"),\n", ind)
 		fmt.Fprintf(b, "%s    Some(n) => {\n", ind)
 		fmt.Fprintf(b, "%s        let key = Rc::as_ptr(n) as *const () as usize;\n", ind)
@@ -967,22 +962,22 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		fmt.Fprintf(b, "%s    }\n", ind)
 		fmt.Fprintf(b, "%s}\n", ind)
 	case vTable:
-		fmt.Fprintf(b, "%s%s(&%s, w, %s, 0);\n", ind, fn(f.Type.Name, "json_write"), x, d)
+		fmt.Fprintf(b, "%s%s(%s, w, %s, 0);\n", ind, fn(f.Type.Name, "json_write"), borrowOf(x), d)
 	case vMap:
 		g.emitMapTextWrite(b, f, x, d, ind)
 	case vUnion:
 		un := unionOf(f)
-		fmt.Fprintf(b, "%s%s(&%s, w, %s);\n", ind, fn(un.Name, "json_write"), x, d)
+		fmt.Fprintf(b, "%s%s(%s, w, %s);\n", ind, fn(un.Name, "json_write"), borrowOf(x), d)
 	case vString:
-		fmt.Fprintf(b, "%sjson_escape(&%s, &mut w.out);\n", ind, x)
+		fmt.Fprintf(b, "%sjson_escape(%s, &mut w.out);\n", ind, borrowOf(x))
 	case vWString:
 		// the same text, TRANSCODED at the boundary (docs/SPEC-TABLES.md
 		// §16.2's wstring row): a stored value is paired, so nothing is lost
-		fmt.Fprintf(b, "%sjson_escape(&String::from_utf16_lossy(&%s), &mut w.out);\n", ind, x)
+		fmt.Fprintf(b, "%sjson_escape(&String::from_utf16_lossy(%s), &mut w.out);\n", ind, borrowOf(x))
 	case vBytes:
-		fmt.Fprintf(b, "%sjson_b64(&%s, &mut w.out);\n", ind, x)
+		fmt.Fprintf(b, "%sjson_b64(%s, &mut w.out);\n", ind, borrowOf(x))
 	case vEnum:
-		fmt.Fprintf(b, "%sjson_escape(%s(%s), &mut w.out);\n", ind, fn(f.Type.Name, "json_name"), x)
+		fmt.Fprintf(b, "%sjson_escape(%s(%s), &mut w.out);\n", ind, fn(f.Type.Name, "json_name"), unparen(x))
 	default:
 		if fl := isFlags(f); fl != nil {
 			// a FLAGS MASK is the array of its set bits' names, in bit order
@@ -997,18 +992,21 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 				fmt.Fprintf(b, "%q", v)
 			}
 			b.WriteString("];\n")
-			fmt.Fprintf(b, "%s    let bits: u64 = %s;\n", ind, x)
+			fmt.Fprintf(b, "%s    let bits: u64 = %s;\n", ind, unparen(x))
 			fmt.Fprintf(b, "%s    if bits == 0 { w.out.push_str(\"[]\"); } else {\n", ind)
 			fmt.Fprintf(b, "%s        w.out.push('[');\n", ind)
 			fmt.Fprintf(b, "%s        let mut first = true;\n", ind)
-			fmt.Fprintf(b, "%s        for bit in 0..64usize {\n", ind)
+			fmt.Fprintf(b, "%s        for (bit, name) in NAMES.iter().enumerate() {\n", ind)
 			fmt.Fprintf(b, "%s            if bits & (1u64 << bit) == 0 { continue; }\n", ind)
-			fmt.Fprintf(b, "%s            if bit >= NAMES.len() { w.refused = true; break; }\n", ind)
 			fmt.Fprintf(b, "%s            if !first { w.out.push(','); }\n", ind)
 			fmt.Fprintf(b, "%s            first = false;\n", ind)
 			fmt.Fprintf(b, "%s            json_newline(&mut w.out, %s + 1);\n", ind, d)
-			fmt.Fprintf(b, "%s            json_escape(NAMES[bit], &mut w.out);\n", ind)
+			fmt.Fprintf(b, "%s            json_escape(name, &mut w.out);\n", ind)
 			fmt.Fprintf(b, "%s        }\n", ind)
+			if len(fl.Variants) < 64 {
+				// a set bit past the named ones has no spelling: refused
+				fmt.Fprintf(b, "%s        if bits >> %d != 0 { w.refused = true; }\n", ind, len(fl.Variants))
+			}
 			fmt.Fprintf(b, "%s        json_newline(&mut w.out, %s);\n", ind, d)
 			fmt.Fprintf(b, "%s        w.out.push(']');\n", ind)
 			fmt.Fprintf(b, "%s    }\n", ind)
@@ -1194,7 +1192,11 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", in)
 		elem := in + "        "
 		if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
-			fmt.Fprintf(b, "%sif %s.len() >= %d {\n", elem, field, f.ArrayBound)
+			if f.ArrayBound == 1 {
+				fmt.Fprintf(b, "%sif !%s.is_empty() {\n", elem, field)
+			} else {
+				fmt.Fprintf(b, "%sif %s.len() >= %d {\n", elem, field, f.ArrayBound)
+			}
 			fmt.Fprintf(b, "%s    jr.clamped += 1;\n", elem)
 			fmt.Fprintf(b, "%s    jr.skip_value();\n", elem)
 			fmt.Fprintf(b, "%s} else {\n", elem)
@@ -1423,4 +1425,23 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    report.malformed |= jr.malformed;\n")
 	fmt.Fprintf(b, "    if jr.malformed { None } else { Some(v) }\n")
 	fmt.Fprintf(b, "}\n\n")
+}
+
+// borrowOf renders a shared borrow of expression x: a dereferenced reference
+// `(*r)` borrows as r itself (clippy's borrow_deref_ref), anything else as &x.
+func borrowOf(x string) string {
+	if strings.HasPrefix(x, "(*") && strings.HasSuffix(x, ")") && !strings.ContainsAny(x[2:len(x)-1], "() ") {
+		return x[2 : len(x)-1]
+	}
+	return "&" + x
+}
+
+// unparen strips one pair of parentheses around a dereference, `(*e)` -> `*e`,
+// where the expression stands alone (an argument, a let's value) and the
+// parentheses are noise (clippy's double_parens, rustc's unused_parens).
+func unparen(x string) string {
+	if strings.HasPrefix(x, "(*") && strings.HasSuffix(x, ")") && !strings.ContainsAny(x[2:len(x)-1], "() ") {
+		return x[1 : len(x)-1]
+	}
+	return x
 }

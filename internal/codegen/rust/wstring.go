@@ -10,7 +10,7 @@ import (
 func (g *gen) emitWriteWString(f *ir.Field, name, ind string) {
 	bound := g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "i32")
 	g.pf("%s{\n%s    let mut length = %s_length;\n", ind, ind, name)
-	g.writeAssert(ind+"    ", fmt.Sprintf("length >= 0 && length <= %s", bound),
+	g.writeAssert(ind+"    ", fmt.Sprintf("(0..=%s).contains(&length)", bound),
 		fmt.Sprintf("%s_length out of range [0, %s]", assertLabel(name), bound))
 	g.pf("%s    stream.serialize_int(&mut length, 0, %s)?;\n", ind, bound)
 	g.pf("%s    for &unit in &%s[..length as usize] {\n", ind, name)

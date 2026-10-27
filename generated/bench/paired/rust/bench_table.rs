@@ -17,28 +17,7 @@ use std::rc::Rc;
 const ID_TABLE_PROBE_BOUND: usize = 4096;
 #[allow(dead_code)]
 const ID_TABLE_PROBE_SLOTS: usize = 8192;
-
-/// MixedWeapon — an enum on the variable wire (docs/SPEC-TABLES.md §3, §5).
-#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
-pub enum MixedWeapon {
-    #[default]
-    None,
-    Fists,
-    Pistol,
-    Shotgun,
-    Rifle,
-    Sniper,
-    Smg,
-    Rocket,
-    Grenade,
-    Plasma,
-    Railgun,
-    Flamer,
-    Mine,
-    Turret,
-    Drone,
-    Repair,
-}
+use super::table_enums::*;
 
 /// MixedChatEvent — a variable-table storage struct (docs/SPEC-TABLES.md §3).
 #[derive(Clone, Debug, Default)]
@@ -123,12 +102,12 @@ pub fn mixed_chat_event_save_body(v: &MixedChatEvent, out: &mut Vec<u8>, ids: &m
     if v.channel != 0i32 {
         leb_write(out, ids.id_ref(0xa5013e9ad5caeda4));
         out.push(4);
-        out.extend_from_slice(&(v.channel as i32).to_le_bytes());
+        out.extend_from_slice(&v.channel.to_le_bytes());
     }
     if v.speaker != 0u16 {
         leb_write(out, ids.id_ref(0xfbf1ac4d96ebd022));
         out.push(7);
-        out.extend_from_slice(&(v.speaker as u16).to_le_bytes());
+        out.extend_from_slice(&v.speaker.to_le_bytes());
     }
 }
 
@@ -141,52 +120,52 @@ pub fn mixed_entity_save_body(v: &MixedEntity, out: &mut Vec<u8>, ids: &mut IdTa
     if v.entity_id != 0u16 {
         leb_write(out, ids.id_ref(0x23fcfd6678e36712));
         out.push(7);
-        out.extend_from_slice(&(v.entity_id as u16).to_le_bytes());
+        out.extend_from_slice(&v.entity_id.to_le_bytes());
     }
     if v.pos_x != 0i32 {
         leb_write(out, ids.id_ref(0xcb4b37357667310e));
         out.push(4);
-        out.extend_from_slice(&(v.pos_x as i32).to_le_bytes());
+        out.extend_from_slice(&v.pos_x.to_le_bytes());
     }
     if v.pos_y != 0i32 {
         leb_write(out, ids.id_ref(0xcb4b3835766732c1));
         out.push(4);
-        out.extend_from_slice(&(v.pos_y as i32).to_le_bytes());
+        out.extend_from_slice(&v.pos_y.to_le_bytes());
     }
     if v.pos_z != 0i32 {
         leb_write(out, ids.id_ref(0xcb4b353576672da8));
         out.push(4);
-        out.extend_from_slice(&(v.pos_z as i32).to_le_bytes());
+        out.extend_from_slice(&v.pos_z.to_le_bytes());
     }
     if v.yaw != 0u16 {
         leb_write(out, ids.id_ref(0xb54d8e19798e16e8));
         out.push(7);
-        out.extend_from_slice(&(v.yaw as u16).to_le_bytes());
+        out.extend_from_slice(&v.yaw.to_le_bytes());
     }
     if v.pitch != 0u16 {
         leb_write(out, ids.id_ref(0x53a9f665a90cc1b1));
         out.push(7);
-        out.extend_from_slice(&(v.pitch as u16).to_le_bytes());
+        out.extend_from_slice(&v.pitch.to_le_bytes());
     }
     if v.vel_x != 0i32 {
         leb_write(out, ids.id_ref(0x6cede6b6eb60ee67));
         out.push(4);
-        out.extend_from_slice(&(v.vel_x as i32).to_le_bytes());
+        out.extend_from_slice(&v.vel_x.to_le_bytes());
     }
     if v.vel_y != 0i32 {
         leb_write(out, ids.id_ref(0x6cede5b6eb60ecb4));
         out.push(4);
-        out.extend_from_slice(&(v.vel_y as i32).to_le_bytes());
+        out.extend_from_slice(&v.vel_y.to_le_bytes());
     }
     if v.vel_z != 0i32 {
         leb_write(out, ids.id_ref(0x6cede8b6eb60f1cd));
         out.push(4);
-        out.extend_from_slice(&(v.vel_z as i32).to_le_bytes());
+        out.extend_from_slice(&v.vel_z.to_le_bytes());
     }
     if v.health != 0i32 {
         leb_write(out, ids.id_ref(0x7f69d4b5288ba9cf));
         out.push(4);
-        out.extend_from_slice(&(v.health as i32).to_le_bytes());
+        out.extend_from_slice(&v.health.to_le_bytes());
     }
     if v.weapon != MixedWeapon::None {
         leb_write(out, ids.id_ref(0xa0b610205f2c6e01));
@@ -197,7 +176,7 @@ pub fn mixed_entity_save_body(v: &MixedEntity, out: &mut Vec<u8>, ids: &mut IdTa
     if v.damage != 0u64 {
         leb_write(out, ids.id_ref(0x7f6308be8ab37fc0));
         out.push(9);
-        out.extend_from_slice(&(v.damage as u64).to_le_bytes());
+        out.extend_from_slice(&v.damage.to_le_bytes());
     }
     if v.moving {
         leb_write(out, ids.id_ref(0x11a44fc1d1243da7));
@@ -220,17 +199,17 @@ pub fn mixed_hit_event_save_body(v: &MixedHitEvent, out: &mut Vec<u8>, ids: &mut
     if v.target_id != 0u16 {
         leb_write(out, ids.id_ref(0xb7bc9ac015a25050));
         out.push(7);
-        out.extend_from_slice(&(v.target_id as u16).to_le_bytes());
+        out.extend_from_slice(&v.target_id.to_le_bytes());
     }
     if v.damage != 0i32 {
         leb_write(out, ids.id_ref(0x7f6308be8ab37fc0));
         out.push(4);
-        out.extend_from_slice(&(v.damage as i32).to_le_bytes());
+        out.extend_from_slice(&v.damage.to_le_bytes());
     }
     if v.hit_kind != 0i32 {
         leb_write(out, ids.id_ref(0x01fbc365b059b925));
         out.push(4);
-        out.extend_from_slice(&(v.hit_kind as i32).to_le_bytes());
+        out.extend_from_slice(&v.hit_kind.to_le_bytes());
     }
     if v.crit {
         leb_write(out, ids.id_ref(0x126167908c9aa52d));
@@ -248,12 +227,12 @@ pub fn mixed_pickup_event_save_body(v: &MixedPickupEvent, out: &mut Vec<u8>, ids
     if v.item_id != 0u16 {
         leb_write(out, ids.id_ref(0x9e7fd06d864fbd56));
         out.push(7);
-        out.extend_from_slice(&(v.item_id as u16).to_le_bytes());
+        out.extend_from_slice(&v.item_id.to_le_bytes());
     }
     if v.amount != 0i32 {
         leb_write(out, ids.id_ref(0x8113fe7ea2b16969));
         out.push(4);
-        out.extend_from_slice(&(v.amount as i32).to_le_bytes());
+        out.extend_from_slice(&v.amount.to_le_bytes());
     }
 }
 
@@ -266,12 +245,12 @@ pub fn mixed_stat_save_body(v: &MixedStat, out: &mut Vec<u8>, ids: &mut IdTable,
     if v.stat_id != 0u8 {
         leb_write(out, ids.id_ref(0x80ab75f0866dbf65));
         out.push(6);
-        out.extend_from_slice(&(v.stat_id as u8).to_le_bytes());
+        out.extend_from_slice(&v.stat_id.to_le_bytes());
     }
     if v.delta != 0i32 {
         leb_write(out, ids.id_ref(0x52076675ec13a0c1));
         out.push(4);
-        out.extend_from_slice(&(v.delta as i32).to_le_bytes());
+        out.extend_from_slice(&v.delta.to_le_bytes());
     }
 }
 
@@ -469,10 +448,10 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 else {
                     let Some(vref) = leb_read(wire, off) else { report.malformed = true; return false; };
                     if *off > end { report.malformed = true; return false; }
-                    if vref == 0 { v.weapon = MixedWeapon::None; }
+                    v.weapon = if vref == 0 { MixedWeapon::None }
                     else if vref as usize > ids.len() { report.malformed = true; return false; }
                     else {
-                        v.weapon = match ids[vref as usize - 1] {
+                        match ids[vref as usize - 1] {
                             0xa790eee12766cf0c => MixedWeapon::Fists,
                             0x9fbfefa835da8476 => MixedWeapon::Pistol,
                             0x188bbb1783928a95 => MixedWeapon::Shotgun,
@@ -489,8 +468,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                             0x2cc8282fb0de8831 => MixedWeapon::Drone,
                             0x20bada21bc8cb334 => MixedWeapon::Repair,
                             _ => { report.unknown += 1; if retain.is_some() { report.retain_lost += 1; } MixedWeapon::None },
-                        };
-                    }
+                        }
+                    };
                 }
             }
             0x7f6308be8ab37fc0 => {
@@ -498,7 +477,7 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
                     if kind != 9 { report.widened += 1; }
                     let x = raw;
-                    v.damage = x as u64;
+                    v.damage = x;
                 } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
             }
             0x11a44fc1d1243da7 => {
@@ -788,7 +767,8 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
 }
 
 /// The body of one table record of the numbering, by its type id (docs/SPEC-TABLES.md §3.1).
-#[allow(dead_code, unused_variables, unused_mut)]
+// one arm per node type the unit can place: zero or one is a real shape
+#[allow(dead_code, unused_variables, unused_mut, clippy::too_many_arguments, clippy::match_single_binding, clippy::single_match)]
 fn variable_record_save(type_id: u64, node: &Rc<dyn Any>, out: &mut Vec<u8>, ids: &mut IdTable, g: &TableNodeGraph, mut retain: Option<&mut TableRetain>, mut report: Option<&mut TableReport>, path: TableRetainPath) {
     match type_id {
         _ => {}
@@ -802,7 +782,7 @@ fn variable_record_save(type_id: u64, node: &Rc<dyn Any>, out: &mut Vec<u8>, ids
 /// storage cannot hold: that slot reads null and one malformed counts. On a
 /// retaining load an unknown field inside a node body counts retain_lost: the
 /// store carries no path into a node (§6.6).
-#[allow(dead_code, unused_variables, unused_mut)]
+#[allow(dead_code, unused_variables, unused_mut, clippy::match_single_binding)]
 fn variable_node_build(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k: usize, report: &mut TableReport) -> Option<Rc<dyn Any>> {
     match &nodes.slots[k] {
         TableNodeSlot::Built(_, n) => return Some(n.clone()),
@@ -825,51 +805,6 @@ fn variable_node_build(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k:
 
 
 // ---- the JSON text form (docs/SPEC-TABLES.md §16, §16.2, §16.7) ----
-#[allow(dead_code)]
-pub fn mixed_weapon_json_name(v: MixedWeapon) -> &'static str {
-    match v {
-        MixedWeapon::None => "None",
-        MixedWeapon::Fists => "Fists",
-        MixedWeapon::Pistol => "Pistol",
-        MixedWeapon::Shotgun => "Shotgun",
-        MixedWeapon::Rifle => "Rifle",
-        MixedWeapon::Sniper => "Sniper",
-        MixedWeapon::Smg => "Smg",
-        MixedWeapon::Rocket => "Rocket",
-        MixedWeapon::Grenade => "Grenade",
-        MixedWeapon::Plasma => "Plasma",
-        MixedWeapon::Railgun => "Railgun",
-        MixedWeapon::Flamer => "Flamer",
-        MixedWeapon::Mine => "Mine",
-        MixedWeapon::Turret => "Turret",
-        MixedWeapon::Drone => "Drone",
-        MixedWeapon::Repair => "Repair",
-    }
-}
-
-#[allow(dead_code)]
-pub fn mixed_weapon_from_json_name(s: &str) -> Option<MixedWeapon> {
-    match s {
-        "None" => Some(MixedWeapon::None),
-        "Fists" => Some(MixedWeapon::Fists),
-        "Pistol" => Some(MixedWeapon::Pistol),
-        "Shotgun" => Some(MixedWeapon::Shotgun),
-        "Rifle" => Some(MixedWeapon::Rifle),
-        "Sniper" => Some(MixedWeapon::Sniper),
-        "Smg" => Some(MixedWeapon::Smg),
-        "Rocket" => Some(MixedWeapon::Rocket),
-        "Grenade" => Some(MixedWeapon::Grenade),
-        "Plasma" => Some(MixedWeapon::Plasma),
-        "Railgun" => Some(MixedWeapon::Railgun),
-        "Flamer" => Some(MixedWeapon::Flamer),
-        "Mine" => Some(MixedWeapon::Mine),
-        "Turret" => Some(MixedWeapon::Turret),
-        "Drone" => Some(MixedWeapon::Drone),
-        "Repair" => Some(MixedWeapon::Repair),
-        _ => None,
-    }
-}
-
 #[allow(unused_variables, dead_code)]
 pub fn mixed_chat_event_json_count(v: &MixedChatEvent, w: &mut Jw) {
 }
@@ -1007,14 +942,14 @@ pub fn mixed_entity_json_write(v: &MixedEntity, w: &mut Jw, depth: usize, label:
         if bits == 0 { w.out.push_str("[]"); } else {
             w.out.push('[');
             let mut first = true;
-            for bit in 0..64usize {
+            for (bit, name) in NAMES.iter().enumerate() {
                 if bits & (1u64 << bit) == 0 { continue; }
-                if bit >= NAMES.len() { w.refused = true; break; }
                 if !first { w.out.push(','); }
                 first = false;
                 json_newline(&mut w.out, depth + 1 + 1);
-                json_escape(NAMES[bit], &mut w.out);
+                json_escape(name, &mut w.out);
             }
+            if bits >> 8 != 0 { w.refused = true; }
             json_newline(&mut w.out, depth + 1);
             w.out.push(']');
         }

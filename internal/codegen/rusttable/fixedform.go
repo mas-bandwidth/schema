@@ -686,19 +686,39 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 		return
 	}
 	width := ir.TableFixedElementBytes(f)
-	g.pf("%s{\n%s    let at = %s;\n", ind, ind, at)
+	// dst is either a place assigned inside the block, or a `let` the block
+	// initializes as its value (one assignment, no placeholder default)
+	binding := strings.HasPrefix(dst, "let ")
+	set := func(in, v string) string {
+		if binding {
+			return in + v + "\n"
+		}
+		return fmt.Sprintf("%s%s = %s;\n", in, dst, v)
+	}
+	if binding {
+		g.pf("%s%s = {\n%s    let at = %s;\n", ind, dst, ind, at)
+	} else {
+		g.pf("%s{\n%s    let at = %s;\n", ind, ind, at)
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
-		g.pf("%s    %s = b[at] != 0;\n", ind, dst)
+		g.pf("%s", set(ind+"    ", "b[at] != 0"))
 	case ir.TFloat32:
-		g.pf("%s    %s = f32::from_le_bytes(b[at..at + 4].try_into().expect(\"four bytes\"));\n", ind, dst)
+		g.pf("%s", set(ind+"    ", "f32::from_le_bytes(b[at..at + 4].try_into().expect(\"four bytes\"))"))
 	case ir.TFloat64:
-		g.pf("%s    %s = f64::from_le_bytes(b[at..at + 8].try_into().expect(\"eight bytes\"));\n", ind, dst)
+		g.pf("%s", set(ind+"    ", "f64::from_le_bytes(b[at..at + 8].try_into().expect(\"eight bytes\"))"))
 	default:
 		raw := fixedRawUint(width)
-		g.pf("%s    let raw = %s::from_le_bytes(b[at..at + %d].try_into().expect(\"the declared width\"));\n",
-			ind, raw, width)
+		read := fmt.Sprintf("%s::from_le_bytes(b[at..at + %d].try_into().expect(\"the declared width\"))", raw, width)
 		slot := g.fixedSlotType(f)
+		_, wide := fixedWide128(f)
+		if _, ranged := fixedEnumExtent(f, width); binding && !wide && !ranged && slot == raw {
+			// the raw image IS the value: the block's value is the read itself
+			g.pf("%s", set(ind+"    ", read))
+			g.pf("%s};\n", ind)
+			return
+		}
+		g.pf("%s    let raw = %s;\n", ind, read)
 		held := "raw"
 		if wrap, wide := fixedWide128(f); wide {
 			// the aligned wrapper takes the integer, and a signed one takes it
@@ -719,15 +739,19 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 			// where the range is closed — the same place a count's bound is.
 			g.pf("%s    if raw > %d {\n", ind, extent)
 			g.pf("%s        report.clamped += 1;\n", ind)
-			g.pf("%s        %s = 0;\n", ind, dst)
+			g.pf("%s", set(ind+"        ", "0"))
 			g.pf("%s    } else {\n", ind)
-			g.pf("%s        %s = %s;\n", ind, dst, held)
+			g.pf("%s", set(ind+"        ", held))
 			g.pf("%s    }\n", ind)
 		} else {
-			g.pf("%s    %s = %s;\n", ind, dst, held)
+			g.pf("%s", set(ind+"    ", held))
 		}
 	}
-	g.pf("%s}\n", ind)
+	if binding {
+		g.pf("%s};\n", ind)
+	} else {
+		g.pf("%s}\n", ind)
+	}
 }
 
 // fixedEnumExtent answers an ENUM leaf's top wire value and whether a range
@@ -972,8 +996,12 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
 		g.pf("%sarm.value.copy_from_slice(&b[%d..%d]);\n", ind, base+4, base+4+f.Type.Size)
 	default:
-		g.pf("%slet mut arm = %s::default();\n", ind, cookElemType(f))
-		g.emitFixedScatterElement(f, fmt.Sprintf("%d", base), "arm", indent)
+		if _, _, nested := fixedNestedBody(f); nested {
+			g.pf("%slet mut arm = %s::default();\n", ind, cookElemType(f))
+			g.emitFixedScatterElement(f, fmt.Sprintf("%d", base), "arm", indent)
+		} else {
+			g.emitFixedScatterElement(f, fmt.Sprintf("%d", base), "let arm", indent)
+		}
 	}
 }
 
@@ -1504,6 +1532,7 @@ func (g *gen) emitFixedClampBody(st *ir.Struct) {
 	}
 	g.pf("/// %s's read-side bounds: every RANGED SCALAR held to its declared min\n", st.Name)
 	g.pf("/// and max, over the storage a read can have written.\n")
+	g.pf("#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)\n")
 	g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32, damaged: &mut i32) {\n", fn(st.Name, "fixed_clamp_body"), st.Name)
 	// a type with only one kind of bound in it uses only one of the two
 	g.pf("    let _ = (&clamped, &damaged);\n")
@@ -1521,6 +1550,7 @@ func (g *gen) emitFixedClampUnion(un *ir.Union) {
 	}
 	g.pf("/// %s's read-side bounds: the arm THE TAG NAMES, and no other — the\n", un.Name)
 	g.pf("/// overlay behind a narrower arm is bytes nobody wrote.\n")
+	g.pf("#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)\n")
 	g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32, damaged: &mut i32) {\n", fn(un.Name, "fixed_clamp_body"), un.Name)
 	g.pf("    let _ = (&clamped, &damaged);\n")
 	var bounded []int
@@ -1744,7 +1774,8 @@ func (g *gen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 // vectorizing at all. `clamp`/`min`/`max` fold to a select, and the count is a
 // BITWISE OR of the two ends — non-short-circuiting on purpose, so it stays one
 // mask rather than a second branch. The ends are mutually exclusive, so the or
-// is exact.
+// is exact. A range `contains` is `&&` and short-circuits, so the functions
+// that hold a two-ended clamp allow clippy's manual_range_contains by name.
 func (g *gen) emitFixedClampSelect(lhs, lo, hi string, low, high bool, ind, note string) {
 	switch {
 	case low && high:

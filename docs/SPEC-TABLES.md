@@ -411,7 +411,7 @@ semantics**, and where the two part the reason is stated at the site:
   `flags` field carries `<Member>Has(view, at, bit)` beside its mask, which
   reads one 32-bit word and allocates nothing.
 
-**The RUST backend's own three divergences**, each forced by the language and
+**The RUST backend's own four divergences**, each forced by the language and
 each named where it is spelled rather than discovered in the source. The
 READ REPORT is the codecs' own parameter rather than a member of the reader: a
 Rust reader holding `&mut TableReport` could not hand a sub-reader out of its
@@ -457,6 +457,26 @@ build?", not "which form?", and both forms compare against it) and the
 blittable `<Name>Row` records, because a cooked record IS the blittable row
 (§7.2, §19.3) and a block-only build wants the same structs a cook-only build
 does.
+
+And the FOURTH: **the table layer's own storage types, and where each name
+lives.** C++ and Go read and write a table field of a schema `type`, `enum` or
+`union` through the packet layer's one type for it. Rust cannot: the packet
+storage spells `string(N)` as `[u8; N]` with a used length, where the variable
+form holds a `String`, a `Vec` or an `Option<Rc<..>>`, so the table layer
+declares its own type under the same schema name. Two rules keep every name
+reachable. A TABLE ENUM, with its `<name>_json_name` and
+`<name>_from_json_name`, is emitted ONCE per crate, in `table_enums.rs`, and
+every table module that names it imports it; there is never one copy per file.
+And where a packet type and a table type share a schema name, THE PACKET TYPE
+KEEPS THE CRATE-ROOT NAME and the table type lives at
+`crate::tables::<Name>`: `lib.rs` re-exports the packet type explicitly, which
+outranks the table modules' globs, and `pub mod tables` re-exports the whole
+table surface under one path. A name only the table layer declares (a table, a
+codec function, a runtime type) stays reachable at the crate root as well. A
+schema file that lowers to the module name `tables` keeps its items at the
+root under a renamed file module. The compiler holds this with a test that
+names every public schema name at the root and every table type at
+`crate::tables` from outside the crate and builds it.
 
 **GO emits a CORE and four OPTIONAL FORMS.** The core is `<Base>Table.go` per
 unit file (the storage structs, the codecs, the reflection descriptors) and the

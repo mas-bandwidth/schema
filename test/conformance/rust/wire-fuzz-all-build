@@ -53,7 +53,7 @@ for unit in backenddemo:tables/backend \
 	mkdir -p "$dir/src/$name"
 	: >"$dir/src/$name/mod.rs"
 	for f in "$dir/gen/$name/build_version.rs" "$dir/gen/$name/variable_runtime.rs" \
-		"$dir/gen/$name/fixed_runtime.rs" "$dir/gen/$name/message_runtime.rs" \
+		"$dir/gen/$name/table_enums.rs" "$dir/gen/$name/fixed_runtime.rs" "$dir/gen/$name/message_runtime.rs" \
 		"$dir/gen/$name"/*_records.rs "$dir/gen/$name"/*_fixed.rs \
 		"$dir/gen/$name"/*_table.rs "$dir/gen/$name"/*_variable.rs \
 		"$dir/gen/$name"/*_message.rs; do

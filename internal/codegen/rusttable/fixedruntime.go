@@ -918,8 +918,8 @@ impl<'a> TableFixedBlock<'a> {
                 if first_size == 0 {
                     return Err(TableFixedReason::LayoutSizeMismatch);
                 }
-                let bare = (e.size % first_size) == 0;
-                let counted = e.size >= 4 && ((e.size - 4) % first_size) == 0;
+                let bare = e.size.is_multiple_of(first_size);
+                let counted = e.size >= 4 && (e.size - 4).is_multiple_of(first_size);
                 if !bare && !counted {
                     return Err(TableFixedReason::LayoutSizeMismatch);
                 }
@@ -928,7 +928,7 @@ impl<'a> TableFixedBlock<'a> {
                 if e.children != 2 || first_kind != 30 {
                     return Err(TableFixedReason::LayoutKindInvalid);
                 }
-                if second_size == 0 || (e.size % second_size) != 0 {
+                if second_size == 0 || !e.size.is_multiple_of(second_size) {
                     return Err(TableFixedReason::LayoutSizeMismatch);
                 }
                 if (e.size / second_size) < first_children {
@@ -963,7 +963,7 @@ impl<'a> TableFixedBlock<'a> {
                 if e.children != 0 {
                     return Err(TableFixedReason::LayoutKindInvalid);
                 }
-                if e.size < 4 || ((e.size - 4) % 2) != 0 {
+                if e.size < 4 || !(e.size - 4).is_multiple_of(2) {
                     return Err(TableFixedReason::LayoutSizeMismatch);
                 }
             }

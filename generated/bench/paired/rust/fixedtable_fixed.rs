@@ -55,6 +55,7 @@ pub fn fixed_table_fixed_scatter(b: &[u8], value: &mut FixedTableRow, report: &m
 
 /// FixedTable's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
+#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
 pub fn fixed_table_fixed_clamp_body(value: &mut FixedTableRow, clamped: &mut i32, damaged: &mut i32) {
     let _ = (&clamped, &damaged);
     bench_mixed_fixed_clamp_body(&mut value.value, clamped, damaged);
