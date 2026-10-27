@@ -28,11 +28,11 @@ func RangedSignedLoadMessageBodyRetain(r *TableRetainMessageReader, value *Range
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x48121511bf702eb5:
 			{
 				widened := false
@@ -1003,11 +1003,11 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x48121511bf702eb5:
 			{
 				widened := false
@@ -1857,11 +1857,11 @@ func RangedUnsignedLoadMessageBodyRetain(r *TableRetainMessageReader, value *Ran
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x0f8897557f37c021:
 			{
 				widened := false
@@ -2832,11 +2832,11 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x0f8897557f37c021:
 			{
 				widened := false
@@ -3686,11 +3686,11 @@ func RangedWidthsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Range
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x08a60c07b54d8dc7:
 			{
 				widened := false
@@ -4033,11 +4033,11 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x08a60c07b54d8dc7:
 			{
 				widened := false

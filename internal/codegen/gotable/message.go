@@ -132,8 +132,8 @@ func tableMessageBits(n uint64)int64 {var count int64;for n!=0 {count++;n>>=1};r
 
 func (v *TableVocabulary) Init(storage []TableMessageEntry){*v=TableVocabulary{Entries:storage,MaxBytes:64*1024}}
 func (v *TableVocabulary) Entry(ref uint64)(TableMessageEntry,bool){if ref==0||ref>uint64(v.Count){return TableMessageEntry{},false};return v.Entries[ref-1],true}
-func (v *TableVocabulary) Name(ref uint64)(uint64,bool){e,ok:=v.Entry(ref);return e.Id,ok&&e.Shape.Kind==0&&e.Id<0xfffffffffffffffd}
-func tableMessageNameSlot(id uint64)uint64 {for i:=range tableMessageEntries {e:=&tableMessageEntries[i];if e.Id==id&&e.Shape.Kind==0{return uint64(i+1)}};return 0}
+func (v *TableVocabulary) Name(ref uint64)(uint64,bool){e,ok:=v.Entry(ref);return e.ID,ok&&e.Shape.Kind==0&&e.ID<0xfffffffffffffffd}
+func tableMessageNameSlot(id uint64)uint64 {for i:=range tableMessageEntries {e:=&tableMessageEntries[i];if e.ID==id&&e.Shape.Kind==0{return uint64(i+1)}};return 0}
 func AnnounceMeasure()int64{return int64(len(tableAnnouncement))}
 func Announce(buffer []byte)int64{if len(buffer)<len(tableAnnouncement){return -1};copy(buffer,tableAnnouncement[:]);return int64(len(tableAnnouncement))}
 func tableMessageRefuse(r *TableReport,reason string)bool {r.Verdict=TableOpenRefused;r.FixedRaised=false;r.Reason=reason;return false}
@@ -149,7 +149,7 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  };if versionCount!=1||wordsCount!=1{report.Malformed=true;return false}
  if v.Strict&&v.BuildVersion!=BuildVersion {report.BuildVersionRemote=v.BuildVersion;report.BuildVersionOwn=BuildVersion;return tableMessageRefuse(report,"build_version_mismatch")}
  src:=TableReader{Buffer:words,Report:report};count:=int64(0);nodeSeen:=false
- for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){return tableMessageRefuse(report,"vocabulary_too_large")};began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok||e.Id==0xfffffffffffffffd||e.Id==0xfffffffffffffffe||e.Id==0xffffffffffffffff&&nodeSeen{report.Malformed=true;return false};if e.Id==0xffffffffffffffff{nodeSeen=true};for i := range count {o:=v.Entries[i].Shape;if o.Max-o.Min==src.Offset-began&&o.Min>=0&&o.Max<=int64(len(words)) {same:=true;for j:=o.Min;j<o.Max;j++ {if words[j]!=words[began+j-o.Min]{same=false;break}};if same{report.Malformed=true;return false}}};e.Shape.Min=began;e.Shape.Max=src.Offset;v.Entries[count]=e;count++}
+ for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){return tableMessageRefuse(report,"vocabulary_too_large")};began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok||e.ID==0xfffffffffffffffd||e.ID==0xfffffffffffffffe||e.ID==0xffffffffffffffff&&nodeSeen{report.Malformed=true;return false};if e.ID==0xffffffffffffffff{nodeSeen=true};for i := range count {o:=v.Entries[i].Shape;if o.Max-o.Min==src.Offset-began&&o.Min>=0&&o.Max<=int64(len(words)) {same:=true;for j:=o.Min;j<o.Max;j++ {if words[j]!=words[began+j-o.Min]{same=false;break}};if same{report.Malformed=true;return false}}};e.Shape.Min=began;e.Shape.Max=src.Offset;v.Entries[count]=e;count++}
  src.Offset=0;for i := range count {e,ok:=tableMessageEntryRead(&src);if !ok{report.Malformed=true;return false};v.Entries[i]=e}
  v.Count=count;v.RefBits=tableMessageBits(uint64(count));if v.RefBits==0{v.RefBits=1};v.Announced=true;return true
 }
@@ -181,7 +181,7 @@ func tableMessageShapeRead(r *TableReader,k uint8)(s TableMessageShape,ok bool) 
  case k==14||k==16:if k==14 {n,ok:=r.Leb();if !ok||n>math.MaxUint32{return s,false};s.Min=int64(n)};n,ok:=r.Leb();if !ok||n>math.MaxUint32||int64(n)<s.Min{return s,false};s.Max=int64(n)
  };return s,true
 }
-func tableMessageEntryRead(r *TableReader)(e TableMessageEntry,ok bool){if !r.Has(9){return e,false};e.Id=r.Get64();kind:=r.Get8();if !tableMessageKnownKind(kind){return e,false};e.Shape,ok=tableMessageShapeRead(r,kind);if !ok{return e,false};if kind==14||kind==16 {if !r.Has(1){return e,false};elem:=r.Get8();if !tableMessageKnownKind(elem)||elem==12||elem==33{return e,false};e.Element,ok=tableMessageShapeRead(r,elem);if !ok{return e,false};if elem==14||elem==16 {if !r.Has(1){return e,false};inner:=r.Get8();if !tableMessageKnownKind(inner)||inner==12||inner==33{return e,false}}};return e,true}
+func tableMessageEntryRead(r *TableReader)(e TableMessageEntry,ok bool){if !r.Has(9){return e,false};e.ID=r.Get64();kind:=r.Get8();if !tableMessageKnownKind(kind){return e,false};e.Shape,ok=tableMessageShapeRead(r,kind);if !ok{return e,false};if kind==14||kind==16 {if !r.Has(1){return e,false};elem:=r.Get8();if !tableMessageKnownKind(elem)||elem==12||elem==33{return e,false};e.Element,ok=tableMessageShapeRead(r,elem);if !ok{return e,false};if elem==14||elem==16 {if !r.Has(1){return e,false};inner:=r.Get8();if !tableMessageKnownKind(inner)||inner==12||inner==33{return e,false}}};return e,true}
 func tableMessageCount(r *TableBitReader,s TableMessageShape)(uint64,bool){raw,ok:=r.Get(tableMessageBits(uint64(s.Max-s.Min)));return raw+uint64(s.Min),ok}
 func tableMessageSkip(r *TableBitReader,v *TableVocabulary,indexBits int64,e TableMessageEntry,depth int)bool {
  if depth>128{return false};s:=e.Shape;switch s.Kind {
@@ -189,7 +189,7 @@ func tableMessageSkip(r *TableBitReader,v *TableVocabulary,indexBits int64,e Tab
  case 30:ref,ok:=r.Get(v.RefBits);if !ok||ref==0{return ok};_,ok=v.Name(ref);return ok
  case 13:return tableMessageSkipBody(r,v,indexBits,depth+1)
  case 17:return indexBits>0&&r.Skip(indexBits)
- case 15:ref,ok:=r.Get(v.RefBits);if !ok||ref==0{return ok};arm,ok:=v.Entry(ref);return ok&&arm.Id<0xfffffffffffffffd&&arm.Shape.Kind!=0&&tableMessageSkip(r,v,indexBits,arm,depth+1)
+ case 15:ref,ok:=r.Get(v.RefBits);if !ok||ref==0{return ok};arm,ok:=v.Entry(ref);return ok&&arm.ID<0xfffffffffffffffd&&arm.Shape.Kind!=0&&tableMessageSkip(r,v,indexBits,arm,depth+1)
  case 12,33:n,ok:=tableMessageCount(r,s);if !ok{return false};width:=int64(16);if s.Kind==12 {width=8;if !r.Align(){return false}};return r.Skip(int64(n)*width)
  case 31:if !r.Align(){return false};n,ok:=r.Get(32);return ok&&r.Skip(int64(n)*8)
  case 14,16:n,ok:=tableMessageCount(r,s);if !ok{return false};if s.Kind==14&&e.Element.Kind==6&&!r.Align(){return false};if e.Element.Bits>=0||e.Element.Kind==0||e.Element.Kind==32 {width:=e.Element.Bits;width=max(width,0);if s.Kind==16 {width+=v.RefBits};return r.Skip(int64(n)*width)};for range n {if s.Kind==16&&!r.Skip(v.RefBits){return false};before:=r.Offset;if !tableMessageSkip(r,v,indexBits,TableMessageEntry{Shape:e.Element},depth+1)||r.Offset==before{return false}};return true

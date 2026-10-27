@@ -28,11 +28,11 @@ func PatrolLoadMessageBodyRetain(r *TableRetainMessageReader, value *Patrol) boo
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x6580790b036f0c6f:
 			{
 				widened := false
@@ -262,11 +262,11 @@ func PatrolLoadMessageBodyRetain(r *TableRetainMessageReader, value *Patrol) boo
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(8)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(8)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -364,11 +364,11 @@ func PatrolLoadMessageBody(r *TableMessageReader, value *Patrol) bool {
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x6580790b036f0c6f:
 			{
 				widened := false
@@ -598,11 +598,11 @@ func PatrolLoadMessageBody(r *TableMessageReader, value *Patrol) bool {
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(8)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(8)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}

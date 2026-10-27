@@ -28,11 +28,11 @@ func ArchiveConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Arch
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xa354fd1ff0c467c5:
 			{
 				widened := false
@@ -195,11 +195,11 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xa354fd1ff0c467c5:
 			{
 				widened := false

@@ -72,8 +72,8 @@ func TestReq(t *testing.T){
 	// and c: only b is missing, and only b is named. The bytes are what the
 	// same table without the markers saves for a=7, c=4 (b elided at zero).
 	old := []byte{1, 1, 4, 7, 0, 0, 0, 2, 4, 4, 0, 0, 0, 0}
-	old = append(old, le8(TTableFields[0].Id)...)
-	old = append(old, le8(TTableFields[2].Id)...)
+	old = append(old, le8(TTableFields[0].ID)...)
+	old = append(old, le8(TTableFields[2].ID)...)
 	old = append(old, 2, 0, 0, 0, 0, 0, 0, 0)
 	r = TableReport{}
 	_, _ = regFor(old, &r)

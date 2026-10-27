@@ -81,7 +81,7 @@ func TestVariablePatrol(t *testing.T) {
 	defer b.Shutdown()
 	var r TableReport
 	j := []byte(`+"`"+`{"active":true,"speed":2.0,"has_target":false,"wander":0.25}`+"`"+`)
-	if !PatrolFromJson(&b, j, &r) || r != (TableReport{}) {
+	if !PatrolFromJSON(&b, j, &r) || r != (TableReport{}) {
 		t.Fatalf("fromjson: %%+v", r)
 	}
 	v := b.GetRoot()

@@ -97,10 +97,10 @@ func buildInitialCard(t *testing.T) (wire, json []byte) {
 	if back == nil || report.Malformed || report.Unknown != 0 {
 		t.Fatalf("initial self-load failed: %+v", report)
 	}
-	js := cardsinitial.CardToJsonMeasure(back)
+	js := cardsinitial.CardToJSONMeasure(back)
 	json = make([]byte, js)
-	if cardsinitial.CardToJson(back, json) != js {
-		t.Fatal("CardToJson did not fill")
+	if cardsinitial.CardToJSON(back, json) != js {
+		t.Fatal("CardToJSON did not fill")
 	}
 	return wire, json
 }
@@ -343,10 +343,10 @@ func checkHistorical(t *testing.T, original, upgraded []byte) {
 		if root == nil || report.Malformed {
 			t.Fatalf("historical load failed: %+v", report)
 		}
-		size := cardsinitial.CardToJsonMeasure(root)
+		size := cardsinitial.CardToJSONMeasure(root)
 		buf := make([]byte, size)
-		if cardsinitial.CardToJson(root, buf) != size {
-			t.Fatal("historical ToJson did not fill")
+		if cardsinitial.CardToJSON(root, buf) != size {
+			t.Fatal("historical ToJSON did not fill")
 		}
 		return buf
 	}

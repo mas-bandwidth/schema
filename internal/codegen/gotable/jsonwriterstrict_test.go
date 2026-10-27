@@ -180,12 +180,12 @@ func writeStorage(t *testing.T, name string, v *Root) {
 	if dir == "" {
 		t.Fatal("SCHEMA_TEXT_DIFF_DIR is unset")
 	}
-	n := RootToJsonMeasure(v)
+	n := RootToJSONMeasure(v)
 	if n < 0 {
 		t.Fatalf("%s: measure refused", name)
 	}
 	out := make([]byte, n)
-	if RootToJson(v, out) != n {
+	if RootToJSON(v, out) != n {
 		t.Fatalf("%s: write short", name)
 	}
 	if err := os.WriteFile(dir+"/"+name+".json", out, 0o600); err != nil {
@@ -249,7 +249,7 @@ func runStorageStrict(t *testing.T, edit func(map[string][]byte)) string {
 
 // TestGoJsonWriterIsStrict holds the writers strict over every text the Go
 // side writes: the conformance corpus, the text differential's 200 random
-// instances (both the generated ToJson and the engine's unpack text), and
+// instances (both the generated ToJSON and the engine's unpack text), and
 // storage built in code whose ill-formed bytes must land as U+FFFD.
 func TestGoJsonWriterIsStrict(t *testing.T) {
 	t.Parallel()

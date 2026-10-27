@@ -13,12 +13,12 @@ import (
 // package: the emitted walk's JSON LAYER over one whole text
 // (docs/SPEC-TABLES.md §16.12) — the leading byte-order mark, one value, then
 // whitespace, then the end of the input — reached in-package, as the per-table
-// FromJson reaches it.
+// FromJSON reaches it.
 const jsonTestSuiteProbe = `package probe
 
 func jsonTestSuiteAccepts(text []byte) bool {
 	var report TableReport
-	in := tableJsonIn{text: text, report: &report}
+	in := tableJSONIn{text: text, report: &report}
 	in.byteOrderMark()
 	ok := in.skipValue(0)
 	in.space()
@@ -31,9 +31,9 @@ func jsonTestSuiteAccepts(text []byte) bool {
 // bound: each file's walk allocates nothing (§16.1). It reads no clock (the
 // unit tier takes no real time, and `make shape-gate` refuses a timer outside
 // the sanctioned bench); the walk's cost is bounded structurally instead — one
-// forward cursor and tableJsonMaxDepth — and the corpus's 100000-deep files
+// forward cursor and tableJSONMaxDepth — and the corpus's 100000-deep files
 // are where a super-linear walk would hang the run. The entry itself is pinned
-// beside it: RootFromJson skips a leading byte-order mark and lands the same
+// beside it: RootFromJSON skips a leading byte-order mark and lands the same
 // value.
 const jsonTestSuiteRun = `package probe
 
@@ -67,14 +67,14 @@ func TestJSONTestSuiteProbe(t *testing.T) {
 	}
 	var plain, marked Root
 	var plainReport, markedReport TableReport
-	if !RootFromJson(&plain, []byte("{\"n\":7}"), &plainReport) || !RootFromJson(&marked, []byte("\xEF\xBB\xBF{\"n\":7}"), &markedReport) ||
+	if !RootFromJSON(&plain, []byte("{\"n\":7}"), &plainReport) || !RootFromJSON(&marked, []byte("\xEF\xBB\xBF{\"n\":7}"), &markedReport) ||
 		marked != plain || markedReport != plainReport || marked.N != 7 {
 		t.Errorf("a leading byte-order mark: %%+v %%+v, want %%+v %%+v", marked, markedReport, plain, plainReport)
 	}
 	for _, text := range []string{" \xEF\xBB\xBF{}", "{}\xEF\xBB\xBF", "\xEF\xBB{}", "\xEF\xBB\xBF\xEF\xBB\xBF{}", "\xFF\xFE{}"} {
 		var v Root
 		var r TableReport
-		if RootFromJson(&v, []byte(text), &r) || !r.Malformed {
+		if RootFromJSON(&v, []byte(text), &r) || !r.Malformed {
 			t.Errorf("%%q: read clean, want Malformed", text)
 		}
 	}
@@ -87,7 +87,7 @@ func TestJSONTestSuiteProbe(t *testing.T) {
 		var b DocBuilder
 		b.Init()
 		var r TableReport
-		ok := DocFromJson(&b, []byte(c.text), &r)
+		ok := DocFromJSON(&b, []byte(c.text), &r)
 		if ok != c.ok || (ok && (b.GetRoot().N != 7 || r != (TableReport{}))) || (!ok && !r.Malformed) {
 			t.Errorf("variable %%q: ok %%v %%+v, want ok %%v", c.text, ok, r, c.ok)
 		}

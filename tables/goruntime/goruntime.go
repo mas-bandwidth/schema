@@ -78,7 +78,7 @@ type TableReport struct {
 // inline "" of its own.
 const TableDocNone = ""
 
-func TableJsonGetRaw(storage unsafe.Pointer, width uint32) uint64 {
+func TableJSONGetRaw(storage unsafe.Pointer, width uint32) uint64 {
 	switch width {
 	case 1:
 		return uint64(*(*uint8)(storage))
@@ -92,7 +92,7 @@ func TableJsonGetRaw(storage unsafe.Pointer, width uint32) uint64 {
 	return 0
 }
 
-func TableJsonSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
+func TableJSONSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
 	switch width {
 	case 1:
 		*(*uint8)(storage) = uint8(value)
@@ -105,8 +105,8 @@ func TableJsonSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
 	}
 }
 
-func TableJsonGetSigned(storage unsafe.Pointer, width uint32) int64 {
-	raw := TableJsonGetRaw(storage, width)
+func TableJSONGetSigned(storage unsafe.Pointer, width uint32) int64 {
+	raw := TableJSONGetRaw(storage, width)
 	if width < 8 {
 		sign := uint64(1) << (width*8 - 1)
 		if raw&sign != 0 {
@@ -518,12 +518,12 @@ func TableKindWidens(from, to uint8) bool {
 		(from >= 6 && from <= 9 && (to > from && to <= 9 || to == 19)) || from == 10 && to == 11
 }
 
-// tableUtf8Word is the form-1 writer's little-endian word load for its in-line
+// tableUTF8Word is the form-1 writer's little-endian word load for its in-line
 // text test (emitTextWords): a function of the runtime file, which imports
 // encoding/binary, so the generated writers in any file of the unit can call it.
-func TableUtf8Word(p []byte) uint64 { return binary.LittleEndian.Uint64(p) }
+func TableUTF8Word(p []byte) uint64 { return binary.LittleEndian.Uint64(p) }
 
-func TableUtf8Valid(data []byte) bool {
+func TableUTF8Valid(data []byte) bool {
 	// One pass, eight bytes a step: z gathers the zero-byte test of every word
 	// (exact: a word has a zero byte if and only if its lane is set), hi gathers
 	// the high bits. No zero and no high bit is ASCII with no NUL; a high bit
@@ -546,7 +546,7 @@ func TableUtf8Valid(data []byte) bool {
 	return hi&0x8080808080808080 == 0 || utf8.Valid(data)
 }
 
-func TableUtf8Clamp(data []byte, n int64) int64 {
+func TableUTF8Clamp(data []byte, n int64) int64 {
 	for n > 0 && n < int64(len(data)) && data[n]&0xc0 == 0x80 {
 		n--
 	}
@@ -576,7 +576,7 @@ type TableMessageShape struct {
 }
 
 type TableMessageEntry struct {
-	Id             uint64
+	ID             uint64
 	Shape, Element TableMessageShape
 }
 
@@ -609,7 +609,7 @@ const (
 )
 
 const (
-	TableFixedTextUtf8  uint8 = 1
+	TableFixedTextUTF8  uint8 = 1
 	TableFixedTextWide  uint8 = 2
 	TableFixedTextBytes uint8 = 3
 )
@@ -631,7 +631,7 @@ const TableFixedRecordMaxBytes uint32 = 65536
 const TableFixedMaxDepth int32 = 64
 
 // Arg is the guard's arm ordinal: tableFixedRun compares src[Guard] against
-// it. Meta is a text entry's flavour (tableFixedTextUtf8/Wide/Bytes). They
+// it. Meta is a text entry's flavour (tableFixedTextUTF8/Wide/Bytes). They
 // shared one lane until reference-fix 12; compiling a string under a union
 // arm overwrote the guard with the flavour and the read skipped the string.
 // tableFixedEntryBytes is the FILE layout entry (id+kind+size+children),
@@ -1210,7 +1210,7 @@ func TableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, rep
 // an invalid lead — refuses here too and not only structural truncation.
 func TableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 	switch meta {
-	case TableFixedTextUtf8:
+	case TableFixedTextUTF8:
 		if !utf8.Valid(p[:used]) {
 			return true
 		}
@@ -1240,7 +1240,7 @@ func TableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 	return false
 }
 
-// tableFixedUtf8Ok is the WRITER's string rule over the used bytes: well-formed
+// tableFixedUTF8Ok is the WRITER's string rule over the used bytes: well-formed
 // UTF-8 with no zero byte, the answer unicode/utf8.Valid and a NUL scan give
 // (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1, the same rule tableFixedTextIllFormed
 // holds on read). It is one pass, eight bytes a step, with no branch in the
@@ -1249,7 +1249,7 @@ func TableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 // zero refuses; text with no high bit is ASCII and passes; only text with a
 // byte at or past 0x80 goes on to utf8.Valid. The result is identical to the
 // two-pass spelling.
-func TableFixedUtf8Ok(p []byte) bool {
+func TableFixedUTF8Ok(p []byte) bool {
 	var hi, z uint64
 	i := 0
 	for ; i+8 <= len(p); i += 8 {
@@ -1346,7 +1346,7 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 }
 
 type TableFixedLayoutEntry struct {
-	Id             uint64
+	ID             uint64
 	Size, Children uint32
 	Kind           uint8
 }
@@ -1367,7 +1367,7 @@ func TableFixedEntryAt(b TableFixedLayoutView, i int32) TableFixedLayoutEntry {
 	}
 	e := b.Bytes[int64(TableFixedLayoutHeaderBytes)+int64(i)*int64(TableFixedEntryBytes):]
 	return TableFixedLayoutEntry{
-		Id:       TableFixedGet64(e),
+		ID:       TableFixedGet64(e),
 		Kind:     e[8],
 		Size:     TableFixedGet32(e[9:]),
 		Children: TableFixedGet32(e[13:]),
@@ -1956,7 +1956,7 @@ func (v *TableVocabulary) Entry(ref uint64) (TableMessageEntry, bool) {
 
 func (v *TableVocabulary) Name(ref uint64) (uint64, bool) {
 	e, ok := v.Entry(ref)
-	return e.Id, ok && e.Shape.Kind == 0 && e.Id < 0xfffffffffffffffd
+	return e.ID, ok && e.Shape.Kind == 0 && e.ID < 0xfffffffffffffffd
 }
 
 func TableMessageRefuse(r *TableReport, reason string) bool {
@@ -2037,7 +2037,7 @@ func TableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 			return ok
 		}
 		arm, ok := v.Entry(ref)
-		return ok && arm.Id < 0xfffffffffffffffd && arm.Shape.Kind != 0 && TableMessageSkip(r, v, indexBits, arm, depth+1)
+		return ok && arm.ID < 0xfffffffffffffffd && arm.Shape.Kind != 0 && TableMessageSkip(r, v, indexBits, arm, depth+1)
 	case 12, 33:
 		n, ok := TableMessageCount(r, s)
 		if !ok {
@@ -2167,4 +2167,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xae0fbcf6e7f68685
+const Version uint64 = 0xab8a81ea17f43b33

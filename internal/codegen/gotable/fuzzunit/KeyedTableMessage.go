@@ -28,11 +28,11 @@ func TeamConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *TeamCon
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xceec99e2d65db674:
 			{
 				widened := false
@@ -104,11 +104,11 @@ func TeamConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *TeamCon
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(16)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(16)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -210,11 +210,11 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xceec99e2d65db674:
 			{
 				widened := false
@@ -286,11 +286,11 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(16)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(16)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -369,11 +369,11 @@ func GunnerConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Gunne
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xb75aa3662201646a:
 			{
 				widened := false
@@ -540,11 +540,11 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xb75aa3662201646a:
 			{
 				widened := false
@@ -691,11 +691,11 @@ func TurretConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Turre
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x7f6308be8ab37fc0:
 			{
 				widened := false
@@ -893,11 +893,11 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x7f6308be8ab37fc0:
 			{
 				widened := false
@@ -1064,11 +1064,11 @@ func HullConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *HullCon
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x7f69d4b5288ba9cf:
 			{
 				widened := false
@@ -1269,7 +1269,7 @@ func HullConfigSaveMessageBody(w *TableMessageWriter, value *HullConfig) bool {
 				if !(probe.Bits > TableMessageRefBitsHere) {
 					continue
 				}
-				id, named := Weapon(i + 1).TableEnumId()
+				id, named := Weapon(i + 1).TableEnumID()
 				if !named {
 					return false
 				}
@@ -1345,11 +1345,11 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x7f69d4b5288ba9cf:
 			{
 				widened := false
@@ -1546,11 +1546,11 @@ func KeyedConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *KeyedC
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xbaaeb048a5a8fa6d:
 			{
 				widened := false
@@ -1754,7 +1754,7 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 				if !(probe.Bits > TableMessageRefBitsHere) {
 					continue
 				}
-				id, named := Team(i + 1).TableEnumId()
+				id, named := Team(i + 1).TableEnumID()
 				if !named {
 					return false
 				}
@@ -1807,7 +1807,7 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 				if !(probe.Bits > TableMessageRefBitsHere) {
 					continue
 				}
-				id, named := Hull(i + 1).TableEnumId()
+				id, named := Hull(i + 1).TableEnumID()
 				if !named {
 					return false
 				}
@@ -1897,11 +1897,11 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xbaaeb048a5a8fa6d:
 			{
 				widened := false
@@ -2097,11 +2097,11 @@ func ScoreBoardLoadMessageBodyRetain(r *TableRetainMessageReader, value *ScoreBo
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xf10fad739a0e1660:
 			{
 				widened := false
@@ -2213,7 +2213,7 @@ func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool
 				if !(value.PerTeam[i] != 0) {
 					continue
 				}
-				id, named := Team(i + 1).TableEnumId()
+				id, named := Team(i + 1).TableEnumID()
 				if !named {
 					return false
 				}
@@ -2241,11 +2241,11 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xf10fad739a0e1660:
 			{
 				widened := false

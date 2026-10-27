@@ -53,7 +53,7 @@ func retainSurface(lines []line, out string, saves bool) error {
 				return err
 			}
 		}
-		store := tblrt1.TableRetain{Bytes: make([]byte, capacity), Ids: make([]tblrt1.TableRetainId, idCapacity)}
+		store := tblrt1.TableRetain{Bytes: make([]byte, capacity), Ids: make([]tblrt1.TableRetainID, idCapacity)}
 		var report tblrt1.TableReport
 		if f[5] == "short" {
 			if tblrt1.NodeLoadRetain(region, wire, &store, &report) == nil {

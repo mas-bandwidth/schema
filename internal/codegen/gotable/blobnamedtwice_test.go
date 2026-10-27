@@ -67,7 +67,7 @@ func TestSeed24(t *testing.T){
  var report TableReport;v:=RootLoadTolerant(region(size),damaged,&report)
  if v==nil||report.Malformed||report.BlobShared!=1{t.Fatalf("tolerant Load: %v %+v",v==nil,report)};shared(t,"Load report",report.Err())
  a,b:=TableBytesAt(&v.F2),TableBytesAt(&v.U0.Ptr().Value);if a.Length==0||&a.Data[0]!=&b.Data[0]{t.Fatal("the two slots do not name the one decoded node")}
- if n:=RootToJsonMeasure(v);n!= -1{t.Fatalf("ToJsonMeasure %d",n)};if n,err:=RootToJsonMeasureReason(v);n!= -1{t.Fatalf("ToJsonMeasureReason %d",n)}else{shared(t,"ToJsonMeasureReason",err)}
+ if n:=RootToJSONMeasure(v);n!= -1{t.Fatalf("ToJSONMeasure %d",n)};if n,err:=RootToJSONMeasureReason(v);n!= -1{t.Fatalf("ToJSONMeasureReason %d",n)}else{shared(t,"ToJSONMeasureReason",err)}
  if n,err:=RootMeasureReason(v);n!= -1{t.Fatalf("MeasureReason %d",n)}else{shared(t,"MeasureReason",err)};if RootSave(v,make([]byte,4096))!= -1{t.Fatal("Save wrote a blob named twice")}
  c,err:=RootReadStrict(clean);if err!=nil||c==nil{t.Fatalf("clean ReadStrict: %v",err)};n:=RootMeasure(c);buf:=make([]byte,n);if n<=0||RootSave(c,buf)!=n||!bytes.Equal(buf,clean){t.Fatalf("clean round trip %d of %d",n,len(clean))}
 }
@@ -90,14 +90,14 @@ func TestWriters(t *testing.T){
  if RootSave(r,make([]byte,4096),&b.Arena)!= -1{t.Fatal("Save wrote a blob named twice")}
  if s,err:=RootSaveText(r,&b.Arena);s!=""{t.Fatal("SaveText wrote a blob named twice")}else{shared(t,"SaveText",err)}
  if !b.Lock(){t.Fatal("Lock refused: a region holds the one node")};c:=b.AsConst()
- if n:=RootToJsonMeasure(c);n!= -1{t.Fatalf("ToJsonMeasure %d",n)};if n:=RootToJson(c,make([]byte,4096));n!= -1{t.Fatalf("ToJson %d",n)}
- if n,err:=RootToJsonMeasureReason(c);n!= -1{t.Fatalf("ToJsonMeasureReason %d",n)}else{shared(t,"ToJsonMeasureReason",err)}
+ if n:=RootToJSONMeasure(c);n!= -1{t.Fatalf("ToJSONMeasure %d",n)};if n:=RootToJSON(c,make([]byte,4096));n!= -1{t.Fatalf("ToJSON %d",n)}
+ if n,err:=RootToJSONMeasureReason(c);n!= -1{t.Fatalf("ToJSONMeasureReason %d",n)}else{shared(t,"ToJSONMeasureReason",err)}
  var s RootBuilder;if !s.Init(){t.Fatal("init")};defer s.Shutdown();q:=s.GetRoot();d1,r1:=s.Main.AllocBytes(3);copy(d1,"abc");d2,r2:=s.Main.AllocBytes(3);copy(d2,"abc");q.F2=r1;q.U0.Type=U0TypePtr;q.U0.Ptr().Value=r2
  n,err:=RootMeasureReason(q,&s.Arena);if err!=nil||n<=0{t.Fatalf("two blobs MeasureReason %d %v",n,err)};wire:=make([]byte,n);if RootSave(q,wire,&s.Arena)!=n{t.Fatal("two blobs save")}
  text,err:=RootSaveText(q,&s.Arena);if err!=nil||text!=base64.StdEncoding.EncodeToString(wire){t.Fatalf("two blobs SaveText %v",err)}
  v,err:=RootReadStrict(wire);if err!=nil||v==nil{t.Fatalf("two blobs ReadStrict %v",err)};back:=make([]byte,n);if RootSave(v,back)!=n||!bytes.Equal(back,wire){t.Fatal("two blobs wire round trip")}
- j:=RootToJsonMeasure(v);js:=make([]byte,j);if j<=0||RootToJson(v,js)!=j{t.Fatalf("two blobs ToJson %d",j)};if m,err:=RootToJsonMeasureReason(v);m!=j||err!=nil{t.Fatalf("two blobs ToJsonMeasureReason %d %v",m,err)}
- var f RootBuilder;if !f.Init(){t.Fatal("init")};defer f.Shutdown();var fr TableReport;if !RootFromJson(&f,js,&fr)||fr.Err()!=nil||!f.Lock(){t.Fatalf("two blobs FromJson %+v",fr)};js2:=make([]byte,j);if RootToJson(f.AsConst(),js2)!=j||!bytes.Equal(js,js2){t.Fatal("two blobs text round trip")}
+ j:=RootToJSONMeasure(v);js:=make([]byte,j);if j<=0||RootToJSON(v,js)!=j{t.Fatalf("two blobs ToJSON %d",j)};if m,err:=RootToJSONMeasureReason(v);m!=j||err!=nil{t.Fatalf("two blobs ToJSONMeasureReason %d %v",m,err)}
+ var f RootBuilder;if !f.Init(){t.Fatal("init")};defer f.Shutdown();var fr TableReport;if !RootFromJSON(&f,js,&fr)||fr.Err()!=nil||!f.Lock(){t.Fatalf("two blobs FromJSON %+v",fr)};js2:=make([]byte,j);if RootToJSON(f.AsConst(),js2)!=j||!bytes.Equal(js,js2){t.Fatal("two blobs text round trip")}
 }
 `)
 	if err != nil {
@@ -121,8 +121,8 @@ table Root { items [..4096]Item }
 func hostile(t *testing.T,root *Root,a *TableArena)[]byte{
  n,ok:=tableNumber(unsafe.Pointer(root),RootTableType(),a);if !ok{t.Fatal("numbering")};defer n.Release()
  write:=func(buf []byte,measure bool)int64{ids:=TableIds{Numbering:&n};var m TableWriter;w:=TableWriter{Buffer:buf,Measuring:measure,Ids:&ids};w.Put8(1);if !RootTableType().SaveBody(&w,unsafe.Pointer(root)){t.Fatal("root body")};w.Offset--
-  w.Id(0xffffffffffffffff);w.Put8(12);payload:=tableLebBytes(uint64(len(n.entries)-1));for i:=1;i<len(n.entries);i++{e:=&n.entries[i];payload+=tableLebBytes(ids.Ref(e.id));size:=tableNodeMeasure(&m,&ids,e);payload+=tableLebBytes(uint64(size))+size}
-  w.PutLeb(uint64(payload));w.PutLeb(uint64(len(n.entries)-1));for i:=1;i<len(n.entries);i++{e:=&n.entries[i];w.Id(e.id);size:=tableNodeMeasure(&m,&ids,e);w.PutLeb(uint64(size));if measure{w.Advance(size)}else if !tableNodeWrite(&w,e){t.Fatal("node")}}
+  w.ID(0xffffffffffffffff);w.Put8(12);payload:=tableLebBytes(uint64(len(n.entries)-1));for i:=1;i<len(n.entries);i++{e:=&n.entries[i];payload+=tableLebBytes(ids.Ref(e.id));size:=tableNodeMeasure(&m,&ids,e);payload+=tableLebBytes(uint64(size))+size}
+  w.PutLeb(uint64(payload));w.PutLeb(uint64(len(n.entries)-1));for i:=1;i<len(n.entries);i++{e:=&n.entries[i];w.ID(e.id);size:=tableNodeMeasure(&m,&ids,e);w.PutLeb(uint64(size));if measure{w.Advance(size)}else if !tableNodeWrite(&w,e){t.Fatal("node")}}
   w.Put8(0);w.Trailer();if w.Overflow{t.Fatal("overflow")};return w.Offset}
  size:=write(nil,true);buf:=make([]byte,size);if write(buf,false)!=size{t.Fatal("hand-built wire")};return buf
 }
@@ -133,13 +133,13 @@ func TestAmplification(t *testing.T){
  if v,err:=RootReadStrict(wire);v!=nil{t.Fatal("ReadStrict accepted it")}else{shared(t,"ReadStrict",err)}
  size:=RootLoadMeasure(wire);if size<=0||size>=1<<20{t.Fatalf("LoadMeasure %d: the blob must count once",size)};reg:=region(size);js:=make([]byte,1<<20)
  var before,after runtime.MemStats;runtime.GC();runtime.ReadMemStats(&before)
- var report TableReport;v:=RootLoadTolerant(reg,wire,&report);jm:=RootToJsonMeasure(v);jr,jerr:=RootToJsonMeasureReason(v);jw:=RootToJson(v,js);mn,merr:=RootMeasureReason(v)
- runtime.ReadMemStats(&after);if grew:=after.TotalAlloc-before.TotalAlloc;grew>1<<20{t.Fatalf("Load, ToJson and Measure allocated %d bytes: a per-slot copy",grew)};t.Logf("Load, ToJson and Measure allocated %d bytes",after.TotalAlloc-before.TotalAlloc)
+ var report TableReport;v:=RootLoadTolerant(reg,wire,&report);jm:=RootToJSONMeasure(v);jr,jerr:=RootToJSONMeasureReason(v);jw:=RootToJSON(v,js);mn,merr:=RootMeasureReason(v)
+ runtime.ReadMemStats(&after);if grew:=after.TotalAlloc-before.TotalAlloc;grew>1<<20{t.Fatalf("Load, ToJSON and Measure allocated %d bytes: a per-slot copy",grew)};t.Logf("Load, ToJSON and Measure allocated %d bytes",after.TotalAlloc-before.TotalAlloc)
  runtime.GC();runtime.ReadMemStats(&before);var lb RootBuilder;lbok:=lb.Init();var lr TableReport;lbload:=RootLoadBuilderTolerant(&lb,wire,&lr);runtime.ReadMemStats(&after);defer lb.Shutdown()
  if grew:=after.TotalAlloc-before.TotalAlloc;grew>8<<20{t.Fatalf("LoadBuilder allocated %d bytes: a per-slot copy is 256 MiB",grew)};t.Logf("LoadBuilder allocated %d bytes",after.TotalAlloc-before.TotalAlloc)
  if v==nil||report.Malformed||report.BlobShared!=4095{t.Fatalf("tolerant Load: %v %+v",v==nil,report)};shared(t,"Load report",report.Err())
  first:=TableBytesAt(&v.Items[0].B);if first.Length!=65536||!bytes.Equal(first.Data,data){t.Fatal("blob value")};for i:=range 4096{if x:=TableBytesAt(&v.Items[i].B);x.Length!=65536||&x.Data[0]!=&first.Data[0]{t.Fatalf("slot %d does not name the one node",i)}}
- if jm!= -1||jr!= -1||jw!= -1{t.Fatalf("ToJson %d %d %d",jm,jr,jw)};shared(t,"ToJsonMeasureReason",jerr);if mn!= -1{t.Fatalf("MeasureReason %d",mn)};shared(t,"MeasureReason",merr)
+ if jm!= -1||jr!= -1||jw!= -1{t.Fatalf("ToJSON %d %d %d",jm,jr,jw)};shared(t,"ToJSONMeasureReason",jerr);if mn!= -1{t.Fatalf("MeasureReason %d",mn)};shared(t,"MeasureReason",merr)
  if !lbok||!lbload||lr.BlobShared!=4095{t.Fatalf("tolerant LoadBuilder: %v %v %+v",lbok,lbload,lr)};shared(t,"LoadBuilder report",lr.Err())
  lroot:=lb.GetRoot();lf:=TableBytesAt(&lroot.Items[0].B,&lb.Arena);if lf.Length!=65536{t.Fatal("builder blob")};for i:=range 4096{if x:=TableBytesAt(&lroot.Items[i].B,&lb.Arena);&x.Data[0]!=&lf.Data[0]{t.Fatalf("builder slot %d copied the blob",i)}}
 }
@@ -160,7 +160,7 @@ func messageBody(t *testing.T,root *Root,a *TableArena,check bool)[]byte{
  write:=func(buf []byte,measure bool)int64{w:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:buf,Measuring:measure}}
   if check {if !tableMessageRegionWrite(&w,unsafe.Pointer(root),RootTableType(),a){t.Fatalf("message writer refused: %v",w.numbering.reason)}} else {
    var ok bool;w.numbering,ok=tableNumber(unsafe.Pointer(root),RootTableType(),a);if !ok{t.Fatal("numbering")};n:=&w.numbering;defer n.Release();w.Numbering=n;w.IndexBits=tableMessageBits(uint64(len(n.entries)));if w.IndexBits<1{w.IndexBits=1}
-   slot:=uint64(0);for i:=range tableMessageEntries{if tableMessageEntries[i].Id==0xffffffffffffffff{slot=uint64(i+1);break}};w.Put(slot,TableMessageRefBitsHere);w.Put(uint64(len(n.entries)-1),32)
+   slot:=uint64(0);for i:=range tableMessageEntries{if tableMessageEntries[i].ID==0xffffffffffffffff{slot=uint64(i+1);break}};w.Put(slot,TableMessageRefBitsHere);w.Put(uint64(len(n.entries)-1),32)
    for i:=1;i<len(n.entries);i++{node:=&n.entries[i];w.Put(tableMessageNameSlot(node.id),TableMessageRefBitsHere);if node.info!=nil{if !node.info.SaveMessageBody(&w,node.node){t.Fatal("node body")};continue};length:=uint64(*(*uint32)(node.node));w.Put(length,32);w.Raw(unsafe.Slice((*byte)(unsafe.Add(node.node,8)),int(length)))}
    if !RootTableType().SaveMessageBody(&w,unsafe.Pointer(root)){t.Fatal("root body")}}
   w.Align();if w.Overflow{t.Fatal("overflow")};return w.Bits/8}

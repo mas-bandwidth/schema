@@ -7,7 +7,7 @@ import (
 // TestTableWireOverATextTransport is the card's gate (table-wire-over-text-
 // transports): a table has two text carriers (docs/SPEC-TABLES.md §16.8) —
 // the base64 of the binary wire (SaveText/LoadText) and the JSON text form
-// (FromJson/ToJson) — and EVERY table has both, fixed and variable alike.
+// (FromJSON/ToJSON) — and EVERY table has both, fixed and variable alike.
 // Each carrier round-trips byte for byte against the binary wire (the value a
 // carrier reads back saves to the very bytes the original saved to), and each
 // reader refuses damaged or newer input by name.
@@ -47,7 +47,7 @@ table Root { values []int32
 
 const textTransportRecoverProbe = `package probe
 import("errors";"testing";"encoding/base64")
-func file(count uint64) []byte {var ids TableIds;b:=make([]byte,256);w:=TableWriter{Buffer:b,Ids:&ids};w.Put8(1);w.Id(RootTableFields[0].Id);w.Put8(14);w.PutLeb(uint64(1+tableLebBytes(count)+4));w.Put8(4);w.PutLeb(count);w.Put32(19);w.Id(RootTableFields[1].Id);w.Put8(4);w.Put32(42);w.Put8(0);w.Trailer();return b[:w.Offset]}
+func file(count uint64) []byte {var ids TableIds;b:=make([]byte,256);w:=TableWriter{Buffer:b,Ids:&ids};w.Put8(1);w.ID(RootTableFields[0].ID);w.Put8(14);w.PutLeb(uint64(1+tableLebBytes(count)+4));w.Put8(4);w.PutLeb(count);w.Put32(19);w.ID(RootTableFields[1].ID);w.Put8(4);w.Put32(42);w.Put8(0);w.Trailer();return b[:w.Offset]}
 func TestTableWireOverATextTransport(t *testing.T) {
 	wire := file(1 << 30)
 	// The fixture is still the recoverable shape: the tolerant builder load
@@ -155,10 +155,10 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	}
 
 	// THE JSON CARRIER round-trips to the same wire bytes.
-	jsonText := make([]byte, RootToJsonMeasure(&v))
-	if RootToJson(&v, jsonText) != int64(len(jsonText)) { t.Fatal("json write") }
+	jsonText := make([]byte, RootToJSONMeasure(&v))
+	if RootToJSON(&v, jsonText) != int64(len(jsonText)) { t.Fatal("json write") }
 	var j Root
-	if !RootFromJsonTolerant(&j, jsonText, nil) || j.ID != 7 || string(j.Name[:j.NameLength]) != "hi" {
+	if !RootFromJSONTolerant(&j, jsonText, nil) || j.ID != 7 || string(j.Name[:j.NameLength]) != "hi" {
 		t.Fatalf("json round trip: %+v", j)
 	}
 	again = make([]byte, RootMeasure(&j))
@@ -190,7 +190,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 
 	// A DAMAGED JSON DOCUMENT REFUSES BY NAME.
 	var r TableReport
-	if RootFromJsonTolerant(&v, []byte("{ \"id\": 7 not json"), &r) || !r.Malformed {
+	if RootFromJSONTolerant(&v, []byte("{ \"id\": 7 not json"), &r) || !r.Malformed {
 		t.Fatalf("damaged json: %+v", r)
 	}
 }
@@ -213,7 +213,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	if !b.Init() { t.Fatal("init") }
 	defer b.Shutdown()
 	var r TableReport
-	if !NodeFromJsonTolerant(&b, []byte("{\"id\":7,\"name\":\"hi\",\"next\":{\"id\":8,\"name\":\"yo\"}}"), &r) || !b.Lock() {
+	if !NodeFromJSONTolerant(&b, []byte("{\"id\":7,\"name\":\"hi\",\"next\":{\"id\":8,\"name\":\"yo\"}}"), &r) || !b.Lock() {
 		t.Fatalf("source: %+v", r)
 	}
 	v := b.AsConst()
@@ -237,12 +237,12 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	}
 
 	// THE JSON CARRIER round-trips to the same wire bytes.
-	jsonText := make([]byte, NodeToJsonMeasure(v))
-	if NodeToJson(v, jsonText) != int64(len(jsonText)) { t.Fatal("json write") }
+	jsonText := make([]byte, NodeToJSONMeasure(v))
+	if NodeToJSON(v, jsonText) != int64(len(jsonText)) { t.Fatal("json write") }
 	var jb NodeBuilder
 	if !jb.Init() { t.Fatal("init") }
 	defer jb.Shutdown()
-	if !NodeFromJsonTolerant(&jb, jsonText, nil) || !jb.Lock() { t.Fatal("json read") }
+	if !NodeFromJSONTolerant(&jb, jsonText, nil) || !jb.Lock() { t.Fatal("json read") }
 	again = make([]byte, NodeMeasure(jb.AsConst()))
 	if NodeSave(jb.AsConst(), again) != int64(len(again)) || !bytes.Equal(again, wire) {
 		t.Fatalf("json carrier is not byte for byte: %x vs %x", again, wire)
@@ -275,7 +275,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	if !db.Init() { t.Fatal("init") }
 	defer db.Shutdown()
 	var dr TableReport
-	if NodeFromJsonTolerant(&db, []byte("{ \"id\": 7 not json"), &dr) || !dr.Malformed {
+	if NodeFromJSONTolerant(&db, []byte("{ \"id\": 7 not json"), &dr) || !dr.Malformed {
 		t.Fatalf("damaged json: %+v", dr)
 	}
 }

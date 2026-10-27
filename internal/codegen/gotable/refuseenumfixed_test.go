@@ -142,35 +142,49 @@ func TestTextIllFormedIsMember(t *testing.T) {
 // surface only.
 func TestNoFixedReasonNamesRemain(t *testing.T) {
 	t.Parallel()
+	// THE SCAN WALKS ONLY THE TREES IT READS. A walk from the repo root
+	// crossed build/, where parallel tests run cargo and its temporary rmeta*
+	// files vanish mid-walk ("no such file or directory"): a flaky unit test.
+	// Generated build output is never in scope, so it is never walked.
 	root := filepath.Join("..", "..", "..")
-	scan := func(path string) bool {
-		if strings.HasSuffix(path, "_test.go") {
-			return false
-		}
-		slashed := filepath.ToSlash(path)
-		return strings.Contains(slashed, "/internal/codegen/gotable/") ||
-			strings.Contains(slashed, "/tables/goruntime/") ||
-			strings.Contains(slashed, "/internal/tablenames/go.go") ||
-			strings.HasSuffix(slashed, "/generated/bench/tables/go") ||
-			strings.Contains(slashed, "/generated/bench/tables/go/") ||
-			strings.Contains(slashed, "/generated/bench/paired/go/")
+	roots := []string{
+		"internal/codegen/gotable",
+		"tables/goruntime",
+		"internal/tablenames/go.go",
+		"generated/bench/tables/go",
+		"generated/bench/paired/go",
 	}
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !scan(path) {
-			return err
-		}
-		data, err := os.ReadFile(path)
+	var err error
+	for _, r := range roots {
+		err = filepath.WalkDir(filepath.Join(root, filepath.FromSlash(r)), func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				if path != filepath.Join(root, filepath.FromSlash(r)) && (d.Name() == "testdata" || strings.HasPrefix(d.Name(), ".")) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if strings.HasSuffix(path, "_test.go") || !strings.HasSuffix(path, ".go") {
+				return nil
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if bytes.Contains(data, []byte("TableFixedReason")) {
+				t.Errorf("%s still names the retired fixed-form vocabulary", path)
+			}
+			if bytes.Contains(data, []byte("TableFixedRefusal")) {
+				t.Errorf("%s still names the retired TableFixedRefusal type", path)
+			}
+			return nil
+		})
 		if err != nil {
-			return err
+			break
 		}
-		if bytes.Contains(data, []byte("TableFixedReason")) {
-			t.Errorf("%s still names the retired fixed-form vocabulary", path)
-		}
-		if bytes.Contains(data, []byte("TableFixedRefusal")) {
-			t.Errorf("%s still names the retired TableFixedRefusal type", path)
-		}
-		return nil
-	})
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

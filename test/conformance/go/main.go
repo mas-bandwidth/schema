@@ -285,7 +285,7 @@ func surfaceJsonRead(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		if !c.fromJson(value, text, &rep) {
-			return fmt.Errorf("%s: FromJson refused the text", f[1])
+			return fmt.Errorf("%s: FromJSON refused the text", f[1])
 		}
 		size := c.measure(value)
 		if size < 0 {
@@ -325,11 +325,11 @@ func surfaceJsonWrite(lines []line, out string) error {
 		}
 		size := c.toJsonMeasure(value)
 		if size < 0 {
-			return fmt.Errorf("%s: ToJsonMeasure refused the value", f[1])
+			return fmt.Errorf("%s: ToJSONMeasure refused the value", f[1])
 		}
 		buffer := make([]byte, size)
 		if c.toJson(value, buffer) != size {
-			return fmt.Errorf("%s: ToJson did not write ToJsonMeasure's answer", f[1])
+			return fmt.Errorf("%s: ToJSON did not write ToJSONMeasure's answer", f[1])
 		}
 		if err := spill(out, f[1]+".json", buffer); err != nil {
 			return err

@@ -28,11 +28,11 @@ func WideBlobLoadMessageBodyRetain(r *TableRetainMessageReader, value *WideBlob)
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x39f7fcec8fcb623d:
 			{
 				widened := false
@@ -60,11 +60,11 @@ func WideBlobLoadMessageBodyRetain(r *TableRetainMessageReader, value *WideBlob)
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(70000)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(70000)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -304,11 +304,11 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x39f7fcec8fcb623d:
 			{
 				widened := false
@@ -336,11 +336,11 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(70000)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(70000)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}

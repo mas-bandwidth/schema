@@ -64,7 +64,7 @@ func TestLongNumber(t *testing.T) {
 	text:=[]byte("{\"f\":1."+zeros+",\"i\":1"+zeros+",\"w\":1."+zeros+"1,\"g\":1."+zeros+"}")
 	var v Root
 	var r TableReport
-	if !RootFromJsonTolerant(&v,text,&r) {
+	if !RootFromJSONTolerant(&v,text,&r) {
 		t.Fatalf("a valid long number token was refused: %+v",r)
 	}
 	if v.F != 1.0 { t.Fatalf("float64 landed %v, want 1.0",v.F) }
@@ -72,7 +72,7 @@ func TestLongNumber(t *testing.T) {
 	if v.G != 1<<16 { t.Fatalf("fixed(16,16) landed raw %d, want 1<<16",v.G) }
 	if want:=(TableReport{Clamped:2,KindMismatch:1}); r!=want { t.Fatalf("report %+v, want %+v",r,want) }
 	out:=make([]byte,4096)
-	n:=RootToJson(&v,out)
+	n:=RootToJSON(&v,out)
 	if n<0 { t.Fatal("the writer refused the value it read") }
 	want:=[]byte("{\n  \"f\": 1,\n  \"i\": 2147483647,\n  \"w\": 0,\n  \"g\": 1.0\n}\n")
 	if !bytes.Equal(out[:n],want) { t.Fatalf("text %q, want %q",out[:n],want) }

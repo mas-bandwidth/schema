@@ -12,7 +12,7 @@ import (
 //     round-trips through the binary wire, base64 (§16.8) and the JSON text;
 //   - its wire is pinned byte for byte (element kind 12 for the plain lists,
 //     element kind 13 over the generated element record for the ? list);
-//   - its ToJson text, compacted, is exactly the plain shape
+//   - its ToJSON text, compacted, is exactly the plain shape
 //     {"rules":["a","b"],"first":["x",null],"repos":[]};
 //   - a `| json = "array"` table over []string(8) writes exactly ["a","b"],
 //     reads it back equal, and refuses {"goals":["a"]} by name,
@@ -83,13 +83,13 @@ func compact(t *testing.T, text []byte) string {
 
 func toJson(t *testing.T, v *Lists) []byte {
 	t.Helper()
-	n := ListsToJsonMeasure(v)
+	n := ListsToJSONMeasure(v)
 	if n < 0 {
-		t.Fatal("ToJsonMeasure refused")
+		t.Fatal("ToJSONMeasure refused")
 	}
 	buf := make([]byte, n)
-	if ListsToJson(v, buf) != n {
-		t.Fatal("ToJson")
+	if ListsToJSON(v, buf) != n {
+		t.Fatal("ToJSON")
 	}
 	return buf
 }
@@ -174,7 +174,7 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 
 	// THE PLAIN JSON SHAPE (§16.2)
 	if got := compact(t, toJson(t, v)); got != ` + "`" + `{"rules":["a","b"],"first":["x",null],"repos":[]}` + "`" + ` {
-		t.Fatalf("ToJson %s", got)
+		t.Fatalf("ToJSON %s", got)
 	}
 
 	// ROUND TRIPS: wire, base64, JSON, with repos holding two elements
@@ -252,14 +252,14 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	}
 	jtext := toJson(t, got)
 	if got := compact(t, jtext); got != ` + "`" + `{"rules":["a","b"],"first":["x",null],"repos":["r1",""]}` + "`" + ` {
-		t.Fatalf("ToJson %s", got)
+		t.Fatalf("ToJSON %s", got)
 	}
 	var jb ListsBuilder
 	jb.Init()
 	defer jb.Shutdown()
 	report = TableReport{}
-	if !ListsFromJsonTolerant(&jb, jtext, &report) || report != (TableReport{}) {
-		t.Fatalf("FromJson %+v", report)
+	if !ListsFromJSONTolerant(&jb, jtext, &report) || report != (TableReport{}) {
+		t.Fatalf("FromJSON %+v", report)
 	}
 	if !bytes.Equal(save(t, jb.GetRoot(), &jb), full) {
 		t.Fatal("JSON round trip moved the wire")
@@ -270,8 +270,8 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	kb.Init()
 	defer kb.Shutdown()
 	report = TableReport{}
-	if !ListsFromJsonTolerant(&kb, []byte(` + "`" + `{"rules":["a",7,null,"123456789","b","c"],"first":[null,"y"]}` + "`" + `), &report) {
-		t.Fatalf("FromJson %+v", report)
+	if !ListsFromJSONTolerant(&kb, []byte(` + "`" + `{"rules":["a",7,null,"123456789","b","c"],"first":[null,"y"]}` + "`" + `), &report) {
+		t.Fatalf("FromJSON %+v", report)
 	}
 	if report.KindMismatch != 2 || report.Clamped != 3 {
 		t.Fatalf("report %+v", report)
@@ -292,9 +292,9 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 		t.Fatal("lock")
 	}
 	gv = gb.AsConst()
-	n := GoalListToJsonMeasure(gv)
+	n := GoalListToJSONMeasure(gv)
 	gtext := make([]byte, n)
-	GoalListToJson(gv, gtext)
+	GoalListToJSON(gv, gtext)
 	if compact(t, gtext) != ` + "`" + `["a","b"]` + "`" + ` {
 		t.Fatalf("array root %s", gtext)
 	}
@@ -302,7 +302,7 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	rb.Init()
 	defer rb.Shutdown()
 	report = TableReport{}
-	if !GoalListFromJsonTolerant(&rb, []byte(` + "`" + `["a","b"]` + "`" + `), &report) || report != (TableReport{}) {
+	if !GoalListFromJSONTolerant(&rb, []byte(` + "`" + `["a","b"]` + "`" + `), &report) || report != (TableReport{}) {
 		t.Fatalf("array root read %+v", report)
 	}
 	if p, ok := GoalListGoalsTextAt(rb.GetRoot(), 1, &rb.Arena); !ok || string(p) != "b" || rb.GetRoot().Goals.Count != 2 {
@@ -312,7 +312,7 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	bad.Init()
 	defer bad.Shutdown()
 	report = TableReport{}
-	if GoalListFromJsonTolerant(&bad, []byte(` + "`" + `{"goals":["a"]}` + "`" + `), &report) || !report.Malformed || report.Reason != "json_root_not_array: GoalList" {
+	if GoalListFromJSONTolerant(&bad, []byte(` + "`" + `{"goals":["a"]}` + "`" + `), &report) || !report.Malformed || report.Reason != "json_root_not_array: GoalList" {
 		t.Fatalf("object at an array root: %+v", report)
 	}
 
@@ -323,15 +323,15 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	hd.Init()
 	defer hd.Shutdown()
 	report = TableReport{}
-	if !HolderFromJsonTolerant(&hd, []byte(` + "`" + `{"g":["x","y"],"bases":["a",null,""]}` + "`" + `), &report) || report != (TableReport{}) {
+	if !HolderFromJSONTolerant(&hd, []byte(` + "`" + `{"g":["x","y"],"bases":["a",null,""]}` + "`" + `), &report) || report != (TableReport{}) {
 		t.Fatalf("nested array root read %+v", report)
 	}
 	if !hd.Lock() {
 		t.Fatal("holder lock")
 	}
-	hn := HolderToJsonMeasure(hd.AsConst())
+	hn := HolderToJSONMeasure(hd.AsConst())
 	htext := make([]byte, hn)
-	HolderToJson(hd.AsConst(), htext)
+	HolderToJSON(hd.AsConst(), htext)
 	if got := compact(t, htext); got != ` + "`" + `{"g":["x","y"],"bases":["a",null,""]}` + "`" + ` {
 		t.Fatalf("nested array root write %s", got)
 	}
@@ -351,19 +351,19 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	ho.Init()
 	defer ho.Shutdown()
 	report = TableReport{}
-	if !HolderFromJsonTolerant(&ho, []byte(` + "`" + `{"g":{"goals":["a"]}}` + "`" + `), &report) || report.KindMismatch != 1 {
+	if !HolderFromJSONTolerant(&ho, []byte(` + "`" + `{"g":{"goals":["a"]}}` + "`" + `), &report) || report.KindMismatch != 1 {
 		t.Fatalf("an object where the array root is: %+v", report)
 	}
 
 	// THE READ-SIDE BOUNDS (§2.13, §4): built by hand, five elements against
 	// [..4] and a nine-byte element against string(8)
-	rulesId := ListsTableFields[0].Id
+	rulesId := ListsTableFields[0].ID
 	file := func(elements ...string) []byte {
 		var ids TableIds
 		out := make([]byte, 256)
 		w := TableWriter{Buffer: out, Ids: &ids}
 		w.Put8(1)
-		w.Id(rulesId)
+		w.ID(rulesId)
 		w.Put8(14)
 		n := 2
 		for _, e := range elements {

@@ -26,7 +26,7 @@ type ViewConstant struct {
 type ViewVariant struct {
 	Value       uint64
 	Name        string
-	Id          uint64
+	ID          uint64
 	PayloadName string
 	Payload     func() *TableTypeInfo
 	Field       func() *TableFieldInfo
@@ -54,7 +54,7 @@ type ViewType struct {
 }
 type UnitViewInfo struct {
 	Package                                                          string
-	ProtocolId                                                       uint64
+	ProtocolID                                                       uint64
 	NumTypes, NumTables, NumEnums, NumFlags, NumUnions, NumConstants int32
 	Types, Tables                                                    []ViewType
 	Enums, Flags, Unions                                             []ViewVocabulary
@@ -66,89 +66,89 @@ var tableViewPacketUnions [1]TableUnionInfo
 
 func init() {
 	tableViewPacketTypes[0] = TableTypeInfo{Name: "Attachment", Size: uint32(unsafe.Sizeof(Attachment{})), NumFields: 2, Reset: func(p unsafe.Pointer) { *(*Attachment)(p) = NewAttachment() }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
-		{Name: "slot", Json: "slot", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x6a771618f6fe31d1, Kind: 4, IsArray: false, Counted: false, Optional: false,
+		{Name: "slot", JSON: "slot", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x6a771618f6fe31d1, Kind: 4, IsArray: false, Counted: false, Optional: false,
 			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Attachment{}.Slot)), ElemSize: uint32(unsafe.Sizeof(Attachment{}.Slot)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 7.0, RangeIntMin: 0, RangeIntMax: 7, EnumMax: -1,
-			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
-			VariantId:   nil,
+			VariantID:   nil,
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyID: nil,
 			Arms:  nil,
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
-		{Name: "power", Json: "power", TypeName: "float32", DeclaredTypeName: "float32", Id: 0xeef9d1358ae7b4e6, Kind: 10, IsArray: false, Counted: false, Optional: false,
+		{Name: "power", JSON: "power", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xeef9d1358ae7b4e6, Kind: 10, IsArray: false, Counted: false, Optional: false,
 			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Attachment{}.Power)), ElemSize: uint32(unsafe.Sizeof(Attachment{}.Power)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
-			VariantId:   nil,
+			VariantID:   nil,
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyID: nil,
 			Arms:  nil,
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 	}}
 	tableViewPacketTypes[1] = TableTypeInfo{Name: "Buff", Size: uint32(unsafe.Sizeof(Buff{})), NumFields: 1, Reset: func(p unsafe.Pointer) { *(*Buff)(p) = NewBuff() }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
-		{Name: "multiplier", Json: "multiplier", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x9adc623a805c87c6, Kind: 10, IsArray: false, Counted: false, Optional: false,
+		{Name: "multiplier", JSON: "multiplier", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x9adc623a805c87c6, Kind: 10, IsArray: false, Counted: false, Optional: false,
 			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Buff{}.Multiplier)), ElemSize: uint32(unsafe.Sizeof(Buff{}.Multiplier)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
-			VariantId:   nil,
+			VariantID:   nil,
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyID: nil,
 			Arms:  nil,
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 	}}
 	tableViewPacketTypes[2] = TableTypeInfo{Name: "Debuff", Size: uint32(unsafe.Sizeof(Debuff{})), NumFields: 1, Reset: func(p unsafe.Pointer) { *(*Debuff)(p) = NewDebuff() }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
-		{Name: "amount", Json: "amount", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x8113fe7ea2b16969, Kind: 4, IsArray: false, Counted: false, Optional: false,
+		{Name: "amount", JSON: "amount", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x8113fe7ea2b16969, Kind: 4, IsArray: false, Counted: false, Optional: false,
 			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Debuff{}.Amount)), ElemSize: uint32(unsafe.Sizeof(Debuff{}.Amount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 100.0, RangeIntMin: 0, RangeIntMax: 100, EnumMax: -1,
-			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
-			VariantId:   nil,
+			VariantID:   nil,
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyID: nil,
 			Arms:  nil,
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 	}}
 	tableViewPacketTypes[3] = TableTypeInfo{Name: "ScoreBoard", Size: uint32(unsafe.Sizeof(ScoreBoard{})), NumFields: 1, Reset: func(p unsafe.Pointer) { *(*ScoreBoard)(p) = ScoreBoard{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
-		{Name: "per_team", Json: "per_team", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xf10fad739a0e1660, Kind: 4, IsArray: true, Counted: false, Optional: false,
+		{Name: "per_team", JSON: "per_team", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xf10fad739a0e1660, Kind: 4, IsArray: true, Counted: false, Optional: false,
 			ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(ScoreBoard{}.PerTeam)), ElemSize: uint32(unsafe.Sizeof(ScoreBoard{}.PerTeam[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 100000.0, RangeIntMin: 0, RangeIntMax: 100000, EnumMax: -1,
-			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
-			VariantId:   nil,
+			VariantID:   nil,
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyId: func(v uint64) uint64 { id, _ := Team(v).TableEnumId(); return id },
+			KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyID: func(v uint64) uint64 { id, _ := Team(v).TableEnumID(); return id },
 			Arms:  nil,
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 	}}
 	tableViewPacketUnions[0] = TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(Effect{}.Type)), TagSize: uint32(unsafe.Sizeof(Effect{}.Type)), Arms: []TableUnionArmInfo{{Void: true},
-		{Offset: uint32(unsafe.Offsetof(Effect{}.Buff)), Table: func() *TableTypeInfo { return &tableViewPacketTypes[1] }, Reset: func(p unsafe.Pointer) { (*Effect)(p).Buff = NewBuff() }, Field: TableFieldInfo{Name: "buff", Json: "buff", TypeName: "Buff", DeclaredTypeName: "Buff", Id: 0xffb5be9be2e469cc, Kind: 13, IsArray: false, Counted: false, Optional: false,
+		{Offset: uint32(unsafe.Offsetof(Effect{}.Buff)), Table: func() *TableTypeInfo { return &tableViewPacketTypes[1] }, Reset: func(p unsafe.Pointer) { (*Effect)(p).Buff = NewBuff() }, Field: TableFieldInfo{Name: "buff", JSON: "buff", TypeName: "Buff", DeclaredTypeName: "Buff", ID: 0xffb5be9be2e469cc, Kind: 13, IsArray: false, Counted: false, Optional: false,
 			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Effect{}.Buff)), ElemSize: uint32(unsafe.Sizeof(Effect{}.Buff)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
-			VariantId:   nil,
+			VariantID:   nil,
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyID: nil,
 			Arms:  nil,
 			Guard: "", Table: func() *TableTypeInfo { return &tableViewPacketTypes[1] },
 			Doc: "A multiplier that rides while the effect is live.", NumTags: 1, Tags: []string{"positive"}},
 		},
-		{Offset: uint32(unsafe.Offsetof(Effect{}.Debuff)), Table: func() *TableTypeInfo { return &tableViewPacketTypes[2] }, Reset: func(p unsafe.Pointer) { (*Effect)(p).Debuff = NewDebuff() }, Field: TableFieldInfo{Name: "debuff", Json: "debuff", TypeName: "Debuff", DeclaredTypeName: "Debuff", Id: 0x13cdc5ede73d2fd7, Kind: 13, IsArray: false, Counted: false, Optional: false,
+		{Offset: uint32(unsafe.Offsetof(Effect{}.Debuff)), Table: func() *TableTypeInfo { return &tableViewPacketTypes[2] }, Reset: func(p unsafe.Pointer) { (*Effect)(p).Debuff = NewDebuff() }, Field: TableFieldInfo{Name: "debuff", JSON: "debuff", TypeName: "Debuff", DeclaredTypeName: "Debuff", ID: 0x13cdc5ede73d2fd7, Kind: 13, IsArray: false, Counted: false, Optional: false,
 			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Effect{}.Debuff)), ElemSize: uint32(unsafe.Sizeof(Effect{}.Debuff)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
-			VariantId:   nil,
+			VariantID:   nil,
 			EnumDefault: 0, EnumDeprecated: nil,
-			KeyTypeName: "", KeyName: nil, KeyId: nil,
+			KeyTypeName: "", KeyName: nil, KeyID: nil,
 			Arms:  nil,
 			Guard: "", Table: func() *TableTypeInfo { return &tableViewPacketTypes[2] },
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -156,7 +156,7 @@ func init() {
 	}}
 }
 
-var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolId: 0xba7b344f28584d33,
+var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0xba7b344f28584d33,
 	NumTypes: 4, Types: []ViewType{
 		{Name: "Attachment", File: "Tables.schema", Table: false, Type: &AttachmentTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "Buff", File: "Tables.schema", Table: false, Type: &BuffTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -187,53 +187,53 @@ var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolId: 0xba7b344f285
 	NumEnums: 6, Enums: []ViewVocabulary{
 		{Name: "Difficulty", File: "Pack.schema", Max: 3, StorageBits: 8, NumVariants: 4, Doc: TableDocNone, NumTags: 0, Tags: nil, Variants: []ViewVariant{
 			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 1, Name: "Easy", Id: 0x483d9e6c1ccd1f9b, Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 2, Name: "Normal", Id: 0x9ff3121d30f88d52, Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 3, Name: "Hard", Id: 0x58c7b5d87587287c, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 1, Name: "Easy", ID: 0x483d9e6c1ccd1f9b, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 2, Name: "Normal", ID: 0x9ff3121d30f88d52, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 3, Name: "Hard", ID: 0x58c7b5d87587287c, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		}},
 		{Name: "Grade", File: "Tables.schema", Max: 3, StorageBits: 8, NumVariants: 4, Doc: "A profile's standing, ranked low to high.", NumTags: 1, Tags: []string{"progression"}, Variants: []ViewVariant{
 			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 1, Name: "Bronze", Id: 0xc4927739aac4c591, Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 2, Name: "Silver", Id: 0xc3e51adeeaf12580, Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 3, Name: "Gold", Id: 0xc416c97e0d3218b3, Doc: "The top rank. A profile that reaches it keeps it.", NumTags: 3, Tags: []string{"celebrate", "rare", "announce"}},
+			{Value: 1, Name: "Bronze", ID: 0xc4927739aac4c591, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 2, Name: "Silver", ID: 0xc3e51adeeaf12580, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 3, Name: "Gold", ID: 0xc416c97e0d3218b3, Doc: "The top rank. A profile that reaches it keeps it.", NumTags: 3, Tags: []string{"celebrate", "rare", "announce"}},
 		}},
 		{Name: "Hull", File: "Keyed.schema", Max: 3, StorageBits: 8, NumVariants: 4, Doc: TableDocNone, NumTags: 0, Tags: nil, Variants: []ViewVariant{
 			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 1, Name: "Interceptor", Id: 0xae61a6cbe88c2cf4, Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 2, Name: "Gunship", Id: 0x334d24e1420dbc1f, Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 3, Name: "Freighter", Id: 0x6c2321a3d00e23db, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 1, Name: "Interceptor", ID: 0xae61a6cbe88c2cf4, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 2, Name: "Gunship", ID: 0x334d24e1420dbc1f, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 3, Name: "Freighter", ID: 0x6c2321a3d00e23db, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		}},
 		{Name: "ShipType", File: "Pack.schema", Max: 3, StorageBits: 8, NumVariants: 4, Doc: TableDocNone, NumTags: 0, Tags: nil, Variants: []ViewVariant{
 			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 1, Name: "Fighter", Id: 0xd011f7c3c15285c2, Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 2, Name: "Bomber", Id: 0xa8216aa1c554cb8a, Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 3, Name: "Scout", Id: 0x7d573c625719c1a5, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 1, Name: "Fighter", ID: 0xd011f7c3c15285c2, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 2, Name: "Bomber", ID: 0xa8216aa1c554cb8a, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 3, Name: "Scout", ID: 0x7d573c625719c1a5, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		}},
 		{Name: "Team", File: "Keyed.schema", Max: 3, StorageBits: 8, NumVariants: 4, Doc: TableDocNone, NumTags: 0, Tags: nil, Variants: []ViewVariant{
 			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 1, Name: "Red", Id: 0x9ff1de19feac1b7c, Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 2, Name: "Blue", Id: 0xecf3d3a7c1693e2d, Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 3, Name: "Green", Id: 0xcf00d78fd5953f1c, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 1, Name: "Red", ID: 0x9ff1de19feac1b7c, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 2, Name: "Blue", ID: 0xecf3d3a7c1693e2d, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 3, Name: "Green", ID: 0xcf00d78fd5953f1c, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		}},
 		{Name: "Weapon", File: "Keyed.schema", Max: 3, StorageBits: 8, NumVariants: 4, Doc: TableDocNone, NumTags: 0, Tags: nil, Variants: []ViewVariant{
 			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 1, Name: "Cannon", Id: 0x5854debe3b2e767c, Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 2, Name: "Missile", Id: 0xb528592e5a4583e3, Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 3, Name: "Mine", Id: 0x04dc16aea8ff5276, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 1, Name: "Cannon", ID: 0x5854debe3b2e767c, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 2, Name: "Missile", ID: 0xb528592e5a4583e3, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 3, Name: "Mine", ID: 0x04dc16aea8ff5276, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		}},
 	},
 	NumFlags: 1, Flags: []ViewVocabulary{
 		{Name: "Perks", File: "Tables.schema", Max: 2, StorageBits: 8, NumVariants: 3, Doc: TableDocNone, NumTags: 0, Tags: nil, Variants: []ViewVariant{
-			{Value: 0, Name: "Shielded", Id: 0x0000000000000000, Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 1, Name: "Cloaked", Id: 0x0000000000000000, Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 2, Name: "Turbo", Id: 0x0000000000000000, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 0, Name: "Shielded", ID: 0x0000000000000000, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 1, Name: "Cloaked", ID: 0x0000000000000000, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 2, Name: "Turbo", ID: 0x0000000000000000, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		}},
 	},
 	NumUnions: 1, Unions: []ViewVocabulary{
 		{Name: "Effect", File: "Tables.schema", Max: 2, StorageBits: 8, NumVariants: 3, Doc: "What a weapon does to a target beyond its damage.", NumTags: 1, Tags: []string{"gameplay"}, Variants: []ViewVariant{
 			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
-			{Value: 1, Name: "buff", Id: 0xffb5be9be2e469cc, PayloadName: "Buff", Payload: BuffTableType, Doc: "A multiplier that rides while the effect is live.", NumTags: 1, Tags: []string{"positive"}},
-			{Value: 2, Name: "debuff", Id: 0x13cdc5ede73d2fd7, PayloadName: "Debuff", Payload: DebuffTableType, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 1, Name: "buff", ID: 0xffb5be9be2e469cc, PayloadName: "Buff", Payload: BuffTableType, Doc: "A multiplier that rides while the effect is live.", NumTags: 1, Tags: []string{"positive"}},
+			{Value: 2, Name: "debuff", ID: 0x13cdc5ede73d2fd7, PayloadName: "Debuff", Payload: DebuffTableType, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		}},
 	},
 	NumConstants: 3, Constants: []ViewConstant{

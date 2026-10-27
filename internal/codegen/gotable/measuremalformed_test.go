@@ -66,10 +66,10 @@ var measureMalformedSeed2Probe = `package probe
   off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
   v := RootLoadTolerant(raw[off:off+uintptr(n)], w, &rep)
   if v == nil { return false, rep, nil }
-  tn := RootToJsonMeasure(v)
+  tn := RootToJSONMeasure(v)
   if tn < 0 { return true, rep, []byte(fmt.Sprintf("unwritable %d", tn)) }
   text := make([]byte, tn)
-  if RootToJson(v, text) != int64(len(text)) { return true, rep, []byte("unwritable") }
+  if RootToJSON(v, text) != int64(len(text)) { return true, rep, []byte("unwritable") }
   return true, rep, text
  }
  // damages is the random-table differential's damage list (truncations,
@@ -107,7 +107,7 @@ var measureMalformedSeed2Probe = `package probe
    var b RootBuilder
    if !b.Init() { t.Fatal("init") }
    var rep TableReport
-   if !RootFromJson(&b, []byte(doc), &rep) { t.Fatalf("value %d: from json refused: %+v", i, rep) }
+   if !RootFromJSON(&b, []byte(doc), &rep) { t.Fatalf("value %d: from json refused: %+v", i, rep) }
    if !b.Lock() { t.Fatalf("value %d: lock", i) }
    v := b.AsConst()
    n, err := RootMeasureReason(v)
@@ -207,10 +207,10 @@ var measureMalformedSeed4Probe = `package probe
   off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
   v := RootLoadTolerant(raw[off:off+uintptr(n)], w, &rep)
   if v == nil { return false, rep, nil }
-  tn := RootToJsonMeasure(v)
+  tn := RootToJSONMeasure(v)
   if tn < 0 { return true, rep, []byte(fmt.Sprintf("unwritable %d", tn)) }
   text := make([]byte, tn)
-  if RootToJson(v, text) != int64(len(text)) { return true, rep, []byte("unwritable") }
+  if RootToJSON(v, text) != int64(len(text)) { return true, rep, []byte("unwritable") }
   return true, rep, text
  }
  // damages is the random-table differential's damage list (truncations,
@@ -248,7 +248,7 @@ var measureMalformedSeed4Probe = `package probe
    var b RootBuilder
    if !b.Init() { t.Fatal("init") }
    var rep TableReport
-   if !RootFromJson(&b, []byte(doc), &rep) { t.Fatalf("value %d: from json refused: %+v", i, rep) }
+   if !RootFromJSON(&b, []byte(doc), &rep) { t.Fatalf("value %d: from json refused: %+v", i, rep) }
    if !b.Lock() { t.Fatalf("value %d: lock", i) }
    v := b.AsConst()
    n, err := RootMeasureReason(v)
@@ -370,10 +370,10 @@ var measureMalformedSeed1Probe = `package probe
   off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
   v := RootLoadTolerant(raw[off:off+uintptr(n)], w, &rep)
   if v == nil { return false, rep, nil }
-  tn := RootToJsonMeasure(v)
+  tn := RootToJSONMeasure(v)
   if tn < 0 { return true, rep, []byte(fmt.Sprintf("unwritable %d", tn)) }
   text := make([]byte, tn)
-  if RootToJson(v, text) != int64(len(text)) { return true, rep, []byte("unwritable") }
+  if RootToJSON(v, text) != int64(len(text)) { return true, rep, []byte("unwritable") }
   return true, rep, text
  }
  // damages is the random-table differential's damage list (truncations,
@@ -411,7 +411,7 @@ var measureMalformedSeed1Probe = `package probe
    var b RootBuilder
    if !b.Init() { t.Fatal("init") }
    var rep TableReport
-   if !RootFromJson(&b, []byte(doc), &rep) { t.Fatalf("value %d: from json refused: %+v", i, rep) }
+   if !RootFromJSON(&b, []byte(doc), &rep) { t.Fatalf("value %d: from json refused: %+v", i, rep) }
    if !b.Lock() { t.Fatalf("value %d: lock", i) }
    v := b.AsConst()
    n, err := RootMeasureReason(v)
@@ -494,7 +494,7 @@ func measureMalformedKeyedProbe() string {
   var b RootBuilder
   if !b.Init() { t.Fatal("init") }
   var rep TableReport
-  if !RootFromJson(&b, []byte(docs[1]), &rep) || !b.Lock() { t.Fatalf("from json: %+v", rep) }
+  if !RootFromJSON(&b, []byte(docs[1]), &rep) || !b.Lock() { t.Fatalf("from json: %+v", rep) }
   v := b.AsConst()
   n, err := RootMeasureReason(v)
   if err != nil { t.Fatal(err) }

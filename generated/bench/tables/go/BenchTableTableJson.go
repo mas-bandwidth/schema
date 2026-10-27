@@ -32,32 +32,32 @@ import (
 // ---- json walk: begin ----
 
 const (
-	tableJsonMaxDepth = 128
+	tableJSONMaxDepth = 128
 	// A key longer than this cannot name a field, so it is skipped as unknown.
-	tableJsonMaxKey = 256
+	tableJSONMaxKey = 256
 	// The buffer extent for an integer map KEY's spelling and the wide kinds'
 	// formatting scratch. A VALUE's number token has no such bound (§16.2).
-	tableJsonMaxNumber = 512
+	tableJSONMaxNumber = 512
 )
 
 // THE DECIMAL POINT IS ALWAYS '.', and that is a Go fact rather than a choice:
 // strconv is locale-free, so the one locale-sensitive corner the C++ walk has
 // to cross on the way out and on the way back in simply does not exist here.
 
-// tableJsonNamed refuses a vocabulary entry the descriptor could not spell. The
+// tableJSONNamed refuses a vocabulary entry the descriptor could not spell. The
 // generated name functions answer "???" for a value outside the declared set,
 // and that is not a name — writing it would put a spelling in the text that the
 // reader then counts as unknown, turning a refusal into a silent loss.
-func tableJsonNamed(name string) bool { return name != "" && name != "???" }
+func tableJSONNamed(name string) bool { return name != "" && name != "???" }
 
-func tableJsonFinite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
+func tableJSONFinite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 
-// tableJsonCount is a counted field's companion: a string's length, a bytes'
+// tableJSONCount is a counted field's companion: a string's length, a bytes'
 // length, a counted array's count. Bounded by the declared extent on the way
 // out, so a storage invariant a caller broke cannot walk off the end. A
 // container with no declared bound has no extent to clamp to: UnboundedContainer
 // is no limit (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1).
-func tableJsonCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
+func tableJSONCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 	if !f.Counted {
 		return f.ArrayBound
 	}
@@ -69,25 +69,25 @@ func tableJsonCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 	return count
 }
 
-func tableJsonSetCount(base unsafe.Pointer, f *TableFieldInfo, count int32) {
+func tableJSONSetCount(base unsafe.Pointer, f *TableFieldInfo, count int32) {
 	if f.Counted {
 		*(*int32)(unsafe.Add(base, uintptr(f.CountOffset))) = count
 	}
 }
 
-// tableJsonBytes is one field's storage as a byte slice of a given extent — a
+// tableJSONBytes is one field's storage as a byte slice of a given extent — a
 // string's buffer or a bytes' buffer, exactly as the storage declares it.
 //
 // A Go string(N) is [N]byte and NOT the C ABI's char[N+1]: the wire's storage
 // follows the Go PACKET emitter, whose strings carry a used length and no
 // terminator. So nothing here writes one, and the writer reads the length
 // companion rather than scanning for a zero.
-func tableJsonBytes(storage unsafe.Pointer, extent int32) []byte {
+func tableJSONBytes(storage unsafe.Pointer, extent int32) []byte {
 	return unsafe.Slice((*byte)(storage), extent)
 }
 
-// tableJsonText is a descriptor's own string as bytes, without a copy.
-func tableJsonText(s string) []byte {
+// tableJSONText is a descriptor's own string as bytes, without a copy.
+func tableJSONText(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
@@ -105,50 +105,50 @@ func tableJsonText(s string) []byte {
 // bytes(N) is the one kind whose element kind does not decide its form: it
 // shares u8 with a plain array of u8, and rides as base64. The schema type name
 // settles it, and "bytes" is a keyword no declaration can claim.
-func tableJsonIsBytes(f *TableFieldInfo) bool {
+func tableJSONIsBytes(f *TableFieldInfo) bool {
 	return f.IsArray && f.Kind == 6 && f.TypeName == "bytes"
 }
 
 // An ENUM-KEYED array (§2.4): its JSON form is an OBJECT keyed by variant name,
 // not a positional array, because that is what the storage is — one slot per
 // variant, addressed by the variant.
-func tableJsonIsKeyed(f *TableFieldInfo) bool { return f.KeyName != nil }
+func tableJSONIsKeyed(f *TableFieldInfo) bool { return f.KeyName != nil }
 
 // THE KEY A STORAGE SLOT HOLDS (§2.4, §8): the storage shifts left, so slot i
 // holds the key i + 1 and nothing is stored for None. This is the ONE place the
 // walker spells the shift.
-func tableJsonKeyedSlotKey(slot int32) uint64 { return uint64(slot + 1) }
+func tableJSONKeyedSlotKey(slot int32) uint64 { return uint64(slot + 1) }
 
 // A slot whose key names a variant of the keying enum.
-func tableJsonKeyedSlotValid(f *TableFieldInfo, slot int32) bool {
-	return tableJsonNamed(f.KeyName(tableJsonKeyedSlotKey(slot)))
+func tableJSONKeyedSlotValid(f *TableFieldInfo, slot int32) bool {
+	return tableJSONNamed(f.KeyName(tableJSONKeyedSlotKey(slot)))
 }
 
-func tableJsonIsFlags(f *TableFieldInfo) bool { return f.EnumName != nil && f.VariantId == nil }
+func tableJSONIsFlags(f *TableFieldInfo) bool { return f.EnumName != nil && f.VariantID == nil }
 
-func tableJsonIsEnum(f *TableFieldInfo) bool { return f.VariantId != nil && f.Arms == nil }
+func tableJSONIsEnum(f *TableFieldInfo) bool { return f.VariantID != nil && f.Arms == nil }
 
-func tableJsonShape(f *TableFieldInfo) byte {
+func tableJSONShape(f *TableFieldInfo) byte {
 	switch {
 	case f.Kind == 12 || f.Kind == 33: // string
 		return 's'
-	case tableJsonIsBytes(f): // base64
+	case tableJSONIsBytes(f): // base64
 		return 's'
 	case f.Map:
 		return 'o'
-	case tableJsonIsKeyed(f): // an object keyed by variant NAME
+	case tableJSONIsKeyed(f): // an object keyed by variant NAME
 		return 'o'
 	case f.IsArray:
 		return 'a'
 	case f.Pointer:
-		return tableJsonElementShape(f)
+		return tableJSONElementShape(f)
 	case f.Arms != nil: // union: an object with ONE key
 		return 'o'
 	case f.Kind == 13: // nested table or type
 		return 'o'
-	case tableJsonIsEnum(f):
+	case tableJSONIsEnum(f):
 		return 's'
-	case tableJsonIsFlags(f):
+	case tableJSONIsFlags(f):
 		return 'a'
 	case f.Kind == 36: // timestamp: an RFC 3339 string (§16.2)
 		return 's'
@@ -159,7 +159,7 @@ func tableJsonShape(f *TableFieldInfo) byte {
 }
 
 // the ELEMENT shape of an array field — the same classifier one level down
-func tableJsonElementShape(f *TableFieldInfo) byte {
+func tableJSONElementShape(f *TableFieldInfo) byte {
 	if f.Pointer {
 		if f.Table == nil {
 			return 's'
@@ -171,9 +171,9 @@ func tableJsonElementShape(f *TableFieldInfo) byte {
 		return 'o'
 	case f.Kind == 13:
 		return 'o'
-	case tableJsonIsEnum(f):
+	case tableJSONIsEnum(f):
 		return 's'
-	case tableJsonIsFlags(f):
+	case tableJSONIsFlags(f):
 		return 'a'
 	case f.Kind == 36: // timestamp: an RFC 3339 string (§16.2)
 		return 's'
@@ -188,8 +188,8 @@ func tableJsonElementShape(f *TableFieldInfo) byte {
 // The writer sink MEASURES when the buffer is absent and WRITES when it is not,
 // over one code path — so measure and write agree byte for byte, the wire's
 // invariant (§9) carried across.
-type tableJsonOut struct {
-	graph    *tableJsonGraph
+type tableJSONOut struct {
+	graph    *tableJSONGraph
 	buffer   []byte
 	measure  bool
 	offset   int64
@@ -200,11 +200,11 @@ type tableJsonOut struct {
 	omit, compact, quoted, escaped bool
 }
 
-// TableJsonOptions are mas-bandwidth/schema docs/SPEC-TABLES.md §16.2's three options for a text
-// another library wrote, passed to the <T>FromJsonWith, <T>ToJsonMeasureWith
-// and <T>ToJsonWith calls. The zero value is the canonical text (§16.1): the
+// TableJSONOptions are mas-bandwidth/schema docs/SPEC-TABLES.md §16.2's three options for a text
+// another library wrote, passed to the <T>FromJSONWith, <T>ToJSONMeasureWith
+// and <T>ToJSONWith calls. The zero value is the canonical text (§16.1): the
 // plain calls are the With calls at the zero value.
-type TableJsonOptions struct {
+type TableJSONOptions struct {
 	NullAsEmpty  bool // read: null where the row is an array or a map reads as [] or {}, uncounted
 	OmitDefaults bool // write: a field at its declared default writes no key
 	Compact      bool // write: no whitespace outside a string, and no trailing newline
@@ -213,7 +213,7 @@ type TableJsonOptions struct {
 // squeeze is the compact option (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2): it
 // answers true for a whitespace byte outside a string, which is dropped, and
 // tracks the string state every other byte moves.
-func (o *tableJsonOut) squeeze(c byte) bool {
+func (o *tableJSONOut) squeeze(c byte) bool {
 	if o.quoted {
 		if o.escaped {
 			o.escaped = false
@@ -233,7 +233,7 @@ func (o *tableJsonOut) squeeze(c byte) bool {
 	return false
 }
 
-func (o *tableJsonOut) raw(data []byte) {
+func (o *tableJSONOut) raw(data []byte) {
 	if o.compact {
 		for _, c := range data {
 			o.put(c)
@@ -250,7 +250,7 @@ func (o *tableJsonOut) raw(data []byte) {
 	o.offset += int64(len(data))
 }
 
-func (o *tableJsonOut) put(c byte) {
+func (o *tableJSONOut) put(c byte) {
 	if o.compact && o.squeeze(c) {
 		return
 	}
@@ -264,7 +264,7 @@ func (o *tableJsonOut) put(c byte) {
 	o.offset++
 }
 
-func (o *tableJsonOut) text(s string) {
+func (o *tableJSONOut) text(s string) {
 	if o.compact {
 		for i := range len(s) {
 			o.put(s[i])
@@ -281,17 +281,17 @@ func (o *tableJsonOut) text(s string) {
 	o.offset += int64(len(s))
 }
 
-func (o *tableJsonOut) line(depth int32) {
+func (o *tableJSONOut) line(depth int32) {
 	o.put('\n')
 	for range depth {
 		o.text("  ")
 	}
 }
 
-const tableJsonBase64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+const tableJSONBase64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
 // Byte-indexed sextets; -1 preserves invalid-character handling.
-var tableJsonBase64Decode = [256]int8{
+var tableJSONBase64Decode = [256]int8{
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
@@ -310,16 +310,16 @@ var tableJsonBase64Decode = [256]int8{
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 }
 
-func tableJsonWriteBase64(out *tableJsonOut, data []byte) {
+func tableJSONWriteBase64(out *tableJSONOut, data []byte) {
 	out.put('"')
 	var quad [4]byte
 	i := 0
 	for ; len(data)-i >= 3; i += 3 {
 		triple := uint32(data[i])<<16 | uint32(data[i+1])<<8 | uint32(data[i+2])
-		quad[0] = tableJsonBase64Alphabet[(triple>>18)&0x3f]
-		quad[1] = tableJsonBase64Alphabet[(triple>>12)&0x3f]
-		quad[2] = tableJsonBase64Alphabet[(triple>>6)&0x3f]
-		quad[3] = tableJsonBase64Alphabet[triple&0x3f]
+		quad[0] = tableJSONBase64Alphabet[(triple>>18)&0x3f]
+		quad[1] = tableJSONBase64Alphabet[(triple>>12)&0x3f]
+		quad[2] = tableJSONBase64Alphabet[(triple>>6)&0x3f]
+		quad[3] = tableJSONBase64Alphabet[triple&0x3f]
 		out.raw(quad[:])
 	}
 	if i < len(data) {
@@ -328,25 +328,25 @@ func tableJsonWriteBase64(out *tableJsonOut, data []byte) {
 		if left == 2 {
 			triple |= uint32(data[i+1]) << 8
 		}
-		quad[0] = tableJsonBase64Alphabet[(triple>>18)&0x3f]
-		quad[1] = tableJsonBase64Alphabet[(triple>>12)&0x3f]
+		quad[0] = tableJSONBase64Alphabet[(triple>>18)&0x3f]
+		quad[1] = tableJSONBase64Alphabet[(triple>>12)&0x3f]
 		quad[2] = '='
 		quad[3] = '='
 		if left == 2 {
-			quad[2] = tableJsonBase64Alphabet[(triple>>6)&0x3f]
+			quad[2] = tableJSONBase64Alphabet[(triple>>6)&0x3f]
 		}
 		out.raw(quad[:])
 	}
 	out.put('"')
 }
 
-// tableJsonUtf8 is one UTF-8 sequence at the head of s, or a negative width
+// tableJSONUTF8 is one UTF-8 sequence at the head of s, or a negative width
 // whose magnitude is one Unicode maximal subpart (Unicode Table 3-7, Definition
 // D93b; mas-bandwidth/schema docs/SPEC-TABLES.md §16.3, §17.3) when the bytes there are ill-formed.
 // A lead byte that begins no valid sequence (C0, C1, F5..FF) returns -1;
 // otherwise scanning stops at the first continuation byte outside Table 3-7's
 // range, so the maximal subpart ends there.
-func tableJsonUtf8(s []byte) (code int32, width int32) {
+func tableJSONUTF8(s []byte) (code int32, width int32) {
 	lead := s[0]
 	var want int32
 	var lo, hi byte = 0x80, 0xbf
@@ -390,13 +390,13 @@ func tableJsonUtf8(s []byte) (code int32, width int32) {
 // therefore readable by any conforming parser, which a raw byte would not be.
 // The cost is stated plainly: for a string holding invalid UTF-8, the round
 // trip is NOT byte-identical, because the alternative is emitting a text that is not JSON.
-func tableJsonWriteString(out *tableJsonOut, s []byte) {
+func tableJSONWriteString(out *tableJSONOut, s []byte) {
 	out.put('"')
-	tableJsonWriteStringBody(out, s)
+	tableJSONWriteStringBody(out, s)
 	out.put('"')
 }
 
-func tableJsonWriteStringBody(out *tableJsonOut, s []byte) {
+func tableJSONWriteStringBody(out *tableJSONOut, s []byte) {
 	const hex = "0123456789abcdef"
 	for i := 0; i < len(s); i++ {
 		c := s[i]
@@ -425,7 +425,7 @@ func tableJsonWriteStringBody(out *tableJsonOut, s []byte) {
 			case c < 0x80:
 				out.put(c)
 			default:
-				_, width := tableJsonUtf8(s[i:])
+				_, width := tableJSONUTF8(s[i:])
 				if width < 0 {
 					out.text("�") // one per maximal subpart (mas-bandwidth/schema docs/SPEC-TABLES.md §16.3)
 					i += int(-width) - 1
@@ -438,7 +438,7 @@ func tableJsonWriteStringBody(out *tableJsonOut, s []byte) {
 	}
 }
 
-func tableJsonWriteUnsigned(out *tableJsonOut, value uint64) {
+func tableJSONWriteUnsigned(out *tableJSONOut, value uint64) {
 	var digits [24]byte
 	n := len(digits)
 	for {
@@ -452,13 +452,13 @@ func tableJsonWriteUnsigned(out *tableJsonOut, value uint64) {
 	out.raw(digits[n:])
 }
 
-func tableJsonWriteSigned(out *tableJsonOut, value int64) {
+func tableJSONWriteSigned(out *tableJSONOut, value int64) {
 	if value < 0 {
 		out.put('-')
-		tableJsonWriteUnsigned(out, -uint64(value))
+		tableJSONWriteUnsigned(out, -uint64(value))
 		return
 	}
-	tableJsonWriteUnsigned(out, uint64(value))
+	tableJSONWriteUnsigned(out, uint64(value))
 }
 
 // A float writes at the SHORTEST precision that reads back as the same value at
@@ -466,8 +466,8 @@ func tableJsonWriteSigned(out *tableJsonOut, value int64) {
 // Non-finite values have no JSON spelling at all, and the writer REFUSES rather
 // than losing one silently — the same rule measure and save already apply to an
 // enum value no variant names (§5).
-func tableJsonWriteFloat(out *tableJsonOut, value float64, single bool) bool {
-	if !tableJsonFinite(value) {
+func tableJSONWriteFloat(out *tableJSONOut, value float64, single bool) bool {
+	if !tableJSONFinite(value) {
 		return false
 	}
 	bits, low, high := 64, 15, 17
@@ -488,23 +488,23 @@ func tableJsonWriteFloat(out *tableJsonOut, value float64, single bool) bool {
 	}
 }
 
-// tableJsonWriteScalar writes one scalar at one storage address: a nested
+// tableJSONWriteScalar writes one scalar at one storage address: a nested
 // object, a union, a vocabulary, or a number.
-func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	if f.Pointer {
-		return tableJsonWritePointer(out, (*int64)(storage), f, depth)
+		return tableJSONWritePointer(out, (*int64)(storage), f, depth)
 	}
 	if f.Kind >= 18 && f.Kind <= 29 {
-		tableJsonWriteWide(out, storage, f)
+		tableJSONWriteWide(out, storage, f)
 		return true
 	}
 	if f.Kind == 36 {
-		return tableJsonWriteTimestamp(out, storage)
+		return tableJSONWriteTimestamp(out, storage)
 	}
 	if f.Arms != nil {
 		// a union is an object with ONE key, the arm's name; None is {}
 		arms := f.Arms()
-		tag := tableJsonGetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize)
+		tag := tableJSONGetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize)
 		if tag == 0 {
 			out.text("{}")
 			return true
@@ -517,16 +517,16 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 		// no variant NAMES is refused, so the check is the name. Writing
 		// whatever came back would emit "???", a spelling the reader counts as
 		// unknown — a silent round-trip loss in place of a refusal.
-		if !tableJsonNamed(arm) {
+		if !tableJSONNamed(arm) {
 			return false
 		}
 		out.put('{')
 		out.line(depth + 1)
-		tableJsonWriteString(out, tableJsonText(arm))
+		tableJSONWriteString(out, tableJSONText(arm))
 		out.text(": ")
 		if arms.Arms[tag].Void {
 			out.text("null")
-		} else if !tableJsonWriteField(out, storage, &arms.Arms[tag].Field, depth+1) {
+		} else if !tableJSONWriteField(out, storage, &arms.Arms[tag].Field, depth+1) {
 			return false
 		}
 		out.line(depth)
@@ -534,10 +534,10 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 		return true
 	}
 	if f.Kind == 13 {
-		return tableJsonWriteValue(out, storage, f.Table(), depth)
+		return tableJSONWriteValue(out, storage, f.Table(), depth)
 	}
-	if tableJsonIsEnum(f) {
-		value := tableJsonGetRaw(storage, f.ElemSize)
+	if tableJSONIsEnum(f) {
+		value := tableJSONGetRaw(storage, f.ElemSize)
 		// A STRICT WRITE REFUSES A DEPRECATED VARIANT (mas-bandwidth/schema docs/SPEC-TABLES.md
 		// §2.15): the caller's value is retired, so the text writer names it
 		// invalid rather than emitting a name a reader no longer takes.
@@ -551,14 +551,14 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 			return false
 		}
 		name := f.EnumName(value)
-		if !tableJsonNamed(name) {
+		if !tableJSONNamed(name) {
 			return false
 		}
-		tableJsonWriteString(out, tableJsonText(name))
+		tableJSONWriteString(out, tableJSONText(name))
 		return true
 	}
-	if tableJsonIsFlags(f) {
-		bits := tableJsonGetRaw(storage, f.ElemSize)
+	if tableJSONIsFlags(f) {
+		bits := tableJSONGetRaw(storage, f.ElemSize)
 		if bits == 0 {
 			out.text("[]")
 			return true
@@ -573,7 +573,7 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 				return false // a bit no variant names has no text spelling
 			}
 			name := f.EnumName(uint64(bit))
-			if !tableJsonNamed(name) {
+			if !tableJSONNamed(name) {
 				return false
 			}
 			if !first {
@@ -581,7 +581,7 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 			}
 			first = false
 			out.line(depth + 1)
-			tableJsonWriteString(out, tableJsonText(name))
+			tableJSONWriteString(out, tableJSONText(name))
 		}
 		out.line(depth)
 		out.put(']')
@@ -589,45 +589,45 @@ func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFie
 	}
 	switch f.Kind {
 	case 1:
-		if tableJsonGetRaw(storage, f.ElemSize) != 0 {
+		if tableJSONGetRaw(storage, f.ElemSize) != 0 {
 			out.text("true")
 		} else {
 			out.text("false")
 		}
 		return true
 	case 10:
-		return tableJsonWriteFloat(out, float64(*(*float32)(storage)), true)
+		return tableJSONWriteFloat(out, float64(*(*float32)(storage)), true)
 	case 11:
-		return tableJsonWriteFloat(out, *(*float64)(storage), false)
+		return tableJSONWriteFloat(out, *(*float64)(storage), false)
 	case 2, 3, 4, 5:
-		tableJsonWriteSigned(out, tableJsonGetSigned(storage, f.ElemSize))
+		tableJSONWriteSigned(out, tableJSONGetSigned(storage, f.ElemSize))
 		return true
 	}
-	tableJsonWriteUnsigned(out, tableJsonGetRaw(storage, f.ElemSize))
+	tableJSONWriteUnsigned(out, tableJSONGetRaw(storage, f.ElemSize))
 	return true
 }
 
-func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+func tableJSONWriteField(out *tableJSONOut, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	storage := unsafe.Add(base, uintptr(f.Offset))
 	if f.Map {
-		return tableJsonWriteMap(out, storage, f, depth)
+		return tableJSONWriteMap(out, storage, f, depth)
 	}
 	if f.List {
-		return tableJsonWriteList(out, storage, f, depth)
+		return tableJSONWriteList(out, storage, f, depth)
 	}
 	if f.Kind == 33 {
-		tableJsonWriteWString(out, unsafe.Slice((*uint16)(storage), tableJsonCount(base, f)))
+		tableJSONWriteWString(out, unsafe.Slice((*uint16)(storage), tableJSONCount(base, f)))
 		return true
 	}
 	if f.Kind == 12 {
-		tableJsonWriteString(out, tableJsonBytes(storage, tableJsonCount(base, f)))
+		tableJSONWriteString(out, tableJSONBytes(storage, tableJSONCount(base, f)))
 		return true
 	}
-	if tableJsonIsBytes(f) {
-		tableJsonWriteBase64(out, tableJsonBytes(storage, tableJsonCount(base, f)))
+	if tableJSONIsBytes(f) {
+		tableJSONWriteBase64(out, tableJSONBytes(storage, tableJSONCount(base, f)))
 		return true
 	}
-	if tableJsonIsKeyed(f) {
+	if tableJSONIsKeyed(f) {
 		// one entry per SLOT, keyed by the variant that owns it, so inserting a
 		// variant next season moves nothing in the text either. Slot i holds
 		// the key i + 1: nothing is stored for None, so nothing is written for
@@ -635,7 +635,7 @@ func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldIn
 		out.put('{')
 		first := true
 		for slot := range f.ArrayBound {
-			if !tableJsonKeyedSlotValid(f, slot) {
+			if !tableJSONKeyedSlotValid(f, slot) {
 				continue
 			}
 			if !first {
@@ -643,9 +643,9 @@ func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldIn
 			}
 			first = false
 			out.line(depth + 1)
-			tableJsonWriteString(out, tableJsonText(f.KeyName(tableJsonKeyedSlotKey(slot))))
+			tableJSONWriteString(out, tableJSONText(f.KeyName(tableJSONKeyedSlotKey(slot))))
 			out.text(": ")
-			if !tableJsonWriteScalar(out, unsafe.Add(storage, uintptr(slot)*uintptr(f.ElemSize)), f, depth+1) {
+			if !tableJSONWriteScalar(out, unsafe.Add(storage, uintptr(slot)*uintptr(f.ElemSize)), f, depth+1) {
 				return false
 			}
 		}
@@ -658,7 +658,7 @@ func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldIn
 		return true
 	}
 	if f.IsArray {
-		count := tableJsonCount(base, f)
+		count := tableJSONCount(base, f)
 		if count == 0 {
 			out.text("[]")
 			return true
@@ -669,7 +669,7 @@ func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldIn
 				out.put(',')
 			}
 			out.line(depth + 1)
-			if !tableJsonWriteScalar(out, unsafe.Add(storage, uintptr(i)*uintptr(f.ElemSize)), f, depth+1) {
+			if !tableJSONWriteScalar(out, unsafe.Add(storage, uintptr(i)*uintptr(f.ElemSize)), f, depth+1) {
 				return false
 			}
 		}
@@ -677,42 +677,42 @@ func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldIn
 		out.put(']')
 		return true
 	}
-	return tableJsonWriteScalar(out, storage, f, depth)
+	return tableJSONWriteScalar(out, storage, f, depth)
 }
 
-// tableJsonWriteValue writes one instance, every field, in DECLARATION ORDER,
+// tableJSONWriteValue writes one instance, every field, in DECLARATION ORDER,
 // defaults included — a text is for people and tools, and a text that elides is
 // a text a reader has to know the schema to complete.
-func tableJsonWriteValue(out *tableJsonOut, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {
-	return tableJsonWriteLabeledValue(out, base, info, depth, 0)
+func tableJSONWriteValue(out *tableJSONOut, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {
+	return tableJSONWriteLabeledValue(out, base, info, depth, 0)
 }
-func tableJsonWriteLabeledValue(out *tableJsonOut, base unsafe.Pointer, info *TableTypeInfo, depth int32, label uint64) bool {
-	if depth > tableJsonMaxDepth {
+func tableJSONWriteLabeledValue(out *tableJSONOut, base unsafe.Pointer, info *TableTypeInfo, depth int32, label uint64) bool {
+	if depth > tableJSONMaxDepth {
 		return false
 	}
 	any := label != 0
-	def := tableJsonDefaults(out, base, info, label)
+	def := tableJSONDefaults(out, base, info, label)
 	if any {
 		out.put('{')
 		out.line(depth + 1)
 		out.text("\"&node\": ")
-		tableJsonWriteUnsigned(out, label)
+		tableJSONWriteUnsigned(out, label)
 	}
 	wrote := false
 	for i := range info.Fields {
 		f := &info.Fields[i]
-		if f.Guard != "" && !tableJsonGuardHolds(base, info, f.Guard) {
+		if f.Guard != "" && !tableJSONGuardHolds(base, info, f.Guard) {
 			continue
 		}
 		// an ABSENT optional writes no key: presence of the key IS the presence
 		// (§16.2), so an absent field is an absent key and nothing else would
 		// read back as absent
-		if f.Optional && tableJsonGetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1) == 0 {
+		if f.Optional && tableJSONGetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1) == 0 {
 			continue
 		}
 		// OMIT DEFAULTS (§16.2): a field at what an absent key reads as writes
 		// no key
-		if def != nil && tableJsonAtDefault(base, def, f) {
+		if def != nil && tableJSONAtDefault(base, def, f) {
 			continue
 		}
 		if !any {
@@ -723,9 +723,9 @@ func tableJsonWriteLabeledValue(out *tableJsonOut, base unsafe.Pointer, info *Ta
 		any = true
 		wrote = true
 		out.line(depth + 1)
-		tableJsonWriteString(out, tableJsonText(f.Json))
+		tableJSONWriteString(out, tableJSONText(f.JSON))
 		out.text(": ")
-		if !tableJsonWriteField(out, base, f, depth+1) {
+		if !tableJSONWriteField(out, base, f, depth+1) {
 			return false
 		}
 	}
@@ -741,13 +741,13 @@ func tableJsonWriteLabeledValue(out *tableJsonOut, base unsafe.Pointer, info *Ta
 	return true
 }
 
-// tableJsonDefaults is the omit-defaults option's comparand (mas-bandwidth/schema docs/SPEC-TABLES.md
+// tableJSONDefaults is the omit-defaults option's comparand (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2): one instance of info at its declared defaults, or nil when nothing is
 // elided at this object — the option is off, or the object is a &node
 // definition every field of which is at its default, which writes them all
 // because a definition holding no field is not one (§16.7). It is the option's
 // stated price: one allocation per object written.
-func tableJsonDefaults(out *tableJsonOut, base unsafe.Pointer, info *TableTypeInfo, label uint64) unsafe.Pointer {
+func tableJSONDefaults(out *tableJSONOut, base unsafe.Pointer, info *TableTypeInfo, label uint64) unsafe.Pointer {
 	if !out.omit || info.Reset == nil {
 		return nil
 	}
@@ -759,25 +759,25 @@ func tableJsonDefaults(out *tableJsonOut, base unsafe.Pointer, info *TableTypeIn
 	}
 	for i := range info.Fields {
 		f := &info.Fields[i]
-		if f.Guard != "" && !tableJsonGuardHolds(base, info, f.Guard) {
+		if f.Guard != "" && !tableJSONGuardHolds(base, info, f.Guard) {
 			continue
 		}
-		if !tableJsonAtDefault(base, def, f) {
+		if !tableJSONAtDefault(base, def, f) {
 			return def
 		}
 	}
 	return nil
 }
 
-// tableJsonAtDefault answers whether field f of the instance at base holds what
+// tableJSONAtDefault answers whether field f of the instance at base holds what
 // an absent key reads as (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2, omit defaults), against
 // def, an instance of the same type at its declared defaults. It decides on
 // STORAGE and conservatively: a value it cannot show to be the default answers
 // false and is written, so the option elides less than it could and never more.
-func tableJsonAtDefault(base, def unsafe.Pointer, f *TableFieldInfo) bool {
+func tableJSONAtDefault(base, def unsafe.Pointer, f *TableFieldInfo) bool {
 	if f.Optional {
 		// absent is the default; a present optional's key is its presence
-		return tableJsonGetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1) == 0
+		return tableJSONGetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1) == 0
 	}
 	storage, defaults := unsafe.Add(base, uintptr(f.Offset)), unsafe.Add(def, uintptr(f.Offset))
 	if f.Map || f.List {
@@ -788,17 +788,17 @@ func tableJsonAtDefault(base, def unsafe.Pointer, f *TableFieldInfo) bool {
 	}
 	if f.Arms != nil {
 		arms := f.Arms()
-		return tableJsonGetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize) == 0 &&
-			tableJsonGetRaw(unsafe.Add(defaults, uintptr(arms.TagOffset)), arms.TagSize) == 0
+		return tableJSONGetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize) == 0 &&
+			tableJSONGetRaw(unsafe.Add(defaults, uintptr(arms.TagOffset)), arms.TagSize) == 0
 	}
 	if f.Kind == 13 && !f.IsArray && f.Table != nil {
 		t := f.Table()
 		for i := range t.Fields {
 			g := &t.Fields[i]
-			if g.Guard != "" && !tableJsonGuardHolds(storage, t, g.Guard) {
+			if g.Guard != "" && !tableJSONGuardHolds(storage, t, g.Guard) {
 				continue
 			}
-			if !tableJsonAtDefault(storage, defaults, g) {
+			if !tableJSONAtDefault(storage, defaults, g) {
 				return false
 			}
 		}
@@ -809,8 +809,8 @@ func tableJsonAtDefault(base, def unsafe.Pointer, f *TableFieldInfo) bool {
 		size *= uintptr(f.ArrayBound)
 	}
 	if f.Counted {
-		count := tableJsonCount(base, f)
-		if count != tableJsonCount(def, f) {
+		count := tableJSONCount(base, f)
+		if count != tableJSONCount(def, f) {
 			return false
 		}
 		if count == 0 {
@@ -830,8 +830,8 @@ func tableJsonAtDefault(base, def unsafe.Pointer, f *TableFieldInfo) bool {
 
 // ---- reading ----
 
-type tableJsonIn struct {
-	graph  *tableJsonGraph
+type tableJSONIn struct {
+	graph  *tableJSONGraph
 	text   []byte
 	pos    int
 	report *TableReport
@@ -848,7 +848,7 @@ type tableJsonIn struct {
 	utf8 bool
 }
 
-func (in *tableJsonIn) space() {
+func (in *tableJSONIn) space() {
 	for in.pos < len(in.text) {
 		c := in.text[in.pos]
 		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
@@ -882,13 +882,13 @@ func (in *tableJsonIn) space() {
 
 // a leading UTF-8 byte-order mark is skipped, at the very start and nowhere
 // else, and never written (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2, §16.12; RFC 8259 §8.1)
-func (in *tableJsonIn) byteOrderMark() {
+func (in *tableJSONIn) byteOrderMark() {
 	if in.pos == 0 && len(in.text) >= 3 && in.text[0] == 0xEF && in.text[1] == 0xBB && in.text[2] == 0xBF {
 		in.pos = 3
 	}
 }
 
-func (in *tableJsonIn) peek() byte {
+func (in *tableJSONIn) peek() byte {
 	in.space()
 	if in.pos < len(in.text) {
 		return in.text[in.pos]
@@ -897,7 +897,7 @@ func (in *tableJsonIn) peek() byte {
 }
 
 // the shape of the value sitting at the cursor, without consuming it
-func (in *tableJsonIn) valueShape() byte {
+func (in *tableJSONIn) valueShape() byte {
 	switch in.peek() {
 	case '{':
 		return 'o'
@@ -915,7 +915,7 @@ func (in *tableJsonIn) valueShape() byte {
 	return 'n'
 }
 
-func (in *tableJsonIn) literal(word string) bool {
+func (in *tableJSONIn) literal(word string) bool {
 	if in.pos+len(word) > len(in.text) || string(in.text[in.pos:in.pos+len(word)]) != word {
 		in.bad = true
 		return false
@@ -925,7 +925,7 @@ func (in *tableJsonIn) literal(word string) bool {
 }
 
 // one \uXXXX escape body; -1 when the four hex digits are not there
-func (in *tableJsonIn) hex4() int32 {
+func (in *tableJSONIn) hex4() int32 {
 	if in.pos+4 > len(in.text) {
 		return -1
 	}
@@ -949,7 +949,7 @@ func (in *tableJsonIn) hex4() int32 {
 	return value
 }
 
-func tableJsonEncodeUtf8(code uint32, unit []byte) int32 {
+func tableJSONEncodeUTF8(code uint32, unit []byte) int32 {
 	switch {
 	case code < 0x80:
 		unit[0] = byte(code)
@@ -985,13 +985,13 @@ func tableJsonEncodeUtf8(code uint32, unit []byte) int32 {
 // \u0000 escape can produce one; a raw control byte is already not JSON. A
 // string only skipped or measured (no destination) stores nothing, and
 // scanKey's names (object keys, enum and flag names) store nothing either.
-func (in *tableJsonIn) scanString(out []byte) (int32, bool) { return in.scanText(out, nil, false) }
+func (in *tableJSONIn) scanString(out []byte) (int32, bool) { return in.scanText(out, nil, false) }
 
 // scanKey scans a NAME: an object key or a variant name, compared and never
 // stored, so a zero in it is not 16.3's event (it simply names nothing).
-func (in *tableJsonIn) scanKey(out []byte) (int32, bool) { return in.scanText(out, nil, true) }
+func (in *tableJSONIn) scanKey(out []byte) (int32, bool) { return in.scanText(out, nil, true) }
 
-func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bool) {
+func (in *tableJSONIn) scanText(out []byte, wide []uint16, name bool) (int32, bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return 0, false
@@ -1069,7 +1069,7 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 					in.bad = true
 					return 0, false
 				}
-				unitLength = tableJsonEncodeUtf8(code, unit[:])
+				unitLength = tableJSONEncodeUTF8(code, unit[:])
 			default:
 				in.bad = true
 				return 0, false
@@ -1145,7 +1145,7 @@ func (in *tableJsonIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 // already promises. A permissive scan would hand "1-2" to a digit loop and
 // report a clamp, and a config pipeline would never hear about it. Leading "+",
 // leading zeros, ".5" and "3." are not JSON either.
-func (in *tableJsonIn) walkNumber() (integral bool, ok bool) {
+func (in *tableJSONIn) walkNumber() (integral bool, ok bool) {
 	in.space()
 	whole := true
 	if in.pos < len(in.text) && in.text[in.pos] == '-' {
@@ -1195,7 +1195,7 @@ func (in *tableJsonIn) walkNumber() (integral bool, ok bool) {
 
 // the same production, with the token kept for conversion. A valid RFC 8259
 // number of any length within the document is read by its value (§16.2).
-func (in *tableJsonIn) scanNumber() (token []byte, integral bool, ok bool) {
+func (in *tableJSONIn) scanNumber() (token []byte, integral bool, ok bool) {
 	in.space()
 	start := in.pos
 	integral, ok = in.walkNumber()
@@ -1210,7 +1210,7 @@ func (in *tableJsonIn) scanNumber() (token []byte, integral bool, ok bool) {
 
 // the token's exact double. Go's strconv is locale-free, so unlike the C++
 // walk's strtod there is no decimal point to cross on the way in.
-func tableJsonTokenDouble(token []byte, single bool) float64 {
+func tableJSONTokenDouble(token []byte, single bool) float64 {
 	bits := 64
 	if single {
 		bits = 32
@@ -1221,10 +1221,10 @@ func tableJsonTokenDouble(token []byte, single bool) float64 {
 	return value
 }
 
-// tableJsonTokenInteger is the token's exact integer, parsed digit by digit so
+// tableJSONTokenInteger is the token's exact integer, parsed digit by digit so
 // no width and no locale can move it. Saturation is reported as a clamp, the
 // wire's rule for a value outside what the reader can hold (§4).
-func tableJsonTokenInteger(token []byte, isSigned bool) (value int64, saturated bool) {
+func tableJSONTokenInteger(token []byte, isSigned bool) (value int64, saturated bool) {
 	i := 0
 	negative := false
 	if i < len(token) && (token[i] == '-' || token[i] == '+') {
@@ -1269,8 +1269,8 @@ func tableJsonTokenInteger(token []byte, isSigned bool) (value int64, saturated 
 	return int64(magnitude), false
 }
 
-func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
-	if depth > tableJsonMaxDepth {
+func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
+	if depth > tableJSONMaxDepth {
 		in.bad = true
 		return false
 	}
@@ -1312,8 +1312,8 @@ func (in *tableJsonIn) skipContainer(closing byte, depth int32) bool {
 	}
 }
 
-func (in *tableJsonIn) skipValue(depth int32) bool {
-	tableJsonDropLabel(in)
+func (in *tableJSONIn) skipValue(depth int32) bool {
+	tableJSONDropLabel(in)
 	switch in.peek() {
 	case '{':
 		return in.skipContainer('}', depth)
@@ -1343,9 +1343,9 @@ func (in *tableJsonIn) skipValue(depth int32) bool {
 	return true
 }
 
-// tableJsonNameIs compares a descriptor's name against a scanned key without
+// tableJSONNameIs compares a descriptor's name against a scanned key without
 // turning the key into a string, so a read allocates nothing for a comparison.
-func tableJsonNameIs(name string, key []byte) bool {
+func tableJSONNameIs(name string, key []byte) bool {
 	if len(name) != len(key) {
 		return false
 	}
@@ -1357,10 +1357,10 @@ func tableJsonNameIs(name string, key []byte) bool {
 	return true
 }
 
-// tableJsonReadScalar places one scalar at one storage address.
-func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+// tableJSONReadScalar places one scalar at one storage address.
+func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	if f.Pointer {
-		return tableJsonReadPointer(in, (*int64)(storage), f, depth+1)
+		return tableJSONReadPointer(in, (*int64)(storage), f, depth+1)
 	}
 	if f.Arms != nil {
 		// a union is an object with ONE key, the arm's name; {} is None, and
@@ -1371,13 +1371,13 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 			return false
 		}
 		in.pos++
-		tableJsonSetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize, 0)
+		tableJSONSetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize, 0)
 		if in.peek() == '}' {
 			in.pos++
 			return true
 		}
-		var key [tableJsonMaxKey]byte
-		keyLength, ok := in.scanKey(key[:tableJsonMaxKey-1])
+		var key [tableJSONMaxKey]byte
+		keyLength, ok := in.scanKey(key[:tableJSONMaxKey-1])
 		if !ok {
 			return false
 		}
@@ -1388,7 +1388,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		in.pos++
 		tag := int64(0)
 		for t := int64(1); t <= f.EnumMax; t++ {
-			if tableJsonNameIs(f.EnumName(uint64(t)), key[:keyLength]) {
+			if tableJSONNameIs(f.EnumName(uint64(t)), key[:keyLength]) {
 				tag = t
 				break
 			}
@@ -1402,7 +1402,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 			arm := &arms.Arms[tag]
 			want := byte('z')
 			if !arm.Void {
-				want = tableJsonShape(&arm.Field)
+				want = tableJSONShape(&arm.Field)
 			}
 			if in.valueShape() != want && !(arm.Field.Pointer && !arm.Field.IsArray && in.valueShape() == 'z') {
 				in.report.KindMismatch++
@@ -1416,11 +1416,11 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 					}
 				} else {
 					arm.Reset(storage)
-					if !tableJsonReadField(in, storage, &arm.Field, depth+1) {
+					if !tableJSONReadField(in, storage, &arm.Field, depth+1) {
 						return false
 					}
 				}
-				tableJsonSetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize, uint64(tag))
+				tableJSONSetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize, uint64(tag))
 			}
 		}
 		c := in.peek()
@@ -1438,34 +1438,34 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 	if f.Kind == 13 {
 		nested := f.Table()
 		nested.Reset(storage)
-		return tableJsonReadTable(in, storage, nested, depth+1)
+		return tableJSONReadTable(in, storage, nested, depth+1)
 	}
-	if tableJsonIsEnum(f) {
-		var name [tableJsonMaxKey]byte
-		nameLength, ok := in.scanKey(name[:tableJsonMaxKey-1])
+	if tableJSONIsEnum(f) {
+		var name [tableJSONMaxKey]byte
+		nameLength, ok := in.scanKey(name[:tableJSONMaxKey-1])
 		if !ok {
 			return false
 		}
 		for v := int64(0); v <= f.EnumMax; v++ {
-			if tableJsonNameIs(f.EnumName(uint64(v)), name[:nameLength]) {
+			if tableJSONNameIs(f.EnumName(uint64(v)), name[:nameLength]) {
 				if f.EnumDeprecated != nil && f.EnumDeprecated(uint64(v)) {
 					// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED
 					// DEFAULT (mas-bandwidth/schema docs/SPEC-TABLES.md §2.15), and is never
 					// counted unknown.
-					tableJsonSetRaw(storage, f.ElemSize, f.EnumDefault)
+					tableJSONSetRaw(storage, f.ElemSize, f.EnumDefault)
 					return true
 				}
-				tableJsonSetRaw(storage, f.ElemSize, uint64(v))
+				tableJSONSetRaw(storage, f.ElemSize, uint64(v))
 				return true
 			}
 		}
 		// a name this build cannot name reads as None and counts as unknown,
 		// exactly as an unknown variant id does on the wire (§4)
-		tableJsonSetRaw(storage, f.ElemSize, 0)
+		tableJSONSetRaw(storage, f.ElemSize, 0)
 		in.report.Unknown++
 		return true
 	}
-	if tableJsonIsFlags(f) {
+	if tableJSONIsFlags(f) {
 		if in.peek() != '[' {
 			in.bad = true
 			return false
@@ -1488,14 +1488,14 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 					return false
 				}
 			} else {
-				var name [tableJsonMaxKey]byte
-				nameLength, ok := in.scanKey(name[:tableJsonMaxKey-1])
+				var name [tableJSONMaxKey]byte
+				nameLength, ok := in.scanKey(name[:tableJSONMaxKey-1])
 				if !ok {
 					return false
 				}
 				found := false
 				for bit := int64(0); bit <= f.EnumMax; bit++ {
-					if tableJsonNameIs(f.EnumName(uint64(bit)), name[:nameLength]) {
+					if tableJSONNameIs(f.EnumName(uint64(bit)), name[:nameLength]) {
 						bits |= uint64(1) << bit
 						found = true
 						break
@@ -1517,24 +1517,24 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 			in.bad = true
 			return false
 		}
-		tableJsonSetRaw(storage, f.ElemSize, bits)
+		tableJSONSetRaw(storage, f.ElemSize, bits)
 		return true
 	}
 	if f.Kind == 36 {
-		return tableJsonReadTimestamp(in, storage, f)
+		return tableJSONReadTimestamp(in, storage, f)
 	}
 	if f.Kind == 1 {
 		if in.peek() == 't' {
 			if !in.literal("true") {
 				return false
 			}
-			tableJsonSetRaw(storage, f.ElemSize, 1)
+			tableJSONSetRaw(storage, f.ElemSize, 1)
 			return true
 		}
 		if !in.literal("false") {
 			return false
 		}
-		tableJsonSetRaw(storage, f.ElemSize, 0)
+		tableJSONSetRaw(storage, f.ElemSize, 0)
 		return true
 	}
 	token, integral, ok := in.scanNumber()
@@ -1543,18 +1543,18 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		return false
 	}
 	if f.Kind >= 18 && f.Kind <= 29 {
-		return tableJsonReadWide(in, token, storage, f)
+		return tableJSONReadWide(in, token, storage, f)
 	}
 	if f.Kind == 10 || f.Kind == 11 {
 		single := f.Kind == 10
-		value := tableJsonTokenDouble(token, single)
+		value := tableJSONTokenDouble(token, single)
 		// A magnitude the field's format cannot hold is the WRONG SHAPE for the
 		// kind, and it never reaches storage: 1e400 is not a float64 and 1e300
 		// is not a float32. Storing the infinity the conversion produced would
-		// leave an instance this walk called CLEAN that ToJsonMeasure then
+		// leave an instance this walk called CLEAN that ToJSONMeasure then
 		// refuses forever (a non-finite float has no JSON spelling), and
 		// §16.1's one invariant is that a text which reads clean writes back.
-		if !tableJsonFinite(value) {
+		if !tableJSONFinite(value) {
 			in.report.KindMismatch++
 			return true
 		}
@@ -1576,7 +1576,7 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		}
 		if single {
 			narrow := float32(value)
-			if !tableJsonFinite(float64(narrow)) {
+			if !tableJSONFinite(float64(narrow)) {
 				in.report.KindMismatch++
 				return true
 			}
@@ -1595,10 +1595,10 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 	saturated := false
 	value := int64(0)
 	if integral {
-		value, saturated = tableJsonTokenInteger(token, isSigned)
+		value, saturated = tableJSONTokenInteger(token, isSigned)
 	} else {
-		d := tableJsonTokenDouble(token, false)
-		if !tableJsonFinite(d) {
+		d := tableJSONTokenDouble(token, false)
+		if !tableJSONFinite(d) {
 			in.report.KindMismatch++
 			return true
 		}
@@ -1692,17 +1692,17 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 	// past MaxInt64 rides here as its bit pattern by design — the domain bound
 	// above already handled it, and a NEGATIVE token for an unsigned field was
 	// turned into a clamped zero before this point.
-	tableJsonSetRaw(storage, f.ElemSize, uint64(value))
+	tableJSONSetRaw(storage, f.ElemSize, uint64(value))
 	return true
 }
 
-func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	storage := unsafe.Add(base, uintptr(f.Offset))
 	if f.Map {
-		return tableJsonReadMap(in, storage, f, depth)
+		return tableJSONReadMap(in, storage, f, depth)
 	}
 	if f.List {
-		return tableJsonReadList(in, storage, f, depth)
+		return tableJSONReadList(in, storage, f, depth)
 	}
 	if f.Kind == 33 {
 		units := unsafe.Slice((*uint16)(storage), f.ArrayBound)
@@ -1711,18 +1711,18 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		if !ok {
 			return false
 		}
-		tableJsonSetCount(base, f, n)
+		tableJSONSetCount(base, f, n)
 		return true
 	}
 	if f.Kind == 12 {
-		length, ok := in.scanString(tableJsonBytes(storage, f.ArrayBound))
+		length, ok := in.scanString(tableJSONBytes(storage, f.ArrayBound))
 		if !ok {
 			return false
 		}
-		tableJsonSetCount(base, f, length)
+		tableJSONSetCount(base, f, length)
 		return true
 	}
-	if tableJsonIsBytes(f) {
+	if tableJSONIsBytes(f) {
 		// A bytes field is a JSON string whose decoded value is base64
 		// (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2), so undo the string's JSON escapes first
 		// and read base64 from the decoded text. Both the padding check and the
@@ -1766,7 +1766,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				malformed = true
 				continue
 			}
-			at := tableJsonBase64Decode[c]
+			at := tableJSONBase64Decode[c]
 			if at < 0 {
 				malformed = true
 				continue
@@ -1788,9 +1788,9 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 			in.report.KindMismatch++
 			return true
 		}
-		buffer := tableJsonBytes(storage, f.ArrayBound)
+		buffer := tableJSONBytes(storage, f.ArrayBound)
 		clear(buffer)
-		tableJsonSetCount(base, f, 0)
+		tableJSONSetCount(base, f, 0)
 		placed := int32(0)
 		accumulator := uint32(0)
 		held := int32(0)
@@ -1799,7 +1799,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 			if c == '=' {
 				break
 			}
-			symbol := tableJsonBase64Decode[c]
+			symbol := tableJSONBase64Decode[c]
 			accumulator = accumulator<<6 | uint32(symbol)
 			held += 6
 			if held >= 8 {
@@ -1815,10 +1815,10 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		if clamped {
 			in.report.Clamped++
 		}
-		tableJsonSetCount(base, f, placed)
+		tableJSONSetCount(base, f, placed)
 		return true
 	}
-	if tableJsonIsKeyed(f) {
+	if tableJSONIsKeyed(f) {
 		if in.peek() != '{' {
 			in.bad = true
 			return false
@@ -1835,7 +1835,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				clear(unsafe.Slice((*byte)(slot), f.ElemSize))
 			}
 		}
-		shape := tableJsonElementShape(f)
+		shape := tableJSONElementShape(f)
 		// A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate
 		// key like any other, last-wins and counted (§16.2). Tracked the way a
 		// table's own field keys are — a bounded, allocation-free bitmask; a
@@ -1852,8 +1852,8 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				in.bad = true
 				return false
 			}
-			var key [tableJsonMaxKey]byte
-			keyLength, ok := in.scanKey(key[:tableJsonMaxKey-1])
+			var key [tableJSONMaxKey]byte
+			keyLength, ok := in.scanKey(key[:tableJSONMaxKey-1])
 			if !ok {
 				return false
 			}
@@ -1866,10 +1866,10 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 			for v := range f.ArrayBound {
 				// nothing is stored for None, so "None" finds no slot and is an
 				// unknown key like any other name this reader cannot place
-				if !tableJsonKeyedSlotValid(f, v) {
+				if !tableJSONKeyedSlotValid(f, v) {
 					continue
 				}
-				if tableJsonNameIs(f.KeyName(tableJsonKeyedSlotKey(v)), key[:keyLength]) {
+				if tableJSONNameIs(f.KeyName(tableJSONKeyedSlotKey(v)), key[:keyLength]) {
 					slot = v
 					break
 				}
@@ -1893,7 +1893,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 					return false
 				}
 			default:
-				if !tableJsonReadScalar(in, unsafe.Add(storage, uintptr(slot)*uintptr(f.ElemSize)), f, depth+1) {
+				if !tableJSONReadScalar(in, unsafe.Add(storage, uintptr(slot)*uintptr(f.ElemSize)), f, depth+1) {
 					return false
 				}
 			}
@@ -1932,9 +1932,9 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		} else {
 			clear(unsafe.Slice((*byte)(storage), int64(f.ArrayBound)*int64(f.ElemSize)))
 		}
-		tableJsonSetCount(base, f, 0)
+		tableJSONSetCount(base, f, 0)
 		placed := int32(0)
-		shape := tableJsonElementShape(f)
+		shape := tableJSONElementShape(f)
 		for {
 			c := in.peek()
 			if c == ']' {
@@ -1960,7 +1960,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				}
 				placed++
 			default:
-				if !tableJsonReadScalar(in, unsafe.Add(storage, uintptr(placed)*uintptr(f.ElemSize)), f, depth+1) {
+				if !tableJSONReadScalar(in, unsafe.Add(storage, uintptr(placed)*uintptr(f.ElemSize)), f, depth+1) {
 					return false
 				}
 				placed++
@@ -1979,19 +1979,19 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		}
 		// a fixed array's tail keeps the defaults the prefill left there,
 		// exactly as a short wire count does
-		tableJsonSetCount(base, f, placed)
+		tableJSONSetCount(base, f, placed)
 		return true
 	}
-	return tableJsonReadScalar(in, storage, f, depth)
+	return tableJSONReadScalar(in, storage, f, depth)
 }
 
-// tableJsonReadTable reads ONE table object: keys are field keys, unknown ones
+// tableJSONReadTable reads ONE table object: keys are field keys, unknown ones
 // are skipped and counted, a repeated key is last-wins and counted. The
 // instance is already at its declared defaults when this is entered, so a key
 // the text never mentions keeps the default an absent field takes on the wire
 // (§4).
-func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {
-	if depth > tableJsonMaxDepth {
+func tableJSONReadTable(in *tableJSONIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {
+	if depth > tableJSONMaxDepth {
 		in.bad = true
 		return false
 	}
@@ -2000,9 +2000,9 @@ func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInf
 		return false
 	}
 	in.pos++
-	return tableJsonReadTableFields(in, base, info, depth, true)
+	return tableJSONReadTableFields(in, base, info, depth, true)
 }
-func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32, emptyAllowed bool) bool {
+func tableJSONReadTableFields(in *tableJSONIn, base unsafe.Pointer, info *TableTypeInfo, depth int32, emptyAllowed bool) bool {
 	// duplicate tracking, bounded and allocation-free: a table with more fields
 	// than this still reads, its repeats simply stop being counted
 	var seen [8]uint64
@@ -2016,8 +2016,8 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 			in.bad = true
 			return false
 		}
-		var key [tableJsonMaxKey]byte
-		keyLength, ok := in.scanKey(key[:tableJsonMaxKey-1])
+		var key [tableJSONMaxKey]byte
+		keyLength, ok := in.scanKey(key[:tableJSONMaxKey-1])
 		if !ok {
 			return false
 		}
@@ -2028,7 +2028,7 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 		in.pos++
 		index := -1
 		for i := range info.Fields {
-			if tableJsonNameIs(info.Fields[i].Json, key[:keyLength]) {
+			if tableJSONNameIs(info.Fields[i].JSON, key[:keyLength]) {
 				index = i
 				break
 			}
@@ -2071,19 +2071,19 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 				} else {
 					clear(unsafe.Slice((*byte)(unsafe.Add(base, uintptr(f.Offset))), f.ElemSize))
 				}
-				tableJsonSetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1, 0)
+				tableJSONSetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1, 0)
 			} else {
-				if got == 'z' && in.nullEmpty && tableJsonNullEmpties(f) {
-					if !tableJsonReadNullAsEmpty(in, base, f, depth) {
+				if got == 'z' && in.nullEmpty && tableJSONNullEmpties(f) {
+					if !tableJSONReadNullAsEmpty(in, base, f, depth) {
 						return false
 					}
-				} else if got != tableJsonShape(f) && !(f.Pointer && !f.IsArray && got == 'z') {
+				} else if got != tableJSONShape(f) && !(f.Pointer && !f.IsArray && got == 'z') {
 					// the wrong JSON type for the kind: skipped, never coerced
 					in.report.KindMismatch++
 					if !in.skipValue(depth + 1) {
 						return false
 					}
-				} else if !tableJsonReadField(in, base, f, depth) {
+				} else if !tableJSONReadField(in, base, f, depth) {
 					// mas-bandwidth/schema docs/SPEC-TABLES.md 16.3: the innermost field that held
 					// a zero in text is the one the refusal names
 					if in.zero && in.report.Reason == "" {
@@ -2092,7 +2092,7 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 					return false
 				}
 				if f.Optional {
-					tableJsonSetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1, 1)
+					tableJSONSetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1, 1)
 				}
 			}
 		}
@@ -2110,17 +2110,17 @@ func tableJsonReadTableFields(in *tableJsonIn, base unsafe.Pointer, info *TableT
 	}
 }
 
-// tableJsonNullEmpties is the null-as-empty option's reach (mas-bandwidth/schema docs/SPEC-TABLES.md
+// tableJSONNullEmpties is the null-as-empty option's reach (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2): every row whose JSON is an array, and a map — never a ?T, which the
 // optional row reads first, and never a pointer, whose null is a null pointer.
-func tableJsonNullEmpties(f *TableFieldInfo) bool {
-	return f.Map || (tableJsonShape(f) == 'a' && !(f.Pointer && !f.IsArray))
+func tableJSONNullEmpties(f *TableFieldInfo) bool {
+	return f.Map || (tableJSONShape(f) == 'a' && !(f.Pointer && !f.IsArray))
 }
 
-// tableJsonReadNullAsEmpty reads a null under the option (mas-bandwidth/schema docs/SPEC-TABLES.md
+// tableJSONReadNullAsEmpty reads a null under the option (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2) exactly as the field's own empty text would read there, through the
 // same field walk, so the emptying is each row's own and nothing is counted.
-func tableJsonReadNullAsEmpty(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+func tableJSONReadNullAsEmpty(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	if !in.literal("null") {
 		return false
 	}
@@ -2129,8 +2129,8 @@ func tableJsonReadNullAsEmpty(in *tableJsonIn, base unsafe.Pointer, f *TableFiel
 		empty = "{}"
 	}
 	sub := *in
-	sub.text, sub.pos = tableJsonText(empty), 0
-	ok := tableJsonReadField(&sub, base, f, depth)
+	sub.text, sub.pos = tableJSONText(empty), 0
+	ok := tableJSONReadField(&sub, base, f, depth)
 	if sub.bad {
 		in.bad = true
 	}
@@ -2139,15 +2139,15 @@ func tableJsonReadNullAsEmpty(in *tableJsonIn, base unsafe.Pointer, f *TableFiel
 
 // ---- the two entry points the per-table wrappers name ----
 
-func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, report *TableReport, options TableJsonOptions) bool {
+func tableJSONRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, report *TableReport, options TableJSONOptions) bool {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
 	}
-	in := tableJsonIn{text: text, report: report, nullEmpty: options.NullAsEmpty}
+	in := tableJSONIn{text: text, report: report, nullEmpty: options.NullAsEmpty}
 	info.Reset(value)
 	in.byteOrderMark()
-	ok := tableJsonReadTable(&in, value, info, 0)
+	ok := tableJSONReadTable(&in, value, info, 0)
 	if ok {
 		// the canonical text ends with ONE newline and a text without one is
 		// the same text: whitespace after the object is skipped either way,
@@ -2164,9 +2164,9 @@ func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 	return true
 }
 
-func tableJsonWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte, options TableJsonOptions) int64 {
-	out := tableJsonOut{buffer: buffer, measure: buffer == nil, omit: options.OmitDefaults, compact: options.Compact}
-	if !tableJsonWriteValue(&out, value, info, 0) {
+func tableJSONWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte, options TableJSONOptions) int64 {
+	out := tableJSONOut{buffer: buffer, measure: buffer == nil, omit: options.OmitDefaults, compact: options.Compact}
+	if !tableJSONWriteValue(&out, value, info, 0) {
 		return -1
 	}
 	// THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1). Every writer
@@ -2180,12 +2180,12 @@ func tableJsonWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte, op
 	return out.offset
 }
 
-type tableJsonWide [2]uint64
+type tableJSONWide [2]uint64
 
-func tableJsonWideSigned(kind uint8) bool { return kind == 18 || kind >= 20 && kind <= 24 }
-func (v tableJsonWide) negative() bool    { return v[1]>>63 != 0 }
-func (v tableJsonWide) zero() bool        { return v[0] == 0 && v[1] == 0 }
-func (v tableJsonWide) cmp(b tableJsonWide, signed bool) int {
+func tableJSONWideSigned(kind uint8) bool { return kind == 18 || kind >= 20 && kind <= 24 }
+func (v tableJSONWide) negative() bool    { return v[1]>>63 != 0 }
+func (v tableJSONWide) zero() bool        { return v[0] == 0 && v[1] == 0 }
+func (v tableJSONWide) cmp(b tableJSONWide, signed bool) int {
 	if signed && v.negative() != b.negative() {
 		if v.negative() {
 			return -1
@@ -2200,31 +2200,31 @@ func (v tableJsonWide) cmp(b tableJsonWide, signed bool) int {
 	}
 	return 0
 }
-func (v tableJsonWide) shl(n int) tableJsonWide {
+func (v tableJSONWide) shl(n int) tableJSONWide {
 	if n <= 0 {
 		return v
 	}
 	if n >= 128 {
-		return tableJsonWide{}
+		return tableJSONWide{}
 	}
 	if n >= 64 {
-		return tableJsonWide{0, v[0] << (n - 64)}
+		return tableJSONWide{0, v[0] << (n - 64)}
 	}
-	return tableJsonWide{v[0] << n, v[1]<<n | v[0]>>(64-n)}
+	return tableJSONWide{v[0] << n, v[1]<<n | v[0]>>(64-n)}
 }
-func (v tableJsonWide) shr(n int) tableJsonWide {
+func (v tableJSONWide) shr(n int) tableJSONWide {
 	if n <= 0 {
 		return v
 	}
 	if n >= 128 {
-		return tableJsonWide{}
+		return tableJSONWide{}
 	}
 	if n >= 64 {
-		return tableJsonWide{v[1] >> (n - 64), 0}
+		return tableJSONWide{v[1] >> (n - 64), 0}
 	}
-	return tableJsonWide{v[0]>>n | v[1]<<(64-n), v[1] >> n}
+	return tableJSONWide{v[0]>>n | v[1]<<(64-n), v[1] >> n}
 }
-func (v tableJsonWide) neg() tableJsonWide {
+func (v tableJSONWide) neg() tableJSONWide {
 	v[0] = ^v[0] + 1
 	v[1] = ^v[1]
 	if v[0] == 0 {
@@ -2232,7 +2232,7 @@ func (v tableJsonWide) neg() tableJsonWide {
 	}
 	return v
 }
-func (v *tableJsonWide) mulAdd(m, a uint32) uint32 {
+func (v *tableJSONWide) mulAdd(m, a uint32) uint32 {
 	limbs := [4]uint64{v[0] & 0xffffffff, v[0] >> 32, v[1] & 0xffffffff, v[1] >> 32}
 	carry := uint64(a)
 	for i := range limbs {
@@ -2244,7 +2244,7 @@ func (v *tableJsonWide) mulAdd(m, a uint32) uint32 {
 	v[1] = limbs[2] | limbs[3]<<32
 	return uint32(carry)
 }
-func (v *tableJsonWide) div(d uint32) uint32 {
+func (v *tableJSONWide) div(d uint32) uint32 {
 	limbs := [4]uint64{v[0] & 0xffffffff, v[0] >> 32, v[1] & 0xffffffff, v[1] >> 32}
 	rem := uint64(0)
 	for i := 3; i >= 0; i-- {
@@ -2256,28 +2256,28 @@ func (v *tableJsonWide) div(d uint32) uint32 {
 	v[1] = limbs[2] | limbs[3]<<32
 	return uint32(rem)
 }
-func tableJsonWideLoad(storage unsafe.Pointer, width uint32, signed bool) tableJsonWide {
+func tableJSONWideLoad(storage unsafe.Pointer, width uint32, signed bool) tableJSONWide {
 	if width == 16 {
-		return *(*tableJsonWide)(storage)
+		return *(*tableJSONWide)(storage)
 	}
 	if signed {
-		n := tableJsonGetSigned(storage, width)
-		v := tableJsonWide{uint64(n), 0}
+		n := tableJSONGetSigned(storage, width)
+		v := tableJSONWide{uint64(n), 0}
 		if n < 0 {
 			v[1] = ^uint64(0)
 		}
 		return v
 	}
-	return tableJsonWide{tableJsonGetRaw(storage, width), 0}
+	return tableJSONWide{tableJSONGetRaw(storage, width), 0}
 }
-func tableJsonWideStore(storage unsafe.Pointer, width uint32, v tableJsonWide) {
+func tableJSONWideStore(storage unsafe.Pointer, width uint32, v tableJSONWide) {
 	if width == 16 {
-		*(*tableJsonWide)(storage) = v
+		*(*tableJSONWide)(storage) = v
 	} else {
-		tableJsonSetRaw(storage, width, v[0])
+		tableJSONSetRaw(storage, width, v[0])
 	}
 }
-func (v tableJsonWide) fraction(n int) tableJsonWide {
+func (v tableJSONWide) fraction(n int) tableJSONWide {
 	if n < 64 {
 		v[1] = 0
 		v[0] &= uint64(1)<<n - 1
@@ -2286,9 +2286,9 @@ func (v tableJsonWide) fraction(n int) tableJsonWide {
 	}
 	return v
 }
-func tableJsonWriteWide(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo) {
-	signed := tableJsonWideSigned(f.Kind)
-	v := tableJsonWideLoad(storage, f.ElemSize, signed)
+func tableJSONWriteWide(out *tableJSONOut, storage unsafe.Pointer, f *TableFieldInfo) {
+	signed := tableJSONWideSigned(f.Kind)
+	v := tableJSONWideLoad(storage, f.ElemSize, signed)
 	if signed && v.negative() {
 		out.put('-')
 		v = v.neg()
@@ -2327,8 +2327,8 @@ func tableJsonWriteWide(out *tableJsonOut, storage unsafe.Pointer, f *TableField
 	}
 }
 
-func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f *TableFieldInfo) bool {
-	signed := tableJsonWideSigned(f.Kind)
+func tableJSONReadWide(in *tableJSONIn, token []byte, storage unsafe.Pointer, f *TableFieldInfo) bool {
+	signed := tableJSONWideSigned(f.Kind)
 	frac := int(f.FracBits)
 	i := 0
 	negative := false
@@ -2383,11 +2383,11 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 	for end > start && digit(end-1) == '0' {
 		end--
 	}
-	var raw tableJsonWide
+	var raw tableJSONWide
 	saturated := false
-	signedMax := tableJsonWide{^uint64(0), ^uint64(0) >> 1}
-	signedMin := tableJsonWide{0, uint64(1) << 63}
-	unsignedMax := tableJsonWide{^uint64(0), ^uint64(0)}
+	signedMax := tableJSONWide{^uint64(0), ^uint64(0) >> 1}
+	signedMin := tableJSONWide{0, uint64(1) << 63}
+	unsignedMax := tableJSONWide{^uint64(0), ^uint64(0)}
 	switch {
 	case start == end:
 	case point > 40:
@@ -2426,7 +2426,7 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 				fn++
 			}
 		}
-		var fraction tableJsonWide
+		var fraction tableJSONWide
 		for range frac {
 			carry := byte(0)
 			for k := fn - 1; k >= 0; k-- {
@@ -2443,7 +2443,7 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 				return true
 			}
 		}
-		var whole tableJsonWide
+		var whole tableJSONWide
 		for k := start; k < start+point && !saturated; k++ {
 			d := uint32(0)
 			if k < end {
@@ -2482,7 +2482,7 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 				raw = unsignedMax
 			}
 			if negative && !raw.zero() {
-				raw = tableJsonWide{}
+				raw = tableJSONWide{}
 				saturated = true
 			}
 		}
@@ -2491,7 +2491,7 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 		in.report.Clamped++
 	}
 	if f.WideRange {
-		lo, hi := tableJsonWide(f.WideMin), tableJsonWide(f.WideMax)
+		lo, hi := tableJSONWide(f.WideMin), tableJSONWide(f.WideMax)
 		if raw.cmp(lo, signed) < 0 {
 			raw = lo
 			in.report.Clamped++
@@ -2500,11 +2500,11 @@ func tableJsonReadWide(in *tableJsonIn, token []byte, storage unsafe.Pointer, f 
 			in.report.Clamped++
 		}
 	}
-	tableJsonWideStore(storage, f.ElemSize, raw)
+	tableJSONWideStore(storage, f.ElemSize, raw)
 	return true
 }
 
-func tableJsonWriteWString(out *tableJsonOut, units []uint16) {
+func tableJSONWriteWString(out *tableJSONOut, units []uint16) {
 	out.put('"')
 	for i := 0; i < len(units); i++ {
 		code := uint32(units[i])
@@ -2516,32 +2516,32 @@ func tableJsonWriteWString(out *tableJsonOut, units []uint16) {
 			code = 0xfffd
 		}
 		var encoded [4]byte
-		n := tableJsonEncodeUtf8(code, encoded[:])
-		tableJsonWriteStringBody(out, encoded[:n])
+		n := tableJSONEncodeUTF8(code, encoded[:])
+		tableJSONWriteStringBody(out, encoded[:n])
 	}
 	out.put('"')
 }
 
-type tableJsonLabel struct {
+type tableJSONLabel struct {
 	key    uint64
 	ref    int64
 	target uint64
 	open   bool
 }
-type tableJsonGraph struct {
+type tableJSONGraph struct {
 	alloc    func(int64) (unsafe.Pointer, int64)
 	listAdd  func(unsafe.Pointer, int64) unsafe.Pointer
 	mapPlace func(unsafe.Pointer, *TableFieldInfo, tableMapKey) (unsafe.Pointer, bool)
-	node     func(unsafe.Pointer) *tableJsonGraphNode
+	node     func(unsafe.Pointer) *tableJSONGraphNode
 	allocate func(int64) []byte
 	release  func([]byte)
-	labels   []tableJsonLabel
+	labels   []tableJSONLabel
 	memory   []byte
 	count    int
 	next     uint64
 }
 
-func (g *tableJsonGraph) findLabel(key uint64) (int, bool) {
+func (g *tableJSONGraph) findLabel(key uint64) (int, bool) {
 	if len(g.labels) == 0 {
 		return 0, false
 	}
@@ -2558,14 +2558,14 @@ func (g *tableJsonGraph) findLabel(key uint64) (int, bool) {
 		}
 	}
 }
-func (g *tableJsonGraph) getLabel(key uint64) (tableJsonLabel, bool) {
+func (g *tableJSONGraph) getLabel(key uint64) (tableJSONLabel, bool) {
 	i, ok := g.findLabel(key)
 	if !ok {
-		return tableJsonLabel{}, false
+		return tableJSONLabel{}, false
 	}
 	return g.labels[i], true
 }
-func (g *tableJsonGraph) setLabel(key uint64, entry tableJsonLabel) bool {
+func (g *tableJSONGraph) setLabel(key uint64, entry tableJSONLabel) bool {
 	if key == 0 {
 		return false
 	}
@@ -2576,14 +2576,14 @@ func (g *tableJsonGraph) setLabel(key uint64, entry tableJsonLabel) bool {
 		if g.allocate == nil {
 			return false
 		}
-		memory := g.allocate(int64(capacity) * int64(unsafe.Sizeof(tableJsonLabel{})))
+		memory := g.allocate(int64(capacity) * int64(unsafe.Sizeof(tableJSONLabel{})))
 		if memory == nil {
 			return false
 		}
 		clear(memory)
 		old, oldMemory := g.labels, g.memory
 		g.memory = memory
-		g.labels = unsafe.Slice((*tableJsonLabel)(unsafe.Pointer(&memory[0])), capacity)
+		g.labels = unsafe.Slice((*tableJSONLabel)(unsafe.Pointer(&memory[0])), capacity)
 		for _, e := range old {
 			if e.key != 0 {
 				slot, _ := g.findLabel(e.key)
@@ -2602,24 +2602,24 @@ func (g *tableJsonGraph) setLabel(key uint64, entry tableJsonLabel) bool {
 	g.labels[i] = entry
 	return true
 }
-func (g *tableJsonGraph) close() {
+func (g *tableJSONGraph) close() {
 	if g.memory != nil {
 		g.release(g.memory)
 		g.memory = nil
 		g.labels = nil
 	}
 }
-func tableJsonPointerAt(slot *int64) unsafe.Pointer {
+func tableJSONPointerAt(slot *int64) unsafe.Pointer {
 	if *slot == 0 {
 		return nil
 	}
 	return unsafe.Add(unsafe.Pointer(slot), *slot)
 }
-func tableJsonWritePointer(out *tableJsonOut, slot *int64, f *TableFieldInfo, depth int32) bool {
-	if depth > tableJsonMaxDepth {
+func tableJSONWritePointer(out *tableJSONOut, slot *int64, f *TableFieldInfo, depth int32) bool {
+	if depth > tableJSONMaxDepth {
 		return false
 	}
-	p := tableJsonPointerAt(slot)
+	p := tableJSONPointerAt(slot)
 	if p == nil {
 		out.text("null")
 		return true
@@ -2641,14 +2641,14 @@ func tableJsonWritePointer(out *tableJsonOut, slot *int64, f *TableFieldInfo, de
 		size := *(*uint32)(p)
 		data := unsafe.Slice((*byte)(unsafe.Add(p, 8)), int(size))
 		if f.TypeName == "bytes" {
-			tableJsonWriteBase64(out, data)
+			tableJSONWriteBase64(out, data)
 		} else {
-			tableJsonWriteString(out, data)
+			tableJSONWriteString(out, data)
 		}
 		return true
 	}
 	if entry.refs < 2 {
-		return tableJsonWriteValue(out, p, f.Table(), depth)
+		return tableJSONWriteValue(out, p, f.Table(), depth)
 	}
 	if entry.label == 0 {
 		out.graph.next++
@@ -2658,15 +2658,15 @@ func tableJsonWritePointer(out *tableJsonOut, slot *int64, f *TableFieldInfo, de
 		out.put('{')
 		out.line(depth + 1)
 		out.text("\"&node\": ")
-		tableJsonWriteUnsigned(out, entry.label)
+		tableJSONWriteUnsigned(out, entry.label)
 		out.line(depth)
 		out.put('}')
 		return true
 	}
 	entry.written = true
-	return tableJsonWriteLabeledValue(out, p, f.Table(), depth, entry.label)
+	return tableJSONWriteLabeledValue(out, p, f.Table(), depth, entry.label)
 }
-func tableJsonReadLabel(in *tableJsonIn) (uint64, bool) {
+func tableJSONReadLabel(in *tableJSONIn) (uint64, bool) {
 	in.space()
 	start := in.pos
 	if start >= len(in.text) || in.text[start] < '1' || in.text[start] > '9' {
@@ -2690,9 +2690,9 @@ func tableJsonReadLabel(in *tableJsonIn) (uint64, bool) {
 	}
 	return v, true
 }
-func tableJsonReadPointer(in *tableJsonIn, slot *int64, f *TableFieldInfo, depth int32) bool {
+func tableJSONReadPointer(in *tableJSONIn, slot *int64, f *TableFieldInfo, depth int32) bool {
 	*slot = 0
-	if depth > tableJsonMaxDepth {
+	if depth > tableJSONMaxDepth {
 		in.bad = true
 		return false
 	}
@@ -2704,7 +2704,7 @@ func tableJsonReadPointer(in *tableJsonIn, slot *int64, f *TableFieldInfo, depth
 		return false
 	}
 	if f.Table == nil {
-		return tableJsonReadBlob(in, slot, f)
+		return tableJSONReadBlob(in, slot, f)
 	}
 	if in.peek() != '{' {
 		in.bad = true
@@ -2716,7 +2716,7 @@ func tableJsonReadPointer(in *tableJsonIn, slot *int64, f *TableFieldInfo, depth
 	label := uint64(0)
 	hasLabel := false
 	if probe.peek() != '}' {
-		var key [tableJsonMaxKey]byte
+		var key [tableJSONMaxKey]byte
 		length, ok := probe.scanKey(key[:])
 		if !ok {
 			in.bad = true
@@ -2728,7 +2728,7 @@ func tableJsonReadPointer(in *tableJsonIn, slot *int64, f *TableFieldInfo, depth
 				return false
 			}
 			probe.pos++
-			label, ok = tableJsonReadLabel(&probe)
+			label, ok = tableJSONReadLabel(&probe)
 			if !ok {
 				in.bad = true
 				return false
@@ -2750,7 +2750,7 @@ func tableJsonReadPointer(in *tableJsonIn, slot *int64, f *TableFieldInfo, depth
 			probe.pos++
 			in.pos = probe.pos
 			if entry.ref != 0 {
-				if entry.target != f.TargetId {
+				if entry.target != f.TargetID {
 					in.report.KindMismatch++
 				} else {
 					*slot = entry.ref
@@ -2776,12 +2776,12 @@ func tableJsonReadPointer(in *tableJsonIn, slot *int64, f *TableFieldInfo, depth
 	*slot = ref
 	f.Table().Reset(p)
 	if hasLabel {
-		if !in.graph.setLabel(label, tableJsonLabel{ref: ref, target: f.TargetId, open: true}) {
+		if !in.graph.setLabel(label, tableJSONLabel{ref: ref, target: f.TargetID, open: true}) {
 			in.bad = true
 			return false
 		}
 		in.pos = probe.pos
-		ok := tableJsonReadTableFields(in, p, f.Table(), depth, false)
+		ok := tableJSONReadTableFields(in, p, f.Table(), depth, false)
 		if ok {
 			entry, _ := in.graph.getLabel(label)
 			entry.open = false
@@ -2793,9 +2793,9 @@ func tableJsonReadPointer(in *tableJsonIn, slot *int64, f *TableFieldInfo, depth
 		return ok
 	}
 	in.pos = start
-	return tableJsonReadTable(in, p, f.Table(), depth)
+	return tableJSONReadTable(in, p, f.Table(), depth)
 }
-func tableJsonReadBlob(in *tableJsonIn, slot *int64, f *TableFieldInfo) bool {
+func tableJSONReadBlob(in *tableJSONIn, slot *int64, f *TableFieldInfo) bool {
 	if in.peek() != '"' {
 		in.bad = true
 		return false
@@ -2816,7 +2816,7 @@ func tableJsonReadBlob(in *tableJsonIn, slot *int64, f *TableFieldInfo) bool {
 		}
 		shape := TableFieldInfo{TypeName: "bytes", Kind: 6, IsArray: true, Counted: true, ArrayBound: int32(capacity), Offset: 8, CountOffset: 0, ElemSize: 1}
 		before := in.report.KindMismatch
-		if !tableJsonReadField(in, p, &shape, 0) {
+		if !tableJSONReadField(in, p, &shape, 0) {
 			return false
 		}
 		if in.report.KindMismatch != before {
@@ -2844,7 +2844,7 @@ func tableJsonReadBlob(in *tableJsonIn, slot *int64, f *TableFieldInfo) bool {
 
 // A skipped definition keeps its label, without imposing graph syntax on a
 // value this reader is skipping. The ordinary JSON scanner still validates it.
-func tableJsonDropLabel(in *tableJsonIn) {
+func tableJSONDropLabel(in *tableJSONIn) {
 	if in.graph == nil || in.peek() != '{' {
 		return
 	}
@@ -2856,18 +2856,18 @@ func tableJsonDropLabel(in *tableJsonIn) {
 		return
 	}
 	probe.pos++
-	label, ok := tableJsonReadLabel(&probe)
+	label, ok := tableJSONReadLabel(&probe)
 	if !ok || probe.peek() != ',' {
 		return
 	}
 	if _, exists := in.graph.getLabel(label); !exists {
-		if !in.graph.setLabel(label, tableJsonLabel{}) {
+		if !in.graph.setLabel(label, tableJSONLabel{}) {
 			in.bad = true
 		}
 	}
 }
 
-func tableJsonWriteList(out *tableJsonOut, holder unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+func tableJSONWriteList(out *tableJSONOut, holder unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	count := *(*int32)(unsafe.Add(holder, 8))
 	if count < 0 {
 		return false
@@ -2887,7 +2887,7 @@ func tableJsonWriteList(out *tableJsonOut, holder unsafe.Pointer, f *TableFieldI
 			out.put(',')
 		}
 		out.line(depth + 1)
-		if !tableJsonWriteScalar(out, unsafe.Add(p, uintptr(i)*uintptr(f.ElemSize)), f, depth+1) {
+		if !tableJSONWriteScalar(out, unsafe.Add(p, uintptr(i)*uintptr(f.ElemSize)), f, depth+1) {
 			return false
 		}
 	}
@@ -2895,14 +2895,14 @@ func tableJsonWriteList(out *tableJsonOut, holder unsafe.Pointer, f *TableFieldI
 	out.put(']')
 	return true
 }
-func tableJsonReadList(in *tableJsonIn, holder unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+func tableJSONReadList(in *tableJSONIn, holder unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	if in.peek() != '[' || in.graph == nil || in.graph.listAdd == nil {
 		in.bad = true
 		return false
 	}
 	in.pos++
 	clear(unsafe.Slice((*byte)(holder), 16))
-	shape := tableJsonElementShape(f)
+	shape := tableJSONElementShape(f)
 	for {
 		c := in.peek()
 		if c == ']' {
@@ -2926,7 +2926,7 @@ func tableJsonReadList(in *tableJsonIn, holder unsafe.Pointer, f *TableFieldInfo
 			if !in.skipValue(depth + 1) {
 				return false
 			}
-		} else if !tableJsonReadScalar(in, p, f, depth+1) {
+		} else if !tableJSONReadScalar(in, p, f, depth+1) {
 			return false
 		}
 		c = in.peek()
@@ -2943,8 +2943,8 @@ func tableJsonReadList(in *tableJsonIn, holder unsafe.Pointer, f *TableFieldInfo
 	}
 }
 
-func tableJsonWriteMap(out *tableJsonOut, p unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
-	if depth > tableJsonMaxDepth {
+func tableJSONWriteMap(out *tableJSONOut, p unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+	if depth > tableJSONMaxDepth {
 		return false
 	}
 	count := *(*int32)(unsafe.Add(p, 8))
@@ -2968,20 +2968,20 @@ func tableJsonWriteMap(out *tableJsonOut, p unsafe.Pointer, f *TableFieldInfo, d
 			at := unsafe.Add(base, int64(i)*int64(f.ElemSize))
 			k := tableMapStoredKey(at, key)
 			if key.Kind == 12 {
-				tableJsonWriteString(out, k.text)
+				tableJSONWriteString(out, k.text)
 			} else {
 				out.put('"')
 				if key.Kind >= 2 && key.Kind <= 5 {
-					tableJsonWriteSigned(out, int64(k.raw))
+					tableJSONWriteSigned(out, int64(k.raw))
 				} else {
-					tableJsonWriteUnsigned(out, k.raw)
+					tableJSONWriteUnsigned(out, k.raw)
 				}
 				out.put('"')
 			}
 			out.text(": ")
 			if value.Optional && !*(*bool)(unsafe.Add(at, value.PresentOffset)) {
 				out.text("null")
-			} else if !tableJsonWriteField(out, at, value, depth+1) {
+			} else if !tableJSONWriteField(out, at, value, depth+1) {
 				return false
 			}
 		}
@@ -2990,8 +2990,8 @@ func tableJsonWriteMap(out *tableJsonOut, p unsafe.Pointer, f *TableFieldInfo, d
 	out.put('}')
 	return true
 }
-func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
-	if depth > tableJsonMaxDepth || in.peek() != '{' || in.graph == nil || in.graph.mapPlace == nil {
+func tableJSONReadMap(in *tableJSONIn, p unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+	if depth > tableJSONMaxDepth || in.peek() != '{' || in.graph == nil || in.graph.mapPlace == nil {
 		in.bad = true
 		return false
 	}
@@ -3038,8 +3038,8 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 				_, ok = in.scanString(k.text)
 			}
 		} else {
-			var text [tableJsonMaxNumber]byte
-			if n > tableJsonMaxNumber {
+			var text [tableJSONMaxNumber]byte
+			if n > tableJSONMaxNumber {
 				in.pos = probe.pos
 				good = false
 			} else {
@@ -3047,7 +3047,7 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 				if !ok {
 					return false
 				}
-				k.raw, good = tableJsonMapInteger(text[:n], key)
+				k.raw, good = tableJSONMapInteger(text[:n], key)
 			}
 			if !good {
 				in.report.KindMismatch++
@@ -3059,7 +3059,7 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 		}
 		in.pos++
 		if !good {
-			tableJsonDropLabel(in)
+			tableJSONDropLabel(in)
 			if !in.skipValue(depth + 1) {
 				return false
 			}
@@ -3079,14 +3079,14 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 				if !in.literal("null") {
 					return false
 				}
-			} else if shape != tableJsonShape(value) && !(value.Pointer && shape == 'z') {
+			} else if shape != tableJSONShape(value) && !(value.Pointer && shape == 'z') {
 				in.report.KindMismatch++
-				tableJsonDropLabel(in)
+				tableJSONDropLabel(in)
 				if !in.skipValue(depth + 1) {
 					return false
 				}
 			} else {
-				if !tableJsonReadField(in, slot, value, depth+1) {
+				if !tableJSONReadField(in, slot, value, depth+1) {
 					return false
 				}
 				if value.Optional {
@@ -3107,28 +3107,28 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 		return false
 	}
 }
-func tableJsonMapInteger(text []byte, f *TableFieldInfo) (uint64, bool) {
+func tableJSONMapInteger(text []byte, f *TableFieldInfo) (uint64, bool) {
 	var report TableReport
-	in := tableJsonIn{text: text, report: &report}
+	in := tableJSONIn{text: text, report: &report}
 	integral, ok := in.walkNumber()
 	if !ok || in.pos != len(text) {
 		return 0, false
 	}
 	_ = integral
-	v, ok := tableJsonDecimalKey(text, f.Kind >= 2 && f.Kind <= 5, int(f.ElemSize)*8)
+	v, ok := tableJSONDecimalKey(text, f.Kind >= 2 && f.Kind <= 5, int(f.ElemSize)*8)
 	return v, ok
 }
 
 // Decimal normalization preserves every uint64 bit and accepts integral
 // exponent/fraction spellings without a binary floating-point conversion.
-func tableJsonDecimalKey(text []byte, signed bool, width int) (uint64, bool) {
+func tableJSONDecimalKey(text []byte, signed bool, width int) (uint64, bool) {
 	i := 0
 	negative := false
 	if len(text) > 0 && text[0] == '-' {
 		negative = true
 		i++
 	}
-	var digits [tableJsonMaxNumber]byte
+	var digits [tableJSONMaxNumber]byte
 	n, fraction := 0, 0
 	point := false
 	for i < len(text) && text[i] != 'e' && text[i] != 'E' {
@@ -3435,13 +3435,13 @@ func rfc3339Days(year, month, day int) int64 {
 	return era*146097 + dayOfEra - 719468
 }
 
-func tableJsonWriteTimestamp(out *tableJsonOut, storage unsafe.Pointer) bool {
+func tableJSONWriteTimestamp(out *tableJSONOut, storage unsafe.Pointer) bool {
 	var scratch [48]byte
-	tableJsonWriteString(out, time.Unix(0, *(*int64)(storage)).UTC().AppendFormat(scratch[:0], time.RFC3339Nano))
+	tableJSONWriteString(out, time.Unix(0, *(*int64)(storage)).UTC().AppendFormat(scratch[:0], time.RFC3339Nano))
 	return true
 }
 
-func tableJsonReadTimestamp(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo) bool {
+func tableJSONReadTimestamp(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldInfo) bool {
 	// A fraction is 1*DIGIT with no bound, so the text is measured first and
 	// only a text longer than the scratch is allocated for; a clamp here would
 	// refuse a spelling the parser and the engine accept.
@@ -3511,43 +3511,43 @@ func tableTimestampTime(n int64) time.Time { return time.Unix(0, n).UTC() }
 
 // ---- json walk: end ----
 
-// TableEntityFromJsonTolerant fills one TableEntity from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
+// TableEntityFromJSONTolerant fills one TableEntity from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
 // is the TOLERANT text read (§6.5): it keeps the recovered value, with the
 // counters counted onto the report passed. A nil report is allowed; every
 // tolerance event still decides the same way.
-func TableEntityFromJsonTolerant(value *TableEntity, text []byte, report *TableReport) bool {
-	return TableEntityFromJsonTolerantWith(value, text, report, TableJsonOptions{})
+func TableEntityFromJSONTolerant(value *TableEntity, text []byte, report *TableReport) bool {
+	return TableEntityFromJSONTolerantWith(value, text, report, TableJSONOptions{})
 }
 
-// TableEntityFromJson fills one TableEntity from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
+// TableEntityFromJSON fills one TableEntity from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
 // STRICT (§6.5): it refuses whatever TableEntityReadStrict refuses, resets value to its
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
-func TableEntityFromJson(value *TableEntity, text []byte, report *TableReport) bool {
-	return TableEntityFromJsonWith(value, text, report, TableJsonOptions{})
+func TableEntityFromJSON(value *TableEntity, text []byte, report *TableReport) bool {
+	return TableEntityFromJSONWith(value, text, report, TableJSONOptions{})
 }
 
-// TableEntityToJsonMeasure is the exact size of TableEntity's JSON text, writing nothing.
-func TableEntityToJsonMeasure(value *TableEntity) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableEntityTableType(), nil, TableJsonOptions{})
+// TableEntityToJSONMeasure is the exact size of TableEntity's JSON text, writing nothing.
+func TableEntityToJSONMeasure(value *TableEntity) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableEntityTableType(), nil, TableJSONOptions{})
 }
 
-// TableEntityToJson writes TableEntity's JSON text into the caller's slice and returns the
-// bytes written — exactly TableEntityToJsonMeasure's answer — or -1 when it is short.
-func TableEntityToJson(value *TableEntity, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableEntityTableType(), buffer, TableJsonOptions{})
+// TableEntityToJSON writes TableEntity's JSON text into the caller's slice and returns the
+// bytes written — exactly TableEntityToJSONMeasure's answer — or -1 when it is short.
+func TableEntityToJSON(value *TableEntity, buffer []byte) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableEntityTableType(), buffer, TableJSONOptions{})
 }
 
-// TableEntityFromJsonWith is TableEntityFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
+// TableEntityFromJSONWith is TableEntityFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
 // so it is STRICT too (§6.5).
-func TableEntityFromJsonWith(value *TableEntity, text []byte, report *TableReport, options TableJsonOptions) bool {
+func TableEntityFromJSONWith(value *TableEntity, text []byte, report *TableReport, options TableJSONOptions) bool {
 	read := report
 	if read == nil {
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
-	ok := TableEntityFromJsonTolerantWith(value, text, read, options)
+	ok := TableEntityFromJSONTolerantWith(value, text, read, options)
 	if !ok || read.Err() != nil {
 		TableEntityReset(value)
 		return false
@@ -3555,20 +3555,20 @@ func TableEntityFromJsonWith(value *TableEntity, text []byte, report *TableRepor
 	return true
 }
 
-// TableEntityFromJsonTolerantWith is TableEntityFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// TableEntityFromJSONTolerantWith is TableEntityFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
-func TableEntityFromJsonTolerantWith(value *TableEntity, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), TableEntityTableType(), text, report, options)
+func TableEntityFromJSONTolerantWith(value *TableEntity, text []byte, report *TableReport, options TableJSONOptions) bool {
+	return tableJSONRead(unsafe.Pointer(value), TableEntityTableType(), text, report, options)
 }
 
-// TableEntityToJsonMeasureWith is TableEntityToJsonMeasure under TableJsonOptions (§16.2).
-func TableEntityToJsonMeasureWith(value *TableEntity, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableEntityTableType(), nil, options)
+// TableEntityToJSONMeasureWith is TableEntityToJSONMeasure under TableJSONOptions (§16.2).
+func TableEntityToJSONMeasureWith(value *TableEntity, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableEntityTableType(), nil, options)
 }
 
-// TableEntityToJsonWith is TableEntityToJson under TableJsonOptions (§16.2).
-func TableEntityToJsonWith(value *TableEntity, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableEntityTableType(), buffer, options)
+// TableEntityToJSONWith is TableEntityToJSON under TableJSONOptions (§16.2).
+func TableEntityToJSONWith(value *TableEntity, buffer []byte, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableEntityTableType(), buffer, options)
 }
 
 // TableEntitySaveText returns the base64 of TableEntity's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -3629,43 +3629,43 @@ func TableEntityLoadText(text string, report *TableReport) (*TableEntity, error)
 	return &v, nil
 }
 
-// TableStatFromJsonTolerant fills one TableStat from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
+// TableStatFromJSONTolerant fills one TableStat from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
 // is the TOLERANT text read (§6.5): it keeps the recovered value, with the
 // counters counted onto the report passed. A nil report is allowed; every
 // tolerance event still decides the same way.
-func TableStatFromJsonTolerant(value *TableStat, text []byte, report *TableReport) bool {
-	return TableStatFromJsonTolerantWith(value, text, report, TableJsonOptions{})
+func TableStatFromJSONTolerant(value *TableStat, text []byte, report *TableReport) bool {
+	return TableStatFromJSONTolerantWith(value, text, report, TableJSONOptions{})
 }
 
-// TableStatFromJson fills one TableStat from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
+// TableStatFromJSON fills one TableStat from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
 // STRICT (§6.5): it refuses whatever TableStatReadStrict refuses, resets value to its
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
-func TableStatFromJson(value *TableStat, text []byte, report *TableReport) bool {
-	return TableStatFromJsonWith(value, text, report, TableJsonOptions{})
+func TableStatFromJSON(value *TableStat, text []byte, report *TableReport) bool {
+	return TableStatFromJSONWith(value, text, report, TableJSONOptions{})
 }
 
-// TableStatToJsonMeasure is the exact size of TableStat's JSON text, writing nothing.
-func TableStatToJsonMeasure(value *TableStat) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableStatTableType(), nil, TableJsonOptions{})
+// TableStatToJSONMeasure is the exact size of TableStat's JSON text, writing nothing.
+func TableStatToJSONMeasure(value *TableStat) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableStatTableType(), nil, TableJSONOptions{})
 }
 
-// TableStatToJson writes TableStat's JSON text into the caller's slice and returns the
-// bytes written — exactly TableStatToJsonMeasure's answer — or -1 when it is short.
-func TableStatToJson(value *TableStat, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableStatTableType(), buffer, TableJsonOptions{})
+// TableStatToJSON writes TableStat's JSON text into the caller's slice and returns the
+// bytes written — exactly TableStatToJSONMeasure's answer — or -1 when it is short.
+func TableStatToJSON(value *TableStat, buffer []byte) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableStatTableType(), buffer, TableJSONOptions{})
 }
 
-// TableStatFromJsonWith is TableStatFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
+// TableStatFromJSONWith is TableStatFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
 // so it is STRICT too (§6.5).
-func TableStatFromJsonWith(value *TableStat, text []byte, report *TableReport, options TableJsonOptions) bool {
+func TableStatFromJSONWith(value *TableStat, text []byte, report *TableReport, options TableJSONOptions) bool {
 	read := report
 	if read == nil {
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
-	ok := TableStatFromJsonTolerantWith(value, text, read, options)
+	ok := TableStatFromJSONTolerantWith(value, text, read, options)
 	if !ok || read.Err() != nil {
 		TableStatReset(value)
 		return false
@@ -3673,20 +3673,20 @@ func TableStatFromJsonWith(value *TableStat, text []byte, report *TableReport, o
 	return true
 }
 
-// TableStatFromJsonTolerantWith is TableStatFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// TableStatFromJSONTolerantWith is TableStatFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
-func TableStatFromJsonTolerantWith(value *TableStat, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), TableStatTableType(), text, report, options)
+func TableStatFromJSONTolerantWith(value *TableStat, text []byte, report *TableReport, options TableJSONOptions) bool {
+	return tableJSONRead(unsafe.Pointer(value), TableStatTableType(), text, report, options)
 }
 
-// TableStatToJsonMeasureWith is TableStatToJsonMeasure under TableJsonOptions (§16.2).
-func TableStatToJsonMeasureWith(value *TableStat, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableStatTableType(), nil, options)
+// TableStatToJSONMeasureWith is TableStatToJSONMeasure under TableJSONOptions (§16.2).
+func TableStatToJSONMeasureWith(value *TableStat, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableStatTableType(), nil, options)
 }
 
-// TableStatToJsonWith is TableStatToJson under TableJsonOptions (§16.2).
-func TableStatToJsonWith(value *TableStat, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableStatTableType(), buffer, options)
+// TableStatToJSONWith is TableStatToJSON under TableJSONOptions (§16.2).
+func TableStatToJSONWith(value *TableStat, buffer []byte, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableStatTableType(), buffer, options)
 }
 
 // TableStatSaveText returns the base64 of TableStat's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -3747,43 +3747,43 @@ func TableStatLoadText(text string, report *TableReport) (*TableStat, error) {
 	return &v, nil
 }
 
-// TableMixedFromJsonTolerant fills one TableMixed from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
+// TableMixedFromJSONTolerant fills one TableMixed from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
 // is the TOLERANT text read (§6.5): it keeps the recovered value, with the
 // counters counted onto the report passed. A nil report is allowed; every
 // tolerance event still decides the same way.
-func TableMixedFromJsonTolerant(value *TableMixed, text []byte, report *TableReport) bool {
-	return TableMixedFromJsonTolerantWith(value, text, report, TableJsonOptions{})
+func TableMixedFromJSONTolerant(value *TableMixed, text []byte, report *TableReport) bool {
+	return TableMixedFromJSONTolerantWith(value, text, report, TableJSONOptions{})
 }
 
-// TableMixedFromJson fills one TableMixed from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
+// TableMixedFromJSON fills one TableMixed from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
 // STRICT (§6.5): it refuses whatever TableMixedReadStrict refuses, resets value to its
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
-func TableMixedFromJson(value *TableMixed, text []byte, report *TableReport) bool {
-	return TableMixedFromJsonWith(value, text, report, TableJsonOptions{})
+func TableMixedFromJSON(value *TableMixed, text []byte, report *TableReport) bool {
+	return TableMixedFromJSONWith(value, text, report, TableJSONOptions{})
 }
 
-// TableMixedToJsonMeasure is the exact size of TableMixed's JSON text, writing nothing.
-func TableMixedToJsonMeasure(value *TableMixed) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableMixedTableType(), nil, TableJsonOptions{})
+// TableMixedToJSONMeasure is the exact size of TableMixed's JSON text, writing nothing.
+func TableMixedToJSONMeasure(value *TableMixed) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableMixedTableType(), nil, TableJSONOptions{})
 }
 
-// TableMixedToJson writes TableMixed's JSON text into the caller's slice and returns the
-// bytes written — exactly TableMixedToJsonMeasure's answer — or -1 when it is short.
-func TableMixedToJson(value *TableMixed, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableMixedTableType(), buffer, TableJsonOptions{})
+// TableMixedToJSON writes TableMixed's JSON text into the caller's slice and returns the
+// bytes written — exactly TableMixedToJSONMeasure's answer — or -1 when it is short.
+func TableMixedToJSON(value *TableMixed, buffer []byte) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableMixedTableType(), buffer, TableJSONOptions{})
 }
 
-// TableMixedFromJsonWith is TableMixedFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
+// TableMixedFromJSONWith is TableMixedFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
 // so it is STRICT too (§6.5).
-func TableMixedFromJsonWith(value *TableMixed, text []byte, report *TableReport, options TableJsonOptions) bool {
+func TableMixedFromJSONWith(value *TableMixed, text []byte, report *TableReport, options TableJSONOptions) bool {
 	read := report
 	if read == nil {
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
-	ok := TableMixedFromJsonTolerantWith(value, text, read, options)
+	ok := TableMixedFromJSONTolerantWith(value, text, read, options)
 	if !ok || read.Err() != nil {
 		TableMixedReset(value)
 		return false
@@ -3791,20 +3791,20 @@ func TableMixedFromJsonWith(value *TableMixed, text []byte, report *TableReport,
 	return true
 }
 
-// TableMixedFromJsonTolerantWith is TableMixedFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// TableMixedFromJSONTolerantWith is TableMixedFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
-func TableMixedFromJsonTolerantWith(value *TableMixed, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), TableMixedTableType(), text, report, options)
+func TableMixedFromJSONTolerantWith(value *TableMixed, text []byte, report *TableReport, options TableJSONOptions) bool {
+	return tableJSONRead(unsafe.Pointer(value), TableMixedTableType(), text, report, options)
 }
 
-// TableMixedToJsonMeasureWith is TableMixedToJsonMeasure under TableJsonOptions (§16.2).
-func TableMixedToJsonMeasureWith(value *TableMixed, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableMixedTableType(), nil, options)
+// TableMixedToJSONMeasureWith is TableMixedToJSONMeasure under TableJSONOptions (§16.2).
+func TableMixedToJSONMeasureWith(value *TableMixed, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableMixedTableType(), nil, options)
 }
 
-// TableMixedToJsonWith is TableMixedToJson under TableJsonOptions (§16.2).
-func TableMixedToJsonWith(value *TableMixed, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableMixedTableType(), buffer, options)
+// TableMixedToJSONWith is TableMixedToJSON under TableJSONOptions (§16.2).
+func TableMixedToJSONWith(value *TableMixed, buffer []byte, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableMixedTableType(), buffer, options)
 }
 
 // TableMixedSaveText returns the base64 of TableMixed's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -3865,43 +3865,43 @@ func TableMixedLoadText(text string, report *TableReport) (*TableMixed, error) {
 	return &v, nil
 }
 
-// TableHitEventFromJsonTolerant fills one TableHitEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
+// TableHitEventFromJSONTolerant fills one TableHitEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
 // is the TOLERANT text read (§6.5): it keeps the recovered value, with the
 // counters counted onto the report passed. A nil report is allowed; every
 // tolerance event still decides the same way.
-func TableHitEventFromJsonTolerant(value *TableHitEvent, text []byte, report *TableReport) bool {
-	return TableHitEventFromJsonTolerantWith(value, text, report, TableJsonOptions{})
+func TableHitEventFromJSONTolerant(value *TableHitEvent, text []byte, report *TableReport) bool {
+	return TableHitEventFromJSONTolerantWith(value, text, report, TableJSONOptions{})
 }
 
-// TableHitEventFromJson fills one TableHitEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
+// TableHitEventFromJSON fills one TableHitEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
 // STRICT (§6.5): it refuses whatever TableHitEventReadStrict refuses, resets value to its
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
-func TableHitEventFromJson(value *TableHitEvent, text []byte, report *TableReport) bool {
-	return TableHitEventFromJsonWith(value, text, report, TableJsonOptions{})
+func TableHitEventFromJSON(value *TableHitEvent, text []byte, report *TableReport) bool {
+	return TableHitEventFromJSONWith(value, text, report, TableJSONOptions{})
 }
 
-// TableHitEventToJsonMeasure is the exact size of TableHitEvent's JSON text, writing nothing.
-func TableHitEventToJsonMeasure(value *TableHitEvent) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableHitEventTableType(), nil, TableJsonOptions{})
+// TableHitEventToJSONMeasure is the exact size of TableHitEvent's JSON text, writing nothing.
+func TableHitEventToJSONMeasure(value *TableHitEvent) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableHitEventTableType(), nil, TableJSONOptions{})
 }
 
-// TableHitEventToJson writes TableHitEvent's JSON text into the caller's slice and returns the
-// bytes written — exactly TableHitEventToJsonMeasure's answer — or -1 when it is short.
-func TableHitEventToJson(value *TableHitEvent, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableHitEventTableType(), buffer, TableJsonOptions{})
+// TableHitEventToJSON writes TableHitEvent's JSON text into the caller's slice and returns the
+// bytes written — exactly TableHitEventToJSONMeasure's answer — or -1 when it is short.
+func TableHitEventToJSON(value *TableHitEvent, buffer []byte) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableHitEventTableType(), buffer, TableJSONOptions{})
 }
 
-// TableHitEventFromJsonWith is TableHitEventFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
+// TableHitEventFromJSONWith is TableHitEventFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
 // so it is STRICT too (§6.5).
-func TableHitEventFromJsonWith(value *TableHitEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
+func TableHitEventFromJSONWith(value *TableHitEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
 	read := report
 	if read == nil {
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
-	ok := TableHitEventFromJsonTolerantWith(value, text, read, options)
+	ok := TableHitEventFromJSONTolerantWith(value, text, read, options)
 	if !ok || read.Err() != nil {
 		TableHitEventReset(value)
 		return false
@@ -3909,20 +3909,20 @@ func TableHitEventFromJsonWith(value *TableHitEvent, text []byte, report *TableR
 	return true
 }
 
-// TableHitEventFromJsonTolerantWith is TableHitEventFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// TableHitEventFromJSONTolerantWith is TableHitEventFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
-func TableHitEventFromJsonTolerantWith(value *TableHitEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), TableHitEventTableType(), text, report, options)
+func TableHitEventFromJSONTolerantWith(value *TableHitEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
+	return tableJSONRead(unsafe.Pointer(value), TableHitEventTableType(), text, report, options)
 }
 
-// TableHitEventToJsonMeasureWith is TableHitEventToJsonMeasure under TableJsonOptions (§16.2).
-func TableHitEventToJsonMeasureWith(value *TableHitEvent, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableHitEventTableType(), nil, options)
+// TableHitEventToJSONMeasureWith is TableHitEventToJSONMeasure under TableJSONOptions (§16.2).
+func TableHitEventToJSONMeasureWith(value *TableHitEvent, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableHitEventTableType(), nil, options)
 }
 
-// TableHitEventToJsonWith is TableHitEventToJson under TableJsonOptions (§16.2).
-func TableHitEventToJsonWith(value *TableHitEvent, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableHitEventTableType(), buffer, options)
+// TableHitEventToJSONWith is TableHitEventToJSON under TableJSONOptions (§16.2).
+func TableHitEventToJSONWith(value *TableHitEvent, buffer []byte, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableHitEventTableType(), buffer, options)
 }
 
 // TableHitEventSaveText returns the base64 of TableHitEvent's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -3983,43 +3983,43 @@ func TableHitEventLoadText(text string, report *TableReport) (*TableHitEvent, er
 	return &v, nil
 }
 
-// TableChatEventFromJsonTolerant fills one TableChatEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
+// TableChatEventFromJSONTolerant fills one TableChatEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
 // is the TOLERANT text read (§6.5): it keeps the recovered value, with the
 // counters counted onto the report passed. A nil report is allowed; every
 // tolerance event still decides the same way.
-func TableChatEventFromJsonTolerant(value *TableChatEvent, text []byte, report *TableReport) bool {
-	return TableChatEventFromJsonTolerantWith(value, text, report, TableJsonOptions{})
+func TableChatEventFromJSONTolerant(value *TableChatEvent, text []byte, report *TableReport) bool {
+	return TableChatEventFromJSONTolerantWith(value, text, report, TableJSONOptions{})
 }
 
-// TableChatEventFromJson fills one TableChatEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
+// TableChatEventFromJSON fills one TableChatEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
 // STRICT (§6.5): it refuses whatever TableChatEventReadStrict refuses, resets value to its
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
-func TableChatEventFromJson(value *TableChatEvent, text []byte, report *TableReport) bool {
-	return TableChatEventFromJsonWith(value, text, report, TableJsonOptions{})
+func TableChatEventFromJSON(value *TableChatEvent, text []byte, report *TableReport) bool {
+	return TableChatEventFromJSONWith(value, text, report, TableJSONOptions{})
 }
 
-// TableChatEventToJsonMeasure is the exact size of TableChatEvent's JSON text, writing nothing.
-func TableChatEventToJsonMeasure(value *TableChatEvent) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableChatEventTableType(), nil, TableJsonOptions{})
+// TableChatEventToJSONMeasure is the exact size of TableChatEvent's JSON text, writing nothing.
+func TableChatEventToJSONMeasure(value *TableChatEvent) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableChatEventTableType(), nil, TableJSONOptions{})
 }
 
-// TableChatEventToJson writes TableChatEvent's JSON text into the caller's slice and returns the
-// bytes written — exactly TableChatEventToJsonMeasure's answer — or -1 when it is short.
-func TableChatEventToJson(value *TableChatEvent, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableChatEventTableType(), buffer, TableJsonOptions{})
+// TableChatEventToJSON writes TableChatEvent's JSON text into the caller's slice and returns the
+// bytes written — exactly TableChatEventToJSONMeasure's answer — or -1 when it is short.
+func TableChatEventToJSON(value *TableChatEvent, buffer []byte) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableChatEventTableType(), buffer, TableJSONOptions{})
 }
 
-// TableChatEventFromJsonWith is TableChatEventFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
+// TableChatEventFromJSONWith is TableChatEventFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
 // so it is STRICT too (§6.5).
-func TableChatEventFromJsonWith(value *TableChatEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
+func TableChatEventFromJSONWith(value *TableChatEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
 	read := report
 	if read == nil {
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
-	ok := TableChatEventFromJsonTolerantWith(value, text, read, options)
+	ok := TableChatEventFromJSONTolerantWith(value, text, read, options)
 	if !ok || read.Err() != nil {
 		TableChatEventReset(value)
 		return false
@@ -4027,20 +4027,20 @@ func TableChatEventFromJsonWith(value *TableChatEvent, text []byte, report *Tabl
 	return true
 }
 
-// TableChatEventFromJsonTolerantWith is TableChatEventFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// TableChatEventFromJSONTolerantWith is TableChatEventFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
-func TableChatEventFromJsonTolerantWith(value *TableChatEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), TableChatEventTableType(), text, report, options)
+func TableChatEventFromJSONTolerantWith(value *TableChatEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
+	return tableJSONRead(unsafe.Pointer(value), TableChatEventTableType(), text, report, options)
 }
 
-// TableChatEventToJsonMeasureWith is TableChatEventToJsonMeasure under TableJsonOptions (§16.2).
-func TableChatEventToJsonMeasureWith(value *TableChatEvent, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableChatEventTableType(), nil, options)
+// TableChatEventToJSONMeasureWith is TableChatEventToJSONMeasure under TableJSONOptions (§16.2).
+func TableChatEventToJSONMeasureWith(value *TableChatEvent, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableChatEventTableType(), nil, options)
 }
 
-// TableChatEventToJsonWith is TableChatEventToJson under TableJsonOptions (§16.2).
-func TableChatEventToJsonWith(value *TableChatEvent, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TableChatEventTableType(), buffer, options)
+// TableChatEventToJSONWith is TableChatEventToJSON under TableJSONOptions (§16.2).
+func TableChatEventToJSONWith(value *TableChatEvent, buffer []byte, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TableChatEventTableType(), buffer, options)
 }
 
 // TableChatEventSaveText returns the base64 of TableChatEvent's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -4101,43 +4101,43 @@ func TableChatEventLoadText(text string, report *TableReport) (*TableChatEvent, 
 	return &v, nil
 }
 
-// TablePickupEventFromJsonTolerant fills one TablePickupEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
+// TablePickupEventFromJSONTolerant fills one TablePickupEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
 // is the TOLERANT text read (§6.5): it keeps the recovered value, with the
 // counters counted onto the report passed. A nil report is allowed; every
 // tolerance event still decides the same way.
-func TablePickupEventFromJsonTolerant(value *TablePickupEvent, text []byte, report *TableReport) bool {
-	return TablePickupEventFromJsonTolerantWith(value, text, report, TableJsonOptions{})
+func TablePickupEventFromJSONTolerant(value *TablePickupEvent, text []byte, report *TableReport) bool {
+	return TablePickupEventFromJSONTolerantWith(value, text, report, TableJSONOptions{})
 }
 
-// TablePickupEventFromJson fills one TablePickupEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
+// TablePickupEventFromJSON fills one TablePickupEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
 // STRICT (§6.5): it refuses whatever TablePickupEventReadStrict refuses, resets value to its
 // defaults and answers false. A supplied report receives THIS read's report,
 // and on a refusal report.Err() is the typed reason.
-func TablePickupEventFromJson(value *TablePickupEvent, text []byte, report *TableReport) bool {
-	return TablePickupEventFromJsonWith(value, text, report, TableJsonOptions{})
+func TablePickupEventFromJSON(value *TablePickupEvent, text []byte, report *TableReport) bool {
+	return TablePickupEventFromJSONWith(value, text, report, TableJSONOptions{})
 }
 
-// TablePickupEventToJsonMeasure is the exact size of TablePickupEvent's JSON text, writing nothing.
-func TablePickupEventToJsonMeasure(value *TablePickupEvent) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TablePickupEventTableType(), nil, TableJsonOptions{})
+// TablePickupEventToJSONMeasure is the exact size of TablePickupEvent's JSON text, writing nothing.
+func TablePickupEventToJSONMeasure(value *TablePickupEvent) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TablePickupEventTableType(), nil, TableJSONOptions{})
 }
 
-// TablePickupEventToJson writes TablePickupEvent's JSON text into the caller's slice and returns the
-// bytes written — exactly TablePickupEventToJsonMeasure's answer — or -1 when it is short.
-func TablePickupEventToJson(value *TablePickupEvent, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TablePickupEventTableType(), buffer, TableJsonOptions{})
+// TablePickupEventToJSON writes TablePickupEvent's JSON text into the caller's slice and returns the
+// bytes written — exactly TablePickupEventToJSONMeasure's answer — or -1 when it is short.
+func TablePickupEventToJSON(value *TablePickupEvent, buffer []byte) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TablePickupEventTableType(), buffer, TableJSONOptions{})
 }
 
-// TablePickupEventFromJsonWith is TablePickupEventFromJson under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
+// TablePickupEventFromJSONWith is TablePickupEventFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
 // so it is STRICT too (§6.5).
-func TablePickupEventFromJsonWith(value *TablePickupEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
+func TablePickupEventFromJSONWith(value *TablePickupEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
 	read := report
 	if read == nil {
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
 	}
-	ok := TablePickupEventFromJsonTolerantWith(value, text, read, options)
+	ok := TablePickupEventFromJSONTolerantWith(value, text, read, options)
 	if !ok || read.Err() != nil {
 		TablePickupEventReset(value)
 		return false
@@ -4145,20 +4145,20 @@ func TablePickupEventFromJsonWith(value *TablePickupEvent, text []byte, report *
 	return true
 }
 
-// TablePickupEventFromJsonTolerantWith is TablePickupEventFromJsonTolerant under TableJsonOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
+// TablePickupEventFromJSONTolerantWith is TablePickupEventFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
-func TablePickupEventFromJsonTolerantWith(value *TablePickupEvent, text []byte, report *TableReport, options TableJsonOptions) bool {
-	return tableJsonRead(unsafe.Pointer(value), TablePickupEventTableType(), text, report, options)
+func TablePickupEventFromJSONTolerantWith(value *TablePickupEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
+	return tableJSONRead(unsafe.Pointer(value), TablePickupEventTableType(), text, report, options)
 }
 
-// TablePickupEventToJsonMeasureWith is TablePickupEventToJsonMeasure under TableJsonOptions (§16.2).
-func TablePickupEventToJsonMeasureWith(value *TablePickupEvent, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TablePickupEventTableType(), nil, options)
+// TablePickupEventToJSONMeasureWith is TablePickupEventToJSONMeasure under TableJSONOptions (§16.2).
+func TablePickupEventToJSONMeasureWith(value *TablePickupEvent, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TablePickupEventTableType(), nil, options)
 }
 
-// TablePickupEventToJsonWith is TablePickupEventToJson under TableJsonOptions (§16.2).
-func TablePickupEventToJsonWith(value *TablePickupEvent, buffer []byte, options TableJsonOptions) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TablePickupEventTableType(), buffer, options)
+// TablePickupEventToJSONWith is TablePickupEventToJSON under TableJSONOptions (§16.2).
+func TablePickupEventToJSONWith(value *TablePickupEvent, buffer []byte, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), TablePickupEventTableType(), buffer, options)
 }
 
 // TablePickupEventSaveText returns the base64 of TablePickupEvent's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md

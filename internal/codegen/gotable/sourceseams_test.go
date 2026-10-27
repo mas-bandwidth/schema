@@ -276,7 +276,7 @@ table GoalList | json = "array"
 table Holder { bases []?string(8) }
 `,
 		want: []string{
-			"tableJsonWriteTextElement", // text-list JSON writer seam
+			"tableJSONWriteTextElement", // text-list JSON writer seam
 			"tableTextClamped",          // text-list clamp name seam
 			"json_root_not_array",       // array-root read seam
 			"f.TextList == 0",           // string kind split for text lists
@@ -330,10 +330,10 @@ table Plain { names []string }
 		// the region graph's listDrop; the plain []string list reaches the
 		// unbounded text reader. Each identifier exists only through its seam.
 		want: []string{
-			"tableJsonTextTotalKeep(", // bounded read keeps the prefix within the total
-			"tableJsonTextBytes(",     // the write side sums the element bytes
+			"tableJSONTextTotalKeep(", // bounded read keeps the prefix within the total
+			"tableJSONTextBytes(",     // the write side sums the element bytes
 			"listDrop:",               // region graph's erase closure for the unbounded list
-			"tableJsonReadText(",      // the plain []string element reader
+			"tableJSONReadText(",      // the plain []string element reader
 		},
 	},
 	{

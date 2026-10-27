@@ -21,11 +21,11 @@ func tableWireRuntime(u *ir.Unit) string {
 		source = tableSourceReplace(source, "Ids:r.Ids, Nested:true", "Ids:r.Ids, Nested:true, Nodes:r.Nodes", 1)
 	}
 	if unitDeclaresTableKind(u, ir.TableKindF64) {
-		source = tableSourceReplace(source, "func tableUtf8Valid", tableWidenFloatSource+"func tableUtf8Valid", 1)
+		source = tableSourceReplace(source, "func tableUTF8Valid", tableWidenFloatSource+"func tableUTF8Valid", 1)
 	}
 	res := fmt.Sprintf(`
-const tableIdCapacity = %d
-const tableIdBuckets = %d
+const tableIDCapacity = %d
+const tableIDBuckets = %d
 `, n, buckets) + source
 	if len(ir.WideTextFields(u)) > 0 {
 		res += tableWStringSource + tableWStringWriteSource
@@ -83,17 +83,17 @@ const tableWireSource = `
 // TableIds interns the writer's ids in first-use order. Bucket links are
 // one-based so its zero value is ready to use, including for hash zero.
 type TableIds struct {
-	Values [tableIdCapacity]uint64
-	chain [tableIdCapacity]int
-	head [tableIdBuckets]int
-	slot [tableIdCapacity]uint32
-	ordinalOf [tableIdCapacity]int32
+	Values [tableIDCapacity]uint64
+	chain [tableIDCapacity]int
+	head [tableIDBuckets]int
+	slot [tableIDCapacity]uint32
+	ordinalOf [tableIDCapacity]int32
 	Count int
 	Overflow bool
 }
 
 func (ids *TableIds) Ref(id uint64) uint64 {
-	b := (id ^ id >> 32) & (tableIdBuckets - 1)
+	b := (id ^ id >> 32) & (tableIDBuckets - 1)
 	for i := ids.head[b]; i != 0; i = ids.chain[i-1] {
 		if ids.Values[i-1] == id { return uint64(i) }
 	}
@@ -144,7 +144,7 @@ func (ids *TableIds) Truncate(mark int) {
 	for ids.Count > mark {
 		ids.Count--
 		id := ids.Values[ids.Count]
-		ids.head[(id ^ id >> 32) & (tableIdBuckets - 1)] = ids.chain[ids.Count]
+		ids.head[(id ^ id >> 32) & (tableIDBuckets - 1)] = ids.chain[ids.Count]
 		if o := ids.ordinalOf[ids.Count]; o >= 0 {
 			ids.slot[o] = 0
 		}
@@ -259,7 +259,7 @@ func (w *TableWriter) PutLeb(v uint64) {
 }
 
 func (w *TableWriter) Id(id uint64) { w.PutLeb(w.Ids.Ref(id)) }
-func (w *TableWriter) IdAt(ordinal int, id uint64) { w.PutLeb(w.Ids.RefAt(ordinal, id)) }
+func (w *TableWriter) IDAt(ordinal int, id uint64) { w.PutLeb(w.Ids.RefAt(ordinal, id)) }
 
 // headerPair writes a field header whose reference is one LEB byte. False
 // means the reference needs headerRest. Overflow on a short buffer is handled
@@ -510,12 +510,12 @@ func (r *TableReader) Signed(kind uint8) int64 {
  switch tableKindBytes(kind) { case 1: return int64(int8(r.Get8())); case 2: return int64(int16(r.Get16())); case 4: return int64(int32(r.Get32())); default: return int64(r.Get64()) }
 }
 
-// tableUtf8Word is the form-1 writer's little-endian word load for its in-line
+// tableUTF8Word is the form-1 writer's little-endian word load for its in-line
 // text test (emitTextWords): a function of the runtime file, which imports
 // encoding/binary, so the generated writers in any file of the unit can call it.
-func tableUtf8Word(p []byte) uint64 { return binary.LittleEndian.Uint64(p) }
+func tableUTF8Word(p []byte) uint64 { return binary.LittleEndian.Uint64(p) }
 
-func tableUtf8Valid(data []byte) bool {
+func tableUTF8Valid(data []byte) bool {
 	// One pass, eight bytes a step: z gathers the zero-byte test of every word
 	// (exact: a word has a zero byte if and only if its lane is set), hi gathers
 	// the high bits. No zero and no high bit is ASCII with no NUL; a high bit
@@ -536,7 +536,7 @@ func tableUtf8Valid(data []byte) bool {
 	return hi&0x8080808080808080 == 0 || utf8.Valid(data)
 }
 
-func tableUtf8Clamp(data []byte, n int64) int64 {
+func tableUTF8Clamp(data []byte, n int64) int64 {
 	for n > 0 && n < int64(len(data)) && data[n]&0xc0 == 0x80 { n-- }
 	return n
 }

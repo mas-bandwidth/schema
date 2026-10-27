@@ -263,34 +263,34 @@ func TestVariable(t *testing.T) {
 func TestText(t *testing.T) {
 	for _, c := range cfCases {
 		v := cfValue(c.in)
-		n := ReadingToJsonMeasure(&v)
+		n := ReadingToJSONMeasure(&v)
 		if !c.text {
 			if n != -1 {
 				t.Errorf("text %s: the writer measured %d, want the refusal -1", c.name, n)
 			}
 			var sink [256]byte
-			if got := ReadingToJson(&v, sink[:]); got != -1 {
-				t.Errorf("text %s: ReadingToJson wrote %d, want the refusal -1", c.name, got)
+			if got := ReadingToJSON(&v, sink[:]); got != -1 {
+				t.Errorf("text %s: ReadingToJSON wrote %d, want the refusal -1", c.name, got)
 			}
 			// Pin each range independently so a nonfinite value in B [-1, 1] is
-			// refused by both ReadingToJsonMeasure and ReadingToJson even when
+			// refused by both ReadingToJSONMeasure and ReadingToJSON even when
 			// A [0, 1] is finite, and vice versa.
 			var onlyA, onlyB Reading
 			ReadingReset(&onlyA)
 			onlyA.A = math.Float32frombits(c.in)
-			if got := ReadingToJsonMeasure(&onlyA); got != -1 {
-				t.Errorf("text %s A [0, 1]: ReadingToJsonMeasure = %d, want -1", c.name, got)
+			if got := ReadingToJSONMeasure(&onlyA); got != -1 {
+				t.Errorf("text %s A [0, 1]: ReadingToJSONMeasure = %d, want -1", c.name, got)
 			}
-			if got := ReadingToJson(&onlyA, sink[:]); got != -1 {
-				t.Errorf("text %s A [0, 1]: ReadingToJson = %d, want -1", c.name, got)
+			if got := ReadingToJSON(&onlyA, sink[:]); got != -1 {
+				t.Errorf("text %s A [0, 1]: ReadingToJSON = %d, want -1", c.name, got)
 			}
 			ReadingReset(&onlyB)
 			onlyB.B = math.Float32frombits(c.in)
-			if got := ReadingToJsonMeasure(&onlyB); got != -1 {
-				t.Errorf("text %s B [-1, 1]: ReadingToJsonMeasure = %d, want -1", c.name, got)
+			if got := ReadingToJSONMeasure(&onlyB); got != -1 {
+				t.Errorf("text %s B [-1, 1]: ReadingToJSONMeasure = %d, want -1", c.name, got)
 			}
-			if got := ReadingToJson(&onlyB, sink[:]); got != -1 {
-				t.Errorf("text %s B [-1, 1]: ReadingToJson = %d, want -1", c.name, got)
+			if got := ReadingToJSON(&onlyB, sink[:]); got != -1 {
+				t.Errorf("text %s B [-1, 1]: ReadingToJSON = %d, want -1", c.name, got)
 			}
 			continue
 		}
@@ -298,12 +298,12 @@ func TestText(t *testing.T) {
 			t.Fatalf("text %s: the writer refused a finite value", c.name)
 		}
 		buf := make([]byte, n)
-		if ReadingToJson(&v, buf) != n {
+		if ReadingToJSON(&v, buf) != n {
 			t.Fatalf("text %s: write", c.name)
 		}
 		var got Reading
 		var rep TableReport
-		if !ReadingFromJsonTolerant(&got, buf, &rep) {
+		if !ReadingFromJSONTolerant(&got, buf, &rep) {
 			t.Fatalf("text %s: read %+v of %s", c.name, rep, buf)
 		}
 		if rep.Clamped != c.counts || rep.KindMismatch != 0 {
@@ -313,7 +313,7 @@ func TestText(t *testing.T) {
 	}
 	var got Reading
 	var rep TableReport
-	if !ReadingFromJsonTolerant(&got, []byte("{\"a\": -0, \"b\": -0.0}\n"), &rep) {
+	if !ReadingFromJSONTolerant(&got, []byte("{\"a\": -0, \"b\": -0.0}\n"), &rep) {
 		t.Fatalf("text -0 by hand: %+v", rep)
 	}
 	cfLanded(t, "text", cfCases[1], got)

@@ -121,7 +121,7 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 		e := messageElement(f)
 		if f.KeyEnum != "" {
 			cond := g.emitMessageRides(e, expr+"[i]", ind+"\t")
-			g.pf("%sif !(%s){continue};id,named:=%s(i+1).TableEnumId();if !named{return false};slot:=tableMessageNameSlot(id);if slot==0{return false};w.Put(slot,TableMessageRefBitsHere)\n", ind, cond, f.KeyEnum)
+			g.pf("%sif !(%s){continue};id,named:=%s(i+1).TableEnumID();if !named{return false};slot:=tableMessageNameSlot(id);if slot==0{return false};w.Put(slot,TableMessageRefBitsHere)\n", ind, cond, f.KeyEnum)
 		}
 		g.emitMessageValue(e, ir.TableVocabularyEntry{Kind: entry.Shape.Elem, Shape: *entry.Shape.Inner}, expr+"[i]", ind+"\t")
 		g.pf("%s}\n", ind)
@@ -149,7 +149,7 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 			// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15).
 			g.pf("%sif %s.TableEnumDeprecated(){return false}\n", ind, expr)
 		}
-		g.pf("%sif %s==%sNone{w.Put(0,TableMessageRefBitsHere)}else{id,named:=%s.TableEnumId();if !named{return false};slot:=tableMessageNameSlot(id);if slot==0{return false};w.Put(slot,TableMessageRefBitsHere)}\n", ind, expr, f.Type.Name, expr)
+		g.pf("%sif %s==%sNone{w.Put(0,TableMessageRefBitsHere)}else{id,named:=%s.TableEnumID();if !named{return false};slot:=tableMessageNameSlot(id);if slot==0{return false};w.Put(slot,TableMessageRefBitsHere)}\n", ind, expr, f.Type.Name, expr)
 	default:
 		lo, hi := "uint64("+expr+")", "uint64(0)"
 		switch entry.Kind {

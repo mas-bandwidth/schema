@@ -13,7 +13,7 @@ import (
 )
 
 // strictTimestampSchema is the unit whose text form this test drives: one
-// timestamp field, so a spec's reader is the generated RootFromJson and the
+// timestamp field, so a spec's reader is the generated RootFromJSON and the
 // engine's reader is tabletext.Model.Read.
 const strictTimestampSchema = `package probe
 fixed table Root
@@ -202,7 +202,7 @@ func TestStrictTimestampSpellings(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			var got Root
 			var report TableReport
-			ok := RootFromJson(&got, []byte(c.json), &report)
+			ok := RootFromJSON(&got, []byte(c.json), &report)
 			if ok != c.ok {
 				t.Fatalf("%s: accepted=%t want %t report=%+v", c.json, ok, c.ok, report)
 			}

@@ -13,9 +13,9 @@ package gotable
 //     variable read names it non_finite in Reason and counts nothing, and the
 //     STRICT read refuses it (TableRefuseNonFinite), because the JSON writer
 //     has no spelling for one (§16.3). Found by the same campaign: ReadStrict
-//     accepted a NaN that ToJsonMeasure then refused.
+//     accepted a NaN that ToJSONMeasure then refused.
 //
-// So a value ReadStrict accepts is one Save, ToJson and SaveText all write.
+// So a value ReadStrict accepts is one Save, ToJSON and SaveText all write.
 // Every assertion is on the RAW BITS: -0 == +0 and NaN != NaN under ==.
 
 import "testing"
@@ -204,12 +204,12 @@ func TestRoot(t *testing.T) {
 		if !c.finite {
 			strictRefused(t, "root strict", c, err)
 			strictRefused(t, "root LoadText", c, loadTextErr)
-			if m := RootToJsonMeasure(&v); m != -1 {
-				t.Errorf("root %s: ToJsonMeasure %d, want the refusal -1", c.name, m)
+			if m := RootToJSONMeasure(&v); m != -1 {
+				t.Errorf("root %s: ToJSONMeasure %d, want the refusal -1", c.name, m)
 			}
 			var sink [1024]byte
-			if m := RootToJson(&v, sink[:]); m != -1 {
-				t.Errorf("root %s: ToJson %d, want the refusal -1", c.name, m)
+			if m := RootToJSON(&v, sink[:]); m != -1 {
+				t.Errorf("root %s: ToJSON %d, want the refusal -1", c.name, m)
 			}
 		} else {
 			if err != nil || loadTextErr != nil {
@@ -217,7 +217,7 @@ func TestRoot(t *testing.T) {
 			}
 			landed(t, "root strict", c, rootBits(strict), want)
 			// Every writer writes what the strict read accepted.
-			m := RootToJsonMeasure(strict)
+			m := RootToJSONMeasure(strict)
 			if m <= 0 || RootMeasure(strict) <= 0 {
 				t.Fatalf("root %s: a strict-clean value refused by a writer (json %d)", c.name, m)
 			}
@@ -225,15 +225,15 @@ func TestRoot(t *testing.T) {
 				t.Errorf("root %s: SaveText of a strict-clean value: %v", c.name, err)
 			}
 			js := make([]byte, m)
-			if RootToJson(strict, js) != m {
-				t.Fatalf("root %s: ToJson", c.name)
+			if RootToJSON(strict, js) != m {
+				t.Fatalf("root %s: ToJSON", c.name)
 			}
 			// The text lands the same bits as the wire, and so does the text
 			// read saved back to the wire: one value, every form.
 			var fromText Root
 			var trep TableReport
-			if !RootFromJson(&fromText, js, &trep) {
-				t.Fatalf("root %s: FromJson %+v of %s", c.name, trep, js)
+			if !RootFromJSON(&fromText, js, &trep) {
+				t.Fatalf("root %s: FromJSON %+v of %s", c.name, trep, js)
 			}
 			landed(t, "root text", c, rootBits(&fromText), want)
 			named(t, "root text", c, &trep)
@@ -308,8 +308,8 @@ func TestVar(t *testing.T) {
 		if !c.finite {
 			strictRefused(t, "var strict", c, err)
 			strictRefused(t, "var LoadText", c, loadTextErr)
-			if m := VarToJsonMeasure(&v); m != -1 {
-				t.Errorf("var %s: ToJsonMeasure %d, want the refusal -1", c.name, m)
+			if m := VarToJSONMeasure(&v); m != -1 {
+				t.Errorf("var %s: ToJSONMeasure %d, want the refusal -1", c.name, m)
 			}
 			continue
 		}
@@ -317,22 +317,22 @@ func TestVar(t *testing.T) {
 			t.Fatalf("var %s: strict read %v, LoadText %v", c.name, err, loadTextErr)
 		}
 		landed(t, "var strict", c, varBits(strict), want)
-		m := VarToJsonMeasure(strict)
+		m := VarToJSONMeasure(strict)
 		if m <= 0 {
-			t.Fatalf("var %s: ToJsonMeasure of a strict-clean value %d", c.name, m)
+			t.Fatalf("var %s: ToJSONMeasure of a strict-clean value %d", c.name, m)
 		}
 		if _, err := VarSaveText(strict); err != nil {
 			t.Errorf("var %s: SaveText of a strict-clean value: %v", c.name, err)
 		}
 		js := make([]byte, m)
-		if VarToJson(strict, js) != m {
-			t.Fatalf("var %s: ToJson", c.name)
+		if VarToJSON(strict, js) != m {
+			t.Fatalf("var %s: ToJSON", c.name)
 		}
 		var tb VarBuilder
 		tb.Init()
 		var trep TableReport
-		if !VarFromJson(&tb, js, &trep) {
-			t.Fatalf("var %s: FromJson %+v of %s", c.name, trep, js)
+		if !VarFromJSON(&tb, js, &trep) {
+			t.Fatalf("var %s: FromJSON %+v of %s", c.name, trep, js)
 		}
 		landed(t, "var text", c, varBits(tb.GetRoot()), want)
 		named(t, "var text", c, &trep)
@@ -465,7 +465,7 @@ func TestTextMinusZeroByHand(t *testing.T) {
 	text := []byte("{\"a\": -0, \"b\": -0.0, \"xs\": [-0, -0e0, -0.0], \"ys\": [-0, -0]}\n")
 	var got Root
 	var rep TableReport
-	if !RootFromJson(&got, text, &rep) {
+	if !RootFromJSON(&got, text, &rep) {
 		t.Fatalf("text -0 by hand: %+v", rep)
 	}
 	w := fsCases[1].want(false)

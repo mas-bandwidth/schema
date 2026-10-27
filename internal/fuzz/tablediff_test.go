@@ -115,7 +115,7 @@ func probeFromJSON(text []byte, rep *TableReport) (*Root, bool) {
 	if !b.initSized(1) {
 		return nil, false
 	}
-	if !RootFromJson(&b, text, rep) {
+	if !RootFromJSON(&b, text, rep) {
 		b.Shutdown()
 		return nil, false
 	}
@@ -132,7 +132,7 @@ func probeFromJSONValue(v *Root, text []byte, rep *TableReport) bool {
 		return false
 	}
 	defer b.Shutdown()
-	ok := RootFromJson(&b, text, rep)
+	ok := RootFromJSON(&b, text, rep)
 	if !ok {
 		if b.GetRoot() != nil {
 			*v = *b.GetRoot()
@@ -151,7 +151,7 @@ func probeFromJSONTolerant(text []byte, rep *TableReport) (*Root, bool) {
 	if !b.initSized(1) {
 		return nil, false
 	}
-	if !RootFromJsonTolerant(&b, text, rep) {
+	if !RootFromJSONTolerant(&b, text, rep) {
 		b.Shutdown()
 		return nil, false
 	}
@@ -222,18 +222,18 @@ const hasLoadMeasure = false
 func probeFromJSON(text []byte, rep *TableReport) (*Root, bool) {
 	v := new(Root)
 	RootReset(v)
-	ok := RootFromJson(v, text, rep)
+	ok := RootFromJSON(v, text, rep)
 	return v, ok
 }
 
 func probeFromJSONValue(v *Root, text []byte, rep *TableReport) bool {
-	return RootFromJson(v, text, rep)
+	return RootFromJSON(v, text, rep)
 }
 
 func probeFromJSONTolerant(text []byte, rep *TableReport) (*Root, bool) {
 	v := new(Root)
 	RootReset(v)
-	ok := RootFromJsonTolerant(v, text, rep)
+	ok := RootFromJSONTolerant(v, text, rep)
 	return v, ok
 }
 
@@ -276,7 +276,7 @@ func runGeneratedTableUnit(t *testing.T, u *ir.Unit, testSource string, env map[
 		return nil, err
 	}
 	if ir.VariableTables(u)["Root"] && !strings.Contains(testSource, "probeFromJSON") && !strings.Contains(testSource, "RootBuilder") {
-		testSource = strings.ReplaceAll(testSource, "RootFromJson(", "probeFromJSONValue(")
+		testSource = strings.ReplaceAll(testSource, "RootFromJSON(", "probeFromJSONValue(")
 	}
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", root))
 	files["helpers_test.go"] = []byte(probeHelpersSource(u))
@@ -389,8 +389,8 @@ func TestProbe(t *testing.T) {
 				record(&div, "fromjson %d %s", i, b64(jb))
 				continue
 			}
-			tj := make([]byte, RootToJsonMeasure(v))
-			if RootToJson(v, tj) != int64(len(tj)) {
+			tj := make([]byte, RootToJSONMeasure(v))
+			if RootToJSON(v, tj) != int64(len(tj)) {
 				record(&div, "tojson %d", i)
 			}
 			if sabotage && i == 0 {
@@ -407,8 +407,8 @@ func TestProbe(t *testing.T) {
 				t.Fatal(err)
 			}
 			if v2, ok := probeFromJSON(tj, &report); ok && v2 != nil {
-			tj2 := make([]byte, RootToJsonMeasure(v2))
-				if RootToJson(v2, tj2) != int64(len(tj2)) || string(tj2) != string(tj) {
+			tj2 := make([]byte, RootToJSONMeasure(v2))
+				if RootToJSON(v2, tj2) != int64(len(tj2)) || string(tj2) != string(tj) {
 					record(&div, "fromjsontojson %d %s %s", i, b64(tj), b64(tj2))
 				}
 				w2 := make([]byte, RootMeasure(v2))
@@ -424,8 +424,8 @@ func TestProbe(t *testing.T) {
 			if err != nil || got == nil {
 				record(&div, "strictrefuse %d", i)
 			} else {
-				gj := make([]byte, RootToJsonMeasure(got))
-				if RootToJson(got, gj) != int64(len(gj)) {
+				gj := make([]byte, RootToJSONMeasure(got))
+				if RootToJSON(got, gj) != int64(len(gj)) {
 					record(&div, "stricttojson %d", i)
 				}
 				if string(gj) != string(tj) {
@@ -456,8 +456,8 @@ func TestProbe(t *testing.T) {
 			if !lok || loaded == nil {
 				record(&div, "loadrefuse %d", i)
 			} else {
-				lj := make([]byte, RootToJsonMeasure(loaded))
-				if RootToJson(loaded, lj) != int64(len(lj)) {
+				lj := make([]byte, RootToJSONMeasure(loaded))
+				if RootToJSON(loaded, lj) != int64(len(lj)) {
 					record(&div, "loadtojson %d", i)
 				} else if string(lj) != string(tj) {
 					record(&div, "loadroundtrip %s %s", b64(tj), b64(lj))
@@ -566,8 +566,8 @@ func TestProbe(t *testing.T) {
 					}
 				} else {
 					if serr == nil && strictVal != nil {
-						gj := make([]byte, RootToJsonMeasure(strictVal))
-						if RootToJson(strictVal, gj) == int64(len(gj)) && !bytes.Equal(gj, tj) {
+						gj := make([]byte, RootToJSONMeasure(strictVal))
+						if RootToJSON(strictVal, gj) == int64(len(gj)) && !bytes.Equal(gj, tj) {
 							wrong++
 						}
 					}

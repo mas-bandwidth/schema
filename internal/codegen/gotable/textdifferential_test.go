@@ -10,7 +10,7 @@ package gotable
 // The engine and the emitted walker share NO code even though both are Go: the
 // engine's float loop is internal/tabletext/write.go's writeFloat/formatG
 // (C's %.*g spelled out over the double), while the leg's is
-// tableJsonWriteFloat, emitted SOURCE (tableJsonWalkSource) and reaching for
+// tableJSONWriteFloat, emitted SOURCE (tableJSONWalkSource) and reaching for
 // strconv.AppendFloat. Two implementations, one language, which is what makes
 // this row cheap (no subprocess protocol) and NOT circular.
 //
@@ -136,13 +136,13 @@ func TestProbe(t *testing.T) {
 		if err := os.WriteFile(dir+"/inst-"+strconv.Itoa(i)+".wire", wire, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		textSize := RootToJsonMeasure(&v)
+		textSize := RootToJSONMeasure(&v)
 		if textSize < 0 {
-			t.Fatalf("instance %d: RootToJsonMeasure refused (%d)", i, textSize)
+			t.Fatalf("instance %d: RootToJSONMeasure refused (%d)", i, textSize)
 		}
 		text := make([]byte, textSize)
-		if RootToJson(&v, text) != int64(len(text)) {
-			t.Fatalf("instance %d: RootToJson wrote short", i)
+		if RootToJSON(&v, text) != int64(len(text)) {
+			t.Fatalf("instance %d: RootToJSON wrote short", i)
 		}
 		if err := os.WriteFile(dir+"/inst-"+strconv.Itoa(i)+".json", text, 0o600); err != nil {
 			t.Fatal(err)

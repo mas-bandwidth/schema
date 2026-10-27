@@ -37,8 +37,8 @@ func TestGraphs(t *testing.T) {
  if RootMeasure(loaded)!=want {t.Fatal("measure loaded")};out:=make([]byte,want);if RootSave(loaded,out)!=want||!bytes.Equal(out,wire){t.Fatal("roundtrip")}
  if !b.Lock()||b.GetRoot()!=nil||NodeAt(&NodeAt(&b.AsConst().Head).Next)!=NodeAt(&b.AsConst().Alias){t.Fatal("lock")}
  if !bytes.Equal(b.Region(),region[:count-4*16]){t.Fatal("packed data differs from loaded data")}
- text:=make([]byte,RootToJsonMeasure(loaded));if RootToJson(loaded,text)!=int64(len(text)){t.Fatal("graph text write")}
- var from RootBuilder;from.Init();defer from.Shutdown();report=TableReport{};if !RootFromJsonTolerant(&from,text,&report)||report!=(TableReport{})||!from.Lock(){t.Fatalf("graph text read %+v: %s",report,text)};if NodeAt(&NodeAt(&from.AsConst().Head).Next)!=NodeAt(&from.AsConst().Alias){t.Fatal("text sharing")}
+ text:=make([]byte,RootToJSONMeasure(loaded));if RootToJSON(loaded,text)!=int64(len(text)){t.Fatal("graph text write")}
+ var from RootBuilder;from.Init();defer from.Shutdown();report=TableReport{};if !RootFromJSONTolerant(&from,text,&report)||report!=(TableReport{})||!from.Lock(){t.Fatalf("graph text read %+v: %s",report,text)};if NodeAt(&NodeAt(&from.AsConst().Head).Next)!=NodeAt(&from.AsConst().Alias){t.Fatal("text sharing")}
  if allocs:=testing.AllocsPerRun(20,func(){report=TableReport{};RootLoadMeasure(wire);RootLoadTolerant(region,wire,&report)});allocs!=0{t.Fatalf("load allocations: %v",allocs)}
  var cycle RootBuilder;cycle.Init();defer cycle.Shutdown();c:=NodeEmplace(&cycle.Main,&cycle.GetRoot().Head);c.Next=cycle.GetRoot().Head
  if RootMeasure(cycle.GetRoot(),&cycle.Arena)!=-1||cycle.Lock(){t.Fatal("cycle accepted")}
@@ -100,13 +100,13 @@ func TestValues(t *testing.T){
  }
  for _,text:=range texts {
  var b RootBuilder;b.Init();var r TableReport
- if !RootFromJsonTolerant(&b,[]byte(text),&r)||r!=(TableReport{})||!b.Lock(){t.Fatalf("read %s: %+v",text,r)}
+ if !RootFromJSONTolerant(&b,[]byte(text),&r)||r!=(TableReport{})||!b.Lock(){t.Fatalf("read %s: %+v",text,r)}
  wire:=make([]byte,RootMeasure(b.AsConst()));if RootSave(b.AsConst(),wire)!=int64(len(wire)){t.Fatal("save")}
  size:=RootLoadMeasure(wire);region:=make([]byte,size+16);offset:=(-uintptr(unsafe.Pointer(&region[0])))&15;region=region[offset:offset+uintptr(size)]
  r=TableReport{};v:=RootLoadTolerant(region,wire,&r);if v==nil||r!=(TableReport{}){t.Fatalf("load %s: %+v",text,r)}
  out:=make([]byte,RootMeasure(v));if RootSave(v,out)!=int64(len(out))||!bytes.Equal(out,wire){t.Fatal("wire differs")}
- canonical:=make([]byte,RootToJsonMeasure(v));if RootToJson(v,canonical)!=int64(len(canonical)){t.Fatal("json write")}
- var again RootBuilder;again.Init();r=TableReport{};if !RootFromJsonTolerant(&again,canonical,&r)||r!=(TableReport{})||!again.Lock(){t.Fatalf("reread: %s %+v",canonical,r)}
+ canonical:=make([]byte,RootToJSONMeasure(v));if RootToJSON(v,canonical)!=int64(len(canonical)){t.Fatal("json write")}
+ var again RootBuilder;again.Init();r=TableReport{};if !RootFromJSONTolerant(&again,canonical,&r)||r!=(TableReport{})||!again.Lock(){t.Fatalf("reread: %s %+v",canonical,r)}
  if allocs:=testing.AllocsPerRun(10,func(){r=TableReport{};RootLoadTolerant(region,wire,&r)});allocs!=0{t.Fatalf("read allocations: %v",allocs)}
  again.Shutdown();b.Shutdown()
  }

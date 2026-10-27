@@ -49,8 +49,8 @@ func TestHeaderAndPut128Shape(t *testing.T) {
 			t.Fatalf("Header/Put128 is missing %q", want)
 		}
 	}
-	if strings.Contains(body, "w.IdAt(") {
-		t.Fatal("SaveBody still writes the field header through IdAt then Put8")
+	if strings.Contains(body, "w.IDAt(") {
+		t.Fatal("SaveBody still writes the field header through IDAt then Put8")
 	}
 	if strings.Contains(body, "w.Put64(value.Wide.Lo)") {
 		t.Fatal("Put128 still writes the two lanes through Put64")

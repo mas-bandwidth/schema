@@ -19,11 +19,11 @@ type TurretConfig = TurretConfigRow
 type HullConfig = HullConfigRow
 type KeyedConfig = KeyedConfigRow
 
-// TableEnumId: Team on the TABLE wire rides as the 64-bit hash of its VARIANT
+// TableEnumID: Team on the TABLE wire rides as the 64-bit hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
 // data still reads (mas-bandwidth/schema docs/SPEC-TABLES.md §5). None uses reference zero; hash zero remains a valid named id.
 // The bool is false when no variant names this value: no wire identity.
-func (value Team) TableEnumId() (uint64, bool) {
+func (value Team) TableEnumID() (uint64, bool) {
 	switch value {
 	case TeamNone:
 		return 0, true
@@ -56,11 +56,11 @@ func (value *Team) TableEnumValue(id uint64) bool {
 	return false // an id this build cannot name
 }
 
-// TableEnumId: Hull on the TABLE wire rides as the 64-bit hash of its VARIANT
+// TableEnumID: Hull on the TABLE wire rides as the 64-bit hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
 // data still reads (mas-bandwidth/schema docs/SPEC-TABLES.md §5). None uses reference zero; hash zero remains a valid named id.
 // The bool is false when no variant names this value: no wire identity.
-func (value Hull) TableEnumId() (uint64, bool) {
+func (value Hull) TableEnumID() (uint64, bool) {
 	switch value {
 	case HullNone:
 		return 0, true
@@ -93,11 +93,11 @@ func (value *Hull) TableEnumValue(id uint64) bool {
 	return false // an id this build cannot name
 }
 
-// TableEnumId: Weapon on the TABLE wire rides as the 64-bit hash of its VARIANT
+// TableEnumID: Weapon on the TABLE wire rides as the 64-bit hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
 // data still reads (mas-bandwidth/schema docs/SPEC-TABLES.md §5). None uses reference zero; hash zero remains a valid named id.
 // The bool is false when no variant names this value: no wire identity.
-func (value Weapon) TableEnumId() (uint64, bool) {
+func (value Weapon) TableEnumID() (uint64, bool) {
 	switch value {
 	case WeaponNone:
 		return 0, true
@@ -202,20 +202,20 @@ func TeamConfigSaveBodyFields(w *TableWriter, value *TeamConfig) bool {
 				var hi, z uint64
 				p := value.Banner[:n]
 				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
 					hi |= x | y
 					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
 					p = p[16:]
 				}
 				if len(p) >= 8 {
-					x := tableUtf8Word(p)
+					x := tableUTF8Word(p)
 					hi |= x
 					z |= (x - 0x0101010101010101) &^ x
 					p = p[8:]
 				}
 				if len(p) > 0 {
 					if n >= 8 {
-						x := tableUtf8Word(value.Banner[n-8:])
+						x := tableUTF8Word(value.Banner[n-8:])
 						hi |= x
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
@@ -226,7 +226,7 @@ func TeamConfigSaveBodyFields(w *TableWriter, value *TeamConfig) bool {
 						}
 					}
 				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Banner[:n]) {
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.Banner[:n]) {
 					return false
 				}
 			}
@@ -339,7 +339,7 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			if !tableUtf8Valid(sub.Buffer) {
+			if !tableUTF8Valid(sub.Buffer) {
 				r.Report.Malformed = true
 				clear(value.Banner[:])
 				value.BannerLength = 0
@@ -347,7 +347,7 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 			}
 			keep := int64(len(sub.Buffer))
 			if keep > 16 {
-				keep = tableUtf8Clamp(sub.Buffer, 16)
+				keep = tableUTF8Clamp(sub.Buffer, 16)
 				r.Report.Clamped++
 			}
 			clear(value.Banner[:])
@@ -517,20 +517,20 @@ func TeamConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TeamConfig) boo
 				var hi, z uint64
 				p := value.Banner[:n]
 				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
 					hi |= x | y
 					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
 					p = p[16:]
 				}
 				if len(p) >= 8 {
-					x := tableUtf8Word(p)
+					x := tableUTF8Word(p)
 					hi |= x
 					z |= (x - 0x0101010101010101) &^ x
 					p = p[8:]
 				}
 				if len(p) > 0 {
 					if n >= 8 {
-						x := tableUtf8Word(value.Banner[n-8:])
+						x := tableUTF8Word(value.Banner[n-8:])
 						hi |= x
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
@@ -541,7 +541,7 @@ func TeamConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TeamConfig) boo
 						}
 					}
 				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Banner[:n]) {
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.Banner[:n]) {
 					return false
 				}
 			}
@@ -644,7 +644,7 @@ func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			if !tableUtf8Valid(sub.Buffer) {
+			if !tableUTF8Valid(sub.Buffer) {
 				r.Report.Malformed = true
 				clear(value.Banner[:])
 				value.BannerLength = 0
@@ -652,7 +652,7 @@ func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 			}
 			keep := int64(len(sub.Buffer))
 			if keep > 16 {
-				keep = tableUtf8Clamp(sub.Buffer, 16)
+				keep = tableUTF8Clamp(sub.Buffer, 16)
 				r.Report.Clamped++
 			}
 			clear(value.Banner[:])
@@ -1653,7 +1653,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 			for i := range int(int(WeaponMax)) {
 				{
 					mark := payload6.Ids.Count
-					id, named := Weapon(i + 1).TableEnumId()
+					id, named := Weapon(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -1705,7 +1705,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 				for i := range int(int(WeaponMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Weapon(i + 1).TableEnumId()
+						id, named := Weapon(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -1758,7 +1758,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 					for i := range int(int(WeaponMax)) {
 						{
 							mark := payload9.Ids.Count
-							id, named := Weapon(i + 1).TableEnumId()
+							id, named := Weapon(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -1810,7 +1810,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 						for i := range int(int(WeaponMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Weapon(i + 1).TableEnumId()
+								id, named := Weapon(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -2153,7 +2153,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 			for i := range int(int(WeaponMax)) {
 				{
 					mark := payload1.Ids.Count
-					id, named := Weapon(i + 1).TableEnumId()
+					id, named := Weapon(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -2215,7 +2215,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 				for i := range int(int(WeaponMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Weapon(i + 1).TableEnumId()
+						id, named := Weapon(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -2278,7 +2278,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 					for i := range int(int(WeaponMax)) {
 						{
 							mark := payload8.Ids.Count
-							id, named := Weapon(i + 1).TableEnumId()
+							id, named := Weapon(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -2340,7 +2340,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 						for i := range int(int(WeaponMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Weapon(i + 1).TableEnumId()
+								id, named := Weapon(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -2593,7 +2593,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 			for i := range int(int(TeamMax)) {
 				{
 					mark := payload14.Ids.Count
-					id, named := Team(i + 1).TableEnumId()
+					id, named := Team(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -2645,7 +2645,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 				for i := range int(int(TeamMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Team(i + 1).TableEnumId()
+						id, named := Team(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -2698,7 +2698,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 					for i := range int(int(TeamMax)) {
 						{
 							mark := payload17.Ids.Count
-							id, named := Team(i + 1).TableEnumId()
+							id, named := Team(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -2750,7 +2750,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 						for i := range int(int(TeamMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Team(i + 1).TableEnumId()
+								id, named := Team(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -2802,7 +2802,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 			for i := range int(int(HullMax)) {
 				{
 					mark := payload20.Ids.Count
-					id, named := Hull(i + 1).TableEnumId()
+					id, named := Hull(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -2854,7 +2854,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 				for i := range int(int(HullMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Hull(i + 1).TableEnumId()
+						id, named := Hull(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -2907,7 +2907,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 					for i := range int(int(HullMax)) {
 						{
 							mark := payload23.Ids.Count
-							id, named := Hull(i + 1).TableEnumId()
+							id, named := Hull(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -2959,7 +2959,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 						for i := range int(int(HullMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Hull(i + 1).TableEnumId()
+								id, named := Hull(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -3348,7 +3348,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 			for i := range int(int(TeamMax)) {
 				{
 					mark := payload1.Ids.Count
-					id, named := Team(i + 1).TableEnumId()
+					id, named := Team(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -3410,7 +3410,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 				for i := range int(int(TeamMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Team(i + 1).TableEnumId()
+						id, named := Team(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -3473,7 +3473,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 					for i := range int(int(TeamMax)) {
 						{
 							mark := payload8.Ids.Count
-							id, named := Team(i + 1).TableEnumId()
+							id, named := Team(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -3535,7 +3535,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 						for i := range int(int(TeamMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Team(i + 1).TableEnumId()
+								id, named := Team(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -3597,7 +3597,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 			for i := range int(int(HullMax)) {
 				{
 					mark := payload15.Ids.Count
-					id, named := Hull(i + 1).TableEnumId()
+					id, named := Hull(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -3659,7 +3659,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 				for i := range int(int(HullMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Hull(i + 1).TableEnumId()
+						id, named := Hull(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -3722,7 +3722,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 					for i := range int(int(HullMax)) {
 						{
 							mark := payload22.Ids.Count
-							id, named := Hull(i + 1).TableEnumId()
+							id, named := Hull(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -3784,7 +3784,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 						for i := range int(int(HullMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Hull(i + 1).TableEnumId()
+								id, named := Hull(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -4138,7 +4138,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 			for i := range int(int(TeamMax)) {
 				{
 					mark := payload26.Ids.Count
-					id, named := Team(i + 1).TableEnumId()
+					id, named := Team(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -4192,7 +4192,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 				for i := range int(int(TeamMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Team(i + 1).TableEnumId()
+						id, named := Team(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -4247,7 +4247,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 					for i := range int(int(TeamMax)) {
 						{
 							mark := payload29.Ids.Count
-							id, named := Team(i + 1).TableEnumId()
+							id, named := Team(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -4301,7 +4301,7 @@ func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 						for i := range int(int(TeamMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Team(i + 1).TableEnumId()
+								id, named := Team(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -4595,7 +4595,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 			for i := range int(int(TeamMax)) {
 				{
 					mark := payload1.Ids.Count
-					id, named := Team(i + 1).TableEnumId()
+					id, named := Team(i + 1).TableEnumID()
 					if !named {
 						return false
 					}
@@ -4649,7 +4649,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 				for i := range int(int(TeamMax)) {
 					{
 						mark := payload.Ids.Count
-						id, named := Team(i + 1).TableEnumId()
+						id, named := Team(i + 1).TableEnumID()
 						if !named {
 							return false
 						}
@@ -4704,7 +4704,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 					for i := range int(int(TeamMax)) {
 						{
 							mark := payload4.Ids.Count
-							id, named := Team(i + 1).TableEnumId()
+							id, named := Team(i + 1).TableEnumID()
 							if !named {
 								return false
 							}
@@ -4758,7 +4758,7 @@ func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) 
 						for i := range int(int(TeamMax)) {
 							{
 								mark := w.Ids.Count
-								id, named := Team(i + 1).TableEnumId()
+								id, named := Team(i + 1).TableEnumID()
 								if !named {
 									return false
 								}
@@ -5166,13 +5166,13 @@ func TeamConfigFixedCheckBody(value *TeamConfig) bool {
 }
 
 // TeamConfigFixedCheckBodyExact is TeamConfigFixedCheckBody with each string asked by
-// tableFixedUtf8Ok: the answer for text with a byte at or past 0x80 (§3.1).
+// tableFixedUTF8Ok: the answer for text with a byte at or past 0x80 (§3.1).
 func TeamConfigFixedCheckBodyExact(value *TeamConfig) bool {
 	_ = value
 	if value.SpawnCount < 0 || value.SpawnCount > 64 {
 		return false
 	}
-	if uint32(value.BannerLength) > 16 || !tableFixedUtf8Ok(value.Banner[:value.BannerLength]) {
+	if uint32(value.BannerLength) > 16 || !tableFixedUTF8Ok(value.Banner[:value.BannerLength]) {
 		return false
 	}
 	return true
@@ -6659,27 +6659,27 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 
 // TeamConfigTableFields is TeamConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TeamConfigTableFields = []TableFieldInfo{
-	{Name: "spawn_count", Json: "spawn_count", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xceec99e2d65db674, Kind: 4, IsArray: false, Counted: false, Optional: false,
+	{Name: "spawn_count", JSON: "spawn_count", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xceec99e2d65db674, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), ElemSize: uint32(unsafe.Sizeof(TeamConfig{}.SpawnCount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 64.0, RangeIntMin: 0, RangeIntMax: 64, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "banner", Json: "banner", TypeName: "string", DeclaredTypeName: "string", Id: 0xbca0dab1c7a00ccf, Kind: 12, IsArray: false, Counted: true, Optional: false,
+	{Name: "banner", JSON: "banner", TypeName: "string", DeclaredTypeName: "string", ID: 0xbca0dab1c7a00ccf, Kind: 12, IsArray: false, Counted: true, Optional: false,
 		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), ElemSize: uint32(unsafe.Sizeof(TeamConfig{}.Banner)), CountOffset: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 1, CookCountOffset: 24, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6689,7 +6689,7 @@ var TeamConfigTableFields = []TableFieldInfo{
 var TeamConfigTableInfo TableTypeInfo
 
 func init() {
-	TeamConfigTableInfo = TableTypeInfo{Name: "TeamConfig", Size: uint32(unsafe.Sizeof(TeamConfig{})), NumFields: 2, Fields: TeamConfigTableFields, Reset: func(storage unsafe.Pointer) { TeamConfigReset((*TeamConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x1cf8555d11fb113a, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TeamConfigSaveBody(w, (*TeamConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TeamConfigLoadBody(&r, (*TeamConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	TeamConfigTableInfo = TableTypeInfo{Name: "TeamConfig", Size: uint32(unsafe.Sizeof(TeamConfig{})), NumFields: 2, Fields: TeamConfigTableFields, Reset: func(storage unsafe.Pointer) { TeamConfigReset((*TeamConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1cf8555d11fb113a, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TeamConfigSaveBody(w, (*TeamConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TeamConfigLoadBody(&r, (*TeamConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return TeamConfigSaveBodyRetain(w, (*TeamConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return TeamConfigLoadBodyRetain(&r, (*TeamConfig)(p))
@@ -6701,27 +6701,27 @@ func TeamConfigTableType() *TableTypeInfo { return &TeamConfigTableInfo }
 
 // GunnerConfigTableFields is GunnerConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var GunnerConfigTableFields = []TableFieldInfo{
-	{Name: "reaction", Json: "reaction", TypeName: "float32", DeclaredTypeName: "float32", Id: 0xb75aa3662201646a, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "reaction", JSON: "reaction", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xb75aa3662201646a, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), ElemSize: uint32(unsafe.Sizeof(GunnerConfig{}.Reaction)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "tracking", Json: "tracking", TypeName: "bool", DeclaredTypeName: "bool", Id: 0xa6bf719a4602b0bc, Kind: 1, IsArray: false, Counted: false, Optional: false,
+	{Name: "tracking", JSON: "tracking", TypeName: "bool", DeclaredTypeName: "bool", ID: 0xa6bf719a4602b0bc, Kind: 1, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), ElemSize: uint32(unsafe.Sizeof(GunnerConfig{}.Tracking)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6731,7 +6731,7 @@ var GunnerConfigTableFields = []TableFieldInfo{
 var GunnerConfigTableInfo TableTypeInfo
 
 func init() {
-	GunnerConfigTableInfo = TableTypeInfo{Name: "GunnerConfig", Size: uint32(unsafe.Sizeof(GunnerConfig{})), NumFields: 2, Fields: GunnerConfigTableFields, Reset: func(storage unsafe.Pointer) { GunnerConfigReset((*GunnerConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x5fcbe04615411b64, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return GunnerConfigSaveBody(w, (*GunnerConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return GunnerConfigLoadBody(&r, (*GunnerConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	GunnerConfigTableInfo = TableTypeInfo{Name: "GunnerConfig", Size: uint32(unsafe.Sizeof(GunnerConfig{})), NumFields: 2, Fields: GunnerConfigTableFields, Reset: func(storage unsafe.Pointer) { GunnerConfigReset((*GunnerConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x5fcbe04615411b64, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return GunnerConfigSaveBody(w, (*GunnerConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return GunnerConfigLoadBody(&r, (*GunnerConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return GunnerConfigSaveBodyRetain(w, (*GunnerConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return GunnerConfigLoadBodyRetain(&r, (*GunnerConfig)(p))
@@ -6743,39 +6743,39 @@ func GunnerConfigTableType() *TableTypeInfo { return &GunnerConfigTableInfo }
 
 // TurretConfigTableFields is TurretConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TurretConfigTableFields = []TableFieldInfo{
-	{Name: "damage", Json: "damage", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x7f6308be8ab37fc0, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "damage", JSON: "damage", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x7f6308be8ab37fc0, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "cooldown", Json: "cooldown", TypeName: "float32", DeclaredTypeName: "float32", Id: 0xdc2cbe6953343d48, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "cooldown", JSON: "cooldown", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xdc2cbe6953343d48, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Cooldown)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "gunner", Json: "gunner", TypeName: "GunnerConfig", DeclaredTypeName: "GunnerConfig", Id: 0x40dbb648c0cd44aa, Kind: 13, IsArray: false, Counted: false, Optional: true,
+	{Name: "gunner", JSON: "gunner", TypeName: "GunnerConfig", DeclaredTypeName: "GunnerConfig", ID: 0x40dbb648c0cd44aa, Kind: 13, IsArray: false, Counted: false, Optional: true,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Gunner)), CountOffset: 0xffffffff, PresentOffset: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)),
 		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 16,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: GunnerConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6785,7 +6785,7 @@ var TurretConfigTableFields = []TableFieldInfo{
 var TurretConfigTableInfo TableTypeInfo
 
 func init() {
-	TurretConfigTableInfo = TableTypeInfo{Name: "TurretConfig", Size: uint32(unsafe.Sizeof(TurretConfig{})), NumFields: 3, Fields: TurretConfigTableFields, Reset: func(storage unsafe.Pointer) { TurretConfigReset((*TurretConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x469dba0c16b2ad15, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TurretConfigSaveBody(w, (*TurretConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TurretConfigLoadBody(&r, (*TurretConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	TurretConfigTableInfo = TableTypeInfo{Name: "TurretConfig", Size: uint32(unsafe.Sizeof(TurretConfig{})), NumFields: 3, Fields: TurretConfigTableFields, Reset: func(storage unsafe.Pointer) { TurretConfigReset((*TurretConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x469dba0c16b2ad15, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TurretConfigSaveBody(w, (*TurretConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TurretConfigLoadBody(&r, (*TurretConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return TurretConfigSaveBodyRetain(w, (*TurretConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return TurretConfigLoadBodyRetain(&r, (*TurretConfig)(p))
@@ -6797,39 +6797,39 @@ func TurretConfigTableType() *TableTypeInfo { return &TurretConfigTableInfo }
 
 // HullConfigTableFields is HullConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var HullConfigTableFields = []TableFieldInfo{
-	{Name: "health", Json: "health", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x7f69d4b5288ba9cf, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "health", JSON: "health", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x7f69d4b5288ba9cf, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HullConfig{}.Health)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Health)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "mass", Json: "mass", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x1f3757a2ce7b0ab1, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "mass", JSON: "mass", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x1f3757a2ce7b0ab1, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HullConfig{}.Mass)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Mass)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "turrets", Json: "turrets", TypeName: "TurretConfig", DeclaredTypeName: "TurretConfig", Id: 0x84f8260bc283608c, Kind: 13, IsArray: true, Counted: false, Optional: false,
+	{Name: "turrets", JSON: "turrets", TypeName: "TurretConfig", DeclaredTypeName: "TurretConfig", ID: 0x84f8260bc283608c, Kind: 13, IsArray: true, Counted: false, Optional: false,
 		ArrayBound: int32(WeaponMax), Offset: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Turrets[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 20, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "Weapon", KeyName: func(v uint64) string { return EnumNameWeapon(Weapon(v)) }, KeyId: func(v uint64) uint64 { id, _ := Weapon(v).TableEnumId(); return id },
+		KeyTypeName: "Weapon", KeyName: func(v uint64) string { return EnumNameWeapon(Weapon(v)) }, KeyID: func(v uint64) uint64 { id, _ := Weapon(v).TableEnumID(); return id },
 		Arms:  nil,
 		Guard: "", Table: TurretConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6839,7 +6839,7 @@ var HullConfigTableFields = []TableFieldInfo{
 var HullConfigTableInfo TableTypeInfo
 
 func init() {
-	HullConfigTableInfo = TableTypeInfo{Name: "HullConfig", Size: uint32(unsafe.Sizeof(HullConfig{})), NumFields: 3, Fields: HullConfigTableFields, Reset: func(storage unsafe.Pointer) { HullConfigReset((*HullConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x3066b130dfbd7890, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return HullConfigSaveBody(w, (*HullConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return HullConfigLoadBody(&r, (*HullConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	HullConfigTableInfo = TableTypeInfo{Name: "HullConfig", Size: uint32(unsafe.Sizeof(HullConfig{})), NumFields: 3, Fields: HullConfigTableFields, Reset: func(storage unsafe.Pointer) { HullConfigReset((*HullConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x3066b130dfbd7890, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return HullConfigSaveBody(w, (*HullConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return HullConfigLoadBody(&r, (*HullConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return HullConfigSaveBodyRetain(w, (*HullConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return HullConfigLoadBodyRetain(&r, (*HullConfig)(p))
@@ -6851,39 +6851,39 @@ func HullConfigTableType() *TableTypeInfo { return &HullConfigTableInfo }
 
 // KeyedConfigTableFields is KeyedConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var KeyedConfigTableFields = []TableFieldInfo{
-	{Name: "teams", Json: "teams", TypeName: "TeamConfig", DeclaredTypeName: "TeamConfig", Id: 0xbaaeb048a5a8fa6d, Kind: 13, IsArray: true, Counted: false, Optional: false,
+	{Name: "teams", JSON: "teams", TypeName: "TeamConfig", DeclaredTypeName: "TeamConfig", ID: 0xbaaeb048a5a8fa6d, Kind: 13, IsArray: true, Counted: false, Optional: false,
 		ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Teams)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Teams[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 28, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyId: func(v uint64) uint64 { id, _ := Team(v).TableEnumId(); return id },
+		KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyID: func(v uint64) uint64 { id, _ := Team(v).TableEnumID(); return id },
 		Arms:  nil,
 		Guard: "", Table: TeamConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "hulls", Json: "hulls", TypeName: "HullConfig", DeclaredTypeName: "HullConfig", Id: 0xce0ac3c25694d8ff, Kind: 13, IsArray: true, Counted: false, Optional: false,
+	{Name: "hulls", JSON: "hulls", TypeName: "HullConfig", DeclaredTypeName: "HullConfig", ID: 0xce0ac3c25694d8ff, Kind: 13, IsArray: true, Counted: false, Optional: false,
 		ArrayBound: int32(HullMax), Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Hulls[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 84, CookElemSize: 68, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "Hull", KeyName: func(v uint64) string { return EnumNameHull(Hull(v)) }, KeyId: func(v uint64) uint64 { id, _ := Hull(v).TableEnumId(); return id },
+		KeyTypeName: "Hull", KeyName: func(v uint64) string { return EnumNameHull(Hull(v)) }, KeyID: func(v uint64) uint64 { id, _ := Hull(v).TableEnumID(); return id },
 		Arms:  nil,
 		Guard: "", Table: HullConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "scores", Json: "scores", TypeName: "ScoreBoard", DeclaredTypeName: "ScoreBoard", Id: 0x1986b0b27400fb2, Kind: 13, IsArray: false, Counted: false, Optional: false,
+	{Name: "scores", JSON: "scores", TypeName: "ScoreBoard", DeclaredTypeName: "ScoreBoard", ID: 0x1986b0b27400fb2, Kind: 13, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Scores)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Scores)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 288, CookElemSize: 12, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: ScoreBoardTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6893,7 +6893,7 @@ var KeyedConfigTableFields = []TableFieldInfo{
 var KeyedConfigTableInfo TableTypeInfo
 
 func init() {
-	KeyedConfigTableInfo = TableTypeInfo{Name: "KeyedConfig", Size: uint32(unsafe.Sizeof(KeyedConfig{})), NumFields: 3, Fields: KeyedConfigTableFields, Reset: func(storage unsafe.Pointer) { KeyedConfigReset((*KeyedConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xd6633ae4e94deecf, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return KeyedConfigSaveBody(w, (*KeyedConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return KeyedConfigLoadBody(&r, (*KeyedConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	KeyedConfigTableInfo = TableTypeInfo{Name: "KeyedConfig", Size: uint32(unsafe.Sizeof(KeyedConfig{})), NumFields: 3, Fields: KeyedConfigTableFields, Reset: func(storage unsafe.Pointer) { KeyedConfigReset((*KeyedConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xd6633ae4e94deecf, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return KeyedConfigSaveBody(w, (*KeyedConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return KeyedConfigLoadBody(&r, (*KeyedConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return KeyedConfigSaveBodyRetain(w, (*KeyedConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return KeyedConfigLoadBodyRetain(&r, (*KeyedConfig)(p))
@@ -6905,15 +6905,15 @@ func KeyedConfigTableType() *TableTypeInfo { return &KeyedConfigTableInfo }
 
 // ScoreBoardTableFields is ScoreBoard's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ScoreBoardTableFields = []TableFieldInfo{
-	{Name: "per_team", Json: "per_team", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xf10fad739a0e1660, Kind: 4, IsArray: true, Counted: false, Optional: false,
+	{Name: "per_team", JSON: "per_team", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xf10fad739a0e1660, Kind: 4, IsArray: true, Counted: false, Optional: false,
 		ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)), ElemSize: uint32(unsafe.Sizeof(ScoreBoardRow{}.PerTeam[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 100000.0, RangeIntMin: 0, RangeIntMax: 100000, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyId: func(v uint64) uint64 { id, _ := Team(v).TableEnumId(); return id },
+		KeyTypeName: "Team", KeyName: func(v uint64) string { return EnumNameTeam(Team(v)) }, KeyID: func(v uint64) uint64 { id, _ := Team(v).TableEnumID(); return id },
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -6923,7 +6923,7 @@ var ScoreBoardTableFields = []TableFieldInfo{
 var ScoreBoardTableInfo TableTypeInfo
 
 func init() {
-	ScoreBoardTableInfo = TableTypeInfo{Name: "ScoreBoard", Size: uint32(unsafe.Sizeof(ScoreBoardRow{})), NumFields: 1, Fields: ScoreBoardTableFields, Reset: func(storage unsafe.Pointer) { ScoreBoardReset((*ScoreBoardRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x38b429bf239b38db, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ScoreBoardSaveBody(w, (*ScoreBoardRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ScoreBoardLoadBody(&r, (*ScoreBoardRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	ScoreBoardTableInfo = TableTypeInfo{Name: "ScoreBoard", Size: uint32(unsafe.Sizeof(ScoreBoardRow{})), NumFields: 1, Fields: ScoreBoardTableFields, Reset: func(storage unsafe.Pointer) { ScoreBoardReset((*ScoreBoardRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x38b429bf239b38db, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ScoreBoardSaveBody(w, (*ScoreBoardRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ScoreBoardLoadBody(&r, (*ScoreBoardRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return ScoreBoardSaveBodyRetain(w, (*ScoreBoardRow)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ScoreBoardLoadBodyRetain(&r, (*ScoreBoardRow)(p))

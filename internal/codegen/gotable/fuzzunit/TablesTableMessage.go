@@ -28,11 +28,11 @@ func RootConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *RootCon
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x8a67c9728746d394:
 			{
 				widened := false
@@ -60,11 +60,11 @@ func RootConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *RootCon
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(16)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(16)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -328,11 +328,11 @@ func RootConfigLoadMessageBody(r *TableMessageReader, value *RootConfig) bool {
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x8a67c9728746d394:
 			{
 				widened := false
@@ -360,11 +360,11 @@ func RootConfigLoadMessageBody(r *TableMessageReader, value *RootConfig) bool {
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(16)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(16)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -555,11 +555,11 @@ func WeaponConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Weapo
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x7f6308be8ab37fc0:
 			{
 				widened := false
@@ -789,11 +789,11 @@ func WeaponConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Weapo
 							(*payload13).Type = EffectTypeNone
 						} else {
 							payload14, ok := r.Vocabulary.Entry(ref)
-							if !ok || payload14.Id >= 0xfffffffffffffffd || payload14.Shape.Kind == 0 {
+							if !ok || payload14.ID >= 0xfffffffffffffffd || payload14.Shape.Kind == 0 {
 								r.Report.Malformed = true
 								return false
 							}
-							switch payload14.Id {
+							switch payload14.ID {
 							case 0xffb5be9be2e469cc:
 								{
 									widened := false
@@ -1008,11 +1008,11 @@ func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) boo
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x7f6308be8ab37fc0:
 			{
 				widened := false
@@ -1241,11 +1241,11 @@ func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) boo
 							(*payload15).Type = EffectTypeNone
 						} else {
 							payload16, ok := r.Vocabulary.Entry(ref)
-							if !ok || payload16.Id >= 0xfffffffffffffffd || payload16.Shape.Kind == 0 {
+							if !ok || payload16.ID >= 0xfffffffffffffffd || payload16.Shape.Kind == 0 {
 								r.Report.Malformed = true
 								return false
 							}
-							switch payload16.Id {
+							switch payload16.ID {
 							case 0xffb5be9be2e469cc:
 								{
 									widened := false
@@ -1384,11 +1384,11 @@ func LoadoutConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Load
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x32a89b2977c48ad4:
 			{
 				widened := false
@@ -1802,7 +1802,7 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 			if value.Grade == GradeNone {
 				w.Put(0, TableMessageRefBitsHere)
 			} else {
-				id, named := value.Grade.TableEnumId()
+				id, named := value.Grade.TableEnumID()
 				if !named {
 					return false
 				}
@@ -1828,7 +1828,7 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 				if value.Grades[i] == GradeNone {
 					w.Put(0, TableMessageRefBitsHere)
 				} else {
-					id, named := value.Grades[i].TableEnumId()
+					id, named := value.Grades[i].TableEnumID()
 					if !named {
 						return false
 					}
@@ -1856,7 +1856,7 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 				if value.Podium[i] == GradeNone {
 					w.Put(0, TableMessageRefBitsHere)
 				} else {
-					id, named := value.Podium[i].TableEnumId()
+					id, named := value.Podium[i].TableEnumID()
 					if !named {
 						return false
 					}
@@ -1978,11 +1978,11 @@ func LoadoutConfigLoadMessageBody(r *TableMessageReader, value *LoadoutConfig) b
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x32a89b2977c48ad4:
 			{
 				widened := false
@@ -2399,11 +2399,11 @@ func ProfileConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Prof
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xc4bcadba8e631b86:
 			{
 				widened := false
@@ -2431,11 +2431,11 @@ func ProfileConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Prof
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(32)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -3106,11 +3106,11 @@ func ProfileConfigLoadMessageBody(r *TableMessageReader, value *ProfileConfig) b
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xc4bcadba8e631b86:
 			{
 				widened := false
@@ -3138,11 +3138,11 @@ func ProfileConfigLoadMessageBody(r *TableMessageReader, value *ProfileConfig) b
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(32)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -3681,11 +3681,11 @@ func AttachmentLoadMessageBodyRetain(r *TableRetainMessageReader, value *Attachm
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x6a771618f6fe31d1:
 			{
 				widened := false
@@ -3805,11 +3805,11 @@ func AttachmentLoadMessageBody(r *TableMessageReader, value *AttachmentRow) bool
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x6a771618f6fe31d1:
 			{
 				widened := false
@@ -3914,11 +3914,11 @@ func BuffLoadMessageBodyRetain(r *TableRetainMessageReader, value *BuffRow) bool
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x9adc623a805c87c6:
 			{
 				widened := false
@@ -3988,11 +3988,11 @@ func BuffLoadMessageBody(r *TableMessageReader, value *BuffRow) bool {
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x9adc623a805c87c6:
 			{
 				widened := false
@@ -4053,11 +4053,11 @@ func DebuffLoadMessageBodyRetain(r *TableRetainMessageReader, value *DebuffRow) 
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x8113fe7ea2b16969:
 			{
 				widened := false
@@ -4133,11 +4133,11 @@ func DebuffLoadMessageBody(r *TableMessageReader, value *DebuffRow) bool {
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x8113fe7ea2b16969:
 			{
 				widened := false

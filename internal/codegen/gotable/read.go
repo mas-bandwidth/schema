@@ -251,13 +251,13 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 		g.emitReadUnboundedText(f, expr, ind)
 	case f.Type.Kind == ir.TString:
 		g.pf("%ssub, ok := r.Body(); if !ok { r.Report.Malformed = true; return false }\n", ind)
-		g.pf("%sif !tableUtf8Valid(sub.Buffer) { r.Report.Malformed = true;\n", ind)
+		g.pf("%sif !tableUTF8Valid(sub.Buffer) { r.Report.Malformed = true;\n", ind)
 		g.emitTableResetField(f)
 		g.pf("break }\n")
 		if holder := g.textValueHolder(f); holder != "" {
-			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUtf8Clamp(sub.Buffer, %d); r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) }\n", ind, f.Type.Size, f.Type.Size, holder)
+			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUTF8Clamp(sub.Buffer, %d); r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) }\n", ind, f.Type.Size, f.Type.Size, holder)
 		} else {
-			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUtf8Clamp(sub.Buffer, %d); r.Report.Clamped++ }\n", ind, f.Type.Size, f.Type.Size)
+			g.pf("%skeep := int64(len(sub.Buffer)); if keep > %d { keep = tableUTF8Clamp(sub.Buffer, %d); r.Report.Clamped++ }\n", ind, f.Type.Size, f.Type.Size)
 		}
 		g.pf("%sclear(%s[:]); copy(%s[:keep], sub.Buffer); %sLength = int32(keep)\n", ind, expr, expr, expr)
 	case kind == tkTable:
@@ -468,8 +468,8 @@ func (g *tableGen) emitReadArm(v ir.UnionVariant, expr, rdr, kind, ind, none str
 	}
 	if f.Type.Kind == ir.TString {
 		g.pf("%sclear(%s[:]); %sLength = 0\n", ind, expr, expr)
-		g.pf("%sif !tableUtf8Valid(%s.Buffer) { %s }\n", ind, rdr, bad)
-		g.pf("%skeep := int64(len(%s.Buffer)); if keep > %d { keep = tableUtf8Clamp(%s.Buffer,%d); r.Report.Clamped++ }; copy(%s[:],%s.Buffer[:keep]); %sLength=int32(keep)\n", ind, rdr, f.Type.Size, rdr, f.Type.Size, expr, rdr, expr)
+		g.pf("%sif !tableUTF8Valid(%s.Buffer) { %s }\n", ind, rdr, bad)
+		g.pf("%skeep := int64(len(%s.Buffer)); if keep > %d { keep = tableUTF8Clamp(%s.Buffer,%d); r.Report.Clamped++ }; copy(%s[:],%s.Buffer[:keep]); %sLength=int32(keep)\n", ind, rdr, f.Type.Size, rdr, f.Type.Size, expr, rdr, expr)
 		return
 	}
 	if isUnionRef(f.Type) {

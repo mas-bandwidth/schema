@@ -89,58 +89,58 @@ func messagesTargetOf[T any](name string, reset func(*T),
 var messagesTargets = []messagesTarget{
 	messagesTargetOf("TeamConfig", tabledemo.TeamConfigReset,
 		tabledemo.TeamConfigLoadMessages, tabledemo.TeamConfigMeasureMessages, tabledemo.TeamConfigSaveMessages,
-		tabledemo.TeamConfigToJsonMeasure, tabledemo.TeamConfigToJson),
+		tabledemo.TeamConfigToJSONMeasure, tabledemo.TeamConfigToJSON),
 	messagesTargetOf("GunnerConfig", tabledemo.GunnerConfigReset,
 		tabledemo.GunnerConfigLoadMessages, tabledemo.GunnerConfigMeasureMessages, tabledemo.GunnerConfigSaveMessages,
-		tabledemo.GunnerConfigToJsonMeasure, tabledemo.GunnerConfigToJson),
+		tabledemo.GunnerConfigToJSONMeasure, tabledemo.GunnerConfigToJSON),
 	messagesTargetOf("TurretConfig", tabledemo.TurretConfigReset,
 		tabledemo.TurretConfigLoadMessages, tabledemo.TurretConfigMeasureMessages, tabledemo.TurretConfigSaveMessages,
-		tabledemo.TurretConfigToJsonMeasure, tabledemo.TurretConfigToJson),
+		tabledemo.TurretConfigToJSONMeasure, tabledemo.TurretConfigToJSON),
 	messagesTargetOf("HullConfig", tabledemo.HullConfigReset,
 		tabledemo.HullConfigLoadMessages, tabledemo.HullConfigMeasureMessages, tabledemo.HullConfigSaveMessages,
-		tabledemo.HullConfigToJsonMeasure, tabledemo.HullConfigToJson),
+		tabledemo.HullConfigToJSONMeasure, tabledemo.HullConfigToJSON),
 	messagesTargetOf("KeyedConfig", tabledemo.KeyedConfigReset,
 		tabledemo.KeyedConfigLoadMessages, tabledemo.KeyedConfigMeasureMessages, tabledemo.KeyedConfigSaveMessages,
-		tabledemo.KeyedConfigToJsonMeasure, tabledemo.KeyedConfigToJson),
+		tabledemo.KeyedConfigToJSONMeasure, tabledemo.KeyedConfigToJSON),
 	messagesTargetOf("ArchiveConfig", tabledemo.ArchiveConfigReset,
 		tabledemo.ArchiveConfigLoadMessages, tabledemo.ArchiveConfigMeasureMessages, tabledemo.ArchiveConfigSaveMessages,
-		tabledemo.ArchiveConfigToJsonMeasure, tabledemo.ArchiveConfigToJson),
+		tabledemo.ArchiveConfigToJSONMeasure, tabledemo.ArchiveConfigToJSON),
 	messagesTargetOf("GunnerSettings", tabledemo.GunnerSettingsReset,
 		tabledemo.GunnerSettingsLoadMessages, tabledemo.GunnerSettingsMeasureMessages, tabledemo.GunnerSettingsSaveMessages,
-		tabledemo.GunnerSettingsToJsonMeasure, tabledemo.GunnerSettingsToJson),
+		tabledemo.GunnerSettingsToJSONMeasure, tabledemo.GunnerSettingsToJSON),
 	messagesTargetOf("ShipEntry", tabledemo.ShipEntryReset,
 		tabledemo.ShipEntryLoadMessages, tabledemo.ShipEntryMeasureMessages, tabledemo.ShipEntrySaveMessages,
-		tabledemo.ShipEntryToJsonMeasure, tabledemo.ShipEntryToJson),
+		tabledemo.ShipEntryToJSONMeasure, tabledemo.ShipEntryToJSON),
 	messagesTargetOf("GlobalSettings", tabledemo.GlobalSettingsReset,
 		tabledemo.GlobalSettingsLoadMessages, tabledemo.GlobalSettingsMeasureMessages, tabledemo.GlobalSettingsSaveMessages,
-		tabledemo.GlobalSettingsToJsonMeasure, tabledemo.GlobalSettingsToJson),
+		tabledemo.GlobalSettingsToJSONMeasure, tabledemo.GlobalSettingsToJSON),
 	messagesTargetOf("PackConfig", tabledemo.PackConfigReset,
 		tabledemo.PackConfigLoadMessages, tabledemo.PackConfigMeasureMessages, tabledemo.PackConfigSaveMessages,
-		tabledemo.PackConfigToJsonMeasure, tabledemo.PackConfigToJson),
+		tabledemo.PackConfigToJSONMeasure, tabledemo.PackConfigToJSON),
 	messagesTargetOf("RangedSigned", tabledemo.RangedSignedReset,
 		tabledemo.RangedSignedLoadMessages, tabledemo.RangedSignedMeasureMessages, tabledemo.RangedSignedSaveMessages,
-		tabledemo.RangedSignedToJsonMeasure, tabledemo.RangedSignedToJson),
+		tabledemo.RangedSignedToJSONMeasure, tabledemo.RangedSignedToJSON),
 	messagesTargetOf("RangedUnsigned", tabledemo.RangedUnsignedReset,
 		tabledemo.RangedUnsignedLoadMessages, tabledemo.RangedUnsignedMeasureMessages, tabledemo.RangedUnsignedSaveMessages,
-		tabledemo.RangedUnsignedToJsonMeasure, tabledemo.RangedUnsignedToJson),
+		tabledemo.RangedUnsignedToJSONMeasure, tabledemo.RangedUnsignedToJSON),
 	messagesTargetOf("RangedWidths", tabledemo.RangedWidthsReset,
 		tabledemo.RangedWidthsLoadMessages, tabledemo.RangedWidthsMeasureMessages, tabledemo.RangedWidthsSaveMessages,
-		tabledemo.RangedWidthsToJsonMeasure, tabledemo.RangedWidthsToJson),
+		tabledemo.RangedWidthsToJSONMeasure, tabledemo.RangedWidthsToJSON),
 	messagesTargetOf("RootConfig", tabledemo.RootConfigReset,
 		tabledemo.RootConfigLoadMessages, tabledemo.RootConfigMeasureMessages, tabledemo.RootConfigSaveMessages,
-		tabledemo.RootConfigToJsonMeasure, tabledemo.RootConfigToJson),
+		tabledemo.RootConfigToJSONMeasure, tabledemo.RootConfigToJSON),
 	messagesTargetOf("WeaponConfig", tabledemo.WeaponConfigReset,
 		tabledemo.WeaponConfigLoadMessages, tabledemo.WeaponConfigMeasureMessages, tabledemo.WeaponConfigSaveMessages,
-		tabledemo.WeaponConfigToJsonMeasure, tabledemo.WeaponConfigToJson),
+		tabledemo.WeaponConfigToJSONMeasure, tabledemo.WeaponConfigToJSON),
 	messagesTargetOf("LoadoutConfig", tabledemo.LoadoutConfigReset,
 		tabledemo.LoadoutConfigLoadMessages, tabledemo.LoadoutConfigMeasureMessages, tabledemo.LoadoutConfigSaveMessages,
-		tabledemo.LoadoutConfigToJsonMeasure, tabledemo.LoadoutConfigToJson),
+		tabledemo.LoadoutConfigToJSONMeasure, tabledemo.LoadoutConfigToJSON),
 	messagesTargetOf("ProfileConfig", tabledemo.ProfileConfigReset,
 		tabledemo.ProfileConfigLoadMessages, tabledemo.ProfileConfigMeasureMessages, tabledemo.ProfileConfigSaveMessages,
-		tabledemo.ProfileConfigToJsonMeasure, tabledemo.ProfileConfigToJson),
+		tabledemo.ProfileConfigToJSONMeasure, tabledemo.ProfileConfigToJSON),
 	messagesTargetOf("WideBlob", tabledemo.WideBlobReset,
 		tabledemo.WideBlobLoadMessages, tabledemo.WideBlobMeasureMessages, tabledemo.WideBlobSaveMessages,
-		tabledemo.WideBlobToJsonMeasure, tabledemo.WideBlobToJson),
+		tabledemo.WideBlobToJSONMeasure, tabledemo.WideBlobToJSON),
 }
 
 func FuzzLoadMessages(f *testing.F) {
@@ -184,11 +184,11 @@ func reSaveMessagesReadsBack(t *testing.T, target messagesTarget, vocabulary *ta
 			continue
 		}
 		// A wire-legal value may hold a float JSON cannot spell (NaN, an
-		// infinity) or string bytes that are not UTF-8; ToJson refuses those.
+		// infinity) or string bytes that are not UTF-8; ToJSON refuses those.
 		// The re-save equality is still checked, on the writer image itself.
 		againWire, ok := target.save(again)
 		if !ok || !bytes.Equal(wire, againWire) {
-			t.Fatalf("%s: re-save round trip differs for value %d and ToJson cannot represent the value", target.name, i)
+			t.Fatalf("%s: re-save round trip differs for value %d and ToJSON cannot represent the value", target.name, i)
 		}
 		return
 	}

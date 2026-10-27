@@ -211,7 +211,7 @@ func TestDefaults(t *testing.T) {
  }
  RootReset(&value)
  if RootMeasure(&value)!=10 {t.Fatal("reset")}
- if !RootFromJson(&value,[]byte("{}"),&report)||RootMeasure(&value)!=10 {t.Fatal("json defaults")}
+ if !RootFromJSON(&value,[]byte("{}"),&report)||RootMeasure(&value)!=10 {t.Fatal("json defaults")}
 }
 `
 

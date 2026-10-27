@@ -47,7 +47,7 @@ const (
 )
 
 const (
-	tableFixedTextUtf8 uint8 = 1
+	tableFixedTextUTF8 uint8 = 1
 	tableFixedTextWide uint8 = 2
 	tableFixedTextBytes uint8 = 3
 )
@@ -66,7 +66,7 @@ const tableFixedRecordMaxBytes uint32 = 65536
 const tableFixedMaxDepth int32 = 64
 
 // Arg is the guard's arm ordinal: tableFixedRun compares src[Guard] against
-// it. Meta is a text entry's flavour (tableFixedTextUtf8/Wide/Bytes). They
+// it. Meta is a text entry's flavour (tableFixedTextUTF8/Wide/Bytes). They
 // shared one lane until reference-fix 12; compiling a string under a union
 // arm overwrote the guard with the flavour and the read skipped the string.
 // tableFixedEntryBytes is the FILE layout entry (id+kind+size+children),
@@ -637,7 +637,7 @@ func tableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, rep
 // an invalid lead — refuses here too and not only structural truncation.
 func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 	switch meta {
-	case tableFixedTextUtf8:
+	case tableFixedTextUTF8:
 		if !utf8.Valid(p[:used]) {
 			return true
 		}
@@ -667,7 +667,7 @@ func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 	return false
 }
 
-// tableFixedUtf8Ok is the WRITER's string rule over the used bytes: well-formed
+// tableFixedUTF8Ok is the WRITER's string rule over the used bytes: well-formed
 // UTF-8 with no zero byte, the answer unicode/utf8.Valid and a NUL scan give
 // (docs/FIXED-FORM-ALGORITHM.md §3.1, the same rule tableFixedTextIllFormed
 // holds on read). It is one pass, eight bytes a step, with no branch in the
@@ -676,7 +676,7 @@ func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 // zero refuses; text with no high bit is ASCII and passes; only text with a
 // byte at or past 0x80 goes on to utf8.Valid. The result is identical to the
 // two-pass spelling.
-func tableFixedUtf8Ok(p []byte) bool {
+func tableFixedUTF8Ok(p []byte) bool {
 	var hi, z uint64
 	i := 0
 	for ; i+8 <= len(p); i += 8 {
@@ -1247,7 +1247,7 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 		theirOff := theirAt
 		for range te.Children {
 			tc := tableFixedEntryAt(theirs, theirChild)
-			if tc.Id == mc.Id {
+			if tc.ID == mc.ID {
 				tableFixedCompileEntry(c, theirs, theirChild, theirOff, mine, myChild, dst, myAt, guard, arg, census)
 				break
 			}
@@ -1262,7 +1262,7 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 		named := false
 		mcAt := mi + 1
 		for range me.Children {
-			if tableFixedEntryAt(mine, mcAt).Id == tc.Id {
+			if tableFixedEntryAt(mine, mcAt).ID == tc.ID {
 				named = true
 				break
 			}
@@ -1354,9 +1354,9 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		mel := mi + 1 + tableFixedSubtree(mine, mi+1)
 		tee := tableFixedEntryAt(theirs, tel)
 		for k := range mkey.Children {
-			keyId := tableFixedEntryAt(mine, mi+2+int32(k)).Id
+			keyId := tableFixedEntryAt(mine, mi+2+int32(k)).ID
 			for j := range tkey.Children {
-				if tableFixedEntryAt(theirs, ti+2+int32(j)).Id != keyId {
+				if tableFixedEntryAt(theirs, ti+2+int32(j)).ID != keyId {
 					continue
 				}
 				tableFixedCompileEntry(c, theirs, tel, theirAt+j*tee.Size, mine, mel, dst, at+k*d.Stride, guard, arg, census && k == 0)
@@ -1396,7 +1396,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			theirArm := ti + 1
 			for j := range te.Children {
 				ta := tableFixedEntryAt(theirs, theirArm)
-				if ta.Id == ma.Id {
+				if ta.ID == ma.ID {
 					// THE ARM ANSWERS TO THIS TAG AND TO EVERY TAG OUTSIDE IT
 					// (docs/FIXED-FORM-ALGORITHM.md §4.1): one link is pushed
 					// on the way into the arm, the arm's own tag const included,
@@ -1437,10 +1437,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 		m := make([]uint16, n)
 		for j := range n {
-			vid := tableFixedEntryAt(theirs, ti+1+int32(j)).Id
+			vid := tableFixedEntryAt(theirs, ti+1+int32(j)).ID
 			var landed uint16
 			for k := range me.Children {
-				if tableFixedEntryAt(mine, mi+1+int32(k)).Id == vid {
+				if tableFixedEntryAt(mine, mi+1+int32(k)).ID == vid {
 					landed = uint16(k + 1)
 					break
 				}

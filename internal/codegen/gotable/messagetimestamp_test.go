@@ -52,7 +52,7 @@ func TestMessageFormCarriesATimestampFieldRoundTrip(t *testing.T) {
 	}
 	// an announcement naming kind 37 stays malformed (§3.3's closed set):
 	// respell the timestamp entry's kind 36 as 37 and the read must refuse.
-	sId := SessionTableFields[1].Id
+	sId := SessionTableFields[1].ID
 	var idBytes [8]byte
 	for k := 0; k < 8; k++ {
 		idBytes[k] = byte(sId >> (8 * k))
