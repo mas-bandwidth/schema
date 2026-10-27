@@ -191,11 +191,15 @@ func verifyRefusedMessagePackPreservesOutputs(t *testing.T, bin string, f messag
 	if code != 1 {
 		return fmt.Errorf("fresh refused pack exited %d, want 1\n%s", code, out)
 	}
-	if _, err := os.Stat(freshAnn); !os.IsNotExist(err) {
-		return fmt.Errorf("refused pack created fresh announcement %s (err=%v)", freshAnn, err)
+	if _, err := os.Stat(freshAnn); err == nil {
+		return fmt.Errorf("refused pack created fresh announcement %s", freshAnn)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat fresh announcement %s: %w", freshAnn, err)
 	}
-	if _, err := os.Stat(freshMsg); !os.IsNotExist(err) {
-		return fmt.Errorf("refused pack created fresh message %s (err=%v)", freshMsg, err)
+	if _, err := os.Stat(freshMsg); err == nil {
+		return fmt.Errorf("refused pack created fresh message %s", freshMsg)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat fresh message %s: %w", freshMsg, err)
 	}
 	entries, err := os.ReadDir(freshDir)
 	if err != nil {

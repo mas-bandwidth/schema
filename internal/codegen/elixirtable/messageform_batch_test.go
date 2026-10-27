@@ -631,7 +631,7 @@ func sabotageCountLoop(t *testing.T, module []byte) []byte {
           raise "count-driven zero-progress materialization"
         end
 
-        read_elements(vocab, shape, elem, n - 1, rest, [v | acc])`
+        read_elements(vocab, shape, elem, n - 1, rest, [v | acc], depth)`
 	return replaceModuleOnce(t, module, have, restored, "count-driven zero-progress materialization")
 }
 

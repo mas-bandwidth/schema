@@ -567,8 +567,8 @@ func tableMessageNodeOpen(r *TableMessageReader) (int64, bool) {
 	n, ok := r.Bits.Get(32)
 	return int64(n), ok
 }
-func tableMessageExtent(r *TableMessageReader, t *TableTypeInfo, at *int64) bool {
-	return tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0)
+func tableMessageExtent(r *TableMessageReader, t *TableTypeInfo, at *int64, depth int) bool {
+	return tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, depth)
 }
 
 type tableMessageRecord struct {
@@ -605,7 +605,7 @@ func tableMessageRecordScan(r *TableMessageReader, root *TableTypeInfo, blobs in
 		return record, tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0)
 	}
 	extent := int64(0)
-	if !tableMessageExtent(r, t, &extent) {
+	if !tableMessageExtent(r, t, &extent, 0) {
 		return record, false
 	}
 	record.size = tableRegionRound(tableRegionRound(int64(t.Size)) + extent)
@@ -626,7 +626,7 @@ func tableMessageBodyStorage(r *TableMessageReader, root *TableTypeInfo, blobs i
 		size += record.size
 	}
 	extent := int64(0)
-	complete = tableMessageExtent(r, root, &extent)
+	complete = tableMessageExtent(r, root, &extent, 0)
 	size += tableRegionRound(tableRegionRound(int64(root.Size)) + extent)
 	return size, complete, true
 }
@@ -700,7 +700,7 @@ func tableMessageRegionInto(r *TableMessageReader, root *TableTypeInfo, blobs in
 	fieldsStart := r.Bits.Offset
 	walk := *r
 	extent := int64(0)
-	complete := tableMessageExtent(&walk, root, &extent)
+	complete := tableMessageExtent(&walk, root, &extent, 0)
 	if !complete && tableMessageHasExtent(root) {
 		r.Report.Malformed = true
 		return nil, false
@@ -758,7 +758,7 @@ func tableMessageRegionInto(r *TableMessageReader, root *TableTypeInfo, blobs in
 		t := root.NodeType(entry.TypeId)
 		walk := *r
 		extent := int64(0)
-		if !tableMessageExtent(&walk, t, &extent) {
+		if !tableMessageExtent(&walk, t, &extent, 0) {
 			r.Report.Malformed = true
 			return out, false
 		}
@@ -1138,7 +1138,7 @@ func tableMessageRegionIntoRetain(r *TableRetainMessageReader, root *TableTypeIn
 	fieldsStart := r.Bits.Offset
 	walk := *r
 	extent := int64(0)
-	complete := tableMessageExtent(&walk.tableMessagePlainReader, root, &extent)
+	complete := tableMessageExtent(&walk.tableMessagePlainReader, root, &extent, 0)
 	if !complete && tableMessageHasExtent(root) {
 		r.Report.Malformed = true
 		return nil, false
@@ -1200,7 +1200,7 @@ func tableMessageRegionIntoRetain(r *TableRetainMessageReader, root *TableTypeIn
 		t := root.NodeType(entry.TypeId)
 		walk := *r
 		extent := int64(0)
-		if !tableMessageExtent(&walk.tableMessagePlainReader, t, &extent) {
+		if !tableMessageExtent(&walk.tableMessagePlainReader, t, &extent, 0) {
 			r.Report.Malformed = true
 			return out, false
 		}

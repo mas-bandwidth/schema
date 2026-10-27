@@ -11,6 +11,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -257,6 +258,7 @@ func runElixirDepthBoundaryProbe(t *testing.T, u *ir.Unit, ann []byte, cases []d
 
 func TestGeneratedMessageDepthBoundary(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain (it compiles and runs the generated depth probe)")
 	u, ann, cases := depthBoundaryFixtures(t)
 	out, err := runElixirDepthBoundaryProbe(t, u, ann, cases, nil)
 	if err != nil {

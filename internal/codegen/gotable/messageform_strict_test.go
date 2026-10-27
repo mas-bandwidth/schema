@@ -154,9 +154,9 @@ func TestTypedError(t *testing.T) {
 	if !errors.As(report.Err(), &mismatch) {
 		t.Fatalf("errors.As did not reach the typed error: %v", report.Err())
 	}
-	if mismatch.Endpoint != remoteVersion || mismatch.Own != BuildVersion {
-		t.Fatalf("typed error versions: endpoint=%#x own=%#x want endpoint=%#x own=%#x",
-			mismatch.Endpoint, mismatch.Own, remoteVersion, BuildVersion)
+	if mismatch.Remote != remoteVersion || mismatch.Own != BuildVersion {
+		t.Fatalf("typed error versions: remote=%#x own=%#x want remote=%#x own=%#x",
+			mismatch.Remote, mismatch.Own, remoteVersion, BuildVersion)
 	}
 	msg := mismatch.Error()
 	if !strings.Contains(msg, fmt.Sprintf("%016x", remoteVersion)) ||

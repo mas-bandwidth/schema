@@ -737,7 +737,7 @@ fixed table Root {
 	if err != nil {
 		t.Fatalf("skip_depth_above_128: %v\n%s", err, out)
 	}
-	out, err = runCppGeneratedEdited(t, schema, cppSkipDepthMain, func(files map[string][]byte) {
+	_, err = runCppGeneratedEdited(t, schema, cppSkipDepthMain, func(files map[string][]byte) {
 		files["ProbeTable.h"] = []byte(strings.ReplaceAll(string(files["ProbeTable.h"]), "if ( depth > 128 )", "if ( depth > 256 )"))
 	})
 	if err == nil {

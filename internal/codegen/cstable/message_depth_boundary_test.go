@@ -11,6 +11,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -304,6 +305,7 @@ static class Program
 
 func TestGeneratedMessageDepthBoundary(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "dotnet (it compiles and runs a C# depth probe over the generated unit)")
 	u, ann, cases := depthBoundaryFixtures(t)
 	out, err := runCSDepthBoundaryProbe(t, u, ann, cases, nil)
 	if err != nil {
